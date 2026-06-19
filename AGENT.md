@@ -1,0 +1,96 @@
+# HAR — Agent Development Guide
+
+Guide for coding agents working on **this repository** (`@har/cli` — the CLI and MCP control plane).
+
+For setup, testing fixtures, and PR workflow, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+This is **not** the harness guide for target repos. Consumer repos get their own root `AGENT.md` via `har env init`. This repo does not use `.har/` for its own development yet.
+
+## Architecture
+
+HAR is a layered CLI + MCP control plane. Business logic lives in `core/` and `harness/`. `cli/` and `mcp/` are thin adapters: parse input, call core, format output.
+
+```
+cli/  mcp/          ← adapters (flags, JSON, MCP tool schemas)
+  ↓
+core/               ← orchestration, public execution API
+  ↓
+harness/            ← .har/ contract, schemas, manifest/stages I/O
+  ↓
+utils/              ← generic helpers (shell, paths, logging)
+```
+
+`llm/` is the optional authoring agent for `har env init`. `templates/` holds scaffold assets copied into target repos — not runtime logic.
+
+## Dependency rules
+
+These are non-negotiable. Do not introduce imports that violate them.
+
+| Layer | May import | Must not import |
+|-------|------------|-----------------|
+| `cli/`, `mcp/` | `core/`, `harness/`, `utils/` | each other |
+| `core/` | `harness/`, `utils/`, `llm/` | `cli/`, `mcp/` |
+| `harness/` | `utils/` | `core/`, `cli/`, `mcp/`, `llm/` |
+| `utils/` | other `utils/` | anything with HAR domain concepts |
+| `llm/` | `harness/`, `utils/` | `core/`, `cli/`, `mcp/` |
+
+## Where to put changes
+
+| Change | Location |
+|--------|----------|
+| Schema, stage kinds, result shapes | `src/harness/schema.ts` |
+| Manifest / stages.json I/O | `src/harness/manifest.ts`, `stages.ts` |
+| Scaffold copy, boilerplate wiring | `src/harness/generator.ts` |
+| Init / maintain / describe orchestration | `src/core/harness.ts` |
+| Run orchestration (launch, verify, teardown) | `src/core/run-service.ts` |
+| Local bash/script execution | `src/core/local-executor.ts` |
+| Run history (`.har/runs/`) | `src/core/runs.ts` |
+| Shared execution types, `StageExecutor` | `src/core/types.ts` |
+| CLI subcommand or flag | `src/cli/commands/` |
+| MCP tool handler or JSON Schema | `src/mcp/server.ts`, `schemas.ts` |
+| Files copied into target `.har/` | `src/templates/har-boilerplate/` |
+| Generic shell/path/logging helper | `src/utils/` |
+
+When unsure: put domain logic in `harness/` or `core/`, never in an adapter.
+
+## Public API
+
+Adapters and tests import execution from **`src/core/run-service.ts`** (or the `run.ts` re-export). Do not import `local-executor.ts` from outside `core/`.
+
+Canonical schemas live in **`src/harness/schema.ts`**. Parse CLI and MCP inputs at the boundary with Zod (`.parse()` / `.safeParse()`); infer types with `z.infer`.
+
+Const arrays like `HAR_STAGE_KINDS` are the single source of truth — use them for Zod enums, MCP JSON Schema, and tests.
+
+## Extension points
+
+Design for a closed core with open seams — do not build a full plugin registry until there is a concrete second implementation.
+
+- **`StageExecutor`** (`src/core/types.ts`) — swap local vs cloud execution by injecting a different executor into `RunService`. `local-executor.ts` is the current implementation.
+- **Project-owned stages** — runtime behavior lives in the target repo's `.har/` scripts and `stages.json`, not as hardcoded tool APIs in core.
+- **Stage templates** (future) — optional packages that generate scripts and stage entries. They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`.
+
+## Anti-patterns
+
+- Orchestration logic in `mcp/server.ts` or `cli/commands/` — adapters delegate to `core/`
+- Stack-specific stages or MCP tools in core (Playwright, Cypress, migrations, etc.)
+- `harness/` importing from `core/` — keeps the contract layer independent
+- Domain types or HAR concepts in `utils/`
+- Deep barrel re-exports inside `src/` — prefer explicit imports; public surface is `run-service.ts` / `run.ts`
+- Weakening `strict: true` or using `any` instead of `unknown` + Zod narrowing
+
+## Tests
+
+- Unit tests in `tests/*.test.ts`; fixtures under `tests/fixtures/`
+- Mock `.har/` layouts with fixtures — avoid real Docker in unit tests
+- When CLI and core share a code path, keep parity tests (see `tests/run-service-parity.test.ts`)
+- After changes: `npm run typecheck && npm run lint && npm test`
+
+## Before finishing
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+```
+
+If you changed templates: `npm run build`, then test with `har env init --force --skip-llm` on a fixture repo.

@@ -1,0 +1,163 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { run } from '../utils/shell';
+import { getHarnessDir } from './manifest';
+import { readStageRegistry } from './stages';
+
+export interface ValidationIssue {
+  file: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+export interface ValidationResult {
+  pass: boolean;
+  issues: ValidationIssue[];
+}
+
+const REQUIRED_FILES = [
+  'README.md',
+  'stages.json',
+  'harness.env',
+  'setup-infra.sh',
+  'launch.sh',
+  'verify.sh',
+  'teardown.sh',
+  'agent-cli.sh',
+  'agent-slot.sh',
+  'docker-compose.agent.yml',
+  'env.template',
+  'ecosystem.agent.template.cjs',
+  'CLAUDE.agent.md',
+];
+
+const SHELL_SCRIPTS = [
+  'setup-infra.sh',
+  'launch.sh',
+  'verify.sh',
+  'teardown.sh',
+  'agent-cli.sh',
+  'attach.sh',
+];
+
+export function validateHarness(repoPath: string): ValidationResult {
+  const harnessDir = getHarnessDir(repoPath);
+  const issues: ValidationIssue[] = [];
+
+  if (!fs.existsSync(harnessDir)) {
+    return {
+      pass: false,
+      issues: [{ file: '.har', message: 'Harness directory not found', severity: 'error' }],
+    };
+  }
+
+  for (const file of REQUIRED_FILES) {
+    const filePath = path.join(harnessDir, file);
+    if (!fs.existsSync(filePath)) {
+      issues.push({ file, message: 'Required file missing', severity: 'error' });
+    }
+  }
+
+  for (const script of SHELL_SCRIPTS) {
+    const scriptPath = path.join(harnessDir, script);
+    if (!fs.existsSync(scriptPath)) continue;
+
+    const stat = fs.statSync(scriptPath);
+    if (!(stat.mode & 0o111)) {
+      issues.push({ file: script, message: 'Script is not executable', severity: 'warning' });
+    }
+
+    const result = run(`bash -n "${scriptPath}"`);
+    if (result.code !== 0) {
+      issues.push({
+        file: script,
+        message: `Syntax error: ${result.stderr.trim()}`,
+        severity: 'error',
+      });
+    }
+  }
+
+  const ecosystemPath = path.join(harnessDir, 'ecosystem.agent.template.cjs');
+  if (fs.existsSync(ecosystemPath)) {
+    const content = fs.readFileSync(ecosystemPath, 'utf8');
+    if (!content.includes('module.exports')) {
+      issues.push({
+        file: 'ecosystem.agent.template.cjs',
+        message: 'Missing module.exports',
+        severity: 'error',
+      });
+    }
+  }
+
+  const harnessEnvPath = path.join(harnessDir, 'harness.env');
+  if (fs.existsSync(harnessEnvPath)) {
+    const content = fs.readFileSync(harnessEnvPath, 'utf8');
+    if (content.includes('TODO: set migrate command')) {
+      issues.push({ file: 'harness.env', message: 'Migrate command still has TODO', severity: 'warning' });
+    }
+    if (content.includes('TODO: set seed command')) {
+      issues.push({ file: 'harness.env', message: 'Seed command still has TODO', severity: 'warning' });
+    }
+  }
+
+  const verifyPath = path.join(harnessDir, 'verify.sh');
+  if (fs.existsSync(verifyPath)) {
+    const content = fs.readFileSync(verifyPath, 'utf8');
+    if (content.includes("echo 'TODO:")) {
+      issues.push({ file: 'verify.sh', message: 'Verification steps still have TODO placeholders', severity: 'warning' });
+    }
+  }
+
+  const stagesPath = path.join(harnessDir, 'stages.json');
+  if (fs.existsSync(stagesPath)) {
+    try {
+      JSON.parse(fs.readFileSync(stagesPath, 'utf8'));
+      const registry = readStageRegistry(repoPath);
+      if (registry.stages.length === 0) {
+        issues.push({ file: 'stages.json', message: 'No harness stages declared', severity: 'warning' });
+      }
+    } catch (err) {
+      issues.push({
+        file: 'stages.json',
+        message: err instanceof Error ? err.message : 'Invalid stages.json',
+        severity: 'error',
+      });
+    }
+  } else {
+    issues.push({ file: 'stages.json', message: 'Stage registry missing', severity: 'warning' });
+  }
+
+  const readmePath = path.join(harnessDir, 'README.md');
+  if (fs.existsSync(readmePath)) {
+    const content = fs.readFileSync(readmePath, 'utf8');
+    if (!content.includes('.har')) {
+      issues.push({ file: 'README.md', message: 'README should document .har/ paths', severity: 'warning' });
+    }
+    if (content.length < 200) {
+      issues.push({ file: 'README.md', message: 'README is too short — should explain harness contents', severity: 'warning' });
+    }
+  }
+
+  const errors = issues.filter((i) => i.severity === 'error');
+  return { pass: errors.length === 0, issues };
+}
+
+export async function smokeTestHarness(repoPath: string): Promise<ValidationResult> {
+  const harnessDir = getHarnessDir(repoPath);
+  const issues: ValidationIssue[] = [];
+
+  const setupScript = path.join(harnessDir, 'setup-infra.sh');
+  if (fs.existsSync(setupScript)) {
+    const result = run(`bash "${setupScript}"`, { cwd: repoPath });
+    if (result.code !== 0) {
+      issues.push({
+        file: 'setup-infra.sh',
+        message: `Smoke test failed: ${result.stderr.slice(0, 200)}`,
+        severity: 'error',
+      });
+    }
+  }
+
+  const errors = issues.filter((i) => i.severity === 'error');
+  return { pass: errors.length === 0, issues };
+}

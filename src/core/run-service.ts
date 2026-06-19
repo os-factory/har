@@ -1,0 +1,260 @@
+import { parseVerificationResult } from './results';
+import { localScriptExecutor } from './local-executor';
+import { createRun, finishRun } from './runs';
+import { getAgentSlotIds, resolveStage } from '../harness/stages';
+import { validateAgentId } from '../utils/validation';
+import {
+  ArtifactEntry,
+  EnvironmentRunResult,
+  ExecutionContext,
+  LaunchOptions,
+  LogsOptions,
+  StageExecutor,
+  StageRunOptions,
+  VerificationRunResult,
+} from './types';
+import { StageResult, VerificationResult } from '../harness/schema';
+
+function extractShellOutput(result: StageResult): { stdout: string; stderr: string; code: number } {
+  const stdout =
+    result.logs?.find((log) => log.stream === 'stdout')?.content ??
+    result.logs?.find((log) => !log.stream)?.content ??
+    '';
+  const stderr = result.logs?.find((log) => log.stream === 'stderr')?.content ?? '';
+  return { stdout, stderr, code: result.code ?? (result.status === 'pass' ? 0 : 1) };
+}
+
+function previewUrlsFromResult(result: StageResult): Record<string, string> | undefined {
+  if (!result.urls?.length) return undefined;
+  const urls: Record<string, string> = {};
+  for (const entry of result.urls) {
+    const label = entry.label ?? 'url';
+    urls[label] = entry.url;
+  }
+  return Object.keys(urls).length > 0 ? urls : undefined;
+}
+
+function toEnvironmentRunResult(result: StageResult): EnvironmentRunResult {
+  const { stdout, stderr, code } = extractShellOutput(result);
+  return {
+    code,
+    stdout,
+    stderr,
+    previewUrls: previewUrlsFromResult(result),
+  };
+}
+
+export class RunService {
+  constructor(private readonly executor: StageExecutor = localScriptExecutor) {}
+
+  async runStage(options: StageRunOptions & { trigger?: ExecutionContext['trigger'] }): Promise<StageResult> {
+    const ctx: ExecutionContext = {
+      repoPath: options.repoPath,
+      capture: options.capture,
+      agentId: options.agentId,
+      trigger: options.trigger,
+    };
+
+    const stageLookup = options.stageId
+      ? { id: options.stageId }
+      : options.kind
+        ? { kind: options.kind }
+        : null;
+    if (!stageLookup) {
+      throw new Error('Provide stageId or kind');
+    }
+
+    const stage = resolveStage(options.repoPath, stageLookup);
+    if (!stage) {
+      const hint = options.stageId
+        ? `Stage id "${options.stageId}" not found in .har/stages.json`
+        : `No stage with kind "${options.kind}" found in .har/stages.json`;
+      throw new Error(hint);
+    }
+
+    const run = createRun(ctx, {
+      stageId: stage.id,
+      kind: stage.kind,
+      agentId: options.agentId,
+    });
+
+    const started = Date.now();
+    try {
+      const result = await this.executor.runStage(ctx, options);
+      const durationMs = Date.now() - started;
+      finishRun(options.repoPath, run.runId, {
+        status: result.status,
+        result,
+        durationMs,
+      });
+
+      const data =
+        typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
+          ? { ...(result.data as Record<string, unknown>), runId: run.runId }
+          : { runId: run.runId };
+
+      return { ...result, data };
+    } catch (err: unknown) {
+      const durationMs = Date.now() - started;
+      finishRun(options.repoPath, run.runId, {
+        status: 'error',
+        durationMs,
+      });
+      throw err;
+    }
+  }
+
+  listArtifacts(options: { repoPath: string; stageId?: string }): ArtifactEntry[] {
+    return this.executor.listArtifacts({ repoPath: options.repoPath }, { stageId: options.stageId });
+  }
+
+  async launchEnvironment(options: LaunchOptions): Promise<EnvironmentRunResult> {
+    const result = await this.runStage({
+      repoPath: options.repoPath,
+      kind: 'launch',
+      agentId: options.agentId,
+      capture: options.capture ?? false,
+      launchFlags: {
+        worktree: options.worktree,
+        claude: options.claude,
+      },
+      trigger: 'cli',
+    });
+    return toEnvironmentRunResult(result);
+  }
+
+  async runVerification(options: {
+    repoPath: string;
+    agentId: number;
+    full?: boolean;
+    capture?: boolean;
+    trigger?: ExecutionContext['trigger'];
+  }): Promise<VerificationRunResult> {
+    const args = options.full ? ['--full'] : undefined;
+    const result = await this.runStage({
+      repoPath: options.repoPath,
+      kind: 'verify',
+      agentId: options.agentId,
+      args,
+      capture: options.capture ?? true,
+      trigger: options.trigger ?? 'cli',
+    });
+    const shell = extractShellOutput(result);
+    let verification: VerificationResult | null = parseVerificationResult(shell.stdout);
+    if (
+      typeof result.data === 'object' &&
+      result.data !== null &&
+      !Array.isArray(result.data)
+    ) {
+      const data = result.data as { verification?: VerificationResult | null };
+      if (data.verification !== undefined) {
+        verification = data.verification;
+      }
+    }
+
+    return {
+      code: shell.code,
+      stdout: shell.stdout,
+      stderr: shell.stderr,
+      verification,
+    };
+  }
+
+  async teardownEnvironment(options: {
+    repoPath: string;
+    agentId: number;
+    capture?: boolean;
+    trigger?: ExecutionContext['trigger'];
+  }): Promise<EnvironmentRunResult> {
+    const result = await this.runStage({
+      repoPath: options.repoPath,
+      kind: 'teardown',
+      agentId: options.agentId,
+      capture: options.capture ?? false,
+      trigger: options.trigger ?? 'cli',
+    });
+    return toEnvironmentRunResult(result);
+  }
+
+  async getEnvironmentStatus(options: {
+    repoPath: string;
+    agentId?: number;
+    capture?: boolean;
+    trigger?: ExecutionContext['trigger'];
+  }): Promise<EnvironmentRunResult> {
+    const capture = options.capture ?? true;
+
+    if (options.agentId !== undefined) {
+      validateAgentId(options.agentId, options.repoPath);
+      const result = await this.runStage({
+        repoPath: options.repoPath,
+        stageId: 'status',
+        agentId: options.agentId,
+        args: ['status'],
+        capture,
+        trigger: options.trigger ?? 'cli',
+      });
+      return toEnvironmentRunResult(result);
+    }
+
+    let combinedStdout = '';
+    let combinedStderr = '';
+    let exitCode = 0;
+
+    for (const id of getAgentSlotIds(options.repoPath)) {
+      const result = await this.runStage({
+        repoPath: options.repoPath,
+        stageId: 'status',
+        agentId: id,
+        args: ['status'],
+        capture,
+        trigger: options.trigger ?? 'cli',
+      });
+      const shell = extractShellOutput(result);
+      combinedStdout += shell.stdout;
+      combinedStderr += shell.stderr;
+      if (shell.code !== 0) exitCode = shell.code;
+    }
+
+    return { code: exitCode, stdout: combinedStdout, stderr: combinedStderr };
+  }
+
+  async getEnvironmentLogs(options: LogsOptions & { trigger?: ExecutionContext['trigger'] }): Promise<EnvironmentRunResult> {
+    validateAgentId(options.agentId, options.repoPath);
+    const args = options.service ? [options.service] : undefined;
+    const result = await this.runStage({
+      repoPath: options.repoPath,
+      stageId: 'logs',
+      agentId: options.agentId,
+      args,
+      capture: true,
+      trigger: options.trigger ?? 'cli',
+    });
+    return toEnvironmentRunResult(result);
+  }
+}
+
+const defaultRunService = new RunService();
+
+export function createRunService(executor: StageExecutor = localScriptExecutor): RunService {
+  return new RunService(executor);
+}
+
+export const runStage = defaultRunService.runStage.bind(defaultRunService);
+export const listArtifacts = defaultRunService.listArtifacts.bind(defaultRunService);
+export const launchEnvironment = defaultRunService.launchEnvironment.bind(defaultRunService);
+export const runVerification = defaultRunService.runVerification.bind(defaultRunService);
+export const teardownEnvironment = defaultRunService.teardownEnvironment.bind(defaultRunService);
+export const getEnvironmentStatus = defaultRunService.getEnvironmentStatus.bind(defaultRunService);
+export const getEnvironmentLogs = defaultRunService.getEnvironmentLogs.bind(defaultRunService);
+
+export { computePreviewUrls, readHarnessEnv } from './local-executor';
+
+export type {
+  ArtifactEntry,
+  EnvironmentRunResult,
+  LaunchOptions,
+  LogsOptions,
+  StageRunOptions,
+  VerificationRunResult,
+} from './types';

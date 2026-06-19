@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.js.map
+.env
+.env.*
+!.env.template
+*.log
+.har/
+coverage/
+.DS_Store

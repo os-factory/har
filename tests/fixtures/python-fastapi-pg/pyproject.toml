@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "python-fastapi-pg-fixture"
+version = "1.0.0"
+dependencies = [
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.29.0",
+  "psycopg2-binary>=2.9.0",
+]
+
+[tool.hatch.envs.default.scripts]
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+test = "echo 'Tests passed'"
+migrate = "echo 'Migrations ran'"
+seed = "echo 'Seeds ran'"

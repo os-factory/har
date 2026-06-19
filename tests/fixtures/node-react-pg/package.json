@@ -1,0 +1,15 @@
+{
+  "name": "node-react-pg-fixture",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "node src/index.js",
+    "test": "echo 'Tests passed' && exit 0",
+    "typecheck": "echo 'Typecheck passed' && exit 0",
+    "migrate": "echo 'Migrations ran' && exit 0",
+    "seed": "echo 'Seeds ran' && exit 0"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "pg": "^8.11.0"
+  }
+}
