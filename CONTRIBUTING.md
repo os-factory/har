@@ -97,6 +97,12 @@ cd /path/to/your-project
 har env init --skip-llm
 ```
 
+For CLI/library repos (no Docker/PM2):
+
+```bash
+har env init --skip-llm --profile cli
+```
+
 This creates `.har/` with scripts and config. Validation will warn about TODO placeholders in `harness.env` and `verify.sh` until the LLM adapts them (or you edit them manually).
 
 ### Full test (with LLM adaptation)

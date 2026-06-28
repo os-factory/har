@@ -28,6 +28,12 @@ export const envCommand = {
             .option('force', { type: 'boolean', default: false, describe: 'Overwrite existing .har/' })
             .option('smoke', { type: 'boolean', default: false, describe: 'Run setup-infra.sh after adaptation' })
             .option('skip-llm', { type: 'boolean', default: false, describe: 'Copy boilerplate only' })
+            .option('profile', {
+              type: 'string',
+              choices: ['default', 'cli'] as const,
+              default: 'default' as const,
+              describe: 'Boilerplate profile: default (web app) or cli (no Docker/PM2)',
+            })
             .option('yes', { type: 'boolean', default: false, describe: 'Auto-apply AGENT.md proposal without prompting' }),
         handleInit,
       )
@@ -90,6 +96,7 @@ export async function handleInit(argv: {
   smoke: boolean;
   skipLlm: boolean;
   yes: boolean;
+  profile: 'default' | 'cli';
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -111,6 +118,7 @@ export async function handleInit(argv: {
       verbose: argv.verbose,
       model: argv.model,
       smoke: argv.smoke,
+      profile: argv.profile,
     });
 
     divider();

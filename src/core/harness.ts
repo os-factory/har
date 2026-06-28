@@ -88,7 +88,10 @@ export async function initHarness(options: InitHarnessOptions): Promise<InitHarn
     throw new Error(`Path not found: ${repoPath}`);
   }
 
-  const scaffold = scaffoldHarnessBoilerplate(repoPath, { force: options.force });
+  const scaffold = scaffoldHarnessBoilerplate(repoPath, {
+    force: options.force,
+    profile: options.profile,
+  });
   let adaptationSummary: string | undefined;
 
   if (!options.skipLlm) {

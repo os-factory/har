@@ -1,0 +1,6 @@
+# Ephemeral harness output — safe to delete
+logs/
+runs/
+artifacts/
+AGENT.md.proposed
+AGENT.md.proposed.meta.json

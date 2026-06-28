@@ -51,6 +51,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
       force: { type: 'boolean' },
       skipLlm: { type: 'boolean' },
       smoke: { type: 'boolean' },
+      profile: { type: 'string', enum: ['default', 'cli'] },
     }),
   },
   {
@@ -157,6 +158,7 @@ export async function handleMcpToolCall(
         force: input.force,
         skipLlm: input.skipLlm,
         smoke: input.smoke,
+        profile: input.profile,
       });
       return jsonContent({
         harnessDir: result.harnessDir,

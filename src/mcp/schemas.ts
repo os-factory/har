@@ -45,6 +45,7 @@ export const InitHarnessInputSchema = z.object({
   force: z.boolean().default(false),
   skipLlm: z.boolean().default(false),
   smoke: z.boolean().default(false),
+  profile: z.enum(['default', 'cli']).default('default'),
 });
 
 export const LaunchEnvironmentInputSchema = z.object({

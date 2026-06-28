@@ -81,4 +81,28 @@ describe('harness stage contract', () => {
     );
     expect(registry.agentSlots).toEqual({ min: 1, max: 5 });
   });
+
+  it('scaffolds CLI profile without TODO verify placeholders', () => {
+    const repoPath = makeTempRepo('har-cli-profile');
+    fs.writeFileSync(
+      path.join(repoPath, 'package.json'),
+      JSON.stringify({ name: 'cli-fixture', scripts: { typecheck: 'true', test: 'true' } }),
+    );
+
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+
+    const validation = validateHarness(repoPath);
+    expect(validation.pass).toBe(true);
+    expect(validation.issues.some((issue) => issue.message.includes('TODO'))).toBe(false);
+
+    const harnessEnv = fs.readFileSync(path.join(repoPath, '.har', 'harness.env'), 'utf8');
+    expect(harnessEnv).toContain('HARNESS_INFRA_POSTGRES=false');
+
+    const verifyScript = fs.readFileSync(path.join(repoPath, '.har', 'verify.sh'), 'utf8');
+    expect(verifyScript).toContain('npm run typecheck');
+    expect(verifyScript).not.toContain("echo 'TODO:");
+
+    const registry = readStageRegistry(repoPath);
+    expect(registry.agentSlots).toEqual({ min: 1, max: 3 });
+  });
 });

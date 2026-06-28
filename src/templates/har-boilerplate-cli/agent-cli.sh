@@ -26,7 +26,7 @@ export PGPASSWORD="password"
 case "$COMMAND" in
   status)
     ENV_FILE="$REPO_ROOT/.env.agent.${AGENT_ID}"
-    WORKTREE_DIR="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
+    WORKTREE_DIR="$HOME/worktrees/har-agent-${AGENT_ID}"
     if [ ! -f "$ENV_FILE" ] && [ -f "$WORKTREE_DIR/.env.agent.${AGENT_ID}" ]; then
       ENV_FILE="$WORKTREE_DIR/.env.agent.${AGENT_ID}"
     fi

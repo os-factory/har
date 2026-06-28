@@ -5,11 +5,18 @@ import { info, success } from '../utils/logging';
 import { resolveTemplatesDir } from '../utils/paths';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR } from './manifest';
 
-const BOILERPLATE_DIR = path.join(resolveTemplatesDir(), 'har-boilerplate');
+export type HarnessProfile = 'default' | 'cli';
+
+const PROFILE_DIRS: Record<HarnessProfile, string> = {
+  default: 'har-boilerplate',
+  cli: 'har-boilerplate-cli',
+};
+
 export { DEFAULT_HAR_DIR };
 
 export interface ScaffoldOptions {
   force?: boolean;
+  profile?: HarnessProfile;
 }
 
 export interface ScaffoldResult {
@@ -23,6 +30,8 @@ export function scaffoldHarnessBoilerplate(
 ): ScaffoldResult {
   const harnessDir = path.join(repoPath, DEFAULT_HAR_DIR);
   const projectName = path.basename(repoPath).toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const profile = options.profile ?? 'default';
+  const boilerplateDir = path.join(resolveTemplatesDir(), PROFILE_DIRS[profile]);
 
   if (fs.existsSync(harnessDir) && !options.force) {
     throw new Error(
@@ -30,15 +39,15 @@ export function scaffoldHarnessBoilerplate(
     );
   }
 
-  if (!fs.existsSync(BOILERPLATE_DIR)) {
-    throw new Error(`Boilerplate template not found at ${BOILERPLATE_DIR}`);
+  if (!fs.existsSync(boilerplateDir)) {
+    throw new Error(`Boilerplate template not found at ${boilerplateDir}`);
   }
 
   if (options.force && fs.existsSync(harnessDir)) {
     fs.rmSync(harnessDir, { recursive: true, force: true });
   }
 
-  copyDirRecursive(BOILERPLATE_DIR, harnessDir);
+  copyDirRecursive(boilerplateDir, harnessDir);
 
   const harnessEnvPath = path.join(harnessDir, 'harness.env');
   if (fs.existsSync(harnessEnvPath)) {
@@ -49,10 +58,15 @@ export function scaffoldHarnessBoilerplate(
     fs.writeFileSync(harnessEnvPath, content);
   }
 
-  const manifest = createManifest(repoPath, 'Boilerplate copied — awaiting LLM adaptation.');
+  const manifest = createManifest(
+    repoPath,
+    profile === 'cli'
+      ? 'CLI profile copied — no Docker/PM2. Customize verify.sh if npm scripts differ.'
+      : 'Boilerplate copied — awaiting LLM adaptation.',
+  );
   writeManifest(repoPath, manifest);
 
-  success('Copied harness boilerplate to .har/');
+  success(`Copied harness boilerplate to .har/ (profile: ${profile})`);
   info(`Project name: ${projectName}`);
 
   return { harnessDir, projectName };
