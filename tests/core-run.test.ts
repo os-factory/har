@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import {
   launchEnvironment,
@@ -51,8 +52,16 @@ describe('core run delegation', () => {
   });
 
   it('lists artifacts under .har/artifacts', () => {
-    const artifacts = listArtifacts({ repoPath: FIXTURE });
-    expect(artifacts.some((a) => a.relativePath.includes('smoke/output.txt'))).toBe(true);
+    const artifactPath = path.join(FIXTURE, '.har', 'artifacts', 'smoke', 'output.txt');
+    fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
+    fs.writeFileSync(artifactPath, 'fixture artifact\n');
+
+    try {
+      const artifacts = listArtifacts({ repoPath: FIXTURE });
+      expect(artifacts.some((a) => a.relativePath.includes('smoke/output.txt'))).toBe(true);
+    } finally {
+      fs.rmSync(path.dirname(artifactPath), { recursive: true, force: true });
+    }
   });
 
   it('computes preview URLs from harness.env', () => {

@@ -10,5 +10,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+      - run: npm run build
+      - run: node dist/index.js env launch 1
+      - run: node dist/index.js env verify 1 --full
