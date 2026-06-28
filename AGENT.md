@@ -4,7 +4,33 @@ Guide for coding agents working on **this repository** (`@har/cli` — the CLI a
 
 For setup, testing fixtures, and PR workflow, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-This is **not** the harness guide for target repos. Consumer repos get their own root `AGENT.md` via `har env init`. This repo does not use `.har/` for its own development yet.
+This repo **dogfoods HAR** — `.har/` at the repo root defines how coding agents validate changes here.
+
+## Harness workflow (dogfooding)
+
+After making changes, validate through the harness (not ad-hoc shell commands):
+
+```bash
+./.har/launch.sh 1          # once per session — installs deps, writes .env.agent.1
+./.har/verify.sh 1          # typecheck + unit tests (fast)
+./.har/verify.sh 1 --full   # + lint + build (before declaring done)
+./.har/teardown.sh 1        # cleanup when finished
+```
+
+Or via the CLI:
+
+```bash
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
+```
+
+Optional isolated worktree: `./.har/launch.sh 1 --worktree`
+
+MCP (Cursor): configured in [`.cursor/mcp.json`](.cursor/mcp.json) — agents can call `har_run_stage` with `verify` instead of running npm directly.
+
+See [`.har/README.md`](.har/README.md) for harness details.
 
 ## Architecture
 
@@ -83,14 +109,14 @@ Design for a closed core with open seams — do not build a full plugin registry
 - Unit tests in `tests/*.test.ts`; fixtures under `tests/fixtures/`
 - Mock `.har/` layouts with fixtures — avoid real Docker in unit tests
 - When CLI and core share a code path, keep parity tests (see `tests/run-service-parity.test.ts`)
-- After changes: `npm run typecheck && npm run lint && npm test`
+- After changes: run the harness verify stage (see below)
 
 ## Before finishing
 
 ```bash
-npm run typecheck
-npm run lint
-npm test
+./.har/launch.sh 1              # if not already launched this session
+./.har/verify.sh 1              # typecheck + unit tests
+./.har/verify.sh 1 --full       # + lint + build — required before declaring done
 ```
 
-If you changed templates: `npm run build`, then test with `har env init --force --skip-llm` on a fixture repo.
+If you changed `src/templates/`: `npm run build`, then `har env init --force --skip-llm --profile cli` on a fixture (or `--profile default` for web apps).

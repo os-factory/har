@@ -1,0 +1,66 @@
+{
+  "version": "1",
+  "agentSlots": {
+    "min": 1,
+    "max": 3
+  },
+  "stages": [
+    {
+      "id": "setup-infra",
+      "kind": "setup",
+      "description": "Shared infrastructure (Docker, template DB)",
+      "command": "./.har/setup-infra.sh"
+    },
+    {
+      "id": "launch",
+      "kind": "launch",
+      "description": "Launch an isolated agent environment slot",
+      "command": "./.har/launch.sh {agentId}",
+      "artifacts": [
+        {
+          "path": ".env.agent.{agentId}",
+          "kind": "file",
+          "description": "Generated per-agent environment file"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "description": "Run the project verification pipeline",
+      "command": "./.har/verify.sh {agentId}",
+      "artifacts": [
+        {
+          "path": ".har/artifacts",
+          "kind": "directory",
+          "description": "Optional verification outputs such as reports, traces, screenshots, and logs"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "kind": "inspect",
+      "description": "Inspect a running agent environment slot",
+      "command": "./.har/agent-cli.sh {agentId} status",
+      "artifacts": [
+        {
+          "path": ".har/logs",
+          "kind": "directory",
+          "description": "Optional harness logs"
+        }
+      ]
+    },
+    {
+      "id": "logs",
+      "kind": "inspect",
+      "description": "Read recent logs for an agent slot",
+      "command": "./.har/agent-cli.sh {agentId} logs"
+    },
+    {
+      "id": "teardown",
+      "kind": "teardown",
+      "description": "Stop processes and release agent slot resources",
+      "command": "./.har/teardown.sh {agentId}"
+    }
+  ]
+}

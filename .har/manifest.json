@@ -1,0 +1,25 @@
+{
+  "version": "1",
+  "generatorVersion": "0.2.0",
+  "outputDir": ".har",
+  "createdAt": "2026-06-28T20:54:27.831Z",
+  "updatedAt": "2026-06-28T20:54:27.831Z",
+  "adaptationSummary": "Boilerplate copied — awaiting LLM adaptation.",
+  "fileChecksums": {
+    "CLAUDE.agent.md": "3f7506cd7d1c9b21",
+    "README.md": "d9f4b131603d60d0",
+    "agent-cli.sh": "c914668d8ca24ab1",
+    "agent-slot.sh": "1967f3e132e80e41",
+    "attach.sh": "084c2c454e289534",
+    "docker-compose.agent.yml": "18ffb0cd5d9013ad",
+    "ecosystem.agent.template.cjs": "f6e01616eeec0866",
+    "env.template": "c3c729a82583690d",
+    "harness.env": "279b902cd7e30d37",
+    "justfile": "e7c1048680a7a28c",
+    "launch.sh": "eb3b5fdb0e2b443e",
+    "setup-infra.sh": "b55af370c3a2fd84",
+    "stages.json": "6eb4ce4e5ee13c5a",
+    "teardown.sh": "1dbf4bb41df79006",
+    "verify.sh": "d304383dce4548fd"
+  }
+}
