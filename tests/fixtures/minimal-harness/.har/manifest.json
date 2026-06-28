@@ -1,0 +1,12 @@
+{
+  "version": "1",
+  "generatorVersion": "0.2.0",
+  "outputDir": ".har",
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z",
+  "stack": {
+    "language": "node",
+    "packageManager": "npm",
+    "database": "none"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "version": "1",
+  "agentSlots": {
+    "min": 1,
+    "max": 5
+  },
+  "verificationStages": ["smoke"],
+  "stages": [
+    {
+      "id": "launch",
+      "kind": "launch",
+      "description": "Launch agent slot",
+      "script": "launch.sh",
+      "requiresAgentId": true
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "description": "Run verification",
+      "script": "verify.sh",
+      "requiresAgentId": true
+    },
+    {
+      "id": "teardown",
+      "kind": "teardown",
+      "description": "Tear down agent slot",
+      "script": "teardown.sh",
+      "requiresAgentId": true
+    },
+    {
+      "id": "status",
+      "kind": "inspect",
+      "description": "Inspect agent slot",
+      "script": "agent-cli.sh",
+      "requiresAgentId": true
+    },
+    {
+      "id": "logs",
+      "kind": "inspect",
+      "description": "Read agent logs",
+      "command": "./.har/agent-cli.sh {agentId} logs"
+    },
+    {
+      "id": "smoke",
+      "kind": "custom",
+      "description": "Smoke test stage",
+      "script": "stages/smoke.sh",
+      "requiresAgentId": true
+    }
+  ]
+}

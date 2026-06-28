@@ -5,14 +5,7 @@ dist/
 .env.*
 !.env.template
 *.log
-.har/logs/
-.har/runs/
-.har/artifacts/
-.har/AGENT.md.proposed*
-.env.agent.*
-tests/**/.har/logs/
-tests/**/.har/runs/
-tests/**/.har/artifacts/
-tests/**/.har/AGENT.md.proposed*
+tests/**/.har
+!tests/fixtures/minimal-harness/.har
 coverage/
 .DS_Store
