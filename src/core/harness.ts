@@ -11,7 +11,7 @@ import { HarnessManifest, HarnessStage } from '../harness/schema';
 
 export interface InitHarnessOptions extends ScaffoldOptions {
   repoPath: string;
-  skipLlm?: boolean;
+  auto?: boolean;
   verbose?: boolean;
   model?: string;
   smoke?: boolean;
@@ -26,13 +26,14 @@ export interface InitHarnessResult {
 
 export interface MaintainHarnessOptions {
   repoPath: string;
+  auto?: boolean;
   verbose?: boolean;
   model?: string;
 }
 
 export interface MaintainHarnessResult {
   validation: ValidationResult;
-  adaptationSummary: string;
+  adaptationSummary?: string;
 }
 
 export interface ProjectDescription {
@@ -94,7 +95,7 @@ export async function initHarness(options: InitHarnessOptions): Promise<InitHarn
   });
   let adaptationSummary: string | undefined;
 
-  if (!options.skipLlm) {
+  if (options.auto) {
     const apiKey = requireApiKey();
     const authoringResult = await authorHarness(repoPath, apiKey, {
       verbose: options.verbose,
@@ -127,18 +128,27 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     throw new Error('No .har/ found. Run "har env init" first.');
   }
 
-  const apiKey = requireApiKey();
-  const authoringResult = await authorHarness(repoPath, apiKey, {
-    verbose: options.verbose,
-    model: options.model,
-    mode: 'maintain',
-  });
+  if (options.auto) {
+    const apiKey = requireApiKey();
+    const authoringResult = await authorHarness(repoPath, apiKey, {
+      verbose: options.verbose,
+      model: options.model,
+      mode: 'maintain',
+    });
 
-  finalizeHarness(repoPath, authoringResult.summary, authoringResult.stack);
+    finalizeHarness(repoPath, authoringResult.summary, authoringResult.stack);
+    const validation = validateHarness(repoPath);
+
+    return {
+      validation,
+      adaptationSummary: authoringResult.summary,
+    };
+  }
+
   const validation = validateHarness(repoPath);
 
   return {
     validation,
-    adaptationSummary: authoringResult.summary,
+    adaptationSummary: 'Manual maintenance — use coding agent prompt in .har/ADAPT-PROMPT.md',
   };
 }

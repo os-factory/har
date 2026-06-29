@@ -27,4 +27,4 @@ This repository uses **har** for isolated agent development. Each coding agent g
 
 ## Project-specific notes
 
-<!-- TODO: har env init will fill this section -->
+<!-- TODO: fill this section when adapting the .har/ harness (see .har/ADAPT-PROMPT.md) -->

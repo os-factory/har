@@ -61,8 +61,8 @@ export function scaffoldHarnessBoilerplate(
   const manifest = createManifest(
     repoPath,
     profile === 'cli'
-      ? 'CLI profile copied — no Docker/PM2. Customize verify.sh if npm scripts differ.'
-      : 'Boilerplate copied — awaiting LLM adaptation.',
+      ? 'CLI profile copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).'
+      : 'Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).',
   );
   writeManifest(repoPath, manifest);
 

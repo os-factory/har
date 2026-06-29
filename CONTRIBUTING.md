@@ -8,7 +8,7 @@ Guide for developing the CLI locally and testing it against real (or sample) rep
 
 - **Node.js ≥ 20**
 - **npm**
-- **`ANTHROPIC_API_KEY`** — required for LLM adaptation (`har env init` / `har env maintain` without `--skip-llm`)
+- **`ANTHROPIC_API_KEY`** — required only for `--auto` on `har env init` / `har env maintain`
 - **Docker** — optional; needed when running harness scripts (`setup-infra.sh`, `launch.sh`, etc.) on projects that use containers
 
 ## Setup
@@ -44,7 +44,7 @@ npm run build
 Runs the TypeScript source directly via `tsx` — no build step:
 
 ```bash
-npm run dev -- env init --repo /path/to/project --skip-llm
+npm run dev -- env init --repo /path/to/project
 npm run dev -- env --help
 ```
 
@@ -90,27 +90,27 @@ If you change templates or prompts, rebuild before testing a linked install.
 
 ### Quick test (no API key)
 
-Scaffold boilerplate only — useful for verifying the copy/validate path:
+Scaffold boilerplate and print the coding-agent adaptation prompt:
 
 ```bash
 cd /path/to/your-project
-har env init --skip-llm
+har env init
 ```
 
 For CLI/library repos (no Docker/PM2):
 
 ```bash
-har env init --skip-llm --profile cli
+har env init --profile cli
 ```
 
-This creates `.har/` with scripts and config. Validation will warn about TODO placeholders in `harness.env` and `verify.sh` until the LLM adapts them (or you edit them manually).
+This creates `.har/` with scripts and config. Validation will warn about TODO placeholders in `harness.env` and `verify.sh` until you paste the prompt into your coding agent (or edit manually).
 
-### Full test (with LLM adaptation)
+### Full test (with built-in Claude adaptation)
 
 ```bash
 export ANTHROPIC_API_KEY=your_key
 cd /path/to/your-project
-har env init
+har env init --auto
 ```
 
 The CLI will copy the boilerplate, call Claude to adapt it to the repo, and propose `AGENT.md` at the repo root. Apply the proposal when prompted, or pass `--yes` to auto-apply.
@@ -120,9 +120,9 @@ The CLI will copy the boilerplate, call Claude to adapt it to the repo, and prop
 | Flag | Purpose |
 |------|---------|
 | `--repo <path>` | Target a project without changing directory |
-| `--skip-llm` | Copy boilerplate only; no API call |
+| `--auto` | Run built-in Claude adaptation (requires API key) |
 | `--force` | Overwrite an existing `.har/` |
-| `--yes` | Auto-apply the `AGENT.md` proposal |
+| `--yes` | Auto-apply the `AGENT.md` proposal (with `--auto`) |
 | `--smoke` | Run `setup-infra.sh` after init |
 | `--verbose` | Extra logging |
 
@@ -141,7 +141,7 @@ Copy a fixture to a temp directory to avoid modifying the repo:
 ```bash
 cp -r tests/fixtures/go-gin-pg /tmp/har-test
 cd /tmp/har-test
-har env init --skip-llm
+har env init
 ```
 
 ### After init — run the harness
@@ -226,13 +226,13 @@ tests/
 These files are copied verbatim into a target repo's `.har/` on `har env init`. After editing:
 
 1. Run `npm run build`
-2. Test with `har env init --force --skip-llm` on a fixture
+2. Test with `har env init --force --profile cli` on a fixture
 
 Placeholders like `__PROJECT_NAME__` in `harness.env` are substituted during scaffold.
 
 ### LLM prompts (`src/llm/prompts/`)
 
-System prompts for the authoring agent. Rebuild to copy them into `dist/prompts/`. Test with a full `har env init` (requires API key).
+System prompts for the optional `--auto` authoring agent. Rebuild to copy them into `dist/prompts/`. Test with `har env init --auto` (requires API key).
 
 ### CLI commands
 
@@ -253,4 +253,4 @@ npm test
 npm run build
 ```
 
-Describe how you tested (e.g. `har env init --skip-llm` on `go-gin-pg` fixture).
+Describe how you tested (e.g. `har env init` on `go-gin-pg` fixture).

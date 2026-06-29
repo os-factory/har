@@ -43,7 +43,7 @@ export const DescribeProjectOutputSchema = z.object({
 export const InitHarnessInputSchema = z.object({
   repo: z.string().default('.'),
   force: z.boolean().default(false),
-  skipLlm: z.boolean().default(false),
+  auto: z.boolean().default(false),
   smoke: z.boolean().default(false),
   profile: z.enum(['default', 'cli']).default('default'),
 });

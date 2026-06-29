@@ -35,12 +35,10 @@ See [AGENT.md](./AGENT.md) for architecture and coding-agent guidance, and [CONT
 ## Quick start
 
 ```bash
-export ANTHROPIC_API_KEY=your_key
-
 cd my-app
 har env init
 
-# Review and apply proposed AGENT.md when prompted
+# Paste the printed prompt into your coding agent to adapt .har/ and AGENT.md
 git add .har/ AGENT.md
 git commit -m "Add agent harness"
 
@@ -49,7 +47,7 @@ git commit -m "Add agent harness"
 ./.har/verify.sh 1
 ```
 
-To try the CLI on a sample repo without LLM-assisted adaptation: `har env init --skip-llm`.
+For built-in Claude adaptation (requires `ANTHROPIC_API_KEY`): `har env init --auto`.
 
 ## Repo layout after init
 
@@ -81,15 +79,15 @@ The important boundary is that HAR runs and reports stages generically. It does 
 
 | Command | Description |
 |---------|-------------|
-| `har env init` | Scaffold `.har/` + LLM adaptation + AGENT.md proposal |
-| `har env maintain` | Update harness + README + AGENT.md proposal |
+| `har env init` | Scaffold `.har/` + print coding-agent adaptation prompt |
+| `har env maintain` | Validate harness + print maintenance prompt |
 | `har env launch 1` | Launch agent slot 1 |
 | `har env verify 1` | Run verification |
 | `har env status` | Show status for all agent slots |
 | `har env teardown 1` | Tear down agent slot 1 |
 | `har mcp` | Start the HAR MCP server (stdio) |
 
-Options: `--force`, `--skip-llm`, `--smoke`, `--yes` (auto-apply AGENT.md), `--verbose`
+Options: `--force`, `--auto` (built-in Claude adaptation), `--smoke`, `--yes` (auto-apply AGENT.md with `--auto`), `--verbose`, `--profile cli`
 
 ## MCP Surface
 

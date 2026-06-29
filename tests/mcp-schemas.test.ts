@@ -1,5 +1,6 @@
 import {
   DescribeProjectOutputSchema,
+  InitHarnessInputSchema,
   LaunchEnvironmentOutputSchema,
   RunStageInputSchema,
   RunVerificationOutputSchema,
@@ -66,5 +67,11 @@ describe('MCP tool schemas', () => {
         },
       ],
     });
+  });
+
+  it('defaults init harness input to manual scaffold (auto false)', () => {
+    const parsed = InitHarnessInputSchema.parse({ repo: '.' });
+    expect(parsed.auto).toBe(false);
+    expect(parsed.profile).toBe('default');
   });
 });

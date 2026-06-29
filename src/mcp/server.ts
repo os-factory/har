@@ -45,11 +45,11 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_init_harness',
-    description: 'Scaffold .har/ boilerplate. Use skipLlm=true for template-only init.',
+    description: 'Scaffold .har/ boilerplate. Use auto=true for built-in Claude adaptation.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       force: { type: 'boolean' },
-      skipLlm: { type: 'boolean' },
+      auto: { type: 'boolean' },
       smoke: { type: 'boolean' },
       profile: { type: 'string', enum: ['default', 'cli'] },
     }),
@@ -156,7 +156,7 @@ export async function handleMcpToolCall(
       const result = await initHarness({
         repoPath: repo,
         force: input.force,
-        skipLlm: input.skipLlm,
+        auto: input.auto,
         smoke: input.smoke,
         profile: input.profile,
       });

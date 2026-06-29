@@ -46,7 +46,7 @@ harness/            ← .har/ contract, schemas, manifest/stages I/O
 utils/              ← generic helpers (shell, paths, logging)
 ```
 
-`llm/` is the optional authoring agent for `har env init`. `templates/` holds scaffold assets copied into target repos — not runtime logic.
+`llm/` is the optional authoring agent for `har env init --auto` and `har env maintain --auto`. `templates/` holds scaffold assets copied into target repos — not runtime logic.
 
 ## Dependency rules
 
@@ -119,4 +119,4 @@ Design for a closed core with open seams — do not build a full plugin registry
 ./.har/verify.sh 1 --full       # + lint + build — required before declaring done
 ```
 
-If you changed `src/templates/`: `npm run build`, then `har env init --force --skip-llm --profile cli` on a fixture (or `--profile default` for web apps).
+If you changed `src/templates/`: `npm run build`, then `har env init --force --profile cli` on a fixture (or `--profile default` for web apps).
