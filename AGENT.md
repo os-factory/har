@@ -11,7 +11,7 @@ This repo **dogfoods HAR** — `.har/` at the repo root defines how coding agent
 After making changes, validate through the harness (not ad-hoc shell commands):
 
 ```bash
-./.har/launch.sh 1          # once per session — installs deps, writes .env.agent.1
+./.har/launch.sh 1          # once per session — worktree + deps + .env.agent.1
 ./.har/verify.sh 1          # typecheck + unit tests (fast)
 ./.har/verify.sh 1 --full   # + lint + build (before declaring done)
 ./.har/teardown.sh 1        # cleanup when finished
@@ -26,11 +26,36 @@ har env verify 1 --full
 har env teardown 1
 ```
 
-Optional isolated worktree: `./.har/launch.sh 1 --worktree`
+Work happens in an isolated git worktree by default (`~/worktrees/<project>-agent-<id>`). Use `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
 
 MCP (Cursor): configured in [`.cursor/mcp.json`](.cursor/mcp.json) — agents can call `har_run_stage` with `verify` instead of running npm directly.
 
 See [`.har/README.md`](.har/README.md) for harness details.
+
+## Run history
+
+| Entry point | Writes `.har/runs/`? |
+|-------------|------------------------|
+| `./.har/*.sh` | No — same behavior, no run record |
+| `har env launch/verify/...` | Yes |
+| MCP `har_run_*` | Yes |
+
+Run records are stored under the **main checkout** `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (local date/time). With worktree slots, tests run in the worktree but run JSON stays in the main repo; each record includes a `workDir` field.
+
+Prefer `har env verify 1` when you want persisted run history. Use `./.har/verify.sh 1` for fast agent workflows without recording.
+
+If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `har env` commands.
+
+## Upgrading HAR
+
+```bash
+npm install -g @har/cli@latest    # updates CLI/MCP/run storage only
+har env maintain                  # drift report + adaptation prompt
+# apply updates via coding agent or: har env maintain --auto
+./.har/verify.sh 1 --full
+```
+
+Do not use `har env init --force` on an adapted harness — it wipes customizations. See [CONTRIBUTING.md](./CONTRIBUTING.md#upgrading-har).
 
 ## Architecture
 
@@ -75,6 +100,7 @@ These are non-negotiable. Do not introduce imports that violate them.
 | CLI subcommand or flag | `src/cli/commands/` |
 | MCP tool handler or JSON Schema | `src/mcp/server.ts`, `schemas.ts` |
 | Files copied into target `.har/` | `src/templates/har-boilerplate/` |
+| Optional stage templates | `src/templates/stage-templates/` (applied via `har env add-stage`) |
 | Generic shell/path/logging helper | `src/utils/` |
 
 When unsure: put domain logic in `harness/` or `core/`, never in an adapter.
@@ -93,7 +119,7 @@ Design for a closed core with open seams — do not build a full plugin registry
 
 - **`StageExecutor`** (`src/core/types.ts`) — swap local vs cloud execution by injecting a different executor into `RunService`. `local-executor.ts` is the current implementation.
 - **Project-owned stages** — runtime behavior lives in the target repo's `.har/` scripts and `stages.json`, not as hardcoded tool APIs in core.
-- **Stage templates** (future) — optional packages that generate scripts and stage entries. They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`.
+- **Stage templates** — optional bundles applied with `har env add-stage <template>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`.
 
 ## Anti-patterns
 

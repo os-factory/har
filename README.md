@@ -13,7 +13,7 @@ HAR does not own the coding LLM and does not replace CI/CD. It gives agents a st
 3. **MCP adapter** — agents use HAR MCP tools to describe the project, run generic stages, read logs, list artifacts, and inspect status without learning repo-specific shell details.
 4. **Generic stages** — setup, launch, verify, test, inspect, reset, teardown, and custom stages expose normalized status, logs, durations, artifacts, and URLs.
 5. **Configurable agent slots** — parallel environment limits are defined in `.har/stages.json` (`agentSlots`) and `.har/harness.env`, not by the HAR CLI.
-6. **Optional templates** — Playwright, migration checks, accessibility scans, load smoke tests, API checks, and similar workflows are stage templates, not hardcoded HAR concepts.
+6. **Optional stage templates** — add workflows like Playwright with `har env add-stage playwright`. They compile to generic stages (`test`, `custom`, etc.), not hardcoded HAR APIs.
 
 ## Install
 
@@ -75,16 +75,35 @@ HAR stages are project-defined operations with stable identifiers and normalized
 
 The important boundary is that HAR runs and reports stages generically. It does not need a special Playwright, migration, accessibility, or load-test API in the core product.
 
+### Playwright (optional)
+
+```bash
+har env init
+har env add-stage playwright   # registers browser-e2e + scaffolds tests/
+npm install && npx playwright install
+./.har/launch.sh 1
+./.har/stages/browser-e2e.sh 1
+```
+
+See `.har/stages/PLAYWRIGHT.md` in the target repo after applying the template.
+
 ## CLI commands
 
 | Command | Description |
 |---------|-------------|
 | `har env init` | Scaffold `.har/` + print coding-agent adaptation prompt |
+| `har env add-stage playwright` | Add Playwright `browser-e2e` stage + test scaffold |
 | `har env maintain` | Validate harness + print maintenance prompt |
 | `har env launch 1` | Launch agent slot 1 |
 | `har env verify 1` | Run verification |
-| `har env status` | Show status for all agent slots |
+| `har env status` | Show status for all agent slots (`--json` for structured output) |
+| `har env runs list` | List persisted run history (`--json`) |
+| `har env runs get <runId>` | Fetch one run record |
 | `har env teardown 1` | Tear down agent slot 1 |
+| `har control up` | Start local Mission Control dashboard (Docker Compose) |
+| `har control register` | Register a repo with Mission Control |
+| `har control sync` | Sync runs + slot status to Mission Control |
+| `har control watch` | Continuously sync registered repos |
 | `har mcp` | Start the HAR MCP server (stdio) |
 
 Options: `--force`, `--auto` (built-in Claude adaptation), `--smoke`, `--yes` (auto-apply AGENT.md with `--auto`), `--verbose`, `--profile cli`
@@ -123,6 +142,20 @@ Core tools (generic — no stack-specific operations like `run_playwright`):
 | `har_get_logs` | Recent logs for a slot |
 | `har_teardown_environment` | Stop a slot |
 | `har_list_artifacts` | List files under `.har/artifacts/` |
+| `har_list_runs` | List persisted run records from `.har/runs/` |
+| `har_get_run` | Fetch one run record by `runId` |
+
+## Mission Control (local dashboard)
+
+Free OSS dashboard for observing harness runs, worktrees, and agent slots on your machine:
+
+```bash
+har control up          # starts Postgres + dashboard at http://localhost:3847
+har env init            # auto-registers when Control is running
+har control sync        # push runs + slot status
+```
+
+See [`control/AGENT.md`](./control/AGENT.md) for dashboard development. Hosted team features are **HAR Cloud** (paid).
 
 Agents can still use GitHub, Linear, observability, and other MCP servers directly. HAR focuses on the repository harness and run state.
 

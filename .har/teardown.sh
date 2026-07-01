@@ -22,6 +22,7 @@ rm -f "$REPO_ROOT/.env.agent.${AGENT_ID}"
 
 WORKTREE_PATH="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
 if [ -d "$WORKTREE_PATH" ]; then
+  rm -f "$WORKTREE_PATH/.env.agent.${AGENT_ID}"
   git -C "$REPO_ROOT" worktree remove "$WORKTREE_PATH" --force 2>/dev/null || rm -rf "$WORKTREE_PATH"
   echo "✓ Removed worktree: $WORKTREE_PATH"
 fi

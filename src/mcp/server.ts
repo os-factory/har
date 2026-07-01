@@ -15,6 +15,7 @@ import {
   runVerification,
   teardownEnvironment,
 } from '../core/run-service';
+import { getRun, listRuns } from '../core/runs';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -31,6 +32,10 @@ import {
   LaunchEnvironmentOutputSchema,
   ListArtifactsInputSchema,
   ListArtifactsOutputSchema,
+  ListRunsInputSchema,
+  ListRunsOutputSchema,
+  GetRunInputSchema,
+  GetRunOutputSchema,
   RunStageInputSchema,
   RunVerificationInputSchema,
   RunVerificationOutputSchema,
@@ -128,6 +133,26 @@ export const HAR_MCP_TOOLS: Tool[] = [
       repo: repoJsonProperty,
       stageId: { type: 'string' },
     }),
+  },
+  {
+    name: 'har_list_runs',
+    description: 'List persisted harness run records from .har/runs/.',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      stageId: { type: 'string' },
+      limit: { type: 'number' },
+    }),
+  },
+  {
+    name: 'har_get_run',
+    description: 'Fetch one harness run record by runId.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        runId: { type: 'string' },
+      },
+      ['runId'],
+    ),
   },
 ];
 
@@ -252,6 +277,24 @@ export async function handleMcpToolCall(
       const input = ListArtifactsInputSchema.parse({ ...args, repo });
       const artifacts = listArtifacts({ repoPath: repo, stageId: input.stageId });
       return jsonContent(ListArtifactsOutputSchema.parse({ artifacts }));
+    }
+
+    case 'har_list_runs': {
+      const input = ListRunsInputSchema.parse({ ...args, repo });
+      const runs = listRuns(repo, { stageId: input.stageId, limit: input.limit });
+      return jsonContent(ListRunsOutputSchema.parse({ runs }));
+    }
+
+    case 'har_get_run': {
+      const input = GetRunInputSchema.parse({ ...args, repo });
+      const run = getRun(repo, input.runId);
+      if (!run) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: `Run not found: ${input.runId}` }) }],
+          isError: true,
+        };
+      }
+      return jsonContent(GetRunOutputSchema.parse({ run }));
     }
 
     default:

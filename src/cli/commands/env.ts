@@ -1,6 +1,7 @@
 import * as path from 'path';
 import type { Argv } from 'yargs';
-import { initHarness, maintainHarness } from '../../core/harness';
+import { initHarness, maintainHarness, addStageTemplate } from '../../core/harness';
+import { HarnessDriftResult } from '../../harness/drift';
 import {
   buildInitAdaptationPrompt,
   buildMaintainAdaptationPrompt,
@@ -14,6 +15,10 @@ import {
   runVerification,
   teardownEnvironment,
 } from '../../core/run-service';
+import { listRuns, getRun } from '../../core/runs';
+import { collectEnvironmentStatus } from '../../core/slot-status';
+import { EnvironmentStatusSchema } from '../../harness/schema';
+import { maybeRegisterWithControl } from './control';
 import { writeFileSafe } from '../../utils/file-ops';
 import { requireApiKey, validateAgentId } from '../../utils/validation';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
@@ -42,12 +47,17 @@ export const envCommand = {
               type: 'string',
               choices: ['default', 'cli'] as const,
               default: 'default' as const,
-              describe: 'Boilerplate profile: default (web app) or cli (no Docker/PM2)',
+              describe: 'Boilerplate profile: default (web app) or cli (library/CLI, no PM2)',
             })
             .option('yes', {
               type: 'boolean',
               default: false,
               describe: 'Auto-apply AGENT.md proposal without prompting (--auto only)',
+            })
+            .option('no-control', {
+              type: 'boolean',
+              default: false,
+              describe: 'Skip Mission Control registration when Control API is running',
             }),
         handleInit,
       )
@@ -68,13 +78,39 @@ export const envCommand = {
         handleMaintain,
       )
       .command(
+        'add-stage <template>',
+        'Add an optional stage template (e.g. playwright)',
+        (y: Argv) =>
+          y
+            .positional('template', {
+              type: 'string',
+              describe: 'Stage template id (playwright)',
+            })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('force', {
+              type: 'boolean',
+              default: false,
+              describe: 'Overwrite existing template files and stage entry',
+            })
+            .option('skip-ci', {
+              type: 'boolean',
+              default: false,
+              describe: 'Do not copy .github/workflows/playwright.yml',
+            }),
+        handleAddStage,
+      )
+      .command(
         'launch <id>',
         'Launch an agent environment slot',
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
             .option('repo', { type: 'string', default: '.' })
-            .option('worktree', { type: 'boolean', default: false })
+            .option('worktree', {
+              type: 'boolean',
+              default: true,
+              describe: 'Use an isolated git worktree (default)',
+            })
             .option('claude', { type: 'boolean', default: false }),
         handleLaunch,
       )
@@ -100,10 +136,47 @@ export const envCommand = {
       .command(
         'status',
         'Show status of all running agents',
-        (y: Argv) => y.option('repo', { type: 'string', default: '.' }),
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
         handleStatus,
       )
-      .demandCommand(1, 'Please specify a subcommand: init, maintain, launch, verify, teardown, status'),
+      .command(
+        'runs',
+        'Inspect harness run history',
+        (y: Argv) =>
+          y
+            .command(
+              'list',
+              'List harness runs',
+              (y2: Argv) =>
+                y2
+                  .option('repo', { type: 'string', default: '.' })
+                  .option('stage', { type: 'string', describe: 'Filter by stage id' })
+                  .option('limit', { type: 'number', default: 50 })
+                  .option('json', { type: 'boolean', default: false }),
+              handleRunsList,
+            )
+            .command(
+              'get <runId>',
+              'Get one harness run by id',
+              (y2: Argv) =>
+                y2
+                  .positional('runId', { type: 'string', describe: 'Run UUID' })
+                  .option('repo', { type: 'string', default: '.' })
+                  .option('json', { type: 'boolean', default: true }),
+              (argv) =>
+                handleRunsGet({
+                  repo: argv.repo as string,
+                  runId: argv.runId as string,
+                  json: argv.json as boolean,
+                }),
+            )
+            .demandCommand(1, 'Use: runs list | runs get <runId>'),
+        () => {},
+      )
+      .demandCommand(1, 'Please specify a subcommand: init, maintain, add-stage, launch, verify, teardown, status, runs'),
   handler: () => {},
 };
 
@@ -116,6 +189,7 @@ export async function handleInit(argv: {
   auto: boolean;
   yes: boolean;
   profile: 'default' | 'cli';
+  noControl: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -162,6 +236,7 @@ export async function handleInit(argv: {
 
     divider();
     success('Harness initialized!');
+    await maybeRegisterWithControl(repoPath, { noControl: argv.noControl });
     printNextSteps(argv.auto);
   } catch (err: unknown) {
     error((err as Error).message);
@@ -199,6 +274,7 @@ export async function handleMaintain(argv: {
     divider();
     info('Validating harness...');
     printValidation(result.validation);
+    printDrift(result.drift);
 
     if (!result.validation.pass) {
       warn('Harness has validation errors after maintenance.');
@@ -255,6 +331,45 @@ async function handleAgentMdProposal(repoPath: string, autoYes: boolean): Promis
   await promptApplyAgentMdProposal(repoPath);
 }
 
+export async function handleAddStage(argv: {
+  template?: string;
+  repo: string;
+  force: boolean;
+  skipCi: boolean;
+}): Promise<void> {
+  const repoPath = path.resolve(argv.repo);
+
+  if (argv.template !== 'playwright') {
+    error(`Unknown stage template: ${argv.template ?? '(missing)'}. Available: playwright`);
+    process.exit(1);
+  }
+
+  header('har env add-stage');
+  info(`Repository: ${repoPath}`);
+  info(`Template: ${argv.template}`);
+
+  try {
+    const result = addStageTemplate(repoPath, 'playwright', {
+      force: argv.force,
+      skipCi: argv.skipCi,
+    });
+
+    divider();
+    success(`Stage template applied: ${result.stageId}`);
+    console.error('');
+    console.error('  Next steps:');
+    for (const step of result.nextSteps) {
+      console.error(`    ${step}`);
+    }
+    console.error('');
+    console.error('  Docs: .har/stages/PLAYWRIGHT.md');
+    console.error('');
+  } catch (err: unknown) {
+    error((err as Error).message);
+    process.exit(1);
+  }
+}
+
 export async function handleLaunch(argv: {
   id?: number;
   repo: string;
@@ -297,11 +412,65 @@ export async function handleTeardown(argv: { id?: number; repo: string }): Promi
   process.exit(result.code);
 }
 
-export async function handleStatus(argv: { repo: string }): Promise<void> {
+export async function handleStatus(argv: { repo: string; json?: boolean }): Promise<void> {
+  const repoPath = path.resolve(argv.repo);
+
+  if (argv.json) {
+    const status = collectEnvironmentStatus(repoPath);
+    const output = EnvironmentStatusSchema.parse(status);
+    process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+    return;
+  }
+
   await getEnvironmentStatus({
-    repoPath: path.resolve(argv.repo),
+    repoPath,
     capture: false,
   });
+}
+
+export async function handleRunsList(argv: {
+  repo: string;
+  stage?: string;
+  limit: number;
+  json?: boolean;
+}): Promise<void> {
+  const repoPath = path.resolve(argv.repo);
+  const runs = listRuns(repoPath, { stageId: argv.stage, limit: argv.limit });
+
+  if (argv.json) {
+    process.stdout.write(JSON.stringify({ runs }, null, 2) + '\n');
+    return;
+  }
+
+  header('har env runs');
+  if (runs.length === 0) {
+    info('No runs found');
+    return;
+  }
+
+  for (const run of runs) {
+    const agent = run.agentId !== undefined ? ` agent-${run.agentId}` : '';
+    info(`${run.startedAt}  ${run.stageId}${agent}  ${run.status}  (${run.trigger})`);
+  }
+}
+
+export async function handleRunsGet(argv: {
+  repo: string;
+  runId: string;
+  json?: boolean;
+}): Promise<void> {
+  const run = getRun(path.resolve(argv.repo), argv.runId);
+  if (!run) {
+    error(`Run not found: ${argv.runId}`);
+    process.exit(1);
+  }
+
+  if (argv.json !== false) {
+    process.stdout.write(JSON.stringify(run, null, 2) + '\n');
+    return;
+  }
+
+  info(JSON.stringify(run, null, 2));
 }
 
 function printValidation(result: {
@@ -317,6 +486,31 @@ function printValidation(result: {
   }
 }
 
+function printDrift(drift: HarnessDriftResult): void {
+  if (drift.generatorVersion.outdated) {
+    warn(
+      `  Harness generator ${drift.generatorVersion.installed} → bundled ${drift.generatorVersion.bundled}`,
+    );
+  }
+  if (drift.checksumMismatch.length > 0) {
+    warn(`  Drift (template changed): ${drift.checksumMismatch.join(', ')}`);
+  }
+  if (drift.missing.length > 0) {
+    warn(`  Missing from .har/: ${drift.missing.join(', ')}`);
+  }
+  if (drift.extra.length > 0) {
+    warn(`  Extra/stale files: ${drift.extra.join(', ')}`);
+  }
+  if (
+    !drift.generatorVersion.outdated &&
+    drift.checksumMismatch.length === 0 &&
+    drift.missing.length === 0 &&
+    drift.extra.length === 0
+  ) {
+    success('  Harness matches bundled templates');
+  }
+}
+
 function printNextSteps(auto: boolean): void {
   console.error('');
   console.error('  Read:         .har/README.md');
@@ -326,8 +520,8 @@ function printNextSteps(auto: boolean): void {
   } else {
     console.error('  Agent guide:  AGENT.md (repo root, if applied)');
   }
-  console.error('  Setup infra:  ./.har/setup-infra.sh');
-  console.error('  Launch:       ./.har/launch.sh 1');
+  console.error('  Setup infra:  ./.har/setup-infra.sh   # when Docker infra is enabled');
+  console.error('  Launch:       ./.har/launch.sh 1       # git worktree by default');
   console.error('  Verify:       ./.har/verify.sh 1');
   console.error('  Maintain:     har env maintain');
   console.error('  MCP server:   har mcp');

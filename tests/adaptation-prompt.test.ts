@@ -18,7 +18,8 @@ describe('adaptation prompts', () => {
 
     const cliPrompt = buildInitAdaptationPrompt('/tmp/app', 'cli');
     expect(cliPrompt).toContain('Profile: cli');
-    expect(cliPrompt).toContain('no Docker/PM2');
+    expect(cliPrompt).toContain('worktree');
+    expect(cliPrompt).not.toContain('no Docker/PM2');
   });
 
   it('maintain prompt differs from init and targets drift', () => {

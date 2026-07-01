@@ -26,6 +26,7 @@ describe('MCP tool schemas', () => {
       verificationStages: ['smoke'],
       agentSlots: { min: 1, max: 5 },
       stackHints: { language: 'node' },
+      harnessDrift: null,
     });
     expect(parsed.harnessPresent).toBe(true);
   });

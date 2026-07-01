@@ -58,7 +58,19 @@ describe('run service parity', () => {
         : null;
 
     expect(runId).toBeTruthy();
-    expect(fs.existsSync(path.join(tempRepo, '.har', 'runs', `${runId}.json`))).toBe(true);
+
+    const runsDir = path.join(tempRepo, '.har', 'runs');
+    const allFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.json')) allFiles.push(full);
+      }
+    };
+    walk(runsDir);
+    expect(allFiles.length).toBeGreaterThan(0);
+    expect(allFiles.some((f) => f.includes('launch_agent-1.json'))).toBe(true);
   });
 });
 

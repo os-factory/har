@@ -15,6 +15,8 @@ describe('HAR MCP tool schemas', () => {
       'har_get_logs',
       'har_teardown_environment',
       'har_list_artifacts',
+      'har_list_runs',
+      'har_get_run',
     ]);
     expect(names).not.toContain('run_playwright');
   });

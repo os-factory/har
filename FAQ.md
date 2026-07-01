@@ -145,9 +145,23 @@ The core idea is generic: a stage has an id, a command, a status, a duration, lo
 <details>
 <summary><strong>Q: Is Playwright a core HAR concept?</strong></summary>
 
-**A:** No. Playwright can be an excellent optional stage template for browser workflows, but HAR should not expose a hardcoded `run_playwright` concept.
+**A:** No. Playwright is an optional stage template for browser workflows — HAR does not expose a hardcoded `run_playwright` MCP tool.
 
-A Playwright workflow is just a `browser-e2e` or `ui-e2e` stage that happens to produce traces, screenshots, videos, or reports.
+Add it with:
+
+```bash
+har env add-stage playwright
+```
+
+This registers a `browser-e2e` stage (`kind: test`) and scaffolds `@playwright/test` specs for frontend, API, and accessibility checks. Run it after launch:
+
+```bash
+./.har/launch.sh 1
+./.har/stages/browser-e2e.sh 1
+# or: har_run_stage(stageId: "browser-e2e", agentId: 1) via MCP
+```
+
+A Playwright workflow is just a `browser-e2e` stage that produces traces, screenshots, videos, and HTML reports under `.har/artifacts/browser-e2e/`.
 
 </details>
 

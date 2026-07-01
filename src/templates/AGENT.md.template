@@ -1,30 +1,13 @@
 # Agent Environment
 
-This repository uses **har** for isolated agent development. Each coding agent gets its own ports, database, and processes.
+This repository uses a **`.har/` harness** for isolated agent development.
 
 ## Start here
 
-1. Read [`.har/README.md`](.har/README.md) — what the harness contains and how to run it
-2. Read [`.har/CLAUDE.agent.md`](.har/CLAUDE.agent.md) — detailed instructions for your agent slot
-
-## Commands
-
-```bash
-./.har/setup-infra.sh          # Shared Docker + template DB (once)
-./.har/launch.sh 1             # Launch agent slot 1
-./.har/agent-cli.sh 1 status   # Check running processes
-./.har/verify.sh 1             # Verify after changes
-./.har/teardown.sh 1           # Tear down when done
-```
-
-## Rules
-
-- Use `./.har/agent-cli.sh <id> ...` for all environment operations
-- Do not hardcode ports — use env vars from `.env.agent.<id>`
-- Do not run raw `docker compose` for shared infra
-- Do not touch other agents' databases or PM2 processes
-- Run `./.har/verify.sh <id> --full` before declaring work complete
+1. [`.har/README.md`](.har/README.md) — stages, verification, how to run
+2. [`stages.json`](.har/stages.json) — machine-readable stage registry
+3. [`.har/CLAUDE.agent.md`](.har/CLAUDE.agent.md) — definition of done (after `launch`)
 
 ## Project-specific notes
 
-<!-- TODO: fill this section when adapting the .har/ harness (see .har/ADAPT-PROMPT.md) -->
+<!-- Adapt when customizing the harness (see .har/ADAPT-PROMPT.md) -->

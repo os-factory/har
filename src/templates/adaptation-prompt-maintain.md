@@ -13,6 +13,7 @@ Compare the current repo against the existing harness:
 - Root manifests, CI, Docker, README
 - New or changed test, lint, build, migrate, or seed commands
 - New services, ports, or environment variables
+- Run `har env maintain` drift report (generator version, template checksum mismatches)
 
 ## Step 2 — Update `.har/` files
 
@@ -27,12 +28,22 @@ Align commands and instructions with the current stack.
 ### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
 Update only if infra changed.
 
+### HAR platform upgrades checklist
+
+When upgrading `@har/cli` or adopting new harness standards:
+
+- Add **Run history** section to repo-root `AGENT.md` if missing (shell vs `har env`, worktree vs runs location)
+- Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)
+- Align `launch.sh` / `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
+- Do **not** blindly overwrite customized `verify.sh`
+
 ## Step 3 — Refresh repo-root `AGENT.md`
 
 If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENT.md`:
 
 - Links to `.har/README.md` and `.har/CLAUDE.agent.md`
-- Essential `./.har/*` commands
+- Essential `./.har/*` commands and `har env …` for run history
+- Run history rules (shell vs CLI, worktree vs `.har/runs/` location)
 - Agent rules (ports, agent-cli.sh, isolation)
 - Project-specific notes
 

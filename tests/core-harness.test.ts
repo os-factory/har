@@ -12,5 +12,6 @@ describe('describeProject', () => {
     expect(description.stages.some((s) => s.id === 'verify')).toBe(true);
     expect(description.verificationStages).toEqual(['smoke']);
     expect(description.agentSlots).toEqual({ min: 1, max: 5 });
+    expect(description.harnessDrift).not.toBeNull();
   });
 });

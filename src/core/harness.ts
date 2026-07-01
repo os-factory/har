@@ -3,8 +3,15 @@ import * as path from 'path';
 import { scaffoldHarnessBoilerplate, finalizeHarness, ScaffoldOptions } from '../harness/generator';
 import { authorHarness } from '../llm/authoring-agent';
 import { validateHarness, smokeTestHarness, ValidationResult } from '../harness/validator';
+import { compareHarnessToTemplate, HarnessDriftResult } from '../harness/drift';
 import { readManifest, getHarnessDir } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages } from '../harness/stages';
+import {
+  applyStageTemplate,
+  ApplyStageTemplateOptions,
+  ApplyStageTemplateResult,
+  StageTemplateId,
+} from '../harness/stage-templates';
 import { harnessExists } from '../harness/parser';
 import { requireApiKey } from '../utils/validation';
 import { HarnessManifest, HarnessStage } from '../harness/schema';
@@ -34,6 +41,7 @@ export interface MaintainHarnessOptions {
 export interface MaintainHarnessResult {
   validation: ValidationResult;
   adaptationSummary?: string;
+  drift: HarnessDriftResult;
 }
 
 export interface ProjectDescription {
@@ -49,6 +57,7 @@ export interface ProjectDescription {
     packageManager?: string;
     database?: string;
   };
+  harnessDrift: HarnessDriftResult | null;
 }
 
 function listHarnessScripts(repoPath: string): string[] {
@@ -79,6 +88,7 @@ export function describeProject(repoPath: string): ProjectDescription {
       packageManager: manifest?.stack?.packageManager,
       database: manifest?.stack?.database,
     },
+    harnessDrift: present ? compareHarnessToTemplate(resolved) : null,
   };
 }
 
@@ -142,6 +152,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     return {
       validation,
       adaptationSummary: authoringResult.summary,
+      drift: compareHarnessToTemplate(repoPath),
     };
   }
 
@@ -150,5 +161,14 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   return {
     validation,
     adaptationSummary: 'Manual maintenance — use coding agent prompt in .har/ADAPT-PROMPT.md',
+    drift: compareHarnessToTemplate(repoPath),
   };
+}
+
+export function addStageTemplate(
+  repoPath: string,
+  templateId: StageTemplateId,
+  options: ApplyStageTemplateOptions = {},
+): ApplyStageTemplateResult {
+  return applyStageTemplate(repoPath, templateId, options);
 }

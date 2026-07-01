@@ -4,7 +4,7 @@ import * as path from 'path';
 import { HarnessManifest, HarnessManifestSchema } from './schema';
 import { writeFileSafe } from '../utils/file-ops';
 
-const GENERATOR_VERSION = '0.2.0';
+const GENERATOR_VERSION = '0.3.0';
 const MANIFEST_VERSION = '1';
 export const DEFAULT_HAR_DIR = '.har';
 
@@ -51,6 +51,7 @@ export function createManifest(
   repoPath: string,
   adaptationSummary?: string,
   stack?: HarnessManifest['stack'],
+  profile?: HarnessManifest['profile'],
 ): HarnessManifest {
   const now = new Date().toISOString();
   const harnessDir = getHarnessDir(repoPath);
@@ -62,6 +63,7 @@ export function createManifest(
     updatedAt: now,
     stack,
     adaptationSummary,
+    profile,
     fileChecksums: computeHarnessChecksums(harnessDir),
   };
 }
@@ -75,6 +77,22 @@ export function updateManifest(
     ...updates,
     updatedAt: new Date().toISOString(),
   };
+}
+
+export function resolveHarnessRoot(inputPath: string): string {
+  let current = path.resolve(inputPath);
+  const { root } = path.parse(current);
+
+  for (;;) {
+    const manifestPath = path.join(current, DEFAULT_HAR_DIR, 'manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      return current;
+    }
+    if (current === root) break;
+    current = path.dirname(current);
+  }
+
+  return path.resolve(inputPath);
 }
 
 export { GENERATOR_VERSION };

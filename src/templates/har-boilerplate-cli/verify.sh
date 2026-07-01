@@ -22,20 +22,17 @@ done
 
 validate_agent_id "$AGENT_ID"
 
-ENV_FILE="$REPO_ROOT/.env.agent.${AGENT_ID}"
-WORKTREE_DIR="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
-if [ ! -f "$ENV_FILE" ] && [ -f "$WORKTREE_DIR/.env.agent.${AGENT_ID}" ]; then
-  ENV_FILE="$WORKTREE_DIR/.env.agent.${AGENT_ID}"
-fi
-
-if [ ! -f "$ENV_FILE" ]; then
+ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
   echo "No .env.agent.${AGENT_ID} found. Run: ./.har/launch.sh ${AGENT_ID}" >&2
   exit 1
-fi
+}
 
+set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
-WORK_DIR="${REPO_ROOT:-$REPO_ROOT}"
+set +a
+
+WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
 
 echo "==> Verifying agent ${AGENT_ID} in ${WORK_DIR}..." >&2
 
@@ -92,6 +89,7 @@ run_step "unit-tests" "npm test" || { [ -z "$FULL" ] && true; }
 if [ -n "$FULL" ]; then
   run_step "lint" "npm run lint" || true
   run_step "build" "npm run build" || true
+  run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
 fi
 
 END_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")

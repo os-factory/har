@@ -8,13 +8,13 @@
     {
       "id": "setup-infra",
       "kind": "setup",
-      "description": "Shared infrastructure (no-op for CLI profile)",
+      "description": "Optional shared Docker infrastructure",
       "command": "./.har/setup-infra.sh"
     },
     {
       "id": "launch",
       "kind": "launch",
-      "description": "Prepare agent slot (deps, env file, optional worktree)",
+      "description": "Prepare agent slot (git worktree, deps, env file)",
       "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
@@ -27,8 +27,9 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Run typecheck, tests, lint, and build",
+      "description": "Verification pipeline (quick by default; --full adds lint, build, browser-e2e when installed)",
       "command": "./.har/verify.sh {agentId}",
+      "acceptsArgs": ["--full"],
       "artifacts": [
         {
           "path": ".har/artifacts",
@@ -40,7 +41,7 @@
     {
       "id": "status",
       "kind": "inspect",
-      "description": "Inspect agent slot status",
+      "description": "Inspect agent slot status and worktree path",
       "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
@@ -51,15 +52,9 @@
       ]
     },
     {
-      "id": "logs",
-      "kind": "inspect",
-      "description": "Read recent logs for an agent slot",
-      "command": "./.har/agent-cli.sh {agentId} logs"
-    },
-    {
       "id": "teardown",
       "kind": "teardown",
-      "description": "Release agent slot resources",
+      "description": "Remove worktree and env file for the slot",
       "command": "./.har/teardown.sh {agentId}"
     }
   ]

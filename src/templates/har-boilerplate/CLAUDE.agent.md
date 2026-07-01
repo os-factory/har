@@ -1,62 +1,43 @@
 # Agent ${AGENT_ID} — Development Environment
 
-> See also [`AGENT.md`](../AGENT.md) at the repo root and [`.har/README.md`](./README.md) for the full harness guide.
+> [`AGENT.md`](../AGENT.md) · [`.har/README.md`](./README.md) · [`stages.json`](./stages.json)
 
-## Your Environment
+## Environment
 
-- **Agent ID**: ${AGENT_ID}
-- **Frontend URL**: http://localhost:${FE_PORT}
-- **API URL**: http://localhost:${API_PORT}
-- **Database**: `agent_${AGENT_ID}` on `localhost:${DB_PORT}
-
-## Managing Your Stack
-
-Always use `agent-cli.sh` to interact with your stack:
+| | |
+|--|--|
+| **Agent ID** | ${AGENT_ID} |
+| **Frontend** | http://localhost:${FE_PORT} |
+| **API** | http://localhost:${API_PORT} |
+| **Database** | `agent_${AGENT_ID}` on `localhost:${DB_PORT}` (when Postgres infra is enabled) |
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status
 ./.har/agent-cli.sh ${AGENT_ID} logs api
-./.har/agent-cli.sh ${AGENT_ID} restart api
 ./.har/agent-cli.sh ${AGENT_ID} health
-./.har/agent-cli.sh ${AGENT_ID} psql "SELECT 1"
-./.har/agent-cli.sh ${AGENT_ID} url
 ```
 
-## Verification Workflow
+## Definition of done
 
-Run verification **after every change**:
-
-```bash
-# Quick verification (stops on first failure)
-./.har/verify.sh ${AGENT_ID}
-
-# Full verification (runs all steps)
-./.har/verify.sh ${AGENT_ID} --full
-```
-
-## Definition of Done
-
-Your task is done when ALL of these are true:
 - [ ] `./.har/verify.sh ${AGENT_ID} --full` returns `"status": "pass"`
-- [ ] The feature/fix works correctly in the browser or API
-- [ ] Tests cover the change
-- [ ] No type errors, no lint warnings
-- [ ] Changes are committed with a clear message
+- [ ] When `stages/browser-e2e.sh` exists, full verify includes Playwright — adapt specs under `tests/` for UI changes
+- [ ] New behavior has automated test coverage (unit and/or browser as appropriate)
+- [ ] Changes committed with a clear message
 
-## What NOT To Do
+Quick loop during development: `./.har/verify.sh ${AGENT_ID}` (stops before lint and browser-e2e).
 
-- **Do NOT** hardcode ports — your services use agent-specific ports
-- **Do NOT** run raw `docker compose` commands — use `setup-infra.sh`
-- **Do NOT** modify shared infrastructure containers
-- **Do NOT** touch other agents' databases or PM2 processes
-- **Do NOT** edit `.env.agent.${AGENT_ID}` or `ecosystem.agent.${AGENT_ID}.config.cjs` manually
-
-## Project Commands
+## Project commands
 
 ```bash
-# TODO: Add project-specific commands here
-# Examples:
-# npm run dev
-# npm test
+# TODO: adapt for this repository (see package.json, Makefile, etc.)
 # npm run typecheck
+# npm test
+# npm run lint
 ```
+
+## Do not
+
+- Hardcode ports — use agent env / `agent-cli.sh url`
+- Run raw `docker compose` for shared harness infra — use `setup-infra.sh`
+- Edit `.env.agent.${AGENT_ID}` or PM2 ecosystem files by hand
+- Run `verify` before `launch` when health or e2e steps need a running server

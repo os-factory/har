@@ -118,7 +118,7 @@ function buildExecutionPlan(
   args.push(...extraArgs);
 
   if (stage.kind === 'launch' && options.launchFlags) {
-    if (options.launchFlags.worktree) args.push('--worktree');
+    if (options.launchFlags.worktree === false) args.push('--no-worktree');
     if (options.launchFlags.claude) args.push('--claude');
   }
 

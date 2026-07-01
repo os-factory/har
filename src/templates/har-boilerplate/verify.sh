@@ -23,14 +23,21 @@ done
 validate_agent_id "$AGENT_ID"
 
 API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
-ENV_FILE="$REPO_ROOT/.env.agent.${AGENT_ID}"
 
-if [ ! -f "$ENV_FILE" ]; then
+ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
   echo "No .env.agent.${AGENT_ID} found. Run: ./.har/launch.sh ${AGENT_ID}" >&2
   exit 1
-fi
+}
 
-echo "==> Verifying agent ${AGENT_ID}..." >&2
+set -a
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+set +a
+
+WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
+API_PORT="${API_PORT:-$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))}"
+
+echo "==> Verifying agent ${AGENT_ID} (work dir: ${WORK_DIR})..." >&2
 
 OVERALL_PASS=true
 START_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")
@@ -45,7 +52,7 @@ run_step() {
   start=$(date +%s%3N 2>/dev/null || echo "0")
 
   set +e
-  output=$(cd "$REPO_ROOT" && set -a && . "$ENV_FILE" && set +a && eval "$cmd" 2>&1)
+  output=$(cd "$WORK_DIR" && set -a && . "$ENV_FILE" && set +a && eval "$cmd" 2>&1)
   exit_code=$?
   set -e
 
@@ -131,6 +138,7 @@ run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_P
 
 if [ -n "$FULL" ]; then
   run_step "lint" "echo 'TODO: npm run lint'" || true
+  run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
 fi
 
 # ── Output results ────────────────────────────────────────────────────────────

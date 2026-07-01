@@ -25,3 +25,40 @@ validate_agent_id() {
     exit 1
   fi
 }
+
+resolve_agent_env_file() {
+  local agent_id="$1"
+  local repo_root="$2"
+  local candidate
+  for candidate in \
+    "$repo_root/.env.agent.${agent_id}" \
+    "$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${agent_id}/.env.agent.${agent_id}"; do
+    if [ -f "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+resolve_agent_work_dir() {
+  local env_file="$1"
+  local work_dir="${REPO_ROOT:-}"
+  if [ -z "$work_dir" ] || [ ! -d "$work_dir" ]; then
+    if [ -n "${WORKTREE_DIR:-}" ] && [ -d "$WORKTREE_DIR" ]; then
+      work_dir="$WORKTREE_DIR"
+    else
+      work_dir="$(cd "$(dirname "$env_file")" && pwd)"
+    fi
+  fi
+  echo "$work_dir"
+}
+
+run_browser_e2e_if_present() {
+  local script_dir="$1"
+  local agent_id="$2"
+  local e2e="$script_dir/stages/browser-e2e.sh"
+  if [ -x "$e2e" ]; then
+    "$e2e" "$agent_id"
+  fi
+}

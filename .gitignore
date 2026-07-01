@@ -9,3 +9,7 @@ tests/**/.har
 !tests/fixtures/minimal-harness/.har
 coverage/
 .DS_Store
+private/
+control/node_modules/
+control/.next/
+control/.env

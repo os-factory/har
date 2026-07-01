@@ -19,20 +19,8 @@ verify-full id:
 
 status:
     #!/usr/bin/env bash
-    for id in 1 2 3 4 5; do
+    for id in 1 2 3; do
         ./agent-cli.sh "$id" status 2>/dev/null || true
-    done
-
-launch-all count:
-    #!/usr/bin/env bash
-    for id in $(seq 1 {{count}}); do
-        ./launch.sh "$id"
-    done
-
-teardown-all:
-    #!/usr/bin/env bash
-    for id in 1 2 3 4 5; do
-        ./teardown.sh "$id" 2>/dev/null || true
     done
 
 cli id cmd *args:

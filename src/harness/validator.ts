@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { run } from '../utils/shell';
-import { getHarnessDir } from './manifest';
+import { getHarnessDir, readManifest } from './manifest';
 import { readStageRegistry } from './stages';
 
 export interface ValidationIssue {
@@ -15,7 +15,7 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
-const REQUIRED_FILES = [
+const REQUIRED_FILES_DEFAULT = [
   'README.md',
   'stages.json',
   'harness.env',
@@ -30,6 +30,15 @@ const REQUIRED_FILES = [
   'ecosystem.agent.template.cjs',
   'CLAUDE.agent.md',
 ];
+
+const REQUIRED_FILES_CLI = REQUIRED_FILES_DEFAULT.filter(
+  (file) => file !== 'ecosystem.agent.template.cjs' && file !== 'env.template',
+);
+
+function getRequiredFiles(repoPath: string): string[] {
+  const manifest = readManifest(repoPath);
+  return manifest?.profile === 'cli' ? REQUIRED_FILES_CLI : REQUIRED_FILES_DEFAULT;
+}
 
 const SHELL_SCRIPTS = [
   'setup-infra.sh',
@@ -51,7 +60,7 @@ export function validateHarness(repoPath: string): ValidationResult {
     };
   }
 
-  for (const file of REQUIRED_FILES) {
+  for (const file of getRequiredFiles(repoPath)) {
     const filePath = path.join(harnessDir, file);
     if (!fs.existsSync(filePath)) {
       issues.push({ file, message: 'Required file missing', severity: 'error' });
@@ -77,8 +86,11 @@ export function validateHarness(repoPath: string): ValidationResult {
     }
   }
 
+  const manifest = readManifest(repoPath);
+  const profile = manifest?.profile ?? 'default';
+
   const ecosystemPath = path.join(harnessDir, 'ecosystem.agent.template.cjs');
-  if (fs.existsSync(ecosystemPath)) {
+  if (profile !== 'cli' && fs.existsSync(ecosystemPath)) {
     const content = fs.readFileSync(ecosystemPath, 'utf8');
     if (!content.includes('module.exports')) {
       issues.push({

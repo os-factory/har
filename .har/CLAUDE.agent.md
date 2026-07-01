@@ -1,62 +1,48 @@
-# Agent ${AGENT_ID} — Development Environment
+# Agent ${AGENT_ID} — @har/cli Development
 
-> See also [`AGENT.md`](../AGENT.md) at the repo root and [`.har/README.md`](./README.md) for the full harness guide.
+> See also [`AGENT.md`](../AGENT.md) and [`.har/README.md`](./README.md).
 
 ## Your Environment
 
 - **Agent ID**: ${AGENT_ID}
-- **Frontend URL**: http://localhost:${FE_PORT}
-- **API URL**: http://localhost:${API_PORT}
-- **Database**: `agent_${AGENT_ID}` on `localhost:${DB_PORT}
-
-## Managing Your Stack
-
-Always use `agent-cli.sh` to interact with your stack:
+- **Work dir**: git worktree at `~/worktrees/har_project-agent-${AGENT_ID}` (default)
+- **Infra**: none for this repo (`HARNESS_INFRA_*` all false)
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status
-./.har/agent-cli.sh ${AGENT_ID} logs api
-./.har/agent-cli.sh ${AGENT_ID} restart api
-./.har/agent-cli.sh ${AGENT_ID} health
-./.har/agent-cli.sh ${AGENT_ID} psql "SELECT 1"
 ./.har/agent-cli.sh ${AGENT_ID} url
 ```
 
-## Verification Workflow
-
-Run verification **after every change**:
+## Working in your worktree
 
 ```bash
-# Quick verification (stops on first failure)
-./.har/verify.sh ${AGENT_ID}
+./.har/agent-cli.sh ${AGENT_ID} exec npm test
+./.har/agent-cli.sh ${AGENT_ID} exec npm run typecheck
+./.har/agent-cli.sh ${AGENT_ID} exec npm run build
+```
 
-# Full verification (runs all steps)
-./.har/verify.sh ${AGENT_ID} --full
+Harness scripts (`.har/*`) always run from the main repo checkout; project commands run in your work dir.
+
+## Verification
+
+```bash
+./.har/verify.sh ${AGENT_ID}          # typecheck + unit tests
+./.har/verify.sh ${AGENT_ID} --full   # + lint + build — required before done
 ```
 
 ## Definition of Done
 
-Your task is done when ALL of these are true:
 - [ ] `./.har/verify.sh ${AGENT_ID} --full` returns `"status": "pass"`
-- [ ] The feature/fix works correctly in the browser or API
 - [ ] Tests cover the change
 - [ ] No type errors, no lint warnings
-- [ ] Changes are committed with a clear message
+- [ ] Changes committed in your worktree with a clear message
 
 ## What NOT To Do
 
-- **Do NOT** hardcode ports — your services use agent-specific ports
-- **Do NOT** run raw `docker compose` commands — use `setup-infra.sh`
-- **Do NOT** modify shared infrastructure containers
-- **Do NOT** touch other agents' databases or PM2 processes
-- **Do NOT** edit `.env.agent.${AGENT_ID}` or `ecosystem.agent.${AGENT_ID}.config.cjs` manually
+- **Do NOT** edit the main checkout while your worktree is active — work in the slot work dir
+- **Do NOT** run ad-hoc `npm test` from the repo root — use `./.har/verify.sh` or `agent-cli.sh exec`
+- **Do NOT** edit `.env.agent.${AGENT_ID}` manually
 
-## Project Commands
+## Architecture notes
 
-```bash
-# TODO: Add project-specific commands here
-# Examples:
-# npm run dev
-# npm test
-# npm run typecheck
-```
+See `AGENT.md` for layer boundaries (`cli/` → `core/` → `harness/`). Put template changes in `src/templates/` and run `npm run build` before testing a linked `har` install.

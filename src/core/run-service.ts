@@ -1,7 +1,9 @@
 import { parseVerificationResult } from './results';
 import { localScriptExecutor } from './local-executor';
+import { syncRepoWithControlAsync } from './control-sync';
 import { createRun, finishRun } from './runs';
 import { getAgentSlotIds, resolveStage } from '../harness/stages';
+import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
 import {
   ArtifactEntry,
@@ -44,6 +46,20 @@ function toEnvironmentRunResult(result: StageResult): EnvironmentRunResult {
   };
 }
 
+function resolveStageCommand(
+  stage: HarnessStage,
+  agentId?: number,
+  args?: string[],
+): string | undefined {
+  if (stage.command) {
+    let cmd = stage.command.replace(/\{agentId\}/g, agentId !== undefined ? String(agentId) : '{agentId}');
+    if (args?.length) cmd += ` ${args.join(' ')}`;
+    return cmd;
+  }
+  if (stage.script) return `./.har/${stage.script}`;
+  return undefined;
+}
+
 export class RunService {
   constructor(private readonly executor: StageExecutor = localScriptExecutor) {}
 
@@ -76,6 +92,7 @@ export class RunService {
       stageId: stage.id,
       kind: stage.kind,
       agentId: options.agentId,
+      command: resolveStageCommand(stage, options.agentId, options.args),
     });
 
     const started = Date.now();
@@ -87,6 +104,8 @@ export class RunService {
         result,
         durationMs,
       });
+
+      syncRepoWithControlAsync(options.repoPath);
 
       const data =
         typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)

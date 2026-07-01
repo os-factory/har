@@ -35,7 +35,7 @@ fi
 
 # shellcheck source=/dev/null
 source "$ENV_FILE"
-WORK_DIR="${REPO_ROOT:-$REPO_ROOT}"
+WORK_DIR="${REPO_ROOT}"
 
 echo "==> Verifying agent ${AGENT_ID} in ${WORK_DIR}..." >&2
 

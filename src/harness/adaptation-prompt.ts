@@ -9,8 +9,9 @@ export const ADAPTATION_PROMPT_FILE = 'ADAPT-PROMPT.md';
 
 const PROFILE_HINTS: Record<HarnessProfile, string> = {
   default:
-    'Web app profile — includes Docker, PM2, and full infra scripts. Adapt docker-compose, setup-infra, and ecosystem templates for this stack.',
-  cli: 'CLI profile — no Docker/PM2. Focus on verify.sh, harness.env, and npm/script-based workflows. Remove or simplify infra files that do not apply.',
+    'Web app profile — Docker Compose for shared infra, PM2 for dev processes, git worktree per agent slot by default. Adapt docker-compose, setup-infra, and ecosystem templates for this stack.',
+  cli:
+    'CLI/library profile — no PM2. Optional Docker Compose via `HARNESS_INFRA_*` flags in harness.env. Agents work in an isolated git worktree by default (`--no-worktree` to use the repo root). Remove any leftover PM2/ecosystem files; keep docker-compose when infra flags are enabled.',
 };
 
 function loadTemplate(name: string): string {

@@ -8,13 +8,13 @@
     {
       "id": "setup-infra",
       "kind": "setup",
-      "description": "Shared infrastructure (Docker, template DB)",
+      "description": "Optional shared Docker infrastructure",
       "command": "./.har/setup-infra.sh"
     },
     {
       "id": "launch",
       "kind": "launch",
-      "description": "Launch an isolated agent environment slot",
+      "description": "Prepare agent slot (git worktree, deps, env file)",
       "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
@@ -27,20 +27,20 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Run the project verification pipeline",
+      "description": "Run typecheck, tests, lint, and build",
       "command": "./.har/verify.sh {agentId}",
       "artifacts": [
         {
           "path": ".har/artifacts",
           "kind": "directory",
-          "description": "Optional verification outputs such as reports, traces, screenshots, and logs"
+          "description": "Optional verification outputs"
         }
       ]
     },
     {
       "id": "status",
       "kind": "inspect",
-      "description": "Inspect a running agent environment slot",
+      "description": "Inspect agent slot status and worktree path",
       "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
@@ -51,15 +51,9 @@
       ]
     },
     {
-      "id": "logs",
-      "kind": "inspect",
-      "description": "Read recent logs for an agent slot",
-      "command": "./.har/agent-cli.sh {agentId} logs"
-    },
-    {
       "id": "teardown",
       "kind": "teardown",
-      "description": "Stop processes and release agent slot resources",
+      "description": "Remove worktree and env file for the slot",
       "command": "./.har/teardown.sh {agentId}"
     }
   ]

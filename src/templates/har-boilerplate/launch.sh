@@ -2,7 +2,7 @@
 # Launches a single agent instance with isolated ports, database, and PM2 processes.
 # Idempotent — safe to run multiple times for the same agent.
 #
-# Usage: ./.har/launch.sh <agent-id> [--worktree] [--claude]
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--claude]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,18 +14,19 @@ source "$SCRIPT_DIR/harness.env"
 source "$SCRIPT_DIR/agent-slot.sh"
 
 AGENT_ID="${1:-}"
-USE_WORKTREE=false
+USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 USE_CLAUDE=false
 
 for arg in "$@"; do
   case "$arg" in
+    --no-worktree) USE_WORKTREE=false ;;
     --worktree) USE_WORKTREE=true ;;
     --claude)   USE_CLAUDE=true ;;
   esac
 done
 
 if [[ -z "$AGENT_ID" ]]; then
-  echo "Usage: $0 <agent-id> [--worktree] [--claude]" >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--claude]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -69,18 +70,20 @@ if [ "$HARNESS_INFRA_MINIO" = "true" ]; then
   log "MinIO bucket '$MINIO_BUCKET' ready (HTTP $HTTP_STATUS)."
 fi
 
-# Git worktree (optional)
+# Git worktree (default — use --no-worktree to work in repo root)
 WORK_DIR="$REPO_ROOT"
+WORKTREE_DIR="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
 if [ "$USE_WORKTREE" = true ]; then
-  WORKTREE_DIR="$HOME/worktrees/agent-${AGENT_ID}"
   if [ -d "$WORKTREE_DIR" ]; then
     log "Worktree already exists at $WORKTREE_DIR"
   else
     log "Creating git worktree at $WORKTREE_DIR..."
-    git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" -b "agent-${AGENT_ID}" 2>/dev/null || \
+    git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" -b "har-agent-${AGENT_ID}" 2>/dev/null || \
       git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" HEAD
   fi
   WORK_DIR="$WORKTREE_DIR"
+else
+  log "Using repo root (worktree disabled)"
 fi
 
 # Generate .env.agent.N
@@ -146,6 +149,8 @@ fi
 
 echo ""
 log "Agent $AGENT_ID is ready!"
+log "  Work dir:  ${WORK_DIR}"
+[ "$USE_WORKTREE" = true ] && log "  Worktree:  ${WORKTREE_DIR}"
 log "  Frontend:  http://localhost:${FE_PORT}"
 log "  API:       http://localhost:${API_PORT}"
 [ "$HARNESS_INFRA_POSTGRES" = "true" ] && log "  Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"

@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test tests/frontend",
+    "test:e2e:api": "playwright test tests/api",
+    "test:e2e:a11y": "playwright test tests/a11y",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ci": "playwright test --reporter=html --workers=2 --retries=2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "axe-core": "^4.7.0"
+  }
+}

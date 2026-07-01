@@ -97,7 +97,7 @@ cd /path/to/your-project
 har env init
 ```
 
-For CLI/library repos (no Docker/PM2):
+For CLI/library repos (no PM2; optional Docker via `harness.env` infra flags):
 
 ```bash
 har env init --profile cli
@@ -125,6 +125,20 @@ The CLI will copy the boilerplate, call Claude to adapt it to the repo, and prop
 | `--yes` | Auto-apply the `AGENT.md` proposal (with `--auto`) |
 | `--smoke` | Run `setup-infra.sh` after init |
 | `--verbose` | Extra logging |
+| `--no-control` | Skip Mission Control registration on `har env init` |
+
+### Mission Control dashboard
+
+Local observability UI (Next.js + shadcn/ui + Postgres):
+
+```bash
+har control up
+# open http://localhost:3847
+
+cd control && npm run dev   # dashboard development without Docker app image
+```
+
+See [`control/AGENT.md`](./control/AGENT.md).
 
 ### Sample fixtures
 
@@ -164,6 +178,27 @@ har env teardown 1
 har env status
 ```
 
+Use `har env verify` (not `./.har/verify.sh`) when you want run records under `.har/runs/`.
+
+## Upgrading HAR
+
+When a new `@har/cli` release changes harness templates or run storage:
+
+```bash
+npm install -g @har/cli@latest    # updates CLI/MCP/run storage — does not touch project .har/
+har env maintain                  # validation + drift report + adaptation prompt
+# apply updates with your coding agent (paste .har/ADAPT-PROMPT.md) or: har env maintain --auto
+./.har/verify.sh 1 --full
+```
+
+| Command | Effect | Risk |
+|---------|--------|------|
+| `npm install -g @har/cli@latest` | New run layout, MCP, core behavior | Safe for `.har/` |
+| `har env maintain` | Drift report vs bundled templates | Safe — in-place |
+| `har env init --force` | Replaces entire `.har/` | **Destructive** — loses customizations |
+
+Do not use `har env init --force` on an adapted project harness.
+
 ## Project layout
 
 ```
@@ -182,6 +217,7 @@ src/
 │   └── run.ts               # Re-exports from run-service (compat)
 ├── harness/
 │   ├── generator.ts         # Copy boilerplate into .har/
+│   ├── drift.ts             # Compare .har/ to bundled templates
 │   ├── manifest.ts          # manifest.json read/write
 │   ├── stages.ts            # stages.json registry I/O
 │   ├── validator.ts         # Post-scaffold validation + smoke tests

@@ -13,7 +13,7 @@ Generated and maintained by [`har`](https://github.com/your-org/har). Run `har e
 | `harness.env` | Shared config: ports, agent slot limits, infra flags, migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
-| `runs/` | Local run history written by `har` CLI/MCP (gitignore this directory) |
+| `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start shared Docker infra + create template database |
@@ -31,23 +31,25 @@ Generated and maintained by [`har`](https://github.com/your-org/har). Run `har e
 ## Quick start
 
 ```bash
-# 1. Shared infrastructure (once)
-./.har/setup-infra.sh
-
-# 2. Launch agent 1
+./.har/setup-infra.sh          # when Docker infra flags are on
 ./.har/launch.sh 1
-
-# 3. Check status
-./.har/agent-cli.sh 1 status
-
-# 4. Verify after changes
-./.har/verify.sh 1
-
-# 5. Tear down
+./.har/verify.sh 1             # quick: typecheck, tests, health
+./.har/verify.sh 1 --full      # done gate: + lint + browser-e2e (if Playwright stage installed)
 ./.har/teardown.sh 1
 ```
 
-Or via the har CLI:
+Read **`stages.json`** for registered stages and **`verificationStages`** for the expected pass set.
+
+## Verification contract
+
+| Mode | Command | Typical steps |
+|------|---------|---------------|
+| Quick | `verify.sh <id>` | Project checks in `verify.sh` (stops early on failure) |
+| Full | `verify.sh <id> --full` | Quick steps + lint + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
+
+Install Playwright stage: `har env add-stage playwright` (optional). UI changes should add or update specs under `tests/`.
+
+## Quick start (har CLI)
 
 ```bash
 har env launch 1
@@ -55,11 +57,22 @@ har env verify 1
 har env teardown 1
 ```
 
+## Run history
+
+| Entry point | Writes `.har/runs/`? |
+|-------------|------------------------|
+| `./.har/*.sh` | No — same scripts, no run record |
+| `har env …` / MCP | Yes — under main checkout `.har/runs/YYYY-MM-DD/` |
+
+With git worktree slots, verification runs code in the worktree but run JSON stays in the main repo `.har/runs/`. Each record includes `workDir` when a slot is active.
+
 ## For coding agents
 
-**Start here:** read [`AGENT.md`](../AGENT.md) at the repo root for a short pointer, then [`.har/CLAUDE.agent.md`](./CLAUDE.agent.md) for full instructions.
+1. Read repo [`AGENT.md`](../AGENT.md)
+2. Read this file and `stages.json`
+3. After `launch`, read `.har/CLAUDE.agent.md` for slot URLs and definition of done
 
-Always use `./.har/agent-cli.sh <id> ...` for environment operations — never raw docker compose or hardcoded ports.
+Always use `./.har/agent-cli.sh <id> ...` — never hardcoded ports.
 
 ## Architecture
 

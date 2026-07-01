@@ -149,6 +149,15 @@ export function readStageRegistry(repoPath: string): HarnessStageRegistry {
   return parsed.data;
 }
 
+export function writeStageRegistry(repoPath: string, registry: HarnessStageRegistry): void {
+  const registryPath = getStageRegistryPath(repoPath);
+  const parsed = HarnessStageRegistrySchema.safeParse(registry);
+  if (!parsed.success) {
+    throw new Error(`Invalid stage registry: ${parsed.error.message}`);
+  }
+  fs.writeFileSync(registryPath, JSON.stringify(parsed.data, null, 2) + '\n');
+}
+
 export function listStages(repoPath: string): HarnessStage[] {
   return readStageRegistry(repoPath).stages;
 }

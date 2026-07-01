@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/dist
+.git
+.har
+tests/**/.har
+control/.env
+*.log
+coverage
+private

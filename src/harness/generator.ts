@@ -2,8 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { copyDirRecursive } from '../utils/file-ops';
 import { info, success } from '../utils/logging';
-import { resolveTemplatesDir } from '../utils/paths';
-import { createManifest, writeManifest, DEFAULT_HAR_DIR } from './manifest';
+import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
+import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 
 export type HarnessProfile = 'default' | 'cli';
 
@@ -11,6 +11,22 @@ const PROFILE_DIRS: Record<HarnessProfile, string> = {
   default: 'har-boilerplate',
   cli: 'har-boilerplate-cli',
 };
+
+/** Files not used by the CLI profile — removed after scaffold so init leaves no dead SaaS/PM2 assets. */
+const CLI_PRUNE_FILES = [
+  'ecosystem.agent.template.cjs',
+  'env.template',
+  'attach.sh',
+] as const;
+
+function pruneCliProfile(harnessDir: string): void {
+  for (const file of CLI_PRUNE_FILES) {
+    const filePath = path.join(harnessDir, file);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+}
 
 export { DEFAULT_HAR_DIR };
 
@@ -22,6 +38,20 @@ export interface ScaffoldOptions {
 export interface ScaffoldResult {
   harnessDir: string;
   projectName: string;
+}
+
+function scaffoldClaudeMd(repoPath: string, projectName: string, force: boolean): void {
+  const templatePath = resolveTemplateFile('CLAUDE.md.template');
+  if (!templatePath) return;
+
+  const dest = path.join(repoPath, 'CLAUDE.md');
+  if (fs.existsSync(dest) && !force) return;
+
+  const displayName = projectName.replace(/_/g, ' ');
+  const content = fs
+    .readFileSync(templatePath, 'utf8')
+    .replace(/__PROJECT_DISPLAY_NAME__/g, displayName);
+  fs.writeFileSync(dest, content);
 }
 
 export function scaffoldHarnessBoilerplate(
@@ -49,6 +79,10 @@ export function scaffoldHarnessBoilerplate(
 
   copyDirRecursive(boilerplateDir, harnessDir);
 
+  if (profile === 'cli') {
+    pruneCliProfile(harnessDir);
+  }
+
   const harnessEnvPath = path.join(harnessDir, 'harness.env');
   if (fs.existsSync(harnessEnvPath)) {
     let content = fs.readFileSync(harnessEnvPath, 'utf8');
@@ -63,8 +97,12 @@ export function scaffoldHarnessBoilerplate(
     profile === 'cli'
       ? 'CLI profile copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).'
       : 'Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).',
+    undefined,
+    profile,
   );
   writeManifest(repoPath, manifest);
+
+  scaffoldClaudeMd(repoPath, projectName, options.force ?? false);
 
   success(`Copied harness boilerplate to .har/ (profile: ${profile})`);
   info(`Project name: ${projectName}`);
@@ -77,7 +115,8 @@ export function finalizeHarness(
   adaptationSummary: string,
   stack?: { language?: string; packageManager?: string; database?: string },
 ): void {
-  const manifest = createManifest(repoPath, adaptationSummary, stack);
+  const existing = readManifest(repoPath);
+  const manifest = createManifest(repoPath, adaptationSummary, stack, existing?.profile);
   writeManifest(repoPath, manifest);
   success('Harness adaptation complete.');
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Namespaced CLI for managing a running agent environment.
+# Namespaced CLI for managing a CLI/library agent slot.
 #
 # Usage: ./.har/agent-cli.sh <agent-id> <command> [args...]
 set -euo pipefail
@@ -17,55 +17,38 @@ COMMAND="${2:?Usage: agent-cli.sh <agent-id> <command> [args...]}"
 
 validate_agent_id "$AGENT_ID"
 
-FE_PORT=$(( HARNESS_FE_BASE_PORT + AGENT_ID * 10 ))
-API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
+WORKTREE_DIR="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
 DB_PORT="${AGENT_DB_PORT:-15432}"
 PG_OPTS="-h localhost -p $DB_PORT -U postgres"
 export PGPASSWORD="password"
 
+resolve_work_dir() {
+  local env_file="$REPO_ROOT/.env.agent.${AGENT_ID}"
+  if [ ! -f "$env_file" ] && [ -f "$WORKTREE_DIR/.env.agent.${AGENT_ID}" ]; then
+    env_file="$WORKTREE_DIR/.env.agent.${AGENT_ID}"
+  fi
+  if [ ! -f "$env_file" ]; then
+    echo "No active environment for agent ${AGENT_ID}" >&2
+    echo "  Run: ./.har/launch.sh ${AGENT_ID}" >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$env_file"
+  echo "${REPO_ROOT:-$REPO_ROOT}"
+}
+
 case "$COMMAND" in
   status)
     ENV_FILE="$REPO_ROOT/.env.agent.${AGENT_ID}"
-    WORKTREE_DIR="$HOME/worktrees/har-agent-${AGENT_ID}"
     if [ ! -f "$ENV_FILE" ] && [ -f "$WORKTREE_DIR/.env.agent.${AGENT_ID}" ]; then
       ENV_FILE="$WORKTREE_DIR/.env.agent.${AGENT_ID}"
     fi
 
-    PM2_RAW=$(npx --yes pm2 jlist 2>/dev/null || true)
-    PM2_FOUND=false
-
-    if [ -n "$PM2_RAW" ]; then
-      echo "$PM2_RAW" | node -e "
-const agentId = '${AGENT_ID}';
-let raw = '';
-process.stdin.on('data', c => raw += c);
-process.stdin.on('end', () => {
-  try {
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) process.exit(1);
-    const procs = arr.filter(x => x.name && x.name.startsWith('agent-' + agentId + '-'));
-    if (procs.length === 0) process.exit(1);
-    console.log('Agent ' + agentId + ' processes:');
-    procs.forEach(p => {
-      const s = (p.pm2_env?.status || 'unknown').padEnd(10);
-      const mem = Math.round((p.monit?.memory || 0) / 1024 / 1024) + 'MB';
-      const cpu = (p.monit?.cpu || 0) + '%';
-      console.log('  ' + p.name.padEnd(42) + s + '  mem=' + mem + '  cpu=' + cpu);
-    });
-  } catch {
-    process.exit(1);
-  }
-});
-" && PM2_FOUND=true
-    fi
-
-    if [ "$PM2_FOUND" = true ]; then
-      :
-    elif [ -f "$ENV_FILE" ]; then
-      echo "Agent ${AGENT_ID}: active (no PM2 processes)"
+    if [ -f "$ENV_FILE" ]; then
       # shellcheck source=/dev/null
-      source "$ENV_FILE" 2>/dev/null || true
-      [ -n "${REPO_ROOT:-}" ] && echo "  Work dir:  ${REPO_ROOT}"
+      source "$ENV_FILE"
+      echo "Agent ${AGENT_ID}: active"
+      echo "  Work dir:  ${REPO_ROOT}"
       [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
     else
       echo "No active environment for agent ${AGENT_ID}"
@@ -74,30 +57,24 @@ process.stdin.on('end', () => {
     ;;
 
   logs)
-    SERVICE="${3:-}"
-    if [ -n "$SERVICE" ]; then
-      npx pm2 logs "agent-${AGENT_ID}-${SERVICE}" --lines 100
-    else
-      npx pm2 logs --name "agent-${AGENT_ID}" --lines 100
-    fi
+    echo "CLI profile has no managed processes (no PM2)." >&2
+    echo "Run project commands in the work dir, e.g.:" >&2
+    echo "  ./.har/agent-cli.sh ${AGENT_ID} exec npm test" >&2
+    exit 1
     ;;
 
   restart)
-    SERVICE="${3:-}"
-    if [ -n "$SERVICE" ]; then
-      npx pm2 restart "agent-${AGENT_ID}-${SERVICE}"
-    else
-      npx pm2 jlist 2>/dev/null | node -e "
-const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-const names = d.filter(x => x.name.startsWith('agent-${AGENT_ID}-')).map(x => x.name);
-names.forEach(n => require('child_process').execSync('npx pm2 restart ' + n, {stdio:'inherit'}));
-if (names.length === 0) console.log('No processes found for agent ${AGENT_ID}');
-" 2>/dev/null || true
-    fi
+    echo "CLI profile has no managed processes to restart." >&2
+    echo "Re-run launch or use exec for project-specific commands." >&2
+    exit 1
     ;;
 
   psql)
     QUERY="${3:-}"
+    if [ "$HARNESS_INFRA_POSTGRES" != "true" ]; then
+      echo "PostgreSQL infra is disabled in harness.env" >&2
+      exit 1
+    fi
     if [ -n "$QUERY" ]; then
       psql $PG_OPTS -d "agent_${AGENT_ID}" -c "$QUERY"
     else
@@ -106,6 +83,7 @@ if (names.length === 0) console.log('No processes found for agent ${AGENT_ID}');
     ;;
 
   health)
+    API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
     if [ -n "${HARNESS_HEALTH_CHECK_PATH:-}" ]; then
       curl -sf "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}" | node -e "
 const d = require('fs').readFileSync('/dev/stdin','utf8');
@@ -117,8 +95,12 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
     ;;
 
   url)
-    echo "Frontend:  http://localhost:${FE_PORT}"
-    echo "API:       http://localhost:${API_PORT}"
+    FE_PORT=$(( HARNESS_FE_BASE_PORT + AGENT_ID * 10 ))
+    API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
+    WORK_DIR="$(resolve_work_dir 2>/dev/null || echo "$REPO_ROOT")"
+    echo "Work dir:  $WORK_DIR"
+    [ -d "$WORKTREE_DIR" ] && echo "Worktree:  $WORKTREE_DIR"
+    [ -n "${HARNESS_HEALTH_CHECK_PATH:-}" ] && echo "API:       http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}"
     [ "$HARNESS_INFRA_POSTGRES" = "true" ] && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
     [ "$HARNESS_INFRA_MINIO" = "true" ]   && echo "MinIO:     http://localhost:19001"
     [ "$HARNESS_INFRA_BROWSER" = "true" ] && echo "Browser:   http://localhost:13001"
@@ -126,6 +108,10 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
     ;;
 
   reset-db)
+    if [ "$HARNESS_INFRA_POSTGRES" != "true" ]; then
+      echo "PostgreSQL infra is disabled in harness.env" >&2
+      exit 1
+    fi
     echo "==> Resetting database for agent ${AGENT_ID}..."
     psql $PG_OPTS postgres -c \
       "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='agent_${AGENT_ID}';" \
@@ -136,6 +122,10 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
     ;;
 
   slow-queries)
+    if [ "$HARNESS_INFRA_POSTGRES" != "true" ]; then
+      echo "PostgreSQL infra is disabled in harness.env" >&2
+      exit 1
+    fi
     psql $PG_OPTS -d "agent_${AGENT_ID}" -c "
 SELECT round(mean_exec_time::numeric, 2) AS mean_ms,
        calls,
@@ -151,24 +141,20 @@ LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
       echo "Usage: agent-cli.sh ${AGENT_ID} exec <command>" >&2
       exit 1
     fi
-    PGHOST=localhost PGPORT="$DB_PORT" PGUSER=postgres PGDATABASE="agent_${AGENT_ID}" \
-      bash -c "cd '$REPO_ROOT' && $*"
-    ;;
-
-  attach)
-    SESSION="agent-${AGENT_ID}"
-    if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-      echo "No tmux session found: $SESSION" >&2
-      exit 1
+    WORK_DIR="$(resolve_work_dir)"
+    if [ "$HARNESS_INFRA_POSTGRES" = "true" ]; then
+      PGHOST=localhost PGPORT="$DB_PORT" PGUSER=postgres PGDATABASE="agent_${AGENT_ID}" \
+        bash -c "cd '$WORK_DIR' && $*"
+    else
+      bash -c "cd '$WORK_DIR' && $*"
     fi
-    tmux attach -t "$SESSION"
     ;;
 
   *)
     echo "Unknown command: $COMMAND" >&2
     echo ""
-    echo "Commands: status, logs [service], restart [service], psql [query],"
-    echo "          health, url, reset-db, slow-queries, exec <cmd>, attach"
+    echo "Commands: status, url, exec <cmd>"
+    [ "$HARNESS_INFRA_POSTGRES" = "true" ] && echo "          psql [query], reset-db, slow-queries"
     exit 1
     ;;
 esac

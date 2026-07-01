@@ -27,8 +27,9 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Run the project verification pipeline",
+      "description": "Verification pipeline (quick by default; --full adds lint and browser-e2e when installed)",
       "command": "./.har/verify.sh {agentId}",
+      "acceptsArgs": ["--full"],
       "artifacts": [
         {
           "path": ".har/artifacts",

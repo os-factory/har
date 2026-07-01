@@ -3,6 +3,7 @@ import {
   HAR_AGENT_SLOT_MIN,
   HarnessManifestSchema,
   HarnessStageSchema,
+  RunRecordSchema,
   ShellRunOutputSchema,
   StageKindSchema,
   StageResultSchema,
@@ -38,6 +39,19 @@ export const DescribeProjectOutputSchema = z.object({
     packageManager: z.string().optional(),
     database: z.string().optional(),
   }),
+  harnessDrift: z
+    .object({
+      generatorVersion: z.object({
+        installed: z.string().optional(),
+        bundled: z.string(),
+        outdated: z.boolean(),
+      }),
+      missing: z.array(z.string()),
+      checksumMismatch: z.array(z.string()),
+      extra: z.array(z.string()),
+      unchanged: z.array(z.string()),
+    })
+    .nullable(),
 });
 
 export const InitHarnessInputSchema = z.object({
@@ -51,7 +65,7 @@ export const InitHarnessInputSchema = z.object({
 export const LaunchEnvironmentInputSchema = z.object({
   repo: z.string().default('.'),
   agentId: agentIdSchema,
-  worktree: z.boolean().default(false),
+  worktree: z.boolean().default(true),
   claude: z.boolean().default(false),
 });
 
@@ -100,5 +114,24 @@ export const ListArtifactsOutputSchema = z.object({
 });
 
 export const EnvironmentRunOutputSchema = ShellRunOutputSchema;
+
+export const ListRunsInputSchema = z.object({
+  repo: z.string().default('.'),
+  stageId: z.string().optional(),
+  limit: z.number().int().positive().default(50),
+});
+
+export const ListRunsOutputSchema = z.object({
+  runs: z.array(RunRecordSchema),
+});
+
+export const GetRunInputSchema = z.object({
+  repo: z.string().default('.'),
+  runId: z.string().uuid(),
+});
+
+export const GetRunOutputSchema = z.object({
+  run: RunRecordSchema,
+});
 
 export { StageResultSchema };
