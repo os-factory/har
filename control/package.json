@@ -1,0 +1,52 @@
+{
+  "name": "@har/control",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3847",
+    "build": "prisma generate && next build",
+    "start": "next start --port 3847",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test tests/frontend",
+    "test:e2e:api": "playwright test tests/api",
+    "test:e2e:a11y": "playwright test tests/a11y",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ci": "playwright test --reporter=html --workers=2 --retries=2"
+  },
+  "dependencies": {
+    "@har/schemas": "file:../packages/schemas",
+    "@prisma/client": "^6.0.0",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-tabs": "^1.1.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.460.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.13.0",
+    "tailwind-merge": "^2.5.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.0.0",
+    "postcss": "^8.4.47",
+    "prisma": "^6.0.0",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.0",
+    "@playwright/test": "^1.40.0",
+    "axe-core": "^4.7.0"
+  }
+}

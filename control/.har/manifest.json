@@ -1,0 +1,27 @@
+{
+  "version": "1",
+  "generatorVersion": "0.3.0",
+  "outputDir": ".har",
+  "createdAt": "2026-07-01T08:56:17.344Z",
+  "updatedAt": "2026-07-01T08:56:17.344Z",
+  "adaptationSummary": "Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).",
+  "profile": "default",
+  "fileChecksums": {
+    ".gitignore": "c344bed73e0693f0",
+    "CLAUDE.agent.md": "e1eedbcd3e8f51f9",
+    "README.md": "f10b17fe529b0618",
+    "agent-cli.sh": "0e92ff428340fb4a",
+    "agent-slot.sh": "1967f3e132e80e41",
+    "attach.sh": "084c2c454e289534",
+    "docker-compose.agent.yml": "18ffb0cd5d9013ad",
+    "ecosystem.agent.template.cjs": "f6e01616eeec0866",
+    "env.template": "c3c729a82583690d",
+    "harness.env": "62de3a613d236d4e",
+    "justfile": "e7c1048680a7a28c",
+    "launch.sh": "e5ed16a06813fb2b",
+    "setup-infra.sh": "b55af370c3a2fd84",
+    "stages.json": "6eb4ce4e5ee13c5a",
+    "teardown.sh": "7141501d3f78ecbc",
+    "verify.sh": "d304383dce4548fd"
+  }
+}

@@ -1,0 +1,201 @@
+import {
+  AgentSlotStatusSchema,
+  RegisterRepoInputSchema,
+  RunRecordSchema,
+  SyncRunsInputSchema,
+  SyncSlotsInputSchema,
+} from '@har/schemas';
+import { prisma } from '@/lib/db';
+
+function toJson(value: unknown) {
+  return JSON.parse(JSON.stringify(value)) as object;
+}
+
+export async function registerRepository(input: unknown) {
+  const data = RegisterRepoInputSchema.parse(input);
+
+  return prisma.repository.upsert({
+    where: { path: data.path },
+    create: {
+      path: data.path,
+      gitRemote: data.gitRemote,
+      manifest: data.manifest ? toJson(data.manifest) : undefined,
+      stagesRegistry: data.stagesRegistry ? toJson(data.stagesRegistry) : undefined,
+      lastSyncAt: new Date(),
+    },
+    update: {
+      gitRemote: data.gitRemote,
+      manifest: data.manifest ? toJson(data.manifest) : undefined,
+      stagesRegistry: data.stagesRegistry ? toJson(data.stagesRegistry) : undefined,
+      lastSyncAt: new Date(),
+    },
+  });
+}
+
+export async function listRepositories() {
+  return prisma.repository.findMany({
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      _count: { select: { runs: true, slots: true } },
+    },
+  });
+}
+
+export async function getRepository(id: string) {
+  return prisma.repository.findUnique({
+    where: { id },
+    include: {
+      slots: { orderBy: { slotId: 'asc' } },
+      runs: { orderBy: { startedAt: 'desc' }, take: 20 },
+    },
+  });
+}
+
+export async function syncRuns(repositoryId: string, input: unknown) {
+  const { runs } = SyncRunsInputSchema.parse(input);
+
+  for (const run of runs) {
+    const parsed = RunRecordSchema.parse(run);
+    await prisma.run.upsert({
+      where: { repositoryId_runId: { repositoryId, runId: parsed.runId } },
+      create: {
+        runId: parsed.runId,
+        repositoryId,
+        stageId: parsed.stageId,
+        kind: parsed.kind,
+        agentId: parsed.agentId,
+        status: parsed.status,
+        trigger: parsed.trigger,
+        durationMs: parsed.durationMs,
+        startedAt: new Date(parsed.startedAt),
+        finishedAt: parsed.finishedAt ? new Date(parsed.finishedAt) : null,
+        workDir: parsed.workDir,
+        result: parsed.result ? toJson(parsed.result) : undefined,
+      },
+      update: {
+        status: parsed.status,
+        durationMs: parsed.durationMs,
+        finishedAt: parsed.finishedAt ? new Date(parsed.finishedAt) : null,
+        workDir: parsed.workDir,
+        result: parsed.result ? toJson(parsed.result) : undefined,
+      },
+    });
+  }
+
+  await prisma.repository.update({
+    where: { id: repositoryId },
+    data: { lastSyncAt: new Date() },
+  });
+
+  return { synced: runs.length };
+}
+
+export async function syncSlots(repositoryId: string, input: unknown) {
+  const { slots } = SyncSlotsInputSchema.parse(input);
+
+  for (const slot of slots) {
+    const parsed = AgentSlotStatusSchema.parse(slot);
+    await prisma.agentSlot.upsert({
+      where: { repositoryId_slotId: { repositoryId, slotId: parsed.agentId } },
+      create: {
+        repositoryId,
+        slotId: parsed.agentId,
+        active: parsed.active,
+        workDir: parsed.workDir,
+        worktreePath: parsed.worktreePath,
+        branch: parsed.branch,
+        previewUrls: parsed.previewUrls ?? undefined,
+        harnessUsage: parsed.harnessUsage,
+        lastRunId: parsed.lastRunId,
+        lastRunAt: parsed.lastRunAt ? new Date(parsed.lastRunAt) : null,
+        lastVerifyStatus: parsed.lastVerifyStatus,
+        lastBuildPass: parsed.lastBuildPass,
+      },
+      update: {
+        active: parsed.active,
+        workDir: parsed.workDir,
+        worktreePath: parsed.worktreePath,
+        branch: parsed.branch,
+        previewUrls: parsed.previewUrls ?? undefined,
+        harnessUsage: parsed.harnessUsage,
+        lastRunId: parsed.lastRunId,
+        lastRunAt: parsed.lastRunAt ? new Date(parsed.lastRunAt) : null,
+        lastVerifyStatus: parsed.lastVerifyStatus,
+        lastBuildPass: parsed.lastBuildPass,
+      },
+    });
+  }
+
+  return { synced: slots.length };
+}
+
+export async function listRuns(repositoryId: string, limit = 50) {
+  return prisma.run.findMany({
+    where: { repositoryId },
+    orderBy: { startedAt: 'desc' },
+    take: limit,
+  });
+}
+
+export async function getRun(repositoryId: string, runId: string) {
+  return prisma.run.findUnique({
+    where: { repositoryId_runId: { repositoryId, runId } },
+  });
+}
+
+export async function getRepositoryHealth(repositoryId: string) {
+  const repo = await prisma.repository.findUnique({ where: { id: repositoryId } });
+  if (!repo) return null;
+
+  const recentRuns = await prisma.run.findMany({
+    where: { repositoryId },
+    orderBy: { startedAt: 'desc' },
+    take: 100,
+  });
+
+  const verifyRuns = recentRuns.filter((r) => r.stageId === 'verify');
+  const passCount = verifyRuns.filter((r) => r.status === 'pass').length;
+  const mcpCount = recentRuns.filter((r) => r.trigger === 'mcp').length;
+  const cliCount = recentRuns.filter((r) => r.trigger === 'cli').length;
+  const scriptCount = recentRuns.filter((r) => r.trigger === 'script').length;
+
+  return {
+    repositoryId,
+    manifest: repo.manifest,
+    lastSyncAt: repo.lastSyncAt,
+    harnessAdoption: {
+      total: recentRuns.length,
+      mcp: mcpCount,
+      cli: cliCount,
+      script: scriptCount,
+      mcpPercent: recentRuns.length ? Math.round((mcpCount / recentRuns.length) * 100) : 0,
+    },
+    verificationTrend: {
+      total: verifyRuns.length,
+      pass: passCount,
+      fail: verifyRuns.length - passCount,
+      passRate: verifyRuns.length ? Math.round((passCount / verifyRuns.length) * 100) : 0,
+    },
+  };
+}
+
+export async function getVerificationTrend(repositoryId: string, days = 14) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const runs = await prisma.run.findMany({
+    where: {
+      repositoryId,
+      stageId: 'verify',
+      startedAt: { gte: since },
+    },
+    orderBy: { startedAt: 'asc' },
+  });
+
+  return runs.map((r) => ({
+    date: r.startedAt.toISOString().slice(0, 10),
+    status: r.status,
+    durationMs: r.durationMs,
+    agentId: r.agentId,
+  }));
+}

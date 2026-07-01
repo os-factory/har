@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Repository {
+  id              String      @id @default(uuid())
+  path            String      @unique
+  gitRemote       String?
+  manifest        Json?
+  stagesRegistry  Json?
+  lastSyncAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  slots           AgentSlot[]
+  runs            Run[]
+}
+
+model AgentSlot {
+  id               String     @id @default(uuid())
+  repositoryId     String
+  repository       Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  slotId           Int
+  active           Boolean    @default(false)
+  workDir          String?
+  worktreePath     String?
+  branch           String?
+  previewUrls      Json?
+  harnessUsage     String     @default("none")
+  lastRunId        String?
+  lastRunAt        DateTime?
+  lastVerifyStatus String?
+  lastBuildPass    Boolean?
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([repositoryId, slotId])
+}
+
+model Run {
+  id           String     @id @default(uuid())
+  runId        String
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  stageId      String
+  kind         String?
+  agentId      Int?
+  status       String
+  trigger      String
+  durationMs   Int?
+  startedAt    DateTime
+  finishedAt   DateTime?
+  workDir      String?
+  result       Json?
+  createdAt    DateTime   @default(now())
+
+  @@unique([repositoryId, runId])
+  @@index([repositoryId, startedAt])
+}
+
+model CloudConfig {
+  id        String   @id @default("default")
+  apiKey    String?
+  apiUrl    String?
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}

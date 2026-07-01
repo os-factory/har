@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: har
+      POSTGRES_PASSWORD: har
+      POSTGRES_DB: har_control
+    ports:
+      - "5433:5432"
+    volumes:
+      - har_control_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U har -d har_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ..
+      dockerfile: control/Dockerfile
+    ports:
+      - "3847:3847"
+    environment:
+      DATABASE_URL: postgresql://har:har@db:5432/har_control
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  har_control_pg:
