@@ -1,6 +1,11 @@
 # Agent ${AGENT_ID} — @har/cli Development
 
-> See also [`AGENT.md`](../AGENT.md) and [`.har/README.md`](./README.md).
+> [`AGENT.md`](../AGENT.md) · [`.har/README.md`](./README.md) · [`stages.json`](./stages.json)
+
+## Cursor IDE
+
+If `.cursor/rules/har-workflow.mdc` exists, the harness workflow is injected into every Cursor agent session automatically.
+Run `har env maintain` to refresh it.
 
 ## Your Environment
 

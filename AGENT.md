@@ -57,6 +57,17 @@ har env maintain                  # drift report + adaptation prompt
 
 Do not use `har env init --force` on an adapted harness — it wipes customizations. See [CONTRIBUTING.md](./CONTRIBUTING.md#upgrading-har).
 
+### Cursor rule
+
+`har env init` and `har env maintain` optionally scaffold `.cursor/rules/har-workflow.mdc` in the target repo — a Cursor rule that injects the harness read-before-change / verify-before-done workflow into every agent session.
+
+```bash
+har env maintain --cursor-rule     # force-write without prompting
+har env maintain --no-cursor-rule  # skip Cursor rule scaffolding
+```
+
+When the workspace has a `.cursor/` directory and no rule yet, the CLI prompts. In CI / `--auto` mode it writes silently. The rule is refreshed automatically on every `maintain` run when it already exists.
+
 ## Architecture
 
 HAR is a layered CLI + MCP control plane. Business logic lives in `core/` and `harness/`. `cli/` and `mcp/` are thin adapters: parse input, call core, format output.

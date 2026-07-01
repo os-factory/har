@@ -1,0 +1,35 @@
+---
+description: HAR harness workflow — read before change, verify before done
+alwaysApply: true
+---
+
+# HAR Harness Workflow
+
+This repository uses a `.har/` agent harness. Follow this workflow on every change.
+
+## Before making changes
+
+1. Read [AGENT.md](./AGENT.md) at the repo root
+2. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
+3. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
+
+## After making changes
+
+Validate through the harness — do not skip verification or substitute ad-hoc npm/test commands:
+
+```bash
+./.har/launch.sh 1              # once per session if not already launched
+./.har/verify.sh 1              # typecheck + unit tests (fast loop)
+./.har/verify.sh 1 --full       # required before declaring work done (+ lint + build)
+./.har/teardown.sh 1            # cleanup when finished
+```
+
+Or via CLI: `har env verify 1` and `har env verify 1 --full`.
+
+Work happens in an isolated git worktree by default (`~/worktrees/har_project-agent-<id>`). Use `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
+
+## Definition of done
+
+- `./.har/verify.sh 1 --full` returns pass (typecheck, tests, lint, build)
+- New behavior has automated test coverage
+- Do not declare work complete without running full verify

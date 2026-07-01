@@ -24,6 +24,7 @@ Generated and maintained by [`har`](https://github.com/your-org/har). Run `har e
 | `docker-compose.agent.yml` | Shared infrastructure containers (when infra flags are enabled) |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
+| `.cursor/rules/har-workflow.mdc` | (repo root) Cursor rule — auto-injects harness workflow; created/refreshed by `har env init/maintain` |
 
 No PM2 in this profile — agents run project commands directly in their worktree.
 
@@ -80,3 +81,10 @@ har env maintain
 ```
 
 Review changes before committing. Edit scripts directly — no YAML runtime config.
+
+To create or refresh the Cursor rule:
+
+```bash
+har env maintain --cursor-rule     # force-write .cursor/rules/har-workflow.mdc
+har env maintain --no-cursor-rule  # skip Cursor rule scaffolding
+```

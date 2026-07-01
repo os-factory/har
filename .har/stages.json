@@ -29,6 +29,7 @@
       "kind": "verify",
       "description": "Run typecheck, tests, lint, and build",
       "command": "./.har/verify.sh {agentId}",
+      "acceptsArgs": ["--full"],
       "artifacts": [
         {
           "path": ".har/artifacts",
@@ -49,6 +50,12 @@
           "description": "Optional harness logs"
         }
       ]
+    },
+    {
+      "id": "logs",
+      "kind": "inspect",
+      "description": "Read recent logs for an agent slot",
+      "command": "./.har/agent-cli.sh {agentId} logs"
     },
     {
       "id": "teardown",

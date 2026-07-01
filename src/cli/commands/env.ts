@@ -9,6 +9,7 @@ import {
   writeAdaptationPrompt,
 } from '../../harness/adaptation-prompt';
 import { promptApplyAgentMdProposal, readAgentMdProposal, clearAgentMdProposal } from '../../harness/agent-md';
+import { handleCursorRule } from '../../harness/cursor-rule';
 import {
   getEnvironmentStatus,
   launchEnvironment,
@@ -58,6 +59,16 @@ export const envCommand = {
               type: 'boolean',
               default: false,
               describe: 'Skip Mission Control registration when Control API is running',
+            })
+            .option('cursor-rule', {
+              type: 'boolean',
+              default: false,
+              describe: 'Create .cursor/rules/har-workflow.mdc without prompting',
+            })
+            .option('no-cursor-rule', {
+              type: 'boolean',
+              default: false,
+              describe: 'Skip Cursor rule scaffolding',
             }),
         handleInit,
       )
@@ -74,7 +85,17 @@ export const envCommand = {
               default: false,
               describe: 'Run built-in Claude adaptation (requires ANTHROPIC_API_KEY)',
             })
-            .option('yes', { type: 'boolean', default: false, describe: 'Auto-apply AGENT.md proposal (--auto only)' }),
+            .option('yes', { type: 'boolean', default: false, describe: 'Auto-apply AGENT.md proposal (--auto only)' })
+            .option('cursor-rule', {
+              type: 'boolean',
+              default: false,
+              describe: 'Create .cursor/rules/har-workflow.mdc without prompting',
+            })
+            .option('no-cursor-rule', {
+              type: 'boolean',
+              default: false,
+              describe: 'Skip Cursor rule scaffolding',
+            }),
         handleMaintain,
       )
       .command(
@@ -190,6 +211,8 @@ export async function handleInit(argv: {
   yes: boolean;
   profile: 'default' | 'cli';
   noControl: boolean;
+  cursorRule: boolean;
+  noCursorRule: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -237,6 +260,12 @@ export async function handleInit(argv: {
     divider();
     success('Harness initialized!');
     await maybeRegisterWithControl(repoPath, { noControl: argv.noControl });
+    await handleCursorRule({
+      repoPath,
+      cursorRule: resolveCursorRuleFlag(argv.cursorRule, argv.noCursorRule),
+      autoYes: argv.yes,
+      mode: 'init',
+    });
     printNextSteps(argv.auto);
   } catch (err: unknown) {
     error((err as Error).message);
@@ -250,6 +279,8 @@ export async function handleMaintain(argv: {
   model?: string;
   auto: boolean;
   yes: boolean;
+  cursorRule: boolean;
+  noCursorRule: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -289,10 +320,22 @@ export async function handleMaintain(argv: {
 
     divider();
     success('Harness updated!');
+    await handleCursorRule({
+      repoPath,
+      cursorRule: resolveCursorRuleFlag(argv.cursorRule, argv.noCursorRule),
+      autoYes: argv.yes,
+      mode: 'maintain',
+    });
   } catch (err: unknown) {
     error((err as Error).message);
     process.exit(1);
   }
+}
+
+function resolveCursorRuleFlag(cursorRule: boolean, noCursorRule: boolean): boolean | undefined {
+  if (noCursorRule) return false;
+  if (cursorRule) return true;
+  return undefined;
 }
 
 function emitManualAdaptationPrompt(

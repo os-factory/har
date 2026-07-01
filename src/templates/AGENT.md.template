@@ -2,7 +2,13 @@
 
 This repository uses a **`.har/` harness** for isolated agent development.
 
-## Start here
+## Cursor IDE
+
+If `.cursor/rules/har-workflow.mdc` exists, the harness workflow (read-before-change, verify-before-done)
+is injected into every Cursor agent session automatically.
+Run `har env init` or `har env maintain` to create or refresh it.
+
+## Start here (all IDEs / first time)
 
 1. [`.har/README.md`](.har/README.md) — stages, verification, how to run
 2. [`stages.json`](.har/stages.json) — machine-readable stage registry
