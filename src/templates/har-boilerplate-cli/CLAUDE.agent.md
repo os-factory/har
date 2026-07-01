@@ -15,12 +15,12 @@
 
 ## Definition of done
 
-- [ ] `./.har/verify.sh ${AGENT_ID} --full` returns `"status": "pass"`
+- [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
 - [ ] When `stages/browser-e2e.sh` exists, full verify includes Playwright — adapt specs under `tests/` for UI changes
 - [ ] New behavior has automated test coverage
 - [ ] Changes committed with a clear message
 
-Quick loop: `./.har/verify.sh ${AGENT_ID}`
+Quick loop: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har/verify.sh ${AGENT_ID}`
 
 ## Project commands
 

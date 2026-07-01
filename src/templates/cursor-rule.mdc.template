@@ -15,16 +15,34 @@ This repository uses a `.har/` agent harness. Follow this workflow on every chan
 
 ## After making changes
 
-Validate through the harness — do not skip verification or substitute ad-hoc npm/test commands:
+Validate through the harness — do not skip verification or substitute ad-hoc npm/test commands.
+
+### 1. HAR MCP (preferred in Cursor when `.cursor/mcp.json` has the har server)
+
+- `har_launch_environment` with `agentId: 1` — once per session if not already launched
+- `har_run_verification` with `agentId: 1` — fast loop (typecheck + unit tests)
+- `har_run_verification` with `agentId: 1, full: true` — required before declaring work done
+- `har_teardown_environment` with `agentId: 1` — cleanup when finished
+
+### 2. HAR CLI (when `har` is installed)
 
 ```bash
-./.har/launch.sh 1              # once per session if not already launched
-./.har/verify.sh 1              # typecheck + unit tests (fast loop)
-./.har/verify.sh 1 --full       # required before declaring work done
-./.har/teardown.sh 1            # cleanup when finished
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
 ```
 
-Or via CLI: `har env verify 1` and `har env verify 1 --full`.
+### 3. Shell fallback (no CLI/MCP installed)
+
+```bash
+./.har/launch.sh 1
+./.har/verify.sh 1
+./.har/verify.sh 1 --full
+./.har/teardown.sh 1
+```
+
+If your IDE workspace is a git worktree, pass `--repo /path/to/main/checkout` to CLI commands and use the same `repo` in MCP config. Run JSON stays in the main checkout `.har/runs/`.
 
 ## UI changes
 
@@ -32,6 +50,6 @@ When the Playwright stage is installed (`.har/stages/browser-e2e.sh` exists), ad
 
 ## Definition of done
 
-- `./.har/verify.sh 1 --full` returns pass
+- Full verification returns pass (`har env verify 1 --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh 1 --full`)
 - New behavior has automated test coverage
 - Do not declare work complete without running full verify

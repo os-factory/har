@@ -564,8 +564,8 @@ function printNextSteps(auto: boolean): void {
     console.error('  Agent guide:  AGENT.md (repo root, if applied)');
   }
   console.error('  Setup infra:  ./.har/setup-infra.sh   # when Docker infra is enabled');
-  console.error('  Launch:       ./.har/launch.sh 1       # git worktree by default');
-  console.error('  Verify:       ./.har/verify.sh 1');
+  console.error('  Launch:       har env launch 1        # preferred; or ./.har/launch.sh 1');
+  console.error('  Verify:       har env verify 1         # preferred; or ./.har/verify.sh 1');
   console.error('  Maintain:     har env maintain');
   console.error('  MCP server:   har mcp');
   console.error('');

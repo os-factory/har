@@ -36,7 +36,8 @@ describe('cursor-rule', () => {
     expect(cursorRuleExists(tmpDir)).toBe(true);
     const content = fs.readFileSync(rulePath, 'utf8');
     expect(content).toContain('alwaysApply: true');
-    expect(content).toContain('./.har/verify.sh 1 --full');
+    expect(content).toContain('har env verify 1 --full');
+    expect(content).toContain('har_run_verification');
     expect(content).toContain('HAR Harness Workflow');
   });
 

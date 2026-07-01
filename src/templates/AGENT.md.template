@@ -14,6 +14,11 @@ Run `har env init` or `har env maintain` to create or refresh it.
 2. [`stages.json`](.har/stages.json) — machine-readable stage registry
 3. [`.har/CLAUDE.agent.md`](.har/CLAUDE.agent.md) — definition of done (after `launch`)
 
+## Harness workflow
+
+Prefer **HAR MCP tools** (Cursor) or **`har env launch/verify/teardown`** — they persist run history under `.har/runs/`.
+Use `./.har/*.sh` only when the CLI is not installed.
+
 ## Project-specific notes
 
 <!-- Adapt when customizing the harness (see .har/ADAPT-PROMPT.md) -->

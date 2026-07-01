@@ -15,21 +15,37 @@ This repository uses a `.har/` agent harness. Follow this workflow on every chan
 
 ## After making changes
 
-Validate through the harness — do not skip verification or substitute ad-hoc npm/test commands:
+Validate through the harness — do not skip verification or substitute ad-hoc npm/test commands.
+
+### 1. HAR MCP (preferred — configured in `.cursor/mcp.json`)
+
+- `har_launch_environment` with `agentId: 1` — once per session if not already launched
+- `har_run_verification` with `agentId: 1` — fast loop (typecheck + unit tests)
+- `har_run_verification` with `agentId: 1, full: true` — required before declaring work done (+ lint + build)
+- `har_teardown_environment` with `agentId: 1` — cleanup when finished
+
+### 2. HAR CLI (when `har` is installed)
 
 ```bash
-./.har/launch.sh 1              # once per session if not already launched
-./.har/verify.sh 1              # typecheck + unit tests (fast loop)
-./.har/verify.sh 1 --full       # required before declaring work done (+ lint + build)
-./.har/teardown.sh 1            # cleanup when finished
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
 ```
 
-Or via CLI: `har env verify 1` and `har env verify 1 --full`.
+### 3. Shell fallback (no CLI/MCP installed)
 
-Work happens in an isolated git worktree by default (`~/worktrees/har_project-agent-<id>`). Use `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
+```bash
+./.har/launch.sh 1
+./.har/verify.sh 1
+./.har/verify.sh 1 --full
+./.har/teardown.sh 1
+```
+
+Work happens in an isolated git worktree by default (`~/worktrees/har_project-agent-<id>`). If your IDE workspace is the worktree, pass `--repo /path/to/main/checkout` to CLI commands; MCP is already configured with the main checkout path.
 
 ## Definition of done
 
-- `./.har/verify.sh 1 --full` returns pass (typecheck, tests, lint, build)
-- New behavior has automated test coverage
+- Full verification returns pass (`har env verify 1 --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh 1 --full`)
+- New behavior has automated test coverage (typecheck, tests, lint, build)
 - Do not declare work complete without running full verify

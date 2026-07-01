@@ -29,6 +29,19 @@ No PM2 or `ecosystem.agent.template.cjs` in this profile — agents run project 
 
 ## Quick start
 
+**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+
+```bash
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
+```
+
+In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
+
+**Shell fallback** (no CLI/MCP installed):
+
 ```bash
 ./.har/setup-infra.sh          # when infra flags are on
 ./.har/launch.sh 1
@@ -43,18 +56,10 @@ Read **`stages.json`** and **`verificationStages`**. Optional: `har env add-stag
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `verify.sh <id>` | typecheck, unit tests |
-| Full | `verify.sh <id> --full` | + lint, build, **browser-e2e** when `stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | typecheck, unit tests |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint, build, **browser-e2e** when `stages/browser-e2e.sh` exists |
 
-Use `./.har/launch.sh 1 --no-worktree` only when working in the repo root.
-
-## har CLI
-
-```bash
-har env launch 1
-har env verify 1
-har env teardown 1
-```
+Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when working in the repo root.
 
 ## Run history
 
@@ -69,7 +74,9 @@ With worktree slots, tests run in the worktree; run JSON lives in the main repo.
 
 **Start here:** read [`AGENT.md`](../AGENT.md) at the repo root for a short pointer, then [`.har/CLAUDE.agent.md`](./CLAUDE.agent.md) for full instructions.
 
-Work in the isolated git worktree created by `launch.sh`. Use `./.har/agent-cli.sh <id> exec ...` to run project commands in that work dir.
+Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.har/*.sh` only when the CLI is not installed.
+
+Work in the isolated git worktree created by launch. Use `./.har/agent-cli.sh <id> exec ...` to run ad-hoc project commands in that work dir.
 
 When the project needs Postgres, MinIO, or similar, enable the matching `HARNESS_INFRA_*` flags in `harness.env` and use `setup-infra.sh` — never run raw `docker compose` for shared infra.
 

@@ -42,8 +42,9 @@ When upgrading `@har/cli` or adopting new harness standards:
 If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENT.md`:
 
 - Links to `.har/README.md` and `.har/CLAUDE.agent.md`
-- Essential `./.har/*` commands and `har env …` for run history
-- Run history rules (shell vs CLI, worktree vs `.har/runs/` location)
+- Preferred: HAR MCP tools or `har env …` (persists run history)
+- Fallback: `./.har/*` shell scripts (when CLI is not installed)
+- Run history rules (shell vs CLI/MCP, worktree vs `.har/runs/` location)
 - Agent rules (ports, agent-cli.sh, isolation)
 - Project-specific notes
 

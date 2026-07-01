@@ -42,10 +42,11 @@ har env init
 git add .har/ AGENT.md
 git commit -m "Add agent harness"
 
-./.har/setup-infra.sh
-./.har/launch.sh 1
-./.har/verify.sh 1
+har env launch 1
+har env verify 1
 ```
+
+Shell fallback when the CLI is not installed: `./.har/setup-infra.sh`, `./.har/launch.sh 1`, `./.har/verify.sh 1`.
 
 For built-in Claude adaptation (requires `ANTHROPIC_API_KEY`): `har env init --auto`.
 
@@ -173,6 +174,6 @@ HAR Cloud should coordinate and observe the factory. The repo-owned `.har/` cont
 
 ## For Coding Agents
 
-Agents should read **`AGENT.md`** first, then **`.har/README.md`**. They run `./.har/*` scripts — not `har` CLI directly during coding.
+Agents should read **`AGENT.md`** first, then **`.har/README.md`**. Prefer **HAR MCP tools** (in Cursor) or **`har env …`** for launch, verify, and teardown — they persist run history. Use `./.har/*.sh` only when the CLI is not installed.
 
 Inspired by [Lightdash's agent-harness](https://github.com/lightdash/lightdash/tree/main/agent-harness).

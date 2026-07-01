@@ -30,6 +30,19 @@ No PM2 in this profile — agents run project commands directly in their worktre
 
 ## Quick start
 
+**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+
+```bash
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
+```
+
+In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
+
+**Shell fallback** (no CLI/MCP installed):
+
 ```bash
 # 1. Optional shared infrastructure (when HARNESS_INFRA_* flags are true)
 ./.har/setup-infra.sh
@@ -47,15 +60,7 @@ No PM2 in this profile — agents run project commands directly in their worktre
 ./.har/teardown.sh 1
 ```
 
-Use `./.har/launch.sh 1 --no-worktree` only when you intentionally want to work in the repo root checkout.
-
-Or via the har CLI:
-
-```bash
-har env launch 1
-har env verify 1
-har env teardown 1
-```
+Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when you intentionally want to work in the repo root checkout.
 
 ## Run history
 
@@ -70,7 +75,9 @@ Worktree slots run code in `~/worktrees/har_project-agent-<id>`; run JSON stays 
 
 **Start here:** read [`AGENT.md`](../AGENT.md) at the repo root, then [`.har/CLAUDE.agent.md`](./CLAUDE.agent.md).
 
-Work in the isolated git worktree created by `launch.sh`. Use `./.har/agent-cli.sh <id> exec ...` for project commands in that work dir.
+Prefer HAR MCP tools or `har env …` for launch, verify, and teardown — they persist run history. Use `./.har/*.sh` only when the CLI is not installed.
+
+Work in the isolated git worktree created by launch. Use `./.har/agent-cli.sh <id> exec ...` for ad-hoc project commands in that work dir.
 
 ## Maintaining this harness
 

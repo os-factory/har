@@ -160,7 +160,19 @@ har env init
 
 ### After init — run the harness
 
-Either use the shell scripts directly (what coding agents do):
+**Preferred — har CLI or MCP** (persists run history):
+
+```bash
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
+har env status
+```
+
+In Cursor: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
+
+**Shell fallback** (no CLI/MCP installed):
 
 ```bash
 ./.har/setup-infra.sh
@@ -168,17 +180,6 @@ Either use the shell scripts directly (what coding agents do):
 ./.har/verify.sh 1
 ./.har/teardown.sh 1
 ```
-
-Or use the CLI wrappers:
-
-```bash
-har env launch 1
-har env verify 1
-har env teardown 1
-har env status
-```
-
-Use `har env verify` (not `./.har/verify.sh`) when you want run records under `.har/runs/`.
 
 ## Upgrading HAR
 
@@ -188,7 +189,7 @@ When a new `@har/cli` release changes harness templates or run storage:
 npm install -g @har/cli@latest    # updates CLI/MCP/run storage — does not touch project .har/
 har env maintain                  # validation + drift report + adaptation prompt
 # apply updates with your coding agent (paste .har/ADAPT-PROMPT.md) or: har env maintain --auto
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```
 
 | Command | Effect | Risk |

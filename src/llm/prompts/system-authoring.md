@@ -59,7 +59,8 @@ As needed for the project's infra.
 ### `AGENT.md` (repo root — via proposeAgentMd only)
 Short pointer document. Structure:
 - Link to `.har/README.md` and `.har/CLAUDE.agent.md`
-- Essential commands (`./.har/launch.sh`, `./.har/verify.sh`, etc.)
+- Preferred: HAR MCP tools or `har env launch/verify/teardown`
+- Fallback: `./.har/launch.sh`, `./.har/verify.sh`, etc. (when CLI is not installed)
 - Rules (no hardcoded ports, use agent-cli.sh)
 - Project-specific notes section
 

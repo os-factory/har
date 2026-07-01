@@ -26,18 +26,29 @@ Run `har env maintain` to refresh it.
 ./.har/agent-cli.sh ${AGENT_ID} exec npm run build
 ```
 
-Harness scripts (`.har/*`) always run from the main repo checkout; project commands run in your work dir.
+Harness control-plane commands (MCP / `har env`) target the main repo checkout; project commands run in your work dir.
 
 ## Verification
 
+**Preferred — MCP:** `har_run_verification` with `agentId: ${AGENT_ID}` (fast) and `full: true` (required before done).
+
+**CLI:**
+
 ```bash
-./.har/verify.sh ${AGENT_ID}          # typecheck + unit tests
-./.har/verify.sh ${AGENT_ID} --full   # + lint + build — required before done
+har env verify ${AGENT_ID}
+har env verify ${AGENT_ID} --full
+```
+
+**Shell fallback:**
+
+```bash
+./.har/verify.sh ${AGENT_ID}
+./.har/verify.sh ${AGENT_ID} --full
 ```
 
 ## Definition of Done
 
-- [ ] `./.har/verify.sh ${AGENT_ID} --full` returns `"status": "pass"`
+- [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
 - [ ] Tests cover the change
 - [ ] No type errors, no lint warnings
 - [ ] Changes committed in your worktree with a clear message
@@ -45,7 +56,7 @@ Harness scripts (`.har/*`) always run from the main repo checkout; project comma
 ## What NOT To Do
 
 - **Do NOT** edit the main checkout while your worktree is active — work in the slot work dir
-- **Do NOT** run ad-hoc `npm test` from the repo root — use `./.har/verify.sh` or `agent-cli.sh exec`
+- **Do NOT** run ad-hoc `npm test` from the repo root — use MCP/`har env verify` or `agent-cli.sh exec`
 - **Do NOT** edit `.env.agent.${AGENT_ID}` manually
 
 ## Architecture notes

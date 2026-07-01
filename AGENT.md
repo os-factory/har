@@ -8,16 +8,16 @@ This repo **dogfoods HAR** — `.har/` at the repo root defines how coding agent
 
 ## Harness workflow (dogfooding)
 
-After making changes, validate through the harness (not ad-hoc shell commands):
+After making changes, validate through the harness (not ad-hoc shell commands).
 
-```bash
-./.har/launch.sh 1          # once per session — worktree + deps + .env.agent.1
-./.har/verify.sh 1          # typecheck + unit tests (fast)
-./.har/verify.sh 1 --full   # + lint + build (before declaring done)
-./.har/teardown.sh 1        # cleanup when finished
-```
+**Preferred — HAR MCP** (Cursor, configured in [`.cursor/mcp.json`](.cursor/mcp.json)):
 
-Or via the CLI:
+- `har_launch_environment` with `agentId: 1` — once per session
+- `har_run_verification` with `agentId: 1` — typecheck + unit tests (fast)
+- `har_run_verification` with `agentId: 1, full: true` — + lint + build (before declaring done)
+- `har_teardown_environment` with `agentId: 1` — cleanup
+
+**CLI** (when `har` is installed):
 
 ```bash
 har env launch 1
@@ -26,9 +26,16 @@ har env verify 1 --full
 har env teardown 1
 ```
 
-Work happens in an isolated git worktree by default (`~/worktrees/<project>-agent-<id>`). Use `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
+**Shell fallback** (no CLI/MCP — scripts still work):
 
-MCP (Cursor): configured in [`.cursor/mcp.json`](.cursor/mcp.json) — agents can call `har_run_stage` with `verify` instead of running npm directly.
+```bash
+./.har/launch.sh 1
+./.har/verify.sh 1
+./.har/verify.sh 1 --full
+./.har/teardown.sh 1
+```
+
+Work happens in an isolated git worktree by default (`~/worktrees/<project>-agent-<id>`). Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
 
 See [`.har/README.md`](.har/README.md) for harness details.
 
@@ -42,9 +49,9 @@ See [`.har/README.md`](.har/README.md) for harness details.
 
 Run records are stored under the **main checkout** `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (local date/time). With worktree slots, tests run in the worktree but run JSON stays in the main repo; each record includes a `workDir` field.
 
-Prefer `har env verify 1` when you want persisted run history. Use `./.har/verify.sh 1` for fast agent workflows without recording.
+Use MCP or `har env verify` by default — they persist run history. Use `./.har/*.sh` only when the CLI is not installed.
 
-If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `har env` commands.
+If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `har env` commands (MCP config already points at the main checkout).
 
 ## Upgrading HAR
 
@@ -52,7 +59,7 @@ If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `ha
 npm install -g @har/cli@latest    # updates CLI/MCP/run storage only
 har env maintain                  # drift report + adaptation prompt
 # apply updates via coding agent or: har env maintain --auto
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```
 
 Do not use `har env init --force` on an adapted harness — it wipes customizations. See [CONTRIBUTING.md](./CONTRIBUTING.md#upgrading-har).
@@ -151,9 +158,11 @@ Design for a closed core with open seams — do not build a full plugin registry
 ## Before finishing
 
 ```bash
-./.har/launch.sh 1              # if not already launched this session
-./.har/verify.sh 1              # typecheck + unit tests
-./.har/verify.sh 1 --full       # + lint + build — required before declaring done
+har env launch 1                # if not already launched this session
+har env verify 1                # typecheck + unit tests
+har env verify 1 --full         # + lint + build — required before declaring done
 ```
+
+Or use MCP `har_run_verification` (preferred in Cursor). Shell fallback: `./.har/verify.sh 1 --full`.
 
 If you changed `src/templates/`: `npm run build`, then `har env init --force --profile cli` on a fixture (or `--profile default` for web apps).

@@ -30,6 +30,19 @@ Generated and maintained by [`har`](https://github.com/your-org/har). Run `har e
 
 ## Quick start
 
+**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+
+```bash
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
+```
+
+In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
+
+**Shell fallback** (no CLI/MCP installed):
+
 ```bash
 ./.har/setup-infra.sh          # when Docker infra flags are on
 ./.har/launch.sh 1
@@ -44,18 +57,10 @@ Read **`stages.json`** for registered stages and **`verificationStages`** for th
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `verify.sh <id>` | Project checks in `verify.sh` (stops early on failure) |
-| Full | `verify.sh <id> --full` | Quick steps + lint + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | Project checks in `verify.sh` (stops early on failure) |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | Quick steps + lint + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
 
 Install Playwright stage: `har env add-stage playwright` (optional). UI changes should add or update specs under `tests/`.
-
-## Quick start (har CLI)
-
-```bash
-har env launch 1
-har env verify 1
-har env teardown 1
-```
 
 ## Run history
 
@@ -70,7 +75,9 @@ With git worktree slots, verification runs code in the worktree but run JSON sta
 
 1. Read repo [`AGENT.md`](../AGENT.md)
 2. Read this file and `stages.json`
-3. After `launch`, read `.har/CLAUDE.agent.md` for slot URLs and definition of done
+3. After launch, read `.har/CLAUDE.agent.md` for slot URLs and definition of done
+
+Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.har/*.sh` only when the CLI is not installed.
 
 Always use `./.har/agent-cli.sh <id> ...` — never hardcoded ports.
 

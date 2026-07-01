@@ -67,7 +67,8 @@ Coding agents discover the harness through two files:
 If **no `AGENT.md` exists**, create one at the repo root using this structure:
 
 - Link to `.har/README.md` and `.har/CLAUDE.agent.md`
-- Essential commands (`./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh`, etc.)
+- Preferred commands: HAR MCP tools or `har env launch/verify/teardown` (persists run history)
+- Shell fallback: `./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh` (when CLI is not installed)
 - Rules (no hardcoded ports, use `./.har/agent-cli.sh`, do not touch other agents' resources)
 - Project-specific notes (stack, credentials, definition of done)
 
@@ -78,6 +79,7 @@ Include a **Run history** subsection:
 - `./.har/*.sh` does not write run records
 - `har env …` and MCP write to `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json`
 - With worktrees, code runs in the worktree but run JSON lives in the main checkout `.har/runs/`
+- Document MCP/CLI as the preferred agent interface; shell scripts as fallback
 
 ## Rules
 
@@ -87,4 +89,4 @@ Include a **Run history** subsection:
 4. Replace all TODO placeholders
 5. Do not edit `.har/manifest.json` — managed by the har CLI
 
-When finished, summarize what you changed and confirm `./.har/verify.sh 1` commands are correct for this stack.
+When finished, summarize what you changed and confirm verification commands (`har env verify 1 --full` or `./.har/verify.sh 1 --full`) are correct for this stack.
