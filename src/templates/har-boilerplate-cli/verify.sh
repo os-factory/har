@@ -84,11 +84,12 @@ process.stdout.write(JSON.stringify(arr));
 }
 
 run_step "typecheck" "npm run typecheck" || { [ -z "$FULL" ] && true; }
+# Some unit tests exec dist/index.js (e.g. stage-templates CLI add-stage).
+run_step "build" "npm run build" || { [ -z "$FULL" ] && true; }
 run_step "unit-tests" "npm test" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
   run_step "lint" "npm run lint" || true
-  run_step "build" "npm run build" || true
   run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
 fi
 

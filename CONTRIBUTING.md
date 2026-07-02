@@ -16,7 +16,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 ## Setup
 
 ```bash
-git clone <repo-url> har-project
+git clone https://github.com/os-factory/har har-project
 cd har-project
 npm install
 npm run build

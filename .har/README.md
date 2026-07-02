@@ -2,7 +2,7 @@
 
 This directory is the **agent harness** for this repository. It lets AI coding agents run `@har/cli` in isolated git worktrees with optional Docker-backed shared infra.
 
-Generated and maintained by [`har`](https://github.com/your-org/har). Run `har env maintain` when the repo stack changes.
+Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har env maintain` when the repo stack changes.
 
 ## What's in here
 

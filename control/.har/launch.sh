@@ -96,10 +96,19 @@ if [ -f "$WORK_DIR/package.json" ] && [ ! -d "$WORK_DIR/node_modules" ]; then
   (cd "$WORK_DIR" && npm install --silent)
 fi
 
-# Monorepo: @har/schemas (file:../packages/schemas) resolves zod etc. from the repo root — install there too
+# Monorepo: install root deps for worktrees that include the full repo checkout
 if [ -n "${REL_PREFIX:-}" ] && [ -f "$WORKTREE_DIR/package.json" ] && [ ! -d "$WORKTREE_DIR/node_modules" ]; then
   log "Installing monorepo root dependencies in $WORKTREE_DIR..."
   (cd "$WORKTREE_DIR" && npm install --silent)
+fi
+
+# @har/schemas is linked via file:../packages/schemas — tsc resolves zod from that package dir
+if [ -d "$WORK_DIR/../packages/schemas" ]; then
+  SCHEMAS_DIR="$(cd "$WORK_DIR/../packages/schemas" && pwd)"
+  if [ -f "$SCHEMAS_DIR/package.json" ] && [ ! -d "$SCHEMAS_DIR/node_modules" ]; then
+    log "Installing @har/schemas dependencies in $SCHEMAS_DIR..."
+    (cd "$SCHEMAS_DIR" && npm install --silent)
+  fi
 fi
 
 # Generate .env.agent.N

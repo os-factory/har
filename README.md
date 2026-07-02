@@ -26,7 +26,7 @@ npm install -g @har/cli
 **From source** (local development):
 
 ```bash
-git clone <repo-url> har-project && cd har-project
+git clone https://github.com/os-factory/har har-project && cd har-project
 npm install && npm run build && npm link
 ```
 

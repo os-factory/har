@@ -2,7 +2,7 @@
 
 This directory is the **agent harness** for this repository. It lets AI coding agents (Cursor, Claude Code, etc.) run the project in isolated environments with their own ports, database, and verification workflow.
 
-Generated and maintained by [`har`](https://github.com/your-org/har). Run `har env maintain` when the repo stack changes.
+Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har env maintain` when the repo stack changes.
 
 **The harness is how you run this app.** Need Mission Control live — manual testing, a browser session, screenshots? `docker compose up -d db`, then `launch` a slot; don't hand-roll dev-server startup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
 
