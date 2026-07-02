@@ -30,7 +30,7 @@ git clone <repo-url> har-project && cd har-project
 npm install && npm run build && npm link
 ```
 
-See [AGENT.md](./AGENT.md) for architecture and coding-agent guidance, and [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development workflow, testing on sample projects, and project layout.
+See [AGENT.md](./AGENT.md) for architecture and coding-agent guidance, and [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development workflow, testing on sample projects, and project layout. To report security issues, see [SECURITY.md](./SECURITY.md).
 
 ## Quick start
 
@@ -175,5 +175,13 @@ HAR Cloud should coordinate and observe the factory. The repo-owned `.har/` cont
 ## For Coding Agents
 
 Agents should read **`AGENT.md`** first, then **`.har/README.md`**. Prefer **HAR MCP tools** (in Cursor) or **`har env …`** for launch, verify, and teardown — they persist run history. Use `./.har/*.sh` only when the CLI is not installed.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
+
+## Security
+
+Report vulnerabilities via [SECURITY.md](./SECURITY.md) (GitHub private advisory preferred).
 
 Inspired by [Lightdash's agent-harness](https://github.com/lightdash/lightdash/tree/main/agent-harness).

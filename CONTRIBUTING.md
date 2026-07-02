@@ -4,6 +4,8 @@ Guide for developing the CLI locally and testing it against real (or sample) rep
 
 **Coding agents:** read [AGENT.md](./AGENT.md) first for architecture rules, where to put changes, and extension points. This file covers setup, workflow, and PR details.
 
+By participating in this project, you agree to abide by our [Code of Conduct](./CODE_OF_CONDUCT.md).
+
 ## Prerequisites
 
 - **Node.js ≥ 20**
