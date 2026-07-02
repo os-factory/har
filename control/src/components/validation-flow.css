@@ -1,0 +1,69 @@
+/* Theme overrides for @xyflow/react so the flow canvas matches Mission
+ * Control's shadcn design tokens instead of the library's default palette. */
+.har-flow-canvas .react-flow__handle {
+  border-radius: 9999px;
+}
+
+.har-flow-canvas .react-flow__edge-path {
+  stroke-width: 1.75px;
+}
+
+.har-flow-canvas .react-flow__attribution {
+  display: none;
+}
+
+.har-flow-canvas .react-flow__background {
+  background-color: hsl(var(--muted) / 0.25);
+}
+
+.har-flow-canvas .react-flow__controls {
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: none;
+  border: 1px solid hsl(var(--border));
+}
+
+.har-flow-canvas .react-flow__controls-button {
+  background-color: hsl(var(--background));
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.har-flow-canvas .react-flow__controls-button:hover {
+  background-color: hsl(var(--muted));
+}
+
+.har-flow-canvas .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.har-flow-canvas .react-flow__minimap {
+  width: 72px !important;
+  height: 54px !important;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--background));
+  box-shadow: none;
+  cursor: pointer;
+  transform-origin: bottom right;
+  transition:
+    width 0.2s ease,
+    height 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.har-flow-canvas .react-flow__minimap:hover {
+  width: 200px !important;
+  height: 150px !important;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 0.08);
+  z-index: 10;
+}
+
+.har-flow-canvas .react-flow__minimap svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ChangeBatchList } from '@/components/change-batch-list';
 import { RunTimeline } from '@/components/run-timeline';
 import { SlotGrid } from '@/components/slot-grid';
+import { ValidationPipeline } from '@/components/validation-pipeline';
 import { ValidationStages } from '@/components/validation-stages';
 import { VerificationTrendChart } from '@/components/verification-trend-chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -158,8 +159,15 @@ export default async function RepoDetailPage({
                   ` — last verify ${validation.latestRun.startedAt.toLocaleString()} (${validation.latestRun.status})`}
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <ValidationStages stages={validation?.stages ?? []} />
+            <CardContent className="space-y-10">
+              <ValidationPipeline
+                stages={validation?.stages ?? []}
+                verifyRunCount={validation?.verifyRunCount ?? 0}
+              />
+              <div>
+                <h4 className="mb-4 text-sm font-medium text-muted-foreground">Stage history</h4>
+                <ValidationStages stages={validation?.stages ?? []} />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
