@@ -107,7 +107,7 @@ export class RunService {
         durationMs,
       });
 
-      syncRepoWithControlAsync(options.repoPath);
+      await syncRepoWithControlAsync(options.repoPath);
 
       const data =
         typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
@@ -189,7 +189,7 @@ export class RunService {
           runId,
           agentId: options.agentId,
         });
-        syncRepoWithControlAsync(options.repoPath);
+        await syncRepoWithControlAsync(options.repoPath);
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
       }

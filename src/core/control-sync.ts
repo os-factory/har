@@ -140,16 +140,42 @@ async function syncRepoRunsAndSlots(
   }
 }
 
-/** Fire-and-forget sync after harness operations. Never throws. */
-export function syncRepoWithControlAsync(repoPath: string): void {
+const SYNC_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Best-effort sync after harness operations. Never rejects.
+ *
+ * Callers MUST await this before returning control to the CLI: commands call
+ * process.exit() as soon as their work resolves, which kills any still-pending
+ * fetch — a fire-and-forget sync is silently dropped.
+ */
+export async function syncRepoWithControlAsync(repoPath: string): Promise<void> {
   if (process.env.HAR_CONTROL_DISABLED === 'true' || process.env.NODE_ENV === 'test') return;
 
-  void syncRepoWithControl({ repoPath }).catch((err: unknown) => {
-    if (process.env.HAR_CONTROL_VERBOSE === 'true') {
+  const verbose = process.env.HAR_CONTROL_VERBOSE === 'true';
+  try {
+    const apiUrl = getControlApiUrl();
+    if (!(await isControlApiReachable(apiUrl))) {
+      if (verbose) {
+        process.stderr.write(`[har control] sync skipped: control API not reachable at ${apiUrl}\n`);
+      }
+      return;
+    }
+    await withTimeout(syncRepoWithControl({ repoPath, apiUrl }), SYNC_TIMEOUT_MS, 'control sync');
+  } catch (err: unknown) {
+    if (verbose) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[har control] sync skipped: ${message}\n`);
     }
-  });
+  }
 }
 
 export async function syncRunWithControlAsync(repoPath: string, run: RunRecord): Promise<void> {

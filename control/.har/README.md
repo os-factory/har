@@ -19,7 +19,7 @@ Generated and maintained by [`har`](https://github.com/your-org/har). Run `har e
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start shared Docker infra + create template database |
-| `launch.sh` | Launch one agent slot (ports, DB clone, PM2 processes) |
+| `launch.sh` | Launch one agent slot (ports, DB schema, PM2 processes) |
 | `verify.sh` | Verification pipeline (typecheck, tests, health) |
 | `teardown.sh` | Tear down one agent slot |
 | `agent-cli.sh` | Manage a running agent (status, logs, psql, health) |
@@ -88,6 +88,23 @@ Configure how many slots your machine can run in parallel in `stages.json` (`age
 | API | 8010 | 8020 |
 
 Shared infra (Postgres, MinIO, etc.) runs once on fixed ports — see `harness.env` and `docker-compose.agent.yml`.
+
+### Database
+
+This project runs with `HARNESS_INFRA_POSTGRES=false`: all slots share the Mission Control
+database from `docker-compose.yml` (`har_control` on port 5433, started with
+`docker compose up -d db`). Per-slot clone-from-template (`agent_<id>` databases) only
+applies when `HARNESS_INFRA_POSTGRES=true` in `harness.env`.
+
+`launch.sh` runs `HARNESS_DB_MIGRATE_CMD` (idempotent) on every launch, so schema changes
+are applied before the slot starts serving.
+
+### Port safety
+
+`launch.sh` refuses to start if a slot's ports are already held by a foreign process
+(e.g. the app container from `docker compose up -d`, which binds slot 1's port 3847), and
+fails if its own PM2 processes are not online after launch — a passing health check alone
+is not trusted, since it could be answered by whatever else is bound to the port.
 
 ## Maintaining this harness
 

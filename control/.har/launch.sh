@@ -125,8 +125,31 @@ DEBUG_PORT="$DEBUG_PORT" \
   envsubst '${AGENT_ID} ${FE_PORT} ${DEBUG_PORT}' \
   < "$SCRIPT_DIR/ecosystem.agent.template.cjs" > "$ECOSYSTEM_FILE"
 
+# Apply database schema (idempotent) — otherwise schema drift after a code
+# change surfaces as runtime 500s in the slot instead of a clear launch error.
+if [ -n "${HARNESS_DB_MIGRATE_CMD:-}" ] && [ "$HARNESS_DB_MIGRATE_CMD" != "true" ]; then
+  log "Applying database schema: $HARNESS_DB_MIGRATE_CMD"
+  (cd "$WORK_DIR" && set -a && . "$ENV_FILE" && set +a && eval "$HARNESS_DB_MIGRATE_CMD" >&2) || {
+    log "ERROR: database migrate command failed: $HARNESS_DB_MIGRATE_CMD"
+    exit 1
+  }
+fi
+
 # Stop existing processes for this agent
 npx --yes pm2 delete "/^agent-${AGENT_ID}-/" 2>/dev/null || true
+sleep 1
+
+# Fail loudly if a foreign process holds this slot's ports — otherwise the
+# health check below can pass against that server while ours crash-loops on
+# EADDRINUSE, and the slot silently serves someone else's code.
+port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && { exec 3>&- || true; return 0; }; return 1; }
+for PORT in $(printf '%s\n' "$FE_PORT" "$API_PORT" | sort -u); do
+  if port_in_use "$PORT"; then
+    log "ERROR: port $PORT is already in use by a process outside this slot."
+    log "Stop whatever is bound to it (another dev server, or a 'docker compose up' app container), then relaunch."
+    exit 1
+  fi
+done
 
 # Start PM2 processes
 log "Starting PM2 processes..."
@@ -153,6 +176,30 @@ if [ -n "${HARNESS_HEALTH_CHECK_PATH:-}" ]; then
     log "Warning: Health check did not pass within ${TIMEOUT}s."
     log "Check logs: ./.har/agent-cli.sh $AGENT_ID logs"
   fi
+fi
+
+# The health check only proves the port answers — confirm the processes we
+# just started are the ones running (online, not crash-looping).
+if ! npx --yes pm2 jlist 2>/dev/null | AGENT_PREFIX="agent-${AGENT_ID}-" node -e '
+let d = "";
+process.stdin.on("data", (c) => (d += c));
+process.stdin.on("end", () => {
+  const prefix = process.env.AGENT_PREFIX;
+  const procs = JSON.parse(d || "[]").filter((p) => p.name && p.name.startsWith(prefix));
+  if (procs.length === 0) {
+    console.error("no PM2 processes matching " + prefix);
+    process.exit(1);
+  }
+  const bad = procs.filter((p) => p.pm2_env.status !== "online" || p.pm2_env.restart_time >= 3);
+  for (const p of bad) {
+    console.error(p.name + ": " + p.pm2_env.status + " (restarts: " + p.pm2_env.restart_time + ")");
+  }
+  process.exit(bad.length ? 1 : 0);
+});
+'; then
+  log "ERROR: PM2 processes for agent ${AGENT_ID} are not healthy — the slot is not serving this worktree."
+  log "Check logs: ./.har/agent-cli.sh $AGENT_ID logs"
+  exit 1
 fi
 
 # Launch Claude Code in tmux (optional)

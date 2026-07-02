@@ -321,7 +321,9 @@ export function checkCommitGate(cwd: string): GateCheckResult {
 }
 
 /** Post-commit: associate the new commit with the validation for its tree. */
-export function recordCommitAssociation(cwd: string): { attached: boolean; commitSha?: string } {
+export async function recordCommitAssociation(
+  cwd: string,
+): Promise<{ attached: boolean; commitSha?: string }> {
   try {
     const checkout = resolveCheckoutRoot(cwd);
     if (!checkout) return { attached: false };
@@ -332,7 +334,7 @@ export function recordCommitAssociation(cwd: string): { attached: boolean; commi
 
     const updated = attachCommit(checkout, tree, commitSha);
     if (updated) {
-      syncRepoWithControlAsync(updated.harnessRoot);
+      await syncRepoWithControlAsync(updated.harnessRoot);
       return { attached: true, commitSha };
     }
     return { attached: false, commitSha };

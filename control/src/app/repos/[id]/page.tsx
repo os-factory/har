@@ -4,10 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ChangeBatchList } from '@/components/change-batch-list';
 import { RunTimeline } from '@/components/run-timeline';
 import { SlotGrid } from '@/components/slot-grid';
+import { ValidationStages } from '@/components/validation-stages';
 import { VerificationTrendChart } from '@/components/verification-trend-chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/server/repositories';
 import { listChangeBatches } from '@/server/change-batches';
+import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles, type ArtifactFile } from '@/server/artifacts';
 import {
   Table,
@@ -42,6 +44,7 @@ export default async function RepoDetailPage({
 
   const artifacts = listArtifactFiles(repo.path);
   const changeBatches = await listChangeBatches(id);
+  const validation = await getValidationStages(id);
 
   return (
     <div className="space-y-6">
@@ -93,6 +96,7 @@ export default async function RepoDetailPage({
         <TabsList>
           <TabsTrigger value="slots">Slots</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
+          <TabsTrigger value="validation">Validation</TabsTrigger>
           <TabsTrigger value="changes">Changes</TabsTrigger>
           <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
@@ -139,6 +143,23 @@ export default async function RepoDetailPage({
                   startedAt: r.startedAt,
                 }))}
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="validation" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Validation stages</CardTitle>
+              <CardDescription>
+                Stages declared in `.har/stages.json` (`verificationStages`), with the latest
+                result per stage from recent verify runs
+                {validation?.latestRun &&
+                  ` — last verify ${validation.latestRun.startedAt.toLocaleString()} (${validation.latestRun.status})`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ValidationStages stages={validation?.stages ?? []} />
             </CardContent>
           </Card>
         </TabsContent>

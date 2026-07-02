@@ -17,7 +17,7 @@ module.exports = defineConfig({
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3847',
     headless: true,
-    screenshot: 'only-on-failure',
+    screenshot: process.env.PW_SCREENSHOT || 'on',
     video: 'retain-on-failure',
     trace: 'on-first-retry',
   },

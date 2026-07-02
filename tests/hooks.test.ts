@@ -265,14 +265,14 @@ describe('end-to-end git commit with installed hooks', () => {
 });
 
 describe('recordCommitAssociation', () => {
-  it('attaches the commit sha to the matching validation', () => {
+  it('attaches the commit sha to the matching validation', async () => {
     const dir = initRepo();
     fs.writeFileSync(path.join(dir, 'a.txt'), 'change\n');
     const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
     sh(dir, 'git add -A');
     sh(dir, 'git commit -q -m change');
 
-    const result = recordCommitAssociation(dir);
+    const result = await recordCommitAssociation(dir);
     expect(result.attached).toBe(true);
     expect(findValidation(dir, record.treeHash)?.commitSha).toBe(sh(dir, 'git rev-parse HEAD'));
   });

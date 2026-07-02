@@ -76,8 +76,8 @@ function handleCheck(): void {
   process.exitCode = result.exitCode;
 }
 
-function handleRecordCommit(): void {
-  recordCommitAssociation(process.cwd());
+async function handleRecordCommit(): Promise<void> {
+  await recordCommitAssociation(process.cwd());
 }
 
 export const hooksCommand = {
