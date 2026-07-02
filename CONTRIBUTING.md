@@ -305,3 +305,105 @@ npm run build
 ```
 
 Describe how you tested (e.g. `har env init` on `go-gin-pg` fixture).
+
+### Commit messages (required for releases)
+
+Releases are cut automatically when PRs merge to `main`. [semantic-release](https://semantic-release.gitbook.io/) reads [Conventional Commits](https://www.conventionalcommits.org/) and bumps semver accordingly:
+
+| Commit prefix | Release |
+|---------------|---------|
+| `fix:` | Patch |
+| `feat:` | Minor |
+| `feat!:` or `BREAKING CHANGE:` footer | Major |
+| `chore:`, `docs:`, `test:`, `refactor:`, `ci:` | No release |
+
+Examples:
+
+```text
+feat: add har env runs export command
+fix: tolerate missing stages.json on maintain
+feat!: drop legacy run JSON layout
+
+BREAKING CHANGE: run records now require runId v2 fields
+```
+
+Use scopes when helpful (`feat(cli):`, `fix(control):`). Squash-merge PR titles should follow the same format — they become the commit on `main`.
+
+## Releases
+
+### npm packages
+
+| Package | Published? | Notes |
+|---------|------------|-------|
+| `@har/cli` | **Yes** | Public npm package; global `har` binary |
+| `@har/control` | No | `"private": true`; Mission Control source in monorepo |
+| `@har/schemas` | No | `"private": true`; consumed via monorepo path in `control/` |
+
+### npm organization (`@har`)
+
+Before the first public release, maintainers must own the **`@har`** scope on npm:
+
+1. Sign in at [npmjs.com](https://www.npmjs.com/) as a project maintainer (`theosfactory` or org owner).
+2. Create the **`@har`** organization: [npmjs.com/org/create](https://www.npmjs.com/org/create) (free for public packages).
+3. Add other maintainers under **Organization → Members**.
+4. Create an **Automation** token with **Publish** access to `@har/cli` (and scope-wide publish if you prefer).
+5. Add the token as the `NPM_TOKEN` repository secret (see below).
+
+The root `package.json` sets `"publishConfig": { "access": "public" }` so scoped publishes are public by default.
+
+### Initial public version
+
+The first npm release is **`0.1.0`**, matching the current root `package.json`. Tag that baseline on `main` once before enabling automated releases (see below).
+
+### Test a publish tarball locally
+
+`prepublishOnly` runs `npm run build` automatically. To smoke-test the packed artifact before release:
+
+```bash
+npm run build
+npm pack
+npm install -g har-cli-*.tgz
+har --help
+npm uninstall -g @har/cli
+rm har-cli-*.tgz
+```
+
+The tarball should contain only `dist/` (bundled CLI + templates + prompts), plus `package.json`, `README.md`, `LICENSE`, and this changelog — not the Mission Control app or test fixtures.
+
+Maintainers do **not** hand-cut version tags after the baseline. Merge conventional commits to `main`; the [Release workflow](.github/workflows/release.yml) will:
+
+1. Run full CLI + Mission Control verification
+2. Bump `@har/cli`, `@har/control`, and `@har/schemas` to the same version
+3. Update `CHANGELOG.md`, commit `[skip ci]`, tag `vX.Y.Z`, and open a GitHub Release
+4. Publish `@har/cli` to npm
+5. Trigger [Publish Docker](.github/workflows/publish-docker.yml) for `theosfactory/har-control` on Docker Hub
+
+### Maintainer setup
+
+Before the first automated release, tag the current baseline on `main` so semantic-release continues from the existing version:
+
+```bash
+# one-time, when package.json is already 0.1.0
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Repository secrets:
+
+| Secret | Used by |
+|--------|---------|
+| `NPM_TOKEN` | npm publish for `@har/cli` (Automation token with publish access to the `@har` scope) |
+| `DOCKERHUB_TOKEN` | Docker Hub publish for `theosfactory/har-control` (PAT with read/write on the repo) |
+| `GITHUB_TOKEN` | GitHub Release (provided by Actions) |
+
+Dry-run the next release from the Actions tab (**Release → Run workflow → Dry run**) or locally:
+
+```bash
+npm ci
+GITHUB_TOKEN=... NPM_TOKEN=... npx semantic-release --dry-run
+```
+
+### Version coupling
+
+`@har/cli`, Mission Control (`control/`), and `@har/schemas` share one semver to avoid API drift. The release job syncs all three `package.json` files before tagging.
+
+Manual `v*` tags are discouraged. If you push a tag anyway, the Docker workflow validates that tag `vX.Y.Z` matches every coupled `package.json` version before publishing.

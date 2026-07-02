@@ -9,6 +9,7 @@ dist/
 tests/**/.har
 !tests/fixtures/minimal-harness/.har
 coverage/
+release-assets/
 .DS_Store
 private/
 control/node_modules/

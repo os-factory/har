@@ -1,5 +1,8 @@
 # har — OSS CLI + MCP Harness
 
+[![Release](https://img.shields.io/github/v/release/os-factory/har)](https://github.com/os-factory/har/releases)
+[![CI](https://github.com/os-factory/har/actions/workflows/test.yml/badge.svg)](https://github.com/os-factory/har/actions/workflows/test.yml)
+
 **Make any repository agent-ready without binding it to one coding agent, test runner, or hosted platform.**
 
 HAR is an open-source CLI and MCP control plane for project-owned development harnesses. It scaffolds an editable `.har/` runtime contract so humans and MCP-capable coding agents can discover how to launch, verify, reset, inspect, and tear down a repository.
