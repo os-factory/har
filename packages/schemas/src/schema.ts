@@ -94,6 +94,18 @@ export const HarnessAgentSlotsSchema = z
     message: 'agentSlots.max must be >= agentSlots.min',
   });
 
+/** Commit-gate configuration: whether unverified change batches may be committed. */
+export const CommitGateConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  mode: z.enum(['block', 'warn']).default('block'),
+  /** 'worktrees' enforces mode only in har agent worktrees and warns elsewhere. */
+  scope: z.enum(['worktrees', 'all']).default('worktrees'),
+  /** Future: stages required to validate a batch. Ignored in v1 (full verify required). */
+  requiredStages: z.array(z.string()).optional(),
+});
+
+export type CommitGateConfig = z.infer<typeof CommitGateConfigSchema>;
+
 export const HarnessStageRegistrySchema = z
   .object({
     version: z.string().default('1'),
@@ -102,6 +114,7 @@ export const HarnessStageRegistrySchema = z
     agentSlots: HarnessAgentSlotsSchema.optional(),
     verificationStages: z.array(z.string()).optional(),
     stages: z.array(HarnessStageSchema).default([]),
+    commitGate: CommitGateConfigSchema.optional(),
   })
   .passthrough();
 
@@ -272,3 +285,48 @@ export const SyncSlotsInputSchema = z.object({
 });
 
 export type SyncSlotsInput = z.infer<typeof SyncSlotsInputSchema>;
+
+/** Git name-status letters (rename/copy carry oldPath). */
+export const ChangedFileStatusSchema = z.enum(['A', 'M', 'D', 'R', 'C', 'T', 'U']);
+
+export type ChangedFileStatus = z.infer<typeof ChangedFileStatusSchema>;
+
+export const ChangedFileSchema = z.object({
+  path: z.string(),
+  status: ChangedFileStatusSchema,
+  oldPath: z.string().optional(),
+});
+
+export type ChangedFile = z.infer<typeof ChangedFileSchema>;
+
+/**
+ * One validation per change batch, keyed by the git tree hash of the exact
+ * code state a verification ran against.
+ */
+export const ValidationRecordSchema = z
+  .object({
+    validationId: z.string().uuid(),
+    treeHash: z.string().regex(/^[0-9a-f]{40,64}$/),
+    headSha: z.string().optional(),
+    branch: z.string().optional(),
+    workDir: z.string(),
+    harnessRoot: z.string(),
+    agentId: z.number().int().optional(),
+    status: z.enum(['pass', 'fail']),
+    full: z.boolean().default(false),
+    runId: z.string().uuid().optional(),
+    changedFiles: z.array(ChangedFileSchema).default([]),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    commitSha: z.string().optional(),
+    committedAt: z.string().optional(),
+  })
+  .passthrough();
+
+export type ValidationRecord = z.infer<typeof ValidationRecordSchema>;
+
+export const SyncValidationsInputSchema = z.object({
+  validations: z.array(ValidationRecordSchema),
+});
+
+export type SyncValidationsInput = z.infer<typeof SyncValidationsInputSchema>;

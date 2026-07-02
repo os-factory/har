@@ -28,6 +28,13 @@ Run `har env init` or `har env maintain` to create or refresh it.
 Prefer **HAR MCP tools** (Cursor) or **`har env launch/verify/teardown`** — they persist run history under `.har/runs/`.
 Use `./.har/*.sh` only when the CLI is not installed.
 
+## Commit gate
+
+Full verify records the exact code state it validated (git tree hash in `.har/validations/`).
+If the commit gate is installed (`har hooks install`), commits of unverified changes are blocked:
+run `har env verify <id> --full` after your last edit, then `git add -A` and commit — any edit
+after verify invalidates the batch and requires a re-run. Do not bypass with `--no-verify`.
+
 ## Project-specific notes
 
 <!-- Adapt when customizing the harness (see .har/ADAPT-PROMPT.md) -->

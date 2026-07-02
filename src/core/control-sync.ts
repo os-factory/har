@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { readManifest } from '../harness/manifest';
+import { readManifest, resolveHarnessRoot } from '../harness/manifest';
 import { readStageRegistry } from '../harness/stages';
 import {
   EnvironmentStatus,
@@ -7,10 +7,12 @@ import {
   RunRecord,
   SyncRunsInputSchema,
   SyncSlotsInputSchema,
+  SyncValidationsInputSchema,
 } from '../harness/schema';
 import { getControlApiUrl } from './control-config';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
+import { listValidations } from './validations';
 import { createRemoteExecutor } from './cloud-executor';
 
 export interface ControlSyncOptions {
@@ -130,6 +132,12 @@ async function syncRepoRunsAndSlots(
     generatedAt: status.generatedAt,
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
+
+  const validations = listValidations(resolveHarnessRoot(repoPath));
+  if (validations.length > 0) {
+    const validationsBody = SyncValidationsInputSchema.parse({ validations });
+    await postJson(`${apiUrl}/api/repos/${repoId}/validations`, validationsBody, dryRun);
+  }
 }
 
 /** Fire-and-forget sync after harness operations. Never throws. */

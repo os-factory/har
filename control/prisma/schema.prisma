@@ -18,6 +18,7 @@ model Repository {
   updatedAt       DateTime    @updatedAt
   slots           AgentSlot[]
   runs            Run[]
+  changeBatches   ChangeBatch[]
 }
 
 model AgentSlot {
@@ -59,6 +60,29 @@ model Run {
 
   @@unique([repositoryId, runId])
   @@index([repositoryId, startedAt])
+}
+
+model ChangeBatch {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  validationId String
+  treeHash     String
+  headSha      String?
+  branch       String?
+  workDir      String?
+  agentId      Int?
+  status       String
+  full         Boolean    @default(false)
+  runId        String?
+  changedFiles Json?
+  commitSha    String?
+  committedAt  DateTime?
+  createdAt    DateTime
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([repositoryId, treeHash])
+  @@index([repositoryId, branch, createdAt])
 }
 
 model CloudConfig {

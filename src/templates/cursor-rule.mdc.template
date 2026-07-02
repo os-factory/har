@@ -73,3 +73,13 @@ When the Playwright stage is installed (`.har/stages/browser-e2e.sh` exists), ad
 - Full verification returns pass (`har env verify 1 --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh 1 --full`)
 - New behavior has automated test coverage
 - Do not declare work complete without running full verify
+
+## Commit gate
+
+Each full verify records the exact code state it validated (a git tree hash under
+`.har/validations/`). When the har commit gate is installed (`har hooks install`),
+`git commit` is blocked unless the staged changes match a state that passed full verify.
+
+- Any edit after verify — even one character — requires re-running `har env verify <id> --full`
+- Stage everything you verified (`git add -A`); partially staged trees were never verified and will be rejected
+- Do not bypass the gate (`--no-verify`, `HAR_SKIP_GATE=1`) — bypasses are recorded and visible in Mission Control

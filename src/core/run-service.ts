@@ -1,7 +1,9 @@
 import { parseVerificationResult } from './results';
 import { localScriptExecutor } from './local-executor';
 import { syncRepoWithControlAsync } from './control-sync';
-import { createRun, finishRun } from './runs';
+import { createRun, finishRun, resolveAgentWorkDir } from './runs';
+import { recordValidation } from './validations';
+import { resolveHarnessRoot } from '../harness/manifest';
 import { getAgentSlotIds, resolveStage } from '../harness/stages';
 import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
@@ -168,6 +170,28 @@ export class RunService {
       const data = result.data as { verification?: VerificationResult | null };
       if (data.verification !== undefined) {
         verification = data.verification;
+      }
+    }
+
+    if (verification) {
+      try {
+        const harnessRoot = resolveHarnessRoot(options.repoPath);
+        const checkoutDir = resolveAgentWorkDir(harnessRoot, options.agentId) ?? harnessRoot;
+        const runId =
+          typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
+            ? (result.data as { runId?: string }).runId
+            : undefined;
+        recordValidation({
+          checkoutDir,
+          harnessRoot,
+          status: verification.status,
+          full: options.full ?? false,
+          runId,
+          agentId: options.agentId,
+        });
+        syncRepoWithControlAsync(options.repoPath);
+      } catch {
+        // hashing must never fail the verify (e.g. not a git checkout)
       }
     }
 
