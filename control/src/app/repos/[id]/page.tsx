@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArtifactTable } from '@/components/artifact-table';
 import { ChangeBatchList } from '@/components/change-batch-list';
 import { RunTimeline } from '@/components/run-timeline';
 import { SlotGrid } from '@/components/slot-grid';
@@ -11,15 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/server/repositories';
 import { listChangeBatches } from '@/server/change-batches';
 import { getValidationStages } from '@/server/validation-stages';
-import { listArtifactFiles, type ArtifactFile } from '@/server/artifacts';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { listArtifactFiles } from '@/server/artifacts';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +41,7 @@ export default async function RepoDetailPage({
   const validation = await getValidationStages(id);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
       <div>
         <Link href="/" className="text-sm text-muted-foreground hover:underline">
           ← Repos
@@ -209,28 +202,13 @@ export default async function RepoDetailPage({
               <CardDescription>Files under .har/artifacts/</CardDescription>
             </CardHeader>
             <CardContent>
-              {artifacts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No artifacts found.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Path</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Modified</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {artifacts.map((a: ArtifactFile) => (
-                      <TableRow key={a.relativePath}>
-                        <TableCell>{a.relativePath}</TableCell>
-                        <TableCell>{a.sizeBytes} B</TableCell>
-                        <TableCell>{new Date(a.modifiedAt).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+              <ArtifactTable
+                artifacts={artifacts.map((a) => ({
+                  relativePath: a.relativePath,
+                  sizeBytes: a.sizeBytes,
+                  modifiedAt: a.modifiedAt,
+                }))}
+              />
             </CardContent>
           </Card>
         </TabsContent>

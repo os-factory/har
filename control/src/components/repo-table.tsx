@@ -1,138 +1,123 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Search } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { type ColumnFiltersState } from '@tanstack/react-table';
+
+import { repoColumns, repoName, type RepoRow } from '@/components/columns/repo-columns';
+import { DataTable } from '@/components/data-table/data-table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
-export interface RepoRow {
-  id: string;
-  path: string;
-  gitRemote: string | null;
-  lastSyncAt: Date | null;
-  runCount: number;
-  slotCount: number;
-  profile?: string;
-}
+export type { RepoRow };
 
-function repoName(repo: RepoRow): string {
-  return repo.gitRemote ?? repo.path.split('/').pop() ?? repo.path;
+function countFilteredRepos(
+  repos: RepoRow[],
+  globalFilter: string,
+  columnFilters: ColumnFiltersState,
+): number {
+  const profile = columnFilters.find((filter) => filter.id === 'profile')?.value as
+    | string
+    | undefined;
+  const q = globalFilter.trim().toLowerCase();
+
+  return repos.filter((repo) => {
+    if (profile && repo.profile !== profile) return false;
+    if (!q) return true;
+    return (
+      repoName(repo).toLowerCase().includes(q) ||
+      repo.path.toLowerCase().includes(q) ||
+      (repo.gitRemote?.toLowerCase().includes(q) ?? false)
+    );
+  }).length;
 }
 
 export function RepoTable({ repos }: { repos: RepoRow[] }) {
-  const [query, setQuery] = useState('');
-  const [profile, setProfile] = useState<string | null>(null);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   const profiles = useMemo(
     () => Array.from(new Set(repos.map((r) => r.profile).filter((p): p is string => !!p))).sort(),
     [repos],
   );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return repos.filter((repo) => {
-      if (profile && repo.profile !== profile) return false;
-      if (!q) return true;
-      return (
-        repoName(repo).toLowerCase().includes(q) ||
-        repo.path.toLowerCase().includes(q) ||
-        (repo.gitRemote?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  }, [repos, query, profile]);
+  const activeProfile =
+    (columnFilters.find((filter) => filter.id === 'profile')?.value as string | undefined) ?? null;
+
+  const filteredCount = useMemo(
+    () => countFilteredRepos(repos, globalFilter, columnFilters),
+    [repos, globalFilter, columnFilters],
+  );
 
   if (repos.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No repositories registered. Run <code className="rounded bg-muted px-1">har env init</code> or{' '}
-        <code className="rounded bg-muted px-1">har control register</code>.
-      </p>
+      <div className="px-4 lg:px-6">
+        <p className="text-sm text-muted-foreground">
+          No repositories registered. Run <code className="rounded bg-muted px-1">har env init</code>{' '}
+          or <code className="rounded bg-muted px-1">har control register</code>.
+        </p>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search repositories…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-8"
-            aria-label="Search repositories"
-          />
-        </div>
+    <div className="flex w-full flex-col gap-4 px-4 lg:px-6">
+      <h1 className="text-base font-medium">Repositories</h1>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Input
+          type="search"
+          placeholder="Search repositories…"
+          value={globalFilter}
+          onChange={(event) => setGlobalFilter(event.target.value)}
+          className="max-w-sm"
+          aria-label="Search repositories"
+        />
         {profiles.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant={profile === null ? 'secondary' : 'ghost'}
+              variant={activeProfile === null ? 'secondary' : 'outline'}
               size="sm"
-              onClick={() => setProfile(null)}
+              onClick={() => setColumnFilters([])}
             >
               All
             </Button>
-            {profiles.map((p) => (
+            {profiles.map((profile) => (
               <Button
-                key={p}
-                variant={profile === p ? 'secondary' : 'ghost'}
+                key={profile}
+                variant={activeProfile === profile ? 'secondary' : 'outline'}
                 size="sm"
-                onClick={() => setProfile(p)}
+                onClick={() => setColumnFilters([{ id: 'profile', value: profile }])}
               >
-                {p}
+                {profile}
               </Button>
             ))}
           </div>
         )}
       </div>
 
-      {filtered.length === 0 ? (
+      {filteredCount === 0 ? (
         <p className="text-sm text-muted-foreground">No repositories match your filters.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Repository</TableHead>
-              <TableHead>Path</TableHead>
-              <TableHead>Runs</TableHead>
-              <TableHead>Slots</TableHead>
-              <TableHead>Last sync</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((repo) => (
-              <TableRow key={repo.id}>
-                <TableCell>
-                  <Link href={`/repos/${repo.id}`} className="font-medium hover:underline">
-                    {repoName(repo)}
-                  </Link>
-                  {repo.profile && (
-                    <Badge variant="secondary" className="ml-2">
-                      {repo.profile}
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell className="max-w-md truncate text-muted-foreground">{repo.path}</TableCell>
-                <TableCell>{repo.runCount}</TableCell>
-                <TableCell>{repo.slotCount}</TableCell>
-                <TableCell className="text-muted-foreground">
-                  {repo.lastSyncAt ? new Date(repo.lastSyncAt).toLocaleString() : '—'}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={repoColumns}
+          data={repos}
+          getRowId={(repo) => repo.id}
+          globalFilter={globalFilter}
+          onGlobalFilterChange={setGlobalFilter}
+          globalFilterFn={(row, _columnId, filterValue) => {
+            const q = String(filterValue).trim().toLowerCase();
+            if (!q) return true;
+            const repo = row.original;
+            return (
+              repoName(repo).toLowerCase().includes(q) ||
+              repo.path.toLowerCase().includes(q) ||
+              (repo.gitRemote?.toLowerCase().includes(q) ?? false)
+            );
+          }}
+          columnFilters={columnFilters}
+          onColumnFiltersChange={setColumnFilters}
+          columnVisibility={{ profile: false }}
+        />
       )}
     </div>
   );

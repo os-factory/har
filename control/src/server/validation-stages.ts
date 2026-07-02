@@ -1,6 +1,7 @@
 import {
   HarnessStageRegistrySchema,
   HarnessVerificationResultSchema,
+  type HarnessStage,
   type HarnessVerificationResult,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
@@ -70,7 +71,9 @@ export async function getValidationStages(
   const registry = HarnessStageRegistrySchema.safeParse(repo.stagesRegistry ?? {});
   const declared = registry.success
     ? (registry.data.verificationStages ??
-      registry.data.stages.filter((s) => s.group === 'verification').map((s) => s.id))
+      registry.data.stages
+        .filter((s: HarnessStage) => s.group === 'verification')
+        .map((s: HarnessStage) => s.id))
     : [];
 
   const verifyRuns = await prisma.run.findMany({
@@ -106,7 +109,7 @@ export async function getValidationStages(
   const undeclared = [...byName.values()]
     .filter((s) => !s.declared)
     .sort((a, b) => a.name.localeCompare(b.name));
-  const stages = [...declared.map((name) => byName.get(name)!), ...undeclared];
+  const stages = [...declared.map((name: string) => byName.get(name)!), ...undeclared];
 
   const latest = verifyRuns[0];
   return {

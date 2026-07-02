@@ -1,23 +1,9 @@
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+'use client';
 
-export interface RunRow {
-  id: string;
-  runId: string;
-  stageId: string;
-  agentId: number | null;
-  status: string;
-  trigger: string;
-  durationMs: number | null;
-  startedAt: Date;
-}
+import { DataTable } from '@/components/data-table/data-table';
+import { runColumns, type RunRow } from '@/components/columns/run-columns';
+
+export type { RunRow };
 
 export function RunTimeline({ runs }: { runs: RunRow[] }) {
   if (runs.length === 0) {
@@ -25,35 +11,11 @@ export function RunTimeline({ runs }: { runs: RunRow[] }) {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Time</TableHead>
-          <TableHead>Stage</TableHead>
-          <TableHead>Agent</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Trigger</TableHead>
-          <TableHead>Duration</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {runs.map((run) => (
-          <TableRow key={run.id}>
-            <TableCell className="text-muted-foreground">
-              {run.startedAt.toLocaleString()}
-            </TableCell>
-            <TableCell>{run.stageId}</TableCell>
-            <TableCell>{run.agentId ?? '—'}</TableCell>
-            <TableCell>
-              <Badge variant={run.status === 'pass' ? 'success' : run.status === 'fail' ? 'destructive' : 'secondary'}>
-                {run.status}
-              </Badge>
-            </TableCell>
-            <TableCell>{run.trigger}</TableCell>
-            <TableCell>{run.durationMs != null ? `${run.durationMs}ms` : '—'}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <DataTable
+      columns={runColumns}
+      data={runs}
+      getRowId={(run) => run.id}
+      showPagination={runs.length > 10}
+    />
   );
 }
