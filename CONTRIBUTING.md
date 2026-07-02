@@ -22,6 +22,18 @@ npm install
 npm run build
 ```
 
+### Cursor MCP (optional)
+
+To use HAR tools from Cursor (`har_launch_environment`, `har_run_verification`, etc.), install the CLI globally (`npm link` or `npm install -g .`), then create a local MCP config:
+
+```bash
+cp .cursor/mcp.json.example .cursor/mcp.json
+```
+
+Edit `.cursor/mcp.json` and replace `/path/to/your/checkout` with the absolute path to your clone of this repo. The file is gitignored — each contributor keeps their own copy.
+
+Restart Cursor (or reload MCP servers) after creating or changing the file.
+
 ## Running the CLI locally
 
 Pick one of these approaches:

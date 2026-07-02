@@ -23,7 +23,7 @@ Run harness commands from the directory that owns the harness (e.g. `cd control 
 
 After making changes, validate through the harness (not ad-hoc shell commands).
 
-**Preferred — HAR MCP** (Cursor, configured in [`.cursor/mcp.json`](.cursor/mcp.json)):
+**Preferred — HAR MCP** (Cursor — copy [`.cursor/mcp.json.example`](.cursor/mcp.json.example) to `.cursor/mcp.json` and set your checkout path; see [CONTRIBUTING.md](./CONTRIBUTING.md)):
 
 - `har_launch_environment` with `agentId: 1` — once per session
 - `har_run_verification` with `agentId: 1` — typecheck + unit tests (fast)

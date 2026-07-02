@@ -14,3 +14,4 @@ private/
 control/node_modules/
 control/.next/
 control/.env
+.cursor/mcp.json

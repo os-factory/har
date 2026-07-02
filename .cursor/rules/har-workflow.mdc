@@ -34,7 +34,7 @@ Run harness commands from the directory that owns the harness (e.g. `cd control 
 
 Validate through the harness — do not skip verification or substitute ad-hoc npm/test commands.
 
-### 1. HAR MCP (preferred — configured in `.cursor/mcp.json`)
+### 1. HAR MCP (preferred — local `.cursor/mcp.json`, copy from `.cursor/mcp.json.example`)
 
 - `har_launch_environment` with `agentId: 1` — once per session if not already launched
 - `har_run_verification` with `agentId: 1` — fast loop (typecheck + unit tests)
