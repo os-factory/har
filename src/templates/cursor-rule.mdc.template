@@ -7,11 +7,31 @@ alwaysApply: true
 
 This repository uses a `.har/` agent harness. Follow this workflow on every change.
 
+The harness is **how you run the project**, not only how you verify it. To see the app
+live (manual testing, browser sessions, screenshots), launch a slot — never hand-roll
+docker/dev-server startup; the harness already encodes DB setup, ports, and env.
+If a harness command fails, fix the harness or surface the failure — do not quietly
+work around it with ad-hoc commands.
+
 ## Before making changes
 
 1. Read [AGENT.md](./AGENT.md) at the repo root
 2. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
 3. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
+
+<!-- Monorepo: if this repository contains multiple .har harnesses, list them here
+     and pick by the files you are changing. Example:
+
+## Harnesses in this repo
+
+| Path | Runs | Use when changing |
+|------|------|-------------------|
+| `.har/` | backend + frontend | `src/`, `packages/` |
+| `apps/admin/.har/` | admin dashboard | `apps/admin/` |
+
+Run harness commands from the directory that owns the harness (e.g. `cd apps/admin`).
+-->
+
 
 ## After making changes
 

@@ -3,6 +3,9 @@
  * Ports: FE_PORT = API_PORT = 3837 + (AGENT_ID × 10) — e.g. slot 1 → 3847.
  */
 
+// launch.sh writes this file (and .env.agent.N) into the work dir — the
+// control/ project dir (repo root checkout or inside the agent's worktree) —
+// so __dirname IS the Next.js app directory.
 const path = require('path');
 const dotenv = require('dotenv');
 
@@ -17,7 +20,7 @@ module.exports = {
       script: 'npx',
       args: `next dev --port ${port}`,
       interpreter: 'none',
-      cwd: path.join(__dirname, '..'),
+      cwd: __dirname,
       env: {
         ...env,
         NODE_ENV: 'development',

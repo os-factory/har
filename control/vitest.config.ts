@@ -4,6 +4,8 @@ import path from 'path';
 export default defineConfig({
   test: {
     environment: 'node',
+    // Unit tests live in src/ — tests/ holds Playwright specs (run via test:e2e)
+    include: ['src/**/*.test.{ts,tsx}'],
   },
   resolve: {
     alias: {

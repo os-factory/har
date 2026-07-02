@@ -240,7 +240,7 @@ export function applyStageTemplate(
   }
 
   if (manifest.merge) {
-    for (const [_, fragmentRel] of Object.entries(manifest.merge)) {
+    for (const fragmentRel of Object.values(manifest.merge)) {
       mergePackageJson(resolved, templateDir, fragmentRel, warnings);
       filesWritten.push('package.json');
     }

@@ -29,10 +29,14 @@ validate_agent_id() {
 resolve_agent_env_file() {
   local agent_id="$1"
   local repo_root="$2"
+  # Worktrees are repo-rooted — if the project lives in a subdirectory (monorepo),
+  # the env file sits under that prefix inside the worktree.
+  local rel_prefix
+  rel_prefix="$(git -C "$repo_root" rev-parse --show-prefix 2>/dev/null || true)"
   local candidate
   for candidate in \
     "$repo_root/.env.agent.${agent_id}" \
-    "$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${agent_id}/.env.agent.${agent_id}"; do
+    "$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${agent_id}/${rel_prefix}.env.agent.${agent_id}"; do
     if [ -f "$candidate" ]; then
       echo "$candidate"
       return 0

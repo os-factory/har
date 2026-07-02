@@ -67,12 +67,21 @@ Coding agents discover the harness through two files:
 If **no `AGENT.md` exists**, create one at the repo root using this structure:
 
 - Link to `.har/README.md` and `.har/CLAUDE.agent.md`
+- State plainly: **the harness is how you run this project** — to see the app live (manual testing, browser, screenshots), `launch` a slot; never hand-roll docker/dev-server startup, and never work around a failing harness command with ad-hoc setup (fix or report it instead)
 - Preferred commands: HAR MCP tools or `har env launch/verify/teardown` (persists run history)
 - Shell fallback: `./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh` (when CLI is not installed)
 - Rules (no hardcoded ports, use `./.har/agent-cli.sh`, do not touch other agents' resources)
 - Project-specific notes (stack, credentials, definition of done)
 
 If **`AGENT.md` already exists**, add or update a concise **HAR / agent environment** section — do not replace unrelated content.
+
+### Monorepos / multiple harnesses
+
+If this repository contains **more than one project or `.har` harness** (check for `.har/` directories above or below this one):
+
+- Maintain a **"Harnesses in this repo"** table in the ROOT `AGENT.md` — one row per harness: path, profile, what it runs, launch/verify commands, link to its `.har/README.md`. Lead with "pick the harness that owns the files you are changing."
+- Keep a small `AGENT.md` (and `CLAUDE.md` pointer) **inside each project directory** for local discovery, with a back-link to the root index.
+- Keep ONE Cursor rule at the repo root (`.cursor/rules/har-workflow.mdc`) listing all harnesses — not one rule per project.
 
 Include a **Run history** subsection:
 

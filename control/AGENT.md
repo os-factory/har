@@ -2,6 +2,8 @@
 
 Next.js App Router dashboard for harness runs, repositories, and agent slots.
 
+Part of the har monorepo — this app has its own harness (`control/.har/`). For work on the CLI itself, or the index of all harnesses in this repo, see the root [AGENT.md](../AGENT.md).
+
 ## Stack
 
 - Next.js, shadcn/ui, Tailwind, Prisma + PostgreSQL, Zod (`@har/schemas`)
@@ -18,3 +20,5 @@ prisma/            schema
 ## Agent environment
 
 Runnable stages, verification, and definition of done live in **[`.har/`](.har/README.md)** — read `README.md` and `stages.json` there first.
+
+**The harness is how you run this app.** To see Mission Control live (manual testing, browser, screenshots): `docker compose up -d db`, then `./.har/launch.sh 1` (or `har env launch 1`). Don't hand-roll dev-server startup; if a harness command fails, fix the harness or report it.

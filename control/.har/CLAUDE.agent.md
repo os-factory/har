@@ -38,6 +38,8 @@ npm run test:e2e          # Playwright only
 
 ## Do not
 
+- Hand-roll docker/dev-server startup — `launch` is how you run the app (manual testing, browser, screenshots included)
+- Work around a failing harness command with ad-hoc setup — fix the harness or report the failure
 - Hardcode ports — use agent env / `agent-cli.sh url`
 - Edit `.env.agent.${AGENT_ID}` or PM2 ecosystem files by hand
 - Skip `launch` before `verify` (server must be running for health and e2e)

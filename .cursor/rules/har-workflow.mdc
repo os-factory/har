@@ -5,13 +5,30 @@ alwaysApply: true
 
 # HAR Harness Workflow
 
-This repository uses a `.har/` agent harness. Follow this workflow on every change.
+This repository uses `.har/` agent harnesses. Follow this workflow on every change.
+
+The harness is **how you run the project**, not only how you verify it. To see an app
+live (manual testing, browser sessions, screenshots), launch a slot — never hand-roll
+docker/dev-server startup; the harness already encodes DB setup, ports, and env.
+If a harness command fails, fix the harness or surface the failure — do not quietly
+work around it with ad-hoc commands.
+
+## Harnesses in this repo
+
+Monorepo with two harnesses — pick by the files you are changing:
+
+| Path | Runs | Use when changing |
+|------|------|-------------------|
+| `.har/` | `@har/cli` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` |
+| `control/.har/` | Mission Control (Next.js + Postgres, browser-e2e) | `control/` |
+
+Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`).
 
 ## Before making changes
 
-1. Read [AGENT.md](./AGENT.md) at the repo root
-2. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
-3. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
+1. Read [AGENT.md](./AGENT.md) at the repo root (harness index) — for webapp work also [control/AGENT.md](./control/AGENT.md)
+2. Read the owning harness's `README.md` and `stages.json` (e.g. [.har/README.md](./.har/README.md), [.har/stages.json](./.har/stages.json))
+3. After launch, read the harness's `CLAUDE.agent.md` for slot URLs and definition of done
 
 ## After making changes
 

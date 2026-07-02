@@ -5,6 +5,8 @@
  * Customize ecosystem.agent.template.cjs in .har/ to change processes.
  */
 
+// launch.sh writes this file (and .env.agent.N) to the work dir root,
+// so __dirname IS the work dir — repo root or the agent's git worktree.
 const path = require('path');
 const dotenv = require('dotenv');
 
@@ -19,7 +21,7 @@ module.exports = {
       script: 'npm',
       args: 'run dev',
       interpreter: 'none',
-      cwd: path.join(__dirname, '..'),
+      cwd: __dirname,
       env: {
         ...env,
         NODE_ENV: 'development',

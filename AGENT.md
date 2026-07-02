@@ -6,6 +6,19 @@ For setup, testing fixtures, and PR workflow, see [CONTRIBUTING.md](./CONTRIBUTI
 
 This repo **dogfoods HAR** — `.har/` at the repo root defines how coding agents validate changes here.
 
+## Harnesses in this repo
+
+This is a monorepo with **two harnesses** — pick the one that owns the files you are changing:
+
+| Path | Profile | Runs | Use when changing | Docs |
+|------|---------|------|-------------------|------|
+| `.har/` | cli | `@har/cli` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` | [.har/README.md](.har/README.md) |
+| `control/.har/` | default | Mission Control (Next.js + Postgres, browser-e2e) | `control/` | [control/.har/README.md](control/.har/README.md) |
+
+Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`). See [control/AGENT.md](control/AGENT.md) for the webapp guide.
+
+**The harness is how you run each project** — to see Mission Control live (manual testing, browser, screenshots), launch a control slot; never hand-roll docker/dev-server startup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
+
 ## Harness workflow (dogfooding)
 
 After making changes, validate through the harness (not ad-hoc shell commands).

@@ -37,6 +37,8 @@ Quick loop during development: MCP `har_run_verification`, `har env verify ${AGE
 
 ## Do not
 
+- Hand-roll docker/dev-server startup — `launch` is how you run the app (manual testing, browser, screenshots included)
+- Work around a failing harness command with ad-hoc setup — fix the harness or report the failure
 - Hardcode ports — use agent env / `agent-cli.sh url`
 - Run raw `docker compose` for shared harness infra — use `setup-infra.sh`
 - Edit `.env.agent.${AGENT_ID}` or PM2 ecosystem files by hand

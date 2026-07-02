@@ -33,6 +33,9 @@ Update only if infra changed.
 When upgrading `@har/cli` or adopting new harness standards:
 
 - Add **Run history** section to repo-root `AGENT.md` if missing (shell vs `har env`, worktree vs runs location)
+- Ensure `AGENT.md` / `CLAUDE.agent.md` frame the harness as **how you run the project** (launch for manual testing/browser/screenshots; fix — don't work around — failing harness commands)
+- Ensure `launch.sh` installs dependencies in fresh worktrees and resolves the project subdirectory inside the worktree (`git rev-parse --show-prefix`) for monorepos
+- If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENT.md`, per-project pointer docs, and a single root Cursor rule
 - Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)
 - Align `launch.sh` / `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
 - Do **not** blindly overwrite customized `verify.sh`

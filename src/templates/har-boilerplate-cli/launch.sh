@@ -45,7 +45,11 @@ if [ "$USE_WORKTREE" = true ]; then
     git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" -b "har-agent-${AGENT_ID}" 2>/dev/null || \
       git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" HEAD
   fi
-  WORK_DIR="$WORKTREE_DIR"
+  # Worktrees are always rooted at the git repo — if this project lives in a
+  # subdirectory (monorepo), point WORK_DIR at the project inside the worktree.
+  REL_PREFIX="$(git -C "$REPO_ROOT" rev-parse --show-prefix 2>/dev/null || true)"
+  WORK_DIR="${WORKTREE_DIR%/}/${REL_PREFIX}"
+  WORK_DIR="${WORK_DIR%/}"
 else
   log "Using repo root (worktree disabled)"
 fi
@@ -65,6 +69,12 @@ if [ -f "$WORK_DIR/package.json" ]; then
   (cd "$WORK_DIR" && npm install --silent)
 elif [ -f "$WORK_DIR/go.mod" ]; then
   log "Go module detected in work dir (run go mod download if needed)"
+fi
+
+# Monorepo: file:/workspace deps may resolve modules from the repo root — install there too
+if [ -n "${REL_PREFIX:-}" ] && [ -f "$WORKTREE_DIR/package.json" ] && [ ! -d "$WORKTREE_DIR/node_modules" ]; then
+  log "Installing monorepo root dependencies in $WORKTREE_DIR..."
+  (cd "$WORKTREE_DIR" && npm install --silent)
 fi
 
 log "Agent $AGENT_ID is ready."

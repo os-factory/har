@@ -59,12 +59,19 @@ As needed for the project's infra.
 ### `AGENT.md` (repo root — via proposeAgentMd only)
 Short pointer document. Structure:
 - Link to `.har/README.md` and `.har/CLAUDE.agent.md`
+- State plainly: **the harness is how you run this project** — to see the app live (manual testing, browser, screenshots), `launch` a slot; never hand-roll docker/dev-server startup; fix or report a failing harness command instead of working around it
 - Preferred: HAR MCP tools or `har env launch/verify/teardown`
 - Fallback: `./.har/launch.sh`, `./.har/verify.sh`, etc. (when CLI is not installed)
 - Rules (no hardcoded ports, use agent-cli.sh)
 - Project-specific notes section
 
 If AGENT.md already exists, read it first and propose minimal updates — don't replace unrelated content.
+
+### Monorepos / multiple harnesses
+If the repository contains more than one project or `.har` harness (check for `.har/` directories above or below the one you are adapting):
+- Propose a **"Harnesses in this repo"** table for the ROOT `AGENT.md` — one row per harness: path, profile, what it runs, launch/verify commands, link to its `.har/README.md`. Lead with "pick the harness that owns the files you are changing."
+- Keep a small `AGENT.md` / `CLAUDE.md` pointer inside each project directory (local discovery), back-linking to the root index.
+- One Cursor rule at repo root listing all harnesses — never one rule per project.
 
 ## Port allocation
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getRun, listRuns, syncRuns } from '@/server/repositories';
+import { listRuns, syncRuns } from '@/server/repositories';
 
 export async function GET(
   request: Request,
