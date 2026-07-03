@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Minus, Plus, Terminal } from 'lucide-react';
 
 import { SidebarOptInForm } from '@/components/sidebar-opt-in-form';
@@ -31,14 +34,23 @@ const data = {
         {
           title: 'Repositories',
           url: '/',
-          isActive: true,
+        },
+        {
+          title: 'Worktrees',
+          url: '/worktrees',
         },
       ],
     },
   ],
 };
 
+function isItemActive(pathname: string, url: string) {
+  if (url === '/') return pathname === '/' || pathname.startsWith('/repos');
+  return pathname === url || pathname.startsWith(`${url}/`);
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname();
   return (
     <Sidebar {...props}>
       <SidebarHeader>
@@ -79,7 +91,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <SidebarMenuSub>
                         {item.items.map((subItem) => (
                           <SidebarMenuSubItem key={subItem.title}>
-                            <SidebarMenuSubButton asChild isActive={subItem.isActive}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isItemActive(pathname, subItem.url)}
+                            >
                               <Link href={subItem.url}>{subItem.title}</Link>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>

@@ -51,6 +51,16 @@ export async function getRepository(id: string) {
   });
 }
 
+export async function listActiveWorktrees() {
+  return prisma.agentSlot.findMany({
+    where: { active: true },
+    include: {
+      repository: { select: { id: true, path: true, gitRemote: true } },
+    },
+    orderBy: [{ updatedAt: 'desc' }],
+  });
+}
+
 export async function syncRuns(repositoryId: string, input: unknown) {
   const { runs } = SyncRunsInputSchema.parse(input);
 
