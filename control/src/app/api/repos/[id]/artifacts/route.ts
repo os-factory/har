@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getArtifactContentType } from '@/lib/artifact-preview';
 import { listArtifactFiles, readArtifactFile } from '@/server/artifacts';
 
 export async function GET(
@@ -17,7 +18,10 @@ export async function GET(
     const content = readArtifactFile(repo.path, file);
     if (!content) return NextResponse.json({ error: 'Artifact not found' }, { status: 404 });
     return new NextResponse(new Uint8Array(content), {
-      headers: { 'Content-Type': 'application/octet-stream' },
+      headers: {
+        'Content-Type': getArtifactContentType(file),
+        'Content-Disposition': `inline; filename="${file.split('/').pop() ?? 'artifact'}"`,
+      },
     });
   }
 

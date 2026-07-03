@@ -212,6 +212,7 @@ export default async function RepoDetailPage({
             </CardHeader>
             <CardContent>
               <ArtifactTable
+                repoId={id}
                 artifacts={artifacts.map((a) => ({
                   relativePath: a.relativePath,
                   sizeBytes: a.sizeBytes,

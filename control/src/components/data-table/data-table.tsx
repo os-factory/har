@@ -40,6 +40,8 @@ interface DataTableProps<TData, TValue> {
   columnFilters?: ColumnFiltersState;
   onColumnFiltersChange?: OnChangeFn<ColumnFiltersState>;
   columnVisibility?: VisibilityState;
+  onRowClick?: (row: TData) => void;
+  getRowClassName?: (row: TData) => string | undefined;
 }
 
 export function DataTable<TData, TValue>({
@@ -56,6 +58,8 @@ export function DataTable<TData, TValue>({
   columnFilters,
   onColumnFiltersChange,
   columnVisibility,
+  onRowClick,
+  getRowClassName,
 }: DataTableProps<TData, TValue>) {
   const paginationId = useId();
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
@@ -111,7 +115,12 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && 'selected'}
+                  className={getRowClassName?.(row.original)}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
