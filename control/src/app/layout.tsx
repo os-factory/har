@@ -6,6 +6,10 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'HAR Mission Control',
   description: 'Local dashboard for harness runs, worktrees, and agent slots',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,8 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Minus, Plus, Terminal } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 
 import { SidebarOptInForm } from '@/components/sidebar-opt-in-form';
 import {
@@ -58,9 +59,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Terminal className="size-4" />
-                </div>
+                <Image
+                  src="/logo.png"
+                  alt="HAR"
+                  width={32}
+                  height={32}
+                  className="size-8 rounded-lg"
+                  priority
+                />
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">Mission Control</span>
                   <span className="text-xs text-muted-foreground">HAR harness</span>

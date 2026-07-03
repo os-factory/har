@@ -42,7 +42,7 @@ export function VerificationTrendChart({ data }: { data: TrendPoint[] }) {
             <XAxis dataKey="date" fontSize={12} />
             <YAxis allowDecimals={false} fontSize={12} />
             <Tooltip />
-            <Bar dataKey="pass" stackId="a" fill="hsl(142 76% 36%)" name="pass" />
+            <Bar dataKey="pass" stackId="a" fill="hsl(124 11% 30%)" name="pass" />
             <Bar dataKey="fail" stackId="a" fill="hsl(0 84% 60%)" name="fail" />
           </BarChart>
         </ResponsiveContainer>
