@@ -86,6 +86,15 @@ export const envCommand = {
               describe: 'Run built-in Claude adaptation (requires ANTHROPIC_API_KEY)',
             })
             .option('yes', { type: 'boolean', default: false, describe: 'Auto-apply AGENT.md proposal (--auto only)' })
+            .option('finalize', {
+              type: 'boolean',
+              default: false,
+              describe: 'Record the completed manual adaptation in .har/manifest.json (updates generatorVersion and checksums)',
+            })
+            .option('summary', {
+              type: 'string',
+              describe: 'Adaptation summary to store in the manifest (--finalize only)',
+            })
             .option('cursor-rule', {
               type: 'boolean',
               default: false,
@@ -279,6 +288,8 @@ export async function handleMaintain(argv: {
   model?: string;
   auto: boolean;
   yes: boolean;
+  finalize: boolean;
+  summary?: string;
   cursorRule: boolean;
   noCursorRule: boolean;
 }): Promise<void> {
@@ -300,6 +311,8 @@ export async function handleMaintain(argv: {
       auto: argv.auto,
       verbose: argv.verbose,
       model: argv.model,
+      finalize: argv.finalize,
+      summary: argv.summary,
     });
 
     divider();
@@ -314,8 +327,11 @@ export async function handleMaintain(argv: {
 
     if (argv.auto) {
       await handleAgentMdProposal(repoPath, argv.yes);
+    } else if (argv.finalize) {
+      info('Manifest updated — generator version and file checksums recorded.');
     } else {
       emitManualAdaptationPrompt(repoPath, 'maintain');
+      info('After your coding agent finishes adapting, record it with: har env maintain --finalize');
     }
 
     divider();

@@ -4,7 +4,7 @@ This directory is the **agent harness** for this repository. It lets AI coding a
 
 Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har env maintain` when the repo stack changes.
 
-**The harness is how you run this app.** Need Mission Control live — manual testing, a browser session, screenshots? `docker compose up -d db`, then `launch` a slot; don't hand-roll dev-server startup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
+**The harness is how you run this app.** Need Mission Control live — manual testing, a browser session, screenshots? `launch` a slot (infra starts automatically); don't hand-roll dev-server startup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
 
 ## What's in here
 
@@ -12,28 +12,28 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 |------|---------|
 | `README.md` | This file — index of the harness |
 | `manifest.json` | Generator metadata (version, checksums) — do not edit |
-| `harness.env` | Shared config: ports, agent slot limits, infra flags, migrate/seed commands |
+| `harness.env` | Shared config: primary app, ports, agent slot limits, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
 | `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start shared Docker infra + create template database |
-| `launch.sh` | Launch one agent slot (ports, DB schema, PM2 processes) |
+| `launch.sh` | Launch one agent slot (ports, DB clone, PM2 processes) |
 | `verify.sh` | Verification pipeline (typecheck, tests, health) |
 | `teardown.sh` | Tear down one agent slot |
 | `agent-cli.sh` | Manage a running agent (status, logs, psql, health) |
 | `attach.sh` | Attach to agent tmux session |
 | `env.template` | Per-agent env vars (expanded by `launch.sh`) |
-| `ecosystem.agent.template.cjs` | PM2 process definitions (expanded by `launch.sh`) |
-| `docker-compose.agent.yml` | Shared infrastructure containers |
+| `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded by `launch.sh`) |
+| `docker-compose.agent.yml` | Shared Postgres — one instance serves all slots |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
 
 ## Quick start
 
 ```bash
-./.har/setup-infra.sh          # when Docker infra flags are on
+./.har/setup-infra.sh          # starts shared Postgres + template DB (launch runs it too)
 ./.har/launch.sh 1
 ./.har/verify.sh 1             # quick: typecheck, tests, health
 ./.har/verify.sh 1 --full      # done gate: + lint + browser-e2e (if Playwright stage installed)
@@ -82,22 +82,26 @@ Each agent slot gets isolated ports: `BASE + (AGENT_ID × 10)`.
 
 Configure how many slots your machine can run in parallel in `stages.json` (`agentSlots`) and `harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`). Keep both in sync.
 
-| Service | Agent 1 | Agent 2 |
-|---------|---------|---------|
-| Frontend | 3010 | 3020 |
-| API | 8010 | 8020 |
+| Service | Agent 1 | Agent 2 | Agent 3 |
+|---------|---------|---------|---------|
+| Web (UI + API) | 3847 | 3857 | 3867 |
+| Database | `agent_1` | `agent_2` | `agent_3` (all on `localhost:15432`) |
 
-Shared infra (Postgres, MinIO, etc.) runs once on fixed ports — see `harness.env` and `docker-compose.agent.yml`.
+### Primary app vs shared services
+
+Each slot runs **only the primary application** (`HARNESS_PRIMARY_APP=web` — the Next.js
+app serving UI + API on one port). Shared infrastructure runs **once** for all slots:
+the `db` service in `docker-compose.agent.yml`, enabled via `HARNESS_INFRA_SERVICES="db"`
+in `harness.env` and started by `setup-infra.sh` (launch runs it automatically).
 
 ### Database
 
-This project runs with `HARNESS_INFRA_POSTGRES=false`: all slots share the Mission Control
-database from `docker-compose.yml` (`har_control` on port 5433, started with
-`docker compose up -d db`). Per-slot clone-from-template (`agent_<id>` databases) only
-applies when `HARNESS_INFRA_POSTGRES=true` in `harness.env`.
+The harness manages one shared Postgres (port 15432). `setup-infra.sh` creates
+`template_control` and applies the Prisma schema to it once; `launch.sh` then clones a
+per-slot database `agent_<id>` from that template, so agents never share state.
 
-`launch.sh` runs `HARNESS_DB_MIGRATE_CMD` (idempotent) on every launch, so schema changes
-are applied before the slot starts serving.
+`launch.sh` also re-runs `HARNESS_DB_MIGRATE_CMD` against the slot's own database on
+every launch (idempotent), so schema changes are applied before the slot starts serving.
 
 ### Port safety
 

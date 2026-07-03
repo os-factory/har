@@ -22,14 +22,24 @@ Read key files to understand the stack and how developers run the project today:
 
 Replace all TODO placeholders. Key files:
 
+### Primary application & shared services (decide this FIRST)
+
+Identify the **primary application** — the ONE app coding agents will modify and run per-slot. Everything else is shared and runs once for all slots:
+
+1. **Primary app** → set `HARNESS_PRIMARY_APP` in `harness.env`; wire ONLY its dev processes into `ecosystem.agent.template.cjs` (a primary app may still need several processes, e.g. api + frontend of the same app).
+2. **External dependencies** (database, cache, queue, mail, ...) → keep/add them as services in `docker-compose.agent.yml`, delete the menu entries the project doesn't use, and list the needed ones in `HARNESS_INFRA_SERVICES` (e.g. `"db redis"`). They start once via `setup-infra.sh` on fixed ports and serve every slot.
+3. **Internal supporting services** (a monolith/monorepo's other services the agent depends on but is not changing) → do NOT start them per-slot. Run them once and shared: as compose services in `docker-compose.agent.yml`, or as PM2 processes in `.har/ecosystem.shared.config.cjs` (processes named `har-shared-<name>`, started automatically by `setup-infra.sh` when the file exists). Point the primary app at them through `env.template`.
+
+Simple single-app repos need none of the extra machinery: one primary app, usually one `db` in `HARNESS_INFRA_SERVICES`, no shared ecosystem file.
+
 ### `.har/README.md` (required)
 Clear index of the harness: what each file does, quick start, architecture, how to maintain. Update when anything in the harness changes.
 
 ### `.har/harness.env`
-Ports, infra flags, migrate/seed commands, health check path.
+Primary app, ports, `HARNESS_INFRA_SERVICES`, migrate/seed commands, health check path.
 
 ### `.har/ecosystem.agent.template.cjs` (default profile only)
-PM2 processes matching how the project runs in dev. Skip entirely for the CLI profile.
+PM2 processes for the primary application only, matching how it runs in dev. Skip entirely for the CLI profile.
 
 ### `.har/verify.sh`
 Real typecheck, lint, test, and health check commands — replace all TODOs.
@@ -90,6 +100,19 @@ Include a **Run history** subsection:
 - With worktrees, code runs in the worktree but run JSON lives in the main checkout `.har/runs/`
 - Document MCP/CLI as the preferred agent interface; shell scripts as fallback
 
+## Step 4 — Cleanup checklist (required)
+
+The boilerplate ships more than any single repository needs. Strip it down to strictly what this project uses — leftover template content confuses agents and rots. Verify each item:
+
+- [ ] `docker-compose.agent.yml` contains ONLY services this project uses (menu entries and their volumes deleted); `HARNESS_INFRA_SERVICES` lists exactly those services
+- [ ] `env.template` has no env blocks for removed services (MinIO/S3, mailpit, headless browser, ...) and no vars the app never reads
+- [ ] `harness.env` has no leftover config for features not in use (e.g. `HARNESS_TEMPLATE_DB` and migrate/seed commands when there is no database)
+- [ ] Scripts (`launch.sh`, `setup-infra.sh`, `teardown.sh`, `agent-cli.sh`, `verify.sh`) contain no dead branches for services this project will never enable — prune, don't comment out
+- [ ] No `TODO` placeholders remain anywhere in `.har/`
+- [ ] Unused harness files are deleted (e.g. `attach.sh` when tmux isn't part of the workflow; CLI profile: `ecosystem.agent.template.cjs`, `env.template`)
+- [ ] `.har/README.md` file table lists exactly the files that exist — no more, no less
+- [ ] `.har/CLAUDE.agent.md` shows only real URLs/ports/credentials (e.g. drop the Frontend row for an API-only project) and project commands that actually run
+
 ## Rules
 
 1. Edit `.har/` files directly — no YAML runtime config
@@ -98,4 +121,4 @@ Include a **Run history** subsection:
 4. Replace all TODO placeholders
 5. Do not edit `.har/manifest.json` — managed by the har CLI
 
-When finished, summarize what you changed and confirm verification commands (`har env verify 1 --full` or `./.har/verify.sh 1 --full`) are correct for this stack.
+When finished, summarize what you changed, confirm verification commands (`har env verify 1 --full` or `./.har/verify.sh 1 --full`) are correct for this stack, and record the adaptation with `har env maintain --finalize --summary "<what changed>"`.

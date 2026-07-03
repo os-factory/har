@@ -12,7 +12,7 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 |------|---------|
 | `README.md` | This file — index of the harness |
 | `manifest.json` | Generator metadata (version, checksums) — do not edit |
-| `harness.env` | Shared config: ports, agent slot limits, infra flags, migrate/seed commands |
+| `harness.env` | Shared config: primary app, ports, agent slot limits, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
 | `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
@@ -25,7 +25,8 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `agent-cli.sh` | Manage a running agent (status, logs, psql, health) |
 | `attach.sh` | Attach to agent tmux session |
 | `env.template` | Per-agent env vars (expanded by `launch.sh`) |
-| `ecosystem.agent.template.cjs` | PM2 process definitions (expanded by `launch.sh`) |
+| `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded by `launch.sh`) |
+| `ecosystem.shared.config.cjs` | Optional — shared app services started once by `setup-infra.sh` (only when the repo has supporting services) |
 | `docker-compose.agent.yml` | Shared infrastructure containers |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
@@ -46,7 +47,7 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 **Shell fallback** (no CLI/MCP installed):
 
 ```bash
-./.har/setup-infra.sh          # when Docker infra flags are on
+./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
 ./.har/launch.sh 1
 ./.har/verify.sh 1             # quick: typecheck, tests, health
 ./.har/verify.sh 1 --full      # done gate: + lint + browser-e2e (if Playwright stage installed)
@@ -94,7 +95,14 @@ Configure how many slots your machine can run in parallel in `stages.json` (`age
 | Frontend | 3010 | 3020 |
 | API | 8010 | 8020 |
 
-Shared infra (Postgres, MinIO, etc.) runs once on fixed ports — see `harness.env` and `docker-compose.agent.yml`.
+### Primary app vs shared services
+
+Each slot runs **only the primary application** (`HARNESS_PRIMARY_APP` in `harness.env`) — the app agents modify. Everything else runs **once**, shared by all slots on fixed ports:
+
+- **External dependencies** (Postgres, Redis, mail, ...): services in `docker-compose.agent.yml`, enabled via the `HARNESS_INFRA_SERVICES` list in `harness.env`, started by `setup-infra.sh`.
+- **Internal supporting services** (other services of a monolith/monorepo the agent depends on but does not change): either compose services in `docker-compose.agent.yml`, or PM2 processes in an optional `.har/ecosystem.shared.config.cjs` (named `har-shared-<name>`, started by `setup-infra.sh`).
+
+Isolation still applies where it matters: each slot gets its own database (`agent_<id>`, cloned from the template DB), ports, and git worktree.
 
 ## Maintaining this harness
 

@@ -96,7 +96,7 @@ describe('harness stage contract', () => {
     expect(validation.issues.some((issue) => issue.message.includes('TODO'))).toBe(false);
 
     const harnessEnv = fs.readFileSync(path.join(repoPath, '.har', 'harness.env'), 'utf8');
-    expect(harnessEnv).toContain('HARNESS_INFRA_POSTGRES=false');
+    expect(harnessEnv).toContain('HARNESS_INFRA_SERVICES=""');
     expect(harnessEnv).toContain('HARNESS_USE_WORKTREE=true');
 
     expect(fs.existsSync(path.join(repoPath, '.har', 'ecosystem.agent.template.cjs'))).toBe(false);

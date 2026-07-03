@@ -20,7 +20,6 @@ validate_agent_id "$AGENT_ID"
 FE_PORT=$(( HARNESS_FE_BASE_PORT + AGENT_ID * 10 ))
 API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
 DB_PORT="${AGENT_DB_PORT:-15432}"
-PG_OPTS="-h localhost -p $DB_PORT -U postgres"
 export PGPASSWORD="password"
 
 case "$COMMAND" in
@@ -99,9 +98,9 @@ if (names.length === 0) console.log('No processes found for agent ${AGENT_ID}');
   psql)
     QUERY="${3:-}"
     if [ -n "$QUERY" ]; then
-      psql $PG_OPTS -d "agent_${AGENT_ID}" -c "$QUERY"
+      har_pg psql -d "agent_${AGENT_ID}" -c "$QUERY"
     else
-      psql $PG_OPTS -d "agent_${AGENT_ID}"
+      har_pg psql -d "agent_${AGENT_ID}"
     fi
     ;;
 
@@ -119,24 +118,24 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
   url)
     echo "Frontend:  http://localhost:${FE_PORT}"
     echo "API:       http://localhost:${API_PORT}"
-    [ "$HARNESS_INFRA_POSTGRES" = "true" ] && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
-    [ "$HARNESS_INFRA_MINIO" = "true" ]   && echo "MinIO:     http://localhost:19001"
-    [ "$HARNESS_INFRA_BROWSER" = "true" ] && echo "Browser:   http://localhost:13001"
-    [ "$HARNESS_INFRA_MAILPIT" = "true" ] && echo "Mailpit:   http://localhost:18025"
+    har_infra_enabled db               && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
+    har_infra_enabled minio            && echo "MinIO:     http://localhost:19001"
+    har_infra_enabled headless-browser && echo "Browser:   http://localhost:13001"
+    har_infra_enabled mailpit          && echo "Mailpit:   http://localhost:18025"
     ;;
 
   reset-db)
     echo "==> Resetting database for agent ${AGENT_ID}..."
-    psql $PG_OPTS postgres -c \
+    har_pg psql -d postgres -c \
       "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='agent_${AGENT_ID}';" \
       >/dev/null
-    dropdb $PG_OPTS --if-exists "agent_${AGENT_ID}"
-    createdb $PG_OPTS -T "$HARNESS_TEMPLATE_DB" "agent_${AGENT_ID}"
+    har_pg dropdb --if-exists "agent_${AGENT_ID}"
+    har_pg createdb -T "$HARNESS_TEMPLATE_DB" "agent_${AGENT_ID}"
     echo "✓ Database reset to clean state"
     ;;
 
   slow-queries)
-    psql $PG_OPTS -d "agent_${AGENT_ID}" -c "
+    har_pg psql -d "agent_${AGENT_ID}" -c "
 SELECT round(mean_exec_time::numeric, 2) AS mean_ms,
        calls,
        left(query, 120) AS query

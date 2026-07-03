@@ -1,3 +1,10 @@
+# Shared infrastructure — ONE instance serves all agent slots (fixed ports).
+#
+# This file is a MENU of common external dependencies. When adapting:
+#   - DELETE services this project does not use (and their volumes)
+#   - ADD anything missing (redis, nats, keycloak, ...)
+# Only services listed in HARNESS_INFRA_SERVICES (harness.env) are started
+# by setup-infra.sh.
 services:
   db:
     image: pgvector/pgvector:pg16

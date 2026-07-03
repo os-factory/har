@@ -36,6 +36,8 @@ export interface MaintainHarnessOptions {
   auto?: boolean;
   verbose?: boolean;
   model?: string;
+  finalize?: boolean;
+  summary?: string;
 }
 
 export interface MaintainHarnessResult {
@@ -157,6 +159,23 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   }
 
   const validation = validateHarness(repoPath);
+
+  if (options.finalize) {
+    if (!validation.pass) {
+      throw new Error('Cannot finalize: harness validation has errors. Fix them first.');
+    }
+    const existing = readManifest(repoPath);
+    finalizeHarness(
+      repoPath,
+      options.summary ?? 'Manual adaptation finalized via har env maintain --finalize',
+      existing?.stack,
+    );
+    return {
+      validation,
+      adaptationSummary: options.summary,
+      drift: compareHarnessToTemplate(repoPath),
+    };
+  }
 
   return {
     validation,

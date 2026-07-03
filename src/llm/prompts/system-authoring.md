@@ -35,6 +35,14 @@ Coding agents discover the harness through two files:
 - `ask(question, options?)` — ask user when genuinely ambiguous
 - `finishAuthoring(summary, language?, packageManager?, database?)` — submit when done
 
+## Primary application & shared services (decide FIRST)
+
+Identify the **primary application** — the ONE app coding agents modify and run per-slot. Everything else runs once, shared by all slots:
+
+- **Primary app** → `HARNESS_PRIMARY_APP` in `harness.env`; only its dev processes go in `ecosystem.agent.template.cjs`.
+- **External dependencies** (database, cache, mail, ...) → services in `docker-compose.agent.yml`, listed in `HARNESS_INFRA_SERVICES` (e.g. `"db redis"`), started once by `setup-infra.sh` on fixed ports. Delete unused menu services.
+- **Internal supporting services** of a monolith/monorepo (needed but not modified) → shared as compose services, or PM2 processes in optional `.har/ecosystem.shared.config.cjs` (`har-shared-<name>`, auto-started by `setup-infra.sh`). Never per-slot.
+
 ## Files to adapt
 
 ### `.har/README.md` (required — maintain every run)
@@ -42,10 +50,10 @@ Clear index of the harness: what each file does, quick start, architecture, how 
 Update when anything in the harness changes.
 
 ### `.har/harness.env`
-Ports, infra flags, migrate/seed commands, health check path.
+Primary app, ports, `HARNESS_INFRA_SERVICES`, migrate/seed commands, health check path.
 
 ### `.har/ecosystem.agent.template.cjs`
-PM2 processes matching how the project runs in dev.
+PM2 processes for the primary application only, matching how it runs in dev.
 
 ### `.har/verify.sh`
 Real typecheck, lint, test, and health check commands — replace all TODOs.
@@ -87,4 +95,10 @@ Set slot limits in `.har/stages.json` (`agentSlots`) and `.har/harness.env` (`HA
 4. **Reuse existing project commands** from package.json, Makefile, etc.
 5. **Replace all TODO placeholders**
 6. **Do not edit manifest.json** — managed by har CLI
-7. **Call finishAuthoring** when complete
+7. **Run the cleanup checklist before finishing** — keep strictly what this repository needs:
+   - compose file has only used services; `HARNESS_INFRA_SERVICES` matches exactly
+   - `env.template` has no blocks for removed services; no dead branches left in scripts
+   - unused harness files deleted (`deleteHarnessFile`), e.g. `attach.sh` when unused
+   - `.har/README.md` file table matches the files that actually exist
+   - `CLAUDE.agent.md` shows only real URLs/ports and commands that run
+8. **Call finishAuthoring** when complete

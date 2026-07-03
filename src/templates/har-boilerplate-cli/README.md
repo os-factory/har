@@ -12,7 +12,7 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 |------|---------|
 | `README.md` | This file — index of the harness |
 | `manifest.json` | Generator metadata (version, profile, checksums) — do not edit |
-| `harness.env` | Shared config: worktree default, infra flags, migrate/seed commands |
+| `harness.env` | Shared config: worktree default, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
 | `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
@@ -23,7 +23,7 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `verify.sh` | Verification pipeline (typecheck, tests, lint, build) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run commands in the work dir |
-| `docker-compose.agent.yml` | Shared infrastructure containers (when infra flags are enabled) |
+| `docker-compose.agent.yml` | Shared infrastructure containers (services listed in `HARNESS_INFRA_SERVICES`) |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
 
@@ -45,7 +45,7 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 **Shell fallback** (no CLI/MCP installed):
 
 ```bash
-./.har/setup-infra.sh          # when infra flags are on
+./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
 ./.har/launch.sh 1
 ./.har/verify.sh 1
 ./.har/verify.sh 1 --full      # + lint, build, browser-e2e (if Playwright installed)
@@ -80,7 +80,7 @@ Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.
 
 Work in the isolated git worktree created by launch. Use `./.har/agent-cli.sh <id> exec ...` to run ad-hoc project commands in that work dir.
 
-When the project needs Postgres, MinIO, or similar, enable the matching `HARNESS_INFRA_*` flags in `harness.env` and use `setup-infra.sh` — never run raw `docker compose` for shared infra.
+When the project needs Postgres, Redis, or similar, add the service to `docker-compose.agent.yml` (or keep one from the menu), list it in `HARNESS_INFRA_SERVICES` in `harness.env`, and use `setup-infra.sh` — never run raw `docker compose` for shared infra. Shared services run once on fixed ports and serve every agent slot.
 
 ## Maintaining this harness
 

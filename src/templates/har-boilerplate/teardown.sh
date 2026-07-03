@@ -23,16 +23,15 @@ echo "==> Tearing down agent ${AGENT_ID}..."
 npx --yes pm2 delete "/^agent-${AGENT_ID}-/" 2>/dev/null || true
 echo "✓ Stopped PM2 processes"
 
-if [ "$HARNESS_INFRA_POSTGRES" = "true" ]; then
-  PGPASSWORD=password psql -h localhost -p "$DB_PORT" -U postgres postgres -c \
+if har_infra_enabled db; then
+  har_pg psql -d postgres -c \
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='agent_${AGENT_ID}';" \
     >/dev/null 2>&1 || true
-  PGPASSWORD=password dropdb -h localhost -p "$DB_PORT" -U postgres \
-    --if-exists "agent_${AGENT_ID}" 2>/dev/null || true
+  har_pg dropdb --if-exists "agent_${AGENT_ID}" 2>/dev/null || true
   echo "✓ Dropped database: agent_${AGENT_ID}"
 fi
 
-if [ "$HARNESS_INFRA_MINIO" = "true" ]; then
+if har_infra_enabled minio; then
   curl -sf -X DELETE "http://minioadmin:minioadmin@localhost:19000/agent-${AGENT_ID}?force=true" \
     >/dev/null 2>&1 || true
   echo "✓ Removed MinIO bucket: agent-${AGENT_ID}"

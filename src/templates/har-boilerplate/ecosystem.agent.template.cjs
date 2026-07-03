@@ -15,7 +15,14 @@ const env = dotenv.config({ path: agentEnvPath }).parsed || {};
 
 module.exports = {
   apps: [
-    // TODO: Replace with your project's dev processes
+    // TODO: Replace with the PRIMARY application's dev processes — the ONE app
+    // agents modify (HARNESS_PRIMARY_APP in harness.env). In a monolith or
+    // monorepo with several services, do NOT start them all here: supporting
+    // services the agent depends on but does not change run ONCE for all slots,
+    // either as compose services in docker-compose.agent.yml or via an optional
+    // .har/ecosystem.shared.config.cjs (started by setup-infra.sh, processes
+    // named "har-shared-<name>", fixed ports). A primary app may still need two
+    // processes (e.g. api + frontend) — add one entry per process.
     {
       name: 'agent-${AGENT_ID}-api',
       script: 'npm',

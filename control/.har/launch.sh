@@ -48,21 +48,21 @@ log "Ports: frontend=$FE_PORT api=$API_PORT debug=$DEBUG_PORT"
 "$SCRIPT_DIR/setup-infra.sh"
 
 # Clone agent database from template
-if [ "$HARNESS_INFRA_POSTGRES" = "true" ] && [ -n "${HARNESS_TEMPLATE_DB:-}" ]; then
+if har_infra_enabled db && [ -n "${HARNESS_TEMPLATE_DB:-}" ]; then
   AGENT_DB="agent_${AGENT_ID}"
-  PSQL="psql -h localhost -p $DB_PORT -U postgres -d postgres"
+  PSQL="har_pg psql -d postgres"
   if $PSQL -tAc "SELECT 1 FROM pg_database WHERE datname = '$AGENT_DB'" | grep -q 1; then
     log "Database '$AGENT_DB' already exists."
   else
     log "Creating database '$AGENT_DB' from template..."
     $PSQL -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$HARNESS_TEMPLATE_DB' AND pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-    PGPASSWORD=password createdb -h localhost -p "$DB_PORT" -U postgres -T "$HARNESS_TEMPLATE_DB" "$AGENT_DB"
+    har_pg createdb -T "$HARNESS_TEMPLATE_DB" "$AGENT_DB"
     log "Database '$AGENT_DB' created."
   fi
 fi
 
 # Create MinIO bucket
-if [ "$HARNESS_INFRA_MINIO" = "true" ]; then
+if har_infra_enabled minio; then
   MINIO_BUCKET="agent-${AGENT_ID}"
   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
     -u "minioadmin:minioadmin" \
@@ -227,7 +227,7 @@ log "  Work dir:  ${WORK_DIR}"
 [ "$USE_WORKTREE" = true ] && log "  Worktree:  ${WORKTREE_DIR}"
 log "  Frontend:  http://localhost:${FE_PORT}"
 log "  API:       http://localhost:${API_PORT}"
-[ "$HARNESS_INFRA_POSTGRES" = "true" ] && log "  Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
+har_infra_enabled db && log "  Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
 log ""
 log "  Verify:    ./.har/verify.sh $AGENT_ID"
 log "  CLI:       ./.har/agent-cli.sh $AGENT_ID <command>"

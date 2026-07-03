@@ -129,7 +129,6 @@ process.stdout.write(JSON.stringify(arr));
 }
 
 # ── Verification stages ─────────────────────────────────────────────────────
-# TODO: Customize these steps for your project.
 # Edit this section directly — do not use a separate config file.
 
 run_step "typecheck" "npm run typecheck" || { [ -z "$FULL" ] && true; }

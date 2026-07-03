@@ -9,7 +9,9 @@
 | **Agent ID** | ${AGENT_ID} |
 | **Frontend** | http://localhost:${FE_PORT} |
 | **API** | http://localhost:${API_PORT} |
-| **Database** | `agent_${AGENT_ID}` on `localhost:${DB_PORT}` (when Postgres infra is enabled) |
+| **Database** | `agent_${AGENT_ID}` on `localhost:${DB_PORT}` (when `db` is in `HARNESS_INFRA_SERVICES`) |
+
+This slot runs **only the primary application** (`HARNESS_PRIMARY_APP`). External dependencies and any supporting services run once, shared by all slots — `setup-infra.sh` manages them; never start them yourself.
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status
@@ -41,5 +43,6 @@ Quick loop during development: MCP `har_run_verification`, `har env verify ${AGE
 - Work around a failing harness command with ad-hoc setup — fix the harness or report the failure
 - Hardcode ports — use agent env / `agent-cli.sh url`
 - Run raw `docker compose` for shared harness infra — use `setup-infra.sh`
+- Start other services of the repo in your slot — only the primary app runs per-slot; shared services are already running
 - Edit `.env.agent.${AGENT_ID}` or PM2 ecosystem files by hand
 - Run `verify` before `launch` when health or e2e steps need a running server
