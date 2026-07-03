@@ -226,6 +226,38 @@ export const RunRecordSchema = z
 
 export type RunRecord = z.infer<typeof RunRecordSchema>;
 
+/**
+ * One slot session, persisted at .har/slots/agent-<id>.json by launch.sh.
+ * Source of truth for where a slot's code lives — worktree paths carry a
+ * random per-session suffix and cannot be derived from the agent id alone.
+ */
+export const SlotRegistryEntrySchema = z
+  .object({
+    version: z.number().int().default(1),
+    agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
+    projectName: z.string(),
+    mode: z.enum(['worktree', 'root']),
+    /** Where edits/builds happen: worktree + monorepo prefix, or the repo root. */
+    workDir: z.string(),
+    /** Git checkout root of the session worktree (absent in root mode). */
+    worktreePath: z.string().optional(),
+    /** Session branch: <base-branch>-<sha4>-har-agent-<id>-<rand4>. */
+    branch: z.string().optional(),
+    /** Branch the session was launched from (e.g. main). */
+    baseBranch: z.string().optional(),
+    /** HEAD sha at launch time. */
+    baseCommit: z.string().optional(),
+    /** Random per-session chars; absent in root mode. */
+    suffix: z.string().optional(),
+    createdAt: z.string(),
+    ports: z.record(z.number()).optional(),
+    previewUrls: z.record(z.string()).optional(),
+    status: z.enum(['active', 'completed']).default('active'),
+  })
+  .passthrough();
+
+export type SlotRegistryEntry = z.infer<typeof SlotRegistryEntrySchema>;
+
 /** Structured slot status for Mission Control and `har env status --json`. */
 export const AgentSlotHarnessUsageSchema = z.enum([
   'mcp',
@@ -249,6 +281,20 @@ export const AgentSlotStatusSchema = z.object({
   lastRunAt: z.string().optional(),
   lastVerifyStatus: HarnessStageRunStatusSchema.optional(),
   lastBuildPass: z.boolean().optional(),
+  mode: z.enum(['worktree', 'root']).optional(),
+  suffix: z.string().optional(),
+  baseBranch: z.string().optional(),
+  baseCommit: z.string().optional(),
+  sessionCreatedAt: z.string().optional(),
+  /** Worktree checked out to no branch (legacy failure mode; should not happen with sessions). */
+  detachedHead: z.boolean().optional(),
+  /** Worktree has uncommitted changes. */
+  dirty: z.boolean().optional(),
+  /** Session commits on top of baseCommit. */
+  ahead: z.number().int().optional(),
+  /** Main checkout has commits the session base doesn't (worktree serves stale code). */
+  behind: z.number().int().optional(),
+  stale: z.boolean().optional(),
 });
 
 export type AgentSlotStatus = z.infer<typeof AgentSlotStatusSchema>;

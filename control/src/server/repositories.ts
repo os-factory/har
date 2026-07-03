@@ -95,34 +95,36 @@ export async function syncSlots(repositoryId: string, input: unknown) {
 
   for (const slot of slots) {
     const parsed = AgentSlotStatusSchema.parse(slot);
+    const fields = {
+      active: parsed.active,
+      workDir: parsed.workDir,
+      worktreePath: parsed.worktreePath,
+      branch: parsed.branch,
+      previewUrls: parsed.previewUrls ?? undefined,
+      harnessUsage: parsed.harnessUsage,
+      lastRunId: parsed.lastRunId,
+      lastRunAt: parsed.lastRunAt ? new Date(parsed.lastRunAt) : null,
+      lastVerifyStatus: parsed.lastVerifyStatus,
+      lastBuildPass: parsed.lastBuildPass,
+      mode: parsed.mode,
+      suffix: parsed.suffix,
+      baseBranch: parsed.baseBranch,
+      baseCommit: parsed.baseCommit,
+      sessionCreatedAt: parsed.sessionCreatedAt ? new Date(parsed.sessionCreatedAt) : null,
+      detachedHead: parsed.detachedHead,
+      dirty: parsed.dirty,
+      ahead: parsed.ahead,
+      behind: parsed.behind,
+      stale: parsed.stale,
+    };
     await prisma.agentSlot.upsert({
       where: { repositoryId_slotId: { repositoryId, slotId: parsed.agentId } },
       create: {
         repositoryId,
         slotId: parsed.agentId,
-        active: parsed.active,
-        workDir: parsed.workDir,
-        worktreePath: parsed.worktreePath,
-        branch: parsed.branch,
-        previewUrls: parsed.previewUrls ?? undefined,
-        harnessUsage: parsed.harnessUsage,
-        lastRunId: parsed.lastRunId,
-        lastRunAt: parsed.lastRunAt ? new Date(parsed.lastRunAt) : null,
-        lastVerifyStatus: parsed.lastVerifyStatus,
-        lastBuildPass: parsed.lastBuildPass,
+        ...fields,
       },
-      update: {
-        active: parsed.active,
-        workDir: parsed.workDir,
-        worktreePath: parsed.worktreePath,
-        branch: parsed.branch,
-        previewUrls: parsed.previewUrls ?? undefined,
-        harnessUsage: parsed.harnessUsage,
-        lastRunId: parsed.lastRunId,
-        lastRunAt: parsed.lastRunAt ? new Date(parsed.lastRunAt) : null,
-        lastVerifyStatus: parsed.lastVerifyStatus,
-        lastBuildPass: parsed.lastBuildPass,
-      },
+      update: fields,
     });
   }
 

@@ -14,6 +14,7 @@ describe('HAR MCP tool schemas', () => {
       'har_get_status',
       'har_get_logs',
       'har_teardown_environment',
+      'har_complete_environment',
       'har_list_artifacts',
       'har_list_runs',
       'har_get_run',

@@ -109,10 +109,19 @@ export default async function RepoDetailPage({
                   active: s.active,
                   workDir: s.workDir,
                   worktreePath: s.worktreePath,
+                  branch: s.branch,
+                  baseBranch: s.baseBranch,
+                  baseCommit: s.baseCommit,
+                  previewUrls: s.previewUrls as Record<string, string> | null,
                   harnessUsage: s.harnessUsage,
                   lastRunAt: s.lastRunAt,
                   lastVerifyStatus: s.lastVerifyStatus,
                   lastBuildPass: s.lastBuildPass,
+                  detachedHead: s.detachedHead,
+                  dirty: s.dirty,
+                  ahead: s.ahead,
+                  behind: s.behind,
+                  stale: s.stale,
                 }))}
               />
             </CardContent>

@@ -121,3 +121,19 @@ har env maintain
 The authoring agent updates scripts and this README. Review changes before committing.
 
 **Do not** put runtime behavior in YAML — edit the scripts directly.
+
+## Session lifecycle
+
+Every `launch` starts a **fresh session**: a new git worktree from the current HEAD at
+`~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
+The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — status,
+verify, and teardown resolve the work dir through it. Make ALL file edits under the
+work dir printed by launch, never in the main checkout.
+
+- Relaunching a slot **replaces** its previous session; if the old worktree has
+  uncommitted changes, launch refuses unless `--force`.
+- `teardown` removes the worktree but **keeps the session branch** so you can push it
+  or open a PR (`--delete-branch` to drop it).
+- `har env complete <id>` finishes a session: full verify (recorded as a validation),
+  then teardown — branch kept.
+- `--no-worktree` runs the slot from the repo root instead (single-agent mode).

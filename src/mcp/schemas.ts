@@ -67,10 +67,40 @@ export const LaunchEnvironmentInputSchema = z.object({
   agentId: agentIdSchema,
   worktree: z.boolean().default(true),
   claude: z.boolean().default(false),
+  force: z
+    .boolean()
+    .default(false)
+    .describe('Discard a dirty previous session instead of refusing to replace it'),
 });
 
 export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
   previewUrls: z.record(z.string()).optional(),
+  workDir: z
+    .string()
+    .optional()
+    .describe('Where the session code lives — ALL file edits must go under this path'),
+  worktreePath: z.string().optional(),
+  branch: z.string().optional(),
+});
+
+export const CompleteEnvironmentInputSchema = z.object({
+  repo: z.string().default('.'),
+  agentId: agentIdSchema,
+  skipVerify: z
+    .boolean()
+    .default(false)
+    .describe('Tear down without running verification (no validation is recorded)'),
+});
+
+export const CompleteEnvironmentOutputSchema = ShellRunOutputSchema.extend({
+  branch: z.string().optional().describe('Session branch kept for the user to push / open a PR'),
+  verification: VerificationResultSchema.nullable().optional(),
+});
+
+export const TeardownEnvironmentInputSchema = z.object({
+  repo: z.string().default('.'),
+  agentId: agentIdSchema,
+  deleteBranch: z.boolean().default(false).describe('Also delete the session git branch'),
 });
 
 export const RunStageInputSchema = z.object({

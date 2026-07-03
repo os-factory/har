@@ -36,6 +36,16 @@ model AgentSlot {
   lastRunAt        DateTime?
   lastVerifyStatus String?
   lastBuildPass    Boolean?
+  mode             String?
+  suffix           String?
+  baseBranch       String?
+  baseCommit       String?
+  sessionCreatedAt DateTime?
+  detachedHead     Boolean?
+  dirty            Boolean?
+  ahead            Int?
+  behind           Int?
+  stale            Boolean?
   updatedAt        DateTime   @updatedAt
 
   @@unique([repositoryId, slotId])

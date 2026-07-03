@@ -24,11 +24,8 @@ export PGPASSWORD="password"
 
 case "$COMMAND" in
   status)
-    ENV_FILE="$REPO_ROOT/.env.agent.${AGENT_ID}"
-    WORKTREE_DIR="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
-    if [ ! -f "$ENV_FILE" ] && [ -f "$WORKTREE_DIR/.env.agent.${AGENT_ID}" ]; then
-      ENV_FILE="$WORKTREE_DIR/.env.agent.${AGENT_ID}"
-    fi
+    ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT" || true)"
+    WORKTREE_DIR="$(existing_slot_worktree "$AGENT_ID")"
 
     PM2_RAW=$(npx --yes pm2 jlist 2>/dev/null || true)
     PM2_FOUND=false
@@ -60,12 +57,12 @@ process.stdin.on('end', () => {
 
     if [ "$PM2_FOUND" = true ]; then
       :
-    elif [ -f "$ENV_FILE" ]; then
+    elif [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
       echo "Agent ${AGENT_ID}: active (no PM2 processes)"
       # shellcheck source=/dev/null
       source "$ENV_FILE" 2>/dev/null || true
-      [ -n "${REPO_ROOT:-}" ] && echo "  Work dir:  ${REPO_ROOT}"
-      [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
+      echo "  Work dir:  $(resolve_agent_work_dir "$ENV_FILE" "$AGENT_ID")"
+      [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
     else
       echo "No active environment for agent ${AGENT_ID}"
       echo "  Run: ./.har/launch.sh ${AGENT_ID}"
@@ -150,8 +147,10 @@ LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
       echo "Usage: agent-cli.sh ${AGENT_ID} exec <command>" >&2
       exit 1
     fi
+    WORK_DIR="$(resolve_agent_work_dir "" "$AGENT_ID" 2>/dev/null || true)"
+    [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] || WORK_DIR="$REPO_ROOT"
     PGHOST=localhost PGPORT="$DB_PORT" PGUSER=postgres PGDATABASE="agent_${AGENT_ID}" \
-      bash -c "cd '$REPO_ROOT' && $*"
+      bash -c "cd '$WORK_DIR' && $*"
     ;;
 
   attach)

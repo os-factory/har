@@ -1,28 +1,29 @@
 {
   "version": "1",
-  "generatorVersion": "0.2.0",
+  "generatorVersion": "0.4.0",
   "outputDir": ".har",
-  "createdAt": "2026-06-30T15:23:56.229Z",
-  "updatedAt": "2026-06-30T15:23:56.229Z",
+  "createdAt": "2026-07-03T11:46:27.338Z",
+  "updatedAt": "2026-07-03T11:46:27.338Z",
   "stack": {
     "language": "typescript",
     "packageManager": "npm"
   },
-  "adaptationSummary": "CLI profile dogfooding harness for @har/cli — worktree by default, optional Docker via infra flags.",
+  "adaptationSummary": "Session-based worktrees: fresh suffixed worktree per launch, slot registry (.har/slots/), branch kept on teardown, complete flow",
   "profile": "cli",
   "fileChecksums": {
-    ".gitignore": "c344bed73e0693f0",
-    "CLAUDE.agent.md": "cb99218f81a45c8e",
-    "README.md": "0ba550d6c05a26cc",
-    "agent-cli.sh": "162fb8fb8fcac885",
-    "agent-slot.sh": "1967f3e132e80e41",
+    ".gitignore": "8a2da3770789a7be",
+    "ADAPT-PROMPT.md": "721b78276b06344a",
+    "CLAUDE.agent.md": "02aacd5b94d13b2e",
+    "README.md": "759126102ba324fe",
+    "agent-cli.sh": "bb03cb94e72559b9",
+    "agent-slot.sh": "7d3dc3ff31045344",
     "docker-compose.agent.yml": "18ffb0cd5d9013ad",
     "harness.env": "d278d5e918d4e44b",
     "justfile": "6415e7c5452eb2f9",
-    "launch.sh": "31ba9560fb414651",
+    "launch.sh": "839911930cddc398",
     "setup-infra.sh": "b55af370c3a2fd84",
-    "stages.json": "f40b2ab43b1f5048",
-    "teardown.sh": "ced65d5236ea06b7",
-    "verify.sh": "df8a2fb23089b8ba"
+    "stages.json": "14b3af04ca46cf19",
+    "teardown.sh": "e8f935012945e08a",
+    "verify.sh": "a9d117067887c718"
   }
 }

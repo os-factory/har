@@ -7,6 +7,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { describeProject, initHarness } from '../core/harness';
 import {
+  completeEnvironment,
   getEnvironmentLogs,
   getEnvironmentStatus,
   launchEnvironment,
@@ -24,9 +25,12 @@ import {
 } from './schema-tools';
 import { validateAgentId } from '../utils/validation';
 import {
+  CompleteEnvironmentInputSchema,
+  CompleteEnvironmentOutputSchema,
   DescribeProjectOutputSchema,
   EnvironmentRunOutputSchema,
   GetLogsInputSchema,
+  TeardownEnvironmentInputSchema,
   InitHarnessInputSchema,
   LaunchEnvironmentInputSchema,
   LaunchEnvironmentOutputSchema,
@@ -61,13 +65,18 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_launch_environment',
-    description: 'Launch an agent environment slot and return ports or preview URLs when available.',
+    description:
+      'Start a FRESH agent session. Run this BEFORE editing any file: it returns workDir — ALL file edits must go under that path, never the main checkout. Relaunching replaces the previous session (refused if it has uncommitted changes unless force=true). Edits under workDir hot-reload in the running slot.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
         worktree: { type: 'boolean' },
         claude: { type: 'boolean' },
+        force: {
+          type: 'boolean',
+          description: 'Discard a dirty previous session instead of refusing to replace it',
+        },
       },
       ['agentId'],
     ),
@@ -117,11 +126,28 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_teardown_environment',
-    description: 'Stop a running agent environment slot.',
+    description: 'Stop a running agent environment slot. The session git branch is kept unless deleteBranch=true.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
+        deleteBranch: { type: 'boolean', description: 'Also delete the session git branch' },
+      },
+      ['agentId'],
+    ),
+  },
+  {
+    name: 'har_complete_environment',
+    description:
+      'Finish a session when the work is done: runs full verification (recorded as a validation of the worktree tree hash), tears the slot down, and KEEPS the session branch so the user can push it and open a PR.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        agentId: agentIdJsonProperty,
+        skipVerify: {
+          type: 'boolean',
+          description: 'Tear down without running verification (no validation is recorded)',
+        },
       },
       ['agentId'],
     ),
@@ -201,6 +227,7 @@ export async function handleMcpToolCall(
         agentId,
         worktree: input.worktree,
         claude: input.claude,
+        force: input.force,
         capture: true,
       });
       return jsonContent(LaunchEnvironmentOutputSchema.parse(result));
@@ -259,18 +286,29 @@ export async function handleMcpToolCall(
     }
 
     case 'har_teardown_environment': {
-      const input = RunVerificationInputSchema.pick({ repo: true, agentId: true }).parse({
-        ...args,
-        repo,
-      });
+      const input = TeardownEnvironmentInputSchema.parse({ ...args, repo });
       const agentId = validateAgentId(input.agentId, repo);
       const result = await teardownEnvironment({
         repoPath: repo,
         agentId,
+        deleteBranch: input.deleteBranch,
         capture: true,
         trigger: 'mcp',
       });
       return jsonContent(EnvironmentRunOutputSchema.parse(result));
+    }
+
+    case 'har_complete_environment': {
+      const input = CompleteEnvironmentInputSchema.parse({ ...args, repo });
+      const agentId = validateAgentId(input.agentId, repo);
+      const result = await completeEnvironment({
+        repoPath: repo,
+        agentId,
+        skipVerify: input.skipVerify,
+        capture: true,
+        trigger: 'mcp',
+      });
+      return jsonContent(CompleteEnvironmentOutputSchema.parse(result));
     }
 
     case 'har_list_artifacts': {

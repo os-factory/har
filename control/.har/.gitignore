@@ -4,3 +4,5 @@ runs/
 artifacts/
 AGENT.md.proposed
 AGENT.md.proposed.meta.json
+slots/
+validations/

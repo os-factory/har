@@ -32,7 +32,7 @@ describe('env CLI delegation', () => {
 
   it('delegates launch to the core environment runner', async () => {
     await expect(
-      handleLaunch({ repo: FIXTURE, id: 2, worktree: false, claude: true }),
+      handleLaunch({ repo: FIXTURE, id: 2, worktree: false, claude: true, force: false }),
     ).rejects.toThrow('exit:0');
 
     expect(launchEnvironment).toHaveBeenCalledWith({
@@ -40,6 +40,7 @@ describe('env CLI delegation', () => {
       agentId: 2,
       worktree: false,
       claude: true,
+      force: false,
       capture: false,
     });
   });

@@ -17,6 +17,8 @@ export interface ExecutionContext {
 export interface LaunchFlags {
   worktree?: boolean;
   claude?: boolean;
+  /** Discard a dirty previous session instead of refusing to replace it. */
+  force?: boolean;
 }
 
 export interface StageRunOptions {
@@ -34,6 +36,7 @@ export interface LaunchOptions {
   agentId: number;
   worktree?: boolean;
   claude?: boolean;
+  force?: boolean;
   capture?: boolean;
 }
 
@@ -42,6 +45,10 @@ export interface EnvironmentRunResult {
   stdout: string;
   stderr: string;
   previewUrls?: Record<string, string>;
+  /** Where the session's code lives — all agent edits must go under this path. */
+  workDir?: string;
+  worktreePath?: string;
+  branch?: string;
 }
 
 export interface VerificationRunResult extends EnvironmentRunResult {

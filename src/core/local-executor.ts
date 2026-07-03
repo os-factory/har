@@ -103,10 +103,17 @@ function buildExecutionPlan(
   const cwd = stage.cwd ? path.resolve(resolvedRepo, stage.cwd) : resolvedRepo;
   const extraArgs = options.args ?? [];
 
+  const launchFlagArgs: string[] = [];
+  if (stage.kind === 'launch' && options.launchFlags) {
+    if (options.launchFlags.worktree === false) launchFlagArgs.push('--no-worktree');
+    if (options.launchFlags.claude) launchFlagArgs.push('--claude');
+    if (options.launchFlags.force) launchFlagArgs.push('--force');
+  }
+
   if (stage.command) {
     let shellCommand = substituteAgentId(stage.command, options.agentId);
-    if (extraArgs.length > 0) {
-      shellCommand = `${shellCommand} ${extraArgs.join(' ')}`;
+    for (const extra of [...extraArgs, ...launchFlagArgs]) {
+      shellCommand = `${shellCommand} ${extra}`;
     }
     return { mode: 'shell', shellCommand, args: [], cwd, env: mergedEnv };
   }
@@ -115,12 +122,7 @@ function buildExecutionPlan(
   if (stageRequiresAgentId(stage) && options.agentId !== undefined) {
     args.push(String(options.agentId));
   }
-  args.push(...extraArgs);
-
-  if (stage.kind === 'launch' && options.launchFlags) {
-    if (options.launchFlags.worktree === false) args.push('--no-worktree');
-    if (options.launchFlags.claude) args.push('--claude');
-  }
+  args.push(...extraArgs, ...launchFlagArgs);
 
   return {
     mode: 'script',

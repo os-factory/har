@@ -17,38 +17,32 @@ COMMAND="${2:?Usage: agent-cli.sh <agent-id> <command> [args...]}"
 
 validate_agent_id "$AGENT_ID"
 
-WORKTREE_DIR="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
+WORKTREE_DIR="$(existing_slot_worktree "$AGENT_ID")"
 DB_PORT="${AGENT_DB_PORT:-15432}"
 export PGPASSWORD="password"
 
 resolve_work_dir() {
-  local env_file="$REPO_ROOT/.env.agent.${AGENT_ID}"
-  if [ ! -f "$env_file" ] && [ -f "$WORKTREE_DIR/.env.agent.${AGENT_ID}" ]; then
-    env_file="$WORKTREE_DIR/.env.agent.${AGENT_ID}"
-  fi
-  if [ ! -f "$env_file" ]; then
+  local env_file
+  env_file="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
     echo "No active environment for agent ${AGENT_ID}" >&2
     echo "  Run: ./.har/launch.sh ${AGENT_ID}" >&2
     exit 1
-  fi
+  }
   # shellcheck source=/dev/null
   source "$env_file"
-  echo "${REPO_ROOT:-$REPO_ROOT}"
+  resolve_agent_work_dir "$env_file" "$AGENT_ID"
 }
 
 case "$COMMAND" in
   status)
-    ENV_FILE="$REPO_ROOT/.env.agent.${AGENT_ID}"
-    if [ ! -f "$ENV_FILE" ] && [ -f "$WORKTREE_DIR/.env.agent.${AGENT_ID}" ]; then
-      ENV_FILE="$WORKTREE_DIR/.env.agent.${AGENT_ID}"
-    fi
+    ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT" || true)"
 
-    if [ -f "$ENV_FILE" ]; then
+    if [ -n "$ENV_FILE" ]; then
       # shellcheck source=/dev/null
       source "$ENV_FILE"
       echo "Agent ${AGENT_ID}: active"
-      echo "  Work dir:  ${REPO_ROOT}"
-      [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
+      echo "  Work dir:  $(resolve_agent_work_dir "$ENV_FILE" "$AGENT_ID")"
+      [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
     else
       echo "No active environment for agent ${AGENT_ID}"
       echo "  Run: ./.har/launch.sh ${AGENT_ID}"

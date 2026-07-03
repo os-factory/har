@@ -11,6 +11,7 @@ import {
 import { promptApplyAgentMdProposal, readAgentMdProposal, clearAgentMdProposal } from '../../harness/agent-md';
 import { handleCursorRule } from '../../harness/cursor-rule';
 import {
+  completeEnvironment,
   getEnvironmentStatus,
   launchEnvironment,
   runVerification,
@@ -131,7 +132,7 @@ export const envCommand = {
       )
       .command(
         'launch <id>',
-        'Launch an agent environment slot',
+        'Launch a fresh agent session (replaces any previous session for the slot)',
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
@@ -141,7 +142,12 @@ export const envCommand = {
               default: true,
               describe: 'Use an isolated git worktree (default)',
             })
-            .option('claude', { type: 'boolean', default: false }),
+            .option('claude', { type: 'boolean', default: false })
+            .option('force', {
+              type: 'boolean',
+              default: false,
+              describe: 'Discard a dirty previous session instead of refusing to replace it',
+            }),
         handleLaunch,
       )
       .command(
@@ -156,12 +162,31 @@ export const envCommand = {
       )
       .command(
         'teardown <id>',
-        'Tear down an agent environment',
+        'Tear down an agent environment (keeps the session branch)',
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
-            .option('repo', { type: 'string', default: '.' }),
+            .option('repo', { type: 'string', default: '.' })
+            .option('delete-branch', {
+              type: 'boolean',
+              default: false,
+              describe: 'Also delete the session git branch',
+            }),
         handleTeardown,
+      )
+      .command(
+        'complete <id>',
+        'Finish a session: full verify (recorded as validation), teardown, keep the branch for a PR',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .option('repo', { type: 'string', default: '.' })
+            .option('skip-verify', {
+              type: 'boolean',
+              default: false,
+              describe: 'Tear down without running verification (no validation is recorded)',
+            }),
+        handleComplete,
       )
       .command(
         'status',
@@ -206,7 +231,7 @@ export const envCommand = {
             .demandCommand(1, 'Use: runs list | runs get <runId>'),
         () => {},
       )
-      .demandCommand(1, 'Please specify a subcommand: init, maintain, add-stage, launch, verify, teardown, status, runs'),
+      .demandCommand(1, 'Please specify a subcommand: init, maintain, add-stage, launch, verify, complete, teardown, status, runs'),
   handler: () => {},
 };
 
@@ -434,6 +459,7 @@ export async function handleLaunch(argv: {
   repo: string;
   worktree: boolean;
   claude: boolean;
+  force: boolean;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -442,8 +468,14 @@ export async function handleLaunch(argv: {
     agentId,
     worktree: argv.worktree,
     claude: argv.claude,
+    force: argv.force,
     capture: false,
   });
+  if (result.code === 0 && result.workDir) {
+    divider();
+    success(`Session ready — make ALL file edits under: ${result.workDir}`);
+    if (result.branch) info(`Branch: ${result.branch}`);
+  }
   process.exit(result.code);
 }
 
@@ -460,14 +492,45 @@ export async function handleVerify(argv: { id?: number; repo: string; full: bool
   process.exit(result.code);
 }
 
-export async function handleTeardown(argv: { id?: number; repo: string }): Promise<void> {
+export async function handleTeardown(argv: {
+  id?: number;
+  repo: string;
+  deleteBranch: boolean;
+}): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
   const result = await teardownEnvironment({
     repoPath: repo,
     agentId,
+    deleteBranch: argv.deleteBranch,
     capture: false,
   });
+  process.exit(result.code);
+}
+
+export async function handleComplete(argv: {
+  id?: number;
+  repo: string;
+  skipVerify: boolean;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  const result = await completeEnvironment({
+    repoPath: repo,
+    agentId,
+    skipVerify: argv.skipVerify,
+    capture: false,
+  });
+  if (result.code === 0) {
+    divider();
+    success('Session completed.');
+    if (result.branch) {
+      info(`Branch kept: ${result.branch}`);
+      info(`Push it with: git push -u origin ${result.branch}`);
+    }
+  } else if (result.stderr) {
+    error(result.stderr.trim());
+  }
   process.exit(result.code);
 }
 

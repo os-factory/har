@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Launches a single agent instance with isolated ports, database, and PM2 processes.
-# Idempotent — safe to run multiple times for the same agent.
+# Every launch starts a FRESH session: any previous session for the slot is torn
+# down (its branch is kept) and a new suffixed worktree is created from HEAD.
 #
-# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--claude]
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--claude] [--force]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,17 +17,19 @@ source "$SCRIPT_DIR/agent-slot.sh"
 AGENT_ID="${1:-}"
 USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 USE_CLAUDE=false
+FORCE=false
 
 for arg in "$@"; do
   case "$arg" in
     --no-worktree) USE_WORKTREE=false ;;
     --worktree) USE_WORKTREE=true ;;
     --claude)   USE_CLAUDE=true ;;
+    --force)    FORCE=true ;;
   esac
 done
 
 if [[ -z "$AGENT_ID" ]]; then
-  echo "Usage: $0 <agent-id> [--no-worktree] [--claude]" >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--claude] [--force]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -43,6 +46,21 @@ MINIO_PORT="${AGENT_MINIO_PORT:-19000}"
 BROWSER_PORT="${AGENT_BROWSER_PORT:-13001}"
 
 log "Ports: frontend=$FE_PORT api=$API_PORT debug=$DEBUG_PORT"
+
+# Replace any previous session for this slot — launch always means "run my
+# current code", never "reuse whatever this slot ran last time".
+REGISTRY_FILE="$(slot_registry_file "$AGENT_ID")"
+EXISTING_WORKTREE="$(existing_slot_worktree "$AGENT_ID")"
+if [ -f "$REGISTRY_FILE" ] || [ -n "$EXISTING_WORKTREE" ]; then
+  if [ -n "$EXISTING_WORKTREE" ] && slot_worktree_dirty "$EXISTING_WORKTREE" && [ "$FORCE" != true ]; then
+    log "ERROR: previous session for slot ${AGENT_ID} has uncommitted changes in:"
+    log "  $EXISTING_WORKTREE"
+    log "Commit them there (the branch is kept on teardown), or relaunch with --force to discard them."
+    exit 1
+  fi
+  log "Replacing previous session for slot ${AGENT_ID}..."
+  "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
+fi
 
 # Ensure shared infra is running
 "$SCRIPT_DIR/setup-infra.sh"
@@ -70,17 +88,23 @@ if har_infra_enabled minio; then
   log "MinIO bucket '$MINIO_BUCKET' ready (HTTP $HTTP_STATUS)."
 fi
 
-# Git worktree (default — use --no-worktree to work in repo root)
+# Session worktree (default — use --no-worktree to work in repo root).
+# Name encodes what the session is based on: <base-branch>-<sha4>-har-agent-<id>-<rand4>.
 WORK_DIR="$REPO_ROOT"
-WORKTREE_DIR="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
+WORKTREE_DIR=""
+BRANCH=""
+SUFFIX=""
+BASE_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")"
+BASE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
 if [ "$USE_WORKTREE" = true ]; then
-  if [ -d "$WORKTREE_DIR" ]; then
-    log "Worktree already exists at $WORKTREE_DIR"
-  else
-    log "Creating git worktree at $WORKTREE_DIR..."
-    git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" -b "har-agent-${AGENT_ID}" 2>/dev/null || \
-      git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" HEAD
-  fi
+  SHORT_SHA="$(git -C "$REPO_ROOT" rev-parse --short=4 HEAD)"
+  SUFFIX="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c 4 || true)"
+  [ -n "$SUFFIX" ] || SUFFIX="$(printf '%04d' $(( RANDOM % 10000 )))"
+  SESSION_NAME="${BASE_BRANCH//\//-}-${SHORT_SHA}-har-agent-${AGENT_ID}-${SUFFIX}"
+  BRANCH="$SESSION_NAME"
+  WORKTREE_DIR="$HOME/worktrees/${SESSION_NAME}"
+  log "Creating session worktree at $WORKTREE_DIR (branch $BRANCH)..."
+  git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" -b "$BRANCH"
   # Worktrees are always rooted at the git repo — control/ lives in a
   # subdirectory of the monorepo, so point WORK_DIR at it inside the worktree.
   REL_PREFIX="$(git -C "$REPO_ROOT" rev-parse --show-prefix 2>/dev/null || true)"
@@ -112,6 +136,15 @@ if [ -d "$WORK_DIR/../packages/schemas" ]; then
 fi
 
 # Generate .env.agent.N
+# Keep harness-generated files out of accidental `git add -A` commits in repos
+# whose .gitignore doesn't know about har (applies to all worktrees too).
+GIT_EXCLUDE="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)/info/exclude"
+if [ -n "$GIT_EXCLUDE" ] && [ -d "$(dirname "$GIT_EXCLUDE")" ]; then
+  for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs'; do
+    grep -qxF "$pattern" "$GIT_EXCLUDE" 2>/dev/null || echo "$pattern" >> "$GIT_EXCLUDE"
+  done
+fi
+
 ENV_FILE="$WORK_DIR/.env.agent.${AGENT_ID}"
 log "Generating $ENV_FILE..."
 AGENT_ID="$AGENT_ID" \
@@ -211,6 +244,20 @@ process.stdin.on("end", () => {
   exit 1
 fi
 
+# Record the session in the slot registry — the source of truth for where
+# this slot's code lives (status/verify/teardown resolve through it).
+SLOT_AGENT_ID="$AGENT_ID" \
+SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
+SLOT_WORK_DIR="$WORK_DIR" \
+SLOT_SUFFIX="${SUFFIX:-}" \
+SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
+SLOT_BRANCH="${BRANCH:-}" \
+SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
+SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT}}" \
+SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
+  write_slot_registry
+
 # Launch Claude Code in tmux (optional)
 if [ "$USE_CLAUDE" = true ]; then
   TMUX_SESSION="agent-${AGENT_ID}"
@@ -223,12 +270,17 @@ fi
 
 echo ""
 log "Agent $AGENT_ID is ready!"
-log "  Work dir:  ${WORK_DIR}"
-[ "$USE_WORKTREE" = true ] && log "  Worktree:  ${WORKTREE_DIR}"
+log ""
+log "  WORK DIR (make ALL file edits under this path — never the main checkout):"
+log "    ${WORK_DIR}"
+if [ "$USE_WORKTREE" = true ]; then
+  log "  Branch:    ${BRANCH} (based on ${BASE_BRANCH} @ ${BASE_COMMIT})"
+fi
 log "  Frontend:  http://localhost:${FE_PORT}"
 log "  API:       http://localhost:${API_PORT}"
 har_infra_enabled db && log "  Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
 log ""
+log "  Edits under the work dir hot-reload in the running slot;"
+log "  use ./.har/agent-cli.sh $AGENT_ID restart if a change doesn't take."
 log "  Verify:    ./.har/verify.sh $AGENT_ID"
-log "  CLI:       ./.har/agent-cli.sh $AGENT_ID <command>"
-log "  Teardown:  ./.har/teardown.sh $AGENT_ID"
+log "  Teardown:  ./.har/teardown.sh $AGENT_ID   (keeps the branch)"

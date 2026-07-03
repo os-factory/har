@@ -2,6 +2,7 @@ import { parseVerificationResult } from './results';
 import { localScriptExecutor } from './local-executor';
 import { syncRepoWithControlAsync } from './control-sync';
 import { createRun, finishRun, resolveAgentWorkDir } from './runs';
+import { readSlotRegistry } from './slot-registry';
 import { recordValidation } from './validations';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { getAgentSlotIds, resolveStage } from '../harness/stages';
@@ -138,10 +139,24 @@ export class RunService {
       launchFlags: {
         worktree: options.worktree,
         claude: options.claude,
+        force: options.force,
       },
       trigger: 'cli',
     });
-    return toEnvironmentRunResult(result);
+    const envResult = toEnvironmentRunResult(result);
+    if (envResult.code === 0) {
+      // The session registry written by launch.sh knows where the code lives —
+      // surface it so agents make their edits in the right checkout.
+      const harnessRoot = resolveHarnessRoot(options.repoPath);
+      const session = readSlotRegistry(harnessRoot, options.agentId);
+      if (session) {
+        envResult.workDir = session.workDir;
+        envResult.worktreePath = session.worktreePath;
+        envResult.branch = session.branch;
+        envResult.previewUrls = envResult.previewUrls ?? session.previewUrls;
+      }
+    }
+    return envResult;
   }
 
   async runVerification(options: {
@@ -206,6 +221,7 @@ export class RunService {
   async teardownEnvironment(options: {
     repoPath: string;
     agentId: number;
+    deleteBranch?: boolean;
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
   }): Promise<EnvironmentRunResult> {
@@ -213,10 +229,74 @@ export class RunService {
       repoPath: options.repoPath,
       kind: 'teardown',
       agentId: options.agentId,
+      args: options.deleteBranch ? ['--delete-branch'] : undefined,
       capture: options.capture ?? false,
       trigger: options.trigger ?? 'cli',
     });
     return toEnvironmentRunResult(result);
+  }
+
+  /**
+   * Finish a session: full verification (recorded as a validation keyed by the
+   * worktree tree hash), then teardown. The session branch is kept so the user
+   * can push it and open a PR.
+   */
+  async completeEnvironment(options: {
+    repoPath: string;
+    agentId: number;
+    skipVerify?: boolean;
+    capture?: boolean;
+    trigger?: ExecutionContext['trigger'];
+  }): Promise<EnvironmentRunResult & { verification?: VerificationResult | null }> {
+    const harnessRoot = resolveHarnessRoot(options.repoPath);
+    const session = readSlotRegistry(harnessRoot, options.agentId);
+    if (!session) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr: `No active session for agent ${options.agentId}. Run launch first.`,
+      };
+    }
+
+    let verification: VerificationResult | null | undefined;
+    if (!options.skipVerify) {
+      const verify = await this.runVerification({
+        repoPath: options.repoPath,
+        agentId: options.agentId,
+        full: true,
+        capture: options.capture ?? true,
+        trigger: options.trigger,
+      });
+      verification = verify.verification;
+      if (verify.code !== 0 || verification?.status !== 'pass') {
+        return {
+          ...verify,
+          stderr:
+            verify.stderr +
+            '\nVerification failed — session NOT completed. Fix the failures and rerun, or complete with skipVerify.',
+        };
+      }
+    }
+
+    const teardown = await this.teardownEnvironment({
+      repoPath: options.repoPath,
+      agentId: options.agentId,
+      capture: options.capture ?? true,
+      trigger: options.trigger,
+    });
+    if (teardown.code !== 0) return { ...teardown, verification };
+
+    const branchNote = session.branch
+      ? `Branch kept: ${session.branch} — push it with: git push -u origin ${session.branch}\n`
+      : '';
+    return {
+      ...teardown,
+      stdout: teardown.stdout + branchNote,
+      branch: session.branch,
+      workDir: session.workDir,
+      worktreePath: session.worktreePath,
+      verification,
+    };
   }
 
   async getEnvironmentStatus(options: {
@@ -288,6 +368,7 @@ export const listArtifacts = defaultRunService.listArtifacts.bind(defaultRunServ
 export const launchEnvironment = defaultRunService.launchEnvironment.bind(defaultRunService);
 export const runVerification = defaultRunService.runVerification.bind(defaultRunService);
 export const teardownEnvironment = defaultRunService.teardownEnvironment.bind(defaultRunService);
+export const completeEnvironment = defaultRunService.completeEnvironment.bind(defaultRunService);
 export const getEnvironmentStatus = defaultRunService.getEnvironmentStatus.bind(defaultRunService);
 export const getEnvironmentLogs = defaultRunService.getEnvironmentLogs.bind(defaultRunService);
 

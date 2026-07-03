@@ -5,13 +5,23 @@ alwaysApply: true
 
 # HAR Harness Workflow
 
-This repository uses `.har/` agent harnesses. Follow this workflow on every change.
+This repository uses a `.har/` agent harness. Follow this workflow on every change.
 
-The harness is **how you run the project**, not only how you verify it. To see an app
+The harness is **how you run the project**, not only how you verify it. To see the app
 live (manual testing, browser sessions, screenshots), launch a slot — never hand-roll
 docker/dev-server startup; the harness already encodes DB setup, ports, and env.
 If a harness command fails, fix the harness or surface the failure — do not quietly
 work around it with ad-hoc commands.
+
+## Before making changes
+
+1. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP), `har env launch 1`, or `./.har/launch.sh 1`. Launch always creates a **fresh session worktree** from the current HEAD and returns its **work dir**.
+2. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `./.har/agent-cli.sh <id> restart` if a change doesn't take.
+3. Read [AGENT.md](./AGENT.md) at the repo root
+4. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
+5. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
+
+Relaunching a slot **replaces** its previous session (the old branch is kept). If the previous session has uncommitted changes, launch refuses — commit them in the worktree or pass `force`/`--force` to discard them.
 
 ## Harnesses in this repo
 
@@ -24,30 +34,26 @@ Monorepo with two harnesses — pick by the files you are changing:
 
 Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`).
 
-## Before making changes
-
-1. Read [AGENT.md](./AGENT.md) at the repo root (harness index) — for webapp work also [control/AGENT.md](./control/AGENT.md)
-2. Read the owning harness's `README.md` and `stages.json` (e.g. [.har/README.md](./.har/README.md), [.har/stages.json](./.har/stages.json))
-3. After launch, read the harness's `CLAUDE.agent.md` for slot URLs and definition of done
 
 ## After making changes
 
 Validate through the harness — do not skip verification or substitute ad-hoc npm/test commands.
 
-### 1. HAR MCP (preferred — local `.cursor/mcp.json`, copy from `.cursor/mcp.json.example`)
+### 1. HAR MCP (preferred in Cursor when `.cursor/mcp.json` has the har server)
 
-- `har_launch_environment` with `agentId: 1` — once per session if not already launched
 - `har_run_verification` with `agentId: 1` — fast loop (typecheck + unit tests)
-- `har_run_verification` with `agentId: 1, full: true` — required before declaring work done (+ lint + build)
-- `har_teardown_environment` with `agentId: 1` — cleanup when finished
+- `har_run_verification` with `agentId: 1, full: true` — required before declaring work done
+- `har_complete_environment` with `agentId: 1` — when the work is done: full verify + validation record + teardown, **keeping the session branch** so the user can push it / open a PR
+- `har_teardown_environment` with `agentId: 1` — plain cleanup (also keeps the branch; `deleteBranch: true` to drop it)
 
 ### 2. HAR CLI (when `har` is installed)
 
 ```bash
-har env launch 1
+har env launch 1        # FIRST, before editing — prints the work dir
 har env verify 1
 har env verify 1 --full
-har env teardown 1
+har env complete 1      # done: verify + validate + teardown, branch kept for PR
+har env teardown 1      # plain cleanup (--delete-branch to drop the branch)
 ```
 
 ### 3. Shell fallback (no CLI/MCP installed)
@@ -59,10 +65,26 @@ har env teardown 1
 ./.har/teardown.sh 1
 ```
 
-Work happens in an isolated git worktree by default (`~/worktrees/har_project-agent-<id>`). If your IDE workspace is the worktree, pass `--repo /path/to/main/checkout` to CLI commands; MCP is already configured with the main checkout path.
+Commit your work **inside the session worktree** on its session branch. After completion the branch survives teardown — the user decides whether to push it and open a PR. Run JSON stays in the main checkout `.har/runs/`.
+
+## UI changes
+
+When the Playwright stage is installed (`.har/stages/browser-e2e.sh` exists), add or update specs under `tests/`. Full verify includes browser-e2e.
 
 ## Definition of done
 
 - Full verification returns pass (`har env verify 1 --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh 1 --full`)
-- New behavior has automated test coverage (typecheck, tests, lint, build)
+- All edits live in the session worktree (main checkout untouched: `git status` clean there)
+- New behavior has automated test coverage
+- Show the user the slot preview URLs so they can test the app themselves
 - Do not declare work complete without running full verify
+
+## Commit gate
+
+Each full verify records the exact code state it validated (a git tree hash under
+`.har/validations/`). When the har commit gate is installed (`har hooks install`),
+`git commit` is blocked unless the staged changes match a state that passed full verify.
+
+- Any edit after verify — even one character — requires re-running `har env verify <id> --full`
+- Stage everything you verified (`git add -A`); partially staged trees were never verified and will be rejected
+- Do not bypass the gate (`--no-verify`, `HAR_SKIP_GATE=1`) — bypasses are recorded and visible in Mission Control

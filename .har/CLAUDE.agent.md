@@ -10,8 +10,10 @@ Run `har env maintain` to refresh it.
 ## Your Environment
 
 - **Agent ID**: ${AGENT_ID}
-- **Work dir**: git worktree at `~/worktrees/har_project-agent-${AGENT_ID}` (default)
+- **Work dir**: fresh session worktree per launch — see the launch output or `.har/slots/agent-${AGENT_ID}.json` (path looks like `~/worktrees/<base>-<sha4>-har-agent-${AGENT_ID}-<rand4>`)
 - **Infra**: none for this repo (`HARNESS_INFRA_*` all false)
+
+Launch FIRST, then make ALL file edits under the work dir. Relaunching replaces the session (branch kept); a dirty previous session is refused unless `--force`.
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status
@@ -52,6 +54,7 @@ har env verify ${AGENT_ID} --full
 - [ ] Tests cover the change
 - [ ] No type errors, no lint warnings
 - [ ] Changes committed in your worktree with a clear message
+- [ ] Finish with `har env complete ${AGENT_ID}` (or MCP `har_complete_environment`) — records the validation and tears down while **keeping the session branch** for the user to push / open a PR
 
 ## What NOT To Do
 

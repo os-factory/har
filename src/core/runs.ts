@@ -5,6 +5,7 @@ import * as path from 'path';
 import { readHarnessEnv } from '../harness/env';
 import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
 import { RunRecord, RunRecordSchema, StageResult } from '../harness/schema';
+import { readSlotRegistry } from './slot-registry';
 import { ExecutionContext } from './types';
 
 const RUNS_DIR = 'runs';
@@ -75,6 +76,11 @@ function collectRunFiles(runsDir: string): string[] {
 
 export function resolveAgentWorkDir(harnessRoot: string, agentId?: number): string | undefined {
   if (agentId === undefined) return undefined;
+
+  // Session registry is the source of truth — worktree paths carry a random
+  // per-session suffix and cannot be derived from the agent id alone.
+  const entry = readSlotRegistry(harnessRoot, agentId);
+  if (entry?.workDir && fs.existsSync(entry.workDir)) return entry.workDir;
 
   const env = readHarnessEnv(harnessRoot);
   const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);

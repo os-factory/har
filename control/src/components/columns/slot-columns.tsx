@@ -9,10 +9,36 @@ export interface SlotRow {
   active: boolean;
   workDir: string | null;
   worktreePath: string | null;
+  branch: string | null;
+  baseBranch: string | null;
+  baseCommit: string | null;
+  previewUrls: Record<string, string> | null;
   harnessUsage: string;
   lastRunAt: Date | null;
   lastVerifyStatus: string | null;
   lastBuildPass: boolean | null;
+  detachedHead: boolean | null;
+  dirty: boolean | null;
+  ahead: number | null;
+  behind: number | null;
+  stale: boolean | null;
+}
+
+function driftBadges(row: SlotRow) {
+  if (!row.worktreePath) return <span className="text-muted-foreground">—</span>;
+  const badges = [];
+  if (row.detachedHead) badges.push(<Badge key="detached" variant="destructive">detached</Badge>);
+  if (row.dirty) badges.push(<Badge key="dirty" variant="warning">dirty</Badge>);
+  if (row.stale) {
+    badges.push(
+      <Badge key="stale" variant="warning">
+        behind {row.behind ?? '?'}
+      </Badge>,
+    );
+  }
+  if ((row.ahead ?? 0) > 0) badges.push(<Badge key="ahead" variant="secondary">ahead {row.ahead}</Badge>);
+  if (badges.length === 0) badges.push(<Badge key="fresh" variant="success">fresh</Badge>);
+  return <div className="flex flex-wrap gap-1">{badges}</div>;
 }
 
 function usageBadge(usage: string) {
@@ -49,6 +75,53 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
         {row.original.worktreePath ?? row.original.workDir ?? '—'}
       </span>
     ),
+  },
+  {
+    id: 'branch',
+    header: 'Branch',
+    cell: ({ row }) =>
+      row.original.branch ? (
+        <span
+          className="block max-w-56 truncate font-mono text-xs text-muted-foreground"
+          title={
+            row.original.baseBranch
+              ? `based on ${row.original.baseBranch} @ ${row.original.baseCommit?.slice(0, 7) ?? '?'}`
+              : undefined
+          }
+        >
+          {row.original.branch}
+        </span>
+      ) : (
+        '—'
+      ),
+  },
+  {
+    id: 'drift',
+    header: 'Drift',
+    cell: ({ row }) => driftBadges(row.original),
+  },
+  {
+    id: 'preview',
+    header: 'Preview',
+    cell: ({ row }) => {
+      const urls = row.original.previewUrls;
+      if (!row.original.active || !urls || Object.keys(urls).length === 0) return '—';
+      return (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(urls).map(([label, url]) => (
+            <a
+              key={label}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-primary underline-offset-2 hover:underline"
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+      );
+    },
   },
   {
     accessorKey: 'harnessUsage',
