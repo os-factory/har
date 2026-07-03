@@ -9,7 +9,8 @@ import {
   SyncSlotsInputSchema,
   SyncValidationsInputSchema,
 } from '../harness/schema';
-import { getControlApiUrl } from './control-config';
+import { getControlApiUrl, isControlEnabled } from './control-config';
+import { listRegisteredRepos } from './control-registry';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
@@ -53,6 +54,64 @@ export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promis
   } catch {
     return false;
   }
+}
+
+export async function waitForControlApi(
+  apiUrl = getControlApiUrl(),
+  timeoutMs = 60_000,
+  intervalMs = 1000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isControlApiReachable(apiUrl)) return true;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return false;
+}
+
+export async function syncAllKnownReposWithControl(options?: {
+  apiUrl?: string;
+  cwd?: string;
+}): Promise<{ synced: number; failed: number }> {
+  if (!isControlEnabled()) return { synced: 0, failed: 0 };
+
+  const apiUrl = options?.apiUrl ?? getControlApiUrl();
+  if (!(await isControlApiReachable(apiUrl))) {
+    return { synced: 0, failed: 0 };
+  }
+
+  const repoPaths = new Set<string>(listRegisteredRepos());
+
+  if (options?.cwd) {
+    const cwd = path.resolve(options.cwd);
+    if (readManifest(cwd)) repoPaths.add(cwd);
+  }
+
+  try {
+    const listResponse = await fetch(`${apiUrl}/api/repos`);
+    if (listResponse.ok) {
+      const repos = (await listResponse.json()) as { path: string }[];
+      for (const repo of repos) {
+        const resolved = path.resolve(repo.path);
+        if (readManifest(resolved)) repoPaths.add(resolved);
+      }
+    }
+  } catch {
+    // Best-effort — registry + cwd repos are enough for first sync.
+  }
+
+  let synced = 0;
+  let failed = 0;
+  for (const repoPath of repoPaths) {
+    try {
+      await withTimeout(syncRepoWithControl({ repoPath, apiUrl }), SYNC_TIMEOUT_MS, 'control sync');
+      synced++;
+    } catch {
+      failed++;
+    }
+  }
+
+  return { synced, failed };
 }
 
 export async function registerRepoWithControl(

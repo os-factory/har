@@ -20,7 +20,7 @@ import {
 import { listRuns, getRun } from '../../core/runs';
 import { collectEnvironmentStatus } from '../../core/slot-status';
 import { EnvironmentStatusSchema } from '../../harness/schema';
-import { maybeRegisterWithControl } from './control';
+import { recordRepoForControlSync } from '../../core/control-registry';
 import { writeFileSafe } from '../../utils/file-ops';
 import { requireApiKey, validateAgentId } from '../../utils/validation';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
@@ -55,11 +55,6 @@ export const envCommand = {
               type: 'boolean',
               default: false,
               describe: 'Auto-apply AGENT.md proposal without prompting (--auto only)',
-            })
-            .option('no-control', {
-              type: 'boolean',
-              default: false,
-              describe: 'Skip Mission Control registration when Control API is running',
             })
             .option('cursor-rule', {
               type: 'boolean',
@@ -244,7 +239,6 @@ export async function handleInit(argv: {
   auto: boolean;
   yes: boolean;
   profile: 'default' | 'cli';
-  noControl: boolean;
   cursorRule: boolean;
   noCursorRule: boolean;
 }): Promise<void> {
@@ -293,7 +287,7 @@ export async function handleInit(argv: {
 
     divider();
     success('Harness initialized!');
-    await maybeRegisterWithControl(repoPath, { noControl: argv.noControl });
+    recordRepoForControlSync(repoPath);
     await handleCursorRule({
       repoPath,
       cursorRule: resolveCursorRuleFlag(argv.cursorRule, argv.noCursorRule),

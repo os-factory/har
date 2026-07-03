@@ -1,33 +1,14 @@
 import * as path from 'path';
-import { spawnSync } from 'child_process';
 import type { Argv } from 'yargs';
 import {
   getControlApiUrl,
   isControlEnabled,
 } from '../../core/control-config';
 import {
-  isControlApiReachable,
   syncRepoWithControl,
 } from '../../core/control-sync';
+import { startMissionControl, syncReposAfterControlStart, runDockerCompose } from '../../core/control-lifecycle';
 import { error, header, info, success, warn } from '../../utils/logging';
-
-function resolveControlDir(): string {
-  // dist/index.js → repo root/control
-  return path.resolve(__dirname, '..', 'control');
-}
-
-function runDockerCompose(args: string[]): number {
-  const controlDir = resolveControlDir();
-  const composeFile = path.join(controlDir, 'docker-compose.yml');
-  const result = spawnSync('docker', ['compose', '-f', composeFile, ...args], {
-    cwd: controlDir,
-    stdio: 'inherit',
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  return result.status ?? 1;
-}
 
 export const controlCommand = {
   command: 'control <subcommand>',
@@ -96,9 +77,24 @@ export const controlCommand = {
 
 async function handleUp(argv: { detach: boolean }): Promise<void> {
   header('har control up');
-  const code = runDockerCompose(argv.detach ? ['up', '-d'] : ['up']);
+  const { code, apiUrl } = await startMissionControl({ detach: argv.detach });
   if (code !== 0) process.exit(code);
-  success(`Mission Control running at ${getControlApiUrl()}`);
+  success(`Mission Control running at ${apiUrl}`);
+
+  if (!isControlEnabled()) return;
+
+  info('Syncing repositories with Mission Control...');
+  const { synced, failed, apiReady } = await syncReposAfterControlStart(process.cwd());
+  if (!apiReady) {
+    warn('Mission Control API did not become ready — run har control sync later');
+    return;
+  }
+  if (synced > 0) {
+    success(`Synced ${synced} ${synced === 1 ? 'repository' : 'repositories'} with Mission Control`);
+  }
+  if (failed > 0) {
+    warn(`${failed} ${failed === 1 ? 'repository' : 'repositories'} could not be synced`);
+  }
 }
 
 async function handleDown(): Promise<void> {
@@ -219,21 +215,4 @@ async function handleLogin(argv: { apiKey?: string }): Promise<void> {
   process.env.HAR_CLOUD_API_KEY = argv.apiKey;
   success('HAR_CLOUD_API_KEY set for this process. Export it in your shell for persistence.');
   info('Sync to cloud: har control sync --cloud');
-}
-
-export async function maybeRegisterWithControl(
-  repoPath: string,
-  opts: { noControl?: boolean },
-): Promise<void> {
-  if (opts.noControl || !isControlEnabled()) return;
-
-  const reachable = await isControlApiReachable();
-  if (!reachable) return;
-
-  try {
-    await syncRepoWithControl({ repoPath });
-    info('Registered and synced with Mission Control');
-  } catch (err: unknown) {
-    warn(`Mission Control registration skipped: ${(err as Error).message}`);
-  }
 }

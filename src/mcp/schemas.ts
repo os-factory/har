@@ -164,4 +164,16 @@ export const GetRunOutputSchema = z.object({
   run: RunRecordSchema,
 });
 
+export const ControlUpInputSchema = z.object({
+  repo: z.string().default('.').describe('Working directory for repo discovery during sync'),
+  detach: z.boolean().default(true).describe('Run Docker Compose in detached mode'),
+});
+
+export const ControlUpOutputSchema = z.object({
+  apiUrl: z.string(),
+  synced: z.number().int(),
+  failed: z.number().int(),
+  apiReady: z.boolean(),
+});
+
 export { StageResultSchema };

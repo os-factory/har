@@ -159,7 +159,7 @@ Free OSS dashboard for observing harness runs, worktrees, and agent slots on you
 
 ```bash
 har control up          # starts Postgres + dashboard at http://localhost:3847
-har env init            # auto-registers when Control is running
+har env init            # remembers the repo for sync when Control starts
 har control sync        # push runs + slot status
 ```
 

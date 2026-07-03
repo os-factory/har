@@ -18,6 +18,7 @@ describe('HAR MCP tool schemas', () => {
       'har_list_artifacts',
       'har_list_runs',
       'har_get_run',
+      'har_control_up',
     ]);
     expect(names).not.toContain('run_playwright');
   });

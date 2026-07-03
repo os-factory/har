@@ -139,7 +139,6 @@ The CLI will copy the boilerplate, call Claude to adapt it to the repo, and prop
 | `--yes` | Auto-apply the `AGENT.md` proposal (with `--auto`) |
 | `--smoke` | Run `setup-infra.sh` after init |
 | `--verbose` | Extra logging |
-| `--no-control` | Skip Mission Control registration on `har env init` |
 
 ### Mission Control dashboard
 

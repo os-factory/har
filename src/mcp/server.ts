@@ -1,4 +1,5 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import * as path from 'path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
@@ -6,6 +7,8 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { describeProject, initHarness } from '../core/harness';
+import { recordRepoForControlSync } from '../core/control-registry';
+import { startControlAndSync } from '../core/control-lifecycle';
 import {
   completeEnvironment,
   getEnvironmentLogs,
@@ -40,6 +43,8 @@ import {
   ListRunsOutputSchema,
   GetRunInputSchema,
   GetRunOutputSchema,
+  ControlUpInputSchema,
+  ControlUpOutputSchema,
   RunStageInputSchema,
   RunVerificationInputSchema,
   RunVerificationOutputSchema,
@@ -180,6 +185,15 @@ export const HAR_MCP_TOOLS: Tool[] = [
       ['runId'],
     ),
   },
+  {
+    name: 'har_control_up',
+    description:
+      'Start local Mission Control (Docker Compose) and sync all harness repositories that were initialized with har env init.',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      detach: { type: 'boolean', description: 'Run Docker Compose in detached mode (default true)' },
+    }),
+  },
 ];
 
 function jsonContent(data: unknown) {
@@ -211,6 +225,7 @@ export async function handleMcpToolCall(
         smoke: input.smoke,
         profile: input.profile,
       });
+      recordRepoForControlSync(repo);
       return jsonContent({
         harnessDir: result.harnessDir,
         validation: result.validation,
@@ -333,6 +348,33 @@ export async function handleMcpToolCall(
         };
       }
       return jsonContent(GetRunOutputSchema.parse({ run }));
+    }
+
+    case 'har_control_up': {
+      const input = ControlUpInputSchema.parse({ ...args, repo });
+      const result = await startControlAndSync({
+        detach: input.detach,
+        cwd: path.resolve(input.repo),
+      });
+      if (result.code !== 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ error: `Mission Control failed to start (exit ${result.code})` }),
+            },
+          ],
+          isError: true,
+        };
+      }
+      return jsonContent(
+        ControlUpOutputSchema.parse({
+          apiUrl: result.apiUrl,
+          synced: result.synced,
+          failed: result.failed,
+          apiReady: result.apiReady,
+        }),
+      );
     }
 
     default:
