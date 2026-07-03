@@ -1,4 +1,8 @@
-# har — OSS CLI + MCP Harness
+<p align="center">
+  <img src="logo.png" alt="har logo" width="120">
+</p>
+
+# har — Your AI harness orchestrator
 
 [![Release](https://img.shields.io/github/v/release/os-factory/har)](https://github.com/os-factory/har/releases)
 [![CI](https://github.com/os-factory/har/actions/workflows/test.yml/badge.svg)](https://github.com/os-factory/har/actions/workflows/test.yml)
