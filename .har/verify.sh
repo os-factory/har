@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verification pipeline for @har/cli — typecheck, test, lint, build.
+# Verification pipeline for @dotharness/cli — typecheck, test, lint, build.
 # Outputs JSON to stdout, human-readable progress to stderr.
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]

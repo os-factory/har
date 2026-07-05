@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release process
 
-Only **`@har/cli`** is published to npm. `@har/control` and `@har/schemas` stay
+Only **`@dotharness/cli`** is published to npm. `@har/control` and `@har/schemas` stay
 private in the monorepo and ship with the repo / Docker image instead.
 
 Releases are cut automatically when conventional commits merge to `main`. The
-[Release workflow](.github/workflows/release.yml) publishes `@har/cli`, opens a
+[Release workflow](.github/workflows/release.yml) publishes `@dotharness/cli`, opens a
 GitHub Release, and triggers the Mission Control Docker publish. See
 [CONTRIBUTING.md](./CONTRIBUTING.md#releases) for maintainer setup.
 
@@ -30,7 +30,7 @@ Commit prefixes map to bumps via [Conventional Commits](https://www.conventional
 
 ## [0.1.0] - 2026-07-02
 
-First public npm release of `@har/cli`.
+First public npm release of `@dotharness/cli`.
 
 ### Added
 

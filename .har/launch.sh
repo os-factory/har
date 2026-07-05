@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch an agent slot for @har/cli development.
+# Launch an agent slot for @dotharness/cli development.
 # Every launch starts a FRESH session: any previous session for the slot is torn
 # down (its branch is kept) and a new suffixed worktree is created from HEAD.
 #

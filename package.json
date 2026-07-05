@@ -1,5 +1,5 @@
 {
-  "name": "@har/cli",
+  "name": "@dotharness/cli",
   "version": "0.1.0",
   "description": "LLM-powered CLI for reproducible agent development environments",
   "keywords": [

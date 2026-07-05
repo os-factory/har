@@ -27,7 +27,7 @@ HAR does not own the coding LLM and does not replace CI/CD. It gives agents a st
 **From npm** (end users):
 
 ```bash
-npm install -g @har/cli
+npm install -g @dotharness/cli
 ```
 
 **From source** (local development):

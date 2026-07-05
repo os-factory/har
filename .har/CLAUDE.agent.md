@@ -1,4 +1,4 @@
-# Agent ${AGENT_ID} — @har/cli Development
+# Agent ${AGENT_ID} — @dotharness/cli Development
 
 > [`AGENT.md`](../AGENT.md) · [`.har/README.md`](./README.md) · [`stages.json`](./stages.json)
 

@@ -1,6 +1,6 @@
 # HAR — Agent Development Guide
 
-Guide for coding agents working on **this repository** (`@har/cli` — the CLI and MCP control plane).
+Guide for coding agents working on **this repository** (`@dotharness/cli` — the CLI and MCP control plane).
 
 For setup, testing fixtures, and PR workflow, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
@@ -12,7 +12,7 @@ This is a monorepo with **two harnesses** — pick the one that owns the files y
 
 | Path | Profile | Runs | Use when changing | Docs |
 |------|---------|------|-------------------|------|
-| `.har/` | cli | `@har/cli` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` | [.har/README.md](.har/README.md) |
+| `.har/` | cli | `@dotharness/cli` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` | [.har/README.md](.har/README.md) |
 | `control/.har/` | default | Mission Control (Next.js + Postgres, browser-e2e) | `control/` | [control/.har/README.md](control/.har/README.md) |
 
 Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`). See [control/AGENT.md](control/AGENT.md) for the webapp guide.
@@ -69,7 +69,7 @@ If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `ha
 ## Upgrading HAR
 
 ```bash
-npm install -g @har/cli@latest    # updates CLI/MCP/run storage only
+npm install -g @dotharness/cli@latest    # updates CLI/MCP/run storage only
 har env maintain                  # drift report + adaptation prompt
 # apply updates via coding agent or: har env maintain --auto
 har env verify 1 --full
