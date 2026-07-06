@@ -16,3 +16,7 @@ control/node_modules/
 control/.next/
 control/.env
 .cursor/mcp.json
+.har/runs/
+.har/validations/
+.har/slots/
+.env.agent.*

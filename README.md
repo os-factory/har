@@ -24,13 +24,13 @@ HAR does not own the coding LLM and does not replace CI/CD. It gives agents a st
 
 ## Install
 
-**From npm** (end users):
+**From npm** (after the first GitHub Release — `@dotharness/cli` is not on npm yet):
 
 ```bash
 npm install -g @dotharness/cli
 ```
 
-**From source** (local development):
+**From source** (recommended until the first release):
 
 ```bash
 git clone https://github.com/antoineFrau/har har-project && cd har-project

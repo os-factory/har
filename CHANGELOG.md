@@ -28,6 +28,11 @@ Commit prefixes map to bumps via [Conventional Commits](https://www.conventional
 
 ## [Unreleased]
 
+### Changed
+
+- Public license is **AGPL-3.0-only** with dual-licensing docs (CLA, commercial license, trademark policy)
+- GitHub home moved to [antoineFrau/har](https://github.com/antoineFrau/har)
+
 ## [0.1.0] - 2026-07-02
 
 First public npm release of `@dotharness/cli`.

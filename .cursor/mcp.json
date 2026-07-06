@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "har": {
-      "command": "har",
-      "args": ["mcp", "--repo", "/home/antoine/Documents/assistants/har-project"]
-    }
-  }
-}
