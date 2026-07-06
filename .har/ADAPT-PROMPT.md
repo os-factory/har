@@ -30,7 +30,7 @@ Update only if infra changed.
 
 ### HAR platform upgrades checklist
 
-When upgrading `@dotharness/cli` or adopting new harness standards:
+When upgrading `@osfactory/har` or adopting new harness standards:
 
 - Add **Run history** section to repo-root `AGENT.md` if missing (shell vs `har env`, worktree vs runs location)
 - Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)

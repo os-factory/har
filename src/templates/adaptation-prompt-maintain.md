@@ -30,7 +30,7 @@ Update only if infra changed.
 
 ### HAR platform upgrades checklist
 
-When upgrading `@dotharness/cli` or adopting new harness standards:
+When upgrading `@osfactory/har` or adopting new harness standards:
 
 **Generator 0.4.0 — primary app & shared infra services:**
 

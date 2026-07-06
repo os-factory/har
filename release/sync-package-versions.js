@@ -5,7 +5,7 @@ const { join } = require('node:path');
 const PACKAGE_PATHS = ['control/package.json', 'packages/schemas/package.json'];
 
 /**
- * Keep Mission Control and shared schemas on the same semver as @dotharness/cli.
+ * Keep Mission Control and shared schemas on the same semver as @osfactory/har.
  * @type {import('semantic-release').PluginSpec}
  */
 module.exports = {

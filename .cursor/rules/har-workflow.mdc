@@ -29,7 +29,7 @@ Monorepo with two harnesses — pick by the files you are changing:
 
 | Path | Runs | Use when changing |
 |------|------|-------------------|
-| `.har/` | `@dotharness/cli` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` |
+| `.har/` | `@osfactory/har` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` |
 | `control/.har/` | Mission Control (Next.js + Postgres, browser-e2e) | `control/` |
 
 Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`).

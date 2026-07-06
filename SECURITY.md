@@ -40,4 +40,4 @@ We will keep you informed of progress and credit reporters in the advisory when 
 
 ## Scope
 
-This policy covers the `@dotharness/cli` package, the HAR MCP server, and the Mission Control dashboard in this repository. Vulnerabilities in third-party dependencies should be reported to the upstream project; we still welcome reports if you believe HAR's usage materially affects exploitability.
+This policy covers the `@osfactory/har` package, the HAR MCP server, and the Mission Control dashboard in this repository. Vulnerabilities in third-party dependencies should be reported to the upstream project; we still welcome reports if you believe HAR's usage materially affects exploitability.

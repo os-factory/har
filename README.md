@@ -24,10 +24,10 @@ HAR does not own the coding LLM and does not replace CI/CD. It gives agents a st
 
 ## Install
 
-**From npm** (after the first GitHub Release — `@dotharness/cli` is not on npm yet):
+**From npm** (after the first GitHub Release — `@osfactory/har` is not on npm yet):
 
 ```bash
-npm install -g @dotharness/cli
+npm install -g @osfactory/har
 ```
 
 **From source** (recommended until the first release):

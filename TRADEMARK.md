@@ -8,7 +8,7 @@ agreement):
   official offerings
 - The **har logo** and related visual identity in this repository (for example
   `logo.png`)
-- The npm scope **`@dotharness/`** and package names that imply official
+- The npm scope **`@osfactory/`** and package names that imply official
   affiliation when used for competing or derivative products
 
 ## Permitted use without permission
@@ -21,7 +21,7 @@ on, compatible with, or derived from this open-source project, provided you:
   the official HAR project;
 - comply with the [AGPL-3.0-only](./LICENSE) license for the underlying software.
 
-Acceptable: “Built with har (AGPL)” or “Compatible with @dotharness/cli”.
+Acceptable: “Built with har (AGPL)” or “Compatible with @osfactory/har”.
 
 Not acceptable without written permission: using the har logo as your product
 logo, calling a hosted service “Official HAR Cloud” if it is not operated under

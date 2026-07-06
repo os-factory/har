@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tear down an agent slot for @dotharness/cli development.
+# Tear down an agent slot for @osfactory/har development.
 # The session's git branch is KEPT by default so you can push it / open a PR —
 # pass --delete-branch to remove it too.
 #

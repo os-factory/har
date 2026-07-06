@@ -81,7 +81,7 @@ node dist/index.js env init --repo /path/to/project
 ### Unlink when done
 
 ```bash
-npm unlink -g @dotharness/cli
+npm unlink -g @osfactory/har
 ```
 
 ## Development loop
@@ -198,10 +198,10 @@ In Cursor: use `har_launch_environment`, `har_run_verification`, and `har_teardo
 
 ## Upgrading HAR
 
-When a new `@dotharness/cli` release changes harness templates or run storage:
+When a new `@osfactory/har` release changes harness templates or run storage:
 
 ```bash
-npm install -g @dotharness/cli@latest    # updates CLI/MCP/run storage — does not touch project .har/
+npm install -g @osfactory/har@latest    # updates CLI/MCP/run storage — does not touch project .har/
 har env maintain                  # validation + drift report + adaptation prompt
 # apply updates with your coding agent (paste .har/ADAPT-PROMPT.md) or: har env maintain --auto
 har env verify 1 --full
@@ -209,7 +209,7 @@ har env verify 1 --full
 
 | Command | Effect | Risk |
 |---------|--------|------|
-| `npm install -g @dotharness/cli@latest` | New run layout, MCP, core behavior | Safe for `.har/` |
+| `npm install -g @osfactory/har@latest` | New run layout, MCP, core behavior | Safe for `.har/` |
 | `har env maintain` | Drift report vs bundled templates | Safe — in-place |
 | `har env init --force` | Replaces entire `.har/` | **Destructive** — loses customizations |
 
@@ -336,18 +336,18 @@ Use scopes when helpful (`feat(cli):`, `fix(control):`). Squash-merge PR titles 
 
 | Package | Published? | Notes |
 |---------|------------|-------|
-| `@dotharness/cli` | **Yes** | Public npm package; global `har` binary |
+| `@osfactory/har` | **Yes** | Public npm package; global `har` binary |
 | `@har/control` | No | `"private": true`; Mission Control source in monorepo |
 | `@har/schemas` | No | `"private": true`; consumed via monorepo path in `control/` |
 
-### npm organization (`@dotharness`)
+### npm organization (`@osfactory`)
 
-Before the first public release, maintainers must own the **`@dotharness`** scope on npm:
+Before the first public release, maintainers must own the **`@osfactory`** scope on npm:
 
 1. Sign in at [npmjs.com](https://www.npmjs.com/) as a project maintainer.
-2. Create the **`@dotharness`** organization: [npmjs.com/org/create](https://www.npmjs.com/org/create) (free for public packages).
+2. Create the **`@osfactory`** organization: [npmjs.com/org/create](https://www.npmjs.com/org/create) (free for public packages).
 3. Add other maintainers under **Organization → Members**.
-4. Create an **Automation** token with **Publish** access to `@dotharness/cli` (and scope-wide publish if you prefer).
+4. Create an **Automation** token with **Publish** access to `@osfactory/har` (and scope-wide publish if you prefer).
 5. Add the token as the `NPM_TOKEN` repository secret (see below).
 
 The root `package.json` sets `"publishConfig": { "access": "public" }` so scoped publishes are public by default.
@@ -363,10 +363,10 @@ The first npm release is **`0.1.0`**, matching the current root `package.json`. 
 ```bash
 npm run build
 npm pack
-npm install -g dotharness-cli-*.tgz
+npm install -g osfactory-har-*.tgz
 har --help
-npm uninstall -g @dotharness/cli
-rm dotharness-cli-*.tgz
+npm uninstall -g @osfactory/har
+rm osfactory-har-*.tgz
 ```
 
 The tarball should contain only `dist/` (bundled CLI + templates + prompts), plus `package.json`, `README.md`, `LICENSE`, and this changelog — not the Mission Control app or test fixtures.
@@ -374,9 +374,9 @@ The tarball should contain only `dist/` (bundled CLI + templates + prompts), plu
 Maintainers do **not** hand-cut version tags after the baseline. Merge conventional commits to `main`; the [Release workflow](.github/workflows/release.yml) will:
 
 1. Run full CLI + Mission Control verification
-2. Bump `@dotharness/cli`, `@har/control`, and `@har/schemas` to the same version
+2. Bump `@osfactory/har`, `@har/control`, and `@har/schemas` to the same version
 3. Update `CHANGELOG.md`, commit `[skip ci]`, tag `vX.Y.Z`, and open a GitHub Release
-4. Publish `@dotharness/cli` to npm
+4. Publish `@osfactory/har` to npm
 5. Trigger [Publish Docker](.github/workflows/publish-docker.yml) for `antoinefrau/har-control` on Docker Hub
 
 ### Maintainer setup
@@ -392,7 +392,7 @@ Repository secrets:
 
 | Secret | Used by |
 |--------|---------|
-| `NPM_TOKEN` | npm publish for `@dotharness/cli` (Automation token with publish access to the `@dotharness` scope) |
+| `NPM_TOKEN` | npm publish for `@osfactory/har` (Automation token with publish access to the `@osfactory` scope) |
 | `DOCKERHUB_TOKEN` | Docker Hub publish for `antoinefrau/har-control` (PAT with read/write on the repo) |
 | `GITHUB_TOKEN` | GitHub Release (provided by Actions) |
 
@@ -405,6 +405,6 @@ GITHUB_TOKEN=... NPM_TOKEN=... npx semantic-release --dry-run
 
 ### Version coupling
 
-`@dotharness/cli`, Mission Control (`control/`), and `@har/schemas` share one semver to avoid API drift. The release job syncs all three `package.json` files before tagging.
+`@osfactory/har`, Mission Control (`control/`), and `@har/schemas` share one semver to avoid API drift. The release job syncs all three `package.json` files before tagging.
 
 Manual `v*` tags are discouraged. If you push a tag anyway, the Docker workflow validates that tag `vX.Y.Z` matches every coupled `package.json` version before publishing.
