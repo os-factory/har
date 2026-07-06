@@ -111,5 +111,9 @@ describe('harness stage contract', () => {
 
     const registry = readStageRegistry(repoPath);
     expect(registry.agentSlots).toEqual({ min: 1, max: 3 });
+
+    const gitignore = fs.readFileSync(path.join(repoPath, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('.env.agent.*');
+    expect(gitignore).toContain('ecosystem.agent.*.config.cjs');
   });
 });

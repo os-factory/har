@@ -20,3 +20,4 @@ control/.env
 .har/validations/
 .har/slots/
 .env.agent.*
+ecosystem.agent.*.config.cjs

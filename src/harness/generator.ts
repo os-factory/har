@@ -3,6 +3,7 @@ import * as path from 'path';
 import { copyDirRecursive } from '../utils/file-ops';
 import { info, success } from '../utils/logging';
 import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
+import { ensureRootGitignorePatterns } from '../core/gitignore';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 
 export type HarnessProfile = 'default' | 'cli';
@@ -103,6 +104,7 @@ export function scaffoldHarnessBoilerplate(
   writeManifest(repoPath, manifest);
 
   scaffoldClaudeMd(repoPath, projectName, options.force ?? false);
+  ensureRootGitignorePatterns(repoPath);
 
   success(`Copied harness boilerplate to .har/ (profile: ${profile})`);
   info(`Project name: ${projectName}`);
