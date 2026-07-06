@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Launch an agent slot for iOS mobile app repos (git worktree by default).
+# Every launch starts a FRESH session: any previous session for the slot is torn
+# down (its branch is kept) and a new suffixed worktree is created from HEAD.
+#
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--force]
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/harness.env"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/agent-slot.sh"
+
+AGENT_ID="${1:-}"
+USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
+FORCE=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-worktree) USE_WORKTREE=false ;;
+    --worktree)    USE_WORKTREE=true ;;
+    --force)       FORCE=true ;;
+  esac
+done
+
+if [[ -z "$AGENT_ID" ]]; then
+  echo "Usage: $0 <agent-id> [--no-worktree] [--force]" >&2
+  echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
+  exit 1
+fi
+
+validate_agent_id "$AGENT_ID"
+
+log() { echo "==> [agent-$AGENT_ID] $*" >&2; }
+
+# Replace any previous session for this slot — launch always means "run my
+# current code", never "reuse whatever this slot ran last time".
+REGISTRY_FILE="$(slot_registry_file "$AGENT_ID")"
+EXISTING_WORKTREE="$(existing_slot_worktree "$AGENT_ID")"
+if [ -f "$REGISTRY_FILE" ] || [ -n "$EXISTING_WORKTREE" ]; then
+  if [ -n "$EXISTING_WORKTREE" ] && slot_worktree_dirty "$EXISTING_WORKTREE" && [ "$FORCE" != true ]; then
+    log "ERROR: previous session for slot ${AGENT_ID} has uncommitted changes in:"
+    log "  $EXISTING_WORKTREE"
+    log "Commit them there (the branch is kept on teardown), or relaunch with --force to discard them."
+    exit 1
+  fi
+  log "Replacing previous session for slot ${AGENT_ID}..."
+  "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
+fi
+
+"$SCRIPT_DIR/setup-infra.sh"
+
+# Session worktree (default — use --no-worktree to work in repo root).
+# Name encodes what the session is based on: <base-branch>-<sha4>-har-agent-<id>-<rand4>.
+WORK_DIR="$REPO_ROOT"
+WORKTREE_DIR=""
+BRANCH=""
+SUFFIX=""
+BASE_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")"
+BASE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+if [ "$USE_WORKTREE" = true ]; then
+  SHORT_SHA="$(git -C "$REPO_ROOT" rev-parse --short=4 HEAD)"
+  SUFFIX="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c 4 || true)"
+  [ -n "$SUFFIX" ] || SUFFIX="$(printf '%04d' $(( RANDOM % 10000 )))"
+  SESSION_NAME="${BASE_BRANCH//\//-}-${SHORT_SHA}-har-agent-${AGENT_ID}-${SUFFIX}"
+  BRANCH="$SESSION_NAME"
+  WORKTREE_DIR="$HOME/worktrees/${SESSION_NAME}"
+  log "Creating session worktree at $WORKTREE_DIR (branch $BRANCH)..."
+  git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" -b "$BRANCH"
+  REL_PREFIX="$(git -C "$REPO_ROOT" rev-parse --show-prefix 2>/dev/null || true)"
+  WORK_DIR="${WORKTREE_DIR%/}/${REL_PREFIX}"
+  WORK_DIR="${WORK_DIR%/}"
+else
+  log "Using repo root (worktree disabled)"
+fi
+
+GIT_EXCLUDE="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)/info/exclude"
+if [ -n "$GIT_EXCLUDE" ] && [ -d "$(dirname "$GIT_EXCLUDE")" ]; then
+  for pattern in '.env.agent.*' 'build/DerivedData'; do
+    grep -qxF "$pattern" "$GIT_EXCLUDE" 2>/dev/null || echo "$pattern" >> "$GIT_EXCLUDE"
+  done
+fi
+
+# ── iOS dependency installation ───────────────────────────────────────────────
+if [ -f "$WORK_DIR/Podfile" ]; then
+  log "Podfile detected — running pod install..."
+  (cd "$WORK_DIR" && pod install --silent 2>/dev/null || pod install) || {
+    log "Warning: pod install failed — verify CocoaPods is installed (gem install cocoapods)"
+  }
+elif [ -f "$WORK_DIR/Package.swift" ] && [ ! -f "$WORK_DIR"/*.xcodeproj/project.pbxproj ] 2>/dev/null; then
+  log "Swift Package Manager project — resolving packages..."
+  (cd "$WORK_DIR" && swift package resolve 2>/dev/null) || {
+    log "Warning: swift package resolve failed"
+  }
+fi
+
+# Resolve packages for Xcode projects that use SPM dependencies (DerivedData-free resolution).
+WORKSPACE_FILE=""
+PROJECT_FILE=""
+if [ -n "${HARNESS_XCODE_WORKSPACE:-}" ] && [ -e "$WORK_DIR/${HARNESS_XCODE_WORKSPACE}" ]; then
+  WORKSPACE_FILE="$WORK_DIR/${HARNESS_XCODE_WORKSPACE}"
+elif [ -n "${HARNESS_XCODE_PROJECT:-}" ] && [ -e "$WORK_DIR/${HARNESS_XCODE_PROJECT}" ]; then
+  PROJECT_FILE="$WORK_DIR/${HARNESS_XCODE_PROJECT}"
+fi
+
+if [ -n "$WORKSPACE_FILE" ] || [ -n "$PROJECT_FILE" ]; then
+  XC_TARGET_FLAG=""
+  [ -n "$WORKSPACE_FILE" ] && XC_TARGET_FLAG="-workspace $WORKSPACE_FILE"
+  [ -n "$PROJECT_FILE" ]   && XC_TARGET_FLAG="-project $PROJECT_FILE"
+  log "Resolving Xcode package dependencies..."
+  (cd "$WORK_DIR" && xcodebuild $XC_TARGET_FLAG \
+    -scheme "${HARNESS_XCODE_SCHEME}" \
+    -resolvePackageDependencies 2>/dev/null) || log "Warning: package resolution failed (non-fatal)"
+fi
+
+ENV_FILE="$WORK_DIR/.env.agent.${AGENT_ID}"
+log "Generating $ENV_FILE..."
+cat > "$ENV_FILE" <<EOF
+# Agent environment — generated by launch.sh
+AGENT_ID=${AGENT_ID}
+REPO_ROOT=${WORK_DIR}
+WORKTREE_DIR=${WORKTREE_DIR}
+EOF
+
+# Record the session in the slot registry.
+SLOT_AGENT_ID="$AGENT_ID" \
+SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
+SLOT_WORK_DIR="$WORK_DIR" \
+SLOT_SUFFIX="${SUFFIX:-}" \
+SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
+SLOT_BRANCH="${BRANCH:-}" \
+SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
+SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+  write_slot_registry
+
+log "Agent $AGENT_ID is ready."
+log ""
+log "  WORK DIR (make ALL file edits under this path — never the main checkout):"
+log "    ${WORK_DIR}"
+if [ "$USE_WORKTREE" = true ]; then
+  log "  Branch:    ${BRANCH} (based on ${BASE_BRANCH} @ ${BASE_COMMIT})"
+fi
+log ""
+log "  Verify:    ./.har/verify.sh $AGENT_ID"
+log "  Teardown:  ./.har/teardown.sh $AGENT_ID   (keeps the branch)"

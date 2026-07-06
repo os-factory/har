@@ -6,7 +6,7 @@ import { harnessExists } from './parser';
 import { HarnessStageRegistry, HarnessStageSchema } from './schema';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
-export const STAGE_TEMPLATE_IDS = ['playwright'] as const;
+export const STAGE_TEMPLATE_IDS = ['playwright', 'rocketsim'] as const;
 export type StageTemplateId = (typeof STAGE_TEMPLATE_IDS)[number];
 
 interface TemplateManifestFile {
@@ -25,6 +25,7 @@ interface TemplateManifest {
   files: TemplateManifestFile[];
   optionalFiles?: TemplateManifestFile[];
   merge?: Record<string, string>;
+  nextSteps?: string[];
 }
 
 export interface ApplyStageTemplateOptions {
@@ -257,7 +258,7 @@ export function applyStageTemplate(
     warn(`  ⚠ ${warning}`);
   }
 
-  const nextSteps = [
+  const nextSteps = manifest.nextSteps ?? [
     'npm install',
     'npx playwright install',
     './.har/launch.sh 1',

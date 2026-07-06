@@ -47,9 +47,9 @@ export const envCommand = {
             })
             .option('profile', {
               type: 'string',
-              choices: ['default', 'cli'] as const,
+              choices: ['default', 'cli', 'ios'] as const,
               default: 'default' as const,
-              describe: 'Boilerplate profile: default (web app) or cli (library/CLI, no PM2)',
+              describe: 'Boilerplate profile: default (web app), cli (library/CLI, no PM2), ios (iOS mobile app)',
             })
             .option('yes', {
               type: 'boolean',
@@ -238,7 +238,7 @@ export async function handleInit(argv: {
   smoke: boolean;
   auto: boolean;
   yes: boolean;
-  profile: 'default' | 'cli';
+  profile: 'default' | 'cli' | 'ios';
   cursorRule: boolean;
   noCursorRule: boolean;
 }): Promise<void> {
@@ -376,7 +376,7 @@ function resolveCursorRuleFlag(cursorRule: boolean, noCursorRule: boolean): bool
 function emitManualAdaptationPrompt(
   repoPath: string,
   mode: 'init' | 'maintain',
-  profile: 'default' | 'cli' = 'default',
+  profile: 'default' | 'cli' | 'ios' = 'default',
 ): void {
   const prompt =
     mode === 'init'

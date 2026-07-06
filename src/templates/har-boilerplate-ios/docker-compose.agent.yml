@@ -1,0 +1,17 @@
+version: "3.8"
+# Add backend services needed by your iOS app here.
+# Example: a mock API server or a local database.
+#
+# List services in HARNESS_INFRA_SERVICES in harness.env to enable them.
+# They start once on fixed ports and are shared by all agent slots.
+#
+# services:
+#   mock-server:
+#     image: stoplight/prism:4
+#     command: mock -h 0.0.0.0 /api/openapi.yaml
+#     ports:
+#       - "4010:4010"
+#     volumes:
+#       - ../api:/api:ro
+
+services: {}

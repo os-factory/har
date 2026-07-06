@@ -6,11 +6,12 @@ import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 
-export type HarnessProfile = 'default' | 'cli';
+export type HarnessProfile = 'default' | 'cli' | 'ios';
 
 const PROFILE_DIRS: Record<HarnessProfile, string> = {
   default: 'har-boilerplate',
   cli: 'har-boilerplate-cli',
+  ios: 'har-boilerplate-ios',
 };
 
 /** Files not used by the CLI profile — removed after scaffold so init leaves no dead SaaS/PM2 assets. */
@@ -97,7 +98,9 @@ export function scaffoldHarnessBoilerplate(
     repoPath,
     profile === 'cli'
       ? 'CLI profile copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).'
-      : 'Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).',
+      : profile === 'ios'
+        ? 'iOS profile copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).'
+        : 'Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).',
     undefined,
     profile,
   );

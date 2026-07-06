@@ -12,6 +12,8 @@ const PROFILE_HINTS: Record<HarnessProfile, string> = {
     'Web app profile — Docker Compose for shared infra (HARNESS_INFRA_SERVICES), PM2 for the primary application only, git worktree per agent slot by default. Identify the primary app agents modify; run supporting services shared. Adapt docker-compose, setup-infra, and ecosystem templates for this stack.',
   cli:
     'CLI/library profile — no PM2. Optional Docker Compose via the `HARNESS_INFRA_SERVICES` list in harness.env. Agents work in an isolated git worktree by default (`--no-worktree` to use the repo root). Remove any leftover PM2/ecosystem files; keep docker-compose when shared services are enabled.',
+  ios:
+    'iOS mobile app profile — no PM2, no web ports. Agents build and test via xcodebuild in an isolated git worktree. Set HARNESS_XCODE_SCHEME, HARNESS_XCODE_WORKSPACE/PROJECT, HARNESS_SIMULATOR_NAME, and HARNESS_BUNDLE_ID in harness.env. Adapt setup-infra.sh to boot the target simulator. Install the RocketSim stage template (har env add-stage rocketsim) for user-flow validation.',
 };
 
 function loadTemplate(name: string): string {

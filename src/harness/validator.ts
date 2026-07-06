@@ -35,9 +35,25 @@ const REQUIRED_FILES_CLI = REQUIRED_FILES_DEFAULT.filter(
   (file) => file !== 'ecosystem.agent.template.cjs' && file !== 'env.template',
 );
 
+const REQUIRED_FILES_IOS = [
+  'README.md',
+  'stages.json',
+  'harness.env',
+  'setup-infra.sh',
+  'launch.sh',
+  'verify.sh',
+  'teardown.sh',
+  'agent-cli.sh',
+  'agent-slot.sh',
+  'docker-compose.agent.yml',
+  'CLAUDE.agent.md',
+];
+
 function getRequiredFiles(repoPath: string): string[] {
   const manifest = readManifest(repoPath);
-  return manifest?.profile === 'cli' ? REQUIRED_FILES_CLI : REQUIRED_FILES_DEFAULT;
+  if (manifest?.profile === 'cli') return REQUIRED_FILES_CLI;
+  if (manifest?.profile === 'ios') return REQUIRED_FILES_IOS;
+  return REQUIRED_FILES_DEFAULT;
 }
 
 const SHELL_SCRIPTS = [

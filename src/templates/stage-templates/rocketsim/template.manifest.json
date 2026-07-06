@@ -1,0 +1,38 @@
+{
+  "id": "rocketsim",
+  "stageId": "rocketsim-flows",
+  "verificationStages": [
+    "build",
+    "unit-tests",
+    "lint",
+    "rocketsim-flows"
+  ],
+  "stage": {
+    "id": "rocketsim-flows",
+    "kind": "test",
+    "description": "RocketSim user-flow validation (reusable bash flows against the running app)",
+    "script": "stages/rocketsim-flows.sh",
+    "requiresAgentId": true,
+    "artifacts": [
+      {
+        "path": ".har/artifacts/rocketsim-flows",
+        "kind": "directory",
+        "description": "Screenshots, per-flow results, and run summary"
+      }
+    ]
+  },
+  "files": [
+    { "src": ".har/stages/rocketsim-flows.sh", "dest": ".har/stages/rocketsim-flows.sh", "executable": true },
+    { "src": ".har/stages/ROCKETSIM.md",       "dest": ".har/stages/ROCKETSIM.md" },
+    { "src": "flows/README.md",                "dest": "flows/README.md" },
+    { "src": "flows/example-smoke.sh",         "dest": "flows/example-smoke.sh", "executable": true }
+  ],
+  "nextSteps": [
+    "rocketsim doctor",
+    "./.har/launch.sh 1",
+    "Build and install your app on the simulator",
+    "./.har/stages/rocketsim-flows.sh 1",
+    "Open .har/artifacts/rocketsim-flows/ for screenshots and per-flow results",
+    "Add new flows in flows/ — read .har/stages/ROCKETSIM.md for the authoring guide"
+  ]
+}

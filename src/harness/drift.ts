@@ -12,6 +12,7 @@ import { resolveTemplatesDir } from '../utils/paths';
 const PROFILE_DIRS: Record<HarnessProfile, string> = {
   default: 'har-boilerplate',
   cli: 'har-boilerplate-cli',
+  ios: 'har-boilerplate-ios',
 };
 
 const CLI_EXPECTED_ABSENT = new Set([

@@ -29,7 +29,7 @@ export const HarnessManifestSchema = z.object({
     })
     .optional(),
   adaptationSummary: z.string().optional(),
-  profile: z.enum(['default', 'cli']).optional(),
+  profile: z.enum(['default', 'cli', 'ios']).optional(),
   fileChecksums: z.record(z.string()).optional(),
 });
 
@@ -303,7 +303,7 @@ export const EnvironmentStatusSchema = z.object({
   repoPath: z.string(),
   harnessRoot: z.string(),
   gitRemote: z.string().optional(),
-  profile: z.enum(['default', 'cli']).optional(),
+  profile: z.enum(['default', 'cli', 'ios']).optional(),
   slots: z.array(AgentSlotStatusSchema),
   generatedAt: z.string(),
 });
