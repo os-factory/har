@@ -1,0 +1,161 @@
+issues:
+  lightdash/lightdash:
+    - issue_number: 22515
+      title: "[Routing] Bare /projects/:projectUuid URL renders blank page instead of redirecting to /home"
+      closed_at: "2026-04-30T08:32:14Z"
+    - issue_number: 24854
+      title: "Dashboard chart tile description tooltip hover area is too large"
+      closed_at: "2026-07-02T19:59:47Z"
+    - issue_number: 23832
+      title: "Investigate \"Cannot export pivot table CSV without pivot details\""
+      closed_at: "2026-06-03T16:22:25Z"
+    - issue_number: 23697
+      title: "[ClickHouse] Pivot visualization broken in v0.3053.0+"
+      closed_at: "2026-06-01T13:28:36Z"
+    - issue_number: 18327
+      title: "Table chart UI bug: last row does not close when using pivoted columns"
+      closed_at: "2025-12-02T11:14:12Z"
+  novuhq/novu:
+    - issue_number: 8358
+      title: "🐛 Bug Report: Console Error on Notification Click"
+      closed_at: "2026-03-06T23:39:23Z"
+    - issue_number: 8722
+      title: "TypeError: Cannot read properties of undefined (reading 'request') when creating workflow from dashboard (v2.3.0)"
+      closed_at: "2026-05-20T16:37:45Z"
+    - issue_number: 7156
+      title: "🐛 Bug Report: WebSocket Context Path on Frontend"
+      closed_at: "2025-11-06T22:48:23Z"
+    - issue_number: 6346
+      title: "🐛 Bug Report: @novu/framework cannot be used in Cloudflare Pages"
+      closed_at: "2025-11-06T22:48:23Z"
+    - issue_number: 8732
+      title: "🐛 Bug Report: Has anyone experienced the email editor not working?"
+      closed_at: "2026-02-12T23:30:20Z"
+  jitsi/jitsi-meet:
+    - issue_number: 17011
+      title: "[Bug] [Performance]:  UI freezes 10+ seconds when closing participants pane with 500+ participants"
+      closed_at: "2026-05-07T02:23:03Z"
+    - issue_number: 17074
+      title: "Bug: Polls Reducer mutating Redux state in-place on RECEIVE_ANSWER"
+      closed_at: "2026-05-19T02:25:27Z"
+    - issue_number: 15451
+      title: "Meeting crashes when clicking on Tile View"
+      closed_at: "2025-01-13T17:02:16Z"
+    - issue_number: 12112
+      title: "Changes in the main.json file under lang folder are not reflecting in the UI"
+      closed_at: "2022-09-01T13:37:23Z"
+    - issue_number: 17307
+      title: "[Bug] Local Recording button missing after enabling token verification & mod_token_affiliation"
+      closed_at: "2026-06-26T02:25:18Z"
+  n8n-io/n8n:
+    - issue_number: 33408
+      title: "After upgrading to 2.28.4, the form styling of input boxes is inconsistent."
+      closed_at: "2026-07-02T11:23:38Z"
+    - issue_number: 32429
+      title: "Hang: reconverging workflow traversal can block editor and runtime"
+      closed_at: "2026-06-22T15:41:42Z"
+    - issue_number: 23862
+      title: "\"If\" node contents overrides adjacent \"If\" node"
+      closed_at: "2026-06-16T14:50:55Z"
+    - issue_number: 33062
+      title: "Data Tables datetime fields return {} in downstream Set node during full workflow execution"
+      closed_at: "2026-07-01T09:59:58Z"
+    - issue_number: 26050
+      title: "Google Drive Node: Service Accounts do not have storage quota"
+      closed_at: "2026-07-03T14:35:27Z"
+  directus/directus:
+    - issue_number: 27193
+      title: "Unable to Reposition Filters in Collection Page (Popup Closes Automatically)"
+      closed_at: "2026-04-29T14:16:37Z"
+    - issue_number: 27328
+      title: "Bookmarks without an icon flash when switching collections"
+      closed_at: "2026-04-29T14:38:03Z"
+    - issue_number: 27323
+      title: "Selection not cleared after running a manual flow on collection list view (regression since v11.13.0 / #25962)"
+      closed_at: "2026-04-28T23:45:34Z"
+    - issue_number: 27091
+      title: "Save as copy throws error"
+      closed_at: "2026-04-28T14:33:34Z"
+    - issue_number: 26448
+      title: "Error when saving entry with validation rule"
+      closed_at: "2026-06-27T16:15:28Z"
+  zulip/zulip:
+    - issue_number: 33250
+      title: "Jitter when subscribing/unsubscribing to a channel"
+      closed_at: "2026-03-26T20:38:52Z"
+    - issue_number: 8745
+      title: "Image transparency replaced with checkerboard on zoom"
+      closed_at: "2026-07-02T20:26:03Z"
+    - issue_number: 38929
+      title: "Fix minor bugs with date custom profile fields UI"
+      closed_at: "2026-06-23T08:56:52Z"
+    - issue_number: 39581
+      title: "left side bar: filter does not find topic by name"
+      closed_at: "2026-06-22T23:32:42Z"
+    - issue_number: 38887
+      title: "SAML breaks if name specified twice"
+      closed_at: "2026-06-25T14:39:48Z"
+  strapi/strapi:
+    - issue_number: 25768
+      title: "zh-Hans locale not appearing in Interface language dropdown after configuration"
+      closed_at: "2026-07-03T09:59:45Z"
+    - issue_number: 26114
+      title: "Content Manager flicker/double-paint when navigating between localized single types via Main Nav"
+      closed_at: "2026-07-02T12:48:30Z"
+    - issue_number: 26755
+      title: "Admin blank on 5.48.1 in pnpm monorepo: #26249 getModulePath resolves @reduxjs/toolkit to a hoisted RTK 2.x (Duplicate middleware references)"
+      closed_at: "2026-07-02T10:29:11Z"
+    - issue_number: 25608
+      title: "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node."
+      closed_at: "2026-06-22T10:50:50Z"
+    - issue_number: 26683
+      title: "Regression: Enumeration field no longer supports i18n translation in admin (v4 → v5)"
+      closed_at: "2026-06-30T12:46:19Z"
+  getsentry/sentry:
+    - issue_number: 39070
+      title: "Auth page flashes error page in UI then redirects to expected page"
+      closed_at: "2026-03-19T16:41:37Z"
+    - issue_number: 98568
+      title: "Alert - Config is not persisted in the UI which causes confusion"
+      closed_at: "2025-09-23T18:42:58Z"
+    - issue_number: 90449
+      title: "Cannot Resolve Issues From Slack UI (Affecting Some Orgs)"
+      closed_at: "2025-06-04T18:39:26Z"
+    - issue_number: 84420
+      title: "Environment filter not respected for new issues when \"real-time updates\" is enabled."
+      closed_at: "2025-09-15T19:43:32Z"
+    - issue_number: 80312
+      title: "Alerts not triggered for empty environment value"
+      closed_at: "2025-09-23T19:33:23Z"
+  appsmithorg/appsmith:
+    - issue_number: 41574
+      title: "[Bug]: Severe keyboard `Tab` key navigation failures in data-entry forms (Focus drops, jumps to top, or freezes)"
+      closed_at: "2026-03-27T20:47:19Z"
+    - issue_number: 41706
+      title: "[Bug]: .isSwitched of a Switch-widget doesn't get the correct (updates) value (#41566)"
+      closed_at: "2026-04-07T16:50:53Z"
+    - issue_number: 41704
+      title: "[Bug]: Resetting JSON Form creates an empty Array item for Array fields defaulted to [] (#41653)"
+      closed_at: "2026-04-13T18:16:14Z"
+    - issue_number: 41608
+      title: "[Bug]: Required Input Field does't show * next to the label"
+      closed_at: "2026-03-17T09:05:33Z"
+    - issue_number: 41938
+      title: "[Bug]: Git SSH import shows \"SSH key misconfiguration\" when remote repo has no default branch"
+      closed_at: "2026-07-03T14:03:50Z"
+  mattermost/mattermost:
+    - issue_number: 36602
+      title: "[Bug]: Accessibility - Empty links and missing accessible names in UI"
+      closed_at: "2026-05-18T01:13:06Z"
+    - issue_number: 18365
+      title: "Incoming Webhooks UI: Configured channel displays as '--- Select a channel ---' if the user is not joined to that channel"
+      closed_at: "2026-02-17T13:49:58Z"
+    - issue_number: 34589
+      title: "[Bug]: \"Recent mentions\" button starts returning HTTP 499 error"
+      closed_at: "2026-02-04T11:02:04Z"
+    - issue_number: 29751
+      title: "Rounded Corners Rendering Issue in Mattermost Desktop Application"
+      closed_at: "2025-01-06T05:57:41Z"
+    - issue_number: 27709
+      title: "UI issue : blank area on extended thread"
+      closed_at: "2024-08-27T16:29:18Z"

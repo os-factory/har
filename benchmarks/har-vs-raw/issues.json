@@ -1,0 +1,1306 @@
+{
+  "version": 1,
+  "generated_at": "2026-07-05T12:08:37Z",
+  "issues": [
+    {
+      "id": "lightdash-lightdash-22515",
+      "repo": "lightdash/lightdash",
+      "owner": "lightdash",
+      "name": "lightdash",
+      "issue_number": 22515,
+      "issue_url": "https://github.com/lightdash/lightdash/issues/22515",
+      "title": "[Routing] Bare /projects/:projectUuid URL renders blank page instead of redirecting to /home",
+      "reference_pr": null,
+      "base_commit": "33119b160bf175e2a9c8a5d58a1f8214e3f2740b",
+      "merged_at": "2026-04-30T08:32:14Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "lightdash-lightdash-24854",
+      "repo": "lightdash/lightdash",
+      "owner": "lightdash",
+      "name": "lightdash",
+      "issue_number": 24854,
+      "issue_url": "https://github.com/lightdash/lightdash/issues/24854",
+      "title": "Dashboard chart tile description tooltip hover area is too large",
+      "reference_pr": null,
+      "base_commit": "b13d61e860b631ee5379f4e90bd6a57c2e1de95e",
+      "merged_at": "2026-07-02T19:59:47Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "lightdash-lightdash-23832",
+      "repo": "lightdash/lightdash",
+      "owner": "lightdash",
+      "name": "lightdash",
+      "issue_number": 23832,
+      "issue_url": "https://github.com/lightdash/lightdash/issues/23832",
+      "title": "Investigate \"Cannot export pivot table CSV without pivot details\"",
+      "reference_pr": null,
+      "base_commit": "f2d203144d8734177f5441cf7731b1477c98f8d9",
+      "merged_at": "2026-06-03T16:22:25Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "lightdash-lightdash-23697",
+      "repo": "lightdash/lightdash",
+      "owner": "lightdash",
+      "name": "lightdash",
+      "issue_number": 23697,
+      "issue_url": "https://github.com/lightdash/lightdash/issues/23697",
+      "title": "[ClickHouse] Pivot visualization broken in v0.3053.0+",
+      "reference_pr": null,
+      "base_commit": "acd24271aa75b1998920aee3af4803a485d6739d",
+      "merged_at": "2026-06-01T13:28:36Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "lightdash-lightdash-18327",
+      "repo": "lightdash/lightdash",
+      "owner": "lightdash",
+      "name": "lightdash",
+      "issue_number": 18327,
+      "issue_url": "https://github.com/lightdash/lightdash/issues/18327",
+      "title": "Table chart UI bug: last row does not close when using pivoted columns",
+      "reference_pr": null,
+      "base_commit": "aa8e474a3578489e207ceebea49a90f957c5708a",
+      "merged_at": "2025-12-02T11:14:12Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "novuhq-novu-8358",
+      "repo": "novuhq/novu",
+      "owner": "novuhq",
+      "name": "novu",
+      "issue_number": 8358,
+      "issue_url": "https://github.com/novuhq/novu/issues/8358",
+      "title": "\ud83d\udc1b Bug Report: Console Error on Notification Click",
+      "reference_pr": null,
+      "base_commit": "50597bd3874dc28616cd5a21eadf7d07a33ce5ae",
+      "merged_at": "2026-03-06T23:39:23Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "novuhq-novu-8722",
+      "repo": "novuhq/novu",
+      "owner": "novuhq",
+      "name": "novu",
+      "issue_number": 8722,
+      "issue_url": "https://github.com/novuhq/novu/issues/8722",
+      "title": "TypeError: Cannot read properties of undefined (reading 'request') when creating workflow from dashboard (v2.3.0)",
+      "reference_pr": null,
+      "base_commit": "50597bd3874dc28616cd5a21eadf7d07a33ce5ae",
+      "merged_at": "2026-05-20T16:37:45Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "novuhq-novu-7156",
+      "repo": "novuhq/novu",
+      "owner": "novuhq",
+      "name": "novu",
+      "issue_number": 7156,
+      "issue_url": "https://github.com/novuhq/novu/issues/7156",
+      "title": "\ud83d\udc1b Bug Report: WebSocket Context Path on Frontend",
+      "reference_pr": null,
+      "base_commit": "50597bd3874dc28616cd5a21eadf7d07a33ce5ae",
+      "merged_at": "2025-11-06T22:48:23Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "novuhq-novu-6346",
+      "repo": "novuhq/novu",
+      "owner": "novuhq",
+      "name": "novu",
+      "issue_number": 6346,
+      "issue_url": "https://github.com/novuhq/novu/issues/6346",
+      "title": "\ud83d\udc1b Bug Report: @novu/framework cannot be used in Cloudflare Pages",
+      "reference_pr": null,
+      "base_commit": "50597bd3874dc28616cd5a21eadf7d07a33ce5ae",
+      "merged_at": "2025-11-06T22:48:23Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "novuhq-novu-8732",
+      "repo": "novuhq/novu",
+      "owner": "novuhq",
+      "name": "novu",
+      "issue_number": 8732,
+      "issue_url": "https://github.com/novuhq/novu/issues/8732",
+      "title": "\ud83d\udc1b Bug Report: Has anyone experienced the email editor not working?",
+      "reference_pr": null,
+      "base_commit": "50597bd3874dc28616cd5a21eadf7d07a33ce5ae",
+      "merged_at": "2026-02-12T23:30:20Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "jitsi-jitsi-meet-17011",
+      "repo": "jitsi/jitsi-meet",
+      "owner": "jitsi",
+      "name": "jitsi-meet",
+      "issue_number": 17011,
+      "issue_url": "https://github.com/jitsi/jitsi-meet/issues/17011",
+      "title": "[Bug] [Performance]:  UI freezes 10+ seconds when closing participants pane with 500+ participants",
+      "reference_pr": null,
+      "base_commit": "9657d939cb5e46f1bf1550368e252833ff085cb9",
+      "merged_at": "2026-05-07T02:23:03Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "jitsi-jitsi-meet-17074",
+      "repo": "jitsi/jitsi-meet",
+      "owner": "jitsi",
+      "name": "jitsi-meet",
+      "issue_number": 17074,
+      "issue_url": "https://github.com/jitsi/jitsi-meet/issues/17074",
+      "title": "Bug: Polls Reducer mutating Redux state in-place on RECEIVE_ANSWER",
+      "reference_pr": null,
+      "base_commit": "decd9b342c85e1baf17d37baa8944225089eaf52",
+      "merged_at": "2026-05-19T02:25:27Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "jitsi-jitsi-meet-15451",
+      "repo": "jitsi/jitsi-meet",
+      "owner": "jitsi",
+      "name": "jitsi-meet",
+      "issue_number": 15451,
+      "issue_url": "https://github.com/jitsi/jitsi-meet/issues/15451",
+      "title": "Meeting crashes when clicking on Tile View",
+      "reference_pr": null,
+      "base_commit": "9c23cc0b70797fe73873f426f66ea47a9c012a5d",
+      "merged_at": "2025-01-13T17:02:16Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "jitsi-jitsi-meet-12112",
+      "repo": "jitsi/jitsi-meet",
+      "owner": "jitsi",
+      "name": "jitsi-meet",
+      "issue_number": 12112,
+      "issue_url": "https://github.com/jitsi/jitsi-meet/issues/12112",
+      "title": "Changes in the main.json file under lang folder are not reflecting in the UI",
+      "reference_pr": null,
+      "base_commit": "c77e2c8301e521d19fafb2ffd04825e29dbb8739",
+      "merged_at": "2022-09-01T13:37:23Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "jitsi-jitsi-meet-17307",
+      "repo": "jitsi/jitsi-meet",
+      "owner": "jitsi",
+      "name": "jitsi-meet",
+      "issue_number": 17307,
+      "issue_url": "https://github.com/jitsi/jitsi-meet/issues/17307",
+      "title": "[Bug] Local Recording button missing after enabling token verification & mod_token_affiliation",
+      "reference_pr": null,
+      "base_commit": "639f900edc8ddf5ef1fd8cd151fbdc85a4d79a71",
+      "merged_at": "2026-06-26T02:25:18Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "n8n-io-n8n-33408",
+      "repo": "n8n-io/n8n",
+      "owner": "n8n-io",
+      "name": "n8n",
+      "issue_number": 33408,
+      "issue_url": "https://github.com/n8n-io/n8n/issues/33408",
+      "title": "After upgrading to 2.28.4, the form styling of input boxes is inconsistent.",
+      "reference_pr": null,
+      "base_commit": "8ff4759957ad04f2dd8f838afe80b614c246d9c1",
+      "merged_at": "2026-07-02T11:23:38Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "n8n-io-n8n-32429",
+      "repo": "n8n-io/n8n",
+      "owner": "n8n-io",
+      "name": "n8n",
+      "issue_number": 32429,
+      "issue_url": "https://github.com/n8n-io/n8n/issues/32429",
+      "title": "Hang: reconverging workflow traversal can block editor and runtime",
+      "reference_pr": null,
+      "base_commit": "1e4a2cfa1a701ce8ee15f0955fe73740da8ad47b",
+      "merged_at": "2026-06-22T15:41:42Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "n8n-io-n8n-23862",
+      "repo": "n8n-io/n8n",
+      "owner": "n8n-io",
+      "name": "n8n",
+      "issue_number": 23862,
+      "issue_url": "https://github.com/n8n-io/n8n/issues/23862",
+      "title": "\"If\" node contents overrides adjacent \"If\" node",
+      "reference_pr": null,
+      "base_commit": "94594e3e42b760eb3bb24745f8af087dedf11f7f",
+      "merged_at": "2026-06-16T14:50:55Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "n8n-io-n8n-33062",
+      "repo": "n8n-io/n8n",
+      "owner": "n8n-io",
+      "name": "n8n",
+      "issue_number": 33062,
+      "issue_url": "https://github.com/n8n-io/n8n/issues/33062",
+      "title": "Data Tables datetime fields return {} in downstream Set node during full workflow execution",
+      "reference_pr": null,
+      "base_commit": "9410e961b9dc665bb0db89d75c790d3e496640d8",
+      "merged_at": "2026-07-01T09:59:58Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "n8n-io-n8n-26050",
+      "repo": "n8n-io/n8n",
+      "owner": "n8n-io",
+      "name": "n8n",
+      "issue_number": 26050,
+      "issue_url": "https://github.com/n8n-io/n8n/issues/26050",
+      "title": "Google Drive Node: Service Accounts do not have storage quota",
+      "reference_pr": null,
+      "base_commit": "614456f378ae31078f1cc7f42484b76a8fff8fd0",
+      "merged_at": "2026-07-03T14:35:27Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "directus-directus-27193",
+      "repo": "directus/directus",
+      "owner": "directus",
+      "name": "directus",
+      "issue_number": 27193,
+      "issue_url": "https://github.com/directus/directus/issues/27193",
+      "title": "Unable to Reposition Filters in Collection Page (Popup Closes Automatically)",
+      "reference_pr": null,
+      "base_commit": "2830783fc20a048396ce43ea6898ab056dfe8a9c",
+      "merged_at": "2026-04-29T14:16:37Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "directus-directus-27328",
+      "repo": "directus/directus",
+      "owner": "directus",
+      "name": "directus",
+      "issue_number": 27328,
+      "issue_url": "https://github.com/directus/directus/issues/27328",
+      "title": "Bookmarks without an icon flash when switching collections",
+      "reference_pr": null,
+      "base_commit": "e155562b23133edb86b7c19bf89c3c151406b4d6",
+      "merged_at": "2026-04-29T14:38:03Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "directus-directus-27323",
+      "repo": "directus/directus",
+      "owner": "directus",
+      "name": "directus",
+      "issue_number": 27323,
+      "issue_url": "https://github.com/directus/directus/issues/27323",
+      "title": "Selection not cleared after running a manual flow on collection list view (regression since v11.13.0 / #25962)",
+      "reference_pr": null,
+      "base_commit": "2830783fc20a048396ce43ea6898ab056dfe8a9c",
+      "merged_at": "2026-04-28T23:45:34Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "directus-directus-27091",
+      "repo": "directus/directus",
+      "owner": "directus",
+      "name": "directus",
+      "issue_number": 27091,
+      "issue_url": "https://github.com/directus/directus/issues/27091",
+      "title": "Save as copy throws error",
+      "reference_pr": null,
+      "base_commit": "179d29892c7b19997c8d5f2159ae27a8ebf98d24",
+      "merged_at": "2026-04-28T14:33:34Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "directus-directus-26448",
+      "repo": "directus/directus",
+      "owner": "directus",
+      "name": "directus",
+      "issue_number": 26448,
+      "issue_url": "https://github.com/directus/directus/issues/26448",
+      "title": "Error when saving entry with validation rule",
+      "reference_pr": null,
+      "base_commit": "699c432fe3a3f17fc9731809b3c7dd810ba5465f",
+      "merged_at": "2026-06-27T16:15:28Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "zulip-zulip-33250",
+      "repo": "zulip/zulip",
+      "owner": "zulip",
+      "name": "zulip",
+      "issue_number": 33250,
+      "issue_url": "https://github.com/zulip/zulip/issues/33250",
+      "title": "Jitter when subscribing/unsubscribing to a channel",
+      "reference_pr": null,
+      "base_commit": "97e3f5d860402ecf30e67dddff0464a791ad8f1c",
+      "merged_at": "2026-03-26T20:38:52Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "zulip-zulip-8745",
+      "repo": "zulip/zulip",
+      "owner": "zulip",
+      "name": "zulip",
+      "issue_number": 8745,
+      "issue_url": "https://github.com/zulip/zulip/issues/8745",
+      "title": "Image transparency replaced with checkerboard on zoom",
+      "reference_pr": null,
+      "base_commit": "79b9b01299d5b8b03ec358576a3d86f9115ce8d2",
+      "merged_at": "2026-07-02T20:26:03Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "zulip-zulip-38929",
+      "repo": "zulip/zulip",
+      "owner": "zulip",
+      "name": "zulip",
+      "issue_number": 38929,
+      "issue_url": "https://github.com/zulip/zulip/issues/38929",
+      "title": "Fix minor bugs with date custom profile fields UI",
+      "reference_pr": null,
+      "base_commit": "ec47a3ecab9ea632c3891be9c3dc2a21f6267c7e",
+      "merged_at": "2026-06-23T08:56:52Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "zulip-zulip-39581",
+      "repo": "zulip/zulip",
+      "owner": "zulip",
+      "name": "zulip",
+      "issue_number": 39581,
+      "issue_url": "https://github.com/zulip/zulip/issues/39581",
+      "title": "left side bar: filter does not find topic by name",
+      "reference_pr": null,
+      "base_commit": "b193d97062aeb7d31ed50d2c0c6b39e01299e119",
+      "merged_at": "2026-06-22T23:32:42Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "zulip-zulip-38887",
+      "repo": "zulip/zulip",
+      "owner": "zulip",
+      "name": "zulip",
+      "issue_number": 38887,
+      "issue_url": "https://github.com/zulip/zulip/issues/38887",
+      "title": "SAML breaks if name specified twice",
+      "reference_pr": null,
+      "base_commit": "fb3180b4f449d1e5f7dc3cf2eea29baa17a7744d",
+      "merged_at": "2026-06-25T14:39:48Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "strapi-strapi-25768",
+      "repo": "strapi/strapi",
+      "owner": "strapi",
+      "name": "strapi",
+      "issue_number": 25768,
+      "issue_url": "https://github.com/strapi/strapi/issues/25768",
+      "title": "zh-Hans locale not appearing in Interface language dropdown after configuration",
+      "reference_pr": null,
+      "base_commit": "f00b9f3dd31eb67e28a14547f4ac7d966004144a",
+      "merged_at": "2026-07-03T09:59:45Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "strapi-strapi-26114",
+      "repo": "strapi/strapi",
+      "owner": "strapi",
+      "name": "strapi",
+      "issue_number": 26114,
+      "issue_url": "https://github.com/strapi/strapi/issues/26114",
+      "title": "Content Manager flicker/double-paint when navigating between localized single types via Main Nav",
+      "reference_pr": null,
+      "base_commit": "f00b9f3dd31eb67e28a14547f4ac7d966004144a",
+      "merged_at": "2026-07-02T12:48:30Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "strapi-strapi-26755",
+      "repo": "strapi/strapi",
+      "owner": "strapi",
+      "name": "strapi",
+      "issue_number": 26755,
+      "issue_url": "https://github.com/strapi/strapi/issues/26755",
+      "title": "Admin blank on 5.48.1 in pnpm monorepo: #26249 getModulePath resolves @reduxjs/toolkit to a hoisted RTK 2.x (Duplicate middleware references)",
+      "reference_pr": null,
+      "base_commit": "db2e4ceee38226c8db1705523021d743b05eaa11",
+      "merged_at": "2026-07-02T10:29:11Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "strapi-strapi-25608",
+      "repo": "strapi/strapi",
+      "owner": "strapi",
+      "name": "strapi",
+      "issue_number": 25608,
+      "issue_url": "https://github.com/strapi/strapi/issues/25608",
+      "title": "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.",
+      "reference_pr": null,
+      "base_commit": "6a175d6d2b7b85e77212580111e6176db3a3fd51",
+      "merged_at": "2026-06-22T10:50:50Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "strapi-strapi-26683",
+      "repo": "strapi/strapi",
+      "owner": "strapi",
+      "name": "strapi",
+      "issue_number": 26683,
+      "issue_url": "https://github.com/strapi/strapi/issues/26683",
+      "title": "Regression: Enumeration field no longer supports i18n translation in admin (v4 \u2192 v5)",
+      "reference_pr": null,
+      "base_commit": "0008b7f1c9e3678ad260dac74a24f2d9f8d8a5c7",
+      "merged_at": "2026-06-30T12:46:19Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "getsentry-sentry-39070",
+      "repo": "getsentry/sentry",
+      "owner": "getsentry",
+      "name": "sentry",
+      "issue_number": 39070,
+      "issue_url": "https://github.com/getsentry/sentry/issues/39070",
+      "title": "Auth page flashes error page in UI then redirects to expected page",
+      "reference_pr": null,
+      "base_commit": "3da47994926a66b8f1ce4b41a53d6a456c9f0e74",
+      "merged_at": "2026-03-19T16:41:37Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "getsentry-sentry-98568",
+      "repo": "getsentry/sentry",
+      "owner": "getsentry",
+      "name": "sentry",
+      "issue_number": 98568,
+      "issue_url": "https://github.com/getsentry/sentry/issues/98568",
+      "title": "Alert - Config is not persisted in the UI which causes confusion",
+      "reference_pr": null,
+      "base_commit": "725363fd45a78172b5b70b886c34a670549c46fe",
+      "merged_at": "2025-09-23T18:42:58Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "getsentry-sentry-90449",
+      "repo": "getsentry/sentry",
+      "owner": "getsentry",
+      "name": "sentry",
+      "issue_number": 90449,
+      "issue_url": "https://github.com/getsentry/sentry/issues/90449",
+      "title": "Cannot Resolve Issues From Slack UI (Affecting Some Orgs)",
+      "reference_pr": null,
+      "base_commit": "3764496a7b356d25ada28fd1c5734c57dc0c7fcf",
+      "merged_at": "2025-06-04T18:39:26Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "getsentry-sentry-84420",
+      "repo": "getsentry/sentry",
+      "owner": "getsentry",
+      "name": "sentry",
+      "issue_number": 84420,
+      "issue_url": "https://github.com/getsentry/sentry/issues/84420",
+      "title": "Environment filter not respected for new issues when \"real-time updates\" is enabled.",
+      "reference_pr": null,
+      "base_commit": "b59235a8843c5ea40d873811b1a06022e2e5c68f",
+      "merged_at": "2025-09-15T19:43:32Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "getsentry-sentry-80312",
+      "repo": "getsentry/sentry",
+      "owner": "getsentry",
+      "name": "sentry",
+      "issue_number": 80312,
+      "issue_url": "https://github.com/getsentry/sentry/issues/80312",
+      "title": "Alerts not triggered for empty environment value",
+      "reference_pr": null,
+      "base_commit": "a02687356277f3ac881a8e1bef931197e1a6053c",
+      "merged_at": "2025-09-23T19:33:23Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "appsmithorg-appsmith-41574",
+      "repo": "appsmithorg/appsmith",
+      "owner": "appsmithorg",
+      "name": "appsmith",
+      "issue_number": 41574,
+      "issue_url": "https://github.com/appsmithorg/appsmith/issues/41574",
+      "title": "[Bug]: Severe keyboard `Tab` key navigation failures in data-entry forms (Focus drops, jumps to top, or freezes)",
+      "reference_pr": null,
+      "base_commit": "b47d7829d88d072b79ed60dfa0d177cbf7044b4d",
+      "merged_at": "2026-03-27T20:47:19Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "appsmithorg-appsmith-41706",
+      "repo": "appsmithorg/appsmith",
+      "owner": "appsmithorg",
+      "name": "appsmith",
+      "issue_number": 41706,
+      "issue_url": "https://github.com/appsmithorg/appsmith/issues/41706",
+      "title": "[Bug]: .isSwitched of a Switch-widget doesn't get the correct (updates) value (#41566)",
+      "reference_pr": null,
+      "base_commit": "cb24bb440f9c11415da9764bed9db1704a52a174",
+      "merged_at": "2026-04-07T16:50:53Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "appsmithorg-appsmith-41704",
+      "repo": "appsmithorg/appsmith",
+      "owner": "appsmithorg",
+      "name": "appsmith",
+      "issue_number": 41704,
+      "issue_url": "https://github.com/appsmithorg/appsmith/issues/41704",
+      "title": "[Bug]: Resetting JSON Form creates an empty Array item for Array fields defaulted to [] (#41653)",
+      "reference_pr": null,
+      "base_commit": "7d8a5ef4401cc69292a0fe81f6e5bb282b5f89f5",
+      "merged_at": "2026-04-13T18:16:14Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "appsmithorg-appsmith-41608",
+      "repo": "appsmithorg/appsmith",
+      "owner": "appsmithorg",
+      "name": "appsmith",
+      "issue_number": 41608,
+      "issue_url": "https://github.com/appsmithorg/appsmith/issues/41608",
+      "title": "[Bug]: Required Input Field does't show * next to the label",
+      "reference_pr": null,
+      "base_commit": "2ea3f032115d8f59ba915e4ccb72fd19cc4f40da",
+      "merged_at": "2026-03-17T09:05:33Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "appsmithorg-appsmith-41938",
+      "repo": "appsmithorg/appsmith",
+      "owner": "appsmithorg",
+      "name": "appsmith",
+      "issue_number": 41938,
+      "issue_url": "https://github.com/appsmithorg/appsmith/issues/41938",
+      "title": "[Bug]: Git SSH import shows \"SSH key misconfiguration\" when remote repo has no default branch",
+      "reference_pr": null,
+      "base_commit": "6cd469341d6e121a2782f24c01e584c9fce51c5b",
+      "merged_at": "2026-07-03T14:03:50Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "mattermost-mattermost-36602",
+      "repo": "mattermost/mattermost",
+      "owner": "mattermost",
+      "name": "mattermost",
+      "issue_number": 36602,
+      "issue_url": "https://github.com/mattermost/mattermost/issues/36602",
+      "title": "[Bug]: Accessibility - Empty links and missing accessible names in UI",
+      "reference_pr": null,
+      "base_commit": "8eb97fa6c3960aeb12cf17a9c526eb02e149d9b8",
+      "merged_at": "2026-05-18T01:13:06Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "mattermost-mattermost-18365",
+      "repo": "mattermost/mattermost",
+      "owner": "mattermost",
+      "name": "mattermost",
+      "issue_number": 18365,
+      "issue_url": "https://github.com/mattermost/mattermost/issues/18365",
+      "title": "Incoming Webhooks UI: Configured channel displays as '--- Select a channel ---' if the user is not joined to that channel",
+      "reference_pr": null,
+      "base_commit": "28406fbe23ab4496aeefb588d910f1568529cee8",
+      "merged_at": "2026-02-17T13:49:58Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "mattermost-mattermost-34589",
+      "repo": "mattermost/mattermost",
+      "owner": "mattermost",
+      "name": "mattermost",
+      "issue_number": 34589,
+      "issue_url": "https://github.com/mattermost/mattermost/issues/34589",
+      "title": "[Bug]: \"Recent mentions\" button starts returning HTTP 499 error",
+      "reference_pr": null,
+      "base_commit": "67226f32a40fe3cc584920cd3064c2e5d4cb0b16",
+      "merged_at": "2026-02-04T11:02:04Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "mattermost-mattermost-29751",
+      "repo": "mattermost/mattermost",
+      "owner": "mattermost",
+      "name": "mattermost",
+      "issue_number": 29751,
+      "issue_url": "https://github.com/mattermost/mattermost/issues/29751",
+      "title": "Rounded Corners Rendering Issue in Mattermost Desktop Application",
+      "reference_pr": null,
+      "base_commit": "854d0e8b25cd62e54db198074f6625b3924d228a",
+      "merged_at": "2025-01-06T05:57:41Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    },
+    {
+      "id": "mattermost-mattermost-27709",
+      "repo": "mattermost/mattermost",
+      "owner": "mattermost",
+      "name": "mattermost",
+      "issue_number": 27709,
+      "issue_url": "https://github.com/mattermost/mattermost/issues/27709",
+      "title": "UI issue : blank area on extended thread",
+      "reference_pr": null,
+      "base_commit": "244b7e565b954148c914916a299f1f2cfe890a6d",
+      "merged_at": "2024-08-27T16:29:18Z",
+      "task_type": "frontend_bugfix",
+      "allowed_scope": [
+        "frontend",
+        "web",
+        "tests"
+      ],
+      "acceptance_criteria": [
+        "reproduce issue",
+        "fix behavior",
+        "add or update browser-facing regression test when useful"
+      ],
+      "time_budget_minutes": 90,
+      "frontend_relevance": "seed-selected frontend/UI issue",
+      "status": "selected"
+    }
+  ]
+}

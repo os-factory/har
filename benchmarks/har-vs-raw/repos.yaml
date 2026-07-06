@@ -1,0 +1,90 @@
+repos:
+  - id: lightdash
+    owner: lightdash
+    name: lightdash
+    url: https://github.com/lightdash/lightdash
+    primary_app: packages/frontend
+    package_manager: pnpm
+    default_branch: main
+    notes: Monorepo with React frontend and Node backend; dbt analytics BI app.
+
+  - id: novu
+    owner: novuhq
+    name: novu
+    url: https://github.com/novuhq/novu
+    primary_app: apps/web
+    package_manager: pnpm
+    default_branch: main
+    notes: Notification infrastructure monorepo with dashboard web app.
+
+  - id: jitsi-meet
+    owner: jitsi
+    name: jitsi-meet
+    url: https://github.com/jitsi/jitsi-meet
+    primary_app: .
+    package_manager: npm
+    default_branch: master
+    notes: React web client for video conferencing; webpack dev server.
+
+  - id: n8n
+    owner: n8n-io
+    name: n8n
+    url: https://github.com/n8n-io/n8n
+    primary_app: packages/frontend/editor-ui
+    package_manager: pnpm
+    default_branch: master
+    notes: Workflow automation monorepo with Vue editor UI.
+
+  - id: directus
+    owner: directus
+    name: directus
+    url: https://github.com/directus/directus
+    primary_app: app
+    package_manager: pnpm
+    default_branch: main
+    notes: Headless CMS with Vue admin app and Node API.
+
+  - id: zulip
+    owner: zulip
+    name: zulip
+    url: https://github.com/zulip/zulip
+    primary_app: web
+    package_manager: pnpm
+    default_branch: main
+    notes: Python/Django backend with web frontend; dev stack is heavier.
+
+  - id: strapi
+    owner: strapi
+    name: strapi
+    url: https://github.com/strapi/strapi
+    primary_app: packages/core/admin
+    package_manager: yarn
+    default_branch: main
+    notes: Headless CMS monorepo with React admin panel.
+
+  - id: sentry
+    owner: getsentry
+    name: sentry
+    url: https://github.com/getsentry/sentry
+    primary_app: static/app
+    package_manager: pnpm
+    default_branch: master
+    notes: Large Python backend with React frontend; complex dev environment.
+
+  - id: appsmith
+    owner: appsmithorg
+    name: appsmith
+    url: https://github.com/appsmithorg/appsmith
+    primary_app: app/client
+    package_manager: yarn
+    default_branch: release
+    notes: Low-code platform with React client and Java server.
+
+  - id: mattermost
+    owner: mattermost
+    name: mattermost
+    url: https://github.com/mattermost/mattermost
+    primary_app: webapp
+    package_manager: npm
+    default_branch: master
+    notes: Go server with React webapp; Mattermost dev setup via make.

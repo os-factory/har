@@ -42,7 +42,7 @@ function StageNodeComponent({ data }: NodeProps) {
     <div
       className={cn(
         'w-[200px] rounded-xl border bg-card px-3.5 py-3 shadow-sm',
-        passed && 'border-emerald-500/50 bg-emerald-500/[0.05]',
+        passed && 'border-emerald-500/50 bg-emerald-500/[0.05] dark:border-emerald-500/30 dark:bg-emerald-500/[0.02]',
         failed && 'border-destructive/50 bg-destructive/[0.05]',
         !passed && !failed && 'bg-muted/20',
       )}
@@ -57,7 +57,7 @@ function StageNodeComponent({ data }: NodeProps) {
         <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {String(index).padStart(2, '0')}
         </span>
-        {passed && <CheckCircle2 className="size-3.5 text-emerald-600" aria-label="Passed" />}
+        {passed && <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" aria-label="Passed" />}
         {failed && <XCircle className="size-3.5 text-destructive" aria-label="Failed" />}
       </div>
 

@@ -1,0 +1,10 @@
+.env.local
+runs/
+results/
+.repos/
+repos/
+.repo-cache/
+*.log
+__pycache__/
+*.pyc
+.mcp.json

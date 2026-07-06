@@ -1,0 +1,58 @@
+dataset_name: har-vs-raw-frontend-issues-v1
+time_budget_minutes: 90
+claude_model: null  # use Claude Code default
+langfuse_host: http://localhost:3300
+workspaces_dir: repos
+runs_dir: runs
+results_dir: results
+issues_per_repo: 5
+pilot:
+  repo: lightdash/lightdash
+  issue_count: 2
+score_configs:
+  - name: success
+    data_type: NUMERIC
+    description: Issue fixed according to evaluator (0 or 1)
+  - name: verified
+    data_type: NUMERIC
+    description: External verification passed (0 or 1)
+  - name: e2e_added_or_updated
+    data_type: NUMERIC
+    description: Relevant browser or frontend regression test added or updated
+  - name: wall_clock_seconds
+    data_type: NUMERIC
+    description: Total wall clock time for the attempt
+  - name: tokens_total
+    data_type: NUMERIC
+    description: Total tokens consumed when telemetry is available
+  - name: tokens_input
+    data_type: NUMERIC
+    description: Input tokens consumed when telemetry is available
+  - name: tokens_output
+    data_type: NUMERIC
+    description: Output tokens consumed when telemetry is available
+  - name: cost_usd
+    data_type: NUMERIC
+    description: Estimated cost in USD when telemetry is available
+  - name: agent_turns
+    data_type: NUMERIC
+    description: Number of agent turns in the session
+  - name: tool_calls
+    data_type: NUMERIC
+    description: Number of tool invocations in the session
+  - name: verify_attempts
+    data_type: NUMERIC
+    description: Number of verification command attempts
+  - name: failed_verify_attempts
+    data_type: NUMERIC
+    description: Number of failed verification attempts
+  - name: harness_setup_seconds
+    data_type: NUMERIC
+    description: One-time HAR harness setup time for the repository
+  - name: quality
+    data_type: CATEGORICAL
+    description: Overall quality rating
+    categories:
+      - good
+      - partial
+      - bad
