@@ -71,16 +71,22 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_launch_environment',
     description:
-      'Start a FRESH agent session. Run this BEFORE editing any file: it returns workDir — ALL file edits must go under that path, never the main checkout. Relaunching replaces the previous session (refused if it has uncommitted changes unless force=true). Edits under workDir hot-reload in the running slot.',
+      'Start a FRESH agent session. Run this BEFORE editing any file: it returns workDir — ALL file edits must go under that path, never the main checkout. If the slot is already occupied, launch is BLOCKED until confirmReplace=true (call har_get_status first; get explicit user approval). force=true discards dirty uncommitted work — never set without user approval. Edits under workDir hot-reload in the running slot.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
         worktree: { type: 'boolean' },
         claude: { type: 'boolean' },
+        confirmReplace: {
+          type: 'boolean',
+          description:
+            'Replace an occupied slot. Required when a session is active. Call har_get_status first; get explicit user approval before setting true.',
+        },
         force: {
           type: 'boolean',
-          description: 'Discard a dirty previous session instead of refusing to replace it',
+          description:
+            'Discard uncommitted changes when replacing a dirty worktree. Requires confirmReplace=true and explicit user approval.',
         },
       },
       ['agentId'],
@@ -111,7 +117,8 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_get_status',
-    description: 'Return slot/process status for one agent or all slots.',
+    description:
+      'Return slot/process status for one agent or all slots. Call BEFORE har_launch_environment when a slot may already be in use — shows worktree path, dirty state, and branch.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       agentId: agentIdJsonProperty,
@@ -242,10 +249,15 @@ export async function handleMcpToolCall(
         agentId,
         worktree: input.worktree,
         claude: input.claude,
+        confirmReplace: input.confirmReplace,
         force: input.force,
         capture: true,
       });
-      return jsonContent(LaunchEnvironmentOutputSchema.parse(result));
+      const parsed = LaunchEnvironmentOutputSchema.parse(result);
+      return {
+        ...jsonContent(parsed),
+        ...(result.blocked ? { isError: true } : {}),
+      };
     }
 
     case 'har_run_stage': {

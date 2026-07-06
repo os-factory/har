@@ -21,7 +21,7 @@ work around it with ad-hoc commands.
 4. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
 5. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
 
-Relaunching a slot **replaces** its previous session (the old branch is kept). If the previous session has uncommitted changes, launch refuses — commit them in the worktree or pass `force`/`--force` to discard them.
+Relaunching a slot **replaces** its previous session (the old branch is kept). Replacement requires explicit confirmation. If the previous session has uncommitted changes, also pass `--force` — only after explicit user approval.
 
 ## Harnesses in this repo
 

@@ -17,6 +17,7 @@ import {
   runVerification,
   teardownEnvironment,
 } from '../../core/run-service';
+import { checkLaunchGuard } from '../../core/slot-launch-guard';
 import { listRuns, getRun } from '../../core/runs';
 import { collectEnvironmentStatus } from '../../core/slot-status';
 import { EnvironmentStatusSchema } from '../../harness/schema';
@@ -138,10 +139,16 @@ export const envCommand = {
               describe: 'Use an isolated git worktree (default)',
             })
             .option('claude', { type: 'boolean', default: false })
+            .option('replace', {
+              type: 'boolean',
+              default: false,
+              describe: 'Replace an occupied slot (prompts on TTY when omitted)',
+            })
             .option('force', {
               type: 'boolean',
               default: false,
-              describe: 'Discard a dirty previous session instead of refusing to replace it',
+              describe:
+                'Discard uncommitted changes when replacing a dirty worktree (only after explicit approval)',
             }),
         handleLaunch,
       )
@@ -453,18 +460,68 @@ export async function handleLaunch(argv: {
   repo: string;
   worktree: boolean;
   claude: boolean;
+  replace: boolean;
   force: boolean;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
+
+  let confirmReplace = argv.replace;
+  let force = argv.force;
+
+  const guard = checkLaunchGuard(repo, agentId, { confirmReplace, force });
+  if (!guard.allowed && guard.blocked) {
+    if (!confirmReplace && process.stdin.isTTY && process.stdout.isTTY) {
+      warn('Occupied slot — review before replacing:');
+      console.error(guard.reason ?? '');
+      const readline = await import('readline');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+      const answer = await new Promise<string>((resolve) => {
+        rl.question('Replace this slot? [y/N] ', resolve);
+      });
+      rl.close();
+      if (!/^[Yy]$/.test(answer.trim())) {
+        error('Aborted — slot left unchanged.');
+        process.exit(2);
+      }
+      confirmReplace = true;
+    }
+  }
+
+  const guardAfterConfirm = checkLaunchGuard(repo, agentId, { confirmReplace, force });
+  if (!guardAfterConfirm.allowed && guardAfterConfirm.blocked && guardAfterConfirm.slot?.dirty) {
+    if (!force && process.stdin.isTTY && process.stdout.isTTY) {
+      warn('Worktree has uncommitted changes.');
+      const readline = await import('readline');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+      const answer = await new Promise<string>((resolve) => {
+        rl.question('Discard uncommitted changes? [y/N] ', resolve);
+      });
+      rl.close();
+      if (!/^[Yy]$/.test(answer.trim())) {
+        error('Aborted — uncommitted work preserved.');
+        process.exit(2);
+      }
+      force = true;
+    } else if (!force) {
+      error(guardAfterConfirm.reason ?? 'Dirty worktree requires --force.');
+      process.exit(2);
+    }
+  }
+
   const result = await launchEnvironment({
     repoPath: repo,
     agentId,
     worktree: argv.worktree,
     claude: argv.claude,
-    force: argv.force,
+    confirmReplace,
+    force,
     capture: false,
   });
+  if (result.blocked) {
+    error(result.stderr || 'Launch blocked: slot is occupied.');
+    process.exit(result.code || 2);
+  }
   if (result.code === 0 && result.workDir) {
     divider();
     success(`Session ready — make ALL file edits under: ${result.workDir}`);

@@ -187,6 +187,7 @@ function collectSlotStatus(
     baseBranch: session?.baseBranch,
     baseCommit: session?.baseCommit,
     sessionCreatedAt: session?.createdAt,
+    purpose: session?.purpose,
     ...drift,
   };
 }

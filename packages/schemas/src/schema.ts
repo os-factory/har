@@ -250,6 +250,7 @@ export const SlotRegistryEntrySchema = z
     /** Random per-session chars; absent in root mode. */
     suffix: z.string().optional(),
     createdAt: z.string(),
+    purpose: z.string().optional(),
     ports: z.record(z.number()).optional(),
     previewUrls: z.record(z.string()).optional(),
     status: z.enum(['active', 'completed']).default('active'),
@@ -286,6 +287,7 @@ export const AgentSlotStatusSchema = z.object({
   baseBranch: z.string().optional(),
   baseCommit: z.string().optional(),
   sessionCreatedAt: z.string().optional(),
+  purpose: z.string().optional(),
   /** Worktree checked out to no branch (legacy failure mode; should not happen with sessions). */
   detachedHead: z.boolean().optional(),
   /** Worktree has uncommitted changes. */

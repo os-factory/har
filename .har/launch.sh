@@ -3,7 +3,7 @@
 # Every launch starts a FRESH session: any previous session for the slot is torn
 # down (its branch is kept) and a new suffixed worktree is created from HEAD.
 #
-# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--force]
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--replace] [--force]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,17 +17,21 @@ source "$SCRIPT_DIR/agent-slot.sh"
 AGENT_ID="${1:-}"
 USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 FORCE=false
+REPLACE=false
+PURPOSE="${HAR_SESSION_PURPOSE:-}"
 
 for arg in "$@"; do
   case "$arg" in
     --no-worktree) USE_WORKTREE=false ;;
     --worktree) USE_WORKTREE=true ;;
+    --replace)  REPLACE=true ;;
     --force)    FORCE=true ;;
+    --purpose=*) PURPOSE="${arg#--purpose=}" ;;
   esac
 done
 
 if [[ -z "$AGENT_ID" ]]; then
-  echo "Usage: $0 <agent-id> [--no-worktree] [--force]" >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] [--purpose=label]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -36,17 +40,9 @@ validate_agent_id "$AGENT_ID"
 
 log() { echo "==> [agent-$AGENT_ID] $*" >&2; }
 
-# Replace any previous session for this slot — launch always means "run my
-# current code", never "reuse whatever this slot ran last time".
-REGISTRY_FILE="$(slot_registry_file "$AGENT_ID")"
-EXISTING_WORKTREE="$(existing_slot_worktree "$AGENT_ID")"
-if [ -f "$REGISTRY_FILE" ] || [ -n "$EXISTING_WORKTREE" ]; then
-  if [ -n "$EXISTING_WORKTREE" ] && slot_worktree_dirty "$EXISTING_WORKTREE" && [ "$FORCE" != true ]; then
-    log "ERROR: previous session for slot ${AGENT_ID} has uncommitted changes in:"
-    log "  $EXISTING_WORKTREE"
-    log "Commit them there (the branch is kept on teardown), or relaunch with --force to discard them."
-    exit 1
-  fi
+# Replace any previous session for this slot — requires explicit confirmation.
+if slot_is_occupied "$AGENT_ID"; then
+  require_slot_replace_confirm "$AGENT_ID" "$FORCE" "$REPLACE"
   log "Replacing previous session for slot ${AGENT_ID}..."
   "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
 fi
@@ -121,6 +117,7 @@ SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
 SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+SLOT_PURPOSE="${PURPOSE}" \
   write_slot_registry
 
 log "Agent $AGENT_ID is ready."

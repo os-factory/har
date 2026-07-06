@@ -124,8 +124,9 @@ The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — 
 verify, and teardown resolve the work dir through it. Make ALL file edits under the
 work dir printed by launch, never in the main checkout.
 
-- Relaunching a slot **replaces** its previous session; if the old worktree has
-  uncommitted changes, launch refuses unless `--force`.
+- Relaunching a slot **replaces** its previous session; replacement requires `--replace` /
+  `confirmReplace=true` (or an interactive prompt). Uncommitted changes also need `--force`
+  after explicit user approval.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - `har env complete <id>` finishes a session: full verify (recorded as a validation),

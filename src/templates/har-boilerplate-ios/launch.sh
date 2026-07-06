@@ -3,7 +3,7 @@
 # Every launch starts a FRESH session: any previous session for the slot is torn
 # down (its branch is kept) and a new suffixed worktree is created from HEAD.
 #
-# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--force]
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--replace] [--force]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,17 +17,21 @@ source "$SCRIPT_DIR/agent-slot.sh"
 AGENT_ID="${1:-}"
 USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 FORCE=false
+REPLACE=false
+PURPOSE="${HAR_SESSION_PURPOSE:-}"
 
 for arg in "$@"; do
   case "$arg" in
     --no-worktree) USE_WORKTREE=false ;;
-    --worktree)    USE_WORKTREE=true ;;
-    --force)       FORCE=true ;;
+    --worktree) USE_WORKTREE=true ;;
+    --replace)  REPLACE=true ;;
+    --force)    FORCE=true ;;
+    --purpose=*) PURPOSE="${arg#--purpose=}" ;;
   esac
 done
 
 if [[ -z "$AGENT_ID" ]]; then
-  echo "Usage: $0 <agent-id> [--no-worktree] [--force]" >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] [--purpose=label]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -36,17 +40,9 @@ validate_agent_id "$AGENT_ID"
 
 log() { echo "==> [agent-$AGENT_ID] $*" >&2; }
 
-# Replace any previous session for this slot — launch always means "run my
-# current code", never "reuse whatever this slot ran last time".
-REGISTRY_FILE="$(slot_registry_file "$AGENT_ID")"
-EXISTING_WORKTREE="$(existing_slot_worktree "$AGENT_ID")"
-if [ -f "$REGISTRY_FILE" ] || [ -n "$EXISTING_WORKTREE" ]; then
-  if [ -n "$EXISTING_WORKTREE" ] && slot_worktree_dirty "$EXISTING_WORKTREE" && [ "$FORCE" != true ]; then
-    log "ERROR: previous session for slot ${AGENT_ID} has uncommitted changes in:"
-    log "  $EXISTING_WORKTREE"
-    log "Commit them there (the branch is kept on teardown), or relaunch with --force to discard them."
-    exit 1
-  fi
+# Replace any previous session for this slot — requires explicit confirmation.
+if slot_is_occupied "$AGENT_ID"; then
+  require_slot_replace_confirm "$AGENT_ID" "$FORCE" "$REPLACE"
   log "Replacing previous session for slot ${AGENT_ID}..."
   "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
 fi
@@ -70,6 +66,8 @@ if [ "$USE_WORKTREE" = true ]; then
   WORKTREE_DIR="$HOME/worktrees/${SESSION_NAME}"
   log "Creating session worktree at $WORKTREE_DIR (branch $BRANCH)..."
   git -C "$REPO_ROOT" worktree add "$WORKTREE_DIR" -b "$BRANCH"
+  # Worktrees are always rooted at the git repo — if this project lives in a
+  # subdirectory (monorepo), point WORK_DIR at the project inside the worktree.
   REL_PREFIX="$(git -C "$REPO_ROOT" rev-parse --show-prefix 2>/dev/null || true)"
   WORK_DIR="${WORKTREE_DIR%/}/${REL_PREFIX}"
   WORK_DIR="${WORK_DIR%/}"
@@ -77,43 +75,13 @@ else
   log "Using repo root (worktree disabled)"
 fi
 
+# Keep harness-generated files out of accidental `git add -A` commits in repos
+# whose .gitignore doesn't know about har (applies to all worktrees too).
 GIT_EXCLUDE="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)/info/exclude"
 if [ -n "$GIT_EXCLUDE" ] && [ -d "$(dirname "$GIT_EXCLUDE")" ]; then
-  for pattern in '.env.agent.*' 'build/DerivedData'; do
+  for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs'; do
     grep -qxF "$pattern" "$GIT_EXCLUDE" 2>/dev/null || echo "$pattern" >> "$GIT_EXCLUDE"
   done
-fi
-
-# ── iOS dependency installation ───────────────────────────────────────────────
-if [ -f "$WORK_DIR/Podfile" ]; then
-  log "Podfile detected — running pod install..."
-  (cd "$WORK_DIR" && pod install --silent 2>/dev/null || pod install) || {
-    log "Warning: pod install failed — verify CocoaPods is installed (gem install cocoapods)"
-  }
-elif [ -f "$WORK_DIR/Package.swift" ] && [ ! -f "$WORK_DIR"/*.xcodeproj/project.pbxproj ] 2>/dev/null; then
-  log "Swift Package Manager project — resolving packages..."
-  (cd "$WORK_DIR" && swift package resolve 2>/dev/null) || {
-    log "Warning: swift package resolve failed"
-  }
-fi
-
-# Resolve packages for Xcode projects that use SPM dependencies (DerivedData-free resolution).
-WORKSPACE_FILE=""
-PROJECT_FILE=""
-if [ -n "${HARNESS_XCODE_WORKSPACE:-}" ] && [ -e "$WORK_DIR/${HARNESS_XCODE_WORKSPACE}" ]; then
-  WORKSPACE_FILE="$WORK_DIR/${HARNESS_XCODE_WORKSPACE}"
-elif [ -n "${HARNESS_XCODE_PROJECT:-}" ] && [ -e "$WORK_DIR/${HARNESS_XCODE_PROJECT}" ]; then
-  PROJECT_FILE="$WORK_DIR/${HARNESS_XCODE_PROJECT}"
-fi
-
-if [ -n "$WORKSPACE_FILE" ] || [ -n "$PROJECT_FILE" ]; then
-  XC_TARGET_FLAG=""
-  [ -n "$WORKSPACE_FILE" ] && XC_TARGET_FLAG="-workspace $WORKSPACE_FILE"
-  [ -n "$PROJECT_FILE" ]   && XC_TARGET_FLAG="-project $PROJECT_FILE"
-  log "Resolving Xcode package dependencies..."
-  (cd "$WORK_DIR" && xcodebuild $XC_TARGET_FLAG \
-    -scheme "${HARNESS_XCODE_SCHEME}" \
-    -resolvePackageDependencies 2>/dev/null) || log "Warning: package resolution failed (non-fatal)"
 fi
 
 ENV_FILE="$WORK_DIR/.env.agent.${AGENT_ID}"
@@ -123,9 +91,24 @@ cat > "$ENV_FILE" <<EOF
 AGENT_ID=${AGENT_ID}
 REPO_ROOT=${WORK_DIR}
 WORKTREE_DIR=${WORKTREE_DIR}
+NODE_ENV=test
 EOF
 
-# Record the session in the slot registry.
+if [ -f "$WORK_DIR/package.json" ]; then
+  log "Installing dependencies..."
+  (cd "$WORK_DIR" && npm install --silent)
+elif [ -f "$WORK_DIR/go.mod" ]; then
+  log "Go module detected in work dir (run go mod download if needed)"
+fi
+
+# Monorepo: file:/workspace deps may resolve modules from the repo root — install there too
+if [ -n "${REL_PREFIX:-}" ] && [ -f "$WORKTREE_DIR/package.json" ] && [ ! -d "$WORKTREE_DIR/node_modules" ]; then
+  log "Installing monorepo root dependencies in $WORKTREE_DIR..."
+  (cd "$WORKTREE_DIR" && npm install --silent)
+fi
+
+# Record the session in the slot registry — the source of truth for where
+# this slot's code lives (status/verify/teardown resolve through it).
 SLOT_AGENT_ID="$AGENT_ID" \
 SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
 SLOT_WORK_DIR="$WORK_DIR" \
@@ -134,6 +117,7 @@ SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
 SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+SLOT_PURPOSE="${PURPOSE}" \
   write_slot_registry
 
 log "Agent $AGENT_ID is ready."

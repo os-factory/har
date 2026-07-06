@@ -67,10 +67,18 @@ export const LaunchEnvironmentInputSchema = z.object({
   agentId: agentIdSchema,
   worktree: z.boolean().default(true),
   claude: z.boolean().default(false),
+  confirmReplace: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Replace an occupied slot. Required when a session is already active. Call har_get_status first; get explicit user approval before setting this.',
+    ),
   force: z
     .boolean()
     .default(false)
-    .describe('Discard a dirty previous session instead of refusing to replace it'),
+    .describe(
+      'Discard uncommitted changes in a dirty occupied worktree. Requires confirmReplace=true and explicit user approval — never set autonomously.',
+    ),
 });
 
 export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
@@ -81,6 +89,17 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
     .describe('Where the session code lives — ALL file edits must go under this path'),
   worktreePath: z.string().optional(),
   branch: z.string().optional(),
+  blocked: z.boolean().optional(),
+  occupiedSlot: z
+    .object({
+      agentId: z.number().int(),
+      workDir: z.string().optional(),
+      worktreePath: z.string().optional(),
+      branch: z.string().optional(),
+      dirty: z.boolean().optional(),
+      sessionCreatedAt: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const CompleteEnvironmentInputSchema = z.object({

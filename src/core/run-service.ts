@@ -3,6 +3,7 @@ import { localScriptExecutor } from './local-executor';
 import { syncRepoWithControlAsync } from './control-sync';
 import { createRun, finishRun, resolveAgentWorkDir } from './runs';
 import { readSlotRegistry } from './slot-registry';
+import { checkLaunchGuard } from './slot-launch-guard';
 import { recordValidation } from './validations';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { getAgentSlotIds, resolveStage } from '../harness/stages';
@@ -131,6 +132,30 @@ export class RunService {
   }
 
   async launchEnvironment(options: LaunchOptions): Promise<EnvironmentRunResult> {
+    const guard = checkLaunchGuard(options.repoPath, options.agentId, {
+      confirmReplace: options.confirmReplace,
+      force: options.force,
+    });
+    if (!guard.allowed) {
+      const slot = guard.slot;
+      return {
+        code: 2,
+        stdout: '',
+        stderr: guard.reason ?? 'Launch blocked: slot is occupied.',
+        blocked: true,
+        occupiedSlot: slot
+          ? {
+              agentId: slot.agentId,
+              workDir: slot.workDir,
+              worktreePath: slot.worktreePath,
+              branch: slot.branch,
+              dirty: slot.dirty,
+              sessionCreatedAt: slot.sessionCreatedAt,
+            }
+          : undefined,
+      };
+    }
+
     const result = await this.runStage({
       repoPath: options.repoPath,
       kind: 'launch',
@@ -139,6 +164,7 @@ export class RunService {
       launchFlags: {
         worktree: options.worktree,
         claude: options.claude,
+        confirmReplace: options.confirmReplace,
         force: options.force,
       },
       trigger: 'cli',

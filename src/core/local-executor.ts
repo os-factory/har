@@ -107,6 +107,7 @@ function buildExecutionPlan(
   if (stage.kind === 'launch' && options.launchFlags) {
     if (options.launchFlags.worktree === false) launchFlagArgs.push('--no-worktree');
     if (options.launchFlags.claude) launchFlagArgs.push('--claude');
+    if (options.launchFlags.confirmReplace) launchFlagArgs.push('--replace');
     if (options.launchFlags.force) launchFlagArgs.push('--force');
   }
 

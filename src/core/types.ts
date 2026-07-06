@@ -17,7 +17,9 @@ export interface ExecutionContext {
 export interface LaunchFlags {
   worktree?: boolean;
   claude?: boolean;
-  /** Discard a dirty previous session instead of refusing to replace it. */
+  /** Explicitly replace an occupied slot (required when a session is already active). */
+  confirmReplace?: boolean;
+  /** Discard a dirty previous session instead of refusing to replace it. Requires confirmReplace. */
   force?: boolean;
 }
 
@@ -36,6 +38,7 @@ export interface LaunchOptions {
   agentId: number;
   worktree?: boolean;
   claude?: boolean;
+  confirmReplace?: boolean;
   force?: boolean;
   capture?: boolean;
 }
@@ -49,6 +52,16 @@ export interface EnvironmentRunResult {
   workDir?: string;
   worktreePath?: string;
   branch?: string;
+  /** Launch refused because the slot is occupied and confirmReplace was not set. */
+  blocked?: boolean;
+  occupiedSlot?: {
+    agentId: number;
+    workDir?: string;
+    worktreePath?: string;
+    branch?: string;
+    dirty?: boolean;
+    sessionCreatedAt?: string;
+  };
 }
 
 export interface VerificationRunResult extends EnvironmentRunResult {

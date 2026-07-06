@@ -19,7 +19,6 @@ validate_agent_id "$AGENT_ID"
 
 WORKTREE_DIR="$(existing_slot_worktree "$AGENT_ID")"
 DB_PORT="${AGENT_DB_PORT:-15432}"
-PG_OPTS="-h localhost -p $DB_PORT -U postgres"
 export PGPASSWORD="password"
 
 resolve_work_dir() {
@@ -37,13 +36,22 @@ resolve_work_dir() {
 case "$COMMAND" in
   status)
     ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT" || true)"
+    REGISTRY_FILE="$(slot_registry_file "$AGENT_ID")"
 
     if [ -n "$ENV_FILE" ]; then
       # shellcheck source=/dev/null
       source "$ENV_FILE"
+      WT="$(existing_slot_worktree "$AGENT_ID")"
       echo "Agent ${AGENT_ID}: active"
       echo "  Work dir:  $(resolve_agent_work_dir "$ENV_FILE" "$AGENT_ID")"
-      [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
+      [ -n "$WT" ] && [ -d "$WT" ] && echo "  Worktree:  $WT"
+      BRANCH="$(read_slot_field "$REGISTRY_FILE" branch || true)"
+      PURPOSE="$(read_slot_field "$REGISTRY_FILE" purpose || true)"
+      CREATED="$(read_slot_field "$REGISTRY_FILE" createdAt || true)"
+      [ -n "$PURPOSE" ] && echo "  Purpose:   $PURPOSE"
+      [ -n "$BRANCH" ] && echo "  Branch:    $BRANCH"
+      [ -n "$CREATED" ] && echo "  Since:     $CREATED"
+      [ -n "$WT" ] && echo "  Git:       $(slot_dirty_summary "$WT")"
     else
       echo "No active environment for agent ${AGENT_ID}"
       echo "  Run: ./.har/launch.sh ${AGENT_ID}"
@@ -65,14 +73,14 @@ case "$COMMAND" in
 
   psql)
     QUERY="${3:-}"
-    if [ "$HARNESS_INFRA_POSTGRES" != "true" ]; then
+    if ! har_infra_enabled db; then
       echo "PostgreSQL infra is disabled in harness.env" >&2
       exit 1
     fi
     if [ -n "$QUERY" ]; then
-      psql $PG_OPTS -d "agent_${AGENT_ID}" -c "$QUERY"
+      har_pg psql -d "agent_${AGENT_ID}" -c "$QUERY"
     else
-      psql $PG_OPTS -d "agent_${AGENT_ID}"
+      har_pg psql -d "agent_${AGENT_ID}"
     fi
     ;;
 
@@ -95,32 +103,32 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
     echo "Work dir:  $WORK_DIR"
     [ -d "$WORKTREE_DIR" ] && echo "Worktree:  $WORKTREE_DIR"
     [ -n "${HARNESS_HEALTH_CHECK_PATH:-}" ] && echo "API:       http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}"
-    [ "$HARNESS_INFRA_POSTGRES" = "true" ] && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
-    [ "$HARNESS_INFRA_MINIO" = "true" ]   && echo "MinIO:     http://localhost:19001"
-    [ "$HARNESS_INFRA_BROWSER" = "true" ] && echo "Browser:   http://localhost:13001"
-    [ "$HARNESS_INFRA_MAILPIT" = "true" ] && echo "Mailpit:   http://localhost:18025"
+    har_infra_enabled db && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
+    har_infra_enabled minio && echo "MinIO:     http://localhost:19001"
+    har_infra_enabled headless-browser && echo "Browser:   http://localhost:13001"
+    har_infra_enabled mailpit && echo "Mailpit:   http://localhost:18025"
     ;;
 
   reset-db)
-    if [ "$HARNESS_INFRA_POSTGRES" != "true" ]; then
+    if ! har_infra_enabled db; then
       echo "PostgreSQL infra is disabled in harness.env" >&2
       exit 1
     fi
     echo "==> Resetting database for agent ${AGENT_ID}..."
-    psql $PG_OPTS postgres -c \
+    har_pg psql -d postgres -c \
       "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='agent_${AGENT_ID}';" \
       >/dev/null
-    dropdb $PG_OPTS --if-exists "agent_${AGENT_ID}"
-    createdb $PG_OPTS -T "$HARNESS_TEMPLATE_DB" "agent_${AGENT_ID}"
+    har_pg dropdb --if-exists "agent_${AGENT_ID}"
+    har_pg createdb -T "$HARNESS_TEMPLATE_DB" "agent_${AGENT_ID}"
     echo "✓ Database reset to clean state"
     ;;
 
   slow-queries)
-    if [ "$HARNESS_INFRA_POSTGRES" != "true" ]; then
+    if ! har_infra_enabled db; then
       echo "PostgreSQL infra is disabled in harness.env" >&2
       exit 1
     fi
-    psql $PG_OPTS -d "agent_${AGENT_ID}" -c "
+    har_pg psql -d "agent_${AGENT_ID}" -c "
 SELECT round(mean_exec_time::numeric, 2) AS mean_ms,
        calls,
        left(query, 120) AS query
@@ -136,7 +144,7 @@ LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
       exit 1
     fi
     WORK_DIR="$(resolve_work_dir)"
-    if [ "$HARNESS_INFRA_POSTGRES" = "true" ]; then
+    if har_infra_enabled db; then
       PGHOST=localhost PGPORT="$DB_PORT" PGUSER=postgres PGDATABASE="agent_${AGENT_ID}" \
         bash -c "cd '$WORK_DIR' && $*"
     else
@@ -148,7 +156,7 @@ LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
     echo "Unknown command: $COMMAND" >&2
     echo ""
     echo "Commands: status, url, exec <cmd>"
-    [ "$HARNESS_INFRA_POSTGRES" = "true" ] && echo "          psql [query], reset-db, slow-queries"
+    har_infra_enabled db && echo "          psql [query], reset-db, slow-queries"
     exit 1
     ;;
 esac

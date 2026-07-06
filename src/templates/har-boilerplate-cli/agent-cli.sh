@@ -36,13 +36,22 @@ resolve_work_dir() {
 case "$COMMAND" in
   status)
     ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT" || true)"
+    REGISTRY_FILE="$(slot_registry_file "$AGENT_ID")"
 
     if [ -n "$ENV_FILE" ]; then
       # shellcheck source=/dev/null
       source "$ENV_FILE"
+      WT="$(existing_slot_worktree "$AGENT_ID")"
       echo "Agent ${AGENT_ID}: active"
       echo "  Work dir:  $(resolve_agent_work_dir "$ENV_FILE" "$AGENT_ID")"
-      [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
+      [ -n "$WT" ] && [ -d "$WT" ] && echo "  Worktree:  $WT"
+      BRANCH="$(read_slot_field "$REGISTRY_FILE" branch || true)"
+      PURPOSE="$(read_slot_field "$REGISTRY_FILE" purpose || true)"
+      CREATED="$(read_slot_field "$REGISTRY_FILE" createdAt || true)"
+      [ -n "$PURPOSE" ] && echo "  Purpose:   $PURPOSE"
+      [ -n "$BRANCH" ] && echo "  Branch:    $BRANCH"
+      [ -n "$CREATED" ] && echo "  Since:     $CREATED"
+      [ -n "$WT" ] && echo "  Git:       $(slot_dirty_summary "$WT")"
     else
       echo "No active environment for agent ${AGENT_ID}"
       echo "  Run: ./.har/launch.sh ${AGENT_ID}"

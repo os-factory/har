@@ -104,8 +104,15 @@ The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — 
 verify, and teardown resolve the work dir through it. Make ALL file edits under the
 work dir printed by launch, never in the main checkout.
 
-- Relaunching a slot **replaces** its previous session; if the old worktree has
-  uncommitted changes, launch refuses unless `--force`.
+- Relaunching a slot **replaces** its previous session and **requires explicit confirmation**
+  (`--replace`, `HAR_CONFIRM_REPLACE=1`, `har env launch --replace`, or MCP `confirmReplace=true`).
+  Launch prints a warning showing the occupied worktree, branch, and dirty state.
+- If the old worktree has uncommitted changes, you must also pass `--force` — **only after
+  explicit user approval** (agents must never set force autonomously).
+- The session **branch is kept** on teardown if you committed; gitignored paths (`state/`,
+  `runs/`, local clones) are **not** preserved when the worktree is removed.
+- Use **separate slots** for parallel unrelated tasks (`agentSlots.max` in `stages.json`).
+- Optional: `HAR_SESSION_PURPOSE=label` or `--purpose=label` tags the session in warnings.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - `har env complete <id>` finishes a session: full verify (recorded as a validation),

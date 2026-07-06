@@ -50,7 +50,7 @@ try {
 # Writes the registry entry from SLOT_* variables:
 #   required: SLOT_AGENT_ID, SLOT_MODE (worktree|root), SLOT_WORK_DIR
 #   optional: SLOT_SUFFIX, SLOT_WORKTREE_PATH, SLOT_BRANCH, SLOT_BASE_BRANCH,
-#             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON
+#             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON, SLOT_PURPOSE
 write_slot_registry() {
   local file
   file="$(slot_registry_file "$SLOT_AGENT_ID")"
@@ -72,6 +72,7 @@ if (e.SLOT_WORKTREE_PATH) entry.worktreePath = e.SLOT_WORKTREE_PATH;
 if (e.SLOT_BRANCH) entry.branch = e.SLOT_BRANCH;
 if (e.SLOT_BASE_BRANCH) entry.baseBranch = e.SLOT_BASE_BRANCH;
 if (e.SLOT_BASE_COMMIT) entry.baseCommit = e.SLOT_BASE_COMMIT;
+if (e.SLOT_PURPOSE) entry.purpose = e.SLOT_PURPOSE;
 for (const [key, env] of [["ports", "SLOT_PORTS_JSON"], ["previewUrls", "SLOT_PREVIEW_URLS_JSON"]]) {
   if (e[env]) try { entry[key] = JSON.parse(e[env]); } catch {}
 }
@@ -83,10 +84,102 @@ remove_slot_registry() {
   rm -f "$(slot_registry_file "$1")"
 }
 
-# Exit 0 when the worktree has uncommitted changes.
+# Exit 0 when the worktree has uncommitted or untracked changes.
 slot_worktree_dirty() {
   [ -d "${1:-}" ] || return 1
   [ -n "$(git -C "$1" status --porcelain 2>/dev/null)" ]
+}
+
+# Exit 0 when a slot registry entry or worktree path exists for this agent id.
+slot_is_occupied() {
+  local agent_id="$1"
+  [ -f "$(slot_registry_file "$agent_id")" ] || [ -n "$(existing_slot_worktree "$agent_id")" ]
+}
+
+# Echo "clean" or "dirty (N changed)" for a worktree path.
+slot_dirty_summary() {
+  local wt="${1:-}"
+  if [ -z "$wt" ] || [ ! -d "$wt" ]; then
+    echo "unknown"
+    return 0
+  fi
+  if ! slot_worktree_dirty "$wt"; then
+    echo "clean"
+    return 0
+  fi
+  local count
+  count="$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  echo "dirty (${count} changed)"
+}
+
+# Print a warning before replacing an occupied slot (stdout — visible to agents).
+print_slot_replace_warning() {
+  local agent_id="$1"
+  local reg wt branch work_dir purpose created dirty_summary head
+  reg="$(slot_registry_file "$agent_id")"
+  wt="$(existing_slot_worktree "$agent_id")"
+  branch="$(read_slot_field "$reg" branch || true)"
+  work_dir="$(read_slot_field "$reg" workDir || true)"
+  purpose="$(read_slot_field "$reg" purpose || true)"
+  created="$(read_slot_field "$reg" createdAt || true)"
+  dirty_summary="$(slot_dirty_summary "$wt")"
+  if [ -n "$wt" ] && [ -d "$wt" ]; then
+    head="$(git -C "$wt" rev-parse --short HEAD 2>/dev/null || true)"
+  fi
+
+  echo "" >&2
+  echo "⚠ Slot ${agent_id} is already in use — replacing will REMOVE the worktree." >&2
+  [ -n "$purpose" ] && echo "  Purpose:   ${purpose}" >&2
+  [ -n "$wt" ] && echo "  Worktree:  ${wt}" >&2
+  [ -n "$work_dir" ] && echo "  Work dir:  ${work_dir}" >&2
+  [ -n "$branch" ] && echo "  Branch:    ${branch}${head:+ @ ${head}}" >&2
+  [ -n "$created" ] && echo "  Since:     ${created}" >&2
+  echo "  Git:       ${dirty_summary}" >&2
+  echo "" >&2
+  echo "  The session branch is kept only if you committed. Gitignored paths" >&2
+  echo "  (state/, runs/, local clones, .env.local) are NOT preserved." >&2
+  echo "" >&2
+}
+
+# Require explicit confirmation before replacing an occupied slot.
+#   $1 agent_id  $2 force(true/false)  $3 replace(true/false)
+# Exits 1 when replacement must not proceed.
+require_slot_replace_confirm() {
+  local agent_id="$1"
+  local force="$2"
+  local replace="$3"
+  local wt
+
+  slot_is_occupied "$agent_id" || return 0
+
+  print_slot_replace_warning "$agent_id"
+  wt="$(existing_slot_worktree "$agent_id")"
+
+  if [ -n "$wt" ] && slot_worktree_dirty "$wt" && [ "$force" != true ]; then
+    echo "ERROR: previous session for slot ${agent_id} has uncommitted changes." >&2
+    echo "  Commit them in the worktree (branch is kept on teardown), or pass --force to discard." >&2
+    echo "  --force destroys uncommitted work — only use after explicit user approval." >&2
+    exit 1
+  fi
+
+  if [ "$replace" = true ] || [ "${HAR_CONFIRM_REPLACE:-}" = "1" ]; then
+    return 0
+  fi
+
+  if [ -t 0 ] && [ -t 1 ]; then
+    local answer
+    read -r -p "Replace slot ${agent_id}? Uncommitted work is lost unless committed. [y/N] " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      return 0
+    fi
+    echo "Aborted — slot ${agent_id} left unchanged." >&2
+    exit 2
+  fi
+
+  echo "ERROR: slot ${agent_id} is occupied." >&2
+  echo "  Pass --replace (or set HAR_CONFIRM_REPLACE=1) after reviewing the warning above." >&2
+  echo "  If the worktree is dirty, also pass --force (only after explicit user approval)." >&2
+  exit 2
 }
 
 # Echo the previous session's worktree path for a slot: registry first, then
@@ -123,6 +216,8 @@ resolve_agent_env_file() {
       return 0
     fi
   fi
+  # Worktrees are repo-rooted — if the project lives in a subdirectory (monorepo),
+  # the env file sits under that prefix inside the worktree.
   local rel_prefix
   rel_prefix="$(git -C "$repo_root" rev-parse --show-prefix 2>/dev/null || true)"
   local candidate
@@ -137,7 +232,7 @@ resolve_agent_env_file() {
   return 1
 }
 
-# Resolve work dir for verify/flows — registry first, else the agent env file's
+# Resolve work dir for verify/e2e — registry first, else the agent env file's
 # variables (call after sourcing the env file). Optional 2nd arg: agent id.
 resolve_agent_work_dir() {
   local env_file="$1"
@@ -164,13 +259,12 @@ resolve_agent_work_dir() {
   echo "$work_dir"
 }
 
-# Run rocketsim-flows on verify --full when the RocketSim stage template is installed.
-# See: .har/stages/rocketsim-flows.sh and .har/stages/ROCKETSIM.md
-run_rocketsim_flows_if_present() {
+# Run browser-e2e on verify --full when the Playwright stage template is installed.
+run_browser_e2e_if_present() {
   local script_dir="$1"
   local agent_id="$2"
-  local flows_runner="$script_dir/stages/rocketsim-flows.sh"
-  if [ -x "$flows_runner" ]; then
-    "$flows_runner" "$agent_id"
+  local e2e="$script_dir/stages/browser-e2e.sh"
+  if [ -x "$e2e" ]; then
+    "$e2e" "$agent_id"
   fi
 }
