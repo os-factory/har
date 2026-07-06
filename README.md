@@ -4,8 +4,8 @@
 
 # har — Your AI harness orchestrator
 
-[![Release](https://img.shields.io/github/v/release/os-factory/har)](https://github.com/os-factory/har/releases)
-[![CI](https://github.com/os-factory/har/actions/workflows/test.yml/badge.svg)](https://github.com/os-factory/har/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/antoineFrau/har)](https://github.com/antoineFrau/har/releases)
+[![CI](https://github.com/antoineFrau/har/actions/workflows/test.yml/badge.svg)](https://github.com/antoineFrau/har/actions/workflows/test.yml)
 
 **Make any repository agent-ready without binding it to one coding agent, test runner, or hosted platform.**
 
@@ -33,7 +33,7 @@ npm install -g @dotharness/cli
 **From source** (local development):
 
 ```bash
-git clone https://github.com/os-factory/har har-project && cd har-project
+git clone https://github.com/antoineFrau/har har-project && cd har-project
 npm install && npm run build && npm link
 ```
 
@@ -185,7 +185,21 @@ Agents should read **`AGENT.md`** first, then **`.har/README.md`**. Prefer **HAR
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+**Dual licensing.** This project uses different licenses for code, documentation, and branding.
+
+| Material | License | Details |
+|----------|---------|---------|
+| Software (CLI, MCP server, Mission Control code, tooling) | [AGPL-3.0-only](./LICENSE) | Copyleft; network use (SaaS) triggers source-offer obligations |
+| Documentation and written guides | [CC BY-SA 4.0](./DOCUMENTATION-LICENSE.md) | Share and adapt with attribution and share-alike |
+| Name, logo, trademarks | All rights reserved | See [TRADEMARK.md](./TRADEMARK.md) |
+
+**Commercial use without AGPL obligations** — closed-source products, managed hosting, training/certification programs, trademark use, or other rights beyond the public licenses require a separate agreement. See [LICENSE-COMMERCIAL.md](./LICENSE-COMMERCIAL.md).
+
+Copyright © 2026 [Antoine Frau](https://github.com/antoineFrau/har).
+
+Contributors agree to the [Contributor License Agreement](./CLA.md).
+
+**Note:** Earlier releases may have been published under MIT. Those versions remain under MIT; new releases from this license change forward are under AGPL-3.0-only unless you obtain a commercial license.
 
 ## Security
 

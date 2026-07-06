@@ -6,6 +6,8 @@ Guide for developing the CLI locally and testing it against real (or sample) rep
 
 By participating in this project, you agree to abide by our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
+By submitting a pull request or other contribution, you agree to the [Contributor License Agreement](./CLA.md), which grants the maintainer rights needed for dual licensing (public AGPL and separate commercial licenses).
+
 ## Prerequisites
 
 - **Node.js ≥ 20**
@@ -16,7 +18,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 ## Setup
 
 ```bash
-git clone https://github.com/os-factory/har har-project
+git clone https://github.com/antoineFrau/har har-project
 cd har-project
 npm install
 npm run build
@@ -375,7 +377,7 @@ Maintainers do **not** hand-cut version tags after the baseline. Merge conventio
 2. Bump `@dotharness/cli`, `@har/control`, and `@har/schemas` to the same version
 3. Update `CHANGELOG.md`, commit `[skip ci]`, tag `vX.Y.Z`, and open a GitHub Release
 4. Publish `@dotharness/cli` to npm
-5. Trigger [Publish Docker](.github/workflows/publish-docker.yml) for `theosfactory/har-control` on Docker Hub
+5. Trigger [Publish Docker](.github/workflows/publish-docker.yml) for `antoinefrau/har-control` on Docker Hub
 
 ### Maintainer setup
 
@@ -391,7 +393,7 @@ Repository secrets:
 | Secret | Used by |
 |--------|---------|
 | `NPM_TOKEN` | npm publish for `@dotharness/cli` (Automation token with publish access to the `@dotharness` scope) |
-| `DOCKERHUB_TOKEN` | Docker Hub publish for `theosfactory/har-control` (PAT with read/write on the repo) |
+| `DOCKERHUB_TOKEN` | Docker Hub publish for `antoinefrau/har-control` (PAT with read/write on the repo) |
 | `GITHUB_TOKEN` | GitHub Release (provided by Actions) |
 
 Dry-run the next release from the Actions tab (**Release → Run workflow → Dry run**) or locally:

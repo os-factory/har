@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement by contacting the
-[repository maintainers](https://github.com/os-factory/har) (use a private channel
+[repository maintainers](https://github.com/antoineFrau/har) (use a private channel
 — do not post sensitive reports in public issues).
 
 All complaints will be reviewed and investigated promptly and fairly.

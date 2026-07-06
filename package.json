@@ -63,11 +63,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/os-factory/har"
+    "url": "https://github.com/antoineFrau/har"
   },
-  "homepage": "https://github.com/os-factory/har#readme",
-  "bugs": "https://github.com/os-factory/har/issues",
-  "license": "MIT",
+  "homepage": "https://github.com/antoineFrau/har#readme",
+  "bugs": "https://github.com/antoineFrau/har/issues",
+  "author": "Antoine Frau",
+  "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"

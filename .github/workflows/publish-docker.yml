@@ -11,8 +11,8 @@ on:
         type: string
 
 env:
-  DOCKERHUB_USERNAME: theosfactory
-  IMAGE: theosfactory/har-control
+  DOCKERHUB_USERNAME: antoinefrau
+  IMAGE: antoinefrau/har-control
 
 jobs:
   publish:

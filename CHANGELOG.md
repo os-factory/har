@@ -41,5 +41,5 @@ First public npm release of `@dotharness/cli`.
 - Optional Playwright stage template (`har env add-stage playwright`)
 - Run history under `.har/runs/` when using CLI or MCP (not raw shell scripts)
 
-[Unreleased]: https://github.com/os-factory/har/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/os-factory/har/releases/tag/v0.1.0
+[Unreleased]: https://github.com/antoineFrau/har/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/antoineFrau/har/releases/tag/v0.1.0

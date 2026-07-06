@@ -19,13 +19,13 @@ The `main` branch receives fixes for the latest development release until a new 
 
 Report vulnerabilities through GitHub's private advisory workflow:
 
-[https://github.com/os-factory/har/security/advisories/new](https://github.com/os-factory/har/security/advisories/new)
+[https://github.com/antoineFrau/har/security/advisories/new](https://github.com/antoineFrau/har/security/advisories/new)
 
 This keeps details confidential until a fix is available.
 
 ### Alternative: Contact maintainers
 
-If you cannot use GitHub Advisories, contact the [repository maintainers](https://github.com/os-factory/har) privately (do not disclose the vulnerability in a public issue).
+If you cannot use GitHub Advisories, contact the [repository maintainers](https://github.com/antoineFrau/har) privately (do not disclose the vulnerability in a public issue).
 
 ## Response Timeline
 
