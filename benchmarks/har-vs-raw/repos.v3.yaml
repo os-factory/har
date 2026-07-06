@@ -1,0 +1,48 @@
+# V3 benchmark repositories — forked under os-factory before harness setup.
+fork_org: os-factory
+harness_branch: benchmark/har-setup
+
+repos:
+  - id: formbricks
+    upstream_owner: formbricks
+    upstream_name: formbricks
+    owner: os-factory
+    name: formbricks
+    url: https://github.com/os-factory/formbricks
+    primary_app: apps/web
+    package_manager: pnpm
+    default_branch: main
+    notes: Next.js monorepo (Turborepo); Postgres + MailHog via Docker for dev.
+
+  - id: directus
+    upstream_owner: directus
+    upstream_name: directus
+    owner: os-factory
+    name: directus
+    url: https://github.com/os-factory/directus
+    primary_app: app
+    package_manager: pnpm
+    default_branch: main
+    notes: Headless CMS with Vue admin app and Node API monorepo.
+
+  - id: keep
+    upstream_owner: keephq
+    upstream_name: keep
+    owner: os-factory
+    name: keep
+    url: https://github.com/os-factory/keep
+    primary_app: keep-ui
+    package_manager: pnpm
+    default_branch: main
+    notes: Python API (Poetry) + Next.js keep-ui; docker-compose dev stack.
+
+  - id: evershop
+    upstream_owner: evershopcommerce
+    upstream_name: evershop
+    owner: os-factory
+    name: evershop
+    url: https://github.com/os-factory/evershop
+    primary_app: packages
+    package_manager: npm
+    default_branch: dev
+    notes: TypeScript e-commerce monorepo; GraphQL + React storefront.

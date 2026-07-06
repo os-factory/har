@@ -1,0 +1,111 @@
+version: 3
+generated_at: '2026-07-06T22:18:04Z'
+issues:
+  - id: formbricks-formbricks-3710
+    repo: os-factory/formbricks
+    upstream_repo: formbricks/formbricks
+    owner: formbricks
+    name: formbricks
+    issue_number: 3710
+    issue_url: https://github.com/formbricks/formbricks/issues/3710
+    title: '[FEATURE] Allow custom fonts'
+    reference_pr: null
+    reference_pr_number: null
+    reference_files: []
+    reference_test_files: []
+    base_commit: a242c5d07d9f123eab65294160b90e642e171667
+    merged_at: null
+    verification:
+      primary:
+        type: har_verify_full
+        command: []
+        cwd: null
+      secondary_har:
+        type: har_verify_full
+    task_type: frontend_feature
+    allowed_scope:
+      - frontend
+      - web
+      - tests
+    acceptance_criteria:
+      - implement the requested UI/styling behavior
+      - add or update automated tests where appropriate
+      - pass har env verify --full
+    time_budget_minutes: 90
+    frontend_relevance: manually pinned feature/styling issue
+    changed_files: []
+    difficulty: 3
+    status: selected
+    selection_mode: manual_pin
+  - id: formbricks-formbricks-5418
+    repo: os-factory/formbricks
+    upstream_repo: formbricks/formbricks
+    owner: formbricks
+    name: formbricks
+    issue_number: 5418
+    issue_url: https://github.com/formbricks/formbricks/issues/5418
+    title: Custom CSS Support Per Survey
+    reference_pr: null
+    reference_pr_number: null
+    reference_files: []
+    reference_test_files: []
+    base_commit: a242c5d07d9f123eab65294160b90e642e171667
+    merged_at: null
+    verification:
+      primary:
+        type: har_verify_full
+        command: []
+        cwd: null
+      secondary_har:
+        type: har_verify_full
+    task_type: frontend_feature
+    allowed_scope:
+      - frontend
+      - web
+      - tests
+    acceptance_criteria:
+      - implement the requested UI/styling behavior
+      - add or update automated tests where appropriate
+      - pass har env verify --full
+    time_budget_minutes: 90
+    frontend_relevance: manually pinned feature/styling issue
+    changed_files: []
+    difficulty: 3
+    status: selected
+    selection_mode: manual_pin
+  - id: formbricks-formbricks-7933
+    repo: os-factory/formbricks
+    upstream_repo: formbricks/formbricks
+    owner: formbricks
+    name: formbricks
+    issue_number: 7933
+    issue_url: https://github.com/formbricks/formbricks/issues/7933
+    title: Allow configuring scrollbar width in styling
+    reference_pr: null
+    reference_pr_number: null
+    reference_files: []
+    reference_test_files: []
+    base_commit: a242c5d07d9f123eab65294160b90e642e171667
+    merged_at: null
+    verification:
+      primary:
+        type: har_verify_full
+        command: []
+        cwd: null
+      secondary_har:
+        type: har_verify_full
+    task_type: frontend_feature
+    allowed_scope:
+      - frontend
+      - web
+      - tests
+    acceptance_criteria:
+      - implement the requested UI/styling behavior
+      - add or update automated tests where appropriate
+      - pass har env verify --full
+    time_budget_minutes: 90
+    frontend_relevance: manually pinned feature/styling issue
+    changed_files: []
+    difficulty: 3
+    status: selected
+    selection_mode: manual_pin

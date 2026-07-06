@@ -143,10 +143,17 @@ def ensure_score_configs(host: str, public_key: str, secret_key: str, configs: l
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--repo", help="Only upload issues for one repo slug")
     args = parser.parse_args()
 
     config = benchmark_config()
     issues = benchmark_issues()
+    if args.repo:
+        issues = [
+            issue
+            for issue in issues
+            if issue["repo"] == args.repo or issue["repo"].endswith(f"/{args.repo}") or issue.get("name") == args.repo
+        ]
     if not issues:
         raise SystemExit("No issues found. Run scripts/select_issues.py first.")
 

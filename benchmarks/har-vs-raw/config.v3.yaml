@@ -1,0 +1,41 @@
+# V3 campaign — smaller repos, fork-first workflow, manual harness approval gate.
+campaign_id: har-vs-raw-v3
+dataset_name: har-vs-raw-v3-frontend-issues
+time_budget_minutes: 90
+claude_model: null
+langfuse_host: http://localhost:3300
+workspaces_dir: repos
+runs_dir: runs
+results_dir: results/v3
+state_dir: state/v3
+issues_per_repo: 3
+fork_org: os-factory
+harness_branch: benchmark/har-setup
+pilot_repos:
+  - formbricks/formbricks
+  - directus/directus
+  - keephq/keep
+  - evershopcommerce/evershop
+score_configs:
+  - name: oracle_pass
+    data_type: NUMERIC
+    description: Issue-specific regression test oracle passed (0 or 1)
+  - name: patch_overlap
+    data_type: NUMERIC
+    description: Jaccard overlap of changed files vs reference fix PR
+  - name: verified
+    data_type: NUMERIC
+    description: External verification passed (0 or 1)
+  - name: wall_clock_seconds
+    data_type: NUMERIC
+    description: Total wall clock time for the attempt
+  - name: cost_usd
+    data_type: NUMERIC
+    description: Estimated cost in USD when telemetry is available
+  - name: quality
+    data_type: CATEGORICAL
+    description: Overall quality rating
+    categories:
+      - good
+      - partial
+      - bad

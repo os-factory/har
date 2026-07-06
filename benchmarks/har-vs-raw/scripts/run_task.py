@@ -17,32 +17,38 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.common import (  # noqa: E402
     BENCHMARK_ROOT,
-    HAR_PROJECT_ROOT,
     benchmark_config,
-    benchmark_issues,
-    benchmark_repos,
+    campaign_config,
+    campaign_issues,
+    campaign_repos,
+    changed_files_in_repo,
     ensure_dir,
+    har_launch_slot,
+    har_teardown_slot,
+    har_verify_full,
     langfuse_auth_header,
     load_benchmark_env,
     now_iso,
     render_template,
     run_command,
+    run_oracle,
     slugify,
     write_json,
 )
 
 FIX_PROMPT = BENCHMARK_ROOT / "prompts" / "fix-issue.md"
+HAR_AGENT_ID = 1
 
 
-def repo_meta(repo_slug: str) -> dict:
-    for repo in benchmark_repos():
+def repo_meta(repo_slug: str, campaign: str = "default") -> dict:
+    for repo in campaign_repos(campaign):
         if f"{repo['owner']}/{repo['name']}" == repo_slug or repo["id"] == repo_slug:
             return repo
     raise SystemExit(f"Unknown repo: {repo_slug}")
 
 
-def issue_meta(issue_id: str | None, repo_slug: str, issue_number: int | None) -> dict:
-    issues = benchmark_issues()
+def issue_meta(issue_id: str | None, repo_slug: str, issue_number: int | None, campaign: str = "default") -> dict:
+    issues = campaign_issues(campaign)
     if issue_id:
         for issue in issues:
             if issue.get("id") == issue_id:
@@ -67,12 +73,8 @@ def prepare_repo(source_repo: dict, issue: dict, arm: str, dest: Path) -> Path:
     run_command(["git", "clone", source_repo["url"], str(dest)], check=True)
     run_command(["git", "checkout", issue["base_commit"]], cwd=dest, check=True)
 
-    har_paths = [
-        dest / ".har",
-        dest / ".cursor" / "rules" / "har-workflow.mdc",
-    ]
     if arm == "raw":
-        for path in har_paths:
+        for path in (dest / ".har", dest / ".cursor" / "rules" / "har-workflow.mdc"):
             if path.is_dir():
                 shutil.rmtree(path)
             elif path.exists():
@@ -92,17 +94,16 @@ def prepare_repo(source_repo: dict, issue: dict, arm: str, dest: Path) -> Path:
     return dest
 
 
-def build_mcp_config(arm: str, repo_path: Path, run_dir: Path) -> Path | None:
+def build_mcp_config(arm: str, harness_root: Path, run_dir: Path) -> Path:
     if arm != "har":
-        empty = {"mcpServers": {}}
         path = run_dir / "mcp-empty.json"
-        path.write_text(json.dumps(empty, indent=2) + "\n", encoding="utf-8")
+        path.write_text(json.dumps({"mcpServers": {}}, indent=2) + "\n", encoding="utf-8")
         return path
     config = {
         "mcpServers": {
             "har": {
                 "command": "har",
-                "args": ["mcp", "--repo", str(repo_path)],
+                "args": ["mcp", "--repo", str(harness_root)],
             }
         }
     }
@@ -139,50 +140,70 @@ def count_patterns(text: str, patterns: list[str]) -> int:
     return total
 
 
-def collect_local_metrics(repo_path: Path, stdout: str, stderr: str, started: float, exit_code: int) -> dict:
+def collect_local_metrics(work_path: Path, stdout: str, stderr: str, started: float, exit_code: int) -> dict:
     combined = f"{stdout}\n{stderr}"
-    diff = run_command(["git", "diff", "--stat"], cwd=repo_path)
-    return {
+    diff = run_command(["git", "diff", "HEAD", "--stat"], cwd=work_path)
+    changed = changed_files_in_repo(work_path)
+    metrics = {
         "wall_clock_seconds": round(time.time() - started, 2),
         "exit_code": exit_code,
         "verify_attempts": count_patterns(combined, [r"verify", r"npm test", r"pnpm test", r"yarn test", r"playwright"]),
         "failed_verify_attempts": count_patterns(combined, [r"fail", r"error", r"exit code [1-9]"]),
         "tool_calls": count_patterns(combined, [r"tool_use", r"tool call", r"bash\(", r"edit\("]),
-        "agent_turns": count_patterns(combined, [r'"type": "assistant"', r"assistant:"]),
+        "agent_turns": count_patterns(combined, [r'"type": "assistant"', r"assistant:", r'"num_turns"']),
         "git_diff_stat": diff.stdout.strip(),
-        "changed_files": len([line for line in run_command(["git", "diff", "--name-only"], cwd=repo_path).stdout.splitlines() if line.strip()]),
+        "changed_files": len(changed),
+        "changed_file_list": changed,
+        "tokens_total": 0,
+        "tokens_input": 0,
+        "tokens_output": 0,
+        "cost_usd": 0,
     }
+    try:
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            payload = json.loads(line)
+            if payload.get("type") != "result":
+                continue
+            usage = payload.get("usage") or {}
+            metrics["tokens_input"] = int(usage.get("input_tokens") or 0) + int(usage.get("cache_read_input_tokens") or 0)
+            metrics["tokens_output"] = int(usage.get("output_tokens") or 0)
+            metrics["tokens_total"] = metrics["tokens_input"] + metrics["tokens_output"]
+            metrics["cost_usd"] = float(payload.get("total_cost_usd") or 0)
+            metrics["agent_turns"] = int(payload.get("num_turns") or metrics["agent_turns"])
+            break
+    except Exception:
+        pass
+    return metrics
 
 
-def external_verify(repo_path: Path, arm: str) -> dict:
-    if arm == "har" and (repo_path / ".har").exists():
-        result = run_command(["har", "env", "launch", "1", "--force"], cwd=repo_path)
-        if result.returncode != 0:
-            return {"verified": False, "details": "launch failed", "stdout": result.stdout, "stderr": result.stderr}
-        verify = run_command(["har", "env", "verify", "1", "--full"], cwd=repo_path)
-        return {
-            "verified": verify.returncode == 0,
-            "details": "har env verify 1 --full",
-            "stdout": verify.stdout[-6000:],
-            "stderr": verify.stderr[-6000:],
-        }
-
-    for cmd in (
-        ["npm", "test", "--", "--runInBand", "--passWithNoTests"],
-        ["pnpm", "test"],
-        ["yarn", "test"],
-    ):
-        if shutil.which(cmd[0]):
-            result = run_command(cmd, cwd=repo_path)
-            if result.returncode == 0:
-                return {"verified": True, "details": " ".join(cmd), "stdout": result.stdout[-4000:], "stderr": result.stderr[-4000:]}
-    return {"verified": False, "details": "no default verification command succeeded", "stdout": "", "stderr": ""}
+def external_verify(issue: dict, arm: str, harness_root: Path, work_path: Path) -> dict:
+    oracle = run_oracle(issue, work_path)
+    result = {
+        "oracle_pass": oracle["passed"],
+        "oracle_details": oracle["details"],
+        "oracle_stdout": oracle.get("stdout", ""),
+        "oracle_stderr": oracle.get("stderr", ""),
+        "verified": False,
+        "details": "",
+        "stdout": "",
+        "stderr": "",
+    }
+    if arm == "har" and (harness_root / ".har").exists():
+        har_result = har_verify_full(harness_root, HAR_AGENT_ID)
+        result["verified"] = har_result["verified"]
+        result["details"] = har_result["details"]
+        result["stdout"] = har_result.get("stdout", "")
+        result["stderr"] = har_result.get("stderr", "")
+    return result
 
 
 def run_attempt(arm: str, issue: dict, repo: dict, dry_run: bool, timeout_minutes: int) -> dict:
     run_id = str(uuid.uuid4())
     run_dir = workspace_dir(arm, repo, issue)
-    repo_path = run_dir / "repo"
+    harness_root = run_dir / "repo"
     prompt = render_template(
         FIX_PROMPT,
         {
@@ -192,7 +213,6 @@ def run_attempt(arm: str, issue: dict, repo: dict, dry_run: bool, timeout_minute
             "base_commit": issue["base_commit"],
         },
     )
-    mcp_config = build_mcp_config(arm, repo_path, run_dir)
     record = {
         "run_id": run_id,
         "arm": arm,
@@ -203,7 +223,7 @@ def run_attempt(arm: str, issue: dict, repo: dict, dry_run: bool, timeout_minute
         "started_at": now_iso(),
         "prompt": prompt,
         "run_dir": str(run_dir),
-        "repo_path": str(repo_path),
+        "repo_path": str(harness_root),
         "dry_run": dry_run,
     }
     if dry_run:
@@ -211,31 +231,52 @@ def run_attempt(arm: str, issue: dict, repo: dict, dry_run: bool, timeout_minute
         write_json(run_dir / "run.json", record)
         return record
 
-    prepare_repo(repo, issue, arm, repo_path)
+    prepare_repo(repo, issue, arm, harness_root)
+    work_path = harness_root
+    slot_launched = False
 
-    env = telemetry_env(load_benchmark_env(), run_id, arm, repo, issue)
-    started = time.time()
-    cmd = [
-        "claude",
-        "-p",
-        prompt,
-        "--dangerously-skip-permissions",
-        "--strict-mcp-config",
-        "--mcp-config",
-        str(mcp_config),
-        "--output-format",
-        "json",
-    ]
-    result = run_command(cmd, cwd=repo_path, env=env, timeout=timeout_minutes * 60)
-    record["claude"] = {
-        "exit_code": result.returncode,
-        "stdout": result.stdout[-12000:],
-        "stderr": result.stderr[-12000:],
-    }
-    record["metrics"] = collect_local_metrics(repo_path, result.stdout, result.stderr, started, result.returncode)
-    record["external_verification"] = external_verify(repo_path, arm)
-    record["finished_at"] = now_iso()
-    record["status"] = "completed"
+    try:
+        if arm == "har":
+            ok, workdir, launch_log = har_launch_slot(harness_root, HAR_AGENT_ID)
+            record["har_launch"] = {"ok": ok, "log": launch_log[-4000:]}
+            if not ok or not workdir:
+                record["status"] = "failed"
+                record["error"] = f"HAR launch failed: {launch_log[-2000:]}"
+                record["finished_at"] = now_iso()
+                write_json(run_dir / "run.json", record)
+                return record
+            slot_launched = True
+            work_path = workdir
+            record["work_path"] = str(work_path)
+
+        mcp_config = build_mcp_config(arm, harness_root, run_dir)
+        env = telemetry_env(load_benchmark_env(), run_id, arm, repo, issue)
+        started = time.time()
+        cmd = [
+            "claude",
+            "-p",
+            prompt,
+            "--dangerously-skip-permissions",
+            "--strict-mcp-config",
+            "--mcp-config",
+            str(mcp_config),
+            "--output-format",
+            "json",
+        ]
+        result = run_command(cmd, cwd=work_path, env=env, timeout=timeout_minutes * 60)
+        record["claude"] = {
+            "exit_code": result.returncode,
+            "stdout": result.stdout[-12000:],
+            "stderr": result.stderr[-12000:],
+        }
+        record["metrics"] = collect_local_metrics(work_path, result.stdout, result.stderr, started, result.returncode)
+        record["external_verification"] = external_verify(issue, arm, harness_root, work_path)
+        record["finished_at"] = now_iso()
+        record["status"] = "completed"
+    finally:
+        if slot_launched:
+            har_teardown_slot(harness_root, HAR_AGENT_ID)
+
     write_json(run_dir / "run.json", record)
     return record
 
@@ -247,12 +288,15 @@ def main() -> int:
     parser.add_argument("--issue-number", type=int)
     parser.add_argument("--issue-id")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--timeout-minutes", type=int, default=benchmark_config().get("time_budget_minutes", 90))
+    parser.add_argument("--campaign", choices=["default", "v3"], default="default")
+    parser.add_argument("--timeout-minutes", type=int)
     args = parser.parse_args()
+    cfg = campaign_config(args.campaign)
+    timeout = args.timeout_minutes or cfg.get("time_budget_minutes", 45)
 
-    repo = repo_meta(args.repo)
-    issue = issue_meta(args.issue_id, f"{repo['owner']}/{repo['name']}", args.issue_number)
-    record = run_attempt(args.arm, issue, repo, args.dry_run, args.timeout_minutes)
+    repo = repo_meta(args.repo, args.campaign)
+    issue = issue_meta(args.issue_id, f"{repo['owner']}/{repo['name']}", args.issue_number, args.campaign)
+    record = run_attempt(args.arm, issue, repo, args.dry_run, timeout)
     print(json.dumps({"run_id": record["run_id"], "run_dir": record["run_dir"], "status": record["status"]}, indent=2))
     return 0
 

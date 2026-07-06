@@ -1,6 +1,7 @@
 .env.local
 runs/
-results/
+state/
+results/v3/
 .repos/
 repos/
 .repo-cache/

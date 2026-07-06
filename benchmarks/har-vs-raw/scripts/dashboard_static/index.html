@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HAR Benchmark v3</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --border: #2a3142;
+      --text: #e8ecf4;
+      --muted: #9aa4b8;
+      --ok: #3ecf8e;
+      --fail: #ff6b6b;
+      --run: #5b9dff;
+      --wait: #f0b429;
+      --blocked: #c084fc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    h1 { margin: 0; font-size: 1.1rem; }
+    .meta { color: var(--muted); font-size: 0.9rem; }
+    main { padding: 1rem; display: grid; gap: 1rem; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card h2 {
+      margin: 0;
+      padding: 0.85rem 1rem;
+      font-size: 0.95rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .phases { padding: 0.75rem 1rem; display: grid; gap: 0.35rem; }
+    .phase {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      align-items: center;
+    }
+    .phase button {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      cursor: pointer;
+      text-align: left;
+      padding: 0;
+      font: inherit;
+    }
+    .phase button:hover { color: var(--text); text-decoration: underline; }
+    .status { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+    .status.completed { color: var(--ok); }
+    .status.failed { color: var(--fail); }
+    .status.running { color: var(--run); }
+    .status.pending { color: var(--muted); }
+    .status.blocked { color: var(--blocked); }
+    .badge.approval-approved { color: var(--ok); border-color: var(--ok); }
+    .badge.approval-pending { color: var(--wait); }
+    .actions {
+      padding: 0.75rem 1rem 1rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    button.primary, button.secondary {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.7rem;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.primary { background: #2563eb; color: white; border-color: #2563eb; }
+    button.secondary { background: transparent; color: var(--text); }
+    #log-panel {
+      position: fixed;
+      right: 0;
+      top: 0;
+      width: min(560px, 100%);
+      height: 100%;
+      background: #0b0d12;
+      border-left: 1px solid var(--border);
+      transform: translateX(100%);
+      transition: transform 0.2s ease;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+    }
+    #log-panel.open { transform: translateX(0); }
+    #log-panel header { position: static; }
+    #log-content {
+      flex: 1;
+      overflow: auto;
+      padding: 1rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      color: #d7deea;
+    }
+    a.link { color: #7cb7ff; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>HAR Benchmark v3</h1>
+      <div class="meta" id="campaign-meta">Loading…</div>
+    </div>
+    <div class="meta" id="refresh-meta">Auto-refresh: 3s</div>
+  </header>
+  <main>
+    <div class="grid" id="repo-grid"></div>
+  </main>
+  <aside id="log-panel">
+    <header>
+      <h1 id="log-title">Log</h1>
+      <button class="secondary" id="close-log">Close</button>
+    </header>
+    <div id="log-content"></div>
+  </aside>
+  <script>
+    const grid = document.getElementById('repo-grid');
+    const logPanel = document.getElementById('log-panel');
+    const logTitle = document.getElementById('log-title');
+    const logContent = document.getElementById('log-content');
+    let activeLog = null;
+
+    document.getElementById('close-log').onclick = () => logPanel.classList.remove('open');
+
+    async function fetchState() {
+      const res = await fetch('/api/state');
+      return res.json();
+    }
+
+    async function fetchIssues() {
+      const res = await fetch('/api/issues');
+      return res.json();
+    }
+
+    function issuesForRepo(allIssues, repoSlug) {
+      return (allIssues || []).filter((i) => {
+        const r = (i.repo || '').toLowerCase();
+        return r.includes(repoSlug) || r.endsWith(`/${repoSlug}`);
+      });
+    }
+
+    function issueListHtml(repoId, issues) {
+      if (!issues.length) {
+        return '<div class="meta" style="padding:0 1rem 0.75rem">Issues: none selected yet</div>';
+      }
+      const items = issues.map((i) => {
+        const mode = i.selection_mode === 'manual_pin' ? 'manual' : 'auto';
+        const label = `#${i.issue_number}`;
+        const title = (i.title || '').slice(0, 55);
+        return `<li><a class="link" href="${i.issue_url}" target="_blank" rel="noreferrer">${label}</a> ${title} <span class="badge">${mode}</span></li>`;
+      }).join('');
+      return `<div class="issues" style="padding:0 1rem 0.75rem"><div class="meta">Issues (${issues.length})</div><ul style="margin:0.35rem 0 0;padding-left:1.1rem;font-size:0.82rem">${items}</ul></div>`;
+    }
+
+    async function fetchLog(repo, phase) {
+      const res = await fetch(`/api/logs?repo=${encodeURIComponent(repo)}&phase=${encodeURIComponent(phase)}`);
+      return res.json();
+    }
+
+    async function approve(repo, notes = '') {
+      await fetch(`/api/approve/${repo}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+      });
+      render();
+    }
+
+    function phaseRow(repoId, phase, entry) {
+      const status = entry.status || 'pending';
+      return `<div class="phase">
+        <button data-repo="${repoId}" data-phase="${phase}">${phase}</button>
+        <span class="status ${status}">${status}</span>
+      </div>`;
+    }
+
+    function repoCard(repoId, repo, pinnedIssues) {
+      const approval = repo.manual_approval?.status || 'pending';
+      const notes = repo.manual_approval?.notes;
+      const branch = repo.harness_branch_url
+        ? `<a class="link" href="${repo.harness_branch_url}" target="_blank" rel="noreferrer">${repo.harness_branch_url}</a>`
+        : '<span class="muted">not pushed yet</span>';
+      const phases = Object.entries(repo.phases || {})
+        .map(([phase, entry]) => phaseRow(repoId, phase, entry))
+        .join('');
+      const approveDisabled = approval === 'approved' ? 'disabled' : '';
+      const notesHtml = notes
+        ? `<div class="meta" style="padding:0 1rem 0.5rem">✓ ${notes}</div>`
+        : '';
+      return `<article class="card">
+        <h2><span>${repoId}</span><span class="badge approval-${approval}">approval: ${approval}</span></h2>
+        ${notesHtml}
+        <div class="phases">${phases}</div>
+        <div class="meta" style="padding:0 1rem 0.5rem">Harness branch: ${branch}</div>
+        ${issueListHtml(repoId, pinnedIssues)}
+        <div class="actions">
+          <button class="primary" ${approveDisabled} data-approve="${repoId}">Approve harness</button>
+        </div>
+      </article>`;
+    }
+
+    async function render() {
+      const [data, issuesPayload] = await Promise.all([fetchState(), fetchIssues()]);
+      document.getElementById('campaign-meta').textContent =
+        `${data.campaign || 'v3'} · updated ${data.updated_at || '-'}`;
+      grid.innerHTML = Object.entries(data.repos || {})
+        .map(([id, repo]) => repoCard(id, repo, issuesForRepo(issuesPayload.issues, id)))
+        .join('');
+
+      grid.querySelectorAll('button[data-repo]').forEach((btn) => {
+        btn.onclick = async () => {
+          const repo = btn.dataset.repo;
+          const phase = btn.dataset.phase;
+          activeLog = { repo, phase };
+          logTitle.textContent = `${repo} · ${phase}`;
+          logPanel.classList.add('open');
+          const payload = await fetchLog(repo, phase);
+          logContent.textContent = payload.text || '(empty log)';
+        };
+      });
+
+      grid.querySelectorAll('button[data-approve]').forEach((btn) => {
+        btn.onclick = () => {
+          const notes = prompt('Approval notes (optional):') || '';
+          approve(btn.dataset.approve, notes);
+        };
+      });
+
+      if (activeLog) {
+        const payload = await fetchLog(activeLog.repo, activeLog.phase);
+        logContent.textContent = payload.text || '(empty log)';
+      }
+    }
+
+    render();
+    setInterval(render, 3000);
+  </script>
+</body>
+</html>

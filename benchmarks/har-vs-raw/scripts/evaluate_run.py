@@ -14,42 +14,22 @@ from lib.common import (  # noqa: E402
     benchmark_issues,
     langfuse_request,
     load_benchmark_env,
+    patch_overlap,
     read_json,
     write_json,
 )
 
 
 def has_frontend_test_changes(run: dict) -> bool:
-    repo_path = Path(run["repo_path"])
-    result = __import__("subprocess").run(
-        ["git", "diff", "--name-only"],
-        cwd=repo_path,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    keywords = ("playwright", "e2e", "spec.", "cypress", "frontend", "web", "ui", "component")
-    return any(any(keyword in name.lower() for keyword in keywords) for name in names)
+    changed = run.get("metrics", {}).get("changed_file_list") or []
+    keywords = ("playwright", "e2e", "spec.", "cypress", "frontend", "web", "ui", "component", ".test.")
+    return any(any(keyword in name.lower() for keyword in keywords) for name in changed)
 
 
-def heuristic_success(run: dict, issue: dict) -> tuple[float, str]:
-    verified = 1.0 if run.get("external_verification", {}).get("verified") else 0.0
-    changed = run.get("metrics", {}).get("changed_files", 0) > 0
-    exit_ok = run.get("claude", {}).get("exit_code", 1) == 0
-    if verified and changed:
-        return 1.0, "verified with code changes"
-    if verified:
-        return 0.5, "verified but no/local changes detected"
-    if changed and exit_ok:
-        return 0.5, "changes produced but external verification failed"
-    return 0.0, "no verified fix"
-
-
-def quality_label(success: float, verified: float, e2e: float) -> str:
-    if success >= 1.0 and verified >= 1.0:
+def quality_label(oracle_pass: float, overlap: float, e2e: float) -> str:
+    if oracle_pass >= 1.0:
         return "good"
-    if success >= 0.5 or verified >= 0.5 or e2e >= 1.0:
+    if overlap > 0 or e2e >= 1.0:
         return "partial"
     return "bad"
 
@@ -91,13 +71,21 @@ def main() -> int:
     if issue is None:
         raise SystemExit("Matching issue not found in issues.yaml")
 
-    success, success_comment = heuristic_success(run, issue)
-    verified = 1.0 if run.get("external_verification", {}).get("verified") else 0.0
+    ext = run.get("external_verification", {})
+    oracle_pass = 1.0 if ext.get("oracle_pass") else 0.0
+    verified = 1.0 if ext.get("verified") else 0.0
     e2e = 1.0 if has_frontend_test_changes(run) else 0.0
+    changed = run.get("metrics", {}).get("changed_file_list") or []
+    overlap = patch_overlap(changed, issue.get("reference_files") or [])
     metrics = run.get("metrics", {})
+    success = oracle_pass
+    success_comment = ext.get("oracle_details") or ("oracle passed" if oracle_pass else "oracle failed")
+
     scores = {
         "success": success,
+        "oracle_pass": oracle_pass,
         "verified": verified,
+        "patch_overlap": overlap,
         "e2e_added_or_updated": e2e,
         "wall_clock_seconds": metrics.get("wall_clock_seconds", 0),
         "tokens_total": metrics.get("tokens_total", 0),
@@ -109,7 +97,7 @@ def main() -> int:
         "verify_attempts": metrics.get("verify_attempts", 0),
         "failed_verify_attempts": metrics.get("failed_verify_attempts", 0),
         "harness_setup_seconds": run.get("harness_setup_seconds", 0),
-        "quality": quality_label(success, verified, e2e),
+        "quality": quality_label(oracle_pass, overlap, e2e),
     }
     evaluation = {
         "run_id": run["run_id"],

@@ -9,10 +9,20 @@ issues_per_repo: 5
 pilot:
   repo: lightdash/lightdash
   issue_count: 2
+pilot_repos:
+  - lightdash/lightdash
+  - novuhq/novu
+  - jitsi/jitsi-meet
 score_configs:
   - name: success
     data_type: NUMERIC
-    description: Issue fixed according to evaluator (0 or 1)
+    description: Issue fixed according to evaluator (oracle pass)
+  - name: oracle_pass
+    data_type: NUMERIC
+    description: Issue-specific regression test oracle passed (0 or 1)
+  - name: patch_overlap
+    data_type: NUMERIC
+    description: Jaccard overlap of changed files vs reference fix PR
   - name: verified
     data_type: NUMERIC
     description: External verification passed (0 or 1)

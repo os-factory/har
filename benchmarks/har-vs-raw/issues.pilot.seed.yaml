@@ -1,0 +1,158 @@
+issues:
+  lightdash/lightdash:
+    - issue_number: 22515
+      title: "[Routing] Bare /projects/:projectUuid URL renders blank page instead of redirecting to /home"
+      closed_at: "2026-04-30T08:32:14Z"
+      reference_files:
+        - packages/frontend/src/Routes.tsx
+        - packages/frontend/src/MobileRoutes.tsx
+      reference_test_files:
+        - packages/frontend/src/Routes.test.tsx
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "frontend", "test", "--", "Routes"]
+    - issue_number: 18327
+      title: "Table chart UI bug: last row does not close when using pivoted columns"
+      closed_at: "2025-12-02T11:14:12Z"
+      reference_files:
+        - packages/frontend/src/hooks/usePivotTableColumns.ts
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "frontend", "test", "--", "pivot"]
+    - issue_number: 24854
+      title: "Dashboard chart tile description tooltip hover area is too large"
+      closed_at: "2026-07-02T19:59:47Z"
+      reference_files:
+        - packages/frontend/src/components/DashboardTiles/DashboardChartTile.tsx
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "frontend", "test", "--", "DashboardChartTile"]
+    - issue_number: 23697
+      title: "[ClickHouse] Pivot visualization broken in v0.3053.0+"
+      closed_at: "2026-06-01T13:28:36Z"
+      reference_files:
+        - packages/frontend/src/hooks/usePivotTableColumns.ts
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "frontend", "test", "--", "Pivot"]
+    - issue_number: 23832
+      title: "Investigate Cannot export pivot table CSV without pivot details"
+      closed_at: "2026-06-03T16:22:25Z"
+      reference_files:
+        - packages/frontend/src/hooks/usePivotTableColumns.ts
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "frontend", "test", "--", "pivot"]
+  novuhq/novu:
+    - issue_number: 8722
+      title: "TypeError when creating workflow from dashboard (v2.3.0)"
+      closed_at: "2026-05-20T16:37:45Z"
+      reference_files:
+        - apps/web/src/pages/workflows/index.tsx
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "@novu/web", "test"]
+    - issue_number: 8358
+      title: "Console Error on Notification Click"
+      closed_at: "2026-03-06T23:39:23Z"
+      reference_files:
+        - apps/web/src/components/layouts/Layout.tsx
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "@novu/web", "test"]
+    - issue_number: 7156
+      title: "WebSocket Context Path on Frontend"
+      closed_at: "2025-11-06T22:48:23Z"
+      reference_files:
+        - apps/web/src/context/websocket/WebsocketProvider.tsx
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "@novu/web", "test"]
+    - issue_number: 6346
+      title: "Bug Report @novu/framework cannot be used in Cloudflare Pages"
+      closed_at: "2025-11-06T22:48:23Z"
+      reference_files:
+        - packages/framework/src/index.ts
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "@novu/web", "test"]
+    - issue_number: 8732
+      title: "Bug Report email editor not working"
+      closed_at: "2026-02-12T23:30:20Z"
+      reference_files:
+        - apps/web/src/pages/workflows/index.tsx
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["pnpm", "--filter", "@novu/web", "test"]
+  jitsi/jitsi-meet:
+    - issue_number: 17074
+      title: "Polls Reducer mutating Redux state in-place on RECEIVE_ANSWER"
+      closed_at: "2026-05-19T02:25:27Z"
+      reference_files:
+        - react/features/polls/reducer.ts
+      reference_test_files:
+        - react/features/polls/reducer.test.ts
+      verification:
+        primary:
+          type: test_command
+          command: ["npm", "test", "--", "react/features/polls/reducer.test.ts"]
+    - issue_number: 17307
+      title: "Local Recording button missing after enabling token verification"
+      closed_at: "2026-06-26T02:25:18Z"
+      reference_files:
+        - react/features/recording/components/Recording/AbstractRecordButton.ts
+      reference_test_files:
+        - tests/specs/misc/recordingButtonVisibility.spec.ts
+      verification:
+        primary:
+          type: test_command
+          command: ["npm", "test", "--", "recordingButtonVisibility"]
+    - issue_number: 15451
+      title: "Meeting crashes when clicking on Tile View"
+      closed_at: "2025-01-13T17:02:16Z"
+      reference_files:
+        - react/features/filmstrip/components/web/Thumbnail.tsx
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["npm", "test", "--", "filmstrip"]
+    - issue_number: 12112
+      title: "Changes in main.json lang folder not reflecting in UI"
+      closed_at: "2022-09-01T13:37:23Z"
+      reference_files:
+        - modules/UI/UI.js
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["npm", "test", "--", "lang"]
+    - issue_number: 17011
+      title: "UI freezes when closing participants pane with 500+ participants"
+      closed_at: "2026-05-07T02:23:03Z"
+      reference_files:
+        - react/features/participants-pane/components/web/ParticipantsPane.tsx
+      reference_test_files: []
+      verification:
+        primary:
+          type: test_command
+          command: ["npm", "test", "--", "participants-pane"]
