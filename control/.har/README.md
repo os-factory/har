@@ -1,6 +1,6 @@
-# .har — Agent Harness
+# .har — Agent Harness (Mission Control)
 
-This directory is the **agent harness** for this repository. It lets AI coding agents (Cursor, Claude Code, etc.) run the project in isolated environments with their own ports, database, and verification workflow.
+This directory is the **agent harness** for Mission Control. It lets AI coding agents run the app in isolated environments with their own ports, database, and verification workflow.
 
 Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `har env maintain` when the repo stack changes.
 
@@ -26,13 +26,29 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `attach.sh` | Attach to agent tmux session |
 | `env.template` | Per-agent env vars (expanded by `launch.sh`) |
 | `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded by `launch.sh`) |
+| `ecosystem.shared.config.cjs` | Optional — shared app services started once by `setup-infra.sh` (not used by Control today) |
 | `docker-compose.agent.yml` | Shared Postgres — one instance serves all slots |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
 
 ## Quick start
 
+**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+
 ```bash
+cd control
+har env launch 1
+har env verify 1
+har env verify 1 --full
+har env teardown 1
+```
+
+In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment` (run from `control/` or point MCP at this harness).
+
+**Shell fallback** (no CLI/MCP installed):
+
+```bash
+cd control
 ./.har/setup-infra.sh          # starts shared Postgres + template DB (launch runs it too)
 ./.har/launch.sh 1
 ./.har/verify.sh 1             # quick: typecheck, tests, health
@@ -46,25 +62,17 @@ Read **`stages.json`** for registered stages and **`verificationStages`** for th
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `verify.sh <id>` | Project checks in `verify.sh` (stops early on failure) |
-| Full | `verify.sh <id> --full` | Quick steps + lint + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | typecheck, unit tests, api-health |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
 
 Install Playwright stage: `har env add-stage playwright` (optional). UI changes should add or update specs under `tests/`.
-
-## Quick start (har CLI)
-
-```bash
-har env launch 1
-har env verify 1
-har env teardown 1
-```
 
 ## Run history
 
 | Entry point | Writes `.har/runs/`? |
 |-------------|------------------------|
 | `./.har/*.sh` | No — same scripts, no run record |
-| `har env …` / MCP | Yes — under main checkout `.har/runs/YYYY-MM-DD/` |
+| `har env …` / MCP | Yes — under main checkout `control/.har/runs/YYYY-MM-DD/` |
 
 With git worktree slots, verification runs code in the worktree but run JSON stays in the main repo `.har/runs/`. Each record includes `workDir` when a slot is active.
 
@@ -73,6 +81,8 @@ With git worktree slots, verification runs code in the worktree but run JSON sta
 1. Read repo [`AGENT.md`](../AGENT.md)
 2. Read this file and `stages.json`
 3. After `launch`, read `.har/CLAUDE.agent.md` for slot URLs and definition of done
+
+Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.har/*.sh` only when the CLI is not installed.
 
 Always use `./.har/agent-cli.sh <id> ...` — never hardcoded ports.
 
@@ -103,6 +113,9 @@ per-slot database `agent_<id>` from that template, so agents never share state.
 `launch.sh` also re-runs `HARNESS_DB_MIGRATE_CMD` against the slot's own database on
 every launch (idempotent), so schema changes are applied before the slot starts serving.
 
+It also installs `@har/schemas` dependencies under `packages/schemas/` when typechecking
+from a fresh worktree (monorepo `file:` link).
+
 ### Port safety
 
 `launch.sh` refuses to start if a slot's ports are already held by a foreign process
@@ -115,7 +128,7 @@ is not trusted, since it could be answered by whatever else is bound to the port
 When the project stack changes (new services, different test commands, new env vars):
 
 ```bash
-har env maintain
+cd control && har env maintain
 ```
 
 The authoring agent updates scripts and this README. Review changes before committing.
@@ -130,8 +143,9 @@ The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — 
 verify, and teardown resolve the work dir through it. Make ALL file edits under the
 work dir printed by launch, never in the main checkout.
 
-- Relaunching a slot **replaces** its previous session; if the old worktree has
-  uncommitted changes, launch refuses unless `--force`.
+- Relaunching a slot **replaces** its previous session; replacement requires `--replace` /
+  `confirmReplace=true` (or an interactive prompt). Uncommitted changes also need `--force`
+  after explicit user approval.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - `har env complete <id>` finishes a session: full verify (recorded as a validation),
