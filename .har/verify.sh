@@ -67,9 +67,7 @@ run_step() {
     OVERALL_PASS=false
   fi
 
-  step_output_escaped=$(echo "$output" | head -50 | \
-    node -e "let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>process.stdout.write(JSON.stringify(d.trim())))" \
-    2>/dev/null || echo '""')
+  step_output_escaped=$(escape_step_output "$output")
 
   RESULTS_JSON=$(echo "$RESULTS_JSON" | node -e "
 const fs = require('fs');
