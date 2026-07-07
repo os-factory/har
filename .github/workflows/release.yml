@@ -65,11 +65,13 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ vars.RELEASE_HAR_CLI_APP_CLIENT_ID }}
+          # Client ID: repo/org variable (vars.RELEASE_HAR_CLI_APP_CLIENT_ID) or
+          # npm-publish environment secret (secrets.RELEASE_HAR_CLI_APP_CLIENT_ID).
+          client-id: ${{ vars.RELEASE_HAR_CLI_APP_CLIENT_ID || secrets.RELEASE_HAR_CLI_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_HAR_CLI_APP_PRIVATE_KEY }}
+          # Must match permissions granted on the release-har-cli app installation.
+          # Contents write is required for @semantic-release/git and GitHub releases.
           permission-contents: write
-          permission-issues: write
-          permission-pull-requests: write
 
       - uses: actions/checkout@v4
         with:
