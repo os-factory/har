@@ -4,13 +4,15 @@ This directory is the **agent harness** for this repository. It lets AI coding a
 
 Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `har env maintain` when the repo stack changes.
 
+**The harness is how you run this project.** Launch a slot to exercise the code in isolation; don't hand-roll setup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
+
 ## What's in here
 
 | File | Purpose |
 |------|---------|
 | `README.md` | This file — index of the harness |
 | `manifest.json` | Generator metadata (version, profile, checksums) — do not edit |
-| `harness.env` | Shared config: worktree default, infra flags, migrate/seed commands |
+| `harness.env` | Shared config: worktree default, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
 | `runs/` | Run history from `har env` / MCP — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
@@ -21,7 +23,7 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `verify.sh` | Verification pipeline (typecheck, tests, lint, build) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run commands in the work dir |
-| `docker-compose.agent.yml` | Shared infrastructure containers (when infra flags are enabled) |
+| `docker-compose.agent.yml` | Shared infrastructure containers (services listed in `HARNESS_INFRA_SERVICES`) |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
 | `.cursor/rules/har-workflow.mdc` | (repo root) Cursor rule — auto-injects harness workflow; created/refreshed by `har env init/maintain` |
@@ -44,23 +46,21 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 **Shell fallback** (no CLI/MCP installed):
 
 ```bash
-# 1. Optional shared infrastructure (when HARNESS_INFRA_* flags are true)
-./.har/setup-infra.sh
-
-# 2. Launch agent 1 (creates ~/worktrees/har_project-agent-1 by default)
+./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
 ./.har/launch.sh 1
-
-# 3. Check status
-./.har/agent-cli.sh 1 status
-
-# 4. Verify after changes
 ./.har/verify.sh 1
-
-# 5. Tear down
+./.har/verify.sh 1 --full      # + lint, browser-e2e (if Playwright installed)
 ./.har/teardown.sh 1
 ```
 
 Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when you intentionally want to work in the repo root checkout.
+
+## Verification contract
+
+| Mode | Command | Typical steps |
+|------|---------|---------------|
+| Quick | `har env verify <id>` or `verify.sh <id>` | typecheck, build, unit tests |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint, **browser-e2e** when `stages/browser-e2e.sh` exists |
 
 ## Run history
 
@@ -69,7 +69,7 @@ Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only 
 | `./.har/*.sh` | No |
 | `har env …` / MCP | Yes — `.har/runs/YYYY-MM-DD/` in this (main) checkout |
 
-Worktree slots run code in `~/worktrees/har_project-agent-<id>`; run JSON stays here. See `AGENT.md` for details.
+Worktree slots run code in `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`; run JSON stays here. See `AGENT.md` for details.
 
 ## For coding agents
 
@@ -78,6 +78,8 @@ Worktree slots run code in `~/worktrees/har_project-agent-<id>`; run JSON stays 
 Prefer HAR MCP tools or `har env …` for launch, verify, and teardown — they persist run history. Use `./.har/*.sh` only when the CLI is not installed.
 
 Work in the isolated git worktree created by launch. Use `./.har/agent-cli.sh <id> exec ...` for ad-hoc project commands in that work dir.
+
+When the project needs Postgres, Redis, or similar, add the service to `docker-compose.agent.yml`, list it in `HARNESS_INFRA_SERVICES` in `harness.env`, and use `setup-infra.sh` — never run raw `docker compose` for shared infra.
 
 ## Maintaining this harness
 

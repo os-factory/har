@@ -27,8 +27,11 @@ ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
   exit 1
 }
 
+set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
+set +a
+
 WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE" "$AGENT_ID")"
 
 echo "==> Verifying agent ${AGENT_ID} in ${WORK_DIR}..." >&2
@@ -87,6 +90,7 @@ run_step "unit-tests" "npm test" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
   run_step "lint" "npm run lint" || true
+  run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
 fi
 
 END_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")

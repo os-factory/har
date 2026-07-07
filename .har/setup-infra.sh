@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Sets up shared infrastructure for all agents.
-# Starts Docker Compose stack and creates the template database.
+# Starts the docker compose services listed in HARNESS_INFRA_SERVICES, creates
+# the template database (when "db" is enabled), and starts optional shared app
+# services (ecosystem.shared.config.cjs). One instance serves every agent slot.
 # Idempotent — safe to run multiple times.
 #
 # Usage: ./.har/setup-infra.sh
@@ -15,36 +17,30 @@ source "$SCRIPT_DIR/harness.env"
 
 COMPOSE_PROJECT="har-${HARNESS_PROJECT_NAME}"
 DB_PORT="${AGENT_DB_PORT:-15432}"
-PSQL="psql -h localhost -p $DB_PORT -U postgres -d postgres"
+PSQL="har_pg psql -d postgres"
 
 log() { echo "==> $*" >&2; }
 
-# Determine which services to start
-SERVICES=""
-[ "$HARNESS_INFRA_POSTGRES" = "true" ]   && SERVICES="db"
-[ "$HARNESS_INFRA_MINIO" = "true" ]     && SERVICES="${SERVICES} minio"
-[ "$HARNESS_INFRA_BROWSER" = "true" ]   && SERVICES="${SERVICES} headless-browser"
-[ "$HARNESS_INFRA_MAILPIT" = "true" ]   && SERVICES="${SERVICES} mailpit"
+SERVICES="${HARNESS_INFRA_SERVICES:-}"
 
-if [ -z "$SERVICES" ]; then
-  log "No infrastructure services enabled in harness.env"
-  exit 0
+if [ -n "$SERVICES" ]; then
+  log "Starting shared infrastructure (project: $COMPOSE_PROJECT): $SERVICES"
+  AGENT_DB_PORT="$DB_PORT" \
+  AGENT_MINIO_PORT="${AGENT_MINIO_PORT:-19000}" \
+  AGENT_MINIO_CONSOLE_PORT="${AGENT_MINIO_CONSOLE_PORT:-19001}" \
+  AGENT_BROWSER_PORT="${AGENT_BROWSER_PORT:-13001}" \
+  AGENT_MAILPIT_WEB_PORT="${AGENT_MAILPIT_WEB_PORT:-18025}" \
+  AGENT_MAILPIT_SMTP_PORT="${AGENT_MAILPIT_SMTP_PORT:-11025}" \
+    docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" up -d $SERVICES
+else
+  log "No shared infra services enabled in harness.env (HARNESS_INFRA_SERVICES)"
 fi
 
-log "Starting shared infrastructure (project: $COMPOSE_PROJECT)..."
-AGENT_DB_PORT="$DB_PORT" \
-AGENT_MINIO_PORT=19000 \
-AGENT_MINIO_CONSOLE_PORT=19001 \
-AGENT_BROWSER_PORT=13001 \
-AGENT_MAILPIT_WEB_PORT=18025 \
-AGENT_MAILPIT_SMTP_PORT=11025 \
-  docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" up -d $SERVICES
-
-# Wait for PostgreSQL
-if [ "$HARNESS_INFRA_POSTGRES" = "true" ]; then
+# Wait for PostgreSQL and prepare the template database
+if har_infra_enabled db; then
   log "Waiting for PostgreSQL on port $DB_PORT..."
   for i in $(seq 1 30); do
-    if PGPASSWORD=password pg_isready -h localhost -p "$DB_PORT" -U postgres -q 2>/dev/null; then
+    if har_pg pg_isready -q 2>/dev/null; then
       log "PostgreSQL is ready."
       break
     fi
@@ -86,9 +82,19 @@ if [ "$HARNESS_INFRA_POSTGRES" = "true" ]; then
   fi
 fi
 
+# Shared app services — supporting services of a monolith/monorepo that agents
+# depend on but do not modify. Started ONCE on fixed ports, shared by all slots.
+SHARED_ECOSYSTEM="$SCRIPT_DIR/ecosystem.shared.config.cjs"
+if [ -f "$SHARED_ECOSYSTEM" ]; then
+  log "Starting shared app services from ecosystem.shared.config.cjs..."
+  (cd "$REPO_ROOT" && npx --yes pm2 startOrReload "$SHARED_ECOSYSTEM" >/dev/null)
+  log "Shared app services running (pm2 ls | grep har-shared-)."
+fi
+
 echo ""
 log "Infrastructure is ready."
-[ "$HARNESS_INFRA_POSTGRES" = "true" ]   && log "  PostgreSQL: localhost:$DB_PORT"
-[ "$HARNESS_INFRA_MINIO" = "true" ]     && log "  MinIO:      http://localhost:19001"
-[ "$HARNESS_INFRA_BROWSER" = "true" ]   && log "  Browser:    http://localhost:13001"
-[ "$HARNESS_INFRA_MAILPIT" = "true" ]   && log "  Mailpit:    http://localhost:18025"
+har_infra_enabled db               && log "  PostgreSQL: localhost:$DB_PORT"
+har_infra_enabled minio            && log "  MinIO:      http://localhost:${AGENT_MINIO_CONSOLE_PORT:-19001}"
+har_infra_enabled headless-browser && log "  Browser:    http://localhost:${AGENT_BROWSER_PORT:-13001}"
+har_infra_enabled mailpit          && log "  Mailpit:    http://localhost:${AGENT_MAILPIT_WEB_PORT:-18025}"
+exit 0

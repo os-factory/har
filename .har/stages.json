@@ -27,7 +27,7 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Run typecheck, tests, lint, and build",
+      "description": "Verification pipeline (quick by default; --full adds lint, browser-e2e when installed)",
       "command": "./.har/verify.sh {agentId}",
       "acceptsArgs": ["--full"],
       "artifacts": [

@@ -32,7 +32,19 @@ Update only if infra changed.
 
 When upgrading `@osfactory/har` or adopting new harness standards:
 
+**Generator 0.4.0 — primary app & shared infra services:**
+
+- Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from the bundled template. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
+- Set `HARNESS_PRIMARY_APP` in `harness.env` to the ONE app agents modify. Ensure `ecosystem.agent.template.cjs` starts only that app's processes. Move any other in-repo services agents depend on but don't change to shared infra: compose services in `docker-compose.agent.yml` or an optional `.har/ecosystem.shared.config.cjs` (processes `har-shared-<name>`; `setup-infra.sh` starts it when present — resync `setup-infra.sh` from the template to get this hook).
+- Prune `docker-compose.agent.yml` to only the services this project uses; delete unused menu services and volumes.
+- Run the **cleanup checklist**: no TODO placeholders, no env blocks for removed services in `env.template`, no dead script branches, `.har/README.md` file table matches the actual files, `CLAUDE.agent.md` shows only real URLs/ports and commands, unused files deleted.
+
+**Earlier standards:**
+
 - Add **Run history** section to repo-root `AGENT.md` if missing (shell vs `har env`, worktree vs runs location)
+- Ensure `AGENT.md` / `CLAUDE.agent.md` frame the harness as **how you run the project** (launch for manual testing/browser/screenshots; fix — don't work around — failing harness commands)
+- Ensure `launch.sh` installs dependencies in fresh worktrees and resolves the project subdirectory inside the worktree (`git rev-parse --show-prefix`) for monorepos
+- If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENT.md`, per-project pointer docs, and a single root Cursor rule
 - Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)
 - Align `launch.sh` / `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
 - Do **not** blindly overwrite customized `verify.sh`
@@ -42,8 +54,9 @@ When upgrading `@osfactory/har` or adopting new harness standards:
 If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENT.md`:
 
 - Links to `.har/README.md` and `.har/CLAUDE.agent.md`
-- Essential `./.har/*` commands and `har env …` for run history
-- Run history rules (shell vs CLI, worktree vs `.har/runs/` location)
+- Preferred: HAR MCP tools or `har env …` (persists run history)
+- Fallback: `./.har/*` shell scripts (when CLI is not installed)
+- Run history rules (shell vs CLI/MCP, worktree vs `.har/runs/` location)
 - Agent rules (ports, agent-cli.sh, isolation)
 - Project-specific notes
 
@@ -57,4 +70,4 @@ If `AGENT.md` does not mention HAR yet, add a concise section. If it already has
 4. Replace any remaining TODO placeholders
 5. Do not edit `.har/manifest.json` — managed by the har CLI
 
-When finished, summarize what you changed and confirm verification commands still match the repo.
+When finished, summarize what you changed, confirm verification commands still match the repo, and record the adaptation with `har env maintain --finalize --summary "<what changed>"` (updates the manifest's generator version and checksums).

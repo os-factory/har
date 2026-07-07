@@ -11,7 +11,7 @@ Run `har env maintain` to refresh it.
 
 - **Agent ID**: ${AGENT_ID}
 - **Work dir**: fresh session worktree per launch — see the launch output or `.har/slots/agent-${AGENT_ID}.json` (path looks like `~/worktrees/<base>-<sha4>-har-agent-${AGENT_ID}-<rand4>`)
-- **Infra**: none for this repo (`HARNESS_INFRA_*` all false)
+- **Infra**: none for this repo (`HARNESS_INFRA_SERVICES` is empty)
 
 Launch FIRST, then make ALL file edits under the work dir. Relaunching replaces the session (branch kept); a dirty previous session is refused unless `--force`.
 
@@ -51,6 +51,7 @@ har env verify ${AGENT_ID} --full
 ## Definition of Done
 
 - [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+- [ ] When `stages/browser-e2e.sh` exists, full verify includes Playwright — adapt specs under `tests/` for UI changes
 - [ ] Tests cover the change
 - [ ] No type errors, no lint warnings
 - [ ] Changes committed in your worktree with a clear message
