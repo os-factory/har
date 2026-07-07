@@ -259,6 +259,11 @@ resolve_agent_work_dir() {
   echo "$work_dir"
 }
 
+# Portable millisecond clock (GNU date %N is unavailable on macOS/BSD).
+now_ms() {
+  node -e 'process.stdout.write(String(Date.now()))' 2>/dev/null || echo 0
+}
+
 # JSON-escape step output; truncate to 50 lines in node (avoids SIGPIPE under pipefail).
 escape_step_output() {
   printf '%s' "$1" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const s=d.trim().split('\n').slice(0,50).join('\n');process.stdout.write(JSON.stringify(s))})" 2>/dev/null || echo '""'

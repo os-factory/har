@@ -62,7 +62,7 @@ XC_DESTINATION="${HARNESS_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 16
 XC_DERIVED="${WORK_DIR}/build/DerivedData"
 
 OVERALL_PASS=true
-START_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")
+START_TOTAL=$(now_ms)
 RESULTS_JSON="[]"
 
 run_step() {
@@ -71,14 +71,14 @@ run_step() {
   local start end elapsed exit_code output
 
   printf "  → %-40s" "$name..." >&2
-  start=$(date +%s%3N 2>/dev/null || echo "0")
+  start=$(now_ms)
 
   set +e
   output=$(cd "$WORK_DIR" && eval "$cmd" 2>&1)
   exit_code=$?
   set -e
 
-  end=$(date +%s%3N 2>/dev/null || echo "0")
+  end=$(now_ms)
   elapsed=$(( end - start ))
 
   local pass_bool step_output_escaped
@@ -143,7 +143,7 @@ if [ -n "$FULL" ]; then
   run_rocketsim_flows_if_present "$SCRIPT_DIR" "$AGENT_ID" || true
 fi
 
-END_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")
+END_TOTAL=$(now_ms)
 TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
 
 node -e "
