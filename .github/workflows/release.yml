@@ -48,6 +48,7 @@ jobs:
     needs: verify
     if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: ubuntu-latest
+    environment: npm-publish
     permissions:
       contents: write
       issues: write
@@ -80,7 +81,6 @@ jobs:
       - name: Semantic release (npm + GitHub tag/release)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             npx semantic-release --dry-run
@@ -114,6 +114,7 @@ jobs:
     needs: release
     if: needs.release.outputs.released == 'true'
     runs-on: ubuntu-latest
+    environment: npm-publish
     permissions:
       contents: read
     steps:
