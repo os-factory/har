@@ -15,7 +15,9 @@
     "har": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "control/docker-compose.yml",
+    "control/docker-compose.build.yml"
   ],
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --banner:js='#!/usr/bin/env node' && rm -rf dist/templates dist/prompts && cp -r src/templates dist/templates && mkdir -p dist/prompts && cp src/llm/prompts/*.md dist/prompts/",

@@ -19,7 +19,13 @@ export const controlCommand = {
         'up',
         'Start Mission Control (Docker Compose)',
         (y: Argv) =>
-          y.option('detach', { alias: 'd', type: 'boolean', default: true }),
+          y
+            .option('detach', { alias: 'd', type: 'boolean', default: true })
+            .option('build', {
+              type: 'boolean',
+              default: false,
+              describe: 'Build Mission Control locally instead of pulling from Docker Hub',
+            }),
         handleUp,
       )
       .command(
@@ -75,11 +81,21 @@ export const controlCommand = {
   handler: () => {},
 };
 
-async function handleUp(argv: { detach: boolean }): Promise<void> {
+async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void> {
   header('har control up');
-  const { code, apiUrl } = await startMissionControl({ detach: argv.detach });
-  if (code !== 0) process.exit(code);
-  success(`Mission Control running at ${apiUrl}`);
+  const { code, apiUrl, imageRef } = await startMissionControl({
+    detach: argv.detach,
+    build: argv.build,
+  });
+  if (code !== 0) {
+    if (!argv.build) {
+      warn(
+        `Could not pull ${imageRef}. For local development use har control up --build, or publish the matching image.`,
+      );
+    }
+    process.exit(code);
+  }
+  success(`Mission Control running at ${apiUrl} (${imageRef})`);
 
   if (!isControlEnabled()) return;
 

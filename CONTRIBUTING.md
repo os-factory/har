@@ -147,7 +147,8 @@ The CLI will copy the boilerplate, call Claude to adapt it to the repo, and prop
 Local observability UI (Next.js + shadcn/ui + Postgres):
 
 ```bash
-har control up
+har control up          # pulls theosfactory/har-control:<cli-version> from Docker Hub
+har control up --build  # build locally from source (monorepo contributors)
 # open http://localhost:3847
 
 cd control && npm run dev   # dashboard development without Docker app image
@@ -369,7 +370,7 @@ npm uninstall -g @osfactory/har
 rm osfactory-har-*.tgz
 ```
 
-The tarball should contain only `dist/` (bundled CLI + templates + prompts), plus `package.json`, `README.md`, `LICENSE`, and this changelog — not the Mission Control app or test fixtures.
+The tarball should contain `dist/` (bundled CLI + templates + prompts), `control/docker-compose*.yml`, plus `package.json`, `README.md`, `LICENSE`, and this changelog — not the Mission Control app source or test fixtures.
 
 Maintainers do **not** hand-cut version tags after the baseline. Merge conventional commits to `main`; the [Release workflow](.github/workflows/release.yml) will:
 
@@ -377,7 +378,7 @@ Maintainers do **not** hand-cut version tags after the baseline. Merge conventio
 2. Bump `@osfactory/har`, `@har/control`, and `@har/schemas` to the same version
 3. Update `CHANGELOG.md`, commit `[skip ci]`, tag `vX.Y.Z`, and open a GitHub Release
 4. Publish `@osfactory/har` to npm
-5. Trigger [Publish Docker](.github/workflows/publish-docker.yml) for `antoinefrau/har-control` on Docker Hub
+5. Trigger [Publish Docker](.github/workflows/publish-docker.yml) for `theosfactory/har-control` on Docker Hub (`X.Y.Z`, `X.Y`, `X`, and `latest`)
 
 ### Maintainer setup
 
@@ -393,7 +394,7 @@ Repository secrets:
 | Secret | Used by |
 |--------|---------|
 | `NPM_TOKEN` | npm publish for `@osfactory/har` (Automation token with publish access to the `@osfactory` scope) |
-| `DOCKERHUB_TOKEN` | Docker Hub publish for `antoinefrau/har-control` (PAT with read/write on the repo) |
+| `DOCKERHUB_TOKEN` | Docker Hub publish for `theosfactory/har-control` (PAT with read/write on the repo) |
 | `GITHUB_TOKEN` | GitHub Release (provided by Actions) |
 
 Dry-run the next release from the Actions tab (**Release → Run workflow → Dry run**) or locally:
@@ -405,6 +406,21 @@ GITHUB_TOKEN=... NPM_TOKEN=... npx semantic-release --dry-run
 
 ### Version coupling
 
-`@osfactory/har`, Mission Control (`control/`), and `@har/schemas` share one semver to avoid API drift. The release job syncs all three `package.json` files before tagging.
+`@osfactory/har`, Mission Control (`control/`), and `@har/schemas` share one semver. [semantic-release](release.config.cjs) keeps them aligned:
 
-Manual `v*` tags are discouraged. If you push a tag anyway, the Docker workflow validates that tag `vX.Y.Z` matches every coupled `package.json` version before publishing.
+1. `@semantic-release/npm` bumps root `package.json`
+2. [`release/sync-package-versions.js`](release/sync-package-versions.js) syncs `control/` and `packages/schemas/`
+3. GitHub Release tag `vX.Y.Z` is created
+4. [`publish-docker.yml`](.github/workflows/publish-docker.yml) validates the tag against all three `package.json` files, then pushes `theosfactory/har-control:X.Y.Z` (plus `X.Y`, `X`, and **`latest`**)
+5. Installed CLI reads its own `package.json` version and pulls `theosfactory/har-control:<same-version>` on `har control up`
+
+Override with `HAR_CONTROL_IMAGE` / `HAR_CONTROL_IMAGE_TAG`, or use `har control up --build` / `HAR_CONTROL_BUILD=true` to build locally from a git checkout.
+
+To publish the Mission Control image manually (maintainers):
+
+```bash
+docker login
+./release/publish-control-image.sh
+```
+
+Releases also publish via [.github/workflows/publish-docker.yml](.github/workflows/publish-docker.yml) when a GitHub Release is created.

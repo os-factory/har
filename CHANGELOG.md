@@ -12,7 +12,8 @@ private in the monorepo and ship with the repo / Docker image instead.
 
 Releases are cut automatically when conventional commits merge to `main`. The
 [Release workflow](.github/workflows/release.yml) publishes `@osfactory/har`, opens a
-GitHub Release, and triggers the Mission Control Docker publish. See
+GitHub Release, and triggers [Publish Docker](.github/workflows/publish-docker.yml) for
+`theosfactory/har-control` (semver tags plus `latest`). See
 [CONTRIBUTING.md](./CONTRIBUTING.md#releases) for maintainer setup.
 
 ### Semver policy

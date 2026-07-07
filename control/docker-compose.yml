@@ -16,9 +16,8 @@ services:
       retries: 5
 
   app:
-    build:
-      context: ..
-      dockerfile: control/Dockerfile
+    image: ${HAR_CONTROL_IMAGE:-theosfactory/har-control}:${HAR_CONTROL_IMAGE_TAG}
+    pull_policy: always
     ports:
       - "3847:3847"
     environment:

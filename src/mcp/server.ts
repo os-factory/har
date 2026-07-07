@@ -9,6 +9,7 @@ import {
 import { describeProject, initHarness } from '../core/harness';
 import { recordRepoForControlSync } from '../core/control-registry';
 import { startControlAndSync } from '../core/control-lifecycle';
+import { getHarPackageVersion } from '../core/package-version';
 import {
   completeEnvironment,
   getEnvironmentLogs,
@@ -396,7 +397,7 @@ export async function handleMcpToolCall(
 
 export async function runHarMcpServer(defaultRepo = '.'): Promise<void> {
   const server = new Server(
-    { name: 'har', version: '0.1.0' },
+    { name: 'har', version: getHarPackageVersion() },
     { capabilities: { tools: {} } },
   );
 

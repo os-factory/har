@@ -158,7 +158,7 @@ Core tools (generic — no stack-specific operations like `run_playwright`):
 Free OSS dashboard for observing harness runs, worktrees, and agent slots on your machine:
 
 ```bash
-har control up          # starts Postgres + dashboard at http://localhost:3847
+har control up          # pulls theosfactory/har-control:<cli-version> + Postgres at http://localhost:3847
 har env init            # remembers the repo for sync when Control starts
 har control sync        # push runs + slot status
 ```
