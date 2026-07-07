@@ -34,11 +34,11 @@ jobs:
           node dist/index.js env verify 1 --full
 
       - name: Verify Mission Control
-        working-directory: control
         run: |
-          npm install
-          npm run typecheck
-          npm test
+          npm ci --prefix packages/schemas
+          npm ci --prefix control
+          npm run typecheck --prefix control
+          npm test --prefix control
 
   release:
     needs: verify

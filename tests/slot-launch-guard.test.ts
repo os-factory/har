@@ -4,6 +4,13 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { checkLaunchGuard } from '../src/core/slot-launch-guard';
 
+function initGitRepo(repoPath: string): void {
+  execSync('git init -q', { cwd: repoPath });
+  execSync('git config user.email test@example.com', { cwd: repoPath });
+  execSync('git config user.name Test', { cwd: repoPath });
+  execSync('git commit --allow-empty -q -m init', { cwd: repoPath });
+}
+
 function writeSlotRegistry(harDir: string, agentId: number, worktreePath: string): void {
   const slotsDir = path.join(harDir, 'slots');
   fs.mkdirSync(slotsDir, { recursive: true });
@@ -59,8 +66,7 @@ describe('slot launch guard', () => {
       path.join(harDir, 'stages.json'),
     );
 
-    execSync('git init -q', { cwd: repoPath });
-    execSync('git commit --allow-empty -q -m init', { cwd: repoPath });
+    initGitRepo(repoPath);
     const worktreePath = path.join(os.tmpdir(), `har-guard-wt-${Date.now()}`);
     execSync(`git worktree add -b session-branch ${worktreePath}`, { cwd: repoPath });
     writeSlotRegistry(harDir, 1, worktreePath);
@@ -85,8 +91,7 @@ describe('slot launch guard', () => {
       path.join(harDir, 'stages.json'),
     );
 
-    execSync('git init -q', { cwd: repoPath });
-    execSync('git commit --allow-empty -q -m init', { cwd: repoPath });
+    initGitRepo(repoPath);
     const worktreePath = path.join(os.tmpdir(), `har-guard-dirty-wt-${Date.now()}`);
     execSync(`git worktree add -b session-branch ${worktreePath}`, { cwd: repoPath });
     fs.writeFileSync(path.join(worktreePath, 'dirty.txt'), 'change');

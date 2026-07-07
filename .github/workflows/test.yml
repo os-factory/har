@@ -26,6 +26,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: control/package-lock.json
-      - run: npm install
+      # @har/schemas path alias typechecks source files — zod must exist under packages/schemas/
+      - run: npm ci --prefix packages/schemas
+      - run: npm ci
       - run: npm run typecheck
       - run: npm test
