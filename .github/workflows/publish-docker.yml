@@ -18,6 +18,7 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: npm-publish
     permissions:
       contents: read
     steps:
