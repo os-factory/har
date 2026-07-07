@@ -5,7 +5,11 @@ import { execSync } from 'child_process';
 const AGENT_SLOT = path.join(__dirname, '..', '.har', 'agent-slot.sh');
 
 function sh(command: string): string {
-  return execSync(command, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  return execSync(command, {
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: '/bin/bash',
+  }).trim();
 }
 
 describe('verify.sh portable timing', () => {
