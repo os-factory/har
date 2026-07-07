@@ -65,10 +65,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/antoineFrau/har"
+    "url": "https://github.com/os-factory/har"
   },
-  "homepage": "https://github.com/antoineFrau/har#readme",
-  "bugs": "https://github.com/antoineFrau/har/issues",
+  "homepage": "https://github.com/os-factory/har#readme",
+  "bugs": "https://github.com/os-factory/har/issues",
   "author": "Antoine Frau",
   "license": "AGPL-3.0-only",
   "publishConfig": {

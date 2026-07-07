@@ -8,7 +8,7 @@
     "build": "prisma generate && next build",
     "start": "next start --port 3847",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",

@@ -16,9 +16,6 @@ jobs:
 
   control:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: control
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,6 +25,6 @@ jobs:
           cache-dependency-path: control/package-lock.json
       # @har/schemas path alias typechecks source files — zod must exist under packages/schemas/
       - run: npm ci --prefix packages/schemas
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+      - run: npm ci --prefix control
+      - run: npm run typecheck --prefix control
+      - run: npm test --prefix control
