@@ -372,13 +372,15 @@ rm osfactory-har-*.tgz
 
 The tarball should contain `dist/` (bundled CLI + templates + prompts), `control/docker-compose*.yml`, plus `package.json`, `README.md`, `LICENSE`, and this changelog — not the Mission Control app source or test fixtures.
 
-Maintainers do **not** hand-cut version tags after the baseline. Merge conventional commits to `main`; the [Release workflow](.github/workflows/release.yml) will:
+Maintainers do **not** hand-cut version tags after the baseline. Merge conventional commits to `main`; the [Release workflow](.github/workflows/release.yml) runs on every push to `main` and, when semantic-release finds releasable commits:
 
-1. Run full CLI + Mission Control verification
-2. Bump `@osfactory/har`, `@har/control`, and `@har/schemas` to the same version
-3. Update `CHANGELOG.md`, commit `[skip ci]`, tag `vX.Y.Z`, and open a GitHub Release
-4. Publish `@osfactory/har` to npm
-5. Trigger [Publish Docker](.github/workflows/publish-docker.yml) for `theosfactory/har-control` on Docker Hub (`X.Y.Z`, `X.Y`, `X`, and `latest`)
+1. Runs full CLI + Mission Control verification
+2. Bumps `@osfactory/har`, `@har/control`, and `@har/schemas` to the same version
+3. Publishes `@osfactory/har` to **npm**
+4. Creates git tag `vX.Y.Z` and a **GitHub Release** (with CLI tarball + compose assets)
+5. Pushes **`theosfactory/har-control`** to Docker Hub (`X.Y.Z`, `X.Y`, `X`, and `latest`) in the same workflow
+
+If there is nothing to release, verify still runs and publish steps are skipped.
 
 ### Maintainer setup
 
@@ -408,10 +410,10 @@ GITHUB_TOKEN=... NPM_TOKEN=... npx semantic-release --dry-run
 
 `@osfactory/har`, Mission Control (`control/`), and `@har/schemas` share one semver. [semantic-release](release.config.cjs) keeps them aligned:
 
-1. `@semantic-release/npm` bumps root `package.json`
+1. `@semantic-release/npm` bumps root `package.json` and publishes to npm
 2. [`release/sync-package-versions.js`](release/sync-package-versions.js) syncs `control/` and `packages/schemas/`
-3. GitHub Release tag `vX.Y.Z` is created
-4. [`publish-docker.yml`](.github/workflows/publish-docker.yml) validates the tag against all three `package.json` files, then pushes `theosfactory/har-control:X.Y.Z` (plus `X.Y`, `X`, and **`latest`**)
+3. `@semantic-release/github` creates git tag `vX.Y.Z` and the GitHub Release
+4. The Release workflow `publish-docker` job pushes `theosfactory/har-control:X.Y.Z` (plus `X.Y`, `X`, and **`latest`**)
 5. Installed CLI reads its own `package.json` version and pulls `theosfactory/har-control:<same-version>` on `har control up`
 
 Override with `HAR_CONTROL_IMAGE` / `HAR_CONTROL_IMAGE_TAG`, or use `har control up --build` / `HAR_CONTROL_BUILD=true` to build locally from a git checkout.
@@ -423,4 +425,4 @@ docker login
 ./release/publish-control-image.sh
 ```
 
-Releases also publish via [.github/workflows/publish-docker.yml](.github/workflows/publish-docker.yml) when a GitHub Release is created.
+Releases also publish via the Release workflow automatically. To republish an existing tag manually, use [Publish Docker (manual)](.github/workflows/publish-docker.yml) or `./release/publish-control-image.sh`.

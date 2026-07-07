@@ -17,8 +17,8 @@ module.exports = {
           'npm run build && ./release/prepare-assets.sh ${nextRelease.version}',
       },
     ],
-    '@semantic-release/npm',
     './release/sync-package-versions.js',
+    '@semantic-release/npm',
     [
       '@semantic-release/git',
       {

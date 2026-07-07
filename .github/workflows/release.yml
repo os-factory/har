@@ -14,6 +14,10 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  DOCKERHUB_USERNAME: theosfactory
+  CONTROL_IMAGE: theosfactory/har-control
+
 jobs:
   verify:
     if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')
@@ -49,6 +53,10 @@ jobs:
       issues: write
       pull-requests: write
       id-token: write
+    outputs:
+      released: ${{ steps.detect.outputs.released }}
+      tag: ${{ steps.detect.outputs.tag }}
+      version: ${{ steps.detect.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,9 +69,15 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      - name: Record latest tag before release
+        id: before
+        run: |
+          TAG="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
       - run: npm ci
 
-      - name: Semantic release
+      - name: Semantic release (npm + GitHub tag/release)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -73,3 +87,81 @@ jobs:
           else
             npx semantic-release
           fi
+
+      - name: Detect published release
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --tags --force
+          TAG="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+          BEFORE="${{ steps.before.outputs.tag }}"
+
+          if [ -n "$TAG" ] && [ "$TAG" != "$BEFORE" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "Published $TAG (npm, GitHub Release, Docker follow in publish-docker job)"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "No new release — skipped npm publish and downstream jobs"
+          fi
+
+  publish-docker:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Validate tag matches package.json
+        run: |
+          ROOT_VERSION="$(node -p "require('./package.json').version")"
+          CONTROL_VERSION="$(node -p "require('./control/package.json').version")"
+          SCHEMAS_VERSION="$(node -p "require('./packages/schemas/package.json').version")"
+          EXPECTED="${{ needs.release.outputs.version }}"
+          for label_version in \
+            "package.json:${ROOT_VERSION}" \
+            "control/package.json:${CONTROL_VERSION}" \
+            "packages/schemas/package.json:${SCHEMAS_VERSION}"; do
+            FILE="${label_version%%:*}"
+            ACTUAL="${label_version#*:}"
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+              echo "$FILE version ($ACTUAL) does not match tag (${{ needs.release.outputs.tag }})" >&2
+              exit 1
+            fi
+          done
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: docker_meta
+        with:
+          images: ${{ env.CONTROL_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.release.outputs.tag }}
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: control/Dockerfile
+          push: true
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

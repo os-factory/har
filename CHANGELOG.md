@@ -11,9 +11,9 @@ Only **`@osfactory/har`** is published to npm. `@har/control` and `@har/schemas`
 private in the monorepo and ship with the repo / Docker image instead.
 
 Releases are cut automatically when conventional commits merge to `main`. The
-[Release workflow](.github/workflows/release.yml) publishes `@osfactory/har`, opens a
-GitHub Release, and triggers [Publish Docker](.github/workflows/publish-docker.yml) for
-`theosfactory/har-control` (semver tags plus `latest`). See
+[Release workflow](.github/workflows/release.yml) verifies, publishes `@osfactory/har`
+to npm, creates the GitHub Release + tag, and pushes `theosfactory/har-control`
+(semver tags plus `latest`) in one pipeline. See
 [CONTRIBUTING.md](./CONTRIBUTING.md#releases) for maintainer setup.
 
 ### Semver policy
