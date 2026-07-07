@@ -66,9 +66,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
-          registry-url: https://registry.npmjs.org
 
       - name: Record latest tag before release
         id: before
@@ -81,6 +80,7 @@ jobs:
       - name: Semantic release (npm + GitHub tag/release)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             npx semantic-release --dry-run
