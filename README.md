@@ -39,11 +39,37 @@ npm install && npm run build && npm link
 
 See [AGENT.md](./AGENT.md) for architecture and coding-agent guidance, and [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development workflow, testing on sample projects, and project layout. To report security issues, see [SECURITY.md](./SECURITY.md).
 
+## Harness profiles
+
+`har env init` scaffolds `.har/` from a boilerplate profile. Pick the one that matches what agents need to run — you only choose this once at init time.
+
+| Profile | Best for | What you get |
+|---------|----------|--------------|
+| `default` | Web apps (Next.js, Rails, Django, etc.) | Docker Compose for shared infra, PM2 for the primary app, per-slot ports and preview URLs |
+| `cli` | CLI tools, libraries, npm packages | No PM2 or port wiring — agents run project commands in an isolated git worktree; optional Docker for databases |
+| `ios` | iOS / Swift mobile apps | xcodebuild + iOS Simulator; configure scheme, project, and simulator in `harness.env` |
+
+```bash
+# Web app (default — omit --profile)
+cd my-web-app && har env init
+
+# CLI tool or library
+cd my-cli && har env init --profile cli
+
+# iOS app
+cd MyApp && har env init --profile ios
+har env add-stage rocketsim   # optional: UI flow validation on the simulator
+```
+
+After init, paste the printed adaptation prompt into your coding agent to tailor scripts to your stack. For built-in Claude adaptation: `har env init --auto` (requires `ANTHROPIC_API_KEY`).
+
+Optional stage templates depend on the profile: `har env add-stage playwright` for browser E2E on web apps, `har env add-stage rocketsim` for simulator user-flow checks on iOS.
+
 ## Quick start
 
 ```bash
 cd my-app
-har env init
+har env init                  # or --profile cli / --profile ios
 
 # Paste the printed prompt into your coding agent to adapt .har/ and AGENT.md
 git add .har/ AGENT.md
@@ -55,7 +81,7 @@ har env verify 1
 
 Shell fallback when the CLI is not installed: `./.har/setup-infra.sh`, `./.har/launch.sh 1`, `./.har/verify.sh 1`.
 
-For built-in Claude adaptation (requires `ANTHROPIC_API_KEY`): `har env init --auto`.
+See [Harness profiles](#harness-profiles) above if your repo is a CLI/library or iOS app rather than a web app.
 
 ## Repo layout after init
 
@@ -114,7 +140,7 @@ See `.har/stages/PLAYWRIGHT.md` in the target repo after applying the template.
 | `har control watch` | Continuously sync registered repos |
 | `har mcp` | Start the HAR MCP server (stdio) |
 
-Options: `--force`, `--auto` (built-in Claude adaptation), `--smoke`, `--yes` (auto-apply AGENT.md with `--auto`), `--verbose`, `--profile cli`
+Options: `--force`, `--auto` (built-in Claude adaptation), `--smoke`, `--yes` (auto-apply AGENT.md with `--auto`), `--verbose`, `--profile <default|cli|ios>`
 
 ## MCP Surface
 
