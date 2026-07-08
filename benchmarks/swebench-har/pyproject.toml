@@ -1,0 +1,24 @@
+[project]
+name = "swebench-har-benchmark"
+version = "0.1.0"
+description = "Paired SWE-bench Lite benchmark: raw Codex vs HAR-assisted Codex"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "datasets>=3.0.0",
+  "openai-codex>=0.1.0b3",
+  "pyyaml>=6.0",
+  "swebench>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["scripts"]
+pythonpath = ["scripts"]
+
+[tool.uv]
+prerelease = "allow"
