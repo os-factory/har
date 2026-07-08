@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/os-factory/har/compare/v0.3.0...v0.4.0) (2026-07-08)
+
+
+### Features
+
+* **benchmark:** swebench har benchmark ([#26](https://github.com/os-factory/har/issues/26)) ([e779ebf](https://github.com/os-factory/har/commit/e779ebf9518f0be1529bad918ad6faa8a37d53fd)), closes [19-#25](https://github.com/19-/issues/25)
+
 # [0.3.0](https://github.com/os-factory/har/compare/v0.2.0...v0.3.0) (2026-07-08)
 
 
