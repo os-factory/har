@@ -2,9 +2,11 @@
 .venv/
 .runs/
 runs/
+batches/
 results/
 predictions/
 .repo-cache/
+.har-cache/
 __pycache__/
 *.pyc
 .pytest_cache/

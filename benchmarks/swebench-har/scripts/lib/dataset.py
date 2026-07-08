@@ -22,3 +22,16 @@ def pick_row(rows: list[dict[str, Any]], seed: int | None, instance_id: str | No
     if seed is not None:
         random.seed(seed)
     return random.choice(rows)
+
+
+def sample_rows(
+    rows: list[dict[str, Any]],
+    count: int,
+    seed: int | None = None,
+) -> list[dict[str, Any]]:
+    if count < 1:
+        raise ValueError("count must be >= 1")
+    if count > len(rows):
+        raise ValueError(f"count {count} exceeds dataset size {len(rows)}")
+    rng = random.Random(seed)
+    return rng.sample(rows, count)

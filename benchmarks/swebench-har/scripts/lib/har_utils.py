@@ -8,7 +8,14 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .common import har_cmd, read_json, run_command
+from .common import har_cmd, load_benchmark_env, read_json, run_command
+
+
+def har_launch_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    """Env vars for non-interactive HAR launch/replace from the benchmark runner."""
+    merged = dict(env or load_benchmark_env())
+    merged["HAR_CONFIRM_REPLACE"] = "1"
+    return merged
 
 
 def har_init_scaffold(repo_path: Path, profile: str, env: dict[str, str] | None = None) -> None:
@@ -27,9 +34,12 @@ def read_har_slot_workdir(harness_root: Path, agent_id: int = 1) -> Path | None:
     if not slot_path.exists():
         return None
     data = read_json(slot_path)
-    work_dir = data.get("workDir") or data.get("work_dir") or data.get("worktreePath")
-    if work_dir:
-        return Path(work_dir)
+    for key in ("workDir", "work_dir", "worktreePath", "worktree_path"):
+        value = data.get(key)
+        if value:
+            path = Path(value)
+            if path.exists():
+                return path
     return None
 
 
@@ -39,8 +49,9 @@ def har_launch_slot(
     timeout_seconds: int = 3600,
     env: dict[str, str] | None = None,
 ) -> tuple[bool, Path | None, str]:
+    launch_env = har_launch_env(env)
     result = run_command(
-        [*har_cmd("launch", str(agent_id), "--replace", "--force", env=env)],
+        [*har_cmd("launch", str(agent_id), "--replace", "--force", env=launch_env)],
         cwd=harness_root,
         timeout=timeout_seconds,
     )
@@ -81,6 +92,62 @@ def har_verify(
 
 def har_teardown_slot(harness_root: Path, agent_id: int = 1, env: dict[str, str] | None = None) -> None:
     run_command([*har_cmd("teardown", str(agent_id), env=env)], cwd=harness_root)
+
+
+def har_validate_ready(
+    harness_root: Path,
+    agent_id: int = 1,
+    *,
+    timeout_seconds: int = 3600,
+    env: dict[str, str] | None = None,
+    verify_full: bool = False,
+) -> dict[str, Any]:
+    """Runner gate: teardown, launch, and quick verify before the fix stage."""
+    launch_env = har_launch_env(env)
+    har_teardown_slot(harness_root, agent_id=agent_id, env=launch_env)
+
+    launch_ok, workdir, launch_log = har_launch_slot(
+        harness_root,
+        agent_id=agent_id,
+        timeout_seconds=timeout_seconds,
+        env=launch_env,
+    )
+
+    if launch_ok:
+        verify_result = har_verify(
+            harness_root,
+            agent_id=agent_id,
+            full=verify_full,
+            env=launch_env,
+        )
+    else:
+        verify_result = {
+            "verified": False,
+            "full": verify_full,
+            "details": "skipped (launch failed)",
+            "stdout": "",
+            "stderr": "",
+            "exit_code": -1,
+        }
+
+    agent_env = workdir / f".env.agent.{agent_id}" if workdir else None
+    ready = bool(
+        launch_ok
+        and workdir is not None
+        and workdir.exists()
+        and agent_env is not None
+        and agent_env.exists()
+        and verify_result["verified"]
+    )
+
+    return {
+        "ready": ready,
+        "launch_ok": launch_ok,
+        "workdir": str(workdir) if workdir else None,
+        "launch_log": launch_log[-4000:],
+        "verify": verify_result,
+        "agent_env_exists": agent_env.exists() if agent_env else False,
+    }
 
 
 def har_runs_exist(harness_root: Path) -> bool:

@@ -14,6 +14,7 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from lib.common import benchmark_config, render_template, sanitize_instance_row  # noqa: E402
+from lib.har_cache import har_cache_exists, load_har_cache, save_har_cache  # noqa: E402
 from lib.patch import extract_model_patch, filter_changed_files  # noqa: E402
 from lib.profile import infer_har_profile  # noqa: E402
 
@@ -26,6 +27,39 @@ def test_config_loads() -> None:
     cfg = benchmark_config()
     assert cfg["dataset_name"] == "SWE-bench/SWE-bench_Lite"
     assert cfg["model"] == "gpt-5-mini"
+    assert cfg["setup_model"] == "gpt-5.5"
+    assert cfg["setup_max_attempts"] == 2
+
+
+def test_har_cache_roundtrip() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        harness_root = tmp_path / "repo"
+        harness_root.mkdir()
+        har_dir = harness_root / ".har"
+        har_dir.mkdir()
+        (har_dir / "launch.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        (har_dir / "verify.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        (har_dir / "slots").mkdir()
+        (har_dir / "slots" / "agent-1.json").write_text("{}", encoding="utf-8")
+
+        import lib.har_cache as har_cache
+
+        original_cache_root = har_cache.cache_root
+        try:
+            har_cache.cache_root = lambda: tmp_path / "har-cache"  # type: ignore[method-assign]
+            repo_slug = "test/cache-repo"
+            save_har_cache(repo_slug, harness_root, "cli")
+            assert har_cache_exists(repo_slug, "cli")
+            assert not (tmp_path / "har-cache" / "test-cache-repo" / ".har" / "slots").exists()
+
+            dest = tmp_path / "dest"
+            dest.mkdir()
+            assert load_har_cache(repo_slug, dest)
+            assert (dest / ".har" / "launch.sh").exists()
+            assert not (dest / ".har" / "slots").exists()
+        finally:
+            har_cache.cache_root = original_cache_root  # type: ignore[method-assign]
 
 
 def test_sanitize_instance() -> None:
@@ -97,6 +131,17 @@ def test_prompt_render() -> None:
     assert "broken" in text
     assert "{{" not in text
 
+    setup = render_template(
+        ROOT / "prompts" / "har-setup.md",
+        {
+            "repo": "foo/bar",
+            "instance_id": "foo__bar-1",
+            "har_profile": "cli",
+            "setup_failure_context": "",
+        },
+    )
+    assert "Do **not** run `har env launch`" in setup
+
 
 def test_dry_run_orchestration() -> None:
     result = run([sys.executable, str(SCRIPTS / "run_one.py"), "--seed", "7", "--dry-run"])
@@ -116,6 +161,7 @@ def test_evaluate_dry_run() -> None:
 def main() -> int:
     tests = [
         test_config_loads,
+        test_har_cache_roundtrip,
         test_sanitize_instance,
         test_profile_inference,
         test_patch_filtering,
