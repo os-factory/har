@@ -123,7 +123,20 @@ provision_python() {
 
   if [ ! -d "$venv_dir" ]; then
     pt_log "Creating Python venv at $venv_rel..."
-    python3 -m venv "$venv_dir"
+    if ! python3 -m venv "$venv_dir"; then
+      rm -rf "$venv_dir"
+      pt_log "python3 -m venv failed (on Debian/Ubuntu install python3-venv) — using system python3"
+      append_env "HARNESS_ECOSYSTEM" "python"
+      append_env "PYTHON_BIN" "$(command -v python3)"
+      return
+    fi
+  fi
+
+  if [ ! -x "$venv_dir/bin/python" ]; then
+    pt_log "Python venv at $venv_rel is missing or broken — using system python3"
+    append_env "HARNESS_ECOSYSTEM" "python"
+    append_env "PYTHON_BIN" "$(command -v python3)"
+    return
   fi
 
   python_bin="$venv_dir/bin/python"

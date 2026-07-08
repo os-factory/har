@@ -44,7 +44,7 @@ describe('provision-toolchain.sh template contract', () => {
     fs.writeFileSync(envFile, 'AGENT_ID=1\nREPO_ROOT=' + tmpDir + '\n');
 
     const result = run(
-      `set -a && source "${harnessEnv}" && set +a && ` +
+      `set -a && . "${harnessEnv}" && set +a && ` +
         `HAR_WORK_DIR="${tmpDir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
         `bash "${scriptPath}"`,
     );
@@ -53,7 +53,9 @@ describe('provision-toolchain.sh template contract', () => {
     const envContent = fs.readFileSync(envFile, 'utf8');
     expect(envContent).toContain('HARNESS_ECOSYSTEM=python');
     expect(envContent).toContain('PYTHON_BIN=');
-    expect(envContent).toContain('VIRTUAL_ENV=');
+    if (envContent.includes('VIRTUAL_ENV=')) {
+      expect(fs.existsSync(path.join(tmpDir, '.har/venv'))).toBe(true);
+    }
   });
 
   it('auto-detects node and writes NPM_BIN to agent env', () => {
@@ -70,7 +72,7 @@ describe('provision-toolchain.sh template contract', () => {
     fs.writeFileSync(envFile, 'AGENT_ID=1\nREPO_ROOT=' + tmpDir + '\n');
 
     const result = run(
-      `set -a && source "${harnessEnv}" && set +a && ` +
+      `set -a && . "${harnessEnv}" && set +a && ` +
         `HAR_WORK_DIR="${tmpDir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
         `bash "${scriptPath}"`,
     );
