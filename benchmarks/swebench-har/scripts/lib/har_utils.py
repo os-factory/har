@@ -31,23 +31,22 @@ def har_init_scaffold(repo_path: Path, profile: str, env: dict[str, str] | None 
 
 PROFILE_HINTS: dict[str, str] = {
     "default": (
-        "Web app profile — Docker Compose for shared infra (HARNESS_INFRA_SERVICES), "
-        "PM2 for the primary application only, git worktree per agent slot by default. "
-        "Identify the primary app agents modify; run supporting services shared. "
-        "Adapt docker-compose, setup-infra, and ecosystem templates for this stack."
+        "Web app profile (SaaS/full-stack) — Docker Compose for shared infra "
+        "(HARNESS_INFRA_SERVICES), PM2 for the primary application only, git worktree "
+        "per agent slot by default. Launch provisions toolchain via harness.env and "
+        "writes paths to .env.agent.<id>. Identify the primary app agents modify."
     ),
     "cli": (
-        "CLI/library profile — no PM2. Optional Docker Compose via the "
-        "`HARNESS_INFRA_SERVICES` list in harness.env. Agents work in an isolated "
-        "git worktree by default (`--no-worktree` to use the repo root). Remove any "
-        "leftover PM2/ecosystem files; keep docker-compose when shared services are enabled."
+        "CLI/library profile (typical SWE-bench) — no PM2. Optional Docker Compose via "
+        "HARNESS_INFRA_SERVICES. Git worktree by default. Launch provisions toolchain "
+        "declaratively (HARNESS_ECOSYSTEM auto-detects common ecosystems); verify must "
+        "use resolved tool paths from .env.agent.<id>, never hardcoded interpreter or "
+        "package-manager paths."
     ),
     "ios": (
-        "iOS mobile app profile — no PM2, no web ports. Agents build and test via "
-        "xcodebuild in an isolated git worktree. Set HARNESS_XCODE_SCHEME, "
-        "HARNESS_XCODE_WORKSPACE/PROJECT, HARNESS_SIMULATOR_NAME, and HARNESS_BUNDLE_ID "
-        "in harness.env. Adapt setup-infra.sh to boot the target simulator. Install "
-        "the RocketSim stage template (har env add-stage rocketsim) for user-flow validation."
+        "iOS mobile app profile — xcodebuild + iOS Simulator in an isolated git worktree. "
+        "Set HARNESS_XCODE_SCHEME, workspace/project, HARNESS_SIMULATOR_NAME, "
+        "HARNESS_BUNDLE_ID. Launch writes XCODEBUILD_BIN to .env.agent.<id>; verify uses it."
     ),
 }
 

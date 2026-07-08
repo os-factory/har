@@ -98,6 +98,9 @@ describe('harness stage contract', () => {
     const harnessEnv = fs.readFileSync(path.join(repoPath, '.har', 'harness.env'), 'utf8');
     expect(harnessEnv).toContain('HARNESS_INFRA_SERVICES=""');
     expect(harnessEnv).toContain('HARNESS_USE_WORKTREE=true');
+    expect(harnessEnv).toContain('HARNESS_ECOSYSTEM');
+
+    expect(fs.existsSync(path.join(repoPath, '.har', 'provision-toolchain.sh'))).toBe(true);
 
     expect(fs.existsSync(path.join(repoPath, '.har', 'ecosystem.agent.template.cjs'))).toBe(false);
     expect(fs.existsSync(path.join(repoPath, '.har', 'env.template'))).toBe(false);
@@ -106,7 +109,8 @@ describe('harness stage contract', () => {
     expect(manifest.profile).toBe('cli');
 
     const verifyScript = fs.readFileSync(path.join(repoPath, '.har', 'verify.sh'), 'utf8');
-    expect(verifyScript).toContain('npm run typecheck');
+    expect(verifyScript).toContain('run_quick_smoke');
+    expect(verifyScript).toContain('HARNESS_ECOSYSTEM');
     expect(verifyScript).not.toContain("echo 'TODO:");
 
     const registry = readStageRegistry(repoPath);

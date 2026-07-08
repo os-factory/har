@@ -79,7 +79,7 @@ fi
 # whose .gitignore doesn't know about har (applies to all worktrees too).
 GIT_EXCLUDE="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)/info/exclude"
 if [ -n "$GIT_EXCLUDE" ] && [ -d "$(dirname "$GIT_EXCLUDE")" ]; then
-  for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs'; do
+  for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs' '.har/venv'; do
     grep -qxF "$pattern" "$GIT_EXCLUDE" 2>/dev/null || echo "$pattern" >> "$GIT_EXCLUDE"
   done
 fi
@@ -134,18 +134,13 @@ SLOT_STATUS="starting" \
   write_slot_registry
 REGISTRY_WRITTEN=true
 
-if [ -f "$WORK_DIR/package.json" ]; then
-  log "Installing dependencies..."
-  (cd "$WORK_DIR" && npm install --silent)
-elif [ -f "$WORK_DIR/go.mod" ]; then
-  log "Go module detected in work dir (run go mod download if needed)"
-fi
-
-# Monorepo: file:/workspace deps may resolve modules from the repo root — install there too
-if [ -n "${REL_PREFIX:-}" ] && [ -f "$WORKTREE_DIR/package.json" ] && [ ! -d "$WORKTREE_DIR/node_modules" ]; then
-  log "Installing monorepo root dependencies in $WORKTREE_DIR..."
-  (cd "$WORKTREE_DIR" && npm install --silent)
-fi
+log "Provisioning toolchain (see harness.env: HARNESS_ECOSYSTEM, HARNESS_INSTALL_CMD)..."
+HAR_WORK_DIR="$WORK_DIR" \
+HAR_ENV_FILE="$ENV_FILE" \
+HAR_WORKTREE_DIR="${WORKTREE_DIR:-}" \
+HAR_REL_PREFIX="${REL_PREFIX:-}" \
+HAR_AGENT_ID="$AGENT_ID" \
+  "$SCRIPT_DIR/provision-toolchain.sh"
 
 # Record the session in the slot registry — the source of truth for where
 # this slot's code lives (status/verify/teardown resolve through it).

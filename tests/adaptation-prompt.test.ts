@@ -15,6 +15,8 @@ describe('adaptation prompts', () => {
     expect(defaultPrompt).toContain('AGENT.md');
     expect(defaultPrompt).toContain('Profile: default');
     expect(defaultPrompt).toContain('Docker');
+    expect(defaultPrompt).toContain('HAR profiles');
+    expect(defaultPrompt).toContain('provision-toolchain.sh');
 
     const cliPrompt = buildInitAdaptationPrompt('/tmp/app', 'cli');
     expect(cliPrompt).toContain('Profile: cli');

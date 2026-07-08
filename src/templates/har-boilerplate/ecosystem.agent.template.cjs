@@ -23,6 +23,8 @@ module.exports = {
     // .har/ecosystem.shared.config.cjs (started by setup-infra.sh, processes
     // named "har-shared-<name>", fixed ports). A primary app may still need two
     // processes (e.g. api + frontend) — add one entry per process.
+    // Example Node dev process. Replace with this repo's actual primary app
+    // command (Rails, Django, Go, Java, etc. should not keep this npm entry).
     {
       name: 'agent-${AGENT_ID}-api',
       script: 'npm',

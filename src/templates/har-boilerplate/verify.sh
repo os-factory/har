@@ -4,9 +4,9 @@
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]
 #
-# Quick (default): smoke — compile / typecheck / health only
-# Full (--full):   + unit tests, lint, optional readiness + browser-e2e
-# Step lists are examples — not exhaustive. Adapt commands to this repo's stack.
+# Quick (default): ecosystem smoke + health only
+# Full (--full):   + conventional tests, lint, optional readiness + browser-e2e
+# Stock steps are examples. Replace them during adaptation to match this repo.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -136,18 +136,98 @@ process.stdout.write(JSON.stringify(arr));
   fi
 }
 
-# ── Verification stages ─────────────────────────────────────────────────────
-# Customize these steps for your project — lists below are examples, not exhaustive.
-# Edit this section directly — do not use a separate config file.
+node_package_script_exists() {
+  local script="$1"
+  "${NODE_BIN:-node}" -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const script = process.argv[1];
+process.exit(pkg.scripts && pkg.scripts[script] ? 0 : 1);
+" "$script"
+}
 
-# Quick (default): smoke — prove the slot can compile/load, not full test suites.
-run_step "typecheck" "echo 'TODO: npm run typecheck'" || { [ -z "$FULL" ] && true; }
+run_node_script_or_skip() {
+  local name="$1"
+  local script="$2"
+  if node_package_script_exists "$script"; then
+    run_step "$name" "${NPM_BIN:-npm} run ${script}"
+  else
+    run_step "$name" "echo 'No ${script} script configured; skipping.'"
+  fi
+}
+
+run_node_quick_smoke() {
+  if node_package_script_exists typecheck; then
+    run_step "node-typecheck" '${NPM_BIN:-npm} run typecheck'
+  elif node_package_script_exists build; then
+    run_step "node-build" '${NPM_BIN:-npm} run build'
+  else
+    run_step "node-package-load" '${NODE_BIN:-node} -e "require(\"./package.json\")"'
+  fi
+}
+
+run_quick_smoke() {
+  case "${HARNESS_ECOSYSTEM:-none}" in
+    node)
+      run_node_quick_smoke
+      ;;
+    python)
+      run_step "python-compile" '${PYTHON_BIN:-python3} -m compileall -q .'
+      ;;
+    go)
+      run_step "go-build" '${GO_BIN:-go} build ./...'
+      ;;
+    rust)
+      run_step "rust-check" '${CARGO_BIN:-cargo} check'
+      ;;
+    java)
+      run_step "java-compile" 'if [ -x ./mvnw ]; then ./mvnw -q -DskipTests compile; elif command -v mvn >/dev/null 2>&1; then mvn -q -DskipTests compile; elif [ -x ./gradlew ]; then ./gradlew classes; elif command -v gradle >/dev/null 2>&1; then gradle classes; else echo "No Maven/Gradle command found; adapt verify.sh for this Java repo."; fi'
+      ;;
+    ruby)
+      run_step "ruby-smoke" '${RUBY_BIN:-ruby} -e "puts RUBY_VERSION"'
+      ;;
+    custom|none|*)
+      run_step "smoke-not-configured" 'echo "No stock smoke for HARNESS_ECOSYSTEM=${HARNESS_ECOSYSTEM:-none}; adapt .har/verify.sh for this repo."'
+      ;;
+  esac
+}
+
+run_full_checks() {
+  case "${HARNESS_ECOSYSTEM:-none}" in
+    node)
+      run_node_script_or_skip "unit-tests" test || true
+      run_node_script_or_skip "lint" lint || true
+      ;;
+    python)
+      run_step "unit-tests" 'if ${PYTHON_BIN:-python3} -c "import pytest" >/dev/null 2>&1; then ${PYTHON_BIN:-python3} -m pytest -q; else echo "pytest not installed; adapt verify.sh for this Python repo."; fi' || true
+      ;;
+    go)
+      run_step "unit-tests" '${GO_BIN:-go} test ./...' || true
+      ;;
+    rust)
+      run_step "unit-tests" '${CARGO_BIN:-cargo} test' || true
+      ;;
+    java)
+      run_step "unit-tests" 'if [ -x ./mvnw ]; then ./mvnw -q test; elif command -v mvn >/dev/null 2>&1; then mvn -q test; elif [ -x ./gradlew ]; then ./gradlew test; elif command -v gradle >/dev/null 2>&1; then gradle test; else echo "No Maven/Gradle command found; adapt verify.sh for this Java repo."; fi' || true
+      ;;
+    ruby)
+      run_step "unit-tests" 'if command -v "${BUNDLE_BIN:-bundle}" >/dev/null 2>&1 && [ -f Gemfile ]; then "${BUNDLE_BIN:-bundle}" exec rake test 2>/dev/null || "${BUNDLE_BIN:-bundle}" exec rspec; else echo "No Ruby test command detected; adapt verify.sh for this Ruby repo."; fi' || true
+      ;;
+    custom|none|*)
+      run_step "unit-tests" 'echo "No stock full checks for HARNESS_ECOSYSTEM=${HARNESS_ECOSYSTEM:-none}; adapt .har/verify.sh for this repo."' || true
+      ;;
+  esac
+}
+
+# ── Verification stages ─────────────────────────────────────────────────────
+# These stock steps are intentionally generic conventions. Adapt this section
+# to the repository's real commands from package.json, Makefile, CI, pyproject,
+# Cargo.toml, go.mod, pom.xml, etc.
+run_quick_smoke || { [ -z "$FULL" ] && true; }
 run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
-  # Full: project-specific checks — add/remove/reorder steps for this repo.
-  run_step "unit-tests" "echo 'TODO: npm test'" || true
-  run_step "lint" "echo 'TODO: npm run lint'" || true
+  run_full_checks
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
 fi
