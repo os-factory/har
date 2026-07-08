@@ -20,7 +20,7 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start shared Docker infra + create template database |
 | `launch.sh` | Launch one agent slot (ports, DB clone, PM2 processes) |
-| `verify.sh` | Verification pipeline (typecheck, tests, health) |
+| `verify.sh` | Verification pipeline (smoke by default; --full adds tests, lint, e2e) |
 | `teardown.sh` | Tear down one agent slot |
 | `agent-cli.sh` | Manage a running agent (status, logs, psql, health) |
 | `attach.sh` | Attach to agent tmux session |
@@ -49,8 +49,8 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 ```bash
 ./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
 ./.har/launch.sh 1
-./.har/verify.sh 1             # quick: typecheck, tests, health
-./.har/verify.sh 1 --full      # done gate: + lint + browser-e2e (if Playwright stage installed)
+./.har/verify.sh 1             # quick: smoke (typecheck + health)
+./.har/verify.sh 1 --full      # + unit tests, lint, browser-e2e (if Playwright stage installed)
 ./.har/teardown.sh 1
 ```
 
@@ -58,10 +58,14 @@ Read **`stages.json`** for registered stages and **`verificationStages`** for th
 
 ## Verification contract
 
+Steps in `verify.sh` are **project-specific examples** — adapt them to your stack
+during `har env init` / `har env maintain`. The table describes each tier's intent,
+not a fixed command list.
+
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | Project checks in `verify.sh` (stops early on failure) |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | Quick steps + lint + optional readiness smoke + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | Smoke: compile / typecheck / health (stops early on failure) |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, optional readiness smoke + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
 
 Install Playwright stage: `har env add-stage playwright` (optional). UI changes should add or update specs under `tests/`.
 

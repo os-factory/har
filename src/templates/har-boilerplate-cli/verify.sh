@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# Verification pipeline for CLI/library repos — typecheck, test, lint, build.
+# Verification pipeline for CLI/library repos.
 # Outputs JSON to stdout, human-readable progress to stderr.
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]
+#
+# Quick (default): smoke — compile / typecheck / build only
+# Full (--full):   + unit tests, lint, optional readiness + browser-e2e
+# Step lists are examples — not exhaustive. Adapt commands to this repo's stack.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -89,12 +93,15 @@ process.stdout.write(JSON.stringify(arr));
   fi
 }
 
+# ── Quick (default): smoke only ──────────────────────────────────────────────
+# Customize for this repo: compile / import / build — not the full test suite.
 run_step "typecheck" "npm run typecheck" || { [ -z "$FULL" ] && true; }
 # Some unit tests exec dist/index.js (e.g. stage-templates CLI add-stage).
 run_step "build" "npm run build" || { [ -z "$FULL" ] && true; }
-run_step "unit-tests" "npm test" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
+  # ── Full: project-specific checks (examples — add/remove/reorder as needed) ─
+  run_step "unit-tests" "npm test" || true
   run_step "lint" "npm run lint" || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true

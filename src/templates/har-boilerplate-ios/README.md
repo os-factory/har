@@ -20,7 +20,7 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `agent-slot.sh` | Shared agent-id validation and slot registry helpers |
 | `setup-infra.sh` | Boot the iOS Simulator; start optional Docker services |
 | `launch.sh` | Launch one agent slot (git worktree, CocoaPods/SPM deps, env file) |
-| `verify.sh` | Verification pipeline (build + unit-tests; --full adds lint + user-flow validation) |
+| `verify.sh` | Verification pipeline (build smoke by default; --full adds tests, lint, flows) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run xcodebuild commands, install/launch app |
 | `docker-compose.agent.yml` | Optional shared backend services |
@@ -47,8 +47,8 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 ```bash
 ./.har/setup-infra.sh          # boots the iOS Simulator
 ./.har/launch.sh 1
-./.har/verify.sh 1             # build + unit-tests
-./.har/verify.sh 1 --full      # + lint + rocketsim-flows (if installed)
+./.har/verify.sh 1             # quick: build smoke (compile-only)
+./.har/verify.sh 1 --full      # + unit tests, lint, rocketsim-flows (if installed)
 ./.har/teardown.sh 1
 ```
 
@@ -64,10 +64,13 @@ This installs `.har/stages/rocketsim-flows.sh` and a `flows/` directory. Add flo
 
 ## Verification contract
 
+Steps in `verify.sh` are **project-specific examples** — adapt them to your stack.
+The table describes each tier's intent, not a fixed command list.
+
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` | build, unit-tests |
-| Full | `har env verify <id> --full` | + lint, optional readiness smoke, **rocketsim-flows** when installed |
+| Quick | `har env verify <id>` | build smoke (compile-only) |
+| Full | `har env verify <id> --full` | + unit tests, lint, optional readiness smoke, **rocketsim-flows** when installed |
 
 For apps that depend on local backends, auth, seeded state, or simulator flows,
 distinguish build/test health from agent usability. Document any skipped full

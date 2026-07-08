@@ -4,8 +4,9 @@
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]
 #
-# Quick (default): build + unit-tests
-# Full (--full):   + lint (SwiftLint) + rocketsim-flows (if installed)
+# Quick (default): build smoke (compile-only)
+# Full (--full):   + unit tests, lint (SwiftLint), rocketsim-flows (if installed)
+# Step lists are examples — not exhaustive. Adapt commands to this repo's stack.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -114,7 +115,7 @@ process.stdout.write(JSON.stringify(arr));
   fi
 }
 
-# Build (compile-only — catches syntax errors and missing symbols)
+# Quick (default): compile-only — catches syntax errors and missing symbols
 run_step "build" "xcodebuild build \
   ${XC_FLAGS} \
   -scheme \"${XC_SCHEME}\" \
@@ -128,21 +129,21 @@ run_step "build" "xcodebuild build \
     -derivedDataPath \"${XC_DERIVED}\" \
     CODE_SIGNING_ALLOWED=NO" || { [ -z "$FULL" ] && true; }
 
-# Unit tests
-run_step "unit-tests" "xcodebuild test \
-  ${XC_FLAGS} \
-  -scheme \"${XC_SCHEME}\" \
-  -destination \"${XC_DESTINATION}\" \
-  -derivedDataPath \"${XC_DERIVED}\" \
-  CODE_SIGNING_ALLOWED=NO \
-  | xcbeautify 2>/dev/null || xcodebuild test \
+if [ -n "$FULL" ]; then
+  # Full: project-specific checks — add/remove/reorder steps for this repo.
+  run_step "unit-tests" "xcodebuild test \
     ${XC_FLAGS} \
     -scheme \"${XC_SCHEME}\" \
     -destination \"${XC_DESTINATION}\" \
     -derivedDataPath \"${XC_DERIVED}\" \
-    CODE_SIGNING_ALLOWED=NO" || { [ -z "$FULL" ] && true; }
+    CODE_SIGNING_ALLOWED=NO \
+    | xcbeautify 2>/dev/null || xcodebuild test \
+      ${XC_FLAGS} \
+      -scheme \"${XC_SCHEME}\" \
+      -destination \"${XC_DESTINATION}\" \
+      -derivedDataPath \"${XC_DERIVED}\" \
+      CODE_SIGNING_ALLOWED=NO" || true
 
-if [ -n "$FULL" ]; then
   # SwiftLint — optional, skip gracefully when not installed
   run_step "lint" "command -v \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" >/dev/null 2>&1 && \
     \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" --quiet 2>&1 || echo 'swiftlint not installed — skipping'" || true

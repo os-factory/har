@@ -162,7 +162,7 @@ function patchStageRegistry(
     stages[verifyIdx] = {
       ...stages[verifyIdx],
       description:
-        'Verification pipeline (quick by default; --full adds lint and browser-e2e when installed)',
+        'Verification pipeline (quick smoke by default; --full adds tests, lint, and browser-e2e when installed)',
       acceptsArgs: ['--full'],
     };
   }

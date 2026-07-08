@@ -60,7 +60,7 @@ def run_one_instance(
     dry_run: bool,
     setup_timeout_minutes: int,
     solve_timeout_minutes: int,
-    verify_full: bool,
+    post_fix_verify_full: bool,
     setup_max_attempts: int,
 ) -> dict[str, Any]:
     instance, run_dir = prepare_instance_row(row, seed)
@@ -96,7 +96,7 @@ def run_one_instance(
             dry_run=dry_run,
             setup_timeout_minutes=setup_timeout_minutes,
             solve_timeout_minutes=solve_timeout_minutes,
-            verify_full=verify_full,
+            post_fix_verify_full=verify_full,
             setup_max_attempts=setup_max_attempts,
         )
 

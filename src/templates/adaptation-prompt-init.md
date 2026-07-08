@@ -42,7 +42,21 @@ Primary app, ports, `HARNESS_INFRA_SERVICES`, migrate/seed commands, health chec
 PM2 processes for the primary application only, matching how it runs in dev. Skip entirely for the CLI profile.
 
 ### `.har/verify.sh`
-Real typecheck, lint, test, and health check commands — replace all TODOs.
+Adapt verification for this repository's toolchain. Step lists in the template are
+**examples, not exhaustive** — add, remove, or reorder `run_step` calls to match
+how this project is built and tested.
+
+**Tier contract:**
+
+| Mode | Command | Intent |
+|------|---------|--------|
+| Quick (default) | `har env verify 1` | Smoke — compile / import / build / health only |
+| Full | `har env verify 1 --full` | Stricter — unit tests, lint, readiness, optional browser-e2e |
+
+- **Quick** must stay fast and minimal (syntax, compile, import smoke) — not the full test suite.
+- **Full** holds unit tests, lint, and heavier checks; optional Playwright runs on `--full` when installed.
+- Reuse real commands from `package.json`, `Makefile`, CI, `pyproject.toml`, etc.
+- Replace all TODO placeholders in both tiers.
 
 ### Readiness vs liveness (required)
 Do not treat a passing health check as adaptation complete. Before finishing,

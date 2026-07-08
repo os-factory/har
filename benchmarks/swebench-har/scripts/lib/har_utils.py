@@ -29,6 +29,63 @@ def har_init_scaffold(repo_path: Path, profile: str, env: dict[str, str] | None 
     )
 
 
+PROFILE_HINTS: dict[str, str] = {
+    "default": (
+        "Web app profile — Docker Compose for shared infra (HARNESS_INFRA_SERVICES), "
+        "PM2 for the primary application only, git worktree per agent slot by default. "
+        "Identify the primary app agents modify; run supporting services shared. "
+        "Adapt docker-compose, setup-infra, and ecosystem templates for this stack."
+    ),
+    "cli": (
+        "CLI/library profile — no PM2. Optional Docker Compose via the "
+        "`HARNESS_INFRA_SERVICES` list in harness.env. Agents work in an isolated "
+        "git worktree by default (`--no-worktree` to use the repo root). Remove any "
+        "leftover PM2/ecosystem files; keep docker-compose when shared services are enabled."
+    ),
+    "ios": (
+        "iOS mobile app profile — no PM2, no web ports. Agents build and test via "
+        "xcodebuild in an isolated git worktree. Set HARNESS_XCODE_SCHEME, "
+        "HARNESS_XCODE_WORKSPACE/PROJECT, HARNESS_SIMULATOR_NAME, and HARNESS_BUNDLE_ID "
+        "in harness.env. Adapt setup-infra.sh to boot the target simulator. Install "
+        "the RocketSim stage template (har env add-stage rocketsim) for user-flow validation."
+    ),
+}
+
+
+def _resolve_init_adapt_template() -> Path | None:
+    from .common import HAR_PROJECT_ROOT
+
+    for candidate in (
+        HAR_PROJECT_ROOT / "dist" / "templates" / "adaptation-prompt-init.md",
+        HAR_PROJECT_ROOT / "src" / "templates" / "adaptation-prompt-init.md",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def build_init_adapt_prompt(profile: str) -> str:
+    """Mirror har's buildInitAdaptationPrompt when .har/ADAPT-PROMPT.md is missing."""
+    template_path = _resolve_init_adapt_template()
+    if template_path is None:
+        raise RuntimeError(
+            "adaptation-prompt-init.md not found in HAR checkout; run npm run build"
+        )
+    content = template_path.read_text(encoding="utf-8")
+    hint = PROFILE_HINTS.get(profile, PROFILE_HINTS["default"])
+    return (
+        content.replace("{{PROFILE}}", profile).replace("{{PROFILE_HINT}}", hint)
+    )
+
+
+def read_har_adapt_prompt(harness_root: Path, profile: str) -> str:
+    """Load the init adaptation prompt written by har env init."""
+    adapt_path = harness_root / ".har" / "ADAPT-PROMPT.md"
+    if adapt_path.exists():
+        return adapt_path.read_text(encoding="utf-8").strip()
+    return build_init_adapt_prompt(profile)
+
+
 def read_har_slot_workdir(harness_root: Path, agent_id: int = 1) -> Path | None:
     slot_path = harness_root / ".har" / "slots" / f"agent-{agent_id}.json"
     if not slot_path.exists():
@@ -94,15 +151,14 @@ def har_teardown_slot(harness_root: Path, agent_id: int = 1, env: dict[str, str]
     run_command([*har_cmd("teardown", str(agent_id), env=env)], cwd=harness_root)
 
 
-def har_validate_ready(
+def har_validate_launch(
     harness_root: Path,
     agent_id: int = 1,
     *,
     timeout_seconds: int = 3600,
     env: dict[str, str] | None = None,
-    verify_full: bool = False,
 ) -> dict[str, Any]:
-    """Runner gate: teardown, launch, and quick verify before the fix stage."""
+    """Pre-fix gate (launch): teardown, launch, workdir, and agent env file."""
     launch_env = har_launch_env(env)
     har_teardown_slot(harness_root, agent_id=agent_id, env=launch_env)
 
@@ -113,40 +169,82 @@ def har_validate_ready(
         env=launch_env,
     )
 
-    if launch_ok:
-        verify_result = har_verify(
-            harness_root,
-            agent_id=agent_id,
-            full=verify_full,
-            env=launch_env,
-        )
-    else:
-        verify_result = {
-            "verified": False,
-            "full": verify_full,
-            "details": "skipped (launch failed)",
-            "stdout": "",
-            "stderr": "",
-            "exit_code": -1,
-        }
-
     agent_env = workdir / f".env.agent.{agent_id}" if workdir else None
-    ready = bool(
+    agent_env_exists = bool(agent_env and agent_env.exists())
+    launch_ready = bool(
         launch_ok
         and workdir is not None
         and workdir.exists()
-        and agent_env is not None
-        and agent_env.exists()
-        and verify_result["verified"]
+        and agent_env_exists
     )
 
     return {
-        "ready": ready,
+        "ready": launch_ready,
         "launch_ok": launch_ok,
         "workdir": str(workdir) if workdir else None,
         "launch_log": launch_log[-4000:],
+        "agent_env_exists": agent_env_exists,
+    }
+
+
+def har_validate_smoke(
+    harness_root: Path,
+    agent_id: int = 1,
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Pre-fix gate (smoke): quick verify only — compile/import/build, not full test suites."""
+    verify_result = har_verify(harness_root, agent_id=agent_id, full=False, env=env)
+    return {
+        "ready": verify_result["verified"],
+        "smoke_ok": verify_result["verified"],
         "verify": verify_result,
-        "agent_env_exists": agent_env.exists() if agent_env else False,
+    }
+
+
+def har_validate_ready(
+    harness_root: Path,
+    agent_id: int = 1,
+    *,
+    timeout_seconds: int = 3600,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Pre-fix gate: launch readiness + quick smoke verify before the fix stage."""
+    launch = har_validate_launch(
+        harness_root,
+        agent_id=agent_id,
+        timeout_seconds=timeout_seconds,
+        env=env,
+    )
+
+    if launch["ready"]:
+        smoke = har_validate_smoke(harness_root, agent_id=agent_id, env=env)
+    else:
+        smoke = {
+            "ready": False,
+            "smoke_ok": False,
+            "verify": {
+                "verified": False,
+                "full": False,
+                "details": "skipped (launch failed)",
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1,
+            },
+        }
+
+    ready = bool(launch["ready"] and smoke["ready"])
+
+    return {
+        "ready": ready,
+        "launch": launch,
+        "smoke": smoke,
+        # Backward-compatible fields for gate failure formatting
+        "launch_ok": launch["launch_ok"],
+        "workdir": launch["workdir"],
+        "launch_log": launch["launch_log"],
+        "agent_env_exists": launch["agent_env_exists"],
+        "verify": smoke["verify"],
     }
 
 
