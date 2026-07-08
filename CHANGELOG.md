@@ -1,3 +1,16 @@
+# [0.5.0](https://github.com/os-factory/har/compare/v0.4.0...v0.5.0) (2026-07-08)
+
+
+### Bug Fixes
+
+* **ci:** avoid publishing on specific scope ([#29](https://github.com/os-factory/har/issues/29)) ([b298c59](https://github.com/os-factory/har/commit/b298c592fd43e015599b1730513ebc0f77816ece))
+* **ci:** wrong config ([#30](https://github.com/os-factory/har/issues/30)) ([c2bfd07](https://github.com/os-factory/har/commit/c2bfd074a9e43ed2c2493b2f6a1ecea838b5d5fc))
+
+
+### Features
+
+* tiered verify, smoke pre-fix gate, and benchmark adapt prompt reuse ([#31](https://github.com/os-factory/har/issues/31)) ([6d7c89a](https://github.com/os-factory/har/commit/6d7c89aecaa423c687919dbef0b39db5e7ad71f6)), closes [#22](https://github.com/os-factory/har/issues/22) [#20](https://github.com/os-factory/har/issues/20) [#23](https://github.com/os-factory/har/issues/23)
+
 # [0.4.0](https://github.com/os-factory/har/compare/v0.3.0...v0.4.0) (2026-07-08)
 
 
