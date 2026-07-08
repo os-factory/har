@@ -48,7 +48,7 @@ har env teardown 1
 ./.har/teardown.sh 1
 ```
 
-Work happens in an isolated git worktree by default (`~/worktrees/<project>-agent-<id>`). Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
+Work happens in an isolated session worktree by default (`~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`) recorded in `.har/slots/agent-<id>.json`. Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
 
 See [`.har/README.md`](.har/README.md) for harness details.
 

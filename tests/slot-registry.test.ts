@@ -63,6 +63,23 @@ describe('slot registry', () => {
     expect(listSlotRegistryEntries(repoPath).length).toBe(1);
   });
 
+  it('keeps failed launch entries readable for recovery', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+    const harDir = writeHarness(repoPath);
+    writeRegistryEntry(harDir, 1, {
+      status: 'failed',
+      lastError: 'launch.sh exited with code 1',
+    });
+
+    const entry = readSlotRegistry(repoPath, 1);
+    expect(entry?.status).toBe('failed');
+    expect(entry?.lastError).toContain('launch.sh exited');
+    const status = collectEnvironmentStatus(repoPath).slots[0];
+    expect(status.active).toBe(true);
+    expect(status.sessionStatus).toBe('failed');
+    expect(status.lastError).toContain('launch.sh exited');
+  });
+
   it('returns undefined for invalid entries', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
     const harDir = writeHarness(repoPath);
@@ -78,6 +95,39 @@ describe('slot registry', () => {
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-workdir-'));
     writeRegistryEntry(harDir, 1, { workDir });
     expect(resolveAgentWorkDir(repoPath, 1)).toBe(workDir);
+  });
+
+  it('resolveAgentWorkDir discovers randomized session worktrees when registry is missing', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+    writeHarness(repoPath);
+    git(repoPath, 'init -b main');
+    git(repoPath, 'config user.email test@example.com');
+    git(repoPath, 'config user.name Test');
+    fs.writeFileSync(path.join(repoPath, 'file.txt'), 'one\n');
+    git(repoPath, 'add -A');
+    git(repoPath, 'commit -m one');
+
+    const worktreesRoot = path.join(os.homedir(), 'worktrees');
+    const sessionDir = path.join(
+      worktreesRoot,
+      `zz-test-${Date.now()}-har-agent-2-${Math.random().toString(36).slice(2, 6)}`,
+    );
+    fs.mkdirSync(worktreesRoot, { recursive: true });
+    git(repoPath, `worktree add ${sessionDir} -b zz-test-har-agent-2`);
+    fs.writeFileSync(path.join(sessionDir, '.env.agent.2'), `AGENT_ID=2\nREPO_ROOT=${sessionDir}\n`);
+
+    try {
+      expect(resolveAgentWorkDir(repoPath, 2)).toBe(sessionDir);
+      const status = collectEnvironmentStatus(repoPath).slots.find((slot) => slot.agentId === 2);
+      expect(status?.active).toBe(true);
+      expect(status?.worktreePath).toBe(sessionDir);
+    } finally {
+      try {
+        git(repoPath, `worktree remove --force ${sessionDir}`);
+      } catch {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+    }
   });
 
   it('slot status surfaces session fields and drift from a real worktree', () => {

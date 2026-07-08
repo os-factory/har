@@ -253,7 +253,8 @@ export const SlotRegistryEntrySchema = z
     purpose: z.string().optional(),
     ports: z.record(z.number()).optional(),
     previewUrls: z.record(z.string()).optional(),
-    status: z.enum(['active', 'completed']).default('active'),
+    status: z.enum(['starting', 'active', 'failed', 'completed']).default('active'),
+    lastError: z.string().optional(),
   })
   .passthrough();
 
@@ -288,6 +289,8 @@ export const AgentSlotStatusSchema = z.object({
   baseCommit: z.string().optional(),
   sessionCreatedAt: z.string().optional(),
   purpose: z.string().optional(),
+  sessionStatus: z.enum(['starting', 'active', 'failed', 'completed']).optional(),
+  lastError: z.string().optional(),
   /** Worktree checked out to no branch (legacy failure mode; should not happen with sessions). */
   detachedHead: z.boolean().optional(),
   /** Worktree has uncommitted changes. */

@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -9,6 +10,37 @@ import { readSlotRegistry } from './slot-registry';
 import { ExecutionContext } from './types';
 
 const RUNS_DIR = 'runs';
+
+function gitCommonDir(cwd: string): string | undefined {
+  try {
+    const out = execSync('git rev-parse --git-common-dir', {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim();
+    return out ? path.resolve(cwd, out) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sameGitCheckout(a: string, b: string): boolean {
+  const left = gitCommonDir(a);
+  const right = gitCommonDir(b);
+  return left !== undefined && right !== undefined && left === right;
+}
+
+function gitPrefix(cwd: string): string {
+  try {
+    return execSync('git rev-parse --show-prefix', {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return '';
+  }
+}
 
 function getRunsDir(harnessRoot: string): string {
   return path.join(getHarnessDir(harnessRoot), RUNS_DIR);
@@ -85,10 +117,23 @@ export function resolveAgentWorkDir(harnessRoot: string, agentId?: number): stri
   const env = readHarnessEnv(harnessRoot);
   const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);
   const worktreeDir = path.join(os.homedir(), 'worktrees', `${projectName}-agent-${agentId}`);
+  const relPrefix = gitPrefix(harnessRoot);
+  const sessionEnvFiles: string[] = [];
+  const worktreesRoot = path.join(os.homedir(), 'worktrees');
+  if (fs.existsSync(worktreesRoot)) {
+    const suffix = `-har-agent-${agentId}-`;
+    for (const entry of fs.readdirSync(worktreesRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.includes(suffix)) continue;
+      const sessionDir = path.join(worktreesRoot, entry.name);
+      if (!sameGitCheckout(harnessRoot, sessionDir)) continue;
+      sessionEnvFiles.push(path.join(sessionDir, relPrefix, `.env.agent.${agentId}`));
+    }
+  }
 
   const candidates = [
     path.join(worktreeDir, `.env.agent.${agentId}`),
     path.join(harnessRoot, `.env.agent.${agentId}`),
+    ...sessionEnvFiles.sort(),
   ];
 
   for (const envFile of candidates) {

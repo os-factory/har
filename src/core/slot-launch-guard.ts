@@ -20,6 +20,8 @@ function formatOccupiedSlot(slot: AgentSlotStatus): string {
     slot.worktreePath ? `  Worktree: ${slot.worktreePath}` : undefined,
     slot.branch ? `  Branch:   ${slot.branch}` : undefined,
     slot.workDir ? `  Work dir: ${slot.workDir}` : undefined,
+    slot.sessionStatus ? `  Status:   ${slot.sessionStatus}` : undefined,
+    slot.lastError ? `  Error:    ${slot.lastError}` : undefined,
     slot.sessionCreatedAt ? `  Since:    ${slot.sessionCreatedAt}` : undefined,
     slot.dirty
       ? '  Git:      dirty (uncommitted changes — commit or use force to discard)'

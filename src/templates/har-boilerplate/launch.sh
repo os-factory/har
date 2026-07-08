@@ -147,6 +147,55 @@ REPO_ROOT="$WORK_DIR" \
   envsubst '${AGENT_ID} ${API_PORT} ${FE_PORT} ${DEBUG_PORT} ${DB_PORT} ${MINIO_PORT} ${BROWSER_PORT} ${REPO_ROOT}' \
   < "$SCRIPT_DIR/env.template" > "$ENV_FILE"
 
+REGISTRY_WRITTEN=false
+mark_slot_failed() {
+  local exit_code="$?"
+  if [ "$exit_code" != "0" ] && [ "$REGISTRY_WRITTEN" = true ]; then
+    log "Launch failed after creating the session. Recording failed slot state..."
+    set +e
+    SLOT_AGENT_ID="$AGENT_ID" \
+    SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
+    SLOT_WORK_DIR="$WORK_DIR" \
+    SLOT_SUFFIX="${SUFFIX:-}" \
+    SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
+    SLOT_BRANCH="${BRANCH:-}" \
+    SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
+    SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+    SLOT_PURPOSE="${PURPOSE}" \
+    SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT}}" \
+    SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
+    SLOT_STATUS="failed" \
+    SLOT_LAST_ERROR="launch.sh exited with code ${exit_code}" \
+      write_slot_registry
+    log "  Work dir:  ${WORK_DIR}"
+    log "  Env file:  ${ENV_FILE}"
+    log "  Recovery:  fix the failure, then relaunch with --replace when ready."
+  fi
+}
+trap mark_slot_failed EXIT
+
+# Record the session before slow or fragile setup so verify/status/teardown can
+# recover partial launches that already created a worktree and env file.
+SLOT_AGENT_ID="$AGENT_ID" \
+SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
+SLOT_WORK_DIR="$WORK_DIR" \
+SLOT_SUFFIX="${SUFFIX:-}" \
+SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
+SLOT_BRANCH="${BRANCH:-}" \
+SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
+SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+SLOT_PURPOSE="${PURPOSE}" \
+SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT}}" \
+SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
+SLOT_STATUS="starting" \
+  write_slot_registry
+REGISTRY_WRITTEN=true
+
+if [ -n "${HARNESS_DB_MINIMAL_BOOTSTRAP_CMD:-}" ]; then
+  log "Running minimal data bootstrap..."
+  (cd "$WORK_DIR" && set -a && . "$ENV_FILE" && set +a && eval "$HARNESS_DB_MINIMAL_BOOTSTRAP_CMD")
+fi
+
 # Generate PM2 ecosystem config
 ECOSYSTEM_FILE="$WORK_DIR/ecosystem.agent.${AGENT_ID}.config.cjs"
 log "Generating $ECOSYSTEM_FILE..."
@@ -199,6 +248,7 @@ SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
 SLOT_PURPOSE="${PURPOSE}" \
 SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT}}" \
 SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
+SLOT_STATUS="active" \
   write_slot_registry
 
 # Launch Claude Code in tmux (optional)

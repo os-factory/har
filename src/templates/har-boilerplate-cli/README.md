@@ -59,7 +59,12 @@ Read **`stages.json`** and **`verificationStages`**. Optional: `har env add-stag
 | Mode | Command | Typical steps |
 |------|---------|---------------|
 | Quick | `har env verify <id>` or `verify.sh <id>` | typecheck, unit tests |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint, build, **browser-e2e** when `stages/browser-e2e.sh` exists |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint, optional readiness smoke, **browser-e2e** when `stages/browser-e2e.sh` exists |
+
+For repos that need runtime services, distinguish health from usability. If the
+harness skips slow local-dev setup, document the skipped steps and add a minimal
+bootstrap/readiness check when agents need default data, credentials, or an
+authenticated workflow.
 
 Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when working in the repo root.
 

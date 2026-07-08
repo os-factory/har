@@ -67,7 +67,11 @@ This installs `.har/stages/rocketsim-flows.sh` and a `flows/` directory. Add flo
 | Mode | Command | Typical steps |
 |------|---------|---------------|
 | Quick | `har env verify <id>` | build, unit-tests |
-| Full | `har env verify <id> --full` | + lint, **rocketsim-flows** when installed |
+| Full | `har env verify <id> --full` | + lint, optional readiness smoke, **rocketsim-flows** when installed |
+
+For apps that depend on local backends, auth, seeded state, or simulator flows,
+distinguish build/test health from agent usability. Document any skipped full
+dev setup and add a readiness command when agents need a real workflow to pass.
 
 ## Configuration
 

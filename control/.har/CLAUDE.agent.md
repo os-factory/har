@@ -26,6 +26,7 @@ This slot runs **only the primary application** (`HARNESS_PRIMARY_APP=web`, the 
 A task is complete only when:
 
 - [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+- [ ] The app is agent-usable for the documented smoke workflow, not only health-check green
 - [ ] When `stages/browser-e2e.sh` exists, full verify includes Playwright — adapt specs under `tests/` for UI changes
 - [ ] New or changed UI behavior has coverage in `tests/` (unit and/or Playwright as appropriate)
 - [ ] Changes are committed **in the session worktree** with a clear message
