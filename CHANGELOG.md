@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/os-factory/har/compare/v0.2.0...v0.3.0) (2026-07-08)
+
+
+### Features
+
+* **harness:** improve slot resilience and readiness guidance ([#17](https://github.com/os-factory/har/issues/17)) ([d99f0bb](https://github.com/os-factory/har/commit/d99f0bb205cd7fefda86ae9e3122549df0bf24ed))
+
 # [0.2.0](https://github.com/os-factory/har/compare/v0.1.0...v0.2.0) (2026-07-07)
 
 
