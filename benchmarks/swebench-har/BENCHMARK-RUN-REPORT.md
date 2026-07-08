@@ -113,6 +113,21 @@ The gate requires full `har env verify 1` to pass **before** the bug fix. For SW
 
 ## Recommended GitHub issues
 
+Tracked on GitHub — implement before re-running the 10-instance batch:
+
+| Issue | Title |
+|-------|--------|
+| [#19](https://github.com/os-factory/har/issues/19) | Benchmark: retry until gate passes (budget-based) |
+| [#20](https://github.com/os-factory/har/issues/20) | Benchmark: split pre-fix gate vs post-fix verify |
+| [#21](https://github.com/os-factory/har/issues/21) | HAR template: language-agnostic launch provisioning (+ profile docs) |
+| [#22](https://github.com/os-factory/har/issues/22) | HAR template: tiered verify (`--quick` vs `--full`) |
+| [#23](https://github.com/os-factory/har/issues/23) | Benchmark: narrow GPT-5.5 setup prompt (language-agnostic) |
+| [#24](https://github.com/os-factory/har/issues/24) | Benchmark: batch SWE-bench evaluation wrapper |
+| [#25](https://github.com/os-factory/har/issues/25) | HAR CLI: `har env doctor` preflight |
+
+<details>
+<summary>Issue details (original draft)</summary>
+
 Use these as separate trackable items before re-running the 10-instance batch.
 
 ### Issue A — Benchmark: retry until gate passes (budget-based)
@@ -170,6 +185,8 @@ Use these as separate trackable items before re-running the 10-instance batch.
 - Callable from benchmark before setup agent runs
 
 **Repo:** HAR CLI
+
+</details>
 
 ---
 
