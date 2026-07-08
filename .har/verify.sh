@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Verification pipeline for @osfactory/har — typecheck, test, lint, build.
+# Verification pipeline for @osfactory/har.
 # Outputs JSON to stdout, human-readable progress to stderr.
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]
+#
+# Quick (default): smoke — typecheck + build
+# Full (--full):   + unit tests, lint, optional readiness + browser-e2e
+# Steps below are adapted for @osfactory/har — not a universal checklist.
+# Add, remove, or reorder run_step calls to match each repository's toolchain.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -92,9 +97,10 @@ process.stdout.write(JSON.stringify(arr));
 run_step "typecheck" "npm run typecheck" || { [ -z "$FULL" ] && true; }
 # Some unit tests exec dist/index.js (e.g. stage-templates CLI add-stage).
 run_step "build" "npm run build" || { [ -z "$FULL" ] && true; }
-run_step "unit-tests" "npm test" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
+  # Full-mode steps for this repo — customize when adapting the harness elsewhere.
+  run_step "unit-tests" "npm test" || true
   run_step "lint" "npm run lint" || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true

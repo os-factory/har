@@ -35,6 +35,7 @@ from lib.har_utils import (  # noqa: E402
     har_teardown_slot,
     har_validate_ready,
     har_verify,
+    read_har_adapt_prompt,
 )
 from lib.patch import extract_model_patch, filter_changed_files
 from lib.profile import infer_har_profile
@@ -150,7 +151,7 @@ def run_har_arm(
     dry_run: bool,
     setup_timeout_minutes: int,
     solve_timeout_minutes: int,
-    verify_full: bool,
+    post_fix_verify_full: bool,
     setup_max_attempts: int,
 ) -> dict[str, Any]:
     cfg = benchmark_config()
@@ -185,7 +186,6 @@ def run_har_arm(
         harness_root,
         timeout_seconds=gate_timeout,
         env=env,
-        verify_full=verify_full,
     )
     record["har_gate_initial"] = gate
 
@@ -201,6 +201,7 @@ def run_har_arm(
                 prompt_values(
                     instance,
                     har_profile=profile,
+                    har_adapt_prompt=read_har_adapt_prompt(harness_root, profile),
                     setup_failure_context=failure_context if attempt > 1 or cache_used else "",
                 ),
             )
@@ -225,7 +226,6 @@ def run_har_arm(
                 harness_root,
                 timeout_seconds=gate_timeout,
                 env=env,
-                verify_full=verify_full,
             )
             record[f"har_gate_attempt_{attempt}"] = gate
             if gate["ready"]:
@@ -249,7 +249,7 @@ def run_har_arm(
         }
         record["har_verify"] = gate.get("verify")
         record["status"] = "failed"
-        record["error"] = "HAR launch/verify gate failed before fix stage"
+        record["error"] = "HAR pre-fix gate failed (launch or smoke verify) before fix stage"
         record["finished_at"] = now_iso()
         return record
 
@@ -259,7 +259,8 @@ def run_har_arm(
         "log": gate.get("launch_log", ""),
         "workdir": str(workdir),
     }
-    record["har_gate_verify"] = gate.get("verify")
+    record["har_gate_launch"] = gate.get("launch")
+    record["har_gate_smoke"] = gate.get("smoke")
     record["har_ready_for_fix"] = True
 
     solve_started = time.time()
@@ -278,7 +279,7 @@ def run_har_arm(
     record["codex_fix"] = fix_codex.result
     record["solve_seconds"] = round(time.time() - solve_started, 2)
 
-    verify_result = har_verify(harness_root, full=verify_full, env=env)
+    verify_result = har_verify(harness_root, full=post_fix_verify_full, env=env)
     record["har_verify"] = verify_result
     record["har_verify_attempted"] = True
     record["har_verify_passed"] = verify_result["verified"]
@@ -316,15 +317,19 @@ def run_har_arm(
 
 
 def _format_gate_failure(gate: dict[str, Any]) -> str:
-    verify = gate.get("verify") or {}
+    launch = gate.get("launch") or {}
+    smoke = gate.get("smoke") or {}
+    verify = smoke.get("verify") or gate.get("verify") or {}
     return (
-        "\n## Previous launch/verify gate failed\n"
-        "The benchmark runner could not launch or verify this harness. Fix the harness files.\n\n"
-        f"Launch ok: {gate.get('launch_ok')}\n"
-        f"Agent env exists: {gate.get('agent_env_exists')}\n"
-        f"Launch log (tail):\n```\n{gate.get('launch_log', '')}\n```\n"
-        f"Verify exit code: {verify.get('exit_code')}\n"
-        f"Verify stderr (tail):\n```\n{verify.get('stderr', '')}\n```\n"
+        "\n## Previous pre-fix gate failed\n"
+        "The benchmark runner could not launch the slot or pass quick smoke verify. "
+        "Fix harness.env and verify.sh quick-mode steps only — do not edit launch.sh.\n\n"
+        f"Launch ready: {launch.get('ready', gate.get('launch_ok'))}\n"
+        f"Agent env exists: {launch.get('agent_env_exists', gate.get('agent_env_exists'))}\n"
+        f"Smoke ready: {smoke.get('ready')}\n"
+        f"Launch log (tail):\n```\n{launch.get('launch_log', gate.get('launch_log', ''))}\n```\n"
+        f"Smoke verify exit code: {verify.get('exit_code')}\n"
+        f"Smoke verify stderr (tail):\n```\n{verify.get('stderr', '')}\n```\n"
     )
 
 
@@ -388,7 +393,7 @@ def main() -> int:
             dry_run=args.dry_run,
             setup_timeout_minutes=setup_timeout,
             solve_timeout_minutes=solve_timeout,
-            verify_full=bool(cfg.get("har_verify_full", False)),
+            post_fix_verify_full=bool(cfg.get("har_verify_full", False)),
             setup_max_attempts=setup_max_attempts,
         )
 

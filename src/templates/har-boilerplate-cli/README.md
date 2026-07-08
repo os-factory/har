@@ -20,7 +20,7 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start optional Docker Compose stack + template database |
 | `launch.sh` | Launch one agent slot (git worktree by default, deps, env file) |
-| `verify.sh` | Verification pipeline (typecheck, tests, lint, build) |
+| `verify.sh` | Verification pipeline (smoke by default; --full adds tests, lint, e2e) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run commands in the work dir |
 | `docker-compose.agent.yml` | Shared infrastructure containers (services listed in `HARNESS_INFRA_SERVICES`) |
@@ -47,8 +47,8 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 ```bash
 ./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
 ./.har/launch.sh 1
-./.har/verify.sh 1
-./.har/verify.sh 1 --full      # + lint, build, browser-e2e (if Playwright installed)
+./.har/verify.sh 1             # quick: smoke (typecheck + build)
+./.har/verify.sh 1 --full      # + unit tests, lint, browser-e2e (if Playwright installed)
 ./.har/teardown.sh 1
 ```
 
@@ -56,10 +56,14 @@ Read **`stages.json`** and **`verificationStages`**. Optional: `har env add-stag
 
 ## Verification contract
 
+Steps in `verify.sh` are **project-specific examples** — adapt them to your stack
+during `har env init` / `har env maintain` / benchmark setup. The table describes
+each tier's intent, not a fixed command list.
+
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | typecheck, unit tests |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint, optional readiness smoke, **browser-e2e** when `stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | Smoke: compile / typecheck / build (language-agnostic) |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, optional readiness smoke, **browser-e2e** when `stages/browser-e2e.sh` exists |
 
 For repos that need runtime services, distinguish health from usability. If the
 harness skips slow local-dev setup, document the skipped steps and add a minimal

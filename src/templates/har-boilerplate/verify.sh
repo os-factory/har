@@ -3,6 +3,10 @@
 # Outputs JSON to stdout, human-readable progress to stderr.
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]
+#
+# Quick (default): smoke — compile / typecheck / health only
+# Full (--full):   + unit tests, lint, optional readiness + browser-e2e
+# Step lists are examples — not exhaustive. Adapt commands to this repo's stack.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -133,14 +137,16 @@ process.stdout.write(JSON.stringify(arr));
 }
 
 # ── Verification stages ─────────────────────────────────────────────────────
-# TODO: Customize these steps for your project.
+# Customize these steps for your project — lists below are examples, not exhaustive.
 # Edit this section directly — do not use a separate config file.
 
+# Quick (default): smoke — prove the slot can compile/load, not full test suites.
 run_step "typecheck" "echo 'TODO: npm run typecheck'" || { [ -z "$FULL" ] && true; }
-run_step "unit-tests" "echo 'TODO: npm test'" || { [ -z "$FULL" ] && true; }
 run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
+  # Full: project-specific checks — add/remove/reorder steps for this repo.
+  run_step "unit-tests" "echo 'TODO: npm test'" || true
   run_step "lint" "echo 'TODO: npm run lint'" || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true

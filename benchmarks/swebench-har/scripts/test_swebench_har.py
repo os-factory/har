@@ -15,6 +15,13 @@ sys.path.insert(0, str(SCRIPTS))
 
 from lib.common import benchmark_config, render_template, sanitize_instance_row  # noqa: E402
 from lib.har_cache import har_cache_exists, load_har_cache, save_har_cache  # noqa: E402
+from lib.har_utils import (  # noqa: E402
+    build_init_adapt_prompt,
+    har_validate_launch,
+    har_validate_ready,
+    har_validate_smoke,
+    read_har_adapt_prompt,
+)
 from lib.patch import extract_model_patch, filter_changed_files  # noqa: E402
 from lib.profile import infer_har_profile  # noqa: E402
 
@@ -137,10 +144,48 @@ def test_prompt_render() -> None:
             "repo": "foo/bar",
             "instance_id": "foo__bar-1",
             "har_profile": "cli",
+            "har_adapt_prompt": build_init_adapt_prompt("cli"),
             "setup_failure_context": "",
         },
     )
     assert "Do **not** run `har env launch`" in setup
+    assert "Do not edit" in setup and "launch.sh" in setup
+    assert "Generic HAR adaptation prompt" in setup
+    assert "Adapt the `.har/` harness" in setup
+    assert "smoke-only" in setup
+
+
+def test_read_har_adapt_prompt_prefers_file() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        harness_root = Path(tmp) / "repo"
+        har_dir = harness_root / ".har"
+        har_dir.mkdir(parents=True)
+        (har_dir / "ADAPT-PROMPT.md").write_text("custom adapt prompt\n", encoding="utf-8")
+        assert read_har_adapt_prompt(harness_root, "cli") == "custom adapt prompt"
+
+
+def test_build_init_adapt_prompt_fills_profile() -> None:
+    prompt = build_init_adapt_prompt("cli")
+    assert "## Profile: cli" in prompt
+    assert "CLI/library profile" in prompt
+    assert "{{PROFILE}}" not in prompt
+
+
+def test_har_validate_helpers_exported() -> None:
+    assert callable(har_validate_launch)
+    assert callable(har_validate_smoke)
+    assert callable(har_validate_ready)
+
+
+def test_har_validate_ready_shape() -> None:
+    """Gate result exposes split launch/smoke without calling HAR CLI."""
+    import inspect
+
+    source = inspect.getsource(har_validate_ready)
+    assert "har_validate_launch" in source
+    assert "har_validate_smoke" in source
+    assert '"launch"' in source
+    assert '"smoke"' in source
 
 
 def test_dry_run_orchestration() -> None:
@@ -167,6 +212,10 @@ def main() -> int:
         test_patch_filtering,
         test_patch_extraction_excludes_har,
         test_prompt_render,
+        test_read_har_adapt_prompt_prefers_file,
+        test_build_init_adapt_prompt_fills_profile,
+        test_har_validate_helpers_exported,
+        test_har_validate_ready_shape,
         test_dry_run_orchestration,
         test_evaluate_dry_run,
     ]

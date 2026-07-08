@@ -1,47 +1,54 @@
-Adapt this repository's `.har/` harness for coding agents working on SWE-bench style bug fixes.
+# SWE-bench HAR setup
 
 Repository: {{repo}}
 Instance: {{instance_id}}
-HAR profile used for scaffold: {{har_profile}}
+HAR profile: {{har_profile}}
 
-## Context
+## Benchmark context
 
-`har env init --profile {{har_profile}}` has already been run. The boilerplate `.har/` directory exists but is not yet adapted for this repository.
+`har env init --profile {{har_profile}}` has already been run. The generic harness
+adaptation prompt from that init is included below.
 
-Do **not** run `har env init --auto`. You must edit the generated harness files directly.
+Do **not** run `har env init --auto`. Edit harness files directly.
 
-The benchmark runner validates harness readiness **after** your edits. You do not need to launch slots yourself.
+The benchmark runner validates readiness **after** your edits — do not launch or
+verify slots yourself.
 
-## Objectives
+**SWE-bench grading is external.** Harness quick verify is smoke-only (compile /
+import / build); it does not need to pass the repo's full test suite.
 
-1. Make `har env launch 1` succeed for this repository at the current commit.
-2. Make `har env verify 1` run meaningful fast checks for this repo (typecheck/lint/unit tests as appropriate).
-3. Keep the harness lightweight — SWE-bench grading uses the repo's own test suite, not browser e2e.
-4. Document how agents should use the harness in `.har/CLAUDE.agent.md` and `.har/README.md` if needed.
+## Benchmark constraints (override the generic prompt where they conflict)
 
-## Explore first
+| Topic | Benchmark rule |
+|-------|----------------|
+| `launch.sh` / `agent-slot.sh` | **Do not edit** — runner owns worktrees, slot registry, `--replace` / `--force` |
+| Allowed edits | `harness.env`, `verify.sh` (especially quick-mode smoke steps), `CLAUDE.agent.md`, `README.md` |
+| During setup | Do **not** run `har env launch`, `./.har/launch.sh`, `./.har/teardown.sh`, or `./.har/verify.sh` |
+| Quick verify | Language-agnostic smoke only — not full pytest/Django runtests/Sphinx graphs |
+| Full verify | Optional stricter checks (`--full`); not required for the pre-fix gate |
+| Profile | Stay on `{{har_profile}}` — do not re-init with a different profile |
 
-- `README`, `pyproject.toml`, `setup.py`, `setup.cfg`, `tox.ini`, `Makefile`, CI configs
-- how tests are invoked (`pytest`, `python -m pytest`, etc.)
-- install / dependency setup commands
+Pre-fix gate the runner enforces: `har env launch 1` + quick `har env verify 1`.
 
-## Adapt
+Quick-mode examples (pick what fits this stack):
 
-- `.har/harness.env` — primary app label, any port bases if needed
-- `.har/verify.sh` or stage wiring — real verification commands for this repo
-- `.har/launch.sh` — keep worktree-based behavior and **preserve** `--replace` / `--force` flag parsing from the template; do not disable worktrees (`HARNESS_USE_WORKTREE` must stay `true`)
-- remove TODO placeholders that would cause verify to fail
+- Python: `python -m compileall`, `pip install -e .`, import smoke
+- Node: `npm run build`, `npm run typecheck`
+- Java: `mvn -q compile`, `./gradlew compileJava`
+- Go: `go build ./...`
+- Rust: `cargo check`
 
-## Do NOT during setup
+## Generic HAR adaptation prompt (from `har env init`)
 
-- Do **not** run `har env launch`, `./.har/launch.sh`, or `./.har/verify.sh` — the runner performs launch/verify gates after you finish.
-- Do **not** rewrite `launch.sh` into a minimal repo-root-only launcher unless worktree creation is impossible; prefer adapting verify commands and `harness.env`.
+The following is the same prompt saved to `.har/ADAPT-PROMPT.md` — follow it except
+where the benchmark constraints above take precedence.
 
-## Definition of done
+---
 
-- Edited harness files are ready for the runner to execute `har env launch 1` and `har env verify 1`
-- no unused template services or placeholder commands remain
+{{har_adapt_prompt}}
 
-When finished, summarize what you changed and which verify commands will run.
+---
 
 {{setup_failure_context}}
+
+When finished, summarize what you changed and which **smoke** commands quick verify will run.

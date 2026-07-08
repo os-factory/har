@@ -3,7 +3,7 @@
 Paired one-instance benchmark comparing **raw Codex (GPT-5 Mini)** against **HAR-assisted Codex** on a SWE-bench Lite task.
 
 - **Raw arm:** Codex solves the issue directly in a checkout at `base_commit` (default: `gpt-5-mini`).
-- **HAR arm:** scaffold-only `har env init` (no `--auto`), **GPT-5.5** adapts `.har/` when needed, runner enforces launch + verify gates, **GPT-5 Mini** fixes inside the slot.
+- **HAR arm:** scaffold-only `har env init` (no `--auto`), **GPT-5.5** adapts `.har/` using the init `ADAPT-PROMPT.md` plus benchmark constraints, runner enforces launch + smoke gates, **GPT-5 Mini** fixes inside the slot.
 - **Scoring:** official SWE-bench Docker harness via `swebench.harness.run_evaluation`.
 
 ## Prerequisites
@@ -99,14 +99,24 @@ benchmarks/swebench-har/
 The HAR arm records:
 
 - `har_cache_hit` / `har_cache_saved` — per-repo `.har/` reuse
-- `har_gate_initial` / `har_gate_attempt_*` — runner launch+verify gate before fix
-- `har_ready_for_fix` — slot launched and verify passed before Codex fix
+- `har_gate_initial` / `har_gate_attempt_*` — pre-fix gate before Codex fix (launch + smoke)
+- `har_gate_launch` / `har_gate_smoke` — split launch readiness vs quick smoke verify
+- `har_ready_for_fix` — slot launched and smoke verify passed (not full test suite)
 - `har_launch.ok`
-- `har_verify_attempted` / `har_verify_passed` (runner-enforced)
+- `har_verify_attempted` / `har_verify_passed` — post-fix verify (optionally `--full` via `har_verify_full` config)
 - `.har/runs/**` artifacts
 - `har_valid` and `har_invalid_reasons`
 
 `model_patch` excludes `.har/**`, `.cursor/**`, and other harness scaffolding so SWE-bench grading only sees product-code changes.
+
+## Pre-fix gate vs post-fix verify
+
+| Phase | What runs | Purpose |
+|-------|-----------|---------|
+| **Pre-fix gate** | `har env launch 1` + quick `har env verify 1` | Prove the agent can work in the slot (compile/import/build smoke) |
+| **Post-fix** | `har env verify 1` (or `--full` when `har_verify_full: true`) | Optional harness check after the patch; SWE-bench grading is separate |
+
+Quick verify must be **language-agnostic** — compile/import/build smoke, not full pytest/Django runtests/Sphinx extension graphs.
 
 ## Per-repo `.har/` cache
 
@@ -114,7 +124,7 @@ Adapted harness files are cached under `.har-cache/<repo>/` and reused across in
 
 1. tears down any occupied slot
 2. runs `har env launch 1 --replace --force` (with `HAR_CONFIRM_REPLACE=1`)
-3. runs `har env verify 1`
+3. runs quick `har env verify 1` (smoke only — no `--full`)
 
 If the gate fails, the setup model re-adapts `.har/` (up to `setup_max_attempts`, default 2) and the cache is refreshed on success.
 
@@ -124,8 +134,13 @@ If the gate fails, the setup model re-adapts `.har/` (up to `setup_max_attempts`
 
 - `cli` — Python/library/test-suite repos (typical for SWE-bench Lite)
 - `default` — web-app repos with frontend dev-server signals
+- `ios` — iOS / Swift mobile apps (xcodebuild, simulator)
 
-The benchmark never uses `har env init --auto`.
+## HAR setup prompt
+
+The setup agent receives `prompts/har-setup.md`, which embeds the same text as
+`.har/ADAPT-PROMPT.md` from `har env init`, plus SWE-bench-specific constraints
+(no `launch.sh` edits, smoke-only pre-fix gate, no slot launch during setup).
 
 ## Smoke tests
 
