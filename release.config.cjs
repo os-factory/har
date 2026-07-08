@@ -5,7 +5,6 @@ module.exports = {
     [
       '@semantic-release/commit-analyzer',
       {
-        preset: 'conventionalcommits',
         releaseRules: [
           { scope: 'benchmark', release: false },
           { scope: 'ci', release: false },
