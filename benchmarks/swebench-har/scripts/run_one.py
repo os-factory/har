@@ -259,11 +259,15 @@ def main() -> int:
     parser.add_argument("--model", help="Codex model override")
     parser.add_argument("--arm", choices=["raw", "har", "both"], default="both")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--solve-timeout-minutes", type=int, help="Override solve timeout")
+    parser.add_argument("--setup-timeout-minutes", type=int, help="Override HAR setup timeout")
     args = parser.parse_args()
 
     cfg = benchmark_config()
     env = load_benchmark_env()
     model = args.model or env.get("OPENAI_MODEL") or cfg.get("model", "gpt-5-mini")
+    solve_timeout = args.solve_timeout_minutes or int(cfg.get("solve_timeout_minutes", 60))
+    setup_timeout = args.setup_timeout_minutes or int(cfg.get("setup_timeout_minutes", 45))
 
     instance, run_dir = load_or_sample_instance(
         seed=args.seed,
@@ -289,7 +293,7 @@ def main() -> int:
             model=model,
             env=env,
             dry_run=args.dry_run,
-            timeout_minutes=int(cfg.get("solve_timeout_minutes", 60)),
+            timeout_minutes=solve_timeout,
         )
 
     if args.arm in {"har", "both"}:
@@ -299,8 +303,8 @@ def main() -> int:
             model=model,
             env=env,
             dry_run=args.dry_run,
-            setup_timeout_minutes=int(cfg.get("setup_timeout_minutes", 45)),
-            solve_timeout_minutes=int(cfg.get("solve_timeout_minutes", 60)),
+            setup_timeout_minutes=setup_timeout,
+            solve_timeout_minutes=solve_timeout,
             verify_full=bool(cfg.get("har_verify_full", False)),
         )
 

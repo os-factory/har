@@ -52,10 +52,18 @@ def run_codex_turn(
             "sandbox": Sandbox.workspace_write,
             "model": model,
         }
-        if timeout_seconds is not None:
-            turn_kwargs["config"] = {"turn_timeout_ms": timeout_seconds * 1000}
 
-        result = thread.run(prompt, **turn_kwargs)
+        if timeout_seconds is not None:
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(thread.run, prompt, **turn_kwargs)
+                try:
+                    result = future.result(timeout=timeout_seconds)
+                except FuturesTimeoutError as exc:
+                    raise RuntimeError(f"Codex turn timed out after {timeout_seconds}s") from exc
+        else:
+            result = thread.run(prompt, **turn_kwargs)
 
     record = serialize_turn_result(result)
     (artifacts_dir / "turn-result.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

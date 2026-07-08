@@ -100,23 +100,27 @@ def copy_har_artifacts(harness_root: Path, dest: Path) -> None:
             shutil.copytree(src, dest / rel, dirs_exist_ok=True)
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if hasattr(value, "model_dump"):
+        try:
+            return _json_safe(value.model_dump(mode="json"))
+        except TypeError:
+            return _json_safe(value.model_dump())
+    return str(value)
+
+
 def serialize_turn_result(result: Any) -> dict[str, Any]:
     usage = getattr(result, "usage", None)
-    usage_dict = None
-    if usage is not None:
-        usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
-
-    items = []
-    for item in getattr(result, "items", []) or []:
-        if hasattr(item, "model_dump"):
-            items.append(item.model_dump())
-        else:
-            items.append(str(item))
-
+    usage_dict = _json_safe(usage) if usage is not None else None
+    items = [_json_safe(item) for item in (getattr(result, "items", []) or [])]
     error = getattr(result, "error", None)
-    error_dict = None
-    if error is not None:
-        error_dict = error.model_dump() if hasattr(error, "model_dump") else str(error)
+    error_dict = _json_safe(error) if error is not None else None
 
     return {
         "id": getattr(result, "id", None),

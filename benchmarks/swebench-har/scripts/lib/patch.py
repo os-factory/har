@@ -30,7 +30,7 @@ def filter_changed_files(files: list[str], prefixes: list[str] | None = None) ->
 def extract_model_patch(work_dir: Path, base_commit: str) -> str:
     """Return a git diff suitable for SWE-bench, excluding harness files."""
     prefixes = _exclude_prefixes()
-    result = run_command(["git", "diff", "--binary", base_commit, "HEAD"], cwd=work_dir)
+    result = run_command(["git", "diff", "--binary", base_commit], cwd=work_dir)
     if result.returncode != 0:
         raise RuntimeError(f"git diff failed: {result.stderr or result.stdout}")
     raw = result.stdout
