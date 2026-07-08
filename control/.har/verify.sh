@@ -38,6 +38,14 @@ WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
 API_PORT="${API_PORT:-$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))}"
 
 echo "==> Verifying agent ${AGENT_ID} (work dir: ${WORK_DIR})..." >&2
+REG_FILE="$(slot_registry_file "$AGENT_ID")"
+echo "    Work dir: ${WORK_DIR}" >&2
+echo "    Env file: ${ENV_FILE}" >&2
+if [ -f "$REG_FILE" ]; then
+  echo "    Registry: ${REG_FILE}" >&2
+else
+  echo "    Registry: missing (${REG_FILE})" >&2
+fi
 
 OVERALL_PASS=true
 START_TOTAL=$(now_ms)
@@ -133,6 +141,7 @@ run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_P
 
 if [ -n "$FULL" ]; then
   run_step "lint" "npm run lint" || true
+  run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
 fi
 

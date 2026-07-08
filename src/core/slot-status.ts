@@ -47,6 +47,41 @@ function readWorktreeBranch(worktreePath: string): string | undefined {
   return runGit(worktreePath, 'rev-parse --abbrev-ref HEAD');
 }
 
+function gitCommonDir(cwd: string): string | undefined {
+  const out = runGit(cwd, 'rev-parse --git-common-dir');
+  return out ? path.resolve(cwd, out) : undefined;
+}
+
+function sameGitCheckout(a: string, b: string): boolean {
+  const left = gitCommonDir(a);
+  const right = gitCommonDir(b);
+  return left !== undefined && right !== undefined && left === right;
+}
+
+function gitPrefix(cwd: string): string {
+  const out = runGit(cwd, 'rev-parse --show-prefix');
+  return out ?? '';
+}
+
+function discoverSessionWorktreePath(harnessRoot: string, agentId: number): string | undefined {
+  const worktreesRoot = path.join(os.homedir(), 'worktrees');
+  if (!fs.existsSync(worktreesRoot)) return undefined;
+
+  const suffix = `-har-agent-${agentId}-`;
+  const relPrefix = gitPrefix(harnessRoot);
+  const matches = fs
+    .readdirSync(worktreesRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.includes(suffix))
+    .map((entry) => path.join(worktreesRoot, entry.name))
+    .filter(
+      (candidate) =>
+        sameGitCheckout(harnessRoot, candidate) &&
+        fs.existsSync(path.join(candidate, relPrefix, `.env.agent.${agentId}`)),
+    );
+
+  return matches.sort()[0];
+}
+
 interface WorktreeDrift {
   detachedHead?: boolean;
   dirty?: boolean;
@@ -127,8 +162,8 @@ function collectSlotStatus(
 ): AgentSlotStatus {
   const env = readHarnessEnv(harnessRoot);
   const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);
-  // Session registry is the source of truth; the fixed path is a legacy
-  // fallback for pre-registry sessions.
+  // Session registry is the source of truth; fallback discovery keeps partial
+  // launches recoverable when a script failed after creating the worktree/env.
   const session = readSlotRegistry(harnessRoot, agentId);
   const legacyWorktreePath = path.join(
     os.homedir(),
@@ -140,7 +175,7 @@ function collectSlotStatus(
       ? session.worktreePath
       : fs.existsSync(legacyWorktreePath)
         ? legacyWorktreePath
-        : undefined;
+        : discoverSessionWorktreePath(harnessRoot, agentId);
 
   const workDir = resolveAgentWorkDir(harnessRoot, agentId);
   const envInWorkDir = workDir ? fs.existsSync(path.join(workDir, `.env.agent.${agentId}`)) : false;
@@ -149,7 +184,7 @@ function collectSlotStatus(
     ? fs.existsSync(path.join(worktreePath, `.env.agent.${agentId}`))
     : false;
   const active =
-    (session !== undefined && session.status === 'active') ||
+    (session !== undefined && session.status !== 'completed') ||
     envInWorkDir ||
     envInRoot ||
     envInWorktree;
@@ -188,6 +223,8 @@ function collectSlotStatus(
     baseCommit: session?.baseCommit,
     sessionCreatedAt: session?.createdAt,
     purpose: session?.purpose,
+    sessionStatus: session?.status,
+    lastError: session?.lastError,
     ...drift,
   };
 }

@@ -44,6 +44,39 @@ PM2 processes for the primary application only, matching how it runs in dev. Ski
 ### `.har/verify.sh`
 Real typecheck, lint, test, and health check commands — replace all TODOs.
 
+### Readiness vs liveness (required)
+Do not treat a passing health check as adaptation complete. Before finishing,
+make the harness explicit about the layers that apply to this repository:
+
+1. **Infra ready** — shared services are running and template data stores exist.
+2. **Slot data ready** — every per-slot data store is created or cloned, not only
+   the primary database.
+3. **Process ready** — the primary app processes are online and
+   `HARNESS_HEALTH_CHECK_PATH` passes.
+4. **Agent usable** — a real workflow an agent needs is possible: documented
+   credentials work, a tenant/org/project exists when the app requires one, the
+   UI is not blocked by dev-server overlays, or an authenticated API smoke works.
+
+Compare the harness against the project's full local-dev setup. If the harness
+intentionally skips slow or heavy steps (full seed, optional services, asset
+mode, background daemons), add the minimum substitute directly in `.har/`
+scripts or document why no substitute is needed. In particular:
+
+- If `HARNESS_DB_SEED_CMD` is empty or schema-only, add an idempotent minimal
+  bootstrap step for required tenants/users/settings, or document why schema-only
+  is enough.
+- If the app has multiple databases, schemas, queues, object stores, search
+  indexes, or other per-slot state, provision all of them in `setup-infra.sh`
+  and `launch.sh`.
+- If launch generates config, validate the nested keys the app actually reads
+  against upstream examples/defaults, not only top-level keys.
+- If the dev server can block agents with overlays or noisy HMR failures,
+  choose and document an agent-friendly asset mode.
+- Put Layer 3 checks in `verify --full`, a project-owned readiness script, or
+  documented smoke URLs. Health alone is not sufficient for UI/auth apps.
+- Ensure `launch.sh` writes the slot registry before slow or fragile steps, and
+  `verify.sh` resolves env/work dir through `agent-slot.sh`.
+
 ### Optional Playwright stage
 If the user ran `har env add-stage playwright` (or `@playwright/test` is in package.json):
 
@@ -65,7 +98,7 @@ Agents run in parallel on configurable slot ids. Ports: `BASE + (AGENT_ID × 10)
 Set slot limits in `.har/stages.json` (`agentSlots`) and `.har/harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`) based on machine capacity.
 
 ### Git worktree
-`launch.sh` creates an isolated worktree at `~/worktrees/<project>-agent-<id>` by default (`HARNESS_USE_WORKTREE=true`). Agents should commit from that worktree, not the main checkout.
+`launch.sh` creates an isolated session worktree at `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` by default (`HARNESS_USE_WORKTREE=true`) and records it in `.har/slots/agent-<id>.json`. Agents should commit from that worktree, not the main checkout.
 
 ## Step 3 — Update repo-root `AGENT.md`
 
@@ -112,6 +145,9 @@ The boilerplate ships more than any single repository needs. Strip it down to st
 - [ ] Unused harness files are deleted (e.g. `attach.sh` when tmux isn't part of the workflow; CLI profile: `ecosystem.agent.template.cjs`, `env.template`)
 - [ ] `.har/README.md` file table lists exactly the files that exist — no more, no less
 - [ ] `.har/CLAUDE.agent.md` shows only real URLs/ports/credentials (e.g. drop the Frontend row for an API-only project) and project commands that actually run
+- [ ] If full seed/setup is skipped, `.har/` provides a minimal bootstrap or clearly documents why none is needed
+- [ ] All per-slot data stores are provisioned, not just the primary database
+- [ ] `.har/CLAUDE.agent.md` defines what "agent usable" means for this repo: login/API smoke, credentials, required default data, and known skipped dev-setup steps
 
 ## Rules
 

@@ -48,6 +48,10 @@ har env verify ${AGENT_ID} --full
 ./.har/verify.sh ${AGENT_ID} --full
 ```
 
+Full verify also runs `HARNESS_READINESS_CMD` when configured. This CLI harness
+does not need a runtime usability smoke today, so the readiness step skips by
+default.
+
 ## Definition of Done
 
 - [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)

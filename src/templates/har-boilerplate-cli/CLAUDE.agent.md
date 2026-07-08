@@ -15,9 +15,17 @@
 ./.har/agent-cli.sh ${AGENT_ID} status
 ```
 
+## Readiness
+
+Adapt this section for the repository. For pure CLI/library repos, full verify
+may be enough. If the project needs services, auth, seeded data, or a sample
+workflow, document the required credentials/default data and wire a smoke into
+`HARNESS_READINESS_CMD` or full verify.
+
 ## Definition of done
 
 - [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+- [ ] The slot is agent-usable for this repo's documented smoke workflow when runtime services are involved
 - [ ] When `stages/browser-e2e.sh` exists, full verify includes Playwright — adapt specs under `tests/` for UI changes
 - [ ] New behavior has automated test coverage
 - [ ] Changes committed **in the session worktree** with a clear message

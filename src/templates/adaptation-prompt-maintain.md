@@ -28,6 +28,36 @@ Align commands and instructions with the current stack.
 ### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
 Update only if infra changed.
 
+### Readiness vs liveness regression check
+Do not treat a passing health check as proof that the harness is still usable.
+When maintaining an existing harness, re-check the layers that apply:
+
+1. **Infra ready** — shared services and template data stores still match the app.
+2. **Slot data ready** — every per-slot data store is created or cloned, not only
+   the primary database.
+3. **Process ready** — app processes are online and `HARNESS_HEALTH_CHECK_PATH`
+   passes.
+4. **Agent usable** — documented credentials/workflows still work, required
+   default data exists, UI/API smoke is not blocked by asset/dev-server issues,
+   and any skipped full-dev setup has a minimal substitute or clear limitation.
+
+Look specifically for drift introduced since the last adaptation:
+
+- A seed command was removed or made schema-only without a minimal bootstrap.
+- A new database, schema, queue, object store, search index, or other per-slot
+  dependency was added but launch only provisions the original primary store.
+- Config generation writes plausible top-level keys while the app reads nested
+  defaults from another file.
+- The dev server mode is fine for humans but blocks browser automation or agents
+  with overlays/noisy HMR.
+- `verify.sh` became health-only and no longer checks the key workflow that makes
+  the slot usable.
+- `launch.sh` writes the slot registry only after fragile late steps; partial
+  launches must remain discoverable by verify/status/teardown.
+
+Update `.har/CLAUDE.agent.md` with skipped setup steps, substitutes, credentials,
+and the repo-specific definition of "agent usable."
+
 ### HAR platform upgrades checklist
 
 When upgrading `@osfactory/har` or adopting new harness standards:

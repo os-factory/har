@@ -38,6 +38,14 @@ set +a
 WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
 
 echo "==> Verifying agent ${AGENT_ID} in ${WORK_DIR}..." >&2
+REG_FILE="$(slot_registry_file "$AGENT_ID")"
+echo "    Work dir: ${WORK_DIR}" >&2
+echo "    Env file: ${ENV_FILE}" >&2
+if [ -f "$REG_FILE" ]; then
+  echo "    Registry: ${REG_FILE}" >&2
+else
+  echo "    Registry: missing (${REG_FILE})" >&2
+fi
 
 # Build xcodebuild project/workspace flags
 xc_target_flags() {
@@ -138,6 +146,8 @@ if [ -n "$FULL" ]; then
   # SwiftLint — optional, skip gracefully when not installed
   run_step "lint" "command -v \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" >/dev/null 2>&1 && \
     \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" --quiet 2>&1 || echo 'swiftlint not installed — skipping'" || true
+
+  run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
 
   # RocketSim user-flow validation — installed via: har env add-stage rocketsim
   run_rocketsim_flows_if_present "$SCRIPT_DIR" "$AGENT_ID" || true

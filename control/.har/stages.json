@@ -30,7 +30,7 @@
         {
           "path": ".env.agent.{agentId}",
           "kind": "file",
-          "description": "Generated per-agent environment file"
+          "description": "Generated per-agent environment file in the session work dir"
         }
       ]
     },

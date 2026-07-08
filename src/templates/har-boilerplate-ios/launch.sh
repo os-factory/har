@@ -94,6 +94,46 @@ WORKTREE_DIR=${WORKTREE_DIR}
 NODE_ENV=test
 EOF
 
+REGISTRY_WRITTEN=false
+mark_slot_failed() {
+  local exit_code="$?"
+  if [ "$exit_code" != "0" ] && [ "$REGISTRY_WRITTEN" = true ]; then
+    log "Launch failed after creating the session. Recording failed slot state..."
+    set +e
+    SLOT_AGENT_ID="$AGENT_ID" \
+    SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
+    SLOT_WORK_DIR="$WORK_DIR" \
+    SLOT_SUFFIX="${SUFFIX:-}" \
+    SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
+    SLOT_BRANCH="${BRANCH:-}" \
+    SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
+    SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+    SLOT_PURPOSE="${PURPOSE}" \
+    SLOT_STATUS="failed" \
+    SLOT_LAST_ERROR="launch.sh exited with code ${exit_code}" \
+      write_slot_registry
+    log "  Work dir:  ${WORK_DIR}"
+    log "  Env file:  ${ENV_FILE}"
+    log "  Recovery:  fix the failure, then relaunch with --replace when ready."
+  fi
+}
+trap mark_slot_failed EXIT
+
+# Record the session before slow or fragile setup so verify/status/teardown can
+# recover partial launches that already created a worktree and env file.
+SLOT_AGENT_ID="$AGENT_ID" \
+SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
+SLOT_WORK_DIR="$WORK_DIR" \
+SLOT_SUFFIX="${SUFFIX:-}" \
+SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
+SLOT_BRANCH="${BRANCH:-}" \
+SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
+SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+SLOT_PURPOSE="${PURPOSE}" \
+SLOT_STATUS="starting" \
+  write_slot_registry
+REGISTRY_WRITTEN=true
+
 if [ -f "$WORK_DIR/package.json" ]; then
   log "Installing dependencies..."
   (cd "$WORK_DIR" && npm install --silent)
@@ -118,6 +158,7 @@ SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
 SLOT_PURPOSE="${PURPOSE}" \
+SLOT_STATUS="active" \
   write_slot_registry
 
 log "Agent $AGENT_ID is ready."

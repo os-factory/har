@@ -60,7 +60,7 @@ Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
 | Quick | `har env verify <id>` or `verify.sh <id>` | typecheck, build, unit tests |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint, **browser-e2e** when `stages/browser-e2e.sh` exists |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint, optional readiness smoke, **browser-e2e** when `stages/browser-e2e.sh` exists |
 
 ## Run history
 

@@ -56,7 +56,13 @@ process.stdin.on('end', () => {
     fi
 
     if [ "$PM2_FOUND" = true ]; then
-      :
+      REG_FILE="$(slot_registry_file "$AGENT_ID")"
+      if [ ! -f "$REG_FILE" ]; then
+        echo "Warning: slot registry missing at $REG_FILE — verify/teardown may not resolve this slot."
+      fi
+      if [ -z "$ENV_FILE" ]; then
+        echo "Warning: .env.agent.${AGENT_ID} could not be resolved — relaunch with --replace when ready."
+      fi
     elif [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
       echo "Agent ${AGENT_ID}: active (no PM2 processes)"
       # shellcheck source=/dev/null

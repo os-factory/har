@@ -17,9 +17,17 @@
 ./.har/agent-cli.sh ${AGENT_ID} status
 ```
 
+## Readiness
+
+Adapt this section for the repository. A successful build/test run does not
+always mean an agent can use the app. If the app needs a backend, credentials,
+seeded data, or a simulator flow, document it here and wire the smoke into
+`HARNESS_READINESS_CMD`, RocketSim flows, or full verify.
+
 ## Definition of done
 
 - [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+- [ ] The slot is agent-usable for this repo's documented smoke workflow when runtime services are involved
 - [ ] When `stages/rocketsim-flows.sh` exists, full verify includes user-flow validation — add or update flow scripts in `flows/` for UI changes
 - [ ] New behavior has automated test coverage (unit tests via XCTest)
 - [ ] Changes committed **in the session worktree** with a clear message

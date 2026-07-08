@@ -58,6 +58,29 @@ PM2 processes for the primary application only, matching how it runs in dev.
 ### `.har/verify.sh`
 Real typecheck, lint, test, and health check commands — replace all TODOs.
 
+## Readiness vs liveness (required)
+Do not treat a passing health check as adaptation complete. A usable agent
+environment has layered readiness:
+
+1. **Infra ready** — shared services and template data stores exist.
+2. **Slot data ready** — every per-slot data store is created or cloned.
+3. **Process ready** — primary app processes are online and health passes.
+4. **Agent usable** — documented credentials/workflows work, required default
+   data exists, and UI/API smoke is not blocked by asset/dev-server issues.
+
+Compare the harness against the repository's full local-dev setup. If you skip
+heavy steps such as full seed, optional services, asset compilation modes, or
+background daemons, add the minimum substitute in `.har/` scripts or document
+why no substitute is needed. If the app has multiple databases/stores, provision
+all per-slot state. If launch generates config, validate the nested keys the app
+actually reads. Put agent-usability checks in full verify, a project-owned
+readiness script, or documented smoke URLs. Health alone is not sufficient for
+UI/auth apps.
+
+Ensure `launch.sh` writes the slot registry before slow or fragile steps, and
+`verify.sh` resolves env/work dir through `agent-slot.sh` so partial launches are
+recoverable.
+
 ### `.har/CLAUDE.agent.md`
 Detailed agent instructions: commands, credentials, architecture, definition of done.
 
@@ -101,4 +124,7 @@ Set slot limits in `.har/stages.json` (`agentSlots`) and `.har/harness.env` (`HA
    - unused harness files deleted (`deleteHarnessFile`), e.g. `attach.sh` when unused
    - `.har/README.md` file table matches the files that actually exist
    - `CLAUDE.agent.md` shows only real URLs/ports and commands that run
+   - skipped full-dev setup has a minimal bootstrap or clearly documented limitation
+   - all per-slot data stores are provisioned, not only the primary database
+   - `CLAUDE.agent.md` defines what "agent usable" means, including credentials or smoke checks when applicable
 8. **Call finishAuthoring** when complete

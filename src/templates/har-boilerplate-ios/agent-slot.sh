@@ -50,7 +50,8 @@ try {
 # Writes the registry entry from SLOT_* variables:
 #   required: SLOT_AGENT_ID, SLOT_MODE (worktree|root), SLOT_WORK_DIR
 #   optional: SLOT_SUFFIX, SLOT_WORKTREE_PATH, SLOT_BRANCH, SLOT_BASE_BRANCH,
-#             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON, SLOT_PURPOSE
+#             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON,
+#             SLOT_PURPOSE, SLOT_STATUS, SLOT_LAST_ERROR
 write_slot_registry() {
   local file
   file="$(slot_registry_file "$SLOT_AGENT_ID")"
@@ -65,7 +66,7 @@ const entry = {
   mode: e.SLOT_MODE,
   workDir: e.SLOT_WORK_DIR,
   createdAt: new Date().toISOString(),
-  status: "active",
+  status: e.SLOT_STATUS || "active",
 };
 if (e.SLOT_SUFFIX) entry.suffix = e.SLOT_SUFFIX;
 if (e.SLOT_WORKTREE_PATH) entry.worktreePath = e.SLOT_WORKTREE_PATH;
@@ -73,6 +74,7 @@ if (e.SLOT_BRANCH) entry.branch = e.SLOT_BRANCH;
 if (e.SLOT_BASE_BRANCH) entry.baseBranch = e.SLOT_BASE_BRANCH;
 if (e.SLOT_BASE_COMMIT) entry.baseCommit = e.SLOT_BASE_COMMIT;
 if (e.SLOT_PURPOSE) entry.purpose = e.SLOT_PURPOSE;
+if (e.SLOT_LAST_ERROR) entry.lastError = e.SLOT_LAST_ERROR;
 for (const [key, env] of [["ports", "SLOT_PORTS_JSON"], ["previewUrls", "SLOT_PREVIEW_URLS_JSON"]]) {
   if (e[env]) try { entry[key] = JSON.parse(e[env]); } catch {}
 }
@@ -115,13 +117,15 @@ slot_dirty_summary() {
 # Print a warning before replacing an occupied slot (stdout — visible to agents).
 print_slot_replace_warning() {
   local agent_id="$1"
-  local reg wt branch work_dir purpose created dirty_summary head
+  local reg wt branch work_dir purpose created status last_error dirty_summary head
   reg="$(slot_registry_file "$agent_id")"
   wt="$(existing_slot_worktree "$agent_id")"
   branch="$(read_slot_field "$reg" branch || true)"
   work_dir="$(read_slot_field "$reg" workDir || true)"
   purpose="$(read_slot_field "$reg" purpose || true)"
   created="$(read_slot_field "$reg" createdAt || true)"
+  status="$(read_slot_field "$reg" status || true)"
+  last_error="$(read_slot_field "$reg" lastError || true)"
   dirty_summary="$(slot_dirty_summary "$wt")"
   if [ -n "$wt" ] && [ -d "$wt" ]; then
     head="$(git -C "$wt" rev-parse --short HEAD 2>/dev/null || true)"
@@ -133,6 +137,8 @@ print_slot_replace_warning() {
   [ -n "$wt" ] && echo "  Worktree:  ${wt}" >&2
   [ -n "$work_dir" ] && echo "  Work dir:  ${work_dir}" >&2
   [ -n "$branch" ] && echo "  Branch:    ${branch}${head:+ @ ${head}}" >&2
+  [ -n "$status" ] && echo "  Status:    ${status}" >&2
+  [ -n "$last_error" ] && echo "  Error:     ${last_error}" >&2
   [ -n "$created" ] && echo "  Since:     ${created}" >&2
   echo "  Git:       ${dirty_summary}" >&2
   echo "" >&2
@@ -182,11 +188,30 @@ require_slot_replace_confirm() {
   exit 2
 }
 
+git_common_dir() {
+  local cwd="$1"
+  local out
+  out="$(git -C "$cwd" rev-parse --git-common-dir 2>/dev/null)" || return 1
+  case "$out" in
+    /*) echo "$out" ;;
+    *) (cd "$cwd" && cd "$out" && pwd) ;;
+  esac
+}
+
+same_git_checkout() {
+  local left right
+  left="$(git_common_dir "$1" || true)"
+  right="$(git_common_dir "$2" || true)"
+  [ -n "$left" ] && [ -n "$right" ] && [ "$left" = "$right" ]
+}
+
 # Echo the previous session's worktree path for a slot: registry first, then
-# the legacy fixed path (pre-registry sessions). Empty output when none exists.
+# legacy and randomized session worktree fallbacks. Empty output when none exists.
 existing_slot_worktree() {
   local agent_id="$1"
-  local reg path
+  local reg path candidate repo_root rel_prefix
+  repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+  rel_prefix="$(git -C "$repo_root" rev-parse --show-prefix 2>/dev/null || true)"
   reg="$(slot_registry_file "$agent_id")"
   if [ -f "$reg" ]; then
     path="$(read_slot_field "$reg" worktreePath || true)"
@@ -198,12 +223,20 @@ existing_slot_worktree() {
   path="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${agent_id}"
   if [ -d "$path" ]; then
     echo "$path"
+    return 0
   fi
+  for candidate in "$HOME"/worktrees/*-har-agent-"${agent_id}"-*; do
+    [ -d "$candidate" ] || continue
+    same_git_checkout "$repo_root" "$candidate" || continue
+    [ -f "$candidate/${rel_prefix}.env.agent.${agent_id}" ] || continue
+    echo "$candidate"
+    return 0
+  done
   return 0
 }
 
-# Resolve .env.agent.<id> — registry work dir first, then legacy locations
-# (repo root, pre-registry fixed worktree path).
+# Resolve .env.agent.<id> — registry work dir first, then legacy and
+# randomized session worktree fallbacks.
 resolve_agent_env_file() {
   local agent_id="$1"
   local repo_root="$2"
@@ -225,6 +258,15 @@ resolve_agent_env_file() {
     "$repo_root/.env.agent.${agent_id}" \
     "$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${agent_id}/${rel_prefix}.env.agent.${agent_id}"; do
     if [ -f "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  local candidate_dir
+  for candidate in "$HOME"/worktrees/*-har-agent-"${agent_id}"-*/${rel_prefix}.env.agent."${agent_id}"; do
+    if [ -f "$candidate" ]; then
+      candidate_dir="$(cd "$(dirname "$candidate")" && pwd)"
+      same_git_checkout "$repo_root" "$candidate_dir" || continue
       echo "$candidate"
       return 0
     fi
@@ -277,4 +319,15 @@ run_browser_e2e_if_present() {
   if [ -x "$e2e" ]; then
     "$e2e" "$agent_id"
   fi
+}
+
+# Optional project-owned "agent usable" smoke beyond health.
+run_readiness_if_configured() {
+  local agent_id="$1"
+  if [ -z "${HARNESS_READINESS_CMD:-}" ]; then
+    echo "No HARNESS_READINESS_CMD configured; skipping readiness smoke."
+    return 0
+  fi
+  local cmd="${HARNESS_READINESS_CMD//\{agentId\}/$agent_id}"
+  eval "$cmd"
 }
