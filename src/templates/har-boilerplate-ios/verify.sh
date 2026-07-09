@@ -83,7 +83,7 @@ run_step() {
   start=$(now_ms)
 
   set +e
-  output=$(cd "$WORK_DIR" && eval "$cmd" 2>&1)
+  output=$(cd "$WORK_DIR" && set -a && . "$ENV_FILE" && set +a && eval "$cmd" 2>&1)
   exit_code=$?
   set -e
 
@@ -115,34 +115,34 @@ process.stdout.write(JSON.stringify(arr));
   fi
 }
 
-# Quick (default): compile-only — catches syntax errors and missing symbols
-run_step "build" "xcodebuild build \
+# Quick (default): compile-only — use XCODEBUILD_BIN from .env.agent.<id> (written by launch)
+run_step "build" '${XCODEBUILD_BIN:-xcodebuild} build \
   ${XC_FLAGS} \
-  -scheme \"${XC_SCHEME}\" \
-  -destination \"${XC_DESTINATION}\" \
-  -derivedDataPath \"${XC_DERIVED}\" \
+  -scheme "${XC_SCHEME}" \
+  -destination "${XC_DESTINATION}" \
+  -derivedDataPath "${XC_DERIVED}" \
   CODE_SIGNING_ALLOWED=NO \
-  | xcbeautify 2>/dev/null || xcodebuild build \
+  | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} build \
     ${XC_FLAGS} \
-    -scheme \"${XC_SCHEME}\" \
-    -destination \"${XC_DESTINATION}\" \
-    -derivedDataPath \"${XC_DERIVED}\" \
-    CODE_SIGNING_ALLOWED=NO" || { [ -z "$FULL" ] && true; }
+    -scheme "${XC_SCHEME}" \
+    -destination "${XC_DESTINATION}" \
+    -derivedDataPath "${XC_DERIVED}" \
+    CODE_SIGNING_ALLOWED=NO' || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
   # Full: project-specific checks — add/remove/reorder steps for this repo.
-  run_step "unit-tests" "xcodebuild test \
+  run_step "unit-tests" '${XCODEBUILD_BIN:-xcodebuild} test \
     ${XC_FLAGS} \
-    -scheme \"${XC_SCHEME}\" \
-    -destination \"${XC_DESTINATION}\" \
-    -derivedDataPath \"${XC_DERIVED}\" \
+    -scheme "${XC_SCHEME}" \
+    -destination "${XC_DESTINATION}" \
+    -derivedDataPath "${XC_DERIVED}" \
     CODE_SIGNING_ALLOWED=NO \
-    | xcbeautify 2>/dev/null || xcodebuild test \
+    | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} test \
       ${XC_FLAGS} \
-      -scheme \"${XC_SCHEME}\" \
-      -destination \"${XC_DESTINATION}\" \
-      -derivedDataPath \"${XC_DERIVED}\" \
-      CODE_SIGNING_ALLOWED=NO" || true
+      -scheme "${XC_SCHEME}" \
+      -destination "${XC_DESTINATION}" \
+      -derivedDataPath "${XC_DERIVED}" \
+      CODE_SIGNING_ALLOWED=NO' || true
 
   # SwiftLint — optional, skip gracefully when not installed
   run_step "lint" "command -v \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" >/dev/null 2>&1 && \

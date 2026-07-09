@@ -12,14 +12,15 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 |------|---------|
 | `README.md` | This file — index of the harness |
 | `manifest.json` | Generator metadata (version, profile, checksums) — do not edit |
-| `harness.env` | Shared config: worktree default, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
+| `harness.env` | Shared config: worktree default, `HARNESS_INFRA_SERVICES`, toolchain provisioning (`HARNESS_ECOSYSTEM`, `HARNESS_INSTALL_CMD`), migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
 | `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start optional Docker Compose stack + template database |
-| `launch.sh` | Launch one agent slot (git worktree by default, deps, env file) |
+| `launch.sh` | Launch one agent slot (git worktree by default, toolchain provisioning, env file) |
+| `provision-toolchain.sh` | Install deps and write toolchain paths (`PYTHON_BIN`, `NPM_BIN`, …) to `.env.agent.<id>` |
 | `verify.sh` | Verification pipeline (smoke by default; --full adds tests, lint, e2e) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run commands in the work dir |
@@ -47,8 +48,8 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 ```bash
 ./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
 ./.har/launch.sh 1
-./.har/verify.sh 1             # quick: smoke (typecheck + build)
-./.har/verify.sh 1 --full      # + unit tests, lint, browser-e2e (if Playwright installed)
+./.har/verify.sh 1             # quick: ecosystem smoke (compile/import/build)
+./.har/verify.sh 1 --full      # + conventional tests, lint, browser-e2e (if installed)
 ./.har/teardown.sh 1
 ```
 
@@ -62,8 +63,13 @@ each tier's intent, not a fixed command list.
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | Smoke: compile / typecheck / build (language-agnostic) |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, optional readiness smoke, **browser-e2e** when `stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | Stock ecosystem smoke: compile / import / build conventions |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | Stock conventional tests/lint + optional readiness smoke, **browser-e2e** when `stages/browser-e2e.sh` exists |
+
+The stock commands are deliberately generic conventions keyed by
+`HARNESS_ECOSYSTEM`. Replace them with the repository's real commands during
+adaptation; do not leave Node/npm, Python, Go, Rust, Java, or Ruby defaults in
+place when they do not match the project.
 
 For repos that need runtime services, distinguish health from usability. If the
 harness skips slow local-dev setup, document the skipped steps and add a minimal

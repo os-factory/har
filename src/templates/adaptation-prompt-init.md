@@ -6,6 +6,24 @@ Explore this repository, then edit files in `.har/` directly to make the harness
 
 **Do NOT** create a YAML config or JSON mapping file for runtime behavior. Put behavior directly in the harness scripts and templates.
 
+## HAR profiles (pick the right one at init)
+
+`har env init` scaffolds from one of three boilerplate profiles — **choose the profile that matches this repository**:
+
+| Profile | Best for | What you get |
+|---------|----------|--------------|
+| `default` | **SaaS / web apps** (Next.js, Rails, full-stack, etc.) | Docker Compose shared infra, PM2 for primary app, per-slot ports and preview URLs |
+| `cli` | **CLI tools, libraries, test-suite repos** (typical SWE-bench) | Git worktree by default, no PM2; optional Docker for databases; run project commands in isolation |
+| `ios` | **Mobile iOS / Swift** | xcodebuild + iOS Simulator; scheme/project/simulator in `harness.env` |
+
+```bash
+har env init                  # default (SaaS/web)
+har env init --profile cli    # libraries / CLI / polyglot test repos
+har env init --profile ios    # iOS apps
+```
+
+Do **not** disable worktrees, rewrite launch into repo-root-only mode, or pick the wrong profile unless the project truly requires it.
+
 ## Profile: {{PROFILE}}
 
 {{PROFILE_HINT}}
@@ -38,13 +56,18 @@ Clear index of the harness: what each file does, quick start, architecture, how 
 ### `.har/harness.env`
 Primary app, ports, `HARNESS_INFRA_SERVICES`, migrate/seed commands, health check path.
 
+**Toolchain provisioning:** set `HARNESS_ECOSYSTEM` (`auto` detects from manifests) and optional `HARNESS_INSTALL_CMD`. Launch runs `provision-toolchain.sh`, writes resolved paths (`PYTHON_BIN`, `NODE_BIN`, `NPM_BIN`, `XCODEBUILD_BIN`, …) into `.env.agent.<id>`. Verify steps **must** use those paths — never hardcode venv or interpreter locations.
+
 ### `.har/ecosystem.agent.template.cjs` (default profile only)
 PM2 processes for the primary application only, matching how it runs in dev. Skip entirely for the CLI profile.
 
 ### `.har/verify.sh`
 Adapt verification for this repository's toolchain. Step lists in the template are
 **examples, not exhaustive** — add, remove, or reorder `run_step` calls to match
-how this project is built and tested.
+how this project is built and tested. Use toolchain variables from `.env.agent.<id>`
+(e.g. `${NPM_BIN:-npm}`, `${PYTHON_BIN:-python3}`, `${XCODEBUILD_BIN:-xcodebuild}`).
+The stock verify section is keyed by `HARNESS_ECOSYSTEM`; it is a starting point,
+not the repo's final contract. Replace conventions that do not match this project.
 
 **Tier contract:**
 
@@ -56,6 +79,7 @@ how this project is built and tested.
 - **Quick** must stay fast and minimal (syntax, compile, import smoke) — not the full test suite.
 - **Full** holds unit tests, lint, and heavier checks; optional Playwright runs on `--full` when installed.
 - Reuse real commands from `package.json`, `Makefile`, CI, `pyproject.toml`, etc.
+- Remove stock npm/pytest/go/cargo/maven/gradle examples that do not apply.
 - Replace all TODO placeholders in both tiers.
 
 ### Readiness vs liveness (required)
@@ -88,8 +112,9 @@ scripts or document why no substitute is needed. In particular:
   choose and document an agent-friendly asset mode.
 - Put Layer 3 checks in `verify --full`, a project-owned readiness script, or
   documented smoke URLs. Health alone is not sufficient for UI/auth apps.
-- Ensure `launch.sh` writes the slot registry before slow or fragile steps, and
-  `verify.sh` resolves env/work dir through `agent-slot.sh`.
+- Ensure `launch.sh` writes the slot registry before slow or fragile steps, runs
+  `provision-toolchain.sh` to install deps and record toolchain paths in
+  `.env.agent.<id>`, and `verify.sh` resolves env/work dir through `agent-slot.sh`.
 
 ### Optional Playwright stage
 If the user ran `har env add-stage playwright` (or `@playwright/test` is in package.json):

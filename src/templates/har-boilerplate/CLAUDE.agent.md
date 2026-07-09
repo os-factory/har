@@ -50,10 +50,12 @@ Quick loop during development: MCP `har_run_verification`, `har env verify ${AGE
 ## Project commands
 
 ```bash
-# TODO: adapt for this repository (see package.json, Makefile, etc.)
+# TODO: adapt for this repository (see package.json, Makefile, pyproject.toml, CI, etc.)
 # npm run typecheck
-# npm test
-# npm run lint
+# pytest -q
+# go test ./...
+# cargo test
+# make test
 ```
 
 ## Do not

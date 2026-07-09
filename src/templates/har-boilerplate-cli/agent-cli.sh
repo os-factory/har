@@ -61,7 +61,7 @@ case "$COMMAND" in
   logs)
     echo "CLI profile has no managed processes (no PM2)." >&2
     echo "Run project commands in the work dir, e.g.:" >&2
-    echo "  ./.har/agent-cli.sh ${AGENT_ID} exec npm test" >&2
+    echo "  ./.har/agent-cli.sh ${AGENT_ID} exec make test" >&2
     exit 1
     ;;
 

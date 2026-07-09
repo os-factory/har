@@ -21,6 +21,7 @@ const REQUIRED_FILES_DEFAULT = [
   'harness.env',
   'setup-infra.sh',
   'launch.sh',
+  'provision-toolchain.sh',
   'verify.sh',
   'teardown.sh',
   'agent-cli.sh',
@@ -41,6 +42,7 @@ const REQUIRED_FILES_IOS = [
   'harness.env',
   'setup-infra.sh',
   'launch.sh',
+  'provision-toolchain.sh',
   'verify.sh',
   'teardown.sh',
   'agent-cli.sh',
@@ -59,6 +61,7 @@ function getRequiredFiles(repoPath: string): string[] {
 const SHELL_SCRIPTS = [
   'setup-infra.sh',
   'launch.sh',
+  'provision-toolchain.sh',
   'verify.sh',
   'teardown.sh',
   'agent-cli.sh',

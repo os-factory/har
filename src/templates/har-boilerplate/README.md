@@ -12,14 +12,15 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 |------|---------|
 | `README.md` | This file — index of the harness |
 | `manifest.json` | Generator metadata (version, checksums) — do not edit |
-| `harness.env` | Shared config: primary app, ports, agent slot limits, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
+| `harness.env` | Shared config: primary app, ports, agent slot limits, `HARNESS_INFRA_SERVICES`, toolchain provisioning, migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
 | `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start shared Docker infra + create template database |
-| `launch.sh` | Launch one agent slot (ports, DB clone, PM2 processes) |
+| `launch.sh` | Launch one agent slot (ports, DB clone, toolchain provisioning, PM2 processes) |
+| `provision-toolchain.sh` | Install deps and write toolchain paths to `.env.agent.<id>` |
 | `verify.sh` | Verification pipeline (smoke by default; --full adds tests, lint, e2e) |
 | `teardown.sh` | Tear down one agent slot |
 | `agent-cli.sh` | Manage a running agent (status, logs, psql, health) |
@@ -49,8 +50,8 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 ```bash
 ./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
 ./.har/launch.sh 1
-./.har/verify.sh 1             # quick: smoke (typecheck + health)
-./.har/verify.sh 1 --full      # + unit tests, lint, browser-e2e (if Playwright stage installed)
+./.har/verify.sh 1             # quick: ecosystem smoke + health
+./.har/verify.sh 1 --full      # + conventional tests/lint, browser-e2e (if installed)
 ./.har/teardown.sh 1
 ```
 
@@ -64,8 +65,13 @@ not a fixed command list.
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | Smoke: compile / typecheck / health (stops early on failure) |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, optional readiness smoke + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | Stock ecosystem smoke + health (stops early on failure) |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | Stock conventional tests/lint, optional readiness smoke + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
+
+The stock commands are deliberately generic conventions keyed by
+`HARNESS_ECOSYSTEM`. Replace them with the repository's real commands during
+adaptation; do not leave Node/npm, Python, Go, Rust, Java, or Ruby defaults in
+place when they do not match the project.
 
 Install Playwright stage: `har env add-stage playwright` (optional). UI changes should add or update specs under `tests/`.
 

@@ -36,9 +36,12 @@ Quick loop: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har
 ## Project commands
 
 ```bash
-# TODO: adapt for this repository
-# npm run typecheck
+# TODO: adapt for this repository. Examples:
 # npm test
+# pytest -q
+# go test ./...
+# cargo test
+# make test
 ```
 
 ## Do not
