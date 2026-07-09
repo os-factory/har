@@ -80,6 +80,10 @@ describe('harness stage contract', () => {
       expect.arrayContaining(['setup-infra', 'launch', 'verify', 'status', 'teardown']),
     );
     expect(registry.agentSlots).toEqual({ min: 1, max: 5 });
+
+    const readme = fs.readFileSync(path.join(repoPath, '.har', 'README.md'), 'utf8');
+    expect(readme).toContain('Port & shared services');
+    expect(readme).toContain('HARNESS_DB_PORT_DEFAULT');
   });
 
   it('scaffolds CLI profile without TODO verify placeholders', () => {
@@ -99,6 +103,9 @@ describe('harness stage contract', () => {
     expect(harnessEnv).toContain('HARNESS_INFRA_SERVICES=""');
     expect(harnessEnv).toContain('HARNESS_USE_WORKTREE=true');
     expect(harnessEnv).toContain('HARNESS_ECOSYSTEM');
+
+    const readme = fs.readFileSync(path.join(repoPath, '.har', 'README.md'), 'utf8');
+    expect(readme).toContain('Port & shared services');
 
     expect(fs.existsSync(path.join(repoPath, '.har', 'provision-toolchain.sh'))).toBe(true);
 

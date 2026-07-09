@@ -88,14 +88,52 @@ Always use `./.har/agent-cli.sh <id> ...` — never hardcoded ports.
 
 ## Architecture
 
-Each agent slot gets isolated ports: `BASE + (AGENT_ID × 10)`.
+Each agent slot gets isolated app ports. Defaults follow `BASE + (AGENT_ID × HARNESS_PORT_STEP)`; when a default is busy, `launch.sh` scans the slot lane and writes resolved ports to `.env.agent.<id>` and `.har/slots/agent-<id>.json`.
 
 Configure how many slots your machine can run in parallel in `stages.json` (`agentSlots`) and `harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`). Keep both in sync.
 
-| Service | Agent 1 | Agent 2 | Agent 3 |
-|---------|---------|---------|---------|
+| Service | Agent 1 (default) | Agent 2 (default) | Agent 3 (default) |
+|---------|-------------------|-------------------|-------------------|
 | Web (UI + API) | 3847 | 3857 | 3867 |
-| Database | `agent_1` | `agent_2` | `agent_3` (all on `localhost:15432`) |
+| Database | `agent_1` | `agent_2` | `agent_3` (all on shared Postgres host port) |
+
+`HARNESS_FE_BASE_PORT=3837` and `HARNESS_API_BASE_PORT=3837` — slot 1 therefore defaults to **3847** (`3837 + 1 × 10`).
+
+## Port & shared services
+
+### Port allocation
+
+| Layer | Scope | Rule | On conflict |
+|-------|-------|------|-------------|
+| Web (UI + API) | Per slot | `HARNESS_FE_BASE_PORT + (AGENT_ID × HARNESS_PORT_STEP)` | Scan `STEP` increments within the slot lane |
+| Shared Postgres | Per machine | `HARNESS_DB_PORT_DEFAULT` (15432) | Scan `HARNESS_DB_PORT_SCAN_START..END` |
+
+Always use `./.har/agent-cli.sh <id>` or read `.har/slots/agent-<id>.json` — never hardcode `3847` or `15432` in app code or tests.
+
+### `har control up` vs harness slot 1
+
+These are **different ways to run Mission Control** and they **conflict on port 3847**:
+
+| Entry point | What it runs | Default port |
+|-------------|--------------|--------------|
+| `har control up` | Docker image `theosfactory/har-control` + bundled Postgres | **3847** (UI/API) |
+| `cd control && har env launch 1` | Harness slot with PM2 + shared Postgres from `setup-infra.sh` | **3847** for slot 1 |
+
+Do not run both at once. Before launching harness slot 1, run `har control down` if the control container is up. `launch.sh` preflight also detects a Mission Control container bound to the slot port and fails with a clear message.
+
+For day-to-day agent work on Mission Control itself, use the **harness** (`cd control && har env launch 1`). Use `har control up` when you want the published Docker image without a worktree slot.
+
+### Shared vs per-slot
+
+| Resource | Model | Configuration |
+|----------|-------|---------------|
+| Postgres | One shared container; per-slot database `agent_<id>` cloned from `template_control` | `HARNESS_INFRA_SERVICES="db"` |
+| Next.js app | One PM2 process per slot on isolated ports | `HARNESS_PRIMARY_APP=web`, `ecosystem.agent.template.cjs` |
+
+### Do not
+
+- Hardcode `3847` / `15432` in app code, Playwright specs, or docs — read from agent env / slot registry
+- Run raw `docker compose` for harness infrastructure — use `setup-infra.sh` / `launch.sh`
 
 ### Primary app vs shared services
 

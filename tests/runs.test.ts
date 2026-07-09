@@ -9,7 +9,7 @@ import {
   listRuns,
   resolveAgentWorkDir,
 } from '../src/core/runs';
-import { compareHarnessToTemplate } from '../src/harness/drift';
+import { compareHarnessToTemplate, missingPortDocumentationVars } from '../src/harness/drift';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 import { GENERATOR_VERSION } from '../src/harness/manifest';
 
@@ -102,5 +102,32 @@ describe('harness drift detection', () => {
     expect(drift.generatorVersion.bundled).toBe(GENERATOR_VERSION);
     expect(drift.missing).toEqual([]);
     expect(drift.extra).toEqual([]);
+    expect(drift.missingPortVars).toEqual([]);
+  });
+
+  it('flags missing port documentation vars when harness.env lacks infra scan knobs', () => {
+    const missing = missingPortDocumentationVars('default', {
+      HARNESS_FE_BASE_PORT: '3000',
+      HARNESS_API_BASE_PORT: '8000',
+      HARNESS_PORT_STEP: '10',
+      HARNESS_INFRA_SERVICES: 'db',
+      HARNESS_DB_PORT_DEFAULT: '15432',
+    });
+    expect(missing).toEqual([
+      'HARNESS_DB_PORT_SCAN_START',
+      'HARNESS_DB_PORT_SCAN_END',
+    ]);
+  });
+
+  it('requires infra port vars only for enabled compose services', () => {
+    const missing = missingPortDocumentationVars('cli', {
+      HARNESS_PORT_STEP: '10',
+      HARNESS_INFRA_SERVICES: 'db minio',
+      HARNESS_DB_PORT_DEFAULT: '15432',
+      HARNESS_DB_PORT_SCAN_START: '15432',
+      HARNESS_DB_PORT_SCAN_END: '15499',
+    });
+    expect(missing).toContain('HARNESS_MINIO_PORT_DEFAULT');
+    expect(missing).not.toContain('HARNESS_DB_PORT_DEFAULT');
   });
 });
