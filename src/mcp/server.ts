@@ -16,6 +16,7 @@ import {
   getEnvironmentStatus,
   launchEnvironment,
   listArtifacts,
+  preflightEnvironment,
   runStage,
   runVerification,
   teardownEnvironment,
@@ -38,6 +39,8 @@ import {
   InitHarnessInputSchema,
   LaunchEnvironmentInputSchema,
   LaunchEnvironmentOutputSchema,
+  PreflightEnvironmentInputSchema,
+  PreflightEnvironmentOutputSchema,
   ListArtifactsInputSchema,
   ListArtifactsOutputSchema,
   ListRunsInputSchema,
@@ -88,6 +91,26 @@ export const HAR_MCP_TOOLS: Tool[] = [
           type: 'boolean',
           description:
             'Discard uncommitted changes when replacing a dirty worktree. Requires confirmReplace=true and explicit user approval.',
+        },
+      },
+      ['agentId'],
+    ),
+  },
+  {
+    name: 'har_preflight_environment',
+    description:
+      'Readiness gate before launch: checks ports, foreign PM2, Docker conflicts, and occupied slot. Returns canLaunch with actionable blockers. Call before har_launch_environment.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        agentId: agentIdJsonProperty,
+        confirmReplace: {
+          type: 'boolean',
+          description: 'Treat an occupied slot as replaceable (same as launch confirmReplace).',
+        },
+        force: {
+          type: 'boolean',
+          description: 'Allow replacing a dirty worktree (only after explicit user approval).',
         },
       },
       ['agentId'],
@@ -255,6 +278,22 @@ export async function handleMcpToolCall(
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
+      return {
+        ...jsonContent(parsed),
+        ...(result.blocked ? { isError: true } : {}),
+      };
+    }
+
+    case 'har_preflight_environment': {
+      const input = PreflightEnvironmentInputSchema.parse({ ...args, repo });
+      const agentId = validateAgentId(input.agentId, repo);
+      const result = await preflightEnvironment({
+        repoPath: repo,
+        agentId,
+        confirmReplace: input.confirmReplace,
+        force: input.force,
+      });
+      const parsed = PreflightEnvironmentOutputSchema.parse(result);
       return {
         ...jsonContent(parsed),
         ...(result.blocked ? { isError: true } : {}),

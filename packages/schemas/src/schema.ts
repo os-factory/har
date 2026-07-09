@@ -271,6 +271,28 @@ export const AgentSlotHarnessUsageSchema = z.enum([
 
 export type AgentSlotHarnessUsage = z.infer<typeof AgentSlotHarnessUsageSchema>;
 
+/** One actionable launch blocker from preflight / readiness inspection. */
+export const PreflightBlockerSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  remediation: z.string().optional(),
+  details: z.record(z.unknown()).optional(),
+});
+
+export type PreflightBlocker = z.infer<typeof PreflightBlockerSchema>;
+
+/** Readiness verdict for a slot — observability in status, hard gate before launch. */
+export const SlotReadinessSchema = z.object({
+  canLaunch: z.boolean(),
+  verdict: z.enum(['ready', 'blocked']),
+  blockers: z.array(PreflightBlockerSchema),
+  remediations: z.array(z.string()),
+  ports: z.record(z.number()).optional(),
+  allocatedPorts: z.boolean().optional(),
+});
+
+export type SlotReadiness = z.infer<typeof SlotReadinessSchema>;
+
 export const AgentSlotStatusSchema = z.object({
   agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
   active: z.boolean(),
@@ -304,6 +326,8 @@ export const AgentSlotStatusSchema = z.object({
   ports: z.record(z.number()).optional(),
   /** PM2 namespace mismatch — foreign or legacy processes for this slot id. */
   pm2Issue: z.enum(['foreign_pm2', 'registry_missing', 'project_mismatch']).optional(),
+  /** Launch readiness slice — same core as `har env preflight`. */
+  readiness: SlotReadinessSchema.optional(),
 });
 
 export type AgentSlotStatus = z.infer<typeof AgentSlotStatusSchema>;

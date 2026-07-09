@@ -4,6 +4,7 @@ import { syncRepoWithControlAsync } from './control-sync';
 import { createRun, finishRun, resolveAgentWorkDir } from './runs';
 import { readSlotRegistry } from './slot-registry';
 import { checkLaunchGuard } from './slot-launch-guard';
+import { formatPreflightReport, inspectSlotReadiness } from './slot-preflight';
 import { recordValidation } from './validations';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { getAgentSlotIds, resolveStage } from '../harness/stages';
@@ -15,6 +16,8 @@ import {
   ExecutionContext,
   LaunchOptions,
   LogsOptions,
+  PreflightOptions,
+  PreflightResult,
   StageExecutor,
   StageRunOptions,
   VerificationRunResult,
@@ -129,6 +132,21 @@ export class RunService {
 
   listArtifacts(options: { repoPath: string; stageId?: string }): ArtifactEntry[] {
     return this.executor.listArtifacts({ repoPath: options.repoPath }, { stageId: options.stageId });
+  }
+
+  async preflightEnvironment(options: PreflightOptions): Promise<PreflightResult> {
+    const readiness = inspectSlotReadiness(options.repoPath, options.agentId, {
+      confirmReplace: options.confirmReplace,
+      force: options.force,
+    });
+    const report = formatPreflightReport(options.agentId, readiness);
+    return {
+      code: readiness.canLaunch ? 0 : 1,
+      stdout: report + '\n',
+      stderr: readiness.canLaunch ? '' : report + '\n',
+      readiness,
+      blocked: !readiness.canLaunch,
+    };
   }
 
   async launchEnvironment(options: LaunchOptions): Promise<EnvironmentRunResult> {
@@ -392,6 +410,7 @@ export function createRunService(executor: StageExecutor = localScriptExecutor):
 export const runStage = defaultRunService.runStage.bind(defaultRunService);
 export const listArtifacts = defaultRunService.listArtifacts.bind(defaultRunService);
 export const launchEnvironment = defaultRunService.launchEnvironment.bind(defaultRunService);
+export const preflightEnvironment = defaultRunService.preflightEnvironment.bind(defaultRunService);
 export const runVerification = defaultRunService.runVerification.bind(defaultRunService);
 export const teardownEnvironment = defaultRunService.teardownEnvironment.bind(defaultRunService);
 export const completeEnvironment = defaultRunService.completeEnvironment.bind(defaultRunService);
@@ -405,6 +424,8 @@ export type {
   EnvironmentRunResult,
   LaunchOptions,
   LogsOptions,
+  PreflightOptions,
+  PreflightResult,
   StageRunOptions,
   VerificationRunResult,
 } from './types';

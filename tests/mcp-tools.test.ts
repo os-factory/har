@@ -9,6 +9,7 @@ describe('HAR MCP tool schemas', () => {
       'har_describe_project',
       'har_init_harness',
       'har_launch_environment',
+      'har_preflight_environment',
       'har_run_stage',
       'har_run_verification',
       'har_get_status',

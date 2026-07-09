@@ -1,5 +1,11 @@
 import type { ShellResult } from '../utils/shell';
-import type { RunRecordTriggerSchema, StageKind, StageResult, VerificationResult } from '../harness/schema';
+import type {
+  RunRecordTriggerSchema,
+  SlotReadiness,
+  StageKind,
+  StageResult,
+  VerificationResult,
+} from '../harness/schema';
 import { z } from 'zod';
 
 export type ShellRunResult = ShellResult;
@@ -41,6 +47,21 @@ export interface LaunchOptions {
   confirmReplace?: boolean;
   force?: boolean;
   capture?: boolean;
+}
+
+export interface PreflightOptions {
+  repoPath: string;
+  agentId: number;
+  confirmReplace?: boolean;
+  force?: boolean;
+}
+
+export interface PreflightResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+  readiness: SlotReadiness;
+  blocked?: boolean;
 }
 
 export interface EnvironmentRunResult {

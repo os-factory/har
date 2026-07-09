@@ -92,6 +92,108 @@ har_allocate_slot_app_ports() {
   export FE_PORT API_PORT DEBUG_PORT
 }
 
+# ── Launch preflight (#36) ─────────────────────────────────────────────────────
+
+har_harness_uses_pm2() {
+  [ -f "${SCRIPT_DIR}/ecosystem.agent.template.cjs" ]
+}
+
+har_port_docker_occupant() {
+  local port="$1"
+  docker ps --format '{{.Names}}\t{{.Ports}}' 2>/dev/null \
+    | grep -E ":${port}->|:${port}/" | head -1 | cut -f1 || true
+}
+
+har_check_control_port_conflict() {
+  local port="$1"
+  local name
+  name="$(docker ps --format '{{.Names}}\t{{.Ports}}' 2>/dev/null \
+    | grep -i control | grep -E ":${port}->|:${port}/" | head -1 | cut -f1 || true)"
+  if [ -n "$name" ]; then
+    echo "ERROR: Mission Control container \"${name}\" occupies port ${port}." >&2
+    echo "  Run: har control down — or use a different agent slot." >&2
+    return 1
+  fi
+  return 0
+}
+
+har_check_foreign_pm2() {
+  local agent_id="$1"
+  local pm2_raw
+  har_harness_uses_pm2 || return 0
+  pm2_raw="$(npx --yes pm2 jlist 2>/dev/null || true)"
+  [ -n "$pm2_raw" ] || return 0
+  set +e
+  echo "$pm2_raw" | node -e "
+const agentId = process.argv[1];
+const project = process.argv[2];
+const slotPrefix = 'har-' + project + '-agent-' + agentId + '-';
+const legacyPrefix = 'agent-' + agentId + '-';
+let raw = '';
+process.stdin.on('data', c => raw += c);
+process.stdin.on('end', () => {
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) process.exit(0);
+    const foreign = arr.filter(x =>
+      x.name && (
+        (x.name.startsWith('har-') && x.name.includes('-agent-' + agentId + '-') && !x.name.startsWith(slotPrefix)) ||
+        (x.name.startsWith(legacyPrefix) && !x.name.startsWith('har-'))
+      ));
+    if (foreign.length === 0) process.exit(0);
+    console.error('ERROR: foreign PM2 processes match agent ' + agentId + ':');
+    foreign.forEach(p => {
+      const cwd = p.pm2_env?.pm_cwd || p.pm2_env?.cwd || 'unknown';
+      console.error('  ' + p.name + '  cwd=' + cwd);
+    });
+    console.error('  Stop the other harness session or use a different slot.');
+    process.exit(1);
+  } catch {
+    process.exit(0);
+  }
+});
+" "$agent_id" "$HARNESS_PROJECT_NAME"
+  local rc=$?
+  set -e
+  return "$rc"
+}
+
+har_launch_preflight() {
+  local agent_id="$1"
+  local force="${2:-false}"
+  local replace="${3:-false}"
+
+  if slot_is_occupied "$agent_id"; then
+    if [ "$replace" != true ] && [ "${HAR_CONFIRM_REPLACE:-}" != "1" ]; then
+      print_slot_replace_warning "$agent_id"
+      echo "ERROR: slot ${agent_id} is occupied — pass --replace to proceed." >&2
+      return 2
+    fi
+    local wt
+    wt="$(existing_slot_worktree "$agent_id")"
+    if [ -n "$wt" ] && slot_worktree_dirty "$wt" && [ "$force" != true ]; then
+      echo "ERROR: dirty worktree requires --force after explicit user approval." >&2
+      return 2
+    fi
+  fi
+
+  if har_harness_uses_pm2; then
+    har_check_foreign_pm2 "$agent_id" || return 1
+    har_allocate_slot_app_ports "$agent_id" || return 1
+    local port occupant
+    for port in $(printf '%s\n' "$FE_PORT" "$API_PORT" | sort -u); do
+      har_check_control_port_conflict "$port" || return 1
+      occupant="$(har_port_docker_occupant "$port")"
+      if [ -n "$occupant" ] && [[ "$occupant" != har-${HARNESS_PROJECT_NAME}-* ]]; then
+        echo "ERROR: Docker container \"${occupant}\" binds port ${port}." >&2
+        echo "  Stop it with: docker stop ${occupant}" >&2
+        return 1
+      fi
+    done
+  fi
+  return 0
+}
+
 # Load persisted app/infra ports from .env.agent.<id> or the slot registry.
 load_agent_ports() {
   local agent_id="$1"
