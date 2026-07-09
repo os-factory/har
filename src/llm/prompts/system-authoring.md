@@ -104,11 +104,35 @@ If the repository contains more than one project or `.har` harness (check for `.
 - Keep a small `AGENT.md` / `CLAUDE.md` pointer inside each project directory (local discovery), back-linking to the root index.
 - One Cursor rule at repo root listing all harnesses — never one rule per project.
 
-## Port allocation
+## Port allocation & shared services
 
-Agents run in parallel on configurable slot ids. Ports: `BASE + (AGENT_ID × 10)`.
+Document ports in `.har/README.md` and configure them in `.har/harness.env`. Resolved values land in `.env.agent.<id>` and `.har/slots/agent-<id>.json` at launch — never hardcode defaults in app code or tests.
+
+### Per-slot app ports (default / PM2 profile)
+
+| Layer | Scope | Rule | On conflict |
+|-------|-------|------|-------------|
+| Frontend | Per slot | `HARNESS_FE_BASE_PORT + (AGENT_ID × HARNESS_PORT_STEP)` | Scan `STEP` increments within the slot lane |
+| API | Per slot | `HARNESS_API_BASE_PORT + (AGENT_ID × STEP)` | Same scan policy |
+| Node debug | Per slot | `9200 + (AGENT_ID × STEP)` | Same scan policy |
+
+### Shared infra ports (when listed in `HARNESS_INFRA_SERVICES`)
+
+| Service | Default var | On conflict |
+|---------|-------------|-------------|
+| Postgres | `HARNESS_DB_PORT_DEFAULT` | Scan `HARNESS_DB_PORT_SCAN_START..END` |
+| MinIO | `HARNESS_MINIO_PORT_DEFAULT` (+ console) | Scan configured ranges in `harness.env` |
+| Mailpit | `HARNESS_MAILPIT_*_PORT_DEFAULT` | Scan configured ranges |
+| Headless browser | `HARNESS_BROWSER_PORT_DEFAULT` | Scan configured ranges |
+
+CLI and iOS profiles typically have no per-slot app ports; optional backends still use the shared-infra model.
 
 Set slot limits in `.har/stages.json` (`agentSlots`) and `.har/harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`) based on machine capacity.
+
+### Do not
+
+- Hardcode `3000`, `15432`, `3847`, or other defaults in application code, tests, or agent docs
+- Run raw `docker compose` for harness infrastructure — use `setup-infra.sh` / `launch.sh`
 
 ## Rules
 
@@ -120,6 +144,7 @@ Set slot limits in `.har/stages.json` (`agentSlots`) and `.har/harness.env` (`HA
 6. **Do not edit manifest.json** — managed by har CLI
 7. **Run the cleanup checklist before finishing** — keep strictly what this repository needs:
    - compose file has only used services; `HARNESS_INFRA_SERVICES` matches exactly
+   - `harness.env` has port documentation vars for every enabled infra service; `.har/README.md` explains allocation and shared vs per-slot
    - `env.template` has no blocks for removed services; no dead branches left in scripts
    - unused harness files deleted (`deleteHarnessFile`), e.g. `attach.sh` when unused
    - `.har/README.md` file table matches the files that actually exist

@@ -722,11 +722,18 @@ function printDrift(drift: HarnessDriftResult): void {
   if (drift.extra.length > 0) {
     warn(`  Extra/stale files: ${drift.extra.join(', ')}`);
   }
+  if (drift.missingPortVars.length > 0) {
+    warn(
+      `  Missing port documentation vars in harness.env: ${drift.missingPortVars.join(', ')}`,
+    );
+    warn('  Copy the port-allocation block from the bundled template harness.env and adapt values.');
+  }
   if (
     !drift.generatorVersion.outdated &&
     drift.checksumMismatch.length === 0 &&
     drift.missing.length === 0 &&
-    drift.extra.length === 0
+    drift.extra.length === 0 &&
+    drift.missingPortVars.length === 0
   ) {
     success('  Harness matches bundled templates');
   }

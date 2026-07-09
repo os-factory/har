@@ -113,14 +113,48 @@ Always use `./.har/agent-cli.sh <id> ...` — never hardcoded ports.
 
 ## Architecture
 
-Each agent slot gets isolated ports: `BASE + (AGENT_ID × 10)`.
+Each agent slot gets isolated app ports. Defaults follow `BASE + (AGENT_ID × HARNESS_PORT_STEP)`; when a default is busy, `launch.sh` scans the slot lane (`STEP` increments) and writes the resolved ports to `.env.agent.<id>` and `.har/slots/agent-<id>.json`.
 
 Configure how many slots your machine can run in parallel in `stages.json` (`agentSlots`) and `harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`). Keep both in sync.
 
-| Service | Agent 1 | Agent 2 |
-|---------|---------|---------|
+| Service | Agent 1 (default) | Agent 2 (default) |
+|---------|-------------------|-------------------|
 | Frontend | 3010 | 3020 |
 | API | 8010 | 8020 |
+| Node debug | 9210 | 9220 |
+
+## Port & shared services
+
+### Port allocation
+
+| Layer | Scope | Rule | On conflict |
+|-------|-------|------|-------------|
+| App — frontend | Per slot | `HARNESS_FE_BASE_PORT + (AGENT_ID × HARNESS_PORT_STEP)` | Scan `STEP` increments within the slot lane |
+| App — API | Per slot | `HARNESS_API_BASE_PORT + (AGENT_ID × STEP)` | Same scan policy |
+| Node debug | Per slot | `9200 + (AGENT_ID × STEP)` | Same scan policy |
+| Shared Postgres | Per machine | `HARNESS_DB_PORT_DEFAULT` | Scan `HARNESS_DB_PORT_SCAN_START..END` |
+| MinIO / S3 | Per machine | `HARNESS_MINIO_PORT_DEFAULT` (+ console port) | Scan configured ranges in `harness.env` |
+| Mailpit | Per machine | `HARNESS_MAILPIT_*_PORT_DEFAULT` | Scan configured ranges |
+| Headless browser | Per machine | `HARNESS_BROWSER_PORT_DEFAULT` | Scan configured ranges |
+
+Resolved ports may differ from the formula when something else is already bound. Always use `./.har/agent-cli.sh <id>` or read `.har/slots/agent-<id>.json` — never hardcode `3010`, `15432`, etc. in app code or tests.
+
+### Shared vs per-slot
+
+| Resource | Model | Configuration |
+|----------|-------|---------------|
+| Postgres | One shared container; per-slot database `agent_<id>` cloned from template | `HARNESS_INFRA_SERVICES="db"` |
+| MinIO / S3 | One shared container; per-slot bucket `agent-<id>` | `HARNESS_INFRA_SERVICES="... minio"` |
+| Mailpit, Redis, etc. | One shared container on a scanned host port | Listed in `HARNESS_INFRA_SERVICES` |
+| Primary application | One PM2 ecosystem per slot (isolated ports) | `HARNESS_PRIMARY_APP`, `ecosystem.agent.template.cjs` |
+| Internal supporting services | Shared across all slots | `docker-compose.agent.yml` or `ecosystem.shared.config.cjs` |
+
+Shared infra starts once via `./.har/setup-infra.sh` (also run automatically by `launch.sh`). Per-slot databases are cloned in `launch.sh`.
+
+### Do not
+
+- Hardcode default ports (`3000`, `15432`, `3847`, …) in application code, tests, or agent docs — read from `.env.agent.<id>`, `agent-cli.sh`, or the slot registry
+- Run raw `docker compose` for harness infrastructure — use `setup-infra.sh` / `launch.sh` so ports are scanned and persisted in `.har/state/infra.env`
 
 ### Primary app vs shared services
 

@@ -17,6 +17,8 @@ describe('adaptation prompts', () => {
     expect(defaultPrompt).toContain('Docker');
     expect(defaultPrompt).toContain('HAR profiles');
     expect(defaultPrompt).toContain('provision-toolchain.sh');
+    expect(defaultPrompt).toContain('Port & shared services');
+    expect(defaultPrompt).toContain('HARNESS_FE_BASE_PORT');
 
     const cliPrompt = buildInitAdaptationPrompt('/tmp/app', 'cli');
     expect(cliPrompt).toContain('Profile: cli');
@@ -31,6 +33,7 @@ describe('adaptation prompts', () => {
     expect(maintainPrompt).not.toEqual(initPrompt);
     expect(maintainPrompt).toContain('already exists');
     expect(maintainPrompt).toContain('targeted edits');
+    expect(maintainPrompt).toContain('missing port documentation vars');
   });
 
   it('writeAdaptationPrompt creates .har/ADAPT-PROMPT.md', () => {

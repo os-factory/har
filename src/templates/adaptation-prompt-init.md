@@ -132,9 +132,37 @@ Detailed agent instructions: commands, credentials, architecture, definition of 
 ### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
 Adapt as needed for the project's infra.
 
-### Port allocation
-Agents run in parallel on configurable slot ids. Ports: `BASE + (AGENT_ID × 10)`.
+### Port allocation & shared services
+
+Document and configure ports in `.har/harness.env` and `.har/README.md`. Use the bundled template's port-allocation block as the contract — do not hardcode ports in app code or tests.
+
+**Per-slot app ports** (default / PM2 profile only):
+
+| Layer | Scope | Rule | On conflict |
+|-------|-------|------|-------------|
+| Frontend | Per slot | `HARNESS_FE_BASE_PORT + (AGENT_ID × HARNESS_PORT_STEP)` | Scan `STEP` increments within the slot lane |
+| API | Per slot | `HARNESS_API_BASE_PORT + (AGENT_ID × STEP)` | Same scan policy |
+| Node debug | Per slot | `9200 + (AGENT_ID × STEP)` | Same scan policy |
+
+**Shared infra ports** (one per machine, all profiles when the service is in `HARNESS_INFRA_SERVICES`):
+
+| Service | Default var | On conflict |
+|---------|-------------|-------------|
+| Postgres | `HARNESS_DB_PORT_DEFAULT` | Scan `HARNESS_DB_PORT_SCAN_START..END` |
+| MinIO | `HARNESS_MINIO_PORT_DEFAULT` (+ console) | Scan configured ranges |
+| Mailpit | `HARNESS_MAILPIT_*_PORT_DEFAULT` | Scan configured ranges |
+| Headless browser | `HARNESS_BROWSER_PORT_DEFAULT` | Scan configured ranges |
+
 Set slot limits in `.har/stages.json` (`agentSlots`) and `.har/harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`) based on machine capacity.
+
+**Port / infra checklist:**
+
+- [ ] `.har/harness.env` has `HARNESS_FE_BASE_PORT`, `HARNESS_API_BASE_PORT`, `HARNESS_PORT_STEP` (default profile) or explains why they are absent (CLI/iOS)
+- [ ] For each service in `HARNESS_INFRA_SERVICES`, matching `HARNESS_*_PORT_DEFAULT` and `SCAN_*` vars exist in `harness.env`
+- [ ] `.har/README.md` has a **Port & shared services** section (allocation table, shared vs per-slot, do-not rules)
+- [ ] App code and tests read ports from `.env.agent.<id>` / `agent-cli.sh` / slot registry — no hardcoded `3000`, `15432`, `3847`, etc.
+- [ ] `env.template` and `CLAUDE.agent.md` show resolved ports via variables, not literals
+- [ ] Monorepos with `har control up`: document slot-1 conflict if the app port overlaps (e.g. Mission Control on 3847)
 
 ### Git worktree
 `launch.sh` creates an isolated session worktree at `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` by default (`HARNESS_USE_WORKTREE=true`) and records it in `.har/slots/agent-<id>.json`. Agents should commit from that worktree, not the main checkout.
@@ -187,6 +215,8 @@ The boilerplate ships more than any single repository needs. Strip it down to st
 - [ ] If full seed/setup is skipped, `.har/` provides a minimal bootstrap or clearly documents why none is needed
 - [ ] All per-slot data stores are provisioned, not just the primary database
 - [ ] `.har/CLAUDE.agent.md` defines what "agent usable" means for this repo: login/API smoke, credentials, required default data, and known skipped dev-setup steps
+- [ ] `.har/README.md` documents port allocation and shared-service model; `harness.env` has the port knobs for every enabled infra service
+- [ ] No hardcoded default ports (`3000`, `15432`, `3847`, …) in app code, tests, or harness docs — use agent env / slot registry
 
 ## Rules
 

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { HarnessProfile } from './generator';
+import { readHarnessEnv } from './env';
 import {
   computeFileChecksum,
   GENERATOR_VERSION,
@@ -31,6 +32,72 @@ export interface HarnessDriftResult {
   checksumMismatch: string[];
   extra: string[];
   unchanged: string[];
+  /** Port-allocation knobs from harness.env that the bundled template expects. */
+  missingPortVars: string[];
+}
+
+const APP_PORT_VARS = [
+  'HARNESS_FE_BASE_PORT',
+  'HARNESS_API_BASE_PORT',
+  'HARNESS_PORT_STEP',
+] as const;
+
+const INFRA_PORT_VARS_BY_SERVICE: Record<string, readonly string[]> = {
+  db: [
+    'HARNESS_DB_PORT_DEFAULT',
+    'HARNESS_DB_PORT_SCAN_START',
+    'HARNESS_DB_PORT_SCAN_END',
+  ],
+  minio: [
+    'HARNESS_MINIO_PORT_DEFAULT',
+    'HARNESS_MINIO_PORT_SCAN_START',
+    'HARNESS_MINIO_PORT_SCAN_END',
+    'HARNESS_MINIO_CONSOLE_PORT_DEFAULT',
+    'HARNESS_MINIO_CONSOLE_PORT_SCAN_START',
+    'HARNESS_MINIO_CONSOLE_PORT_SCAN_END',
+  ],
+  mailpit: [
+    'HARNESS_MAILPIT_WEB_PORT_DEFAULT',
+    'HARNESS_MAILPIT_WEB_PORT_SCAN_START',
+    'HARNESS_MAILPIT_WEB_PORT_SCAN_END',
+    'HARNESS_MAILPIT_SMTP_PORT_DEFAULT',
+    'HARNESS_MAILPIT_SMTP_PORT_SCAN_START',
+    'HARNESS_MAILPIT_SMTP_PORT_SCAN_END',
+  ],
+  'headless-browser': [
+    'HARNESS_BROWSER_PORT_DEFAULT',
+    'HARNESS_BROWSER_PORT_SCAN_START',
+    'HARNESS_BROWSER_PORT_SCAN_END',
+  ],
+};
+
+/** Returns harness.env export names missing for the profile and enabled infra services. */
+export function missingPortDocumentationVars(
+  profile: HarnessProfile,
+  env: Record<string, string>,
+): string[] {
+  const missing: string[] = [];
+
+  if (profile === 'default') {
+    for (const key of APP_PORT_VARS) {
+      if (!(key in env)) missing.push(key);
+    }
+  }
+
+  if (profile === 'cli' && !('HARNESS_PORT_STEP' in env)) {
+    missing.push('HARNESS_PORT_STEP');
+  }
+
+  const services = (env.HARNESS_INFRA_SERVICES ?? '').trim().split(/\s+/).filter(Boolean);
+  for (const service of services) {
+    const vars = INFRA_PORT_VARS_BY_SERVICE[service];
+    if (!vars) continue;
+    for (const key of vars) {
+      if (!(key in env)) missing.push(key);
+    }
+  }
+
+  return [...new Set(missing)];
 }
 
 function substituteProjectName(content: string, projectName: string): string {
@@ -99,6 +166,9 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   }
 
   const installed = manifest?.generatorVersion;
+  const harnessEnv = readHarnessEnv(resolved);
+  const missingPortVars = missingPortDocumentationVars(profile, harnessEnv);
+
   return {
     generatorVersion: {
       installed,
@@ -109,5 +179,6 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
     checksumMismatch,
     extra,
     unchanged,
+    missingPortVars,
   };
 }
