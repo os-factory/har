@@ -4,8 +4,14 @@
 # Usage: ./.har/attach.sh <agent-id>
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/harness.env"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/agent-slot.sh"
+
 AGENT_ID="${1:?Usage: attach.sh <agent-id>}"
-SESSION="agent-${AGENT_ID}"
+SESSION="$(har_tmux_session "$AGENT_ID")"
 
 if ! tmux has-session -t "$SESSION" 2>/dev/null; then
   echo "No tmux session found: $SESSION" >&2

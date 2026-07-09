@@ -26,7 +26,7 @@ module.exports = {
     // Example Node dev process. Replace with this repo's actual primary app
     // command (Rails, Django, Go, Java, etc. should not keep this npm entry).
     {
-      name: 'agent-${AGENT_ID}-api',
+      name: 'har-${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}-api',
       script: 'npm',
       args: 'run dev',
       interpreter: 'none',

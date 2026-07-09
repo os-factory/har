@@ -1,6 +1,6 @@
 /**
  * PM2 ecosystem for Mission Control (Next.js) per agent slot.
- * Ports: FE_PORT = API_PORT = 3837 + (AGENT_ID × 10) — e.g. slot 1 → 3847.
+ * Ports are allocated at launch and written to .env.agent.<id>.
  */
 
 // launch.sh writes this file (and .env.agent.N) into the work dir — the
@@ -16,7 +16,7 @@ const port = env.FE_PORT || env.PORT || '3847';
 module.exports = {
   apps: [
     {
-      name: 'agent-${AGENT_ID}-web',
+      name: 'har-${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}-web',
       script: 'npx',
       args: `next dev --port ${port}`,
       interpreter: 'none',

@@ -42,15 +42,6 @@ validate_agent_id "$AGENT_ID"
 
 log() { echo "==> [agent-$AGENT_ID] $*" >&2; }
 
-FE_PORT=$(( HARNESS_FE_BASE_PORT + AGENT_ID * 10 ))
-API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
-DEBUG_PORT=$(( 9200 + AGENT_ID * 10 ))
-DB_PORT="${AGENT_DB_PORT:-15432}"
-MINIO_PORT="${AGENT_MINIO_PORT:-19000}"
-BROWSER_PORT="${AGENT_BROWSER_PORT:-13001}"
-
-log "Ports: frontend=$FE_PORT api=$API_PORT debug=$DEBUG_PORT"
-
 # Replace any previous session for this slot — requires explicit confirmation.
 if slot_is_occupied "$AGENT_ID"; then
   require_slot_replace_confirm "$AGENT_ID" "$FORCE" "$REPLACE"
@@ -58,8 +49,15 @@ if slot_is_occupied "$AGENT_ID"; then
   "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
 fi
 
-# Ensure shared infra is running
+# Preflight port allocation before worktree/install — scan when defaults are busy.
+har_allocate_slot_app_ports "$AGENT_ID"
+log "Ports: frontend=$FE_PORT api=$API_PORT debug=$DEBUG_PORT"
+
+# Ensure shared infra is running (persists host ports in .har/state/infra.env).
 "$SCRIPT_DIR/setup-infra.sh"
+DB_PORT="${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}"
+MINIO_PORT="${AGENT_MINIO_PORT:-${HARNESS_MINIO_PORT_DEFAULT:-19000}}"
+BROWSER_PORT="${AGENT_BROWSER_PORT:-${HARNESS_BROWSER_PORT_DEFAULT:-13001}}"
 
 # Clone agent database from template
 if har_infra_enabled db && [ -n "${HARNESS_TEMPLATE_DB:-}" ]; then
@@ -169,7 +167,7 @@ mark_slot_failed() {
     SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
     SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
     SLOT_PURPOSE="${PURPOSE}" \
-    SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT}}" \
+    SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
     SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
     SLOT_STATUS="failed" \
     SLOT_LAST_ERROR="launch.sh exited with code ${exit_code}" \
@@ -192,7 +190,7 @@ SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
 SLOT_PURPOSE="${PURPOSE}" \
-SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT}}" \
+SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
 SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
 SLOT_STATUS="starting" \
   write_slot_registry
@@ -207,9 +205,10 @@ fi
 ECOSYSTEM_FILE="$WORK_DIR/ecosystem.agent.${AGENT_ID}.config.cjs"
 log "Generating $ECOSYSTEM_FILE..."
 AGENT_ID="$AGENT_ID" \
+HARNESS_PROJECT_NAME="$HARNESS_PROJECT_NAME" \
 FE_PORT="$FE_PORT" \
 DEBUG_PORT="$DEBUG_PORT" \
-  envsubst '${AGENT_ID} ${FE_PORT} ${DEBUG_PORT}' \
+  envsubst '${AGENT_ID} ${HARNESS_PROJECT_NAME} ${FE_PORT} ${DEBUG_PORT}' \
   < "$SCRIPT_DIR/ecosystem.agent.template.cjs" > "$ECOSYSTEM_FILE"
 
 # Apply database schema (idempotent) — otherwise schema drift after a code
@@ -222,18 +221,14 @@ if [ -n "${HARNESS_DB_MIGRATE_CMD:-}" ] && [ "$HARNESS_DB_MIGRATE_CMD" != "true"
   }
 fi
 
-# Stop existing processes for this agent
-npx --yes pm2 delete "/^agent-${AGENT_ID}-/" 2>/dev/null || true
+PM2_REGEX="$(har_pm2_delete_regex "$AGENT_ID")"
+npx --yes pm2 delete "$PM2_REGEX" 2>/dev/null || true
 sleep 1
 
-# Fail loudly if a foreign process holds this slot's ports — otherwise the
-# health check below can pass against that server while ours crash-loops on
-# EADDRINUSE, and the slot silently serves someone else's code.
-port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && { exec 3>&- || true; return 0; }; return 1; }
+# Sanity check — allocated ports should be free (har_allocate_slot_app_ports already scanned).
 for PORT in $(printf '%s\n' "$FE_PORT" "$API_PORT" | sort -u); do
   if port_in_use "$PORT"; then
-    log "ERROR: port $PORT is already in use by a process outside this slot."
-    log "Stop whatever is bound to it (another dev server, or a 'docker compose up' app container), then relaunch."
+    log "ERROR: port $PORT is already in use after allocation."
     exit 1
   fi
 done
@@ -267,7 +262,7 @@ fi
 
 # The health check only proves the port answers — confirm the processes we
 # just started are the ones running (online, not crash-looping).
-if ! npx --yes pm2 jlist 2>/dev/null | AGENT_PREFIX="agent-${AGENT_ID}-" node -e '
+if ! npx --yes pm2 jlist 2>/dev/null | AGENT_PREFIX="$(har_pm2_slot_prefix "$AGENT_ID")-" node -e '
 let d = "";
 process.stdin.on("data", (c) => (d += c));
 process.stdin.on("end", () => {
@@ -300,14 +295,14 @@ SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
 SLOT_PURPOSE="${PURPOSE}" \
-SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT}}" \
+SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
 SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
 SLOT_STATUS="active" \
   write_slot_registry
 
 # Launch Claude Code in tmux (optional)
 if [ "$USE_CLAUDE" = true ]; then
-  TMUX_SESSION="agent-${AGENT_ID}"
+  TMUX_SESSION="$(har_tmux_session "$AGENT_ID")"
   if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     tmux kill-session -t "$TMUX_SESSION"
   fi
