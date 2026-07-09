@@ -104,17 +104,35 @@ har_port_docker_occupant() {
     | grep -E ":${port}->|:${port}/" | head -1 | cut -f1 || true
 }
 
+# Detect port conflicts with `har control up` (Docker dashboard).
 har_check_control_port_conflict() {
   local port="$1"
   local name
   name="$(docker ps --format '{{.Names}}\t{{.Ports}}' 2>/dev/null \
     | grep -i control | grep -E ":${port}->|:${port}/" | head -1 | cut -f1 || true)"
   if [ -n "$name" ]; then
-    echo "ERROR: Mission Control container \"${name}\" occupies port ${port}." >&2
+    echo "ERROR: har control up (container \"${name}\") occupies port ${port}." >&2
     echo "  Run: har control down — or use a different agent slot." >&2
     return 1
   fi
   return 0
+}
+
+har_warn_control_on_default_port() {
+  local agent_id="$1"
+  har_harness_uses_pm2 || return 0
+  local default_port
+  default_port="$(har_default_app_port "${HARNESS_FE_BASE_PORT:-3000}" "$agent_id")"
+  if [ "$FE_PORT" = "$default_port" ]; then
+    return 0
+  fi
+  local name
+  name="$(docker ps --format '{{.Names}}\t{{.Ports}}' 2>/dev/null \
+    | grep -i control | grep -E ":${default_port}->|:${default_port}/" | head -1 | cut -f1 || true)"
+  if [ -n "$name" ]; then
+    echo "WARN: har control up holds port ${default_port} (container \"${name}\")." >&2
+    echo "  Harness will use port ${FE_PORT} instead. Run: har control down — to reclaim the default port." >&2
+  fi
 }
 
 har_check_foreign_pm2() {
@@ -180,6 +198,7 @@ har_launch_preflight() {
   if har_harness_uses_pm2; then
     har_check_foreign_pm2 "$agent_id" || return 1
     har_allocate_slot_app_ports "$agent_id" || return 1
+    har_warn_control_on_default_port "$agent_id"
     local port occupant
     for port in $(printf '%s\n' "$FE_PORT" "$API_PORT" | sort -u); do
       har_check_control_port_conflict "$port" || return 1

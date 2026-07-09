@@ -154,6 +154,11 @@ har control up --build  # build locally from source (monorepo contributors)
 cd control && npm run dev   # dashboard development without Docker app image
 ```
 
+**Port 3847** is shared by `har control up` (Docker) and Mission Control harness slot 1 (`cd control && har env launch 1`). Do not run both at once on the default port:
+
+- **Agent dev** (hot reload, worktrees): `cd control && har env launch 1` — preflight auto-picks an alternate port when 3847 is busy and names `har control up` as the cause.
+- **Packaged dashboard** (Docker image): `har control up` / `har control down` — warns if harness slot 1 is already active.
+
 See [`control/AGENT.md`](./control/AGENT.md).
 
 ### Sample fixtures

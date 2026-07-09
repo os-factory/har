@@ -4,6 +4,7 @@ import {
   getControlApiUrl,
   isControlEnabled,
 } from '../../core/control-config';
+import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   syncRepoWithControl,
 } from '../../core/control-sync';
@@ -83,6 +84,27 @@ export const controlCommand = {
 
 async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void> {
   header('har control up');
+  const readiness = inspectControlUpReadiness(process.cwd());
+  for (const message of readiness.warnings) {
+    warn(message);
+  }
+  if (readiness.controlAlreadyRunning) {
+    success(`Mission Control is already running at ${getControlApiUrl()}`);
+    if (!isControlEnabled()) return;
+    info('Syncing repositories with Mission Control...');
+    const { synced, failed, apiReady } = await syncReposAfterControlStart(process.cwd());
+    if (!apiReady) {
+      warn('Mission Control API did not become ready — run har control sync later');
+      return;
+    }
+    if (synced > 0) {
+      success(`Synced ${synced} ${synced === 1 ? 'repository' : 'repositories'} with Mission Control`);
+    }
+    if (failed > 0) {
+      warn(`${failed} ${failed === 1 ? 'repository' : 'repositories'} could not be synced`);
+    }
+    return;
+  }
   const { code, apiUrl, imageRef } = await startMissionControl({
     detach: argv.detach,
     build: argv.build,

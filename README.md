@@ -189,6 +189,8 @@ har env init            # remembers the repo for sync when Control starts
 har control sync        # push runs + slot status
 ```
 
+**Do not run `har control up` and `cd control && har env launch 1` on port 3847 at the same time.** Use the harness for agent dev (hot reload); use `har control up` for the packaged Docker dashboard. Preflight on each side detects the conflict and suggests `har control down` or an alternate harness slot/port.
+
 See [`control/AGENT.md`](./control/AGENT.md) for dashboard development. Hosted team features are **HAR Cloud** (paid).
 
 Agents can still use GitHub, Linear, observability, and other MCP servers directly. HAR focuses on the repository harness and run state.

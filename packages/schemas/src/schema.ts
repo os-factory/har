@@ -289,6 +289,8 @@ export const SlotReadinessSchema = z.object({
   remediations: z.array(z.string()),
   ports: z.record(z.number()).optional(),
   allocatedPorts: z.boolean().optional(),
+  /** Non-blocking notices (e.g. har control up holds the default port but an alternate was picked). */
+  warnings: z.array(z.string()).optional(),
 });
 
 export type SlotReadiness = z.infer<typeof SlotReadinessSchema>;

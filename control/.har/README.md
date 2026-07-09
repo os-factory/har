@@ -156,10 +156,16 @@ from a fresh worktree (monorepo `file:` link).
 
 ### Port safety
 
-`launch.sh` refuses to start if a slot's ports are already held by a foreign process
-(e.g. the app container from `docker compose up -d`, which binds slot 1's port 3847), and
-fails if its own PM2 processes are not online after launch — a passing health check alone
-is not trusted, since it could be answered by whatever else is bound to the port.
+`launch.sh` and `har env preflight` refuse to start when a slot's allocated ports are held by a
+foreign process. **`har control up`** (Docker `control-app-1` on port 3847) is detected explicitly:
+
+- If the default port is busy but another port in the slot lane is free, launch proceeds on the
+  alternate port and warns that `har control up` holds the default.
+- If no port in the lane is free, preflight blocks with `control_port_conflict` and suggests
+  `har control down` or a different slot id.
+
+`har control up` warns when `control/.har` slot 1 is already active. Recommended workflow: harness
+for agent dev, `har control up` for the packaged dashboard — not both on 3847 without an explicit choice.
 
 ## Maintaining this harness
 
