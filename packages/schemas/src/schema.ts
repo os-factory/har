@@ -300,6 +300,10 @@ export const AgentSlotStatusSchema = z.object({
   /** Main checkout has commits the session base doesn't (worktree serves stale code). */
   behind: z.number().int().optional(),
   stale: z.boolean().optional(),
+  /** Persisted host ports from the slot registry (when dynamically allocated). */
+  ports: z.record(z.number()).optional(),
+  /** PM2 namespace mismatch — foreign or legacy processes for this slot id. */
+  pm2Issue: z.enum(['foreign_pm2', 'registry_missing', 'project_mismatch']).optional(),
 });
 
 export type AgentSlotStatus = z.infer<typeof AgentSlotStatusSchema>;

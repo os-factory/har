@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getHarnessDir } from '../harness/manifest';
+import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
 import { readHarnessEnv } from '../harness/env';
 import {
   getArtifactsDir,
@@ -17,19 +17,48 @@ import {
   StageExecutor,
   StageRunOptions,
 } from './types';
+import { readSlotRegistry } from './slot-registry';
 
 function resolveRepoPath(repoPath: string): string {
   return path.resolve(repoPath);
 }
 
+function buildPreviewUrlsFromPorts(
+  ports: Record<string, number>,
+  env: Record<string, string>,
+): Record<string, string> {
+  const urls: Record<string, string> = {};
+  if (ports.frontend) urls.frontend = `http://localhost:${ports.frontend}`;
+  if (ports.api) {
+    urls.api = `http://localhost:${ports.api}`;
+    if (env.HARNESS_HEALTH_CHECK_PATH) {
+      urls.health = `http://localhost:${ports.api}${env.HARNESS_HEALTH_CHECK_PATH}`;
+    }
+  }
+  if (ports.browser) urls.browser = `http://localhost:${ports.browser}`;
+  if (ports.mailpit) urls.mailpit = `http://localhost:${ports.mailpit}`;
+  return urls;
+}
+
 export { readHarnessEnv } from '../harness/env';
 
 export function computePreviewUrls(repoPath: string, agentId: number): Record<string, string> {
-  const env = readHarnessEnv(repoPath);
+  const harnessRoot = resolveHarnessRoot(repoPath);
+  const session = readSlotRegistry(harnessRoot, agentId);
+  if (session?.previewUrls && Object.keys(session.previewUrls).length > 0) {
+    return session.previewUrls;
+  }
+
+  const env = readHarnessEnv(harnessRoot);
+  if (session?.ports && Object.keys(session.ports).length > 0) {
+    return buildPreviewUrlsFromPorts(session.ports, env);
+  }
+
+  const step = Number(env.HARNESS_PORT_STEP ?? 10);
   const feBase = Number(env.HARNESS_FE_BASE_PORT ?? 3000);
   const apiBase = Number(env.HARNESS_API_BASE_PORT ?? 8000);
-  const fePort = feBase + agentId * 10;
-  const apiPort = apiBase + agentId * 10;
+  const fePort = feBase + agentId * step;
+  const apiPort = apiBase + agentId * step;
 
   const urls: Record<string, string> = {
     frontend: `http://localhost:${fePort}`,
@@ -40,10 +69,10 @@ export function computePreviewUrls(repoPath: string, agentId: number): Record<st
     urls.health = `http://localhost:${apiPort}${env.HARNESS_HEALTH_CHECK_PATH}`;
   }
   if (env.HARNESS_INFRA_BROWSER === 'true') {
-    urls.browser = 'http://localhost:13001';
+    urls.browser = `http://localhost:${env.HARNESS_BROWSER_PORT_DEFAULT ?? 13001}`;
   }
   if (env.HARNESS_INFRA_MAILPIT === 'true') {
-    urls.mailpit = 'http://localhost:18025';
+    urls.mailpit = `http://localhost:${env.HARNESS_MAILPIT_WEB_PORT_DEFAULT ?? 18025}`;
   }
 
   return urls;

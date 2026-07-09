@@ -26,6 +26,124 @@ validate_agent_id() {
   fi
 }
 
+# ── Port allocation ─────────────────────────────────────────────────────────────
+# Try the configured default first; scan the slot lane or infra range when busy.
+
+port_in_use() {
+  local port="$1"
+  (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && { exec 3>&- || true; return 0; }
+  return 1
+}
+
+har_port_step() {
+  echo "${HARNESS_PORT_STEP:-10}"
+}
+
+har_default_app_port() {
+  local base="$1"
+  local agent_id="$2"
+  echo $(( base + agent_id * $(har_port_step) ))
+}
+
+har_slot_port_lane_end() {
+  local default_port="$1"
+  echo $(( default_port + $(har_port_step) - 1 ))
+}
+
+# har_pick_free_port <start> <end> — echoes the first free port in [start, end].
+har_pick_free_port() {
+  local start="$1"
+  local end="$2"
+  local port
+  for ((port=start; port<=end; port++)); do
+    if ! port_in_use "$port"; then
+      echo "$port"
+      return 0
+    fi
+  done
+  echo "Error: no free port in range ${start}-${end}" >&2
+  return 1
+}
+
+# har_allocate_port <default> <scan_start> <scan_end>
+har_allocate_port() {
+  local default_port="$1"
+  local scan_start="$2"
+  local scan_end="$3"
+  if ! port_in_use "$default_port"; then
+    echo "$default_port"
+    return 0
+  fi
+  har_pick_free_port "$scan_start" "$scan_end"
+}
+
+# Allocate FE/API/DEBUG ports for a slot. Sets FE_PORT, API_PORT, DEBUG_PORT.
+har_allocate_slot_app_ports() {
+  local agent_id="$1"
+  local step fe_default api_default debug_default
+  step="$(har_port_step)"
+  fe_default="$(har_default_app_port "${HARNESS_FE_BASE_PORT}" "$agent_id")"
+  api_default="$(har_default_app_port "${HARNESS_API_BASE_PORT}" "$agent_id")"
+  debug_default=$(( 9200 + agent_id * step ))
+
+  FE_PORT="$(har_allocate_port "$fe_default" "$fe_default" "$(har_slot_port_lane_end "$fe_default")")"
+  API_PORT="$(har_allocate_port "$api_default" "$api_default" "$(har_slot_port_lane_end "$api_default")")"
+  DEBUG_PORT="$(har_allocate_port "$debug_default" "$debug_default" $(( debug_default + step - 1 )) )"
+  export FE_PORT API_PORT DEBUG_PORT
+}
+
+# Load persisted app/infra ports from .env.agent.<id> or the slot registry.
+load_agent_ports() {
+  local agent_id="$1"
+  local repo_root="$2"
+  local env_file reg ports_json
+  env_file="$(resolve_agent_env_file "$agent_id" "$repo_root" 2>/dev/null || true)"
+  if [ -n "$env_file" ] && [ -f "$env_file" ]; then
+    # shellcheck source=/dev/null
+    source "$env_file"
+    FE_PORT="${FE_PORT:-}"
+    API_PORT="${API_PORT:-${PORT:-}}"
+    DEBUG_PORT="${DEBUG_PORT:-}"
+    DB_PORT="${PGPORT:-${DB_PORT:-}}"
+    return 0
+  fi
+  reg="$(slot_registry_file "$agent_id")"
+  if [ -f "$reg" ]; then
+    ports_json="$(node -e '
+try {
+  const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).ports;
+  if (p) process.stdout.write(JSON.stringify(p));
+} catch {}
+' "$reg" 2>/dev/null || true)"
+    if [ -n "$ports_json" ]; then
+      FE_PORT="$(node -e "const p=JSON.parse(process.argv[1]);process.stdout.write(String(p.frontend??''))" "$ports_json")"
+      API_PORT="$(node -e "const p=JSON.parse(process.argv[1]);process.stdout.write(String(p.api??''))" "$ports_json")"
+      DEBUG_PORT="$(node -e "const p=JSON.parse(process.argv[1]);process.stdout.write(String(p.debug??''))" "$ports_json")"
+      DB_PORT="$(node -e "const p=JSON.parse(process.argv[1]);process.stdout.write(String(p.db??''))" "$ports_json")"
+      export FE_PORT API_PORT DEBUG_PORT DB_PORT
+      return 0
+    fi
+  fi
+  har_allocate_slot_app_ports "$agent_id"
+  DB_PORT="${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}"
+  export FE_PORT API_PORT DEBUG_PORT DB_PORT
+}
+
+# ── Project-scoped PM2 names ────────────────────────────────────────────────────
+# Pattern: har-<project>-agent-<id>-<service> (machine-global PM2 namespace).
+
+har_pm2_slot_prefix() {
+  echo "har-${HARNESS_PROJECT_NAME}-agent-${1}"
+}
+
+har_pm2_delete_regex() {
+  echo "/^har-${HARNESS_PROJECT_NAME}-agent-${1}-/"
+}
+
+har_tmux_session() {
+  echo "har-${HARNESS_PROJECT_NAME}-agent-${1}"
+}
+
 # ── Slot registry ─────────────────────────────────────────────────────────────
 # .har/slots/agent-<id>.json is the source of truth for where a session lives
 # (worktree path, work dir, branch, base commit). Written by launch.sh, removed

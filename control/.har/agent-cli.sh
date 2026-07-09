@@ -17,51 +17,94 @@ COMMAND="${2:?Usage: agent-cli.sh <agent-id> <command> [args...]}"
 
 validate_agent_id "$AGENT_ID"
 
-FE_PORT=$(( HARNESS_FE_BASE_PORT + AGENT_ID * 10 ))
-API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
-DB_PORT="${AGENT_DB_PORT:-15432}"
+load_agent_ports "$AGENT_ID" "$REPO_ROOT"
+DB_PORT="${DB_PORT:-${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}}"
 export PGPASSWORD="password"
+
+PM2_SLOT_PREFIX="$(har_pm2_slot_prefix "$AGENT_ID")"
 
 case "$COMMAND" in
   status)
     ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT" || true)"
     WORKTREE_DIR="$(existing_slot_worktree "$AGENT_ID")"
-
+    REG_FILE="$(slot_registry_file "$AGENT_ID")"
     PM2_RAW=$(npx --yes pm2 jlist 2>/dev/null || true)
     PM2_FOUND=false
+    PM2_FOREIGN=false
+    PM2_LEGACY=false
 
     if [ -n "$PM2_RAW" ]; then
+      set +e
       echo "$PM2_RAW" | node -e "
 const agentId = '${AGENT_ID}';
+const project = '${HARNESS_PROJECT_NAME}';
+const slotPrefix = 'har-' + project + '-agent-' + agentId + '-';
+const legacyPrefix = 'agent-' + agentId + '-';
 let raw = '';
 process.stdin.on('data', c => raw += c);
 process.stdin.on('end', () => {
   try {
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) process.exit(1);
-    const procs = arr.filter(x => x.name && x.name.startsWith('agent-' + agentId + '-'));
-    if (procs.length === 0) process.exit(1);
-    console.log('Agent ' + agentId + ' processes:');
-    procs.forEach(p => {
-      const s = (p.pm2_env?.status || 'unknown').padEnd(10);
-      const mem = Math.round((p.monit?.memory || 0) / 1024 / 1024) + 'MB';
-      const cpu = (p.monit?.cpu || 0) + '%';
-      console.log('  ' + p.name.padEnd(42) + s + '  mem=' + mem + '  cpu=' + cpu);
-    });
+    const owned = arr.filter(x => x.name && x.name.startsWith(slotPrefix));
+    const foreignProject = arr.filter(x =>
+      x.name && x.name.startsWith('har-') && x.name.includes('-agent-' + agentId + '-') && !x.name.startsWith(slotPrefix));
+    const legacy = arr.filter(x => x.name && x.name.startsWith(legacyPrefix) && !x.name.startsWith('har-'));
+    if (owned.length > 0) {
+      console.log('Agent ' + agentId + ' processes (' + project + '):');
+      owned.forEach(p => {
+        const s = (p.pm2_env?.status || 'unknown').padEnd(10);
+        const mem = Math.round((p.monit?.memory || 0) / 1024 / 1024) + 'MB';
+        const cpu = (p.monit?.cpu || 0) + '%';
+        const cwd = p.pm2_env?.pm_cwd || p.pm2_env?.cwd || '';
+        console.log('  ' + p.name.padEnd(48) + s + '  mem=' + mem + '  cpu=' + cpu);
+        if (cwd) console.log('    cwd: ' + cwd);
+      });
+      process.exit(0);
+    }
+    if (foreignProject.length > 0 || legacy.length > 0) {
+      if (foreignProject.length > 0) {
+        console.log('ERROR: foreign PM2 processes match agent ' + agentId + ' but belong to another harness:');
+        foreignProject.forEach(p => console.log('  ' + p.name + '  cwd=' + (p.pm2_env?.pm_cwd || p.pm2_env?.cwd || 'unknown')));
+      }
+      if (legacy.length > 0) {
+        console.log('ERROR: legacy PM2 processes (pre project-scoping) match agent ' + agentId + ':');
+        legacy.forEach(p => console.log('  ' + p.name + '  cwd=' + (p.pm2_env?.pm_cwd || p.pm2_env?.cwd || 'unknown')));
+      }
+      process.exit(2);
+    }
+    process.exit(1);
   } catch {
     process.exit(1);
   }
 });
-" && PM2_FOUND=true
+"
+      pm2_status=$?
+      set -e
+      case "$pm2_status" in
+        0) PM2_FOUND=true ;;
+        2) PM2_FOREIGN=true ;;
+      esac
+    fi
+
+    if [ "$PM2_FOREIGN" = true ]; then
+      exit 1
     fi
 
     if [ "$PM2_FOUND" = true ]; then
-      REG_FILE="$(slot_registry_file "$AGENT_ID")"
       if [ ! -f "$REG_FILE" ]; then
-        echo "Warning: slot registry missing at $REG_FILE — verify/teardown may not resolve this slot."
+        echo "ERROR: slot registry missing at $REG_FILE but PM2 processes exist for this project." >&2
+        echo "  Another harness may have been torn down incorrectly, or this slot was started outside launch.sh." >&2
+        exit 1
+      fi
+      REG_PROJECT="$(read_slot_field "$REG_FILE" projectName || true)"
+      if [ -n "$REG_PROJECT" ] && [ "$REG_PROJECT" != "$HARNESS_PROJECT_NAME" ]; then
+        echo "ERROR: slot registry projectName=${REG_PROJECT} does not match harness ${HARNESS_PROJECT_NAME}." >&2
+        exit 1
       fi
       if [ -z "$ENV_FILE" ]; then
-        echo "Warning: .env.agent.${AGENT_ID} could not be resolved — relaunch with --replace when ready."
+        echo "ERROR: .env.agent.${AGENT_ID} could not be resolved — relaunch with --replace when ready." >&2
+        exit 1
       fi
     elif [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
       echo "Agent ${AGENT_ID}: active (no PM2 processes)"
@@ -69,6 +112,8 @@ process.stdin.on('end', () => {
       source "$ENV_FILE" 2>/dev/null || true
       echo "  Work dir:  $(resolve_agent_work_dir "$ENV_FILE" "$AGENT_ID")"
       [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ] && echo "  Worktree:  $WORKTREE_DIR"
+      echo "  Frontend:  http://localhost:${FE_PORT}"
+      echo "  API:       http://localhost:${API_PORT}"
     else
       echo "No active environment for agent ${AGENT_ID}"
       echo "  Run: ./.har/launch.sh ${AGENT_ID}"
@@ -78,22 +123,23 @@ process.stdin.on('end', () => {
   logs)
     SERVICE="${3:-}"
     if [ -n "$SERVICE" ]; then
-      npx pm2 logs "agent-${AGENT_ID}-${SERVICE}" --lines 100
+      npx pm2 logs "${PM2_SLOT_PREFIX}-${SERVICE}" --lines 100
     else
-      npx pm2 logs --name "agent-${AGENT_ID}" --lines 100
+      npx pm2 logs --name "${PM2_SLOT_PREFIX}" --lines 100
     fi
     ;;
 
   restart)
     SERVICE="${3:-}"
     if [ -n "$SERVICE" ]; then
-      npx pm2 restart "agent-${AGENT_ID}-${SERVICE}"
+      npx pm2 restart "${PM2_SLOT_PREFIX}-${SERVICE}"
     else
       npx pm2 jlist 2>/dev/null | node -e "
+const prefix = '${PM2_SLOT_PREFIX}-';
 const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-const names = d.filter(x => x.name.startsWith('agent-${AGENT_ID}-')).map(x => x.name);
+const names = d.filter(x => x.name && x.name.startsWith(prefix)).map(x => x.name);
 names.forEach(n => require('child_process').execSync('npx pm2 restart ' + n, {stdio:'inherit'}));
-if (names.length === 0) console.log('No processes found for agent ${AGENT_ID}');
+if (names.length === 0) console.log('No processes found for ${PM2_SLOT_PREFIX}');
 " 2>/dev/null || true
     fi
     ;;
@@ -121,7 +167,10 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
   url)
     echo "Frontend:  http://localhost:${FE_PORT}"
     echo "API:       http://localhost:${API_PORT}"
-    har_infra_enabled db && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
+    har_infra_enabled db               && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
+    har_infra_enabled minio            && echo "MinIO:     http://localhost:${AGENT_MINIO_CONSOLE_PORT:-19001}"
+    har_infra_enabled headless-browser && echo "Browser:   http://localhost:${AGENT_BROWSER_PORT:-13001}"
+    har_infra_enabled mailpit          && echo "Mailpit:   http://localhost:${AGENT_MAILPIT_WEB_PORT:-18025}"
     ;;
 
   reset-db)
@@ -157,7 +206,7 @@ LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
     ;;
 
   attach)
-    SESSION="agent-${AGENT_ID}"
+    SESSION="$(har_tmux_session "$AGENT_ID")"
     if ! tmux has-session -t "$SESSION" 2>/dev/null; then
       echo "No tmux session found: $SESSION" >&2
       exit 1

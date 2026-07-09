@@ -40,7 +40,8 @@ if [ -f "$REGISTRY_FILE" ]; then
 fi
 [ -n "$WORKTREE_PATH" ] || WORKTREE_PATH="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
 
-npx --yes pm2 delete "/^agent-${AGENT_ID}-/" 2>/dev/null || true
+PM2_REGEX="$(har_pm2_delete_regex "$AGENT_ID")"
+npx --yes pm2 delete "$PM2_REGEX" 2>/dev/null || true
 echo "✓ Stopped PM2 processes"
 
 if har_infra_enabled db; then

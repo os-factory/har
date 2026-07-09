@@ -155,10 +155,54 @@ function lastBuildPass(run: RunRecord | undefined): boolean | undefined {
   return build?.pass;
 }
 
+function listPm2Processes(): Array<{ name?: string }> | undefined {
+  try {
+    const raw = execSync('npx --yes pm2 jlist', {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    const procs = JSON.parse(raw) as Array<{ name?: string }>;
+    return Array.isArray(procs) ? procs : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function detectPm2Issue(
+  projectName: string,
+  agentId: number,
+  session: ReturnType<typeof readSlotRegistry>,
+  procs: Array<{ name?: string }> | undefined,
+): AgentSlotStatus['pm2Issue'] {
+  if (!procs) return undefined;
+
+  const slotPrefix = `har-${projectName}-agent-${agentId}-`;
+  const legacyPrefix = `agent-${agentId}-`;
+  const owned = procs.filter((p) => p.name?.startsWith(slotPrefix));
+  const foreign = procs.filter(
+    (p) =>
+      p.name &&
+      ((p.name.startsWith('har-') &&
+        p.name.includes(`-agent-${agentId}-`) &&
+        !p.name.startsWith(slotPrefix)) ||
+        (p.name.startsWith(legacyPrefix) && !p.name.startsWith('har-'))),
+  );
+
+  if (foreign.length > 0) return 'foreign_pm2';
+  if (owned.length > 0) {
+    if (!session) return 'registry_missing';
+    if (session.projectName && session.projectName !== projectName) {
+      return 'project_mismatch';
+    }
+  }
+  return undefined;
+}
+
 function collectSlotStatus(
   harnessRoot: string,
   agentId: number,
   runs: RunRecord[],
+  pm2Procs: Array<{ name?: string }> | undefined,
 ): AgentSlotStatus {
   const env = readHarnessEnv(harnessRoot);
   const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);
@@ -205,6 +249,8 @@ function collectSlotStatus(
     ? collectWorktreeDrift(harnessRoot, worktreePath, session?.baseCommit)
     : {};
 
+  const pm2Issue = detectPm2Issue(projectName, agentId, session, pm2Procs);
+
   return {
     agentId,
     active,
@@ -212,6 +258,8 @@ function collectSlotStatus(
     worktreePath,
     branch: session?.branch ?? (worktreePath ? readWorktreeBranch(worktreePath) : undefined),
     previewUrls,
+    ports: session?.ports,
+    pm2Issue,
     harnessUsage: deriveHarnessUsage(latest, active),
     lastRunId: latest?.runId,
     lastRunAt: latest?.startedAt,
@@ -234,13 +282,14 @@ export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
   const runs = listRuns(harnessRoot, { limit: 200 });
   const manifest = readManifest(harnessRoot);
   const slotIds = getAgentSlotIds(harnessRoot);
+  const pm2Procs = listPm2Processes();
 
   return {
     repoPath: path.resolve(repoPath),
     harnessRoot,
     gitRemote: readGitRemote(harnessRoot),
     profile: manifest?.profile,
-    slots: slotIds.map((id) => collectSlotStatus(harnessRoot, id, runs)),
+    slots: slotIds.map((id) => collectSlotStatus(harnessRoot, id, runs, pm2Procs)),
     generatedAt: new Date().toISOString(),
   };
 }
