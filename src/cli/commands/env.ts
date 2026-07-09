@@ -14,13 +14,14 @@ import {
   completeEnvironment,
   getEnvironmentStatus,
   launchEnvironment,
+  preflightEnvironment,
   runVerification,
   teardownEnvironment,
 } from '../../core/run-service';
 import { checkLaunchGuard } from '../../core/slot-launch-guard';
 import { listRuns, getRun } from '../../core/runs';
 import { collectEnvironmentStatus } from '../../core/slot-status';
-import { EnvironmentStatusSchema } from '../../harness/schema';
+import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
 import { recordRepoForControlSync } from '../../core/control-registry';
 import { writeFileSafe } from '../../utils/file-ops';
 import { requireApiKey, validateAgentId } from '../../utils/validation';
@@ -151,6 +152,26 @@ export const envCommand = {
                 'Discard uncommitted changes when replacing a dirty worktree (only after explicit approval)',
             }),
         handleLaunch,
+      )
+      .command(
+        'preflight <id>',
+        'Check whether a slot can launch now (ports, PM2, Docker, occupied slot)',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .option('repo', { type: 'string', default: '.' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' })
+            .option('replace', {
+              type: 'boolean',
+              default: false,
+              describe: 'Treat an occupied slot as replaceable (same as launch --replace)',
+            })
+            .option('force', {
+              type: 'boolean',
+              default: false,
+              describe: 'Allow replacing a dirty worktree (only after explicit approval)',
+            }),
+        handlePreflight,
       )
       .command(
         'verify <id>',
@@ -453,6 +474,33 @@ export async function handleAddStage(argv: {
     error((err as Error).message);
     process.exit(1);
   }
+}
+
+export async function handlePreflight(argv: {
+  id?: number;
+  repo: string;
+  json?: boolean;
+  replace: boolean;
+  force: boolean;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  const result = await preflightEnvironment({
+    repoPath: repo,
+    agentId,
+    confirmReplace: argv.replace,
+    force: argv.force,
+  });
+
+  if (argv.json) {
+    const output = SlotReadinessSchema.parse(result.readiness);
+    process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+    process.exit(result.code);
+    return;
+  }
+
+  if (result.stdout) process.stdout.write(result.stdout);
+  process.exit(result.code);
 }
 
 export async function handleLaunch(argv: {

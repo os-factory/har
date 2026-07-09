@@ -42,6 +42,9 @@ validate_agent_id "$AGENT_ID"
 
 log() { echo "==> [agent-$AGENT_ID] $*" >&2; }
 
+# Preflight before worktree/install — ports, foreign PM2, Docker, occupied slot.
+har_launch_preflight "$AGENT_ID" "$FORCE" "$REPLACE" || exit $?
+
 # Replace any previous session for this slot — requires explicit confirmation.
 if slot_is_occupied "$AGENT_ID"; then
   require_slot_replace_confirm "$AGENT_ID" "$FORCE" "$REPLACE"
@@ -49,9 +52,9 @@ if slot_is_occupied "$AGENT_ID"; then
   "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
 fi
 
-# Preflight port allocation before worktree/install — scan when defaults are busy.
-har_allocate_slot_app_ports "$AGENT_ID"
-log "Ports: frontend=$FE_PORT api=$API_PORT debug=$DEBUG_PORT"
+if har_harness_uses_pm2; then
+  log "Ports: frontend=$FE_PORT api=$API_PORT debug=$DEBUG_PORT"
+fi
 
 # Ensure shared infra is running (persists host ports in .har/state/infra.env).
 "$SCRIPT_DIR/setup-infra.sh"

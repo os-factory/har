@@ -15,6 +15,7 @@ import { getAgentSlotIds } from '../harness/stages';
 import { computePreviewUrls } from './local-executor';
 import { listRuns, resolveAgentWorkDir } from './runs';
 import { readSlotRegistry } from './slot-registry';
+import { inspectSlotReadiness } from './slot-preflight';
 
 const BYPASS_WARNING_MS = 15 * 60 * 1000;
 
@@ -160,6 +161,7 @@ function listPm2Processes(): Array<{ name?: string }> | undefined {
     const raw = execSync('npx --yes pm2 jlist', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 3000,
     });
     const procs = JSON.parse(raw) as Array<{ name?: string }>;
     return Array.isArray(procs) ? procs : undefined;
@@ -250,6 +252,10 @@ function collectSlotStatus(
     : {};
 
   const pm2Issue = detectPm2Issue(projectName, agentId, session, pm2Procs);
+  const readiness = inspectSlotReadiness(harnessRoot, agentId, {
+    allocatePorts: true,
+    occupied: { active, dirty: drift.dirty },
+  });
 
   return {
     agentId,
@@ -260,6 +266,7 @@ function collectSlotStatus(
     previewUrls,
     ports: session?.ports,
     pm2Issue,
+    readiness,
     harnessUsage: deriveHarnessUsage(latest, active),
     lastRunId: latest?.runId,
     lastRunAt: latest?.startedAt,

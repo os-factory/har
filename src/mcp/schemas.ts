@@ -5,6 +5,7 @@ import {
   HarnessStageSchema,
   RunRecordSchema,
   ShellRunOutputSchema,
+  SlotReadinessSchema,
   StageKindSchema,
   StageResultSchema,
   VerificationResultSchema,
@@ -100,6 +101,24 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
       sessionCreatedAt: z.string().optional(),
     })
     .optional(),
+});
+
+export const PreflightEnvironmentInputSchema = z.object({
+  repo: z.string().default('.'),
+  agentId: agentIdSchema,
+  confirmReplace: z
+    .boolean()
+    .default(false)
+    .describe('Treat an occupied slot as replaceable (same as launch confirmReplace).'),
+  force: z
+    .boolean()
+    .default(false)
+    .describe('Allow replacing a dirty worktree (requires explicit user approval).'),
+});
+
+export const PreflightEnvironmentOutputSchema = ShellRunOutputSchema.extend({
+  readiness: SlotReadinessSchema,
+  blocked: z.boolean().optional(),
 });
 
 export const CompleteEnvironmentInputSchema = z.object({

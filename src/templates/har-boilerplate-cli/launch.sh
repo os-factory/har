@@ -40,6 +40,9 @@ validate_agent_id "$AGENT_ID"
 
 log() { echo "==> [agent-$AGENT_ID] $*" >&2; }
 
+# Preflight before worktree/install — occupied slot gate for CLI harnesses.
+har_launch_preflight "$AGENT_ID" "$FORCE" "$REPLACE" || exit $?
+
 # Replace any previous session for this slot — requires explicit confirmation.
 if slot_is_occupied "$AGENT_ID"; then
   require_slot_replace_confirm "$AGENT_ID" "$FORCE" "$REPLACE"
