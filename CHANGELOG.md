@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/os-factory/har/compare/v0.5.0...v0.6.0) (2026-07-09)
+
+
+### Features
+
+* language-agnostic launch provisioning across HAR profiles ([#32](https://github.com/os-factory/har/issues/32)) ([39d6960](https://github.com/os-factory/har/commit/39d69601c1fdf53a67e877594765da897213ad9f)), closes [#21](https://github.com/os-factory/har/issues/21)
+
 # [0.5.0](https://github.com/os-factory/har/compare/v0.4.0...v0.5.0) (2026-07-08)
 
 
