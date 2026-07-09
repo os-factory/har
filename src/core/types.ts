@@ -27,6 +27,8 @@ export interface LaunchFlags {
   confirmReplace?: boolean;
   /** Discard a dirty previous session instead of refusing to replace it. Requires confirmReplace. */
   force?: boolean;
+  /** Resume a failed or partial launch without creating a new worktree. */
+  resume?: boolean;
 }
 
 export interface StageRunOptions {
@@ -46,6 +48,7 @@ export interface LaunchOptions {
   claude?: boolean;
   confirmReplace?: boolean;
   force?: boolean;
+  resume?: boolean;
   capture?: boolean;
 }
 

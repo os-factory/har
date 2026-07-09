@@ -80,6 +80,10 @@ export const LaunchEnvironmentInputSchema = z.object({
     .describe(
       'Discard uncommitted changes in a dirty occupied worktree. Requires confirmReplace=true and explicit user approval — never set autonomously.',
     ),
+  resume: z
+    .boolean()
+    .default(false)
+    .describe('Resume a failed or partial launch without creating a new worktree.'),
 });
 
 export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({

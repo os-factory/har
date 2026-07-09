@@ -1,5 +1,6 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { getHarPackageVersion } from '../core/package-version';
 import { envCommand } from './commands/env';
 import { controlCommand } from './commands/control';
 import { hooksCommand } from './commands/hooks';
@@ -16,6 +17,6 @@ export async function runCli(): Promise<void> {
     .demandCommand(1, 'Please specify a command. Try: har env init')
     .strict()
     .help()
-    .version()
+    .version(getHarPackageVersion())
     .parse();
 }

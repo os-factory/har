@@ -315,6 +315,8 @@ export const AgentSlotStatusSchema = z.object({
   purpose: z.string().optional(),
   sessionStatus: z.enum(['starting', 'active', 'failed', 'completed']).optional(),
   lastError: z.string().optional(),
+  /** Set when a failed/starting session can be resumed without --replace. */
+  resumeHint: z.string().optional(),
   /** Worktree checked out to no branch (legacy failure mode; should not happen with sessions). */
   detachedHead: z.boolean().optional(),
   /** Worktree has uncommitted changes. */

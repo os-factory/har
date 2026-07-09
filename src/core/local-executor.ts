@@ -138,6 +138,7 @@ function buildExecutionPlan(
     if (options.launchFlags.claude) launchFlagArgs.push('--claude');
     if (options.launchFlags.confirmReplace) launchFlagArgs.push('--replace');
     if (options.launchFlags.force) launchFlagArgs.push('--force');
+    if (options.launchFlags.resume) launchFlagArgs.push('--resume');
   }
 
   if (stage.command) {

@@ -257,6 +257,11 @@ function collectSlotStatus(
     occupied: { active, dirty: drift.dirty },
   });
 
+  const resumeHint =
+    session?.status === 'failed' || session?.status === 'starting'
+      ? `har env launch ${agentId} --resume (alias: har env recover ${agentId})`
+      : undefined;
+
   return {
     agentId,
     active,
@@ -280,6 +285,7 @@ function collectSlotStatus(
     purpose: session?.purpose,
     sessionStatus: session?.status,
     lastError: session?.lastError,
+    resumeHint,
     ...drift,
   };
 }

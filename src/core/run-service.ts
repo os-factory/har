@@ -153,6 +153,7 @@ export class RunService {
     const guard = checkLaunchGuard(options.repoPath, options.agentId, {
       confirmReplace: options.confirmReplace,
       force: options.force,
+      resume: options.resume,
     });
     if (!guard.allowed) {
       const slot = guard.slot;
@@ -184,6 +185,7 @@ export class RunService {
         claude: options.claude,
         confirmReplace: options.confirmReplace,
         force: options.force,
+        resume: options.resume,
       },
       trigger: 'cli',
     });
