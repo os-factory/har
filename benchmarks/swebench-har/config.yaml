@@ -2,9 +2,12 @@ dataset_name: SWE-bench/SWE-bench_Lite
 split: test
 model: gpt-5-mini
 setup_model: gpt-5.5
-setup_timeout_minutes: 45
 solve_timeout_minutes: 60
-setup_max_attempts: 2
+# HAR setup phase (bootstrap + task readiness + gate retries)
+setup_budget_minutes: 120
+setup_timeout_minutes: 45
+readiness_timeout_minutes: 20
+setup_max_rounds: 6
 har_verify_full: false
 har_cache_dir: .har-cache
 runs_dir: runs

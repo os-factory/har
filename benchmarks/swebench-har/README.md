@@ -98,8 +98,10 @@ benchmarks/swebench-har/
 
 The HAR arm records:
 
-- `har_cache_hit` / `har_cache_saved` — per-repo `.har/` reuse
-- `har_gate_initial` / `har_gate_attempt_*` — pre-fix gate before Codex fix (launch + smoke)
+- `har_cache_hit` / `har_cache_saved` / `har_cache_invalidated` — per-repo `.har/` reuse and invalidation
+- `har_bootstrap_attempts` / `har_task_readiness` — two-phase setup (repo bootstrap vs task readiness)
+- `har_setup_budget_minutes` / `har_setup_budget_used_seconds` / `har_setup_rounds` — budget-based retries
+- `har_gate_initial` / `har_gate_round_*` — pre-fix gate before Codex fix (launch + smoke)
 - `har_gate_launch` / `har_gate_smoke` — split launch readiness vs quick smoke verify
 - `har_ready_for_fix` — slot launched and smoke verify passed (not full test suite)
 - `har_launch.ok`
@@ -118,6 +120,27 @@ The HAR arm records:
 
 Quick verify must be **language-agnostic** — compile/import/build smoke, not full pytest/Django runtests/Sphinx extension graphs.
 
+## Two-phase HAR setup
+
+Setup is split into two agent phases with different scope, models, and cache behavior:
+
+| Phase | When | Model | Cached |
+|-------|------|-------|--------|
+| **Repo bootstrap** | Cache miss, or gate failure after cache hit | `setup_model` (default GPT-5.5) | Yes — saved to `.har-cache/<repo>/` |
+| **Task readiness** | Every instance | `model` (default GPT-5-mini) | No — per-run overlay under `runs/<id>/har/task-overlay/` |
+
+```text
+Cache hit?
+  → task readiness (mini) → pre-fix gate → fix
+
+Cache miss / gate fail?
+  → repo bootstrap (5.5) → task readiness (mini) → gate
+  → retry until setup_budget_minutes or setup_max_rounds
+  → invalidate cache on gate failure after cache hit
+```
+
+Task readiness receives the `problem_statement` and may add one lightweight task-scoped smoke check as an ephemeral overlay — it does not rewrite repo-generic cached harness defaults.
+
 ## Per-repo `.har/` cache
 
 Adapted harness files are cached under `.har-cache/<repo>/` and reused across instances of the same repository (different `base_commit` values). Before the fix stage the runner always:
@@ -126,7 +149,7 @@ Adapted harness files are cached under `.har-cache/<repo>/` and reused across in
 2. runs `har env launch 1 --replace --force` (with `HAR_CONFIRM_REPLACE=1`)
 3. runs quick `har env verify 1` (smoke only — no `--full`)
 
-If the gate fails, the setup model re-adapts `.har/` (up to `setup_max_attempts`, default 2) and the cache is refreshed on success.
+If the gate fails after a cache hit, the cache is **invalidated** and repo bootstrap runs again. Retries continue until `setup_budget_minutes` (default 120) is exhausted or `setup_max_rounds` (default 6) is reached. Structured gate JSON is passed to setup retries.
 
 ## Profile selection
 
@@ -136,11 +159,10 @@ If the gate fails, the setup model re-adapts `.har/` (up to `setup_max_attempts`
 - `default` — web-app repos with frontend dev-server signals
 - `ios` — iOS / Swift mobile apps (xcodebuild, simulator)
 
-## HAR setup prompt
+## HAR setup prompts
 
-The setup agent receives `prompts/har-setup.md`, which embeds the same text as
-`.har/ADAPT-PROMPT.md` from `har env init`, plus SWE-bench-specific constraints
-(no `launch.sh` edits, smoke-only pre-fix gate, no slot launch during setup).
+- **Repo bootstrap** — `prompts/har-setup.md` (GPT-5.5): embeds `.har/ADAPT-PROMPT.md`, repo-generic harness adaptation, no `launch.sh` edits
+- **Task readiness** — `prompts/har-task-readiness.md` (GPT-5-mini): per-instance check with `problem_statement`, optional ephemeral task overlay
 
 ## Smoke tests
 

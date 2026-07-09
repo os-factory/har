@@ -14,7 +14,7 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from lib.common import benchmark_config, render_template, sanitize_instance_row  # noqa: E402
-from lib.har_cache import har_cache_exists, load_har_cache, save_har_cache  # noqa: E402
+from lib.har_cache import har_cache_exists, invalidate_har_cache, load_har_cache, save_har_cache  # noqa: E402
 from lib.har_utils import (  # noqa: E402
     build_init_adapt_prompt,
     har_validate_launch,
@@ -35,7 +35,9 @@ def test_config_loads() -> None:
     assert cfg["dataset_name"] == "SWE-bench/SWE-bench_Lite"
     assert cfg["model"] == "gpt-5-mini"
     assert cfg["setup_model"] == "gpt-5.5"
-    assert cfg["setup_max_attempts"] == 2
+    assert cfg["setup_budget_minutes"] == 120
+    assert cfg["setup_max_rounds"] == 6
+    assert cfg["readiness_timeout_minutes"] == 20
 
 
 def test_har_cache_roundtrip() -> None:
@@ -67,6 +69,48 @@ def test_har_cache_roundtrip() -> None:
             assert not (dest / ".har" / "slots").exists()
         finally:
             har_cache.cache_root = original_cache_root  # type: ignore[method-assign]
+
+
+def test_har_cache_invalidate() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        harness_root = tmp_path / "repo"
+        harness_root.mkdir()
+        har_dir = harness_root / ".har"
+        har_dir.mkdir()
+        (har_dir / "launch.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+
+        import lib.har_cache as har_cache
+
+        original_cache_root = har_cache.cache_root
+        try:
+            har_cache.cache_root = lambda: tmp_path / "har-cache"  # type: ignore[method-assign]
+            repo_slug = "test/invalidate-repo"
+            save_har_cache(repo_slug, harness_root, "cli")
+            assert har_cache_exists(repo_slug, "cli")
+            assert invalidate_har_cache(repo_slug)
+            assert not har_cache_exists(repo_slug, "cli")
+        finally:
+            har_cache.cache_root = original_cache_root  # type: ignore[method-assign]
+
+
+def test_task_readiness_prompt_render() -> None:
+    text = render_template(
+        ROOT / "prompts" / "har-task-readiness.md",
+        {
+            "repo": "django/django",
+            "instance_id": "django__django-11099",
+            "base_commit": "abc123",
+            "har_profile": "cli",
+            "problem_statement": "Fix URL validator edge case",
+            "task_overlay_dir": "/tmp/task-overlay",
+            "readiness_failure_context": "",
+        },
+    )
+    assert "Fix URL validator edge case" in text
+    assert "task-overlay" in text
+    assert "Do **not** edit `launch.sh`" in text
+    assert "{{" not in text
 
 
 def test_sanitize_instance() -> None:
@@ -207,6 +251,8 @@ def main() -> int:
     tests = [
         test_config_loads,
         test_har_cache_roundtrip,
+        test_har_cache_invalidate,
+        test_task_readiness_prompt_render,
         test_sanitize_instance,
         test_profile_inference,
         test_patch_filtering,
