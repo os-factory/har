@@ -37,6 +37,12 @@ from lib.har_utils import (  # noqa: E402
     har_verify,
     read_har_adapt_prompt,
 )
+from lib.har_cache import (  # noqa: E402
+    har_cache_exists,
+    invalidate_har_cache,
+    load_har_cache,
+    save_har_cache,
+)
 from lib.patch import extract_model_patch, filter_changed_files
 from lib.profile import infer_har_profile
 
@@ -150,9 +156,11 @@ def run_har_arm(
     env: dict[str, str],
     dry_run: bool,
     setup_timeout_minutes: int,
+    readiness_timeout_minutes: int,
     solve_timeout_minutes: int,
     post_fix_verify_full: bool,
-    setup_max_attempts: int,
+    setup_budget_minutes: int,
+    setup_max_rounds: int,
 ) -> dict[str, Any]:
     cfg = benchmark_config()
     harness_root = run_dir / "har" / "repo"
@@ -174,72 +182,140 @@ def run_har_arm(
     profile = infer_har_profile(harness_root)
     record["har_profile"] = profile
 
-    from lib.har_cache import har_cache_exists, load_har_cache, save_har_cache
-
     gate_timeout = max(setup_timeout_minutes, solve_timeout_minutes) * 60
-    cache_used = False
-    if har_cache_exists(instance["repo"], profile):
-        cache_used = load_har_cache(instance["repo"], harness_root)
-        record["har_cache_hit"] = cache_used
-
-    gate = har_validate_ready(
-        harness_root,
-        timeout_seconds=gate_timeout,
-        env=env,
-    )
-    record["har_gate_initial"] = gate
-
-    setup_attempts: list[dict[str, Any]] = []
+    setup_budget_seconds = setup_budget_minutes * 60
     setup_started = time.time()
+    task_overlay_dir = run_dir / "har" / "task-overlay"
+    task_overlay_dir.mkdir(parents=True, exist_ok=True)
 
-    if not gate["ready"]:
-        failure_context = _format_gate_failure(gate)
-        for attempt in range(1, setup_max_attempts + 1):
+    cache_hit = False
+    if har_cache_exists(instance["repo"], profile):
+        cache_hit = load_har_cache(instance["repo"], harness_root)
+        record["har_cache_hit"] = cache_hit
+
+    need_bootstrap = not cache_hit
+    bootstrap_attempts: list[dict[str, Any]] = []
+    readiness_attempts: list[dict[str, Any]] = []
+    gate_rounds: list[dict[str, Any]] = []
+    cache_invalidated = False
+    gate: dict[str, Any] = {"ready": False}
+    failure_context = ""
+    readiness_failure_context = ""
+
+    for round_index in range(1, setup_max_rounds + 1):
+        elapsed = time.time() - setup_started
+        if elapsed >= setup_budget_seconds:
+            record["har_setup_budget_exhausted"] = True
+            break
+        remaining_seconds = max(1, int(setup_budget_seconds - elapsed))
+
+        if need_bootstrap:
             har_init_scaffold(harness_root, profile, env=env)
-            setup_prompt = render_template(
+            bootstrap_prompt = render_template(
                 PROMPTS / "har-setup.md",
                 prompt_values(
                     instance,
                     har_profile=profile,
                     har_adapt_prompt=read_har_adapt_prompt(harness_root, profile),
-                    setup_failure_context=failure_context if attempt > 1 or cache_used else "",
+                    setup_failure_context=failure_context,
                 ),
             )
-            setup_codex = run_codex_turn(
+            bootstrap_codex = run_codex_turn(
                 cwd=harness_root,
-                prompt=setup_prompt,
+                prompt=bootstrap_prompt,
                 model=setup_model,
                 api_key=env.get("OPENAI_API_KEY"),
-                timeout_seconds=setup_timeout_minutes * 60,
-                artifacts_dir=run_dir / "har" / f"codex-setup-{attempt}",
+                timeout_seconds=min(setup_timeout_minutes * 60, remaining_seconds),
+                artifacts_dir=run_dir / "har" / f"codex-bootstrap-r{round_index}",
             )
-            setup_attempts.append(
+            bootstrap_attempts.append(
                 {
-                    "attempt": attempt,
-                    "codex": setup_codex.result,
-                    "wall_clock_seconds": setup_codex.wall_clock_seconds,
+                    "round": round_index,
+                    "phase": "repo_bootstrap",
+                    "codex": bootstrap_codex.result,
+                    "wall_clock_seconds": bootstrap_codex.wall_clock_seconds,
                 }
             )
             har_teardown_slot(harness_root, env=env)
+            need_bootstrap = False
 
-            gate = har_validate_ready(
-                harness_root,
-                timeout_seconds=gate_timeout,
-                env=env,
-            )
-            record[f"har_gate_attempt_{attempt}"] = gate
-            if gate["ready"]:
-                save_har_cache(instance["repo"], harness_root, profile)
-                record["har_cache_saved"] = True
-                break
-            failure_context = _format_gate_failure(gate)
+        readiness_prompt = render_template(
+            PROMPTS / "har-task-readiness.md",
+            prompt_values(
+                instance,
+                har_profile=profile,
+                task_overlay_dir=str(task_overlay_dir),
+                readiness_failure_context=readiness_failure_context,
+            ),
+        )
+        readiness_codex = run_codex_turn(
+            cwd=harness_root,
+            prompt=readiness_prompt,
+            model=model,
+            api_key=env.get("OPENAI_API_KEY"),
+            timeout_seconds=min(readiness_timeout_minutes * 60, remaining_seconds),
+            artifacts_dir=run_dir / "har" / f"codex-readiness-r{round_index}",
+        )
+        readiness_attempts.append(
+            {
+                "round": round_index,
+                "phase": "task_readiness",
+                "codex": readiness_codex.result,
+                "wall_clock_seconds": readiness_codex.wall_clock_seconds,
+                "task_overlay_dir": str(task_overlay_dir),
+                "task_overlay_files": _list_task_overlay_files(task_overlay_dir),
+            }
+        )
+        har_teardown_slot(harness_root, env=env)
+
+        gate = har_validate_ready(
+            harness_root,
+            timeout_seconds=gate_timeout,
+            env=_merge_task_overlay_env(env, task_overlay_dir),
+        )
+        gate_rounds.append({"round": round_index, "gate": gate})
+        record[f"har_gate_round_{round_index}"] = gate
+
+        if gate["ready"]:
+            save_har_cache(instance["repo"], harness_root, profile)
+            record["har_cache_saved"] = True
+            break
+
+        if cache_hit or har_cache_exists(instance["repo"], profile):
+            if invalidate_har_cache(instance["repo"]):
+                cache_invalidated = True
+        cache_hit = False
+        need_bootstrap = True
+        failure_context = _format_gate_failure(gate, structured=True)
+        readiness_failure_context = _format_readiness_failure(gate, round_index)
 
     record["har_setup_seconds"] = round(time.time() - setup_started, 2)
-    record["har_setup_attempts"] = setup_attempts
-    if setup_attempts:
-        record["codex_setup"] = setup_attempts[-1]["codex"]
-    elif cache_used and gate["ready"]:
+    record["har_setup_budget_minutes"] = setup_budget_minutes
+    record["har_setup_budget_used_seconds"] = record["har_setup_seconds"]
+    record["har_setup_rounds"] = len(gate_rounds)
+    record["har_setup_max_rounds"] = setup_max_rounds
+    record["har_cache_invalidated"] = cache_invalidated
+    record["har_bootstrap_attempts"] = bootstrap_attempts
+    record["har_task_readiness"] = {
+        "attempts": readiness_attempts,
+        "rounds": len(readiness_attempts),
+        "skipped_bootstrap": bool(record.get("har_cache_hit")) and not bootstrap_attempts,
+        "overlay_dir": str(task_overlay_dir),
+        "overlay_files": _list_task_overlay_files(task_overlay_dir),
+        "status": "passed" if gate.get("ready") else "failed",
+    }
+    if bootstrap_attempts:
+        record["codex_bootstrap"] = bootstrap_attempts[-1]["codex"]
+    elif record.get("har_cache_hit") and gate.get("ready"):
+        record["codex_bootstrap"] = {"status": "skipped", "reason": "har_cache_valid"}
+    if readiness_attempts:
+        record["codex_readiness"] = readiness_attempts[-1]["codex"]
+    record["har_setup_attempts"] = bootstrap_attempts
+    if bootstrap_attempts:
+        record["codex_setup"] = bootstrap_attempts[-1]["codex"]
+    elif record.get("har_cache_hit") and gate.get("ready"):
         record["codex_setup"] = {"status": "skipped", "reason": "har_cache_valid"}
+    record["har_gate_initial"] = gate_rounds[0]["gate"] if gate_rounds else gate
 
     if not gate["ready"] or not gate.get("workdir"):
         record["har_launch"] = {
@@ -316,10 +392,59 @@ def run_har_arm(
     return record
 
 
-def _format_gate_failure(gate: dict[str, Any]) -> str:
+def _list_task_overlay_files(task_overlay_dir: Path) -> list[str]:
+    if not task_overlay_dir.exists():
+        return []
+    return sorted(
+        str(path.relative_to(task_overlay_dir))
+        for path in task_overlay_dir.rglob("*")
+        if path.is_file()
+    )
+
+
+def _merge_task_overlay_env(env: dict[str, str], task_overlay_dir: Path) -> dict[str, str]:
+    merged = dict(env)
+    task_env = task_overlay_dir / "task.env"
+    if not task_env.exists():
+        return merged
+    for line in task_env.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        merged[key.strip()] = value.strip().strip('"').strip("'")
+    return merged
+
+
+def _format_readiness_failure(gate: dict[str, Any], round_index: int) -> str:
+    return (
+        f"\n## Previous task readiness round {round_index} failed the pre-fix gate\n"
+        f"{_format_gate_failure(gate, structured=True)}\n"
+    )
+
+
+def _format_gate_failure(gate: dict[str, Any], *, structured: bool = False) -> str:
     launch = gate.get("launch") or {}
     smoke = gate.get("smoke") or {}
     verify = smoke.get("verify") or gate.get("verify") or {}
+
+    if structured:
+        payload = {
+            "ready": gate.get("ready"),
+            "launch_ok": launch.get("launch_ok", gate.get("launch_ok")),
+            "workdir": launch.get("workdir", gate.get("workdir")),
+            "agent_env_exists": launch.get("agent_env_exists", gate.get("agent_env_exists")),
+            "smoke_ready": smoke.get("ready"),
+            "verify_exit_code": verify.get("exit_code"),
+            "verify_stderr_tail": (verify.get("stderr") or "")[-2000:],
+            "launch_log_tail": (launch.get("launch_log", gate.get("launch_log", "")))[-2000:],
+        }
+        return (
+            "\n## Previous pre-fix gate failed (structured)\n"
+            "Fix harness.env and verify.sh quick-mode steps only — do not edit launch.sh.\n\n"
+            f"```json\n{json.dumps(payload, indent=2)}\n```\n"
+        )
+
     return (
         "\n## Previous pre-fix gate failed\n"
         "The benchmark runner could not launch the slot or pass quick smoke verify. "
@@ -353,7 +478,9 @@ def main() -> int:
     setup_model = args.setup_model or env.get("OPENAI_SETUP_MODEL") or cfg.get("setup_model", "gpt-5.5")
     solve_timeout = args.solve_timeout_minutes or int(cfg.get("solve_timeout_minutes", 60))
     setup_timeout = args.setup_timeout_minutes or int(cfg.get("setup_timeout_minutes", 45))
-    setup_max_attempts = int(cfg.get("setup_max_attempts", 2))
+    readiness_timeout = int(cfg.get("readiness_timeout_minutes", 20))
+    setup_budget = int(cfg.get("setup_budget_minutes", 120))
+    setup_max_rounds = int(cfg.get("setup_max_rounds", 6))
 
     instance, run_dir = load_or_sample_instance(
         seed=args.seed,
@@ -392,9 +519,11 @@ def main() -> int:
             env=env,
             dry_run=args.dry_run,
             setup_timeout_minutes=setup_timeout,
+            readiness_timeout_minutes=readiness_timeout,
             solve_timeout_minutes=solve_timeout,
             post_fix_verify_full=bool(cfg.get("har_verify_full", False)),
-            setup_max_attempts=setup_max_attempts,
+            setup_budget_minutes=setup_budget,
+            setup_max_rounds=setup_max_rounds,
         )
 
     run_record["finished_at"] = now_iso()

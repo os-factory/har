@@ -59,9 +59,11 @@ def run_one_instance(
     arm: str,
     dry_run: bool,
     setup_timeout_minutes: int,
+    readiness_timeout_minutes: int,
     solve_timeout_minutes: int,
     post_fix_verify_full: bool,
-    setup_max_attempts: int,
+    setup_budget_minutes: int,
+    setup_max_rounds: int,
 ) -> dict[str, Any]:
     instance, run_dir = prepare_instance_row(row, seed)
     record: dict[str, Any] = {
@@ -95,9 +97,11 @@ def run_one_instance(
             env=env,
             dry_run=dry_run,
             setup_timeout_minutes=setup_timeout_minutes,
+            readiness_timeout_minutes=readiness_timeout_minutes,
             solve_timeout_minutes=solve_timeout_minutes,
-            post_fix_verify_full=verify_full,
-            setup_max_attempts=setup_max_attempts,
+            post_fix_verify_full=post_fix_verify_full,
+            setup_budget_minutes=setup_budget_minutes,
+            setup_max_rounds=setup_max_rounds,
         )
 
     record["finished_at"] = now_iso()
@@ -123,8 +127,10 @@ def main() -> int:
     setup_model = args.setup_model or env.get("OPENAI_SETUP_MODEL") or cfg.get("setup_model", "gpt-5.5")
     solve_timeout = args.solve_timeout_minutes or int(cfg.get("solve_timeout_minutes", 60))
     setup_timeout = args.setup_timeout_minutes or int(cfg.get("setup_timeout_minutes", 45))
-    setup_max_attempts = int(cfg.get("setup_max_attempts", 2))
-    verify_full = bool(cfg.get("har_verify_full", False))
+    readiness_timeout = int(cfg.get("readiness_timeout_minutes", 20))
+    setup_budget = int(cfg.get("setup_budget_minutes", 120))
+    setup_max_rounds = int(cfg.get("setup_max_rounds", 6))
+    post_fix_verify_full = bool(cfg.get("har_verify_full", False))
 
     rows = load_split(cfg["dataset_name"], cfg["split"])
     selected = sample_rows(rows, args.count, args.seed)
@@ -164,9 +170,11 @@ def main() -> int:
                 arm=args.arm,
                 dry_run=args.dry_run,
                 setup_timeout_minutes=setup_timeout,
+                readiness_timeout_minutes=readiness_timeout,
                 solve_timeout_minutes=solve_timeout,
-                verify_full=verify_full,
-                setup_max_attempts=setup_max_attempts,
+                post_fix_verify_full=post_fix_verify_full,
+                setup_budget_minutes=setup_budget,
+                setup_max_rounds=setup_max_rounds,
             )
             entry["run_id"] = result["run_id"]
             entry["status"] = "completed"

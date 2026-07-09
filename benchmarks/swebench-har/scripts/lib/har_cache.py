@@ -58,6 +58,15 @@ def load_har_cache(repo_slug: str, harness_root: Path) -> bool:
     return True
 
 
+def invalidate_har_cache(repo_slug: str) -> bool:
+    """Remove cached harness for a repo (e.g. after gate failure on a cache hit)."""
+    cache_dir = cache_dir_for_repo(repo_slug)
+    if not cache_dir.exists():
+        return False
+    shutil.rmtree(cache_dir)
+    return True
+
+
 def save_har_cache(repo_slug: str, harness_root: Path, profile: str) -> Path:
     dest_root = cache_dir_for_repo(repo_slug)
     har_src = harness_root / ".har"
