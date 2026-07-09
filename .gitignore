@@ -19,5 +19,7 @@ control/.env
 .har/runs/
 .har/validations/
 .har/slots/
+.har/state/
+control/.har/state/
 .env.agent.*
 ecosystem.agent.*.config.cjs

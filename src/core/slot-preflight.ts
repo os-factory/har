@@ -1,8 +1,15 @@
-import { execSync } from 'child_process';
 import * as path from 'path';
 import { readHarnessEnv } from '../harness/env';
 import { resolveHarnessRoot } from '../harness/manifest';
 import type { SlotReadiness } from '../harness/schema';
+import {
+  controlContainerOnPort,
+  controlDefaultPortWarnings,
+  formatControlPortBlocker,
+  listDockerContainers,
+  dockerOnPort,
+  type DockerRow,
+} from './control-port';
 import { checkLaunchGuard as checkOccupiedSlotGuard } from './slot-launch-guard-occupied';
 import type { LaunchGuardOptions } from './slot-launch-guard-occupied';
 import {
@@ -15,6 +22,7 @@ import {
   slotPortLaneEnd,
 } from './slot-ports';
 import { readSlotRegistry } from './slot-registry';
+import { execSync } from 'child_process';
 
 export interface PreflightOptions extends LaunchGuardOptions {
   /** When true, include port allocation in the result (default true for PM2 harnesses). */
@@ -24,16 +32,15 @@ export interface PreflightOptions extends LaunchGuardOptions {
    * through collectEnvironmentStatus.
    */
   occupied?: { active: boolean; dirty?: boolean };
+  /** Test hook: override docker ps results. */
+  dockerContainers?: DockerRow[];
+  /** Test hook: override PM2 process list (pass [] to skip live pm2 jlist). */
+  pm2Processes?: Pm2Process[];
 }
 
 interface Pm2Process {
   name?: string;
   pm2_env?: { pm_cwd?: string; cwd?: string; status?: string };
-}
-
-interface DockerRow {
-  name: string;
-  ports: string;
 }
 
 function listPm2Processes(): Pm2Process[] | undefined {
@@ -48,40 +55,6 @@ function listPm2Processes(): Pm2Process[] | undefined {
   } catch {
     return undefined;
   }
-}
-
-function listDockerContainers(): DockerRow[] {
-  try {
-    const raw = execSync('docker ps --format {{.Names}}\\t{{.Ports}}', {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 3000,
-    });
-    return raw
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const tab = line.indexOf('\t');
-        if (tab === -1) return { name: line, ports: '' };
-        return { name: line.slice(0, tab), ports: line.slice(tab + 1) };
-      });
-  } catch {
-    return [];
-  }
-}
-
-function dockerOnPort(containers: DockerRow[], port: number): DockerRow | undefined {
-  const re = new RegExp(`:${port}->|:${port}/`);
-  return containers.find((c) => re.test(c.ports));
-}
-
-function controlContainerOnPort(containers: DockerRow[], port: number): DockerRow | undefined {
-  return containers.find(
-    (c) =>
-      /control/i.test(c.name) &&
-      (new RegExp(`:${port}->|:${port}/`).test(c.ports) || c.ports.includes(`0.0.0.0:${port}`)),
-  );
 }
 
 function detectForeignPm2(
@@ -153,6 +126,7 @@ export function inspectSlotReadiness(
   const usesPm2 = harnessUsesPm2(repoPath);
   const blockers: SlotReadiness['blockers'] = [];
   const remediations: string[] = [];
+  const warnings: string[] = [];
   const ports: Record<string, number> = {};
 
   const guard =
@@ -188,7 +162,11 @@ export function inspectSlotReadiness(
     );
   }
 
-  const pm2Procs = usesPm2 ? listPm2Processes() : undefined;
+  const pm2Procs = usesPm2
+    ? options.pm2Processes !== undefined
+      ? options.pm2Processes
+      : listPm2Processes()
+    : undefined;
   const foreign = usesPm2 ? detectForeignPm2(projectName, agentId, pm2Procs) : undefined;
   if (foreign) {
     const names = foreign.processes.map((p) => p.name).join(', ');
@@ -237,13 +215,20 @@ export function inspectSlotReadiness(
       ports.debug = alloc.debug;
       allocatedPorts = alloc.allocated;
 
-      const containers = listDockerContainers();
+      const containers = options.dockerContainers ?? listDockerContainers();
+      const feDefault = defaultAppPort(
+        Number(env.HARNESS_FE_BASE_PORT ?? 3000),
+        agentId,
+        portStep(env),
+      );
+      warnings.push(...controlDefaultPortWarnings(containers, feDefault, alloc.frontend));
+
       for (const [label, port] of Object.entries({ frontend: alloc.frontend, api: alloc.api })) {
         const control = controlContainerOnPort(containers, port);
         if (control) {
           blockers.push({
             code: 'control_port_conflict',
-            message: `Mission Control container "${control.name}" occupies port ${port} (${label}).`,
+            message: formatControlPortBlocker(control.name, port, label),
             remediation: 'Run: har control down — or launch a different slot id.',
             details: { container: control.name, port, label },
           });
@@ -276,7 +261,10 @@ export function inspectSlotReadiness(
       });
     } else if (dbCheck.port !== undefined) {
       ports.db = dbCheck.port;
-      const occupant = dockerOnPort(listDockerContainers(), dbCheck.port);
+      const occupant = dockerOnPort(
+        options.dockerContainers ?? listDockerContainers(),
+        dbCheck.port,
+      );
       if (
         occupant &&
         !occupant.name.startsWith(`har-${projectName}-`) &&
@@ -300,6 +288,7 @@ export function inspectSlotReadiness(
     remediations: [...new Set(remediations)],
     ports: Object.keys(ports).length > 0 ? ports : undefined,
     allocatedPorts: allocatedPorts || undefined,
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
 
@@ -316,8 +305,13 @@ export function formatPreflightReport(agentId: number, readiness: SlotReadiness)
         p.db !== undefined ? `db=${p.db}` : undefined,
       ].filter(Boolean);
       if (parts.length) lines.push(`  Ports: ${parts.join(' ')}`);
-      if (readiness.allocatedPorts) {
+      if (readiness.allocatedPorts && !readiness.warnings?.length) {
         lines.push('  (alternate ports selected — defaults were busy)');
+      }
+    }
+    if (readiness.warnings?.length) {
+      for (const w of readiness.warnings) {
+        lines.push(`  WARN: ${w}`);
       }
     }
     return lines.join('\n');
