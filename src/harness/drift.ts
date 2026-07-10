@@ -156,7 +156,6 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
       const full = path.join(harnessDir, file);
       if (!fs.statSync(full).isFile()) continue;
       if (file === 'manifest.json' || file.startsWith('ADAPT-PROMPT')) continue;
-      if (templateFiles.includes(file)) continue;
       if (profile === 'cli' && CLI_EXPECTED_ABSENT.has(file)) {
         extra.push(file);
       } else if (!templateFiles.includes(file)) {

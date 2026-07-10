@@ -4,6 +4,11 @@ import { scaffoldHarnessBoilerplate, finalizeHarness, ScaffoldOptions } from '..
 import { authorHarness } from '../llm/authoring-agent';
 import { validateHarness, smokeTestHarness, ValidationResult } from '../harness/validator';
 import { compareHarnessToTemplate, HarnessDriftResult } from '../harness/drift';
+import {
+  buildMaintainBundle,
+  MaintainBundleResult,
+  removeMaintainBundle,
+} from '../harness/maintain-bundle';
 import { readManifest, getHarnessDir } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages } from '../harness/stages';
 import {
@@ -44,6 +49,7 @@ export interface MaintainHarnessResult {
   validation: ValidationResult;
   adaptationSummary?: string;
   drift: HarnessDriftResult;
+  bundle?: MaintainBundleResult;
 }
 
 export interface ProjectDescription {
@@ -149,6 +155,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     });
 
     finalizeHarness(repoPath, authoringResult.summary, authoringResult.stack);
+    removeMaintainBundle(repoPath);
     const validation = validateHarness(repoPath);
 
     return {
@@ -158,6 +165,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     };
   }
 
+  const drift = compareHarnessToTemplate(repoPath);
   const validation = validateHarness(repoPath);
 
   if (options.finalize) {
@@ -170,6 +178,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
       options.summary ?? 'Manual adaptation finalized via har env maintain --finalize',
       existing?.stack,
     );
+    removeMaintainBundle(repoPath);
     return {
       validation,
       adaptationSummary: options.summary,
@@ -177,10 +186,13 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     };
   }
 
+  const bundle = buildMaintainBundle(repoPath, validation, drift);
+
   return {
     validation,
     adaptationSummary: 'Manual maintenance — use coding agent prompt in .har/ADAPT-PROMPT.md',
-    drift: compareHarnessToTemplate(repoPath),
+    drift,
+    bundle,
   };
 }
 

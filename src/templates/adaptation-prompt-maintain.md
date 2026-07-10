@@ -6,6 +6,8 @@ The harness already exists. Inspect what changed in the repo since the harness w
 
 **Do NOT** create a YAML config or JSON mapping file for runtime behavior. Put behavior directly in the harness scripts and templates.
 
+{{MAINTAIN_BUNDLE_SECTION}}
+
 ## Step 1 — Inspect the repository
 
 Compare the current repo against the existing harness:
@@ -13,7 +15,7 @@ Compare the current repo against the existing harness:
 - Root manifests, CI, Docker, README
 - New or changed test, lint, build, migrate, or seed commands
 - New services, ports, or environment variables
-- Run `har env maintain` drift report (generator version, template checksum mismatches, **missing port documentation vars** in `harness.env`)
+- Review `.har/maintain/drift-report.json` (generator version, template drift, **missing port documentation vars**)
 
 ## Step 2 — Update `.har/` files
 
@@ -64,10 +66,10 @@ When upgrading `@osfactory/har` or adopting new harness standards:
 
 **Generator 0.4.0 — primary app & shared infra services:**
 
-- Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from the bundled template. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
+- Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from `.har/maintain/templates/harness.env`. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
 - Set `HARNESS_PRIMARY_APP` in `harness.env` to the ONE app agents modify. Ensure `ecosystem.agent.template.cjs` starts only that app's processes. Move any other in-repo services agents depend on but don't change to shared infra: compose services in `docker-compose.agent.yml` or an optional `.har/ecosystem.shared.config.cjs` (processes `har-shared-<name>`; `setup-infra.sh` starts it when present — resync `setup-infra.sh` from the template to get this hook).
 - Prune `docker-compose.agent.yml` to only the services this project uses; delete unused menu services and volumes.
-- **Port & shared services:** ensure `.har/README.md` documents the allocation table and shared vs per-slot model; `harness.env` has every `HARNESS_*_PORT_*` var required for services in `HARNESS_INFRA_SERVICES` (copy missing vars from the bundled template when drift reports them). Remove hardcoded ports from app code, tests, and `CLAUDE.agent.md`.
+- **Port & shared services:** ensure `.har/README.md` documents the allocation table and shared vs per-slot model; `harness.env` has every `HARNESS_*_PORT_*` var required for services in `HARNESS_INFRA_SERVICES` (copy missing vars from `.har/maintain/templates/harness.env` when drift reports them). Remove hardcoded ports from app code, tests, and `CLAUDE.agent.md`.
 - Run the **cleanup checklist**: no TODO placeholders, no env blocks for removed services in `env.template`, no dead script branches, `.har/README.md` file table matches the actual files, `CLAUDE.agent.md` shows only real URLs/ports and commands, unused files deleted.
 
 **Earlier standards:**

@@ -35,17 +35,18 @@ Relaunching a slot **replaces** its previous session (the old branch is kept). R
   `har env launch <id> --resume`, `har env recover <id>`, or `./.har/launch.sh <id> --resume`.
   Do not hand-roll PM2 or skip the harness.
 
+<!-- Monorepo: if this repository contains multiple .har harnesses, list them here
+     and pick by the files you are changing. Example:
 
 ## Harnesses in this repo
 
-Monorepo with two harnesses — pick by the files you are changing:
-
 | Path | Runs | Use when changing |
 |------|------|-------------------|
-| `.har/` | `@osfactory/har` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` |
-| `control/.har/` | Mission Control (Next.js + Postgres, browser-e2e) | `control/` |
+| `.har/` | backend + frontend | `src/`, `packages/` |
+| `apps/admin/.har/` | admin dashboard | `apps/admin/` |
 
-Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`).
+Run harness commands from the directory that owns the harness (e.g. `cd apps/admin`).
+-->
 
 
 ## After making changes
