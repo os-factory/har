@@ -21,11 +21,10 @@ import {
   defaultAppPort,
   slotPortLaneEnd,
 } from './slot-ports';
-import { readSlotRegistry } from './slot-registry';
+import { readSlotRegistry, isSlotResumable } from './slot-registry';
 import { execSync } from 'child_process';
 
 export interface PreflightOptions extends LaunchGuardOptions {
-  /** When true, include port allocation in the result (default true for PM2 harnesses). */
   allocatePorts?: boolean;
   /**
    * Precomputed occupied state — pass from collectSlotStatus to avoid recursion
@@ -128,11 +127,14 @@ export function inspectSlotReadiness(
   const remediations: string[] = [];
   const warnings: string[] = [];
   const ports: Record<string, number> = {};
+  const session = readSlotRegistry(harnessRoot, agentId);
 
   const guard =
     options.occupied !== undefined
       ? options.occupied.active
-        ? !options.confirmReplace
+        ? options.resume && isSlotResumable(session)
+          ? { allowed: true }
+          : !options.confirmReplace
           ? {
               allowed: false,
               blocked: true,
@@ -148,15 +150,20 @@ export function inspectSlotReadiness(
         : { allowed: true }
       : checkOccupiedSlotGuard(repoPath, agentId, options);
   if (!guard.allowed) {
+    const resumable = isSlotResumable(session);
     blockers.push({
-      code: options.occupied?.dirty ? 'slot_dirty' : 'slot_occupied',
+      code: options.occupied?.dirty ? 'slot_dirty' : resumable ? 'slot_resumable' : 'slot_occupied',
       message: guard.reason ?? `Slot ${agentId} is occupied.`,
-      remediation: guard.slot?.dirty
+      remediation: resumable
+        ? `Resume the partial launch: har env launch ${agentId} --resume (or har env recover ${agentId})`
+        : guard.slot?.dirty
         ? 'Commit changes in the worktree, or pass --force after explicit user approval.'
         : 'Pass --replace (CLI), confirmReplace=true (MCP), or answer y at the launch prompt.',
     });
     remediations.push(
-      guard.slot?.dirty
+      resumable
+        ? `har env launch ${agentId} --resume`
+        : guard.slot?.dirty
         ? 'har env preflight <id> --replace --force'
         : 'har env preflight <id> --replace',
     );
@@ -180,7 +187,6 @@ export function inspectSlotReadiness(
     remediations.push('Inspect with: npx pm2 jlist | grep agent-' + agentId);
   }
 
-  const session = readSlotRegistry(harnessRoot, agentId);
   if (usesPm2 && pm2Procs) {
     const slotPrefix = `har-${projectName}-agent-${agentId}-`;
     const owned = pm2Procs.filter((p) => p.name?.startsWith(slotPrefix));

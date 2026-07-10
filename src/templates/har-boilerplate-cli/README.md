@@ -148,6 +148,8 @@ work dir printed by launch, never in the main checkout.
   after explicit user approval.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
+- If launch fails after creating a worktree/env file, resume with
+  `har env launch <id> --resume` or `har env recover <id>`.
 - `har env complete <id>` finishes a session: full verify (recorded as a validation),
   then teardown — branch kept.
 - `--no-worktree` runs the slot from the repo root instead (single-agent mode).

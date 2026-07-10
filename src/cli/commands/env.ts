@@ -150,8 +150,22 @@ export const envCommand = {
               default: false,
               describe:
                 'Discard uncommitted changes when replacing a dirty worktree (only after explicit approval)',
+            })
+            .option('resume', {
+              type: 'boolean',
+              default: false,
+              describe: 'Resume a failed or partial launch without creating a new worktree',
             }),
         handleLaunch,
+      )
+      .command(
+        'recover <id>',
+        'Resume a failed or partial launch (alias for launch --resume)',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .option('repo', { type: 'string', default: '.' }),
+        handleRecover,
       )
       .command(
         'preflight <id>',
@@ -254,7 +268,7 @@ export const envCommand = {
             .demandCommand(1, 'Use: runs list | runs get <runId>'),
         () => {},
       )
-      .demandCommand(1, 'Please specify a subcommand: init, maintain, add-stage, launch, verify, complete, teardown, status, runs'),
+      .demandCommand(1, 'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, runs'),
   handler: () => {},
 };
 
@@ -510,6 +524,7 @@ export async function handleLaunch(argv: {
   claude: boolean;
   replace: boolean;
   force: boolean;
+  resume: boolean;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -517,43 +532,45 @@ export async function handleLaunch(argv: {
   let confirmReplace = argv.replace;
   let force = argv.force;
 
-  const guard = checkLaunchGuard(repo, agentId, { confirmReplace, force });
-  if (!guard.allowed && guard.blocked) {
-    if (!confirmReplace && process.stdin.isTTY && process.stdout.isTTY) {
-      warn('Occupied slot — review before replacing:');
-      console.error(guard.reason ?? '');
-      const readline = await import('readline');
-      const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-      const answer = await new Promise<string>((resolve) => {
-        rl.question('Replace this slot? [y/N] ', resolve);
-      });
-      rl.close();
-      if (!/^[Yy]$/.test(answer.trim())) {
-        error('Aborted — slot left unchanged.');
-        process.exit(2);
+  if (!argv.resume) {
+    const guard = checkLaunchGuard(repo, agentId, { confirmReplace, force });
+    if (!guard.allowed && guard.blocked) {
+      if (!confirmReplace && process.stdin.isTTY && process.stdout.isTTY) {
+        warn('Occupied slot — review before replacing:');
+        console.error(guard.reason ?? '');
+        const readline = await import('readline');
+        const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+        const answer = await new Promise<string>((resolve) => {
+          rl.question('Replace this slot? [y/N] ', resolve);
+        });
+        rl.close();
+        if (!/^[Yy]$/.test(answer.trim())) {
+          error('Aborted — slot left unchanged.');
+          process.exit(2);
+        }
+        confirmReplace = true;
       }
-      confirmReplace = true;
     }
-  }
 
-  const guardAfterConfirm = checkLaunchGuard(repo, agentId, { confirmReplace, force });
-  if (!guardAfterConfirm.allowed && guardAfterConfirm.blocked && guardAfterConfirm.slot?.dirty) {
-    if (!force && process.stdin.isTTY && process.stdout.isTTY) {
-      warn('Worktree has uncommitted changes.');
-      const readline = await import('readline');
-      const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-      const answer = await new Promise<string>((resolve) => {
-        rl.question('Discard uncommitted changes? [y/N] ', resolve);
-      });
-      rl.close();
-      if (!/^[Yy]$/.test(answer.trim())) {
-        error('Aborted — uncommitted work preserved.');
+    const guardAfterConfirm = checkLaunchGuard(repo, agentId, { confirmReplace, force });
+    if (!guardAfterConfirm.allowed && guardAfterConfirm.blocked && guardAfterConfirm.slot?.dirty) {
+      if (!force && process.stdin.isTTY && process.stdout.isTTY) {
+        warn('Worktree has uncommitted changes.');
+        const readline = await import('readline');
+        const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+        const answer = await new Promise<string>((resolve) => {
+          rl.question('Discard uncommitted changes? [y/N] ', resolve);
+        });
+        rl.close();
+        if (!/^[Yy]$/.test(answer.trim())) {
+          error('Aborted — uncommitted work preserved.');
+          process.exit(2);
+        }
+        force = true;
+      } else if (!force) {
+        error(guardAfterConfirm.reason ?? 'Dirty worktree requires --force.');
         process.exit(2);
       }
-      force = true;
-    } else if (!force) {
-      error(guardAfterConfirm.reason ?? 'Dirty worktree requires --force.');
-      process.exit(2);
     }
   }
 
@@ -564,6 +581,7 @@ export async function handleLaunch(argv: {
     claude: argv.claude,
     confirmReplace,
     force,
+    resume: argv.resume,
     capture: false,
   });
   if (result.blocked) {
@@ -576,6 +594,18 @@ export async function handleLaunch(argv: {
     if (result.branch) info(`Branch: ${result.branch}`);
   }
   process.exit(result.code);
+}
+
+export async function handleRecover(argv: { id?: number; repo: string }): Promise<void> {
+  return handleLaunch({
+    id: argv.id,
+    repo: argv.repo,
+    worktree: true,
+    claude: false,
+    replace: false,
+    force: false,
+    resume: true,
+  });
 }
 
 export async function handleVerify(argv: { id?: number; repo: string; full: boolean }): Promise<void> {

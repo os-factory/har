@@ -5,11 +5,12 @@ import { execSync } from 'child_process';
 import { readHarnessEnv } from '../harness/env';
 import { resolveHarnessRoot } from '../harness/manifest';
 import type { AgentSlotStatus } from '../harness/schema';
-import { readSlotRegistry } from './slot-registry';
+import { readSlotRegistry, isSlotResumable } from './slot-registry';
 
 export interface LaunchGuardOptions {
   confirmReplace?: boolean;
   force?: boolean;
+  resume?: boolean;
 }
 
 export interface LaunchGuardResult {
@@ -104,7 +105,7 @@ function collectOccupiedSlot(repoPath: string, agentId: number): AgentSlotStatus
   };
 }
 
-function formatOccupiedSlot(slot: AgentSlotStatus): string {
+function formatOccupiedSlot(slot: AgentSlotStatus, resume?: boolean): string {
   const lines = [
     `Slot ${slot.agentId} is already in use.`,
     slot.worktreePath ? `  Worktree: ${slot.worktreePath}` : undefined,
@@ -117,12 +118,29 @@ function formatOccupiedSlot(slot: AgentSlotStatus): string {
       ? '  Git:      dirty (uncommitted changes — commit or use force to discard)'
       : '  Git:      clean',
     '',
+  ];
+
+  if (
+    resume ||
+    slot.sessionStatus === 'failed' ||
+    slot.sessionStatus === 'starting'
+  ) {
+    lines.push(
+      'This session failed partway through launch. Resume without replacing:',
+      `  har env launch ${slot.agentId} --resume`,
+      `  har env recover ${slot.agentId}`,
+      `  ./.har/launch.sh ${slot.agentId} --resume`,
+      '',
+    );
+  }
+
+  lines.push(
     'Replacing removes the worktree. The session branch is kept only if you committed.',
     'Gitignored paths (state/, runs/, local clones) are NOT preserved.',
     '',
     'To replace: pass confirmReplace=true (MCP), --replace (CLI), or answer y at the prompt.',
     'If the worktree is dirty, also pass force=true / --force after explicit user approval.',
-  ];
+  );
   return lines.filter(Boolean).join('\n');
 }
 
@@ -135,6 +153,33 @@ export function checkLaunchGuard(
   const slot = collectOccupiedSlot(repoPath, agentId);
   if (!slot?.active) {
     return { allowed: true };
+  }
+
+  const harnessRoot = resolveHarnessRoot(repoPath);
+  const session = readSlotRegistry(harnessRoot, agentId);
+  if (options.resume) {
+    if (!isSlotResumable(session)) {
+      return {
+        allowed: false,
+        blocked: true,
+        slot,
+        reason: [
+          `Slot ${agentId} is not resumable (status=${session?.status ?? 'none'}).`,
+          'Only failed or starting sessions can be resumed.',
+          'Use a normal launch with --replace to start fresh.',
+        ].join('\n'),
+      };
+    }
+    return { allowed: true, slot };
+  }
+
+  if (isSlotResumable(session) && !options.confirmReplace) {
+    return {
+      allowed: false,
+      blocked: true,
+      slot,
+      reason: formatOccupiedSlot(slot),
+    };
   }
 
   if (!options.confirmReplace) {

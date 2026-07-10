@@ -92,6 +92,23 @@ export const HAR_MCP_TOOLS: Tool[] = [
           description:
             'Discard uncommitted changes when replacing a dirty worktree. Requires confirmReplace=true and explicit user approval.',
         },
+        resume: {
+          type: 'boolean',
+          description:
+            'Resume a failed or partial launch (status failed/starting) without --replace. Preserves worktree and env.',
+        },
+      },
+      ['agentId'],
+    ),
+  },
+  {
+    name: 'har_recover_environment',
+    description:
+      'Resume a failed or partial agent launch without replacing the worktree. Alias for har_launch_environment with resume=true.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        agentId: agentIdJsonProperty,
       },
       ['agentId'],
     ),
@@ -275,6 +292,27 @@ export async function handleMcpToolCall(
         claude: input.claude,
         confirmReplace: input.confirmReplace,
         force: input.force,
+        resume: input.resume,
+        capture: true,
+      });
+      const parsed = LaunchEnvironmentOutputSchema.parse(result);
+      return {
+        ...jsonContent(parsed),
+        ...(result.blocked ? { isError: true } : {}),
+      };
+    }
+
+    case 'har_recover_environment': {
+      const input = LaunchEnvironmentInputSchema.parse({ ...args, repo, resume: true });
+      const agentId = validateAgentId(input.agentId, repo);
+      const result = await launchEnvironment({
+        repoPath: repo,
+        agentId,
+        worktree: input.worktree,
+        claude: input.claude,
+        confirmReplace: false,
+        force: false,
+        resume: true,
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
