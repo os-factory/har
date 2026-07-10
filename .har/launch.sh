@@ -181,7 +181,7 @@ fi
 
 if [ "$RESUME" = true ] && har_toolchain_ready "$WORK_DIR"; then
   log "Toolchain already provisioned — skipping install."
-else
+elif [ -f "$SCRIPT_DIR/provision-toolchain.sh" ]; then
   log "Provisioning toolchain (see harness.env: HARNESS_ECOSYSTEM, HARNESS_INSTALL_CMD)..."
   HAR_WORK_DIR="$WORK_DIR" \
   HAR_ENV_FILE="$ENV_FILE" \
@@ -189,6 +189,9 @@ else
   HAR_REL_PREFIX="${REL_PREFIX:-}" \
   HAR_AGENT_ID="$AGENT_ID" \
     "$SCRIPT_DIR/provision-toolchain.sh"
+elif [ -f "$WORK_DIR/package.json" ] && [ ! -d "$WORK_DIR/node_modules" ]; then
+  log "Installing dependencies in $WORK_DIR..."
+  (cd "$WORK_DIR" && npm install --silent)
 fi
 
 SLOT_AGENT_ID="$AGENT_ID" \
