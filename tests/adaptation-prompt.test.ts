@@ -33,7 +33,7 @@ describe('adaptation prompts', () => {
     expect(maintainPrompt).not.toEqual(initPrompt);
     expect(maintainPrompt).toContain('already exists');
     expect(maintainPrompt).toContain('targeted edits');
-    expect(maintainPrompt).toContain('missing port documentation vars');
+    expect(maintainPrompt).toContain('.har/maintain/');
   });
 
   it('writeAdaptationPrompt creates .har/ADAPT-PROMPT.md', () => {

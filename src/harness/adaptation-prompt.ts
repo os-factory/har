@@ -4,6 +4,10 @@ import { writeFileSafe } from '../utils/file-ops';
 import { resolveTemplateFile } from '../utils/paths';
 import { getHarnessDir } from './manifest';
 import type { HarnessProfile } from './generator';
+import {
+  formatMaintainBundlePromptSection,
+  type MaintainBundleReport,
+} from './maintain-bundle';
 
 export const ADAPTATION_PROMPT_FILE = 'ADAPT-PROMPT.md';
 
@@ -34,8 +38,22 @@ export function buildInitAdaptationPrompt(_repoPath: string, profile: HarnessPro
   return applyProfilePlaceholders(loadTemplate('adaptation-prompt-init.md'), profile);
 }
 
-export function buildMaintainAdaptationPrompt(_repoPath: string): string {
-  return loadTemplate('adaptation-prompt-maintain.md');
+export function buildMaintainAdaptationPrompt(
+  _repoPath: string,
+  bundleReport?: MaintainBundleReport,
+): string {
+  const template = loadTemplate('adaptation-prompt-maintain.md');
+  const section = bundleReport
+    ? formatMaintainBundlePromptSection(bundleReport)
+    : [
+        '## Step 0 — Read the maintenance bundle',
+        '',
+        'Open `.har/maintain/README.md` and `.har/maintain/drift-report.json`.',
+        'All reference templates are under `.har/maintain/templates/`.',
+        'Do **not** read files from the globally installed har package.',
+        '',
+      ].join('\n');
+  return template.replace('{{MAINTAIN_BUNDLE_SECTION}}', section);
 }
 
 export function writeAdaptationPrompt(repoPath: string, content: string): string {

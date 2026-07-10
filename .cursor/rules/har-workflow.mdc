@@ -32,17 +32,18 @@ Relaunching a slot **replaces** its previous session (the old branch is kept). R
 - **Gitignored paths are ephemeral** (`state/`, `runs/`, local clones) — they are lost when the worktree is removed.
 - Optional: set `HAR_SESSION_PURPOSE=label` or `--purpose=label` on launch so occupied-slot warnings show what you were doing.
 
+<!-- Monorepo: if this repository contains multiple .har harnesses, list them here
+     and pick by the files you are changing. Example:
 
 ## Harnesses in this repo
 
-Monorepo with two harnesses — pick by the files you are changing:
-
 | Path | Runs | Use when changing |
 |------|------|-------------------|
-| `.har/` | `@osfactory/har` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` |
-| `control/.har/` | Mission Control (Next.js + Postgres, browser-e2e) | `control/` |
+| `.har/` | backend + frontend | `src/`, `packages/` |
+| `apps/admin/.har/` | admin dashboard | `apps/admin/` |
 
-Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`).
+Run harness commands from the directory that owns the harness (e.g. `cd apps/admin`).
+-->
 
 
 ## After making changes

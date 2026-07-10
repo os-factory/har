@@ -8,7 +8,12 @@ const GENERATOR_VERSION = '0.4.0';
 const MANIFEST_VERSION = '1';
 export const DEFAULT_HAR_DIR = '.har';
 
-const CHECKSUM_SKIP = new Set(['manifest.json', 'AGENT.md.proposed', 'AGENT.md.proposed.meta.json']);
+const CHECKSUM_SKIP = new Set([
+  'manifest.json',
+  'AGENT.md.proposed',
+  'AGENT.md.proposed.meta.json',
+  'ADAPT-PROMPT.md',
+]);
 
 export function getHarnessDir(repoPath: string): string {
   return path.join(repoPath, DEFAULT_HAR_DIR);

@@ -2,6 +2,7 @@ import * as path from 'path';
 import type { Argv } from 'yargs';
 import { initHarness, maintainHarness, addStageTemplate } from '../../core/harness';
 import { HarnessDriftResult } from '../../harness/drift';
+import type { MaintainBundleReport } from '../../harness/maintain-bundle';
 import {
   buildInitAdaptationPrompt,
   buildMaintainAdaptationPrompt,
@@ -367,22 +368,38 @@ export async function handleMaintain(argv: {
     printValidation(result.validation);
     printDrift(result.drift);
 
-    if (!result.validation.pass) {
-      warn('Harness has validation errors after maintenance.');
-      process.exit(1);
+    if (result.bundle) {
+      printMaintainBundleSummary(result.bundle.report);
     }
 
-    if (argv.auto) {
-      await handleAgentMdProposal(repoPath, argv.yes);
-    } else if (argv.finalize) {
+    if (argv.finalize) {
+      if (!result.validation.pass) {
+        warn('Harness has validation errors — fix them before finalizing.');
+        process.exit(1);
+      }
       info('Manifest updated — generator version and file checksums recorded.');
+    } else if (argv.auto) {
+      if (!result.validation.pass) {
+        warn('Harness has validation errors after maintenance.');
+        process.exit(1);
+      }
+      await handleAgentMdProposal(repoPath, argv.yes);
     } else {
-      emitManualAdaptationPrompt(repoPath, 'maintain');
+      if (!result.validation.pass) {
+        warn('Harness has validation errors — fix them before running --finalize.');
+      }
+      emitManualAdaptationPrompt(repoPath, 'maintain', 'default', result.bundle?.report);
       info('After your coding agent finishes adapting, record it with: har env maintain --finalize');
     }
 
     divider();
-    success('Harness updated!');
+    if (argv.finalize) {
+      success('Harness finalized!');
+    } else if (result.bundle) {
+      success('Maintenance bundle ready!');
+    } else {
+      success('Harness updated!');
+    }
     await handleCursorRule({
       repoPath,
       cursorRule: resolveCursorRuleFlag(argv.cursorRule, argv.noCursorRule),
@@ -405,11 +422,12 @@ function emitManualAdaptationPrompt(
   repoPath: string,
   mode: 'init' | 'maintain',
   profile: 'default' | 'cli' | 'ios' = 'default',
+  bundleReport?: MaintainBundleReport,
 ): void {
   const prompt =
     mode === 'init'
       ? buildInitAdaptationPrompt(repoPath, profile)
-      : buildMaintainAdaptationPrompt(repoPath);
+      : buildMaintainAdaptationPrompt(repoPath, bundleReport);
 
   writeAdaptationPrompt(repoPath, prompt);
 
@@ -420,7 +438,11 @@ function emitManualAdaptationPrompt(
     info('Review harness drift with your coding agent:');
   }
   info('  Paste the prompt below (also saved to .har/ADAPT-PROMPT.md)');
-  info('  TODO validation warnings are expected until adaptation is complete.');
+  if (mode === 'init') {
+    info('  TODO validation warnings are expected until adaptation is complete.');
+  } else if (bundleReport) {
+    info('  Reference templates are in .har/maintain/templates/');
+  }
   printAdaptationPrompt(prompt);
 }
 
@@ -726,7 +748,7 @@ function printDrift(drift: HarnessDriftResult): void {
     warn(
       `  Missing port documentation vars in harness.env: ${drift.missingPortVars.join(', ')}`,
     );
-    warn('  Copy the port-allocation block from the bundled template harness.env and adapt values.');
+    warn('  See maintain/templates/harness.env in the maintenance bundle.');
   }
   if (
     !drift.generatorVersion.outdated &&
@@ -736,6 +758,17 @@ function printDrift(drift: HarnessDriftResult): void {
     drift.missingPortVars.length === 0
   ) {
     success('  Harness matches bundled templates');
+  }
+}
+
+function printMaintainBundleSummary(report: MaintainBundleReport): void {
+  const missing = report.actions.filter((a) => a.kind === 'missing').length;
+  const drifted = report.actions.filter((a) => a.kind === 'drift').length;
+  const stale = report.stale.length;
+  info(`Maintenance bundle: .har/maintain/`);
+  info(`  ${missing} missing, ${drifted} drifted, ${stale} stale`);
+  if (!report.validation.pass) {
+    warn(`  Validation: ${report.validation.errors.length} error(s) — blocks --finalize`);
   }
 }
 
