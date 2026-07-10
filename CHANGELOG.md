@@ -1,3 +1,16 @@
+# [0.7.0](https://github.com/os-factory/har/compare/v0.6.0...v0.7.0) (2026-07-10)
+
+
+### Bug Fixes
+
+* **maintain:** improve ability to maintain har ([#45](https://github.com/os-factory/har/issues/45)) ([3d3a3af](https://github.com/os-factory/har/commit/3d3a3afeaff533fd337e82df5f9f4c27a0e06f4b))
+
+
+### Features
+
+* **benchmark:** two-phase HAR setup with budget retries and cache invalidation ([#39](https://github.com/os-factory/har/issues/39)) ([e859cc8](https://github.com/os-factory/har/commit/e859cc87acab11c399f14718e889847993a59b09)), closes [#28](https://github.com/os-factory/har/issues/28) [#19](https://github.com/os-factory/har/issues/19)
+* resume failed launch without --replace ([#38](https://github.com/os-factory/har/issues/38)) ([#44](https://github.com/os-factory/har/issues/44)) ([3f9b7eb](https://github.com/os-factory/har/commit/3f9b7ebfca7d286ab1a006e438aa99223e80eea0))
+
 # [0.6.0](https://github.com/os-factory/har/compare/v0.5.0...v0.6.0) (2026-07-09)
 
 
