@@ -43,7 +43,7 @@ mkdir -p "$ARTIFACT_DIR"
 log "Running Playwright against $BASE_URL (API: $API_URL)"
 log "Work dir: $WORK_DIR"
 
-START_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")
+START_TOTAL=$(now_ms)
 
 set +e
 cd "$WORK_DIR"
@@ -51,7 +51,7 @@ PW_OUTPUT=$(npx playwright test 2>&1)
 PW_EXIT=$?
 set -e
 
-END_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")
+END_TOTAL=$(now_ms)
 TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
 
 echo "$PW_OUTPUT" >&2
