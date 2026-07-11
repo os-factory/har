@@ -1,8 +1,10 @@
 'use client';
 
+import { FileDiff } from 'lucide-react';
 import { type ColumnDef } from '@tanstack/react-table';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface ChangedFileEntry {
   path: string;
@@ -40,7 +42,10 @@ function filesSummary(files: ChangedFileEntry[]): string {
     .join('\n');
 }
 
-export const changeBatchColumns: ColumnDef<ChangeBatchRow>[] = [
+export function changeBatchColumns(
+  onOpenDiff: (batch: ChangeBatchRow) => void,
+): ColumnDef<ChangeBatchRow>[] {
+  return [
   {
     accessorKey: 'createdAt',
     header: 'Created',
@@ -92,4 +97,21 @@ export const changeBatchColumns: ColumnDef<ChangeBatchRow>[] = [
     header: 'Agent',
     cell: ({ row }) => row.original.agentId ?? '—',
   },
+  {
+    id: 'diff',
+    header: '',
+    cell: ({ row }) => (
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-8 gap-1.5 px-2 text-xs"
+        onClick={() => onOpenDiff(row.original)}
+      >
+        <FileDiff className="h-3.5 w-3.5" />
+        Diff
+      </Button>
+    ),
+  },
 ];
+}

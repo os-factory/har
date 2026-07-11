@@ -98,6 +98,20 @@ fi
 
 # Ensure shared infra is running (persists host ports in .har/state/infra.env).
 "$SCRIPT_DIR/setup-infra.sh"
+# A worktree has its own .har directory, while shared infrastructure is launched
+# from the harness checkout that created the session. Reuse that persisted port
+# assignment so the agent env does not fall back to an occupied default port.
+INFRA_STATE="$SCRIPT_DIR/state/infra.env"
+if [ ! -f "$INFRA_STATE" ]; then
+  COMMON_GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || true)"
+  if [ -n "$COMMON_GIT_DIR" ]; then
+    INFRA_STATE="$(cd "$(dirname "$COMMON_GIT_DIR")" && pwd)/.har/state/infra.env"
+  fi
+fi
+if [ -f "$INFRA_STATE" ]; then
+  # shellcheck source=/dev/null
+  source "$INFRA_STATE"
+fi
 DB_PORT="${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}"
 MINIO_PORT="${AGENT_MINIO_PORT:-${HARNESS_MINIO_PORT_DEFAULT:-19000}}"
 BROWSER_PORT="${AGENT_BROWSER_PORT:-${HARNESS_BROWSER_PORT_DEFAULT:-13001}}"
