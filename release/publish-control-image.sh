@@ -3,7 +3,9 @@ set -euo pipefail
 
 # Build and push theosfactory/har-control for the current package.json version.
 # Tags: X.Y.Z, X.Y, X, and latest (same as publish-docker.yml / semantic-release).
-# Requires: docker, logged in to Docker Hub (docker login).
+# Requires: docker with buildx (multi-arch: amd64 + arm64), logged in to
+# Docker Hub (docker login). Cross-building arm64 on x86 needs binfmt/QEMU:
+#   docker run --privileged --rm tonistiigi/binfmt --install arm64
 #
 # Usage:
 #   ./release/publish-control-image.sh
@@ -39,19 +41,22 @@ TAGS=(
   "${IMAGE}:latest"
 )
 
-echo "Building ${IMAGE}:${VERSION} from ${ROOT}"
-docker build -f "${ROOT}/control/Dockerfile" -t "${IMAGE}:${VERSION}" "${ROOT}"
+# Multi-arch (amd64 + arm64, so the image runs natively on Apple Silicon).
+# buildx cannot load a multi-platform image into the local daemon, so build
+# and push happen in one step with every tag attached.
+PLATFORMS="${HAR_CONTROL_PLATFORMS:-linux/amd64,linux/arm64}"
 
+TAG_ARGS=()
 for tag in "${TAGS[@]}"; do
-  if [ "$tag" = "${IMAGE}:${VERSION}" ]; then
-    continue
-  fi
-  docker tag "${IMAGE}:${VERSION}" "$tag"
+  TAG_ARGS+=(-t "$tag")
 done
 
-echo "Pushing tags: ${TAGS[*]}"
-for tag in "${TAGS[@]}"; do
-  docker push "$tag"
-done
+echo "Building and pushing ${IMAGE}:${VERSION} (${PLATFORMS}) from ${ROOT}"
+docker buildx build \
+  --platform "$PLATFORMS" \
+  -f "${ROOT}/control/Dockerfile" \
+  "${TAG_ARGS[@]}" \
+  --push \
+  "${ROOT}"
 
 echo "Published ${IMAGE}:${VERSION} (linked to CLI @osfactory/har@${VERSION})"

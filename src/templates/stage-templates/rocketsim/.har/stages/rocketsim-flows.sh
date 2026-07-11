@@ -78,7 +78,11 @@ if [ -n "$FLOW_FILTER" ]; then
     exit 1
   fi
 else
-  mapfile -t FLOW_SCRIPTS < <(find "$FLOWS_DIR" -maxdepth 1 -name "*.sh" ! -name ".*" | sort)
+  # while-read instead of mapfile: stock macOS bash is 3.2, which lacks mapfile.
+  FLOW_SCRIPTS=()
+  while IFS= read -r flow_script; do
+    FLOW_SCRIPTS+=("$flow_script")
+  done < <(find "$FLOWS_DIR" -maxdepth 1 -name "*.sh" ! -name ".*" | sort)
 fi
 
 if [ ${#FLOW_SCRIPTS[@]} -eq 0 ]; then
@@ -103,7 +107,7 @@ mkdir -p "$ARTIFACT_DIR"
 log "Running ${#FLOW_SCRIPTS[@]} flow(s) against simulator..."
 
 OVERALL_PASS=true
-START_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")
+START_TOTAL=$(now_ms)
 FLOW_RESULTS="[]"
 
 for FLOW_SCRIPT in "${FLOW_SCRIPTS[@]}"; do
@@ -113,7 +117,7 @@ for FLOW_SCRIPT in "${FLOW_SCRIPTS[@]}"; do
   FLOW_ARTIFACT_DIR="$ARTIFACT_DIR/$FLOW_NAME"
   mkdir -p "$FLOW_ARTIFACT_DIR"
 
-  FLOW_START=$(date +%s%3N 2>/dev/null || echo "0")
+  FLOW_START=$(now_ms)
 
   set +e
   FLOW_OUTPUT=$(
@@ -128,7 +132,7 @@ for FLOW_SCRIPT in "${FLOW_SCRIPTS[@]}"; do
   FLOW_EXIT=$?
   set -e
 
-  FLOW_END=$(date +%s%3N 2>/dev/null || echo "0")
+  FLOW_END=$(now_ms)
   FLOW_MS=$(( FLOW_END - FLOW_START ))
 
   if [ "$FLOW_EXIT" = "0" ]; then
@@ -162,7 +166,7 @@ process.stdout.write(JSON.stringify(arr));
 " 2>/dev/null || echo "$FLOW_RESULTS")
 done
 
-END_TOTAL=$(date +%s%3N 2>/dev/null || echo "0")
+END_TOTAL=$(now_ms)
 TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
 
 # ── Output ────────────────────────────────────────────────────────────────────
