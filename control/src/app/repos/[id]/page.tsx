@@ -185,6 +185,7 @@ export default async function RepoDetailPage({
             </CardHeader>
             <CardContent>
               <ChangeBatchList
+                repoId={id}
                 batches={changeBatches.map((b) => ({
                   id: b.id,
                   treeHash: b.treeHash,

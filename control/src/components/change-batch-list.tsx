@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { ChangeBatchDiff } from '@/components/change-batch-diff';
 import { DataTable } from '@/components/data-table/data-table';
 import {
   changeBatchColumns,
@@ -8,7 +10,9 @@ import {
 
 export type { ChangeBatchRow };
 
-export function ChangeBatchList({ batches }: { batches: ChangeBatchRow[] }) {
+export function ChangeBatchList({ repoId, batches }: { repoId: string; batches: ChangeBatchRow[] }) {
+  const [selectedBatch, setSelectedBatch] = useState<ChangeBatchRow | null>(null);
+
   if (batches.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -31,13 +35,21 @@ export function ChangeBatchList({ batches }: { batches: ChangeBatchRow[] }) {
         <div key={branch}>
           <h3 className="mb-2 font-mono text-sm font-semibold text-muted-foreground">{branch}</h3>
           <DataTable
-            columns={changeBatchColumns}
+            columns={changeBatchColumns(setSelectedBatch)}
             data={group}
             getRowId={(batch) => batch.id}
             showPagination={group.length > 10}
           />
         </div>
       ))}
+      <ChangeBatchDiff
+        repoId={repoId}
+        batch={selectedBatch}
+        open={selectedBatch !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedBatch(null);
+        }}
+      />
     </div>
   );
 }
