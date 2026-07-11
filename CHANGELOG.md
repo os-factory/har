@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/os-factory/har/compare/v0.7.0...v0.8.0) (2026-07-11)
+
+
+### Features
+
+* **control:** add change batch diff viewer in Mission Control ([#46](https://github.com/os-factory/har/issues/46)) ([b2f5c45](https://github.com/os-factory/har/commit/b2f5c45cc403ede780a1f473f11e2087147ed871))
+
 # [0.7.0](https://github.com/os-factory/har/compare/v0.6.0...v0.7.0) (2026-07-10)
 
 
