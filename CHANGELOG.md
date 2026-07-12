@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/os-factory/har/compare/v0.10.0...v0.11.0) (2026-07-12)
+
+
+### Features
+
+* improve stages flow and setup ([#49](https://github.com/os-factory/har/issues/49)) ([a4bc31f](https://github.com/os-factory/har/commit/a4bc31f217fecae12b32a4e891bf9143f86fca73))
+
 # [0.10.0](https://github.com/os-factory/har/compare/v0.9.0...v0.10.0) (2026-07-12)
 
 
