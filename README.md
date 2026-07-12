@@ -135,7 +135,16 @@ my-app/
 
 HAR stages are project-defined operations with stable identifiers and normalized results. A stage can be as simple as `verify` or as specific as `browser-e2e`, `migration-check`, `accessibility`, or `load-smoke`.
 
-The important boundary is that HAR runs and reports stages generically. It does not need a special Playwright, migration, accessibility, or load-test API in the core product.
+The important boundary is that HAR runs and reports stages generically. It does not need a special Playwright, migration, accessibility, or load-test API in the core product. The authoring contract (command vs script stages, the script contract, how `verificationStages` controls `verify --full`) ships into every harness as `.har/STAGES.md`.
+
+### Custom stages
+
+Register the project's real checks so they run in `verify --full` and surface to every agent:
+
+```bash
+har env add-stage unit-tests --custom --kind test --command "npm test" --verification
+har env add-stage db-integrity --custom --script   # scaffolds .har/stages/db-integrity.sh
+```
 
 ### Playwright (optional)
 
@@ -154,7 +163,8 @@ See `.har/stages/PLAYWRIGHT.md` in the target repo after applying the template.
 | Command | Description |
 |---------|-------------|
 | `har env init` | Scaffold `.har/` + print coding-agent adaptation prompt |
-| `har env add-stage playwright` | Add Playwright `browser-e2e` stage + test scaffold |
+| `har env add-stage playwright` | Add a stage template (`playwright`, `rocketsim`; `--list` shows all) |
+| `har env add-stage <id> --custom` | Register a project-specific stage (`--command "npm test"` or `--script`) |
 | `har env maintain` | Validate harness + print maintenance prompt |
 | `har env launch 1` | Launch agent slot 1 |
 | `har env verify 1` | Run verification |

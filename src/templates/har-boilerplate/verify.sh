@@ -5,7 +5,8 @@
 # Usage: ./.har/verify.sh <agent-id> [--full]
 #
 # Quick (default): ecosystem smoke + health only
-# Full (--full):   + conventional tests, lint, optional readiness + browser-e2e
+# Full (--full):   + conventional tests, lint, readiness, and every registered
+#                  stage in stages.json verificationStages (see .har/STAGES.md)
 # Stock steps are examples. Replace them during adaptation to match this repo.
 set -euo pipefail
 
@@ -229,7 +230,13 @@ run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_P
 if [ -n "$FULL" ]; then
   run_full_checks
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
-  run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
+  # Registered verification stages from .har/stages.json (see .har/STAGES.md).
+  # Every stage listed in verificationStages with a registered script/command
+  # runs here -- stage templates and custom stages alike.
+  while IFS=$'\t' read -r STAGE_ID STAGE_CMD; do
+    [ -n "$STAGE_ID" ] || continue
+    run_step "$STAGE_ID" "$STAGE_CMD" || true
+  done < <(list_registered_verification_stage_commands "$SCRIPT_DIR" "$AGENT_ID")
 fi
 
 # ── Output results ────────────────────────────────────────────────────────────

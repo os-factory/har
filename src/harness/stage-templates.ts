@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { z } from 'zod';
 import { info, success, warn } from '../utils/logging';
 import { resolveTemplatesDir } from '../utils/paths';
 import { harnessExists } from './parser';
@@ -9,24 +10,27 @@ import { readStageRegistry, writeStageRegistry } from './stages';
 export const STAGE_TEMPLATE_IDS = ['playwright', 'rocketsim'] as const;
 export type StageTemplateId = (typeof STAGE_TEMPLATE_IDS)[number];
 
-interface TemplateManifestFile {
-  src: string;
-  dest: string;
-  executable?: boolean;
-  skipFlag?: string;
-}
+const TemplateManifestFileSchema = z.object({
+  src: z.string().min(1),
+  dest: z.string().min(1),
+  executable: z.boolean().optional(),
+  skipFlag: z.string().optional(),
+});
 
-interface TemplateManifest {
-  id: StageTemplateId;
-  stageId: string;
-  verificationStageId?: string;
-  verificationStages?: string[];
-  stage: Record<string, unknown>;
-  files: TemplateManifestFile[];
-  optionalFiles?: TemplateManifestFile[];
-  merge?: Record<string, string>;
-  nextSteps?: string[];
-}
+export const StageTemplateManifestSchema = z.object({
+  id: z.enum(STAGE_TEMPLATE_IDS),
+  stageId: z.string().min(1),
+  verificationStages: z.array(z.string().min(1)).min(1),
+  stage: z.record(z.unknown()),
+  files: z.array(TemplateManifestFileSchema).min(1),
+  optionalFiles: z.array(TemplateManifestFileSchema).optional(),
+  merge: z.record(z.string()).optional(),
+  nextSteps: z.array(z.string().min(1)).min(1),
+  docsPath: z.string().min(1),
+});
+
+type TemplateManifestFile = z.infer<typeof TemplateManifestFileSchema>;
+type TemplateManifest = z.infer<typeof StageTemplateManifestSchema>;
 
 export interface ApplyStageTemplateOptions {
   force?: boolean;
@@ -39,6 +43,7 @@ export interface ApplyStageTemplateResult {
   filesWritten: string[];
   warnings: string[];
   nextSteps: string[];
+  docsPath: string;
 }
 
 function resolveTemplateDir(templateId: StageTemplateId): string {
@@ -49,13 +54,18 @@ function resolveTemplateDir(templateId: StageTemplateId): string {
   return dir;
 }
 
-function readTemplateManifest(templateId: StageTemplateId): TemplateManifest {
+export function readTemplateManifest(templateId: StageTemplateId): TemplateManifest {
   const manifestPath = path.join(resolveTemplateDir(templateId), 'template.manifest.json');
-  const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as TemplateManifest;
-  if (raw.id !== templateId) {
-    throw new Error(`Template manifest id mismatch: expected ${templateId}, got ${raw.id}`);
+  const parsed = StageTemplateManifestSchema.safeParse(
+    JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
+  );
+  if (!parsed.success) {
+    throw new Error(`Invalid template manifest for ${templateId}: ${parsed.error.message}`);
   }
-  return raw;
+  if (parsed.data.id !== templateId) {
+    throw new Error(`Template manifest id mismatch: expected ${templateId}, got ${parsed.data.id}`);
+  }
+  return parsed.data;
 }
 
 function ensureParentDir(filePath: string): void {
@@ -101,7 +111,7 @@ function mergePackageJson(
 ): void {
   const packagePath = path.join(repoPath, 'package.json');
   if (!fs.existsSync(packagePath)) {
-    throw new Error('No package.json in repo root. Add one before applying the Playwright template.');
+    throw new Error('No package.json in repo root. Add one before applying this stage template.');
   }
 
   const fragmentPath = path.join(templateDir, fragmentRelPath);
@@ -148,10 +158,7 @@ function patchStageRegistry(
     : [...registry.stages, stage];
 
   const verificationStages = [...(registry.verificationStages ?? [])];
-  const toAdd =
-    manifest.verificationStages ??
-    (manifest.verificationStageId ? [manifest.verificationStageId] : [manifest.stageId]);
-  for (const id of toAdd) {
+  for (const id of manifest.verificationStages) {
     if (!verificationStages.includes(id)) {
       verificationStages.push(id);
     }
@@ -161,8 +168,7 @@ function patchStageRegistry(
   if (verifyIdx >= 0) {
     stages[verifyIdx] = {
       ...stages[verifyIdx],
-      description:
-        'Verification pipeline (quick smoke by default; --full adds tests, lint, and browser-e2e when installed)',
+      description: `Verification pipeline (quick smoke by default; --full runs the registry's verificationStages: ${verificationStages.join(', ')})`,
       acceptsArgs: ['--full'],
     };
   }
@@ -258,20 +264,13 @@ export function applyStageTemplate(
     warn(`  ⚠ ${warning}`);
   }
 
-  const nextSteps = manifest.nextSteps ?? [
-    'npm install',
-    'npx playwright install',
-    './.har/launch.sh 1',
-    `./.har/stages/${manifest.stageId}.sh 1`,
-    'npx playwright show-report .har/artifacts/browser-e2e/playwright-report',
-  ];
-
   return {
     templateId,
     stageId: manifest.stageId,
     filesWritten,
     warnings,
-    nextSteps,
+    nextSteps: manifest.nextSteps,
+    docsPath: manifest.docsPath,
   };
 }
 

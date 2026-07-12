@@ -1,6 +1,13 @@
 import * as path from 'path';
 import type { Argv } from 'yargs';
 import { initHarness, maintainHarness, addStageTemplate } from '../../core/harness';
+import {
+  STAGE_TEMPLATE_IDS,
+  StageTemplateId,
+  listStageTemplateIds,
+} from '../../harness/stage-templates';
+import { addCustomStage } from '../../harness/custom-stage';
+import type { HarnessStageKind } from '../../harness/schema';
 import { HarnessDriftResult } from '../../harness/drift';
 import type { MaintainBundleReport } from '../../harness/maintain-bundle';
 import {
@@ -126,13 +133,45 @@ export const envCommand = {
         handleMaintain,
       )
       .command(
-        'add-stage <template>',
-        'Add an optional stage template (e.g. playwright)',
+        'add-stage [template]',
+        `Add a stage template (${STAGE_TEMPLATE_IDS.join(', ')}) or a custom stage (--custom)`,
         (y: Argv) =>
           y
             .positional('template', {
               type: 'string',
-              describe: 'Stage template id (playwright)',
+              describe: `Stage template id (${STAGE_TEMPLATE_IDS.join(', ')}), or the new stage id with --custom`,
+            })
+            .option('list', {
+              type: 'boolean',
+              default: false,
+              describe: 'List available stage templates and exit',
+            })
+            .option('custom', {
+              type: 'boolean',
+              default: false,
+              describe: 'Register a custom stage instead of a shipped template',
+            })
+            .option('kind', {
+              type: 'string',
+              describe: 'Custom stage kind (setup, launch, verify, test, inspect, reset, teardown, custom)',
+            })
+            .option('command', {
+              type: 'string',
+              describe: 'Custom stage shell command ({agentId} is substituted), e.g. "npm test"',
+            })
+            .option('script', {
+              type: 'boolean',
+              default: false,
+              describe: 'Scaffold .har/stages/<id>.sh from the contract skeleton (see .har/STAGES.md)',
+            })
+            .option('description', {
+              type: 'string',
+              describe: 'Custom stage description shown in the registry and Mission Control',
+            })
+            .option('verification', {
+              type: 'boolean',
+              default: false,
+              describe: 'Include the custom stage in verify --full (stages.json verificationStages)',
             })
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
             .option('force', {
@@ -143,7 +182,7 @@ export const envCommand = {
             .option('skip-ci', {
               type: 'boolean',
               default: false,
-              describe: 'Do not copy .github/workflows/playwright.yml',
+              describe: 'Do not copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
             }),
         handleAddStage,
       )
@@ -513,14 +552,74 @@ async function handleAgentMdProposal(repoPath: string, autoYes: boolean): Promis
 
 export async function handleAddStage(argv: {
   template?: string;
+  list: boolean;
+  custom: boolean;
+  kind?: string;
+  command?: string;
+  script: boolean;
+  description?: string;
+  verification: boolean;
   repo: string;
   force: boolean;
   skipCi: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
+  const available = listStageTemplateIds();
 
-  if (argv.template !== 'playwright') {
-    error(`Unknown stage template: ${argv.template ?? '(missing)'}. Available: playwright`);
+  if (argv.list) {
+    for (const id of available) {
+      console.log(id);
+    }
+    return;
+  }
+
+  if (argv.custom) {
+    if (!argv.template) {
+      error(
+        'Missing stage id. Usage: har env add-stage <id> --custom (--command "npm test" | --script) [--kind test] [--verification]',
+      );
+      process.exit(1);
+    }
+
+    header('har env add-stage --custom');
+    info(`Repository: ${repoPath}`);
+    info(`Stage: ${argv.template}`);
+
+    try {
+      const result = addCustomStage(repoPath, {
+        id: argv.template,
+        kind: argv.kind as HarnessStageKind | undefined,
+        command: argv.command,
+        script: argv.script,
+        description: argv.description,
+        verification: argv.verification,
+        force: argv.force,
+      });
+
+      divider();
+      success(`Custom stage registered: ${result.stageId} (kind: ${result.kind}, ${result.mode})`);
+      for (const file of result.filesWritten) {
+        info(`  + ${file}`);
+      }
+      console.error('');
+      console.error('  Next steps:');
+      for (const step of result.nextSteps) {
+        console.error(`    ${step}`);
+      }
+      console.error('');
+      console.error('  Docs: .har/STAGES.md');
+      console.error('');
+    } catch (err: unknown) {
+      error((err as Error).message);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (!argv.template || !available.includes(argv.template as StageTemplateId)) {
+    error(
+      `Unknown stage template: ${argv.template ?? '(missing)'}. Available: ${available.join(', ')}. For a project-specific stage, use: har env add-stage <id> --custom`,
+    );
     process.exit(1);
   }
 
@@ -529,7 +628,7 @@ export async function handleAddStage(argv: {
   info(`Template: ${argv.template}`);
 
   try {
-    const result = addStageTemplate(repoPath, 'playwright', {
+    const result = addStageTemplate(repoPath, argv.template as StageTemplateId, {
       force: argv.force,
       skipCi: argv.skipCi,
     });
@@ -542,7 +641,7 @@ export async function handleAddStage(argv: {
       console.error(`    ${step}`);
     }
     console.error('');
-    console.error('  Docs: .har/stages/PLAYWRIGHT.md');
+    console.error(`  Docs: ${result.docsPath}`);
     console.error('');
   } catch (err: unknown) {
     error((err as Error).message);
