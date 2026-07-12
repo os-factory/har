@@ -59,6 +59,7 @@ jobs:
         uses: withastro/action@v3
         with:
           path: docs
+          node-version: 22
 
   deploy:
     if: github.event_name != 'pull_request'
