@@ -1,6 +1,7 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { getHarPackageVersion } from '../core/package-version';
+import { agentsCommand } from './commands/agents';
 import { envCommand } from './commands/env';
 import { controlCommand } from './commands/control';
 import { hooksCommand } from './commands/hooks';
@@ -11,6 +12,7 @@ export async function runCli(): Promise<void> {
     .scriptName('har')
     .usage('$0 <command> [options]')
     .command(envCommand)
+    .command(agentsCommand)
     .command(controlCommand)
     .command(hooksCommand)
     .command(mcpCommand)

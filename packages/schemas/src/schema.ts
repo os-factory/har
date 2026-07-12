@@ -14,6 +14,23 @@ export const HAR_STAGE_KINDS = [
 /** Absolute minimum agent slot id; per-repo max is configured in .har/stages.json and harness.env. */
 export const HAR_AGENT_SLOT_MIN = 1;
 
+/** Agent targets for scaffolded skills/commands (Claude Code, Cursor, Codex CLI). */
+export const AgentSkillTargetSchema = z.enum(['claude', 'cursor', 'codex']);
+
+export type AgentSkillTarget = z.infer<typeof AgentSkillTargetSchema>;
+
+/** A skill/command file scaffolded outside .har/ (or globally for Codex), tracked for maintain. */
+export const ScaffoldedAgentFileSchema = z.object({
+  /** Repo-relative path, or '~/…' when scope is 'global'. */
+  path: z.string(),
+  agent: AgentSkillTargetSchema,
+  skill: z.string(),
+  checksum: z.string(),
+  scope: z.enum(['repo', 'global']).default('repo'),
+});
+
+export type ScaffoldedAgentFile = z.infer<typeof ScaffoldedAgentFileSchema>;
+
 /** Lightweight manifest — metadata only, not runtime behavior. */
 export const HarnessManifestSchema = z.object({
   version: z.string(),
@@ -31,6 +48,7 @@ export const HarnessManifestSchema = z.object({
   adaptationSummary: z.string().optional(),
   profile: z.enum(['default', 'cli', 'ios']).optional(),
   fileChecksums: z.record(z.string()).optional(),
+  scaffoldedAgentFiles: z.array(ScaffoldedAgentFileSchema).optional(),
 });
 
 export type HarnessManifest = z.infer<typeof HarnessManifestSchema>;

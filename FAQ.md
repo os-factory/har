@@ -268,6 +268,21 @@ That is part of the value: the workflow is inspectable, reproducible, and not hi
 </details>
 
 <details>
+<summary><strong>Q: How do the scaffolded agent skills work, and why are Codex prompts global?</strong></summary>
+
+**A:** `har env init` (or `har agents install`) scaffolds `/setup-har`, `/har-wt`, and `/har-maintain` for the coding agents it detects:
+
+- **Claude Code** — `.claude/skills/<name>/SKILL.md`, committed to the repo.
+- **Cursor** — `.cursor/commands/<name>.md` (plus the `.cursor/rules/har-workflow.mdc` rule), committed to the repo.
+- **Codex CLI** — Codex does not read prompts from the repository; custom prompts live in `~/.codex/prompts/`. `har agents install --codex` writes them there **globally on your machine**, so each teammate runs it once. The repo-level `AGENT.md` still gives Codex the harness pointers.
+
+Files har scaffolds carry a `managed by har` header: `har env maintain` refreshes them, and files you hand-edit (header removed) are never overwritten without `--force`.
+
+For enforcement in Claude Code, `har hooks install --claude` adds a `PreToolUse` hook that blocks edits in the main checkout and points the agent at `/har-wt`.
+
+</details>
+
+<details>
 <summary><strong>Q: What if my repo has a unique setup?</strong></summary>
 
 **A:** Edit `.har/`.

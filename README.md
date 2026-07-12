@@ -83,6 +83,34 @@ Shell fallback when the CLI is not installed: `./.har/setup-infra.sh`, `./.har/l
 
 See [Harness profiles](#harness-profiles) above if your repo is a CLI/library or iOS app rather than a web app.
 
+## Agent skills (/setup-har, /har-wt, /har-maintain)
+
+`har env init` can scaffold **project-owned skills/commands** for coding agents, so the har workflow is one slash command away for every teammate who clones the repo:
+
+| Skill | Who invokes it | What it does |
+|-------|----------------|--------------|
+| `/setup-har` | You, once | Installs har if missing, picks a profile, runs `har env init`, performs the adaptation prompt itself, proves launch + verify, commits |
+| `/har-wt` | The agent, on every coding task | Launches a harness slot, does all edits in the session worktree (never the main checkout), verifies through the harness |
+| `/har-maintain` | You, when the harness drifts | Runs `har env maintain`, applies the adaptation, finalizes and re-verifies |
+
+Targets are auto-detected at `init`/`maintain` (or forced with `--agents claude,cursor,codex`); you can also manage them standalone:
+
+```bash
+har agents install --claude --cursor   # .claude/skills/ + .cursor/commands/ (committed to the repo)
+har agents install --codex             # ~/.codex/prompts/ (global — Codex has no per-repo prompts)
+har agents remove --claude
+```
+
+Scaffolded files carry a `managed by har` header and are refreshed by `har env maintain`; files you edit by hand are left alone.
+
+**Optional enforcement (Claude Code):** make `/har-wt` self-triggering instead of memory-dependent —
+
+```bash
+har hooks install --claude
+```
+
+installs a `PreToolUse` guard (`.har/hooks/claude-worktree-guard.sh` + an entry in `.claude/settings.json`) that blocks `Edit`/`Write` in the **main checkout** of a har repo and points the agent to `/har-wt`. Edits inside session worktrees pass through. Remove with `har hooks uninstall --claude`; humans can bypass with `HAR_SKIP_WT_GUARD=1`.
+
 ## Repo layout after init
 
 ```
@@ -134,6 +162,9 @@ See `.har/stages/PLAYWRIGHT.md` in the target repo after applying the template.
 | `har env runs list` | List persisted run history (`--json`) |
 | `har env runs get <runId>` | Fetch one run record |
 | `har env teardown 1` | Tear down agent slot 1 |
+| `har agents install` | Scaffold agent skills (`/setup-har`, `/har-wt`, `/har-maintain`) for Claude Code / Cursor / Codex |
+| `har agents remove` | Remove har-managed agent skill files |
+| `har hooks install` | Install the git commit gate (`--claude` for the Claude Code worktree guard) |
 | `har control up` | Start local Mission Control dashboard (Docker Compose) |
 | `har control register` | Register a repo with Mission Control |
 | `har control sync` | Sync runs + slot status to Mission Control |
