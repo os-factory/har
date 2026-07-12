@@ -1,0 +1,57 @@
+---
+title: HAR documentation
+description: Make any repository safe and reproducible for coding agents.
+template: splash
+hero:
+  tagline: A project-owned harness and control plane for reproducible AI agent development.
+  image:
+    file: ../../../../logo.png
+  actions:
+    - text: Get started
+      link: /har/getting-started/quick-start/
+      icon: right-arrow
+    - text: Understand HAR
+      link: /har/getting-started/introduction/
+      icon: open-book
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+HAR turns the unwritten knowledge required to run a repository into an editable
+`.har/` contract. Coding agents and developers use the same commands to create
+isolated worktrees, launch services, verify changes, collect artifacts, and hand
+off a validated branch.
+
+<CardGrid stagger>
+	<Card title="Project-owned" icon="setting">
+		The scripts, stage registry, environment settings, and agent instructions live
+		in your repository. Review and adapt them like any other code.
+	</Card>
+	<Card title="Agent-agnostic" icon="puzzle">
+		Use the CLI directly, connect any MCP-capable agent, or install managed
+		workflows for Cursor, Claude Code, and Codex.
+	</Card>
+	<Card title="Isolated by default" icon="branch">
+		Every slot gets a fresh session worktree, its own environment, and—when your
+		stack needs them—isolated ports and databases.
+	</Card>
+	<Card title="Evidence, not promises" icon="approve-check-circle">
+		HAR records runs, artifacts, exact validated tree hashes, and optional commit
+		gates so reviewers can see what actually passed.
+	</Card>
+</CardGrid>
+
+## The shortest useful workflow
+
+```bash
+npm install -g @osfactory/har
+har env init
+har env launch 1
+# Make changes only in the work dir printed by launch.
+har env verify 1 --full
+har env complete 1
+```
+
+HAR is not a coding model, test runner, or CI/CD replacement. It is the stable
+operating contract that lets those systems work with a real repository safely.

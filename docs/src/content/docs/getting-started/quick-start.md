@@ -1,0 +1,89 @@
+---
+title: Quick start
+description: Initialize a harness and complete the first isolated agent session.
+---
+
+## 1. Initialize the repository
+
+From your project root:
+
+```bash
+har env init
+```
+
+The default profile targets web applications. Use `--profile cli` for libraries
+and command-line tools or `--profile ios` for an Xcode project.
+
+HAR copies an editable `.har/` scaffold, validates it, and writes an adaptation
+prompt to `.har/ADAPT-PROMPT.md`. Give that prompt to your coding agent so it can
+replace placeholders with your actual install, launch, database, and test commands.
+
+To let HAR perform the Claude-based adaptation:
+
+```bash
+export ANTHROPIC_API_KEY=...
+har env init --auto --yes
+```
+
+Review and commit `.har/`, `AGENT.md`, and any generated agent workflows.
+
+## 2. Check readiness
+
+```bash
+har env preflight 1
+har env status
+```
+
+Preflight checks occupied slots, ports, foreign PM2 processes, and Docker conflicts
+before a launch changes anything.
+
+## 3. Launch a fresh session
+
+```bash
+har env launch 1
+```
+
+Launch prints a `workDir`. **Make every application edit under that directory.**
+The main checkout is not the session workspace.
+
+Each launch creates a fresh branch and worktree by default. Replacing an occupied
+slot requires explicit confirmation; discarding a dirty session additionally
+requires `--force`.
+
+## 4. Verify
+
+```bash
+har env verify 1
+har env verify 1 --full
+```
+
+Quick verification is the fast feedback loop. Full verification is the completion
+gate and may include unit tests, lint, readiness checks, browser E2E, and any
+project-defined validation stages.
+
+## 5. Complete and hand off
+
+Commit the verified changes in the session worktree, then:
+
+```bash
+har env complete 1
+```
+
+`complete` runs full verification, records the exact validated tree hash, removes
+the runtime and worktree, and keeps the session branch for a pull request.
+
+If you only need cleanup, use `har env teardown 1`. It also keeps the branch unless
+you explicitly pass `--delete-branch`.
+
+## Shell fallback
+
+The generated scripts remain directly usable without a global CLI:
+
+```bash
+./.har/setup-infra.sh
+./.har/launch.sh 1
+./.har/verify.sh 1 --full
+./.har/teardown.sh 1
+```
+
+Direct scripts do not create persisted `.har/runs/` records; CLI and MCP execution do.

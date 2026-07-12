@@ -1,0 +1,77 @@
+name: Documentation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'packages/schemas/**'
+      - '.har/stages.json'
+      - '.github/workflows/docs.yml'
+      - 'README.md'
+      - 'package.json'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'packages/schemas/**'
+      - '.har/stages.json'
+      - '.github/workflows/docs.yml'
+      - 'README.md'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Check documentation
+        run: |
+          npm ci --prefix docs
+          npm run drift --prefix docs
+          npm run check --prefix docs
+          npm run build --prefix docs
+      - name: Install lychee
+        run: |
+          curl -fsSL -o /tmp/lychee.tgz https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
+          tar xzf /tmp/lychee.tgz -C /tmp
+          echo "/tmp/lychee-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
+      - name: Check documentation links
+        run: npm run links --prefix docs
+      - name: Build and upload Pages artifact
+        uses: withastro/action@v3
+        with:
+          path: docs
+          node-version: 22
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

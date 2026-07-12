@@ -97,6 +97,8 @@ process.stdout.write(JSON.stringify(arr));
 run_step "typecheck" "npm run typecheck" || { [ -z "$FULL" ] && true; }
 # Some unit tests exec dist/index.js (e.g. stage-templates CLI add-stage).
 run_step "build" "npm run build" || { [ -z "$FULL" ] && true; }
+run_step "docs-check" "npm run check --prefix docs" || { [ -z "$FULL" ] && true; }
+run_step "docs-build" "npm run build --prefix docs" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
   # Full-mode steps for this repo — customize when adapting the harness elsewhere.

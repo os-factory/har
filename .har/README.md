@@ -63,8 +63,8 @@ toolchain.
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | Smoke: typecheck + build |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, optional readiness smoke, **browser-e2e** when `stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` or `verify.sh <id>` | Smoke: CLI typecheck/build + documentation check/build |
+| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, readiness smoke, and registered verification stages such as `docs-drift` or `browser-e2e` |
 
 ## Run history
 

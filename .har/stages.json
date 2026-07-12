@@ -4,6 +4,7 @@
     "min": 1,
     "max": 3
   },
+  "verificationStages": ["docs-drift"],
   "stages": [
     {
       "id": "setup-infra",
@@ -56,6 +57,14 @@
       "kind": "inspect",
       "description": "Read recent logs for an agent slot",
       "command": "./.har/agent-cli.sh {agentId} logs"
+    },
+    {
+      "id": "docs-drift",
+      "kind": "custom",
+      "description": "Validate documentation against CLI, MCP, stage, profile, template, and skill contracts",
+      "command": "npm run drift --prefix docs",
+      "requiresAgentId": false,
+      "group": "documentation"
     },
     {
       "id": "teardown",

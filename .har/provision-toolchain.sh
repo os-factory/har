@@ -95,6 +95,11 @@ provision_node() {
     fi
   fi
 
+  if [ -f "$dir/docs/package-lock.json" ]; then
+    pt_log "Installing documentation dependencies..."
+    (cd "$dir" && npm ci --prefix docs --silent)
+  fi
+
   if command -v node >/dev/null 2>&1; then
     node_bin="$(command -v node)"
   fi
