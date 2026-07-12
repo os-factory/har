@@ -7,6 +7,12 @@ import {
   recordCommitAssociation,
   uninstallHooks,
 } from '../../core/hooks';
+import {
+  CLAUDE_GUARD_RELATIVE_PATH,
+  claudeGuardInstalled,
+  installClaudeGuard,
+  uninstallClaudeGuard,
+} from '../../core/claude-hooks';
 import { error, info, success, warn } from '../../utils/logging';
 
 interface RepoArgs {
@@ -17,8 +23,17 @@ function repoOption(y: Argv) {
   return y.option('repo', { type: 'string', default: '.', describe: 'Path to the repository' });
 }
 
-function handleInstall(argv: RepoArgs & { force: boolean }): void {
+function handleInstall(argv: RepoArgs & { force: boolean; claude: boolean }): void {
   try {
+    if (argv.claude) {
+      const result = installClaudeGuard(path.resolve(argv.repo));
+      success('Claude Code worktree guard installed.');
+      info(`Guard script:  ${result.guardScript}`);
+      info(`Settings:      ${result.settingsPath} (PreToolUse: Edit|Write|MultiEdit|NotebookEdit)`);
+      info('File edits in the MAIN checkout are now blocked with a pointer to /har-wt.');
+      info('Commit both files so the guard travels with the repo.');
+      return;
+    }
     const result = installHooks({ repoPath: path.resolve(argv.repo), force: argv.force });
     success(`Commit gate installed in ${result.hooksDir}`);
     info(`pre-commit: ${result.preCommit}, post-commit: ${result.postCommit}`);
@@ -30,8 +45,17 @@ function handleInstall(argv: RepoArgs & { force: boolean }): void {
   }
 }
 
-function handleUninstall(argv: RepoArgs): void {
+function handleUninstall(argv: RepoArgs & { claude: boolean }): void {
   try {
+    if (argv.claude) {
+      const result = uninstallClaudeGuard(path.resolve(argv.repo));
+      if (result.removed) {
+        success('Claude Code worktree guard removed.');
+      } else {
+        info('No Claude Code worktree guard was installed.');
+      }
+      return;
+    }
     const result = uninstallHooks(path.resolve(argv.repo));
     if (result.removed) {
       success(`Commit gate removed from ${result.hooksDir}`);
@@ -62,6 +86,9 @@ function handleStatus(argv: RepoArgs & { json: boolean }): void {
       `Gate:          enabled=${status.gate.enabled} mode=${status.gate.mode} scope=${status.gate.scope}`,
     );
     info(`Effective:     ${status.effectiveMode} (in this checkout)`);
+    info(
+      `Claude guard:  ${claudeGuardInstalled(path.resolve(argv.repo)) ? `installed (${CLAUDE_GUARD_RELATIVE_PATH})` : 'not installed'}`,
+    );
   } catch (err) {
     error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;
@@ -89,14 +116,31 @@ export const hooksCommand = {
         'install',
         'Install the pre-commit/post-commit gate into this repo (covers all worktrees)',
         (y: Argv) =>
-          repoOption(y).option('force', {
-            type: 'boolean',
-            default: false,
-            describe: 'Write hooks even when core.hooksPath points at a managed directory',
-          }),
+          repoOption(y)
+            .option('force', {
+              type: 'boolean',
+              default: false,
+              describe: 'Write hooks even when core.hooksPath points at a managed directory',
+            })
+            .option('claude', {
+              type: 'boolean',
+              default: false,
+              describe:
+                'Install the Claude Code worktree guard instead (blocks Edit/Write in the main checkout, points to /har-wt)',
+            }),
         handleInstall,
       )
-      .command('uninstall', 'Remove the har commit gate hooks', repoOption, handleUninstall)
+      .command(
+        'uninstall',
+        'Remove the har commit gate hooks',
+        (y: Argv) =>
+          repoOption(y).option('claude', {
+            type: 'boolean',
+            default: false,
+            describe: 'Remove the Claude Code worktree guard instead',
+          }),
+        handleUninstall,
+      )
       .command(
         'status',
         'Show hook installation and gate configuration',

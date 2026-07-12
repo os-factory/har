@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "skills": [
+    {
+      "id": "setup-har",
+      "body": "setup-har.md",
+      "title": "Set up the har harness in this repository",
+      "claude": {
+        "frontmatter": {
+          "name": "setup-har",
+          "description": "Install the har CLI and scaffold the .har/ agent harness in this repository (init, adapt, launch, verify, commit). User-invoked onboarding.",
+          "disable-model-invocation": true,
+          "allowed-tools": "Bash(har *) Bash(npm *) Bash(git *) Read Grep Glob Edit Write"
+        }
+      },
+      "cursor": { "command": true },
+      "codex": { "promptName": "har-setup" }
+    },
+    {
+      "id": "har-wt",
+      "body": "har-wt.md",
+      "title": "Work in a har worktree slot",
+      "claude": {
+        "frontmatter": {
+          "name": "har-wt",
+          "description": "Use BEFORE making any code change in this repository. Launches a har harness slot, which creates an isolated git session worktree — all edits must happen there, never in the main checkout — and verifies the work through the harness when done."
+        }
+      },
+      "cursor": { "command": true },
+      "codex": { "promptName": "har-wt" }
+    },
+    {
+      "id": "har-maintain",
+      "body": "har-maintain.md",
+      "title": "Maintain / repair the har harness",
+      "claude": {
+        "frontmatter": {
+          "name": "har-maintain",
+          "description": "Repair or update the .har/ harness when it has drifted from the repository (stack changes, broken launch/verify, stale scripts). Runs har env maintain and applies the adaptation.",
+          "disable-model-invocation": true,
+          "allowed-tools": "Bash(har *) Bash(git *) Read Grep Glob Edit Write"
+        }
+      },
+      "cursor": { "command": true },
+      "codex": { "promptName": "har-maintain" }
+    }
+  ]
+}

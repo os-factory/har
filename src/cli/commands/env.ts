@@ -11,6 +11,7 @@ import {
 } from '../../harness/adaptation-prompt';
 import { promptApplyAgentMdProposal, readAgentMdProposal, clearAgentMdProposal } from '../../harness/agent-md';
 import { handleCursorRule } from '../../harness/cursor-rule';
+import { handleAgentSkills } from '../../harness/agent-skills';
 import {
   completeEnvironment,
   getEnvironmentStatus,
@@ -68,6 +69,15 @@ export const envCommand = {
               type: 'boolean',
               default: false,
               describe: 'Skip Cursor rule scaffolding',
+            })
+            .option('agents', {
+              type: 'string',
+              describe: 'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted',
+            })
+            .option('no-agents', {
+              type: 'boolean',
+              default: false,
+              describe: 'Skip agent skills scaffolding',
             }),
         handleInit,
       )
@@ -103,6 +113,15 @@ export const envCommand = {
               type: 'boolean',
               default: false,
               describe: 'Skip Cursor rule scaffolding',
+            })
+            .option('agents', {
+              type: 'string',
+              describe: 'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted',
+            })
+            .option('no-agents', {
+              type: 'boolean',
+              default: false,
+              describe: 'Skip agent skills scaffolding',
             }),
         handleMaintain,
       )
@@ -284,6 +303,8 @@ export async function handleInit(argv: {
   profile: 'default' | 'cli' | 'ios';
   cursorRule: boolean;
   noCursorRule: boolean;
+  agents?: string;
+  noAgents: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -337,6 +358,14 @@ export async function handleInit(argv: {
       autoYes: argv.yes,
       mode: 'init',
     });
+    await handleAgentSkills({
+      repoPath,
+      agents: argv.agents,
+      enabled: argv.noAgents ? false : undefined,
+      autoYes: argv.yes,
+      force: argv.force,
+      mode: 'init',
+    });
     printNextSteps(argv.auto);
   } catch (err: unknown) {
     error((err as Error).message);
@@ -354,6 +383,8 @@ export async function handleMaintain(argv: {
   summary?: string;
   cursorRule: boolean;
   noCursorRule: boolean;
+  agents?: string;
+  noAgents: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -417,6 +448,13 @@ export async function handleMaintain(argv: {
     await handleCursorRule({
       repoPath,
       cursorRule: resolveCursorRuleFlag(argv.cursorRule, argv.noCursorRule),
+      autoYes: argv.yes,
+      mode: 'maintain',
+    });
+    await handleAgentSkills({
+      repoPath,
+      agents: argv.agents,
+      enabled: argv.noAgents ? false : undefined,
       autoYes: argv.yes,
       mode: 'maintain',
     });

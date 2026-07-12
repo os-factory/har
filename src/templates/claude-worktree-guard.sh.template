@@ -1,0 +1,38 @@
+#!/bin/sh
+# Managed by `har hooks install --claude` — do not edit; reinstall to update.
+# Claude Code PreToolUse guard: block file edits in the MAIN checkout of a har repo.
+# Edits belong in a har session worktree (launch one with /har-wt). Fails open on errors.
+
+[ "$HAR_SKIP_WT_GUARD" = "1" ] && exit 0
+
+input="$(cat 2>/dev/null)" || exit 0
+[ -n "$input" ] || exit 0
+command -v node >/dev/null 2>&1 || exit 0
+
+file_path="$(printf '%s' "$input" | node -e '
+let d = "";
+process.stdin.on("data", (c) => (d += c)).on("end", () => {
+  try {
+    const t = JSON.parse(d).tool_input || {};
+    process.stdout.write(t.file_path || t.notebook_path || "");
+  } catch {}
+});' 2>/dev/null)" || exit 0
+[ -n "$file_path" ] || exit 0
+
+dir="$(dirname "$file_path")"
+while [ ! -d "$dir" ] && [ "$dir" != "/" ]; do dir="$(dirname "$dir")"; done
+toplevel="$(cd "$dir" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -n "$toplevel" ] || exit 0
+
+# Only guard har-managed repos.
+[ -f "$toplevel/.har/manifest.json" ] || [ -f "$toplevel/.har/stages.json" ] || exit 0
+
+# Linked worktrees (git-dir != common-dir) are session worktrees — allowed.
+gitdir="$(cd "$toplevel" && git rev-parse --absolute-git-dir 2>/dev/null)"
+commondir="$(cd "$toplevel" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+if [ -n "$gitdir" ] && [ -n "$commondir" ] && [ "$gitdir" != "$commondir" ]; then
+  exit 0
+fi
+
+echo "har: edit blocked — $file_path is in the MAIN checkout of a har-managed repo. Run /har-wt to launch a harness slot and make all edits in its session worktree. (Human bypass: HAR_SKIP_WT_GUARD=1)" >&2
+exit 2
