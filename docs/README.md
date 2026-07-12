@@ -23,6 +23,7 @@ session worktree.
 npm run drift
 npm run check
 npm run build
+npm run links
 ```
 
 `drift` compares documented public contracts with the CLI, MCP, schemas, templates,

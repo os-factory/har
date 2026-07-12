@@ -48,11 +48,13 @@ jobs:
           npm run drift --prefix docs
           npm run check --prefix docs
           npm run build --prefix docs
+      - name: Install lychee
+        run: |
+          curl -fsSL -o /tmp/lychee.tgz https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
+          tar xzf /tmp/lychee.tgz -C /tmp
+          echo "/tmp/lychee-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
       - name: Check documentation links
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: --no-progress --exclude-loopback docs/dist
-          fail: true
+        run: npm run links --prefix docs
       - name: Build and upload Pages artifact
         uses: withastro/action@v3
         with:

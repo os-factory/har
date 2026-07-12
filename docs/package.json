@@ -12,6 +12,7 @@
     "drift": "node check-drift.mjs",
     "check": "astro check",
     "build": "astro build",
+    "links": "bash check-links.sh",
     "preview": "astro preview",
     "astro": "astro"
   },

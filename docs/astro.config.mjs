@@ -15,7 +15,7 @@ export default defineConfig({
 				src: '../logo.png',
 				alt: '.har',
 			},
-			favicon: '/har/favicon.svg',
+			favicon: '/favicon.svg',
 			customCss: ['./src/styles/custom.css'],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/os-factory/har' },
