@@ -1,0 +1,68 @@
+name: Documentation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'packages/schemas/**'
+      - '.har/stages.json'
+      - '.github/workflows/docs.yml'
+      - 'README.md'
+      - 'package.json'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'packages/schemas/**'
+      - '.har/stages.json'
+      - '.github/workflows/docs.yml'
+      - 'README.md'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check documentation
+        run: |
+          npm ci --prefix docs
+          npm run drift --prefix docs
+          npm run check --prefix docs
+          npm run build --prefix docs
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --exclude-loopback docs/dist
+          fail: true
+      - name: Build and upload Pages artifact
+        uses: withastro/action@v3
+        with:
+          path: docs
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

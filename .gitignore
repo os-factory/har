@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.astro/
 *.tsbuildinfo
 *.js.map
 .env

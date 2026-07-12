@@ -1,0 +1,43 @@
+:root {
+	--sl-color-accent-low: #153724;
+	--sl-color-accent: #38c976;
+	--sl-color-accent-high: #b9f4ce;
+	--sl-color-white: #f7faf7;
+	--sl-color-gray-1: #e7ece8;
+	--sl-color-gray-2: #bac5bd;
+	--sl-color-gray-3: #7f8e83;
+	--sl-color-gray-4: #4d5b51;
+	--sl-color-gray-5: #2d3730;
+	--sl-color-gray-6: #1b231e;
+	--sl-color-black: #101512;
+	--sl-font: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #d9f8e4;
+	--sl-color-accent: #147a40;
+	--sl-color-accent-high: #0b4124;
+	--sl-color-white: #121713;
+	--sl-color-gray-1: #283229;
+	--sl-color-gray-2: #465249;
+	--sl-color-gray-3: #68766b;
+	--sl-color-gray-4: #a5afa7;
+	--sl-color-gray-5: #dce2dd;
+	--sl-color-gray-6: #eef2ef;
+	--sl-color-gray-7: #f7f9f7;
+	--sl-color-black: #ffffff;
+}
+
+.hero .tagline {
+	max-width: 44rem;
+}
+
+.sl-markdown-content img {
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 0.75rem;
+	box-shadow: 0 18px 50px rgb(0 0 0 / 18%);
+}
+
+.sl-markdown-content table {
+	font-size: 0.9rem;
+}
