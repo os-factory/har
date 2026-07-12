@@ -7,6 +7,8 @@ static site deployed to GitHub Pages at:
 
 ## Local development
 
+Node.js 22.12 or newer is required (Astro 7).
+
 ```bash
 npm ci
 npm run dev
