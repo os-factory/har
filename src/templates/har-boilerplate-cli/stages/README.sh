@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Optional per-stage scripts live here.
-# Example: ./.har/stages/browser-e2e.sh <agent-id>
+# Per-stage scripts live here (e.g. ./.har/stages/browser-e2e.sh <agent-id>).
 #
-# Register custom stages in .har/stages.json with a project-owned command:
-#   "command": "./.har/stages/browser-e2e.sh {agentId}"
+# Read .har/STAGES.md for the authoring guide: the stage script contract,
+# command vs script stages, and how verificationStages controls verify --full.
+#
+# Scaffold a new one with:
+#   har env add-stage <id> --custom --script
 
-echo "Add stage scripts under .har/stages/ and register them in stages.json." >&2
+echo "Add stage scripts under .har/stages/ and register them in stages.json — see .har/STAGES.md." >&2
 exit 1

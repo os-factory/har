@@ -3,7 +3,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
-import { applyStageTemplate } from '../src/harness/stage-templates';
+import {
+  applyStageTemplate,
+  listStageTemplateIds,
+  readTemplateManifest,
+} from '../src/harness/stage-templates';
 import { readStageRegistry } from '../src/harness/stages';
 
 function makeTempRepo(name: string): string {
@@ -49,6 +53,44 @@ describe('stage templates', () => {
     };
     expect(pkg.scripts['test:e2e']).toBe('playwright test');
     expect(pkg.devDependencies['@playwright/test']).toBe('^1.40.0');
+  });
+
+  it('applies rocketsim template to a scaffolded harness', () => {
+    const repoPath = makeTempRepo('har-rocketsim');
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'ios' });
+
+    const result = applyStageTemplate(repoPath, 'rocketsim');
+
+    expect(result.stageId).toBe('rocketsim-flows');
+    expect(result.docsPath).toBe('.har/stages/ROCKETSIM.md');
+    expect(result.nextSteps.length).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'rocketsim-flows.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, 'flows', 'example-smoke.sh'))).toBe(true);
+
+    const registry = readStageRegistry(repoPath);
+    expect(registry.stages.find((s) => s.id === 'rocketsim-flows')).toMatchObject({
+      id: 'rocketsim-flows',
+      kind: 'test',
+      script: 'stages/rocketsim-flows.sh',
+    });
+    expect(registry.verificationStages).toEqual(expect.arrayContaining(['rocketsim-flows']));
+
+    const verify = registry.stages.find((s) => s.id === 'verify');
+    expect(verify?.description).toContain('rocketsim-flows');
+    expect(verify?.description).not.toContain('browser-e2e');
+  });
+
+  it('every shipped template manifest passes schema validation', () => {
+    const ids = listStageTemplateIds();
+    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim']));
+
+    for (const id of ids) {
+      const manifest = readTemplateManifest(id);
+      expect(manifest.nextSteps.length).toBeGreaterThan(0);
+      expect(manifest.docsPath).toMatch(/^\.har\//);
+      expect(manifest.files.map((f) => f.dest)).toContain(manifest.docsPath);
+      expect(manifest.verificationStages).toContain(manifest.stageId);
+    }
   });
 
   it('fails on second apply without force', () => {

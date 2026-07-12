@@ -34,5 +34,6 @@
     "./.har/stages/rocketsim-flows.sh 1",
     "Open .har/artifacts/rocketsim-flows/ for screenshots and per-flow results",
     "Add new flows in flows/ — read .har/stages/ROCKETSIM.md for the authoring guide"
-  ]
+  ],
+  "docsPath": ".har/stages/ROCKETSIM.md"
 }

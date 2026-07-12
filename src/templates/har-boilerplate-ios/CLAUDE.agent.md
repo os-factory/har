@@ -35,6 +35,8 @@ seeded data, or a simulator flow, document it here and wire the smoke into
 
 Quick loop: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har/verify.sh ${AGENT_ID}`
 
+Stages are the harness's single vocabulary for checks: templates and custom stages compile to generic kinds in `.har/stages.json`, and you interact with them only through the registry (`har_run_stage`, `verify`), never stack-specific tooling. Authoring guide: `.har/STAGES.md`.
+
 ## Project commands
 
 ```bash
