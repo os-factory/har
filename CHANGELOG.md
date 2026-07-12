@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/os-factory/har/compare/v0.9.0...v0.10.0) (2026-07-12)
+
+
+### Features
+
+* plugin claude, codex, cursor support ([#48](https://github.com/os-factory/har/issues/48)) ([26d07b3](https://github.com/os-factory/har/commit/26d07b3ea0096b021c80b23c893bc5de2e971a1b))
+
 # [0.9.0](https://github.com/os-factory/har/compare/v0.8.0...v0.9.0) (2026-07-11)
 
 
