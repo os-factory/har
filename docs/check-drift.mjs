@@ -115,8 +115,8 @@ const packageJson = JSON.parse(read('package.json'));
 if (!read('README.md').includes(packageJson.homepage)) {
   failures.push(`README is missing package homepage ${packageJson.homepage}`);
 }
-if (!astroConfig.includes("site: 'https://os-factory.github.io'") || !astroConfig.includes("base: '/har'")) {
-  failures.push('Astro site/base no longer match the GitHub Pages project URL');
+if (!astroConfig.includes("site: 'https://harproject.cloud'") || !astroConfig.includes("base: '/'")) {
+  failures.push('Astro site/base no longer match the documentation custom domain');
 }
 
 if (failures.length > 0) {

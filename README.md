@@ -6,7 +6,7 @@
 
 [![Release](https://img.shields.io/github/v/release/os-factory/har)](https://github.com/os-factory/har/releases)
 [![CI](https://github.com/os-factory/har/actions/workflows/test.yml/badge.svg)](https://github.com/os-factory/har/actions/workflows/test.yml)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-38c976)](https://os-factory.github.io/har/)
+[![Documentation](https://img.shields.io/badge/docs-harproject.cloud-38c976)](https://harproject.cloud/)
 
 **Make any repository agent-ready without binding it to one coding agent, test runner, or hosted platform.**
 
@@ -38,7 +38,7 @@ git clone https://github.com/os-factory/har har-project && cd har-project
 npm install && npm run build && npm link
 ```
 
-Read the [full documentation](https://os-factory.github.io/har/). See [AGENT.md](./AGENT.md) for architecture and coding-agent guidance, and [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development workflow, testing on sample projects, and project layout. To report security issues, see [SECURITY.md](./SECURITY.md).
+Read the [full documentation](https://harproject.cloud/). See [AGENT.md](./AGENT.md) for architecture and coding-agent guidance, and [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development workflow, testing on sample projects, and project layout. To report security issues, see [SECURITY.md](./SECURITY.md).
 
 ## Harness profiles
 
