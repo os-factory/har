@@ -3,7 +3,7 @@
 The public documentation is an [Astro Starlight](https://starlight.astro.build/)
 static site deployed to GitHub Pages at:
 
-<https://os-factory.github.io/har/>
+<https://harproject.cloud/>
 
 ## Local development
 
@@ -36,8 +36,8 @@ workflow run all three commands.
 `main` through GitHub Pages. In repository settings, set **Pages → Build and
 deployment → Source** to **GitHub Actions** once.
 
-The Astro `site` and `base` values target the `os-factory/har` project page. Update
-both if the repository moves or a custom domain is introduced.
+The Astro `site` and `base` values target the custom domain `harproject.cloud`.
+Update both if the domain or Pages path changes.
 
 Documentation content is licensed under
 [CC BY-SA 4.0](../DOCUMENTATION-LICENSE.md).

@@ -3,8 +3,8 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-	site: 'https://os-factory.github.io',
-	base: '/har',
+	site: 'https://harproject.cloud',
+	base: '/',
 	devToolbar: { enabled: false },
 	integrations: [
 		starlight({

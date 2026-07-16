@@ -3,30 +3,23 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST="$ROOT/dist"
-LYCHEE_ROOT="$(mktemp -d)"
-
-cleanup() {
-  rm -rf "$LYCHEE_ROOT"
-}
-trap cleanup EXIT
 
 if [ ! -d "$DIST" ]; then
   echo "docs/dist is missing. Run: npm run build --prefix docs" >&2
   exit 1
 fi
 
-ln -sfn "$DIST" "$LYCHEE_ROOT/har"
-
-if command -v lychee >/dev/null 2>&1; then
-  LYCHEE=(lychee)
-else
+if ! command -v lychee >/dev/null 2>&1; then
   echo "lychee is required for documentation link checks" >&2
   exit 1
 fi
 
-"${LYCHEE[@]}" \
+# Absolute asset/nav paths are rooted at `/` (custom domain). Point lychee's
+# root-dir at the build output so `/_astro/...` resolves locally. Exclude the
+# live site so canonical URLs are not fetched before deploy.
+lychee \
   --no-progress \
-  --root-dir "$LYCHEE_ROOT" \
-  --exclude '^https://os-factory\.github\.io/har' \
+  --root-dir "$DIST" \
+  --exclude '^https://harproject\.cloud' \
   --exclude-loopback \
   "$DIST"
