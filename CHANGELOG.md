@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/os-factory/har/compare/v0.11.0...v0.12.0) (2026-07-16)
+
+
+### Features
+
+* Claude Code and Codex usage telemetry in Mission Control ([#52](https://github.com/os-factory/har/issues/52)) ([87d876c](https://github.com/os-factory/har/commit/87d876ce88116a6e1f9784a14a3b593a64c7e869))
+
 # [0.11.0](https://github.com/os-factory/har/compare/v0.10.0...v0.11.0) (2026-07-12)
 
 
