@@ -1,6 +1,9 @@
+import { createRequire } from 'node:module';
 import type { AgentSessionUsage, AgentTool } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { upsertSessionUsage } from '@/server/usage';
+
+const nodeRequire = createRequire(__filename);
 
 interface AttrMap {
   [key: string]: string | number | boolean;
@@ -283,8 +286,7 @@ export async function ingestOtelMetricsBody(
 
   // Protobuf: try optional transformer; otherwise acknowledge without failing the exporter.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { ProtobufMetricsSerializer } = require('@opentelemetry/otlp-transformer') as {
+    const { ProtobufMetricsSerializer } = nodeRequire('@opentelemetry/otlp-transformer') as {
       ProtobufMetricsSerializer?: {
         deserializeRequest: (data: Uint8Array) => unknown;
       };

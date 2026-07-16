@@ -143,6 +143,7 @@ if [ -n "$FULL" ]; then
   run_step "lint" "npm run lint" || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
+  run_step "docker-build" "run_docker_build_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
 fi
 
 # ── Output results ────────────────────────────────────────────────────────────

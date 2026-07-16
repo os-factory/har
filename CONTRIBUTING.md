@@ -381,12 +381,12 @@ The tarball should contain `dist/` (bundled CLI + templates + prompts), `control
 Maintainers do **not** hand-cut version tags after the baseline. Merge conventional commits to `main`; the [Release workflow](.github/workflows/release.yml) runs on every push to `main` and, when semantic-release finds releasable commits:
 
 1. Runs full CLI + Mission Control verification
-2. Bumps `@osfactory/har`, `@har/control`, and `@har/schemas` to the same version
-3. Publishes `@osfactory/har` to **npm**
-4. Creates git tag `vX.Y.Z` and a **GitHub Release** (with CLI tarball + compose assets)
-5. Pushes **`theosfactory/har-control`** to Docker Hub (`X.Y.Z`, `X.Y`, `X`, and `latest`) in the same workflow
+2. Bumps `@osfactory/har`, `@har/control`, and `@har/schemas` to the same version (npm package prepared, **not** published yet)
+3. Creates git tag `vX.Y.Z` and a **GitHub Release** (with CLI tarball + compose assets)
+4. Pushes **`theosfactory/har-control`** to Docker Hub (`X.Y.Z`, `X.Y`, `X`, and `latest`)
+5. Publishes `@osfactory/har` to **npm** only after the Docker push succeeds
 
-If there is nothing to release, verify still runs and publish steps are skipped.
+If there is nothing to release, verify still runs and publish steps are skipped. If Docker publish fails, npm is **not** published for that tag (fix the image, then use [Publish Docker (manual)](.github/workflows/publish-docker.yml) and publish npm from the tag, or re-run the failed jobs).
 
 ### Maintainer setup
 
@@ -416,11 +416,12 @@ GITHUB_TOKEN=... NPM_TOKEN=... npx semantic-release --dry-run
 
 `@osfactory/har`, Mission Control (`control/`), and `@har/schemas` share one semver. [semantic-release](release.config.cjs) keeps them aligned:
 
-1. `@semantic-release/npm` bumps root `package.json` and publishes to npm
+1. `@semantic-release/npm` bumps root `package.json` with `npmPublish: false` (prepare only)
 2. [`release/sync-package-versions.js`](release/sync-package-versions.js) syncs `control/` and `packages/schemas/`
 3. `@semantic-release/github` creates git tag `vX.Y.Z` and the GitHub Release
 4. The Release workflow `publish-docker` job pushes `theosfactory/har-control:X.Y.Z` (plus `X.Y`, `X`, and **`latest`**)
-5. Installed CLI reads its own `package.json` version and pulls `theosfactory/har-control:<same-version>` on `har control up`
+5. The `publish-npm` job publishes `@osfactory/har@X.Y.Z` to npmjs **after** Docker succeeds
+6. Installed CLI reads its own `package.json` version and pulls `theosfactory/har-control:<same-version>` on `har control up`
 
 Override with `HAR_CONTROL_IMAGE` / `HAR_CONTROL_IMAGE_TAG`, or use `har control up --build` / `HAR_CONTROL_BUILD=true` to build locally from a git checkout.
 

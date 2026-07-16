@@ -27,7 +27,13 @@ module.exports = {
       },
     ],
     './release/sync-package-versions.js',
-    '@semantic-release/npm',
+    [
+      '@semantic-release/npm',
+      {
+        // Defer registry publish until Docker Hub succeeds (see release.yml publish-npm).
+        npmPublish: false,
+      },
+    ],
     [
       '@semantic-release/git',
       {

@@ -11,7 +11,8 @@
     "unit-tests",
     "api-health",
     "lint",
-    "browser-e2e"
+    "browser-e2e",
+    "docker-build"
   ],
   "stages": [
     {
@@ -89,6 +90,20 @@
         {
           "path": ".har/artifacts/browser-e2e/playwright-report",
           "kind": "report"
+        }
+      ],
+      "requiresAgentId": true
+    },
+    {
+      "id": "docker-build",
+      "kind": "test",
+      "description": "Build Mission Control Docker image (no push; native platform)",
+      "script": "stages/docker-build.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/docker-build",
+          "kind": "directory",
+          "description": "Docker build logs"
         }
       ],
       "requiresAgentId": true
