@@ -13,6 +13,7 @@ import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/serv
 import { listChangeBatches } from '@/server/change-batches';
 import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles } from '@/server/artifacts';
+import { listSessionUsageForRepo } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,13 @@ export default async function RepoDetailPage({
   const artifacts = listArtifactFiles(repo.path);
   const changeBatches = await listChangeBatches(id);
   const validation = await getValidationStages(id);
+  const allUsage = await listSessionUsageForRepo(id);
+  const usageBySlot = new Map<number, typeof allUsage>();
+  for (const row of allUsage) {
+    const list = usageBySlot.get(row.agentId) ?? [];
+    list.push(row);
+    usageBySlot.set(row.agentId, list);
+  }
 
   return (
     <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
@@ -104,25 +112,39 @@ export default async function RepoDetailPage({
             </CardHeader>
             <CardContent>
               <SlotGrid
-                slots={repo.slots.map((s) => ({
-                  slotId: s.slotId,
-                  active: s.active,
-                  workDir: s.workDir,
-                  worktreePath: s.worktreePath,
-                  branch: s.branch,
-                  baseBranch: s.baseBranch,
-                  baseCommit: s.baseCommit,
-                  previewUrls: s.previewUrls as Record<string, string> | null,
-                  harnessUsage: s.harnessUsage,
-                  lastRunAt: s.lastRunAt,
-                  lastVerifyStatus: s.lastVerifyStatus,
-                  lastBuildPass: s.lastBuildPass,
-                  detachedHead: s.detachedHead,
-                  dirty: s.dirty,
-                  ahead: s.ahead,
-                  behind: s.behind,
-                  stale: s.stale,
-                }))}
+                slots={repo.slots.map((s) => {
+                  const rows = usageBySlot.get(s.slotId) ?? [];
+                  const tokensTotal = rows.reduce((n, r) => n + Number(r.tokensTotal), 0);
+                  let costUsd: number | null = null;
+                  for (const r of rows) {
+                    if (r.costUsd != null) costUsd = (costUsd ?? 0) + Number(r.costUsd);
+                  }
+                  return {
+                    repoId: id,
+                    slotId: s.slotId,
+                    active: s.active,
+                    workDir: s.workDir,
+                    worktreePath: s.worktreePath,
+                    branch: s.branch,
+                    baseBranch: s.baseBranch,
+                    baseCommit: s.baseCommit,
+                    previewUrls: s.previewUrls as Record<string, string> | null,
+                    harnessUsage: s.harnessUsage,
+                    lastRunAt: s.lastRunAt,
+                    lastVerifyStatus: s.lastVerifyStatus,
+                    lastBuildPass: s.lastBuildPass,
+                    detachedHead: s.detachedHead,
+                    dirty: s.dirty,
+                    ahead: s.ahead,
+                    behind: s.behind,
+                    stale: s.stale,
+                    purpose: s.purpose,
+                    tokensTotal: tokensTotal || null,
+                    costUsd,
+                    agentTools: [...new Set(rows.map((r) => r.agentTool))],
+                    usageSources: [...new Set(rows.flatMap((r) => r.sources))],
+                  };
+                })}
               />
             </CardContent>
           </Card>

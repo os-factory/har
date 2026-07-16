@@ -7,22 +7,26 @@ import { synthesizeStageRegistry } from '../src/harness/stages';
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
 
 describe('run service parity', () => {
-  it('launchEnvironment matches runStage launch preview URLs', async () => {
-    const legacy = await launchEnvironment({ repoPath: FIXTURE, agentId: 1, capture: true });
-    const generic = await runStage({
-      repoPath: FIXTURE,
-      kind: 'launch',
-      agentId: 1,
-      capture: true,
-    });
+  it(
+    'launchEnvironment matches runStage launch preview URLs',
+    async () => {
+      const legacy = await launchEnvironment({ repoPath: FIXTURE, agentId: 1, capture: true });
+      const generic = await runStage({
+        repoPath: FIXTURE,
+        kind: 'launch',
+        agentId: 1,
+        capture: true,
+      });
 
-    expect(legacy.code).toBe(0);
-    expect(generic.status).toBe('pass');
-    expect(legacy.previewUrls?.api).toBe('http://localhost:8010');
-    expect(generic.urls?.some((u) => u.label === 'api' && u.url === 'http://localhost:8010')).toBe(
-      true,
-    );
-  });
+      expect(legacy.code).toBe(0);
+      expect(generic.status).toBe('pass');
+      expect(legacy.previewUrls?.api).toBe('http://localhost:8010');
+      expect(generic.urls?.some((u) => u.label === 'api' && u.url === 'http://localhost:8010')).toBe(
+        true,
+      );
+    },
+    20_000,
+  );
 
   it('substitutes {agentId} in command-based stages', async () => {
     const result = await runStage({

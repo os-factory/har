@@ -367,7 +367,8 @@ if [ "$USE_CLAUDE" = true ]; then
   if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     tmux kill-session -t "$TMUX_SESSION"
   fi
-  tmux new-session -d -s "$TMUX_SESSION" -c "$WORK_DIR" "claude"
+  tmux new-session -d -s "$TMUX_SESSION" -c "$WORK_DIR" \
+    "set -a; [ -f '$ENV_FILE' ] && . '$ENV_FILE'; set +a; exec claude"
   log "Claude session: tmux attach -t $TMUX_SESSION"
 fi
 

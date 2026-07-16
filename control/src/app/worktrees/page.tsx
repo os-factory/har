@@ -1,34 +1,45 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { WorktreeGrid, type WorktreeRow } from '@/components/worktree-grid';
 import { listActiveWorktrees } from '@/server/repositories';
+import { summarizeUsageForBranch } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
 
 export default async function WorktreesPage() {
   const slots = await listActiveWorktrees();
 
-  const rows: WorktreeRow[] = slots.map((s) => ({
-    repoId: s.repository.id,
-    repoPath: s.repository.path,
-    syncedAt: s.updatedAt,
-    slotId: s.slotId,
-    active: s.active,
-    workDir: s.workDir,
-    worktreePath: s.worktreePath,
-    branch: s.branch,
-    baseBranch: s.baseBranch,
-    baseCommit: s.baseCommit,
-    previewUrls: s.previewUrls as Record<string, string> | null,
-    harnessUsage: s.harnessUsage,
-    lastRunAt: s.lastRunAt,
-    lastVerifyStatus: s.lastVerifyStatus,
-    lastBuildPass: s.lastBuildPass,
-    detachedHead: s.detachedHead,
-    dirty: s.dirty,
-    ahead: s.ahead,
-    behind: s.behind,
-    stale: s.stale,
-  }));
+  const rows: WorktreeRow[] = await Promise.all(
+    slots.map(async (s) => {
+      const usage = await summarizeUsageForBranch(s.repositoryId, s.branch, s.suffix);
+      return {
+        repoId: s.repository.id,
+        repoPath: s.repository.path,
+        syncedAt: s.updatedAt,
+        slotId: s.slotId,
+        active: s.active,
+        workDir: s.workDir,
+        worktreePath: s.worktreePath,
+        branch: s.branch,
+        baseBranch: s.baseBranch,
+        baseCommit: s.baseCommit,
+        previewUrls: s.previewUrls as Record<string, string> | null,
+        harnessUsage: s.harnessUsage,
+        lastRunAt: s.lastRunAt,
+        lastVerifyStatus: s.lastVerifyStatus,
+        lastBuildPass: s.lastBuildPass,
+        detachedHead: s.detachedHead,
+        dirty: s.dirty,
+        ahead: s.ahead,
+        behind: s.behind,
+        stale: s.stale,
+        purpose: s.purpose,
+        tokensTotal: usage.tokensTotal || null,
+        costUsd: usage.costUsd,
+        agentTools: usage.agentTools,
+        usageSources: usage.sources,
+      };
+    }),
+  );
 
   const dirtyCount = rows.filter((r) => r.dirty).length;
   const staleCount = rows.filter((r) => r.stale || r.detachedHead).length;

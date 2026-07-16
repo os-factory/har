@@ -50,7 +50,41 @@ and harness profiles. Repository detail provides:
 - verification trends and pass rates.
 
 The global Worktrees page highlights dirty, stale, detached, and bypass-warning
-sessions across repositories.
+sessions across repositories. It also shows **token and cost** columns when agent
+telemetry is enabled (see below). Click a slot id for a per-session usage breakdown.
+
+## Agent usage telemetry (Claude Code / Codex)
+
+HAR can attribute Claude Code and Codex token usage (and Claude cost estimates) to
+each worktree/session and show it in Mission Control.
+
+Telemetry is **on by default** (opt-out):
+
+```bash
+har telemetry status
+har telemetry on    # ensure Mission Control is running + remind what is collected
+har telemetry off   # stop OTEL injection and usage harvest; keeps historical rows
+```
+
+Preference is stored in `~/.har/telemetry.json`. Override with `HAR_TELEMETRY=0|1`.
+
+When telemetry is on:
+
+1. `har env launch` auto-starts Mission Control if it is not reachable (`har control up`).
+2. Launch writes session tags and OTEL exporter env into `.env.agent.<id>` (Claude Code).
+3. Agents export metrics to `{HAR_CONTROL_API_URL}/api/otel/v1/metrics`.
+4. `har control sync` also **harvests** local Claude/Codex session files as a fallback.
+
+For Codex, print a config snippet (merge into `~/.codex/config.toml` yourself):
+
+```bash
+har telemetry codex-snippet --agent-id 1 --write
+```
+
+Docker is required for the default OTLP sink (packaged Mission Control). Data stays in
+local Mission Control Postgres unless you sync to HAR Cloud later.
+
+Disable anytime: `har telemetry off`.
 
 ## Local development
 

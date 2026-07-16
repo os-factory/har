@@ -121,6 +121,7 @@ export async function syncSlots(repositoryId: string, input: unknown) {
       baseBranch: parsed.baseBranch,
       baseCommit: parsed.baseCommit,
       sessionCreatedAt: parsed.sessionCreatedAt ? new Date(parsed.sessionCreatedAt) : null,
+      purpose: parsed.purpose,
       detachedHead: parsed.detachedHead,
       dirty: parsed.dirty,
       ahead: parsed.ahead,

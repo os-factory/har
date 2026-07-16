@@ -7,6 +7,7 @@ import {
   RunRecord,
   SyncRunsInputSchema,
   SyncSlotsInputSchema,
+  SyncUsageInputSchema,
   SyncValidationsInputSchema,
 } from '../harness/schema';
 import { getControlApiUrl, isControlEnabled } from './control-config';
@@ -15,6 +16,9 @@ import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
 import { createRemoteExecutor } from './cloud-executor';
+import { isTelemetryEnabled } from './telemetry-config';
+import { harvestUsageForSlot } from './usage-harvest';
+import { buildSessionKey } from './telemetry-env';
 
 export interface ControlSyncOptions {
   repoPath: string;
@@ -191,6 +195,39 @@ async function syncRepoRunsAndSlots(
     generatedAt: status.generatedAt,
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
+
+  if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
+    try {
+      const usage = status.slots.flatMap((slot) =>
+        harvestUsageForSlot({
+          agentId: slot.agentId,
+          workDir: slot.workDir,
+          worktreePath: slot.worktreePath,
+          branch: slot.branch,
+          suffix: slot.suffix,
+          sessionCreatedAt: slot.sessionCreatedAt,
+          repoPath,
+        }).map((row) => ({
+          ...row,
+          sessionKey:
+            row.sessionKey ||
+            buildSessionKey({
+              branch: slot.branch,
+              agentId: slot.agentId,
+              suffix: slot.suffix,
+              createdAt: slot.sessionCreatedAt,
+            }),
+        })),
+      );
+      if (usage.length > 0) {
+        const usageBody = SyncUsageInputSchema.parse({ usage });
+        await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[har control] usage harvest skipped: ${message}\n`);
+    }
+  }
 
   const validations = listValidations(resolveHarnessRoot(repoPath));
   if (validations.length > 0) {

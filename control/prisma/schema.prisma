@@ -19,6 +19,7 @@ model Repository {
   slots           AgentSlot[]
   runs            Run[]
   changeBatches   ChangeBatch[]
+  sessionUsage    AgentSessionUsage[]
 }
 
 model AgentSlot {
@@ -41,6 +42,7 @@ model AgentSlot {
   baseBranch       String?
   baseCommit       String?
   sessionCreatedAt DateTime?
+  purpose          String?
   detachedHead     Boolean?
   dirty            Boolean?
   ahead            Int?
@@ -49,6 +51,33 @@ model AgentSlot {
   updatedAt        DateTime   @updatedAt
 
   @@unique([repositoryId, slotId])
+}
+
+model AgentSessionUsage {
+  id                  String     @id @default(uuid())
+  repositoryId        String
+  repository          Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sessionKey          String
+  agentId             Int
+  agentTool           String
+  workDir             String?
+  branch              String?
+  suffix              String?
+  tokensInput         BigInt     @default(0)
+  tokensOutput        BigInt     @default(0)
+  tokensCacheRead     BigInt     @default(0)
+  tokensCacheCreation BigInt     @default(0)
+  tokensTotal         BigInt     @default(0)
+  costUsd             Decimal?   @db.Decimal(12, 6)
+  modelBreakdown      Json?
+  sources             String[]
+  firstSeenAt         DateTime
+  lastSeenAt          DateTime
+  updatedAt           DateTime   @updatedAt
+
+  @@unique([repositoryId, sessionKey, agentTool])
+  @@index([repositoryId, agentId])
+  @@index([lastSeenAt])
 }
 
 model Run {

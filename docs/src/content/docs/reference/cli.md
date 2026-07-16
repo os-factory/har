@@ -119,6 +119,21 @@ har control watch [--interval 10] [--api-url <url>]
 har control login --api-key <key>
 ```
 
+## `har telemetry`
+
+```bash
+har telemetry status [--json]
+har telemetry on
+har telemetry off
+har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
+har telemetry print-env --agent-id <n>
+har telemetry codex-snippet --agent-id <n> [--write]
+```
+
+Controls agent usage telemetry (Claude Code / Codex → Mission Control). **Default: on.**
+`on` ensures Mission Control is running. Preference: `~/.har/telemetry.json` (override
+with `HAR_TELEMETRY=0|1`).
+
 ## `har mcp`
 
 ```bash

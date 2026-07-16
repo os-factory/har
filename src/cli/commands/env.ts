@@ -748,6 +748,13 @@ export async function handleLaunch(argv: {
     process.exit(result.code || 2);
   }
   if (result.code === 0 && result.workDir) {
+    if (result.stderr) {
+      for (const line of result.stderr.split('\n').filter(Boolean)) {
+        if (/telemetry|mission control|otel/i.test(line)) {
+          info(line);
+        }
+      }
+    }
     divider();
     success(`Session ready — make ALL file edits under: ${result.workDir}`);
     if (result.branch) info(`Branch: ${result.branch}`);
