@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/os-factory/har/compare/v0.12.0...v0.12.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* Docker build stage + publish Docker before npm ([#53](https://github.com/os-factory/har/issues/53)) ([863eb16](https://github.com/os-factory/har/commit/863eb16d7ad2a4b184ed6b7c2d9ac470890d66ad))
+
 # [0.12.0](https://github.com/os-factory/har/compare/v0.11.0...v0.12.0) (2026-07-16)
 
 
