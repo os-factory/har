@@ -431,3 +431,37 @@ export const SyncValidationsInputSchema = z.object({
 });
 
 export type SyncValidationsInput = z.infer<typeof SyncValidationsInputSchema>;
+
+export const AgentToolSchema = z.enum(['claude_code', 'codex']);
+export type AgentTool = z.infer<typeof AgentToolSchema>;
+
+export const UsageSourceSchema = z.enum(['otel', 'harvest']);
+export type UsageSource = z.infer<typeof UsageSourceSchema>;
+
+/** Per-session agent token/cost aggregates for Mission Control. */
+export const AgentSessionUsageSchema = z.object({
+  sessionKey: z.string().min(1),
+  agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
+  agentTool: AgentToolSchema,
+  workDir: z.string().optional(),
+  branch: z.string().optional(),
+  suffix: z.string().optional(),
+  tokensInput: z.number().nonnegative().default(0),
+  tokensOutput: z.number().nonnegative().default(0),
+  tokensCacheRead: z.number().nonnegative().default(0),
+  tokensCacheCreation: z.number().nonnegative().default(0),
+  tokensTotal: z.number().nonnegative().default(0),
+  costUsd: z.number().nonnegative().nullable().optional(),
+  modelBreakdown: z.record(z.unknown()).optional(),
+  sources: z.array(UsageSourceSchema).default([]),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+});
+
+export type AgentSessionUsage = z.infer<typeof AgentSessionUsageSchema>;
+
+export const SyncUsageInputSchema = z.object({
+  usage: z.array(AgentSessionUsageSchema),
+});
+
+export type SyncUsageInput = z.infer<typeof SyncUsageInputSchema>;

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { type ColumnDef } from '@tanstack/react-table';
 
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +23,13 @@ export interface SlotRow {
   ahead: number | null;
   behind: number | null;
   stale: boolean | null;
+  purpose?: string | null;
+  /** When set, Slot column links to the detail page. */
+  repoId?: string;
+  tokensTotal?: number | null;
+  costUsd?: number | null;
+  agentTools?: string[];
+  usageSources?: string[];
 }
 
 function driftBadges(row: SlotRow) {
@@ -56,11 +64,38 @@ function usageBadge(usage: string) {
   }
 }
 
+function formatTokens(n: number | null | undefined): string {
+  if (n == null || n === 0) return '—';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function formatCost(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n === 0) return '$0';
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
+
 export const slotColumns: ColumnDef<SlotRow>[] = [
   {
     accessorKey: 'slotId',
     header: 'Slot',
-    cell: ({ row }) => <span className="font-medium">{row.original.slotId}</span>,
+    cell: ({ row }) => {
+      const id = row.original.slotId;
+      if (row.original.repoId) {
+        return (
+          <Link
+            href={`/repos/${row.original.repoId}/slots/${id}`}
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {id}
+          </Link>
+        );
+      }
+      return <span className="font-medium">{id}</span>;
+    },
   },
   {
     accessorKey: 'active',
@@ -99,6 +134,41 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     id: 'drift',
     header: 'Drift',
     cell: ({ row }) => driftBadges(row.original),
+  },
+  {
+    id: 'agentTools',
+    header: 'Agent',
+    cell: ({ row }) => {
+      const tools = row.original.agentTools ?? [];
+      if (tools.length === 0) return <span className="text-muted-foreground">—</span>;
+      return (
+        <div className="flex flex-wrap gap-1">
+          {tools.map((tool) => (
+            <Badge key={tool} variant="outline">
+              {tool === 'claude_code' ? 'Claude' : tool === 'codex' ? 'Codex' : tool}
+            </Badge>
+          ))}
+        </div>
+      );
+    },
+  },
+  {
+    id: 'tokens',
+    header: 'Tokens',
+    cell: ({ row }) => (
+      <span className="tabular-nums text-muted-foreground">
+        {formatTokens(row.original.tokensTotal)}
+      </span>
+    ),
+  },
+  {
+    id: 'cost',
+    header: 'Cost',
+    cell: ({ row }) => (
+      <span className="tabular-nums text-muted-foreground">
+        {formatCost(row.original.costUsd)}
+      </span>
+    ),
   },
   {
     id: 'preview',

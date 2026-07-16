@@ -6,6 +6,7 @@ import { envCommand } from './commands/env';
 import { controlCommand } from './commands/control';
 import { hooksCommand } from './commands/hooks';
 import { mcpCommand } from './commands/mcp';
+import { telemetryCommand } from './commands/telemetry';
 
 export async function runCli(): Promise<void> {
   await yargs(hideBin(process.argv))
@@ -16,6 +17,7 @@ export async function runCli(): Promise<void> {
     .command(controlCommand)
     .command(hooksCommand)
     .command(mcpCommand)
+    .command(telemetryCommand)
     .demandCommand(1, 'Please specify a command. Try: har env init')
     .strict()
     .help()

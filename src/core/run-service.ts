@@ -10,6 +10,13 @@ import { resolveHarnessRoot } from '../harness/manifest';
 import { getAgentSlotIds, resolveStage } from '../harness/stages';
 import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
+import { ensureTelemetryInfrastructure } from './telemetry-ensure';
+import { isTelemetryEnabled } from './telemetry-config';
+import {
+  appendTelemetryEnvToFile,
+  buildSessionKey,
+} from './telemetry-env';
+import * as path from 'path';
 import {
   ArtifactEntry,
   EnvironmentRunResult,
@@ -175,6 +182,19 @@ export class RunService {
       };
     }
 
+    let telemetryBanner = '';
+    let otelReady = false;
+    if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
+      const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
+      otelReady = ensured.otelReady;
+      if (ensured.message) {
+        telemetryBanner += `${ensured.message}\nUsage from Claude Code / Codex will appear under Worktrees. Disable: har telemetry off\n`;
+      }
+      if (ensured.warning) {
+        telemetryBanner += `${ensured.warning}\n`;
+      }
+    }
+
     const result = await this.runStage({
       repoPath: options.repoPath,
       kind: 'launch',
@@ -200,6 +220,34 @@ export class RunService {
         envResult.worktreePath = session.worktreePath;
         envResult.branch = session.branch;
         envResult.previewUrls = envResult.previewUrls ?? session.previewUrls;
+
+        const sessionKey = buildSessionKey({
+          branch: session.branch,
+          agentId: options.agentId,
+          suffix: session.suffix,
+          createdAt: session.createdAt,
+        });
+        const envFile = path.join(session.workDir, `.env.agent.${options.agentId}`);
+        try {
+          appendTelemetryEnvToFile(
+            envFile,
+            {
+              sessionKey,
+              agentId: options.agentId,
+              repoPath: path.resolve(options.repoPath),
+              workDir: session.workDir,
+              branch: session.branch,
+              suffix: session.suffix,
+              purpose: session.purpose,
+            },
+            { otelReady: otelReady && isTelemetryEnabled() },
+          );
+        } catch {
+          // Env injection is best-effort; launch still succeeded.
+        }
+      }
+      if (telemetryBanner) {
+        envResult.stderr = `${telemetryBanner}${envResult.stderr ?? ''}`;
       }
     }
     return envResult;

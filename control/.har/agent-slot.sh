@@ -273,6 +273,17 @@ har_regenerate_agent_env_file() {
   REPO_ROOT="$work_dir" \
     envsubst '${AGENT_ID} ${API_PORT} ${FE_PORT} ${DEBUG_PORT} ${DB_PORT} ${MINIO_PORT} ${BROWSER_PORT} ${REPO_ROOT}' \
     < "$template" > "$env_file"
+  if command -v har >/dev/null 2>&1; then
+    har telemetry write-env \
+      --agent-id "$agent_id" \
+      --repo "${HARNESS_ROOT:-$REPO_ROOT}" \
+      --env-file "$env_file" \
+      --work-dir "$work_dir" \
+      ${SLOT_BRANCH:+--branch "$SLOT_BRANCH"} \
+      ${SLOT_SUFFIX:+--suffix "$SLOT_SUFFIX"} \
+      ${SLOT_PURPOSE:+--purpose "$SLOT_PURPOSE"} \
+      >/dev/null 2>&1 || true
+  fi
 }
 
 # har_launch_preflight <agent_id> <force> <replace> [resume]
