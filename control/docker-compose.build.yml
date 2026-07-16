@@ -1,7 +1,0 @@
-# Local development override — merged when `har control up --build` or HAR_CONTROL_BUILD=true.
-services:
-  app:
-    build:
-      context: ..
-      dockerfile: control/Dockerfile
-    pull_policy: build

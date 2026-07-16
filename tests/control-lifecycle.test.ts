@@ -1,6 +1,8 @@
 import {
-  buildDockerComposeEnv,
-  resolveControlComposeFiles,
+  CONTROL_CONTAINER_NAME,
+  CONTROL_DATA_VOLUME,
+  buildDockerRunArgs,
+  resolveControlBuildContext,
   resolveControlDir,
 } from '../src/core/control-lifecycle';
 import {
@@ -67,38 +69,47 @@ describe('control image', () => {
   });
 });
 
-describe('control lifecycle compose', () => {
-  const originalBuild = process.env.HAR_CONTROL_BUILD;
-
-  afterEach(() => {
-    if (originalBuild === undefined) {
-      delete process.env.HAR_CONTROL_BUILD;
-    } else {
-      process.env.HAR_CONTROL_BUILD = originalBuild;
-    }
-  });
-
+describe('control lifecycle docker run', () => {
   it('resolves control dir beside dist/', () => {
     expect(resolveControlDir()).toMatch(/control$/);
   });
 
-  it('uses pull-only compose by default', () => {
-    delete process.env.HAR_CONTROL_BUILD;
-    const files = resolveControlComposeFiles();
-    expect(files).toHaveLength(1);
-    expect(files[0]).toMatch(/docker-compose\.yml$/);
+  it('resolves the build context as the package root above control/', () => {
+    const context = resolveControlBuildContext();
+    expect(resolveControlDir()).toBe(`${context}/control`);
   });
 
-  it('merges build override when requested', () => {
-    const files = resolveControlComposeFiles({ build: true });
-    expect(files).toHaveLength(2);
-    expect(files[1]).toMatch(/docker-compose\.build\.yml$/);
+  it('builds detached run args with the named volume and port mapping', () => {
+    const args = buildDockerRunArgs({
+      imageRef: 'theosfactory/har-control:1.2.3',
+      hostPort: 3847,
+      detach: true,
+    });
+    expect(args).toEqual([
+      'run',
+      '--name',
+      CONTROL_CONTAINER_NAME,
+      '-d',
+      '--restart',
+      'unless-stopped',
+      '-p',
+      '3847:3847',
+      '-v',
+      `${CONTROL_DATA_VOLUME}:/data`,
+      '-e',
+      'DATABASE_URL=file:/data/har_control.db',
+      'theosfactory/har-control:1.2.3',
+    ]);
   });
 
-  it('passes coupled image env to docker compose', () => {
-    process.env.HAR_CONTROL_IMAGE_TAG = '0.1.0';
-    const env = buildDockerComposeEnv();
-    expect(env.HAR_CONTROL_IMAGE).toBe(DEFAULT_CONTROL_IMAGE);
-    expect(env.HAR_CONTROL_IMAGE_TAG).toBe('0.1.0');
+  it('uses --rm (not -d) for a foreground run and honors a custom host port', () => {
+    const args = buildDockerRunArgs({
+      imageRef: 'example/har-control:9.9.9',
+      hostPort: 4000,
+      detach: false,
+    });
+    expect(args).toContain('--rm');
+    expect(args).not.toContain('-d');
+    expect(args).toContain('4000:3847');
   });
 });

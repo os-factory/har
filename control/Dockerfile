@@ -20,11 +20,17 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3847
+# Self-contained SQLite database — lives on a persistent volume so no external
+# database (and no docker-compose) is required to run Mission Control.
+ENV DATABASE_URL=file:/data/har_control.db
 COPY --from=builder /app/control/public ./public
 COPY --from=builder /app/control/.next/standalone ./
 COPY --from=builder /app/control/.next/static ./.next/static
 COPY --from=builder /app/control/prisma ./prisma
 # Pin Prisma CLI (devDependency at build time; npx would fetch Prisma 7+).
 RUN npm install prisma@6.19.3 --omit=dev
+RUN mkdir -p /data
+VOLUME ["/data"]
 EXPOSE 3847
-CMD ["sh", "-c", "npx prisma db push && node server.js"]
+# `prisma db push` creates the SQLite schema on first boot (idempotent after).
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]

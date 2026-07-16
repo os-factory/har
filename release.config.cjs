@@ -64,10 +64,6 @@ module.exports = {
             path: 'release-assets/docker-compose.agent-cli.yml',
             label: 'CLI profile docker-compose.agent.yml template',
           },
-          {
-            path: 'release-assets/control-docker-compose.yml',
-            label: 'Mission Control docker-compose.yml',
-          },
         ],
       },
     ],

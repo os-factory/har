@@ -16,6 +16,11 @@ private/
 control/node_modules/
 control/.next/
 control/.env
+# SQLite databases (local dev + per-agent harness slots)
+control/prisma/*.db
+control/prisma/*.db-journal
+control/.har/slots/*.db
+*.db-journal
 .cursor/mcp.json
 .har/runs/
 .har/validations/

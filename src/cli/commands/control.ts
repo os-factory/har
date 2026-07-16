@@ -8,7 +8,7 @@ import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   syncRepoWithControl,
 } from '../../core/control-sync';
-import { startMissionControl, syncReposAfterControlStart, runDockerCompose } from '../../core/control-lifecycle';
+import { startMissionControl, syncReposAfterControlStart, stopMissionControl } from '../../core/control-lifecycle';
 import { error, header, info, success, warn } from '../../utils/logging';
 
 export const controlCommand = {
@@ -18,7 +18,7 @@ export const controlCommand = {
     yargs
       .command(
         'up',
-        'Start Mission Control (Docker Compose)',
+        'Start Mission Control (single Docker container, SQLite)',
         (y: Argv) =>
           y
             .option('detach', { alias: 'd', type: 'boolean', default: true })
@@ -137,7 +137,7 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
 
 async function handleDown(): Promise<void> {
   header('har control down');
-  const code = runDockerCompose(['down']);
+  const code = stopMissionControl();
   process.exit(code);
 }
 

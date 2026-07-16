@@ -44,13 +44,16 @@ PM2_REGEX="$(har_pm2_delete_regex "$AGENT_ID")"
 npx --yes pm2 delete "$PM2_REGEX" 2>/dev/null || true
 echo "✓ Stopped PM2 processes"
 
-if har_infra_enabled db; then
-  har_pg psql -d postgres -c \
-    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='agent_${AGENT_ID}';" \
-    >/dev/null 2>&1 || true
-  har_pg dropdb --if-exists "agent_${AGENT_ID}" 2>/dev/null || true
-  echo "✓ Dropped database: agent_${AGENT_ID}"
-fi
+# Remove the slot's embedded SQLite database. In worktree mode the file lives
+# inside the worktree (removed below); this also covers --no-worktree runs.
+for db_dir in "$WORK_DIR" "$REPO_ROOT"; do
+  [ -n "$db_dir" ] || continue
+  db_file="$(har_slot_db_file "$db_dir" "$AGENT_ID")"
+  if [ -f "$db_file" ]; then
+    rm -f "$db_file" "${db_file}-journal" "${db_file}-wal" "${db_file}-shm"
+    echo "✓ Removed database: $db_file"
+  fi
+done
 
 if har_infra_enabled minio; then
   curl -sf -X DELETE "http://minioadmin:minioadmin@localhost:19000/agent-${AGENT_ID}?force=true" \
