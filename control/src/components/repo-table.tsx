@@ -50,7 +50,8 @@ export function RepoTable({ repos }: { repos: RepoRow[] }) {
 
   if (repos.length === 0) {
     return (
-      <div className="px-4 lg:px-6">
+      <div className="flex w-full flex-col gap-4 px-4 lg:px-6">
+        <h1 className="text-base font-medium">Repositories</h1>
         <p className="text-sm text-muted-foreground">
           No repositories registered. Run <code className="rounded bg-muted px-1">har env init</code>{' '}
           or <code className="rounded bg-muted px-1">har control register</code>.

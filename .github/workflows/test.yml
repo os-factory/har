@@ -1,5 +1,5 @@
 name: Test
-on: 
+on:
   pull_request:
     branches:
       - main
@@ -19,15 +19,39 @@ jobs:
 
   control:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: control/package-lock.json
+
       # @har/schemas path alias typechecks source files — zod must exist under packages/schemas/
-      - run: npm ci --prefix packages/schemas
-      - run: npm ci --prefix control
-      - run: npm run typecheck --prefix control
-      - run: npm test --prefix control
+      - name: Install dependencies
+        run: |
+          npm ci --prefix packages/schemas
+          npm ci --prefix control
+
+      - name: Install Playwright Chromium
+        working-directory: control
+        run: npx playwright install --with-deps chromium
+
+      # Dogfood control/.har (same path agents use locally). --no-worktree: the
+      # Actions checkout is already the code under test.
+      - name: Launch Mission Control harness
+        working-directory: control
+        run: ./.har/launch.sh 1 --no-worktree
+
+      - name: Verify Mission Control (full)
+        working-directory: control
+        env:
+          CI: true
+        run: ./.har/verify.sh 1 --full
+
+      - name: Teardown Mission Control harness
+        if: always()
+        working-directory: control
+        run: ./.har/teardown.sh 1
