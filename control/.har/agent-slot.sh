@@ -683,6 +683,16 @@ run_browser_e2e_if_present() {
   fi
 }
 
+# Build Mission Control Docker image on verify --full when the stage is installed.
+run_docker_build_if_present() {
+  local script_dir="$1"
+  local agent_id="$2"
+  local script="$script_dir/stages/docker-build.sh"
+  if [ -x "$script" ]; then
+    "$script" "$agent_id"
+  fi
+}
+
 # Optional project-owned "agent usable" smoke beyond health.
 run_readiness_if_configured() {
   local agent_id="$1"

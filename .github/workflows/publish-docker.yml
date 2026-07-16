@@ -1,7 +1,8 @@
 name: Publish Docker (manual)
 
-# Normal releases publish Docker in the Release workflow (publish-docker job).
-# Use this workflow only to republish an existing tag.
+# Normal releases cut the version first, then publish Docker, then npm
+# (see .github/workflows/release.yml). Use this workflow only to republish
+# an existing tag to Docker Hub.
 
 on:
   workflow_dispatch:

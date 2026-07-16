@@ -37,12 +37,29 @@ jobs:
           node dist/index.js env launch 1
           node dist/index.js env verify 1 --full
 
-      - name: Verify Mission Control
+      - name: Install Mission Control dependencies
         run: |
           npm ci --prefix packages/schemas
           npm ci --prefix control
-          npm run typecheck --prefix control
-          npm test --prefix control
+
+      - name: Install Playwright Chromium
+        working-directory: control
+        run: npx playwright install --with-deps chromium
+
+      - name: Launch Mission Control harness
+        working-directory: control
+        run: ./.har/launch.sh 1 --no-worktree
+
+      - name: Verify Mission Control (full)
+        working-directory: control
+        env:
+          CI: true
+        run: ./.har/verify.sh 1 --full
+
+      - name: Teardown Mission Control harness
+        if: always()
+        working-directory: control
+        run: ./.har/teardown.sh 1
 
   release:
     needs: verify
@@ -101,7 +118,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Semantic release (npm + GitHub tag/release)
+      - name: Semantic release (version cut + GitHub; npm deferred until Docker)
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -129,10 +146,10 @@ jobs:
             echo "released=true" >> "$GITHUB_OUTPUT"
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-            echo "Published $TAG (npm, GitHub Release, Docker follow in publish-docker job)"
+            echo "Published $TAG (version cut + GitHub Release; Docker then npm follow)"
           else
             echo "released=false" >> "$GITHUB_OUTPUT"
-            echo "No new release — skipped npm publish and downstream jobs"
+            echo "No new release — skipped version cut and downstream publish jobs"
           fi
 
   publish-docker:
@@ -194,3 +211,38 @@ jobs:
           labels: ${{ steps.docker_meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Publish to npm only after Docker Hub has the matching version (avoids CLI
+  # pointing users at har control up for a tag that does not exist on Docker Hub).
+  publish-npm:
+    needs: [release, publish-docker]
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install and publish @osfactory/har
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          EXPECTED="${{ needs.release.outputs.version }}"
+          ACTUAL="$(node -p "require('./package.json').version")"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "package.json version ($ACTUAL) does not match tag v${EXPECTED}" >&2
+            exit 1
+          fi
+          npm ci
+          npm publish --access public
+          echo "Published @osfactory/har@${EXPECTED} to npm after Docker Hub push"
