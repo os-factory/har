@@ -244,7 +244,7 @@ export async function handleAgentSkills(options: AgentSkillsScaffoldOptions): Pr
   if (options.enabled === false) return false;
 
   let targets: AgentSkillTarget[];
-  if (options.agents !== undefined) {
+  if (typeof options.agents === 'string') {
     targets = parseAgentTargets(options.agents);
   } else {
     targets = detectAgentTargets(repoPath);
