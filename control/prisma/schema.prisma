@@ -20,6 +20,8 @@ model Repository {
   runs            Run[]
   changeBatches   ChangeBatch[]
   sessionUsage    AgentSessionUsage[]
+  sessionEvents   AgentSessionEvent[]
+  sessionSpans    AgentSessionSpan[]
 }
 
 model AgentSlot {
@@ -78,6 +80,48 @@ model AgentSessionUsage {
   @@unique([repositoryId, sessionKey, agentTool])
   @@index([repositoryId, agentId])
   @@index([lastSeenAt])
+}
+
+model AgentSessionEvent {
+  id             String     @id @default(uuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sessionKey     String
+  agentId        Int
+  agentTool      String
+  eventName      String
+  sequence       Int        @default(0)
+  timestamp      DateTime
+  attributes     Json?
+  promptText     String?
+  responseText   String?
+  rawTruncated   String?
+  source         String     @default("otel")
+  createdAt      DateTime   @default(now())
+
+  @@unique([repositoryId, sessionKey, agentTool, eventName, sequence])
+  @@index([repositoryId, agentId, timestamp])
+  @@index([timestamp])
+}
+
+model AgentSessionSpan {
+  id             String     @id @default(uuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sessionKey     String
+  agentId        Int
+  agentTool      String
+  traceId        String
+  spanId         String
+  parentSpanId   String?
+  name           String
+  startTime      DateTime
+  endTime        DateTime?
+  attributes     Json?
+  createdAt      DateTime   @default(now())
+
+  @@unique([repositoryId, traceId, spanId])
+  @@index([repositoryId, agentId, startTime])
 }
 
 model Run {

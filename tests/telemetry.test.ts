@@ -34,7 +34,10 @@ describe('telemetry preference', () => {
   });
 
   it('defaults to enabled when preference file is missing', () => {
-    expect(readTelemetryPreference()).toEqual({ enabled: true });
+    expect(readTelemetryPreference()).toEqual({
+      enabled: true,
+      signals: { metrics: true, logs: true, prompts: false, traces: false },
+    });
     expect(isTelemetryEnabled()).toBe(true);
   });
 
@@ -44,6 +47,15 @@ describe('telemetry preference', () => {
     expect(fs.existsSync(getTelemetryPreferencePath())).toBe(true);
     writeTelemetryPreference(true);
     expect(isTelemetryEnabled()).toBe(true);
+  });
+
+  it('persists prompt and trace signal flags', () => {
+    writeTelemetryPreference(true, { prompts: true, traces: true });
+    const preference = readTelemetryPreference();
+    expect(preference.signals.prompts).toBe(true);
+    expect(preference.signals.traces).toBe(true);
+    expect(preference.signals.metrics).toBe(true);
+    expect(preference.signals.logs).toBe(true);
   });
 
   it('lets HAR_TELEMETRY override the file', () => {
@@ -57,10 +69,21 @@ describe('telemetry preference', () => {
 
 describe('telemetry env', () => {
   const originalTelemetry = process.env.HAR_TELEMETRY;
+  const originalPath = process.env.HAR_TELEMETRY_CONFIG_PATH;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-telemetry-env-'));
+    process.env.HAR_TELEMETRY_CONFIG_PATH = path.join(tmpDir, 'telemetry.json');
+    delete process.env.HAR_TELEMETRY;
+  });
 
   afterEach(() => {
     if (originalTelemetry === undefined) delete process.env.HAR_TELEMETRY;
     else process.env.HAR_TELEMETRY = originalTelemetry;
+    if (originalPath === undefined) delete process.env.HAR_TELEMETRY_CONFIG_PATH;
+    else process.env.HAR_TELEMETRY_CONFIG_PATH = originalPath;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('builds session key from branch', () => {
@@ -110,8 +133,30 @@ describe('telemetry env', () => {
       { otelReady: true },
     );
     expect(block).toContain('CLAUDE_CODE_ENABLE_TELEMETRY=1');
+    expect(block).toContain('OTEL_METRICS_EXPORTER=otlp');
+    expect(block).toContain('OTEL_LOGS_EXPORTER=otlp');
+    expect(block).not.toContain('OTEL_LOG_USER_PROMPTS');
+    expect(block).not.toContain('OTEL_TRACES_EXPORTER');
     expect(block).toContain('OTEL_EXPORTER_OTLP_ENDPOINT=');
     expect(block).toContain('/api/otel');
+  });
+
+  it('injects prompt and trace flags when those signals are on', () => {
+    process.env.HAR_TELEMETRY = '1';
+    writeTelemetryPreference(true, { prompts: true, traces: true });
+    const block = buildTelemetryEnvBlock(
+      {
+        sessionKey: 's1',
+        agentId: 1,
+        repoPath: '/repo',
+        workDir: '/repo',
+      },
+      { otelReady: true },
+    );
+    expect(block).toContain('OTEL_LOG_USER_PROMPTS=1');
+    expect(block).toContain('OTEL_LOG_ASSISTANT_RESPONSES=1');
+    expect(block).toContain('OTEL_TRACES_EXPORTER=otlp');
+    expect(block).toContain('CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1');
   });
 
   it('replaces previous telemetry block when appending to env file', () => {

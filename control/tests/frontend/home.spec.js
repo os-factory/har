@@ -1,15 +1,23 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Repositories home', () => {
-  test('shows repositories heading', async ({ page }) => {
+test.describe('Worktrees home', () => {
+  test('shows worktrees heading', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Repositories' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Worktrees' })).toBeVisible();
   });
 
-  test('renders repositories table or empty state', async ({ page }) => {
+  test('renders worktrees table or empty active sessions', async ({ page }) => {
     await page.goto('/');
+    await expect(page.getByText('Active sessions')).toBeVisible();
     const table = page.getByRole('table');
-    const empty = page.getByText(/no repositories registered/i);
-    await expect(table.or(empty)).toBeVisible();
+    // Empty DB still shows the Active sessions card; table may or may not be present.
+    await expect(table.or(page.getByText(/Active worktrees/i))).toBeVisible();
+  });
+
+  test('sidebar lists Worktrees, Usage, and Repositories', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: 'Worktrees', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Usage', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Repositories', exact: true })).toBeVisible();
   });
 });

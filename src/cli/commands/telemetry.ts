@@ -8,6 +8,7 @@ import { readSlotRegistry } from '../../core/slot-registry';
 import {
   TELEMETRY_SIGNALS,
   getTelemetryPreferencePath,
+  getTelemetrySignals,
   isTelemetryEnabled,
   readTelemetryPreference,
   writeTelemetryPreference,
@@ -32,18 +33,20 @@ function printSignals(): void {
 async function handleStatus(argv: { json: boolean }): Promise<void> {
   const preference = readTelemetryPreference();
   const enabled = isTelemetryEnabled();
+  const signals = getTelemetrySignals();
   const apiUrl = getControlApiUrl();
   const reachable = enabled ? await isControlApiReachable(apiUrl) : false;
   const payload = {
     enabled,
     preferenceEnabled: preference.enabled,
+    signals,
     preferencePath: getTelemetryPreferencePath(),
     updatedAt: preference.updatedAt ?? null,
     envOverride: process.env.HAR_TELEMETRY ?? null,
     controlApiUrl: apiUrl,
     controlReachable: reachable,
     otelEndpoint: `${apiUrl.replace(/\/$/, '')}/api/otel`,
-    signals: [...TELEMETRY_SIGNALS],
+    signalDescriptions: [...TELEMETRY_SIGNALS],
   };
 
   if (argv.json) {
@@ -54,22 +57,34 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   header('har telemetry status');
   info(`Enabled:       ${enabled ? 'yes' : 'no'}${process.env.HAR_TELEMETRY ? ' (HAR_TELEMETRY override)' : ''}`);
   info(`Preference:    ${getTelemetryPreferencePath()}${preference.updatedAt ? ` (updated ${preference.updatedAt})` : ' (default on)'}`);
+  info(
+    `Signals:       metrics=${signals.metrics} logs=${signals.logs} prompts=${signals.prompts} traces=${signals.traces}`,
+  );
   info(`Mission Control: ${apiUrl} (${reachable ? 'reachable' : 'not reachable'})`);
   info(`OTLP endpoint: ${payload.otelEndpoint}`);
   printSignals();
 }
 
-async function handleOn(): Promise<void> {
+async function handleOn(argv: { prompts?: boolean; traces?: boolean }): Promise<void> {
   header('har telemetry on');
-  writeTelemetryPreference(true);
+  const preference = writeTelemetryPreference(true, {
+    prompts: argv.prompts === true ? true : undefined,
+    traces: argv.traces === true ? true : undefined,
+  });
   success('Telemetry enabled (opt-out). Agent usage will be stored in local Mission Control.');
+  info(
+    `Signals: metrics=${preference.signals.metrics} logs=${preference.signals.logs} prompts=${preference.signals.prompts} traces=${preference.signals.traces}`,
+  );
+  if (preference.signals.prompts) {
+    warn('Prompt/response text will leave the agent machine for local Mission Control storage.');
+  }
   printSignals();
   const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
   if (result.message) success(result.message);
   if (result.warning) warn(result.warning);
   if (result.otelReady) {
     info(`OTLP ingest: ${result.apiUrl.replace(/\/$/, '')}/api/otel`);
-    info('Usage appears under Mission Control → Worktrees. Disable: har telemetry off');
+    info('Usage appears under Mission Control → Worktrees / Usage. Disable: har telemetry off');
   }
 }
 
@@ -220,9 +235,23 @@ export const telemetryCommand = {
       .command(
         'on',
         'Enable telemetry (default) and ensure Mission Control is running',
-        () => {},
-        () => {
-          void handleOn();
+        (y: Argv) =>
+          y
+            .option('prompts', {
+              type: 'boolean',
+              default: false,
+              describe: 'Opt in to shipping user/assistant prompt text to Mission Control',
+            })
+            .option('traces', {
+              type: 'boolean',
+              default: false,
+              describe: 'Opt in to thin OTEL traces ingest (Claude beta)',
+            }),
+        (argv) => {
+          void handleOn({
+            prompts: argv.prompts as boolean,
+            traces: argv.traces as boolean,
+          });
         },
       )
       .command(

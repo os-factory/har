@@ -78,6 +78,7 @@ function formatCost(n: number | null | undefined): string {
   return `$${n.toFixed(2)}`;
 }
 
+/** Priority: status, purpose, drift, last verify, agent, tokens/cost, then path/preview. */
 export const slotColumns: ColumnDef<SlotRow>[] = [
   {
     accessorKey: 'slotId',
@@ -103,37 +104,35 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     cell: ({ row }) => (row.original.active ? '● Active' : '○ Idle'),
   },
   {
-    id: 'worktree',
-    header: 'Worktree',
-    cell: ({ row }) => (
-      <span className="max-w-xs truncate text-muted-foreground">
-        {row.original.worktreePath ?? row.original.workDir ?? '—'}
-      </span>
-    ),
-  },
-  {
-    id: 'branch',
-    header: 'Branch',
+    id: 'purpose',
+    header: 'Purpose',
     cell: ({ row }) =>
-      row.original.branch ? (
-        <span
-          className="block max-w-56 truncate font-mono text-xs text-muted-foreground"
-          title={
-            row.original.baseBranch
-              ? `based on ${row.original.baseBranch} @ ${row.original.baseCommit?.slice(0, 7) ?? '?'}`
-              : undefined
-          }
-        >
-          {row.original.branch}
+      row.original.purpose ? (
+        <span className="max-w-40 truncate" title={row.original.purpose}>
+          {row.original.purpose}
         </span>
       ) : (
-        '—'
+        <span className="text-muted-foreground">—</span>
       ),
   },
   {
     id: 'drift',
     header: 'Drift',
     cell: ({ row }) => driftBadges(row.original),
+  },
+  {
+    accessorKey: 'lastVerifyStatus',
+    header: 'Last verify',
+    cell: ({ row }) =>
+      row.original.lastVerifyStatus ? (
+        <Badge
+          variant={row.original.lastVerifyStatus === 'pass' ? 'success' : 'destructive'}
+        >
+          {row.original.lastVerifyStatus}
+        </Badge>
+      ) : (
+        '—'
+      ),
   },
   {
     id: 'agentTools',
@@ -171,6 +170,15 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     ),
   },
   {
+    id: 'worktree',
+    header: 'Path',
+    cell: ({ row }) => (
+      <span className="max-w-xs truncate text-muted-foreground" title={row.original.worktreePath ?? row.original.workDir ?? undefined}>
+        {row.original.worktreePath ?? row.original.workDir ?? '—'}
+      </span>
+    ),
+  },
+  {
     id: 'preview',
     header: 'Preview',
     cell: ({ row }) => {
@@ -194,23 +202,28 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     },
   },
   {
-    accessorKey: 'harnessUsage',
-    header: 'Harness',
-    cell: ({ row }) => usageBadge(row.original.harnessUsage),
-  },
-  {
-    accessorKey: 'lastVerifyStatus',
-    header: 'Last verify',
+    id: 'branch',
+    header: 'Branch',
     cell: ({ row }) =>
-      row.original.lastVerifyStatus ? (
-        <Badge
-          variant={row.original.lastVerifyStatus === 'pass' ? 'success' : 'destructive'}
+      row.original.branch ? (
+        <span
+          className="block max-w-56 truncate font-mono text-xs text-muted-foreground"
+          title={
+            row.original.baseBranch
+              ? `based on ${row.original.baseBranch} @ ${row.original.baseCommit?.slice(0, 7) ?? '?'}`
+              : undefined
+          }
         >
-          {row.original.lastVerifyStatus}
-        </Badge>
+          {row.original.branch}
+        </span>
       ) : (
         '—'
       ),
+  },
+  {
+    accessorKey: 'harnessUsage',
+    header: 'Harness',
+    cell: ({ row }) => usageBadge(row.original.harnessUsage),
   },
   {
     accessorKey: 'lastBuildPass',

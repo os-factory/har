@@ -2,10 +2,32 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+export interface TelemetrySignals {
+  metrics: boolean;
+  logs: boolean;
+  prompts: boolean;
+  traces: boolean;
+}
+
 export interface TelemetryPreference {
   enabled: boolean;
+  signals: TelemetrySignals;
   updatedAt?: string;
 }
+
+const DEFAULT_SIGNALS_ON: TelemetrySignals = {
+  metrics: true,
+  logs: true,
+  prompts: false,
+  traces: false,
+};
+
+const DEFAULT_SIGNALS_OFF: TelemetrySignals = {
+  metrics: false,
+  logs: false,
+  prompts: false,
+  traces: false,
+};
 
 function getPreferencePath(): string {
   if (process.env.HAR_TELEMETRY_CONFIG_PATH) {
@@ -22,25 +44,51 @@ function parseEnvOverride(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
+function normalizeSignals(
+  enabled: boolean,
+  raw: Partial<TelemetrySignals> | undefined,
+): TelemetrySignals {
+  if (!enabled) return { ...DEFAULT_SIGNALS_OFF };
+  return {
+    metrics: raw?.metrics !== false,
+    logs: raw?.logs !== false,
+    prompts: raw?.prompts === true,
+    traces: raw?.traces === true,
+  };
+}
+
 export function readTelemetryPreference(): TelemetryPreference {
   const preferencePath = getPreferencePath();
   try {
     if (!fs.existsSync(preferencePath)) {
-      return { enabled: true };
+      return { enabled: true, signals: { ...DEFAULT_SIGNALS_ON } };
     }
-    const parsed = JSON.parse(fs.readFileSync(preferencePath, 'utf8')) as Partial<TelemetryPreference>;
+    const parsed = JSON.parse(fs.readFileSync(preferencePath, 'utf8')) as Partial<TelemetryPreference> & {
+      signals?: Partial<TelemetrySignals>;
+    };
+    const enabled = parsed.enabled !== false;
     return {
-      enabled: parsed.enabled !== false,
+      enabled,
+      signals: normalizeSignals(enabled, parsed.signals),
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : undefined,
     };
   } catch {
-    return { enabled: true };
+    return { enabled: true, signals: { ...DEFAULT_SIGNALS_ON } };
   }
 }
 
-export function writeTelemetryPreference(enabled: boolean): TelemetryPreference {
+export function writeTelemetryPreference(
+  enabled: boolean,
+  signals?: Partial<TelemetrySignals>,
+): TelemetryPreference {
+  const current = readTelemetryPreference();
+  const nextSignals = normalizeSignals(enabled, {
+    ...current.signals,
+    ...signals,
+  });
   const preference: TelemetryPreference = {
     enabled,
+    signals: enabled ? nextSignals : { ...DEFAULT_SIGNALS_OFF },
     updatedAt: new Date().toISOString(),
   };
   const preferencePath = getPreferencePath();
@@ -56,12 +104,20 @@ export function isTelemetryEnabled(): boolean {
   return readTelemetryPreference().enabled;
 }
 
+/** Effective signal flags (all false when telemetry is off). */
+export function getTelemetrySignals(): TelemetrySignals {
+  if (!isTelemetryEnabled()) return { ...DEFAULT_SIGNALS_OFF };
+  return readTelemetryPreference().signals;
+}
+
 export function getTelemetryPreferencePath(): string {
   return getPreferencePath();
 }
 
 export const TELEMETRY_SIGNALS = [
-  'Claude Code: tokens (input/output/cache) and estimated USD cost via OTEL metrics',
-  'Codex CLI: token usage via OTEL metrics (no native USD; harvest fills gaps)',
+  'Metrics (default): tokens and estimated USD cost via OTEL metrics',
+  'Logs/events (default): session events (tool calls, api_request) without prompt bodies',
+  'Prompts (opt-in): user/assistant text via OTEL_LOG_USER_PROMPTS — har telemetry on --prompts',
+  'Traces (opt-in): thin span ingest when CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1',
   'Fallback: har control sync harvests local Claude/Codex session files when OTEL is missing',
 ] as const;

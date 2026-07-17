@@ -2,8 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { SessionTimeline } from '@/components/session-timeline';
+import { ValidationPipeline } from '@/components/validation-pipeline';
 import { getRepository } from '@/server/repositories';
+import { listSessionEventsForSlot } from '@/server/session-events';
 import { listSessionUsageForSlot } from '@/server/usage';
+import { getValidationStages } from '@/server/validation-stages';
+import { prisma } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +33,17 @@ export default async function SlotDetailPage({
   const slot = repo.slots.find((s) => s.slotId === slotId);
   if (!slot) notFound();
 
-  const usageRows = await listSessionUsageForSlot(id, slotId);
+  const [usageRows, validation, events, verifyRuns] = await Promise.all([
+    listSessionUsageForSlot(id, slotId),
+    getValidationStages(id, { agentId: slotId }),
+    listSessionEventsForSlot(id, slotId),
+    prisma.run.findMany({
+      where: { repositoryId: id, stageId: 'verify', agentId: slotId },
+      orderBy: { startedAt: 'desc' },
+      take: 20,
+    }),
+  ]);
+
   const totals = usageRows.reduce(
     (acc, row) => {
       acc.tokensInput += Number(row.tokensInput);
@@ -66,6 +81,10 @@ export default async function SlotDetailPage({
           </span>
         </h2>
         {slot.purpose && <p className="text-sm text-muted-foreground">Purpose: {slot.purpose}</p>}
+        <p className="mt-1 text-xs text-muted-foreground">
+          Prompt text is stored only when telemetry prompts are enabled (`har telemetry on --prompts`).
+          Usage and events stay in local SQLite.
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -117,6 +136,63 @@ export default async function SlotDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Verify</CardTitle>
+          <CardDescription>
+            Verification pipeline for this slot
+            {validation?.latestRun &&
+              ` — last verify ${validation.latestRun.startedAt.toLocaleString()} (${validation.latestRun.status})`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ValidationPipeline
+            stages={validation?.stages ?? []}
+            verifyRunCount={validation?.verifyRunCount ?? 0}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Session timeline</CardTitle>
+          <CardDescription>
+            LLM usage, verify runs, and OTEL log events for this slot
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SessionTimeline
+            usageRows={usageRows.map((row) => ({
+              id: row.id,
+              kind: 'usage' as const,
+              sessionKey: row.sessionKey,
+              agentTool: row.agentTool,
+              tokensTotal: Number(row.tokensTotal),
+              costUsd: row.costUsd == null ? null : Number(row.costUsd),
+              sources: row.sources,
+              at: row.lastSeenAt,
+            }))}
+            verifyRuns={verifyRuns.map((run) => ({
+              id: run.id,
+              kind: 'verify' as const,
+              runId: run.runId,
+              status: run.status,
+              at: run.startedAt,
+            }))}
+            events={events.map((ev) => ({
+              id: ev.id,
+              kind: 'event' as const,
+              eventName: ev.eventName,
+              sessionKey: ev.sessionKey,
+              agentTool: ev.agentTool,
+              promptText: ev.promptText,
+              responseText: ev.responseText,
+              at: ev.timestamp,
+            }))}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

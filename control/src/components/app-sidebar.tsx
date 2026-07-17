@@ -3,14 +3,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Minus, Plus } from 'lucide-react';
 
+import { SidebarHealthStrip } from '@/components/sidebar-health-strip';
 import { SidebarOptInForm } from '@/components/sidebar-opt-in-form';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import {
   Sidebar,
   SidebarContent,
@@ -20,33 +15,17 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarRail,
 } from '@/components/ui/sidebar';
 
-const data = {
-  navMain: [
-    {
-      title: 'Observability',
-      url: '/',
-      items: [
-        {
-          title: 'Repositories',
-          url: '/',
-        },
-        {
-          title: 'Worktrees',
-          url: '/worktrees',
-        },
-      ],
-    },
-  ],
-};
+const navItems = [
+  { title: 'Worktrees', url: '/' },
+  { title: 'Usage', url: '/usage' },
+  { title: 'Repositories', url: '/repos' },
+];
 
 function isItemActive(pathname: string, url: string) {
-  if (url === '/') return pathname === '/' || pathname.startsWith('/repos');
+  if (url === '/') return pathname === '/';
   return pathname === url || pathname.startsWith(`${url}/`);
 }
 
@@ -79,43 +58,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
-            {data.navMain.map((item, index) => (
+            {navItems.map((item) => (
               <SidebarMenuItem key={item.title}>
-                <Collapsible
-                  defaultOpen={index === 0}
-                  className="group/collapsible"
-                >
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton>
-                      {item.title}
-                      <Plus className="ml-auto group-data-[state=open]/collapsible:hidden" />
-                      <Minus className="ml-auto group-data-[state=closed]/collapsible:hidden" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  {item.items?.length ? (
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {item.items.map((subItem) => (
-                          <SidebarMenuSubItem key={subItem.title}>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={isItemActive(pathname, subItem.url)}
-                            >
-                              <Link href={subItem.url}>{subItem.title}</Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  ) : null}
-                </Collapsible>
+                <SidebarMenuButton asChild isActive={isItemActive(pathname, item.url)}>
+                  <Link href={item.url}>{item.title}</Link>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <div className="p-1">
+        <div className="space-y-2 p-1">
+          <SidebarHealthStrip />
           <SidebarOptInForm />
         </div>
       </SidebarFooter>

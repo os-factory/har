@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getControlApiUrl } from './control-config';
-import { isTelemetryEnabled } from './telemetry-config';
+import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 
 export interface TelemetrySessionAttrs {
   sessionKey: string;
@@ -57,13 +57,31 @@ export function buildTelemetryEnvBlock(
 
   const injectOtel = isTelemetryEnabled() && options?.otelReady !== false;
   if (injectOtel) {
+    const signals = getTelemetrySignals();
     lines.push(
       '# HAR telemetry → Mission Control OTLP (disable: har telemetry off)',
       'CLAUDE_CODE_ENABLE_TELEMETRY=1',
-      'OTEL_METRICS_EXPORTER=otlp',
       'OTEL_EXPORTER_OTLP_PROTOCOL=http/json',
       `OTEL_EXPORTER_OTLP_ENDPOINT=${apiUrl}/api/otel`,
     );
+    if (signals.metrics) {
+      lines.push('OTEL_METRICS_EXPORTER=otlp');
+    }
+    if (signals.logs) {
+      lines.push('OTEL_LOGS_EXPORTER=otlp');
+    }
+    if (signals.prompts) {
+      lines.push(
+        'OTEL_LOG_USER_PROMPTS=1',
+        'OTEL_LOG_ASSISTANT_RESPONSES=1',
+      );
+    }
+    if (signals.traces) {
+      lines.push(
+        'OTEL_TRACES_EXPORTER=otlp',
+        'CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1',
+      );
+    }
   }
 
   return lines.join('\n') + '\n';

@@ -7,7 +7,7 @@ const SCREENSHOT_PATH = path.join(SCREENSHOT_DIR, 'validation-pipeline-preview.p
 
 test.describe('Validation pipeline visual', () => {
   test('capture validation pipeline screenshot', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/repos');
 
     const repoLink = page.locator('tbody a[href^="/repos/"]').first();
     if (!(await repoLink.isVisible().catch(() => false))) {
@@ -15,7 +15,7 @@ test.describe('Validation pipeline visual', () => {
     }
 
     await repoLink.click();
-    await page.waitForURL(/\/repos\//);
+    await page.waitForURL(/\/repos\/[^/]+$/);
 
     const validationTab = page.getByRole('tab', { name: 'Validation' });
     await validationTab.click();

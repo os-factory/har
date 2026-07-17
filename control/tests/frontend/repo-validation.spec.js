@@ -5,7 +5,7 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Repository validation stages', () => {
   test('validation tab lists stages with a status per row', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/repos');
 
     const repoLink = page.locator('tbody a[href^="/repos/"]').first();
     if (!(await repoLink.isVisible().catch(() => false))) {
@@ -13,7 +13,7 @@ test.describe('Repository validation stages', () => {
     }
 
     await repoLink.click();
-    await page.waitForURL(/\/repos\//);
+    await page.waitForURL(/\/repos\/[^/]+$/);
 
     const validationTab = page.getByRole('tab', { name: 'Validation' });
     await expect(validationTab).toBeVisible();
