@@ -1,3 +1,10 @@
+## [0.13.1](https://github.com/os-factory/har/compare/v0.13.0...v0.13.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* har env init --no-agents no longer crashes ([#56](https://github.com/os-factory/har/issues/56)) ([97d8c32](https://github.com/os-factory/har/commit/97d8c32692430d754cc20199ffec47615eb97cf3))
+
 # [0.13.0](https://github.com/os-factory/har/compare/v0.12.1...v0.13.0) (2026-07-17)
 
 
