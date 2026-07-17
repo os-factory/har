@@ -1,3 +1,10 @@
+# [0.13.0](https://github.com/os-factory/har/compare/v0.12.1...v0.13.0) (2026-07-17)
+
+
+### Features
+
+* **control:** run Mission Control on embedded SQLite, drop docker-compose ([#54](https://github.com/os-factory/har/issues/54)) ([93c40ff](https://github.com/os-factory/har/commit/93c40ff1e3eaca85904175a9926b6989ae7b2f6c))
+
 ## [0.12.1](https://github.com/os-factory/har/compare/v0.12.0...v0.12.1) (2026-07-16)
 
 
