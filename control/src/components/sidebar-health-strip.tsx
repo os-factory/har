@@ -46,12 +46,15 @@ export function SidebarHealthStrip() {
       : '—';
 
   return (
-    <div className="rounded-md border border-sidebar-border bg-sidebar-accent/40 px-3 py-2 text-xs">
-      <p className="mb-1.5 font-medium text-sidebar-foreground">Health</p>
-      <ul className="space-y-1 text-muted-foreground">
+    <div
+      data-testid="sidebar-health"
+      className="rounded-md border border-sidebar-border bg-sidebar px-3 py-2 text-xs text-sidebar-foreground"
+    >
+      <p className="mb-1.5 font-medium">Health</p>
+      <ul className="space-y-1">
         <li className="flex items-center justify-between gap-2">
           <span>MC</span>
-          <span className={mcOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}>
+          <span className={mcOk ? 'font-medium' : 'font-medium text-destructive'}>
             {health == null ? '…' : mcOk ? 'ok' : 'down'}
           </span>
         </li>

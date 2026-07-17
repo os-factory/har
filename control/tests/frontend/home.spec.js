@@ -9,9 +9,7 @@ test.describe('Worktrees home', () => {
   test('renders worktrees table or empty active sessions', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByText('Active sessions')).toBeVisible();
-    const table = page.getByRole('table');
-    // Empty DB still shows the Active sessions card; table may or may not be present.
-    await expect(table.or(page.getByText(/Active worktrees/i))).toBeVisible();
+    await expect(page.getByRole('table')).toBeVisible();
   });
 
   test('sidebar lists Worktrees, Usage, and Repositories', async ({ page }) => {
