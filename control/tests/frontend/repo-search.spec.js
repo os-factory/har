@@ -19,7 +19,7 @@ test.describe('Repository search and filter', () => {
 
     // Query for something that cannot match any seeded repo.
     await search.fill('zzz-no-such-repo-zzz');
-    await expect(page.getByText(/no repositories match your filters/i)).toBeVisible();
+    await expect(page.getByRole('cell', { name: /no repositories match your filters/i })).toBeVisible();
 
     // Clearing restores the full list.
     await search.fill('');

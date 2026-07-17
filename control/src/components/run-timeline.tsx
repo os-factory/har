@@ -16,6 +16,8 @@ export function RunTimeline({ runs }: { runs: RunRow[] }) {
       data={runs}
       getRowId={(run) => run.id}
       showPagination={runs.length > 10}
+      searchPlaceholder="Search runs…"
+      searchAriaLabel="Search runs"
     />
   );
 }

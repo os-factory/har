@@ -21,7 +21,8 @@ export function repoName(repo: RepoRow): string {
 
 export const repoColumns: ColumnDef<RepoRow>[] = [
   {
-    accessorKey: 'name',
+    id: 'name',
+    accessorFn: (row) => repoName(row),
     header: 'Repository',
     cell: ({ row }) => {
       const repo = row.original;

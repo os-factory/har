@@ -31,8 +31,9 @@ export function ArtifactTable({
         data={artifacts}
         getRowId={(artifact) => artifact.relativePath}
         showPagination={artifacts.length > 10}
+        searchPlaceholder="Search artifacts…"
+        searchAriaLabel="Search artifacts"
         onRowClick={openPreview}
-        getRowClassName={() => 'cursor-pointer hover:bg-muted/50'}
       />
       <ArtifactPreview
         repoId={repoId}

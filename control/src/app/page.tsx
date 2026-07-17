@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { WorktreeGrid, type WorktreeRow } from '@/components/worktree-grid';
 import { listActiveWorktrees } from '@/server/repositories';
@@ -53,7 +55,7 @@ export default async function HomePage() {
   ];
 
   return (
-    <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
+    <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
       <div>
         <h2 className="text-2xl font-semibold">Worktrees</h2>
         <p className="text-sm text-muted-foreground">
@@ -76,15 +78,17 @@ export default async function HomePage() {
         ))}
       </div>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Active sessions</CardTitle>
           <CardDescription>
             Worktree, branch and drift per agent slot — status reflects the last `har` sync
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <WorktreeGrid worktrees={rows} />
+        <CardContent className="min-w-0">
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading worktrees…</p>}>
+            <WorktreeGrid worktrees={rows} />
+          </Suspense>
         </CardContent>
       </Card>
     </div>

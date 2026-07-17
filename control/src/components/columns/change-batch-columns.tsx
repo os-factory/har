@@ -62,6 +62,7 @@ export function changeBatchColumns(
   },
   {
     id: 'files',
+    accessorFn: (row) => row.changedFiles.length,
     header: 'Files',
     cell: ({ row }) => (
       <span title={filesSummary(row.original.changedFiles)}>
@@ -71,6 +72,7 @@ export function changeBatchColumns(
   },
   {
     id: 'status',
+    accessorFn: (row) => `${row.status}:${row.full ? 'full' : 'partial'}`,
     header: 'Status',
     cell: ({ row }) => batchBadge(row.original),
   },
@@ -100,6 +102,8 @@ export function changeBatchColumns(
   {
     id: 'diff',
     header: '',
+    enableSorting: false,
+    enableHiding: false,
     cell: ({ row }) => (
       <Button
         type="button"

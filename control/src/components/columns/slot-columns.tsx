@@ -32,6 +32,17 @@ export interface SlotRow {
   usageSources?: string[];
 }
 
+function driftLabel(row: SlotRow): string {
+  if (!row.worktreePath) return '';
+  const parts: string[] = [];
+  if (row.detachedHead) parts.push('detached');
+  if (row.dirty) parts.push('dirty');
+  if (row.stale) parts.push(`behind ${row.behind ?? '?'}`);
+  if ((row.ahead ?? 0) > 0) parts.push(`ahead ${row.ahead}`);
+  if (parts.length === 0) return 'fresh';
+  return parts.join(' ');
+}
+
 function driftBadges(row: SlotRow) {
   if (!row.worktreePath) return <span className="text-muted-foreground">—</span>;
   const badges = [];
@@ -105,6 +116,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'purpose',
+    accessorFn: (row) => row.purpose ?? '',
     header: 'Purpose',
     cell: ({ row }) =>
       row.original.purpose ? (
@@ -117,6 +129,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'drift',
+    accessorFn: (row) => driftLabel(row),
     header: 'Drift',
     cell: ({ row }) => driftBadges(row.original),
   },
@@ -136,6 +149,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'agentTools',
+    accessorFn: (row) => (row.agentTools ?? []).join(' '),
     header: 'Agent',
     cell: ({ row }) => {
       const tools = row.original.agentTools ?? [];
@@ -153,6 +167,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'tokens',
+    accessorFn: (row) => row.tokensTotal ?? 0,
     header: 'Tokens',
     cell: ({ row }) => (
       <span className="tabular-nums text-muted-foreground">
@@ -162,6 +177,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'cost',
+    accessorFn: (row) => row.costUsd ?? -1,
     header: 'Cost',
     cell: ({ row }) => (
       <span className="tabular-nums text-muted-foreground">
@@ -171,6 +187,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'worktree',
+    accessorFn: (row) => row.worktreePath ?? row.workDir ?? '',
     header: 'Path',
     cell: ({ row }) => (
       <span className="max-w-xs truncate text-muted-foreground" title={row.original.worktreePath ?? row.original.workDir ?? undefined}>
@@ -180,7 +197,10 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'preview',
+    accessorFn: (row) =>
+      row.previewUrls ? Object.entries(row.previewUrls).map(([k, v]) => `${k} ${v}`).join(' ') : '',
     header: 'Preview',
+    enableSorting: false,
     cell: ({ row }) => {
       const urls = row.original.previewUrls;
       if (!row.original.active || !urls || Object.keys(urls).length === 0) return '—';
@@ -203,6 +223,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'branch',
+    accessorFn: (row) => row.branch ?? '',
     header: 'Branch',
     cell: ({ row }) =>
       row.original.branch ? (

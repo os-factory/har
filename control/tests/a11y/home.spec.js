@@ -4,7 +4,7 @@ test('homepage passes axe critical/serious checks', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('sidebar-health')).toBeVisible();
   // Wait for health fetch so transient ellipsis/loading text is not measured.
-  await expect(page.getByTestId('sidebar-health').getByText('MC')).toBeVisible();
+  await expect(page.getByTestId('sidebar-health').getByText('MCP')).toBeVisible();
   await page.waitForFunction(() => {
     const el = document.querySelector('[data-testid="sidebar-health"]');
     return el && !el.textContent?.includes('…');

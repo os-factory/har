@@ -9,7 +9,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="min-w-0 overflow-x-hidden">
         <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-12 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear">
           <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
             <SidebarTrigger className="-ml-1" />
@@ -23,8 +23,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-2">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+          <div className="@container/main flex min-w-0 flex-1 flex-col gap-2">{children}</div>
         </div>
       </SidebarInset>
     </SidebarProvider>
