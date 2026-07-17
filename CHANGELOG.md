@@ -1,3 +1,10 @@
+# [0.14.0](https://github.com/os-factory/har/compare/v0.13.1...v0.14.0) (2026-07-17)
+
+
+### Features
+
+* **control:** Mission Control IA, richer OTEL, and board polish ([#57](https://github.com/os-factory/har/issues/57)) ([2fb79db](https://github.com/os-factory/har/commit/2fb79dbddc3c886a5d887ff13a712249d7bee9a7))
+
 ## [0.13.1](https://github.com/os-factory/har/compare/v0.13.0...v0.13.1) (2026-07-17)
 
 
