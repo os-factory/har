@@ -23,8 +23,18 @@ function maxCost(
   return new Prisma.Decimal(Math.max(left, right));
 }
 
-function mergeSources(existing: string[] | undefined, incoming: UsageSource[]): string[] {
-  return [...new Set([...(existing ?? []), ...incoming])];
+/** SQLite stores `sources` as a JSON column; coerce it back to a string[]. */
+function toStringArray(value: Prisma.JsonValue | null | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string');
+}
+
+function mergeSources(
+  existing: Prisma.JsonValue | string[] | undefined,
+  incoming: UsageSource[],
+): string[] {
+  const base = Array.isArray(existing) ? existing.map(String) : [];
+  return [...new Set([...base, ...incoming])];
 }
 
 export type UsageUpsertInput = AgentSessionUsage;
@@ -113,17 +123,19 @@ export async function syncUsage(repositoryId: string, records: UsageUpsertInput[
 }
 
 export async function listSessionUsageForRepo(repositoryId: string) {
-  return prisma.agentSessionUsage.findMany({
+  const rows = await prisma.agentSessionUsage.findMany({
     where: { repositoryId },
     orderBy: { lastSeenAt: 'desc' },
   });
+  return rows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));
 }
 
 export async function listSessionUsageForSlot(repositoryId: string, agentId: number) {
-  return prisma.agentSessionUsage.findMany({
+  const rows = await prisma.agentSessionUsage.findMany({
     where: { repositoryId, agentId },
     orderBy: { lastSeenAt: 'desc' },
   });
+  return rows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));
 }
 
 export async function summarizeUsageForBranch(
@@ -138,12 +150,13 @@ export async function summarizeUsageForBranch(
   }
   if (suffix) or.push({ suffix });
 
-  const rows =
+  const rawRows =
     or.length === 0
       ? []
       : await prisma.agentSessionUsage.findMany({
           where: { repositoryId, OR: or },
         });
+  const rows = rawRows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));
 
   let tokensTotal = 0n;
   let costUsd = 0;

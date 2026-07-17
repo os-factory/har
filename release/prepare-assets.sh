@@ -15,6 +15,7 @@ cp "${ROOT}/src/templates/har-boilerplate/docker-compose.agent.yml" \
   "${OUT}/docker-compose.agent-web.yml"
 cp "${ROOT}/src/templates/har-boilerplate-cli/docker-compose.agent.yml" \
   "${OUT}/docker-compose.agent-cli.yml"
-cp "${ROOT}/control/docker-compose.yml" "${OUT}/control-docker-compose.yml"
+# Mission Control ships as a single self-contained image (SQLite, no compose):
+# users run `har control up`, so there is no control compose asset to publish.
 
 echo "Prepared release assets in ${OUT}"

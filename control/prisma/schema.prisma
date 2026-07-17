@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -68,9 +68,9 @@ model AgentSessionUsage {
   tokensCacheRead     BigInt     @default(0)
   tokensCacheCreation BigInt     @default(0)
   tokensTotal         BigInt     @default(0)
-  costUsd             Decimal?   @db.Decimal(12, 6)
+  costUsd             Decimal?
   modelBreakdown      Json?
-  sources             String[]
+  sources             Json       @default("[]")
   firstSeenAt         DateTime
   lastSeenAt          DateTime
   updatedAt           DateTime   @updatedAt

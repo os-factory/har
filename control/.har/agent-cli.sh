@@ -18,8 +18,11 @@ COMMAND="${2:?Usage: agent-cli.sh <agent-id> <command> [args...]}"
 validate_agent_id "$AGENT_ID"
 
 load_agent_ports "$AGENT_ID" "$REPO_ROOT"
-DB_PORT="${DB_PORT:-${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}}"
-export PGPASSWORD="password"
+
+# Resolve this slot's SQLite database file (embedded — no DB server).
+SLOT_WORK_DIR="$(resolve_agent_work_dir "" "$AGENT_ID" 2>/dev/null || true)"
+[ -n "$SLOT_WORK_DIR" ] && [ -d "$SLOT_WORK_DIR" ] || SLOT_WORK_DIR="$REPO_ROOT"
+SLOT_DB_FILE="$(har_slot_db_file "$SLOT_WORK_DIR" "$AGENT_ID")"
 
 PM2_SLOT_PREFIX="$(har_pm2_slot_prefix "$AGENT_ID")"
 
@@ -144,12 +147,16 @@ if (names.length === 0) console.log('No processes found for ${PM2_SLOT_PREFIX}')
     fi
     ;;
 
-  psql)
+  sqlite | psql)
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+      echo "sqlite3 CLI not installed — inspect ${SLOT_DB_FILE} with any SQLite tool." >&2
+      exit 1
+    fi
     QUERY="${3:-}"
     if [ -n "$QUERY" ]; then
-      har_pg psql -d "agent_${AGENT_ID}" -c "$QUERY"
+      sqlite3 "$SLOT_DB_FILE" "$QUERY"
     else
-      har_pg psql -d "agent_${AGENT_ID}"
+      sqlite3 "$SLOT_DB_FILE"
     fi
     ;;
 
@@ -167,30 +174,22 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
   url)
     echo "Frontend:  http://localhost:${FE_PORT}"
     echo "API:       http://localhost:${API_PORT}"
-    har_infra_enabled db               && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
+    echo "Database:  SQLite ${SLOT_DB_FILE}"
     har_infra_enabled minio            && echo "MinIO:     http://localhost:${AGENT_MINIO_CONSOLE_PORT:-19001}"
     har_infra_enabled headless-browser && echo "Browser:   http://localhost:${AGENT_BROWSER_PORT:-13001}"
     har_infra_enabled mailpit          && echo "Mailpit:   http://localhost:${AGENT_MAILPIT_WEB_PORT:-18025}"
     ;;
 
   reset-db)
-    echo "==> Resetting database for agent ${AGENT_ID}..."
-    har_pg psql -d postgres -c \
-      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='agent_${AGENT_ID}';" \
-      >/dev/null
-    har_pg dropdb --if-exists "agent_${AGENT_ID}"
-    har_pg createdb -T "$HARNESS_TEMPLATE_DB" "agent_${AGENT_ID}"
+    echo "==> Resetting SQLite database for agent ${AGENT_ID}..."
+    rm -f "$SLOT_DB_FILE" "${SLOT_DB_FILE}-journal" "${SLOT_DB_FILE}-wal" "${SLOT_DB_FILE}-shm"
+    (cd "$SLOT_WORK_DIR" && DATABASE_URL="$(har_slot_db_url "$AGENT_ID")" npx prisma db push --skip-generate)
     echo "✓ Database reset to clean state"
     ;;
 
   slow-queries)
-    har_pg psql -d "agent_${AGENT_ID}" -c "
-SELECT round(mean_exec_time::numeric, 2) AS mean_ms,
-       calls,
-       left(query, 120) AS query
-FROM pg_stat_statements
-ORDER BY mean_exec_time DESC
-LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
+    echo "slow-queries is a PostgreSQL-only helper (pg_stat_statements)." >&2
+    echo "Mission Control now uses SQLite — inspect ${SLOT_DB_FILE} with: $0 ${AGENT_ID} sqlite" >&2
     ;;
 
   exec)
@@ -201,7 +200,7 @@ LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
     fi
     WORK_DIR="$(resolve_agent_work_dir "" "$AGENT_ID" 2>/dev/null || true)"
     [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] || WORK_DIR="$REPO_ROOT"
-    PGHOST=localhost PGPORT="$DB_PORT" PGUSER=postgres PGDATABASE="agent_${AGENT_ID}" \
+    DATABASE_URL="$(har_slot_db_url "$AGENT_ID")" \
       bash -c "cd '$WORK_DIR' && $*"
     ;;
 
@@ -217,8 +216,8 @@ LIMIT 20;" 2>/dev/null || echo "pg_stat_statements extension not available"
   *)
     echo "Unknown command: $COMMAND" >&2
     echo ""
-    echo "Commands: status, logs [service], restart [service], psql [query],"
-    echo "          health, url, reset-db, slow-queries, exec <cmd>, attach"
+    echo "Commands: status, logs [service], restart [service], sqlite [query],"
+    echo "          health, url, reset-db, exec <cmd>, attach"
     exit 1
     ;;
 esac
