@@ -69,22 +69,17 @@ export const envCommand = {
             })
             .option('cursor-rule', {
               type: 'boolean',
-              default: false,
-              describe: 'Create .cursor/rules/har-workflow.mdc without prompting',
-            })
-            .option('no-cursor-rule', {
-              type: 'boolean',
-              default: false,
-              describe: 'Skip Cursor rule scaffolding',
+              // No default: unset → prompt/auto-detect; --cursor-rule → true; --no-cursor-rule → false
+              // (do not declare a separate --no-cursor-rule option — yargs negation owns that.)
+              describe:
+                'Create .cursor/rules/har-workflow.mdc without prompting (use --no-cursor-rule to skip)',
             })
             .option('agents', {
               type: 'string',
-              describe: 'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted',
-            })
-            .option('no-agents', {
-              type: 'boolean',
-              default: false,
-              describe: 'Skip agent skills scaffolding',
+              // --no-agents is yargs negation of this string option (sets agents=false). Do not
+              // declare a separate --no-agents boolean — it collides and crashes parseAgentTargets.
+              describe:
+                'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted; --no-agents to skip',
             }),
         handleInit,
       )
@@ -113,22 +108,14 @@ export const envCommand = {
             })
             .option('cursor-rule', {
               type: 'boolean',
-              default: false,
-              describe: 'Create .cursor/rules/har-workflow.mdc without prompting',
-            })
-            .option('no-cursor-rule', {
-              type: 'boolean',
-              default: false,
-              describe: 'Skip Cursor rule scaffolding',
+              // No default: unset → prompt/auto-detect; --cursor-rule → true; --no-cursor-rule → false
+              describe:
+                'Create .cursor/rules/har-workflow.mdc without prompting (use --no-cursor-rule to skip)',
             })
             .option('agents', {
               type: 'string',
-              describe: 'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted',
-            })
-            .option('no-agents', {
-              type: 'boolean',
-              default: false,
-              describe: 'Skip agent skills scaffolding',
+              describe:
+                'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted; --no-agents to skip',
             }),
         handleMaintain,
       )
@@ -340,10 +327,10 @@ export async function handleInit(argv: {
   auto: boolean;
   yes: boolean;
   profile: 'default' | 'cli' | 'ios';
-  cursorRule: boolean;
-  noCursorRule: boolean;
-  agents?: string;
-  noAgents: boolean;
+  /** Tri-state from yargs: unset | --cursor-rule | --no-cursor-rule */
+  cursorRule?: boolean;
+  /** String from --agents=…, or `false` when --no-agents (yargs negation). */
+  agents?: string | false;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -393,14 +380,13 @@ export async function handleInit(argv: {
     recordRepoForControlSync(repoPath);
     await handleCursorRule({
       repoPath,
-      cursorRule: resolveCursorRuleFlag(argv.cursorRule, argv.noCursorRule),
+      cursorRule: resolveCursorRuleFlag(argv.cursorRule),
       autoYes: argv.yes,
       mode: 'init',
     });
     await handleAgentSkills({
       repoPath,
-      agents: argv.agents,
-      enabled: argv.noAgents ? false : undefined,
+      ...resolveAgentsScaffoldOptions(argv.agents),
       autoYes: argv.yes,
       force: argv.force,
       mode: 'init',
@@ -420,10 +406,10 @@ export async function handleMaintain(argv: {
   yes: boolean;
   finalize: boolean;
   summary?: string;
-  cursorRule: boolean;
-  noCursorRule: boolean;
-  agents?: string;
-  noAgents: boolean;
+  /** Tri-state from yargs: unset | --cursor-rule | --no-cursor-rule */
+  cursorRule?: boolean;
+  /** String from --agents=…, or `false` when --no-agents (yargs negation). */
+  agents?: string | false;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -486,14 +472,13 @@ export async function handleMaintain(argv: {
     }
     await handleCursorRule({
       repoPath,
-      cursorRule: resolveCursorRuleFlag(argv.cursorRule, argv.noCursorRule),
+      cursorRule: resolveCursorRuleFlag(argv.cursorRule),
       autoYes: argv.yes,
       mode: 'maintain',
     });
     await handleAgentSkills({
       repoPath,
-      agents: argv.agents,
-      enabled: argv.noAgents ? false : undefined,
+      ...resolveAgentsScaffoldOptions(argv.agents),
       autoYes: argv.yes,
       mode: 'maintain',
     });
@@ -503,10 +488,25 @@ export async function handleMaintain(argv: {
   }
 }
 
-function resolveCursorRuleFlag(cursorRule: boolean, noCursorRule: boolean): boolean | undefined {
-  if (noCursorRule) return false;
-  if (cursorRule) return true;
-  return undefined;
+/**
+ * Map yargs `--cursor-rule` / `--no-cursor-rule` onto the tri-state handleCursorRule expects.
+ * Do not declare a separate `--no-cursor-rule` option — yargs negation sets this to false.
+ */
+export function resolveCursorRuleFlag(cursorRule: boolean | undefined): boolean | undefined {
+  return cursorRule;
+}
+
+/**
+ * Map yargs `--agents` / `--no-agents` onto handleAgentSkills options.
+ * `--no-agents` is yargs negation of the string `--agents` option and yields `false`.
+ */
+export function resolveAgentsScaffoldOptions(agents: string | false | undefined): {
+  agents?: string;
+  enabled?: boolean;
+} {
+  if (agents === false) return { enabled: false };
+  if (typeof agents === 'string') return { agents };
+  return {};
 }
 
 function emitManualAdaptationPrompt(
