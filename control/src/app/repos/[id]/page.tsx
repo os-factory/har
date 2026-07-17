@@ -51,7 +51,7 @@ export default async function RepoDetailPage({
   return (
     <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
       <div>
-        <Link href="/" className="text-sm text-muted-foreground hover:underline">
+        <Link href="/repos" className="text-sm text-muted-foreground hover:underline">
           ← Repos
         </Link>
         <h2 className="mt-2 text-2xl font-semibold">{repo.path}</h2>
@@ -101,7 +101,7 @@ export default async function RepoDetailPage({
           <TabsTrigger value="validation">Validation</TabsTrigger>
           <TabsTrigger value="changes">Changes</TabsTrigger>
           <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="analytics">Verify trend</TabsTrigger>
         </TabsList>
 
         <TabsContent value="slots" className="mt-4">

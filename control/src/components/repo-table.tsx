@@ -6,7 +6,6 @@ import { type ColumnFiltersState } from '@tanstack/react-table';
 import { repoColumns, repoName, type RepoRow } from '@/components/columns/repo-columns';
 import { DataTable } from '@/components/data-table/data-table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 
 export type { RepoRow };
 
@@ -61,65 +60,56 @@ export function RepoTable({ repos }: { repos: RepoRow[] }) {
   }
 
   return (
-    <div className="flex w-full flex-col gap-4 px-4 lg:px-6">
+    <div className="flex min-w-0 w-full flex-col gap-4 px-4 lg:px-6">
       <h1 className="text-base font-medium">Repositories</h1>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Input
-          type="search"
-          placeholder="Search repositories…"
-          value={globalFilter}
-          onChange={(event) => setGlobalFilter(event.target.value)}
-          className="max-w-sm"
-          aria-label="Search repositories"
-        />
-        {profiles.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+      {profiles.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={activeProfile === null ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setColumnFilters([])}
+          >
+            All
+          </Button>
+          {profiles.map((profile) => (
             <Button
-              variant={activeProfile === null ? 'secondary' : 'outline'}
+              key={profile}
+              variant={activeProfile === profile ? 'secondary' : 'outline'}
               size="sm"
-              onClick={() => setColumnFilters([])}
+              onClick={() => setColumnFilters([{ id: 'profile', value: profile }])}
             >
-              All
+              {profile}
             </Button>
-            {profiles.map((profile) => (
-              <Button
-                key={profile}
-                variant={activeProfile === profile ? 'secondary' : 'outline'}
-                size="sm"
-                onClick={() => setColumnFilters([{ id: 'profile', value: profile }])}
-              >
-                {profile}
-              </Button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {filteredCount === 0 ? (
-        <p className="text-sm text-muted-foreground">No repositories match your filters.</p>
-      ) : (
-        <DataTable
-          columns={repoColumns}
-          data={repos}
-          getRowId={(repo) => repo.id}
-          globalFilter={globalFilter}
-          onGlobalFilterChange={setGlobalFilter}
-          globalFilterFn={(row, _columnId, filterValue) => {
-            const q = String(filterValue).trim().toLowerCase();
-            if (!q) return true;
-            const repo = row.original;
-            return (
-              repoName(repo).toLowerCase().includes(q) ||
-              repo.path.toLowerCase().includes(q) ||
-              (repo.gitRemote?.toLowerCase().includes(q) ?? false)
-            );
-          }}
-          columnFilters={columnFilters}
-          onColumnFiltersChange={setColumnFilters}
-          columnVisibility={{ profile: false }}
-        />
+          ))}
+        </div>
       )}
+
+      <DataTable
+        columns={repoColumns}
+        data={repos}
+        getRowId={(repo) => repo.id}
+        searchPlaceholder="Search repositories…"
+        searchAriaLabel="Search repositories"
+        emptyMessage={
+          filteredCount === 0 ? 'No repositories match your filters.' : 'No results.'
+        }
+        globalFilter={globalFilter}
+        onGlobalFilterChange={setGlobalFilter}
+        globalFilterFn={(row, _columnId, filterValue) => {
+          const q = String(filterValue).trim().toLowerCase();
+          if (!q) return true;
+          const repo = row.original;
+          return (
+            repoName(repo).toLowerCase().includes(q) ||
+            repo.path.toLowerCase().includes(q) ||
+            (repo.gitRemote?.toLowerCase().includes(q) ?? false)
+          );
+        }}
+        columnFilters={columnFilters}
+        onColumnFiltersChange={setColumnFilters}
+        columnVisibility={{ profile: false }}
+      />
     </div>
   );
 }

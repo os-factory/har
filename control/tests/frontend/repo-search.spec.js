@@ -5,7 +5,7 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Repository search and filter', () => {
   test('search box narrows the visible rows', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/repos');
 
     const table = page.getByRole('table');
     if (!(await table.isVisible().catch(() => false))) {
@@ -19,7 +19,7 @@ test.describe('Repository search and filter', () => {
 
     // Query for something that cannot match any seeded repo.
     await search.fill('zzz-no-such-repo-zzz');
-    await expect(page.getByText(/no repositories match your filters/i)).toBeVisible();
+    await expect(page.getByRole('cell', { name: /no repositories match your filters/i })).toBeVisible();
 
     // Clearing restores the full list.
     await search.fill('');
@@ -27,7 +27,7 @@ test.describe('Repository search and filter', () => {
   });
 
   test('profile filter buttons narrow the list', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/repos');
 
     const table = page.getByRole('table');
     if (!(await table.isVisible().catch(() => false))) {

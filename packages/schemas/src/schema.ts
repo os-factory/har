@@ -465,3 +465,26 @@ export const SyncUsageInputSchema = z.object({
 });
 
 export type SyncUsageInput = z.infer<typeof SyncUsageInputSchema>;
+
+/** Per-session agent log/event rows for Mission Control timelines. */
+export const AgentSessionEventSchema = z.object({
+  sessionKey: z.string().min(1),
+  agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
+  agentTool: AgentToolSchema,
+  eventName: z.string().min(1),
+  sequence: z.number().int().nonnegative().default(0),
+  timestamp: z.string(),
+  attributes: z.record(z.unknown()).optional(),
+  promptText: z.string().nullable().optional(),
+  responseText: z.string().nullable().optional(),
+  rawTruncated: z.string().nullable().optional(),
+  source: z.enum(['otel', 'harvest']).default('otel'),
+});
+
+export type AgentSessionEvent = z.infer<typeof AgentSessionEventSchema>;
+
+export const SyncSessionEventsInputSchema = z.object({
+  events: z.array(AgentSessionEventSchema),
+});
+
+export type SyncSessionEventsInput = z.infer<typeof SyncSessionEventsInputSchema>;

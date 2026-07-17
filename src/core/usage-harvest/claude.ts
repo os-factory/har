@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { AgentSessionUsage } from '../../harness/schema';
+import type { AgentSessionEvent, AgentSessionUsage } from '../../harness/schema';
+import { getTelemetrySignals } from '../telemetry-config';
 import { buildSessionKey } from '../telemetry-env';
 
 export interface HarvestSlotContext {
@@ -90,27 +91,18 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
   return { tokensInput, tokensOutput, tokensCacheRead, tokensCacheCreation, costUsd };
 }
 
-export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage | null {
+function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePath: string; records: unknown[]; mtimeMs: number }> {
   const targets = [slot.workDir, slot.worktreePath].filter(Boolean) as string[];
-  if (targets.length === 0) return null;
+  if (targets.length === 0) return [];
 
   const root = claudeProjectsRoot();
-  if (!fs.existsSync(root)) return null;
+  if (!fs.existsSync(root)) return [];
 
-  const sessionKey = buildSessionKey({
-    branch: slot.branch,
-    agentId: slot.agentId,
-    suffix: slot.suffix,
-    createdAt: slot.sessionCreatedAt,
-  });
-
-  let best: ReturnType<typeof extractClaudeUsageFromRecords> | null = null;
-  let bestMtime = 0;
+  const matches: Array<{ filePath: string; records: unknown[]; mtimeMs: number }> = [];
 
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const projectDir = path.join(root, entry.name);
-    // Prefer directories that encode one of our cwds; also scan for cwd in session files.
     const encodedHit = targets.some((t) => entry.name.includes(encodeClaudeProjectDir(t).slice(0, 40)));
 
     for (const file of fs.readdirSync(projectDir)) {
@@ -128,18 +120,94 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
         }
       }
       if (!cwdHit) continue;
-      const usage = extractClaudeUsageFromRecords(records);
-      if (
-        usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead === 0 &&
-        (usage.costUsd == null || usage.costUsd === 0)
-      ) {
-        continue;
-      }
-      if (stat.mtimeMs >= bestMtime) {
-        bestMtime = stat.mtimeMs;
-        best = usage;
-      }
+      matches.push({ filePath, records, mtimeMs: stat.mtimeMs });
     }
+  }
+
+  return matches.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+function extractPromptEvents(
+  records: unknown[],
+  sessionKey: string,
+  slot: HarvestSlotContext,
+): AgentSessionEvent[] {
+  const events: AgentSessionEvent[] = [];
+  let sequence = 0;
+  for (const record of records) {
+    if (!record || typeof record !== 'object') continue;
+    const payload = record as Record<string, unknown>;
+    const typ = String(payload.type ?? '');
+    const message = payload.message as
+      | { role?: string; content?: unknown }
+      | undefined;
+    const role = String(message?.role ?? payload.role ?? '');
+    let text: string | null = null;
+    const content = message?.content ?? payload.content;
+    if (typeof content === 'string') text = content;
+    else if (Array.isArray(content)) {
+      text = content
+        .map((part) => {
+          if (typeof part === 'string') return part;
+          if (part && typeof part === 'object' && typeof (part as { text?: string }).text === 'string') {
+            return (part as { text: string }).text;
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n');
+    }
+    if (!text || text.trim().length === 0) continue;
+
+    const isUser =
+      typ === 'user' || role === 'user' || typ === 'human' || Boolean(payload.userType);
+    const isAssistant = typ === 'assistant' || role === 'assistant';
+    if (!isUser && !isAssistant) continue;
+
+    sequence += 1;
+    const timestamp =
+      typeof payload.timestamp === 'string'
+        ? payload.timestamp
+        : typeof payload.ts === 'string'
+          ? payload.ts
+          : new Date().toISOString();
+
+    events.push({
+      sessionKey,
+      agentId: slot.agentId,
+      agentTool: 'claude_code',
+      eventName: isUser ? 'claude_code.user_prompt' : 'claude_code.assistant_response',
+      sequence,
+      timestamp,
+      promptText: isUser ? text.slice(0, 8000) : null,
+      responseText: isAssistant ? text.slice(0, 8000) : null,
+      rawTruncated: text.slice(0, 4000),
+      source: 'harvest',
+    });
+  }
+  return events;
+}
+
+export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage | null {
+  const matches = findMatchingClaudeTranscripts(slot);
+  const sessionKey = buildSessionKey({
+    branch: slot.branch,
+    agentId: slot.agentId,
+    suffix: slot.suffix,
+    createdAt: slot.sessionCreatedAt,
+  });
+
+  let best: ReturnType<typeof extractClaudeUsageFromRecords> | null = null;
+  for (const match of matches) {
+    const usage = extractClaudeUsageFromRecords(match.records);
+    if (
+      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead === 0 &&
+      (usage.costUsd == null || usage.costUsd === 0)
+    ) {
+      continue;
+    }
+    best = usage;
+    break;
   }
 
   if (!best) return null;
@@ -164,4 +232,19 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
     firstSeenAt: slot.sessionCreatedAt ?? now,
     lastSeenAt: now,
   };
+}
+
+/** Prompt/message summaries from local JSONL — only when prompts signal is on. */
+export function harvestClaudeEvents(slot: HarvestSlotContext): AgentSessionEvent[] {
+  if (!getTelemetrySignals().prompts) return [];
+  const matches = findMatchingClaudeTranscripts(slot);
+  if (matches.length === 0) return [];
+  const sessionKey = buildSessionKey({
+    branch: slot.branch,
+    agentId: slot.agentId,
+    suffix: slot.suffix,
+    createdAt: slot.sessionCreatedAt,
+  });
+  // Newest transcript only — avoid flooding with historical chats.
+  return extractPromptEvents(matches[0].records, sessionKey, slot).slice(-40);
 }

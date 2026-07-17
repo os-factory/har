@@ -182,3 +182,53 @@ export async function summarizeUsageForBranch(
     rows,
   };
 }
+
+export async function listAllSessionUsage() {
+  const rows = await prisma.agentSessionUsage.findMany({
+    orderBy: { lastSeenAt: 'desc' },
+    include: {
+      repository: { select: { id: true, path: true } },
+    },
+  });
+  return rows.map((row) => ({
+    ...row,
+    sources: toStringArray(row.sources),
+  }));
+}
+
+export function summarizeUsageRows(
+  rows: Array<{
+    tokensTotal: bigint | number;
+    costUsd: Prisma.Decimal | number | null;
+    agentTool: string;
+    sources: string[];
+    lastSeenAt: Date;
+  }>,
+) {
+  let tokensTotal = 0;
+  let costUsd = 0;
+  let hasCost = false;
+  const tools = new Set<string>();
+  const sources = new Set<string>();
+  let lastSeenAt: Date | null = null;
+
+  for (const row of rows) {
+    tokensTotal += Number(row.tokensTotal);
+    if (row.costUsd != null) {
+      costUsd += Number(row.costUsd);
+      hasCost = true;
+    }
+    tools.add(row.agentTool);
+    for (const s of row.sources) sources.add(s);
+    if (!lastSeenAt || row.lastSeenAt > lastSeenAt) lastSeenAt = row.lastSeenAt;
+  }
+
+  return {
+    tokensTotal,
+    costUsd: hasCost ? costUsd : null,
+    agentTools: [...tools],
+    sources: [...sources],
+    lastSeenAt,
+    sessionCount: rows.length,
+  };
+}

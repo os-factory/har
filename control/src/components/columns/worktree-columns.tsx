@@ -16,6 +16,7 @@ const SYNC_WARN_MS = 60 * 60 * 1000;
 
 const repoColumn: ColumnDef<WorktreeRow> = {
   id: 'repository',
+  accessorFn: (row) => row.repoPath.split('/').pop() ?? row.repoPath,
   header: 'Repository',
   cell: ({ row }) => (
     <Link
@@ -30,6 +31,7 @@ const repoColumn: ColumnDef<WorktreeRow> = {
 
 const syncedColumn: ColumnDef<WorktreeRow> = {
   id: 'synced',
+  accessorFn: (row) => row.syncedAt.getTime(),
   header: 'Synced',
   cell: ({ row }) => {
     const syncedAt = row.original.syncedAt;

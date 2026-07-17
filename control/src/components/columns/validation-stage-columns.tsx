@@ -30,6 +30,7 @@ export const validationStageColumns: ColumnDef<ValidationStageStatus>[] = [
   {
     id: 'index',
     header: '#',
+    enableSorting: false,
     cell: ({ row }) => (
       <span className="text-muted-foreground">
         {row.original.declared ? row.index + 1 : '—'}
@@ -52,6 +53,7 @@ export const validationStageColumns: ColumnDef<ValidationStageStatus>[] = [
   },
   {
     id: 'lastResult',
+    accessorFn: (row) => row.lastStatus ?? '',
     header: 'Last result',
     cell: ({ row }) => (
       <span
@@ -72,6 +74,7 @@ export const validationStageColumns: ColumnDef<ValidationStageStatus>[] = [
   },
   {
     id: 'passRate',
+    accessorFn: (row) => (row.runCount === 0 ? -1 : row.passCount / row.runCount),
     header: 'Pass rate',
     cell: ({ row }) => passRate(row.original),
   },

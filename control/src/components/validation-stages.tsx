@@ -20,6 +20,8 @@ export function ValidationStages({ stages }: { stages: ValidationStageStatus[] }
       data={stages}
       getRowId={(stage) => stage.name}
       showPagination={false}
+      searchPlaceholder="Search stages…"
+      searchAriaLabel="Search stages"
     />
   );
 }

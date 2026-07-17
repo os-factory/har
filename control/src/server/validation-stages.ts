@@ -64,6 +64,7 @@ function emptyStage(name: string, declared: boolean): ValidationStageStatus {
 
 export async function getValidationStages(
   repositoryId: string,
+  options?: { agentId?: number },
 ): Promise<ValidationStagesSummary | null> {
   const repo = await prisma.repository.findUnique({ where: { id: repositoryId } });
   if (!repo) return null;
@@ -77,7 +78,11 @@ export async function getValidationStages(
     : [];
 
   const verifyRuns = await prisma.run.findMany({
-    where: { repositoryId, stageId: 'verify' },
+    where: {
+      repositoryId,
+      stageId: 'verify',
+      ...(options?.agentId != null ? { agentId: options.agentId } : {}),
+    },
     orderBy: { startedAt: 'desc' },
     take: 50,
   });

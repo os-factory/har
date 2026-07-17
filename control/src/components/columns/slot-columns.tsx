@@ -32,6 +32,17 @@ export interface SlotRow {
   usageSources?: string[];
 }
 
+function driftLabel(row: SlotRow): string {
+  if (!row.worktreePath) return '';
+  const parts: string[] = [];
+  if (row.detachedHead) parts.push('detached');
+  if (row.dirty) parts.push('dirty');
+  if (row.stale) parts.push(`behind ${row.behind ?? '?'}`);
+  if ((row.ahead ?? 0) > 0) parts.push(`ahead ${row.ahead}`);
+  if (parts.length === 0) return 'fresh';
+  return parts.join(' ');
+}
+
 function driftBadges(row: SlotRow) {
   if (!row.worktreePath) return <span className="text-muted-foreground">—</span>;
   const badges = [];
@@ -78,6 +89,7 @@ function formatCost(n: number | null | undefined): string {
   return `$${n.toFixed(2)}`;
 }
 
+/** Priority: status, purpose, drift, last verify, agent, tokens/cost, then path/preview. */
 export const slotColumns: ColumnDef<SlotRow>[] = [
   {
     accessorKey: 'slotId',
@@ -103,40 +115,41 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     cell: ({ row }) => (row.original.active ? '● Active' : '○ Idle'),
   },
   {
-    id: 'worktree',
-    header: 'Worktree',
-    cell: ({ row }) => (
-      <span className="max-w-xs truncate text-muted-foreground">
-        {row.original.worktreePath ?? row.original.workDir ?? '—'}
-      </span>
-    ),
+    id: 'purpose',
+    accessorFn: (row) => row.purpose ?? '',
+    header: 'Purpose',
+    cell: ({ row }) =>
+      row.original.purpose ? (
+        <span className="max-w-40 truncate" title={row.original.purpose}>
+          {row.original.purpose}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
   },
   {
-    id: 'branch',
-    header: 'Branch',
+    id: 'drift',
+    accessorFn: (row) => driftLabel(row),
+    header: 'Drift',
+    cell: ({ row }) => driftBadges(row.original),
+  },
+  {
+    accessorKey: 'lastVerifyStatus',
+    header: 'Last verify',
     cell: ({ row }) =>
-      row.original.branch ? (
-        <span
-          className="block max-w-56 truncate font-mono text-xs text-muted-foreground"
-          title={
-            row.original.baseBranch
-              ? `based on ${row.original.baseBranch} @ ${row.original.baseCommit?.slice(0, 7) ?? '?'}`
-              : undefined
-          }
+      row.original.lastVerifyStatus ? (
+        <Badge
+          variant={row.original.lastVerifyStatus === 'pass' ? 'success' : 'destructive'}
         >
-          {row.original.branch}
-        </span>
+          {row.original.lastVerifyStatus}
+        </Badge>
       ) : (
         '—'
       ),
   },
   {
-    id: 'drift',
-    header: 'Drift',
-    cell: ({ row }) => driftBadges(row.original),
-  },
-  {
     id: 'agentTools',
+    accessorFn: (row) => (row.agentTools ?? []).join(' '),
     header: 'Agent',
     cell: ({ row }) => {
       const tools = row.original.agentTools ?? [];
@@ -154,6 +167,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'tokens',
+    accessorFn: (row) => row.tokensTotal ?? 0,
     header: 'Tokens',
     cell: ({ row }) => (
       <span className="tabular-nums text-muted-foreground">
@@ -163,6 +177,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   },
   {
     id: 'cost',
+    accessorFn: (row) => row.costUsd ?? -1,
     header: 'Cost',
     cell: ({ row }) => (
       <span className="tabular-nums text-muted-foreground">
@@ -171,8 +186,21 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     ),
   },
   {
+    id: 'worktree',
+    accessorFn: (row) => row.worktreePath ?? row.workDir ?? '',
+    header: 'Path',
+    cell: ({ row }) => (
+      <span className="max-w-xs truncate text-muted-foreground" title={row.original.worktreePath ?? row.original.workDir ?? undefined}>
+        {row.original.worktreePath ?? row.original.workDir ?? '—'}
+      </span>
+    ),
+  },
+  {
     id: 'preview',
+    accessorFn: (row) =>
+      row.previewUrls ? Object.entries(row.previewUrls).map(([k, v]) => `${k} ${v}`).join(' ') : '',
     header: 'Preview',
+    enableSorting: false,
     cell: ({ row }) => {
       const urls = row.original.previewUrls;
       if (!row.original.active || !urls || Object.keys(urls).length === 0) return '—';
@@ -194,23 +222,29 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     },
   },
   {
-    accessorKey: 'harnessUsage',
-    header: 'Harness',
-    cell: ({ row }) => usageBadge(row.original.harnessUsage),
-  },
-  {
-    accessorKey: 'lastVerifyStatus',
-    header: 'Last verify',
+    id: 'branch',
+    accessorFn: (row) => row.branch ?? '',
+    header: 'Branch',
     cell: ({ row }) =>
-      row.original.lastVerifyStatus ? (
-        <Badge
-          variant={row.original.lastVerifyStatus === 'pass' ? 'success' : 'destructive'}
+      row.original.branch ? (
+        <span
+          className="block max-w-56 truncate font-mono text-xs text-muted-foreground"
+          title={
+            row.original.baseBranch
+              ? `based on ${row.original.baseBranch} @ ${row.original.baseCommit?.slice(0, 7) ?? '?'}`
+              : undefined
+          }
         >
-          {row.original.lastVerifyStatus}
-        </Badge>
+          {row.original.branch}
+        </span>
       ) : (
         '—'
       ),
+  },
+  {
+    accessorKey: 'harnessUsage',
+    header: 'Harness',
+    cell: ({ row }) => usageBadge(row.original.harnessUsage),
   },
   {
     accessorKey: 'lastBuildPass',

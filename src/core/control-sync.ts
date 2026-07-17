@@ -7,6 +7,7 @@ import {
   RunRecord,
   SyncRunsInputSchema,
   SyncSlotsInputSchema,
+  SyncSessionEventsInputSchema,
   SyncUsageInputSchema,
   SyncValidationsInputSchema,
 } from '../harness/schema';
@@ -17,7 +18,7 @@ import { listRuns } from './runs';
 import { listValidations } from './validations';
 import { createRemoteExecutor } from './cloud-executor';
 import { isTelemetryEnabled } from './telemetry-config';
-import { harvestUsageForSlot } from './usage-harvest';
+import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
 
 export interface ControlSyncOptions {
@@ -222,6 +223,22 @@ async function syncRepoRunsAndSlots(
       if (usage.length > 0) {
         const usageBody = SyncUsageInputSchema.parse({ usage });
         await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
+      }
+
+      const events = status.slots.flatMap((slot) =>
+        harvestEventsForSlot({
+          agentId: slot.agentId,
+          workDir: slot.workDir,
+          worktreePath: slot.worktreePath,
+          branch: slot.branch,
+          suffix: slot.suffix,
+          sessionCreatedAt: slot.sessionCreatedAt,
+          repoPath,
+        }),
+      );
+      if (events.length > 0) {
+        const eventsBody = SyncSessionEventsInputSchema.parse({ events });
+        await postJson(`${apiUrl}/api/repos/${repoId}/events`, eventsBody, dryRun);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
