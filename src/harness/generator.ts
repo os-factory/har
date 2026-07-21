@@ -4,6 +4,7 @@ import { copyDirRecursive } from '../utils/file-ops';
 import { info, success } from '../utils/logging';
 import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
+import { writeHarnessGitignore } from './gitignore-template';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 
 export type HarnessProfile = 'default' | 'cli' | 'ios';
@@ -80,6 +81,7 @@ export function scaffoldHarnessBoilerplate(
   }
 
   copyDirRecursive(boilerplateDir, harnessDir);
+  writeHarnessGitignore(harnessDir, boilerplateDir);
 
   if (profile === 'cli') {
     pruneCliProfile(harnessDir);
