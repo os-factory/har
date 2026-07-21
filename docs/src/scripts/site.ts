@@ -68,6 +68,44 @@ for (const copyButton of document.querySelectorAll<HTMLElement>('[data-copy]')) 
   });
 }
 
+for (const form of document.querySelectorAll<HTMLFormElement>('[data-newsletter-form]')) {
+  const status = form.parentElement?.querySelector<HTMLElement>('[data-newsletter-status]');
+  const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const defaultStatus = status?.innerHTML ?? '';
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!submitButton) return;
+
+    const originalLabel = submitButton.textContent ?? 'Subscribe';
+    submitButton.disabled = true;
+    submitButton.textContent = 'Sending…';
+
+    try {
+      const payload = Object.fromEntries(new FormData(form).entries());
+      const response = await fetch(form.action, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json() as { success?: boolean; message?: string };
+
+      if (response.ok && result.success) {
+        form.reset();
+        if (status) status.textContent = 'Subscribed — thanks for following along.';
+      } else if (status) {
+        status.textContent = result.message ?? 'Something went wrong. Try again in a moment.';
+      }
+    } catch {
+      if (status) status.textContent = 'Could not reach the signup service. Try again later.';
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = originalLabel;
+      if (status && !status.textContent) status.innerHTML = defaultStatus;
+    }
+  });
+}
+
 type WorkflowContent = {
   label: string;
   title: string;

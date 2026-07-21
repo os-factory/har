@@ -22,5 +22,6 @@ lychee \
   --root-dir "$DIST" \
   --exclude '^https://harproject\.cloud' \
   --exclude '^https://www\.npmjs\.com' \
+  --exclude '^https://api\.web3forms\.com' \
   --exclude-loopback \
   "$DIST"
