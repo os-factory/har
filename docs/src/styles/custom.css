@@ -1,8 +1,8 @@
-/* Starlight theme aligned with the HAR website palette */
+/* Starlight theme aligned with the HAR logo green */
 :root {
-	--sl-color-accent-low: #1a2240;
-	--sl-color-accent: #6680ff;
-	--sl-color-accent-high: #a9b7ff;
+	--sl-color-accent-low: #1b231e;
+	--sl-color-accent: #7dcaa2;
+	--sl-color-accent-high: #b9f4ce;
 	--sl-color-white: #edf1f7;
 	--sl-color-gray-1: #d9e0ea;
 	--sl-color-gray-2: #9aa6b4;
@@ -16,9 +16,9 @@
 }
 
 :root[data-theme='light'] {
-	--sl-color-accent-low: #e9ebff;
-	--sl-color-accent: #6680ff;
-	--sl-color-accent-high: #4059d8;
+	--sl-color-accent-low: #e8efe9;
+	--sl-color-accent: #445445;
+	--sl-color-accent-high: #2d3730;
 	--sl-color-white: #11161d;
 	--sl-color-gray-1: #283229;
 	--sl-color-gray-2: #505965;
@@ -31,7 +31,7 @@
 }
 
 ::selection {
-	background: rgba(102, 128, 255, 0.28);
+	background: rgba(68, 84, 69, 0.28);
 }
 
 .sl-markdown-content img {
@@ -47,10 +47,10 @@
 .sl-markdown-content code:not(pre code) {
 	padding: 0.12em 0.35em;
 	border-radius: 0.35rem;
-	background: rgba(102, 128, 255, 0.12);
-	color: #4059d8;
+	background: rgba(68, 84, 69, 0.12);
+	color: #3a523c;
 }
 
 :root[data-theme='dark'] .sl-markdown-content code:not(pre code) {
-	color: #a9b7ff;
+	color: #b9f4ce;
 }
