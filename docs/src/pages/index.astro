@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import HeroFlow from '../components/HeroFlow';
+import HeroFlow from '../components/HeroFlow.astro';
 ---
 <BaseLayout title="HAR — Harnesses for coding agents" bodyClass="home-page" canonicalPath="/">
   <Header active="home" />
@@ -30,7 +30,7 @@ import HeroFlow from '../components/HeroFlow';
 </div>
 </div>
 <div class="hero-visual reveal reveal-delay-1" aria-label="HAR workflow diagram">
-          <HeroFlow client:load />
+          <HeroFlow />
           <div class="floating-note floating-note-top"><span>agentSlots</span><strong>4</strong></div>
           <div class="floating-note floating-note-bottom"><span>last run</span><strong>passed in 31.2s</strong></div>
         </div>

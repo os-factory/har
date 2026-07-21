@@ -1,6 +1,5 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 
 const legacyDocPaths = [
@@ -35,7 +34,6 @@ export default defineConfig({
 	devToolbar: { enabled: false },
 	redirects,
 	integrations: [
-		react(),
 		starlight({
 			title: 'HAR',
 			description:
