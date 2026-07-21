@@ -1,3 +1,10 @@
+## [0.14.1](https://github.com/os-factory/har/compare/v0.14.0...v0.14.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* ship harness gitignore via npm-safe gitignore.template ([#58](https://github.com/os-factory/har/issues/58)) ([5211e7e](https://github.com/os-factory/har/commit/5211e7ebbe0ffc572b9bdbaa481241a8613024a9))
+
 # [0.14.0](https://github.com/os-factory/har/compare/v0.13.1...v0.14.0) (2026-07-17)
 
 
