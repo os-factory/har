@@ -27,7 +27,7 @@ const ROW_GAP = 48;
 const MAX_COLS = 5;
 
 const STATUS_COLOR: Record<'pass' | 'fail' | 'none', string> = {
-  pass: 'hsl(124 11% 30%)',
+  pass: 'hsl(149 42% 64%)',
   fail: 'hsl(var(--destructive))',
   none: 'hsl(var(--muted-foreground) / 0.5)',
 };
