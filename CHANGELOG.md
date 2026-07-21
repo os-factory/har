@@ -1,3 +1,10 @@
+## [0.14.2](https://github.com/os-factory/har/compare/v0.14.1...v0.14.2) (2026-07-21)
+
+
+### Bug Fixes
+
+* unify agent slot limits on stages.json and prefer MCP/CLI hints ([#59](https://github.com/os-factory/har/issues/59)) ([4b5e065](https://github.com/os-factory/har/commit/4b5e065f2306ae5fbeb068a4f0e5819d0b6f5b62))
+
 ## [0.14.1](https://github.com/os-factory/har/compare/v0.14.0...v0.14.1) (2026-07-21)
 
 
