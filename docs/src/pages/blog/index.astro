@@ -16,8 +16,21 @@ import Footer from '../../components/Footer.astro';
         <div class="blog-hero-aside reveal reveal-delay-1">
           <span>Follow the build</span>
           <p>Occasional essays and release notes. No growth-hacking newsletter machinery.</p>
-          <form class="newsletter-form" onsubmit="return false"><label class="sr-only" for="email">Email</label><input id="email" type="email" placeholder="you@company.com" /><button type="submit">Subscribe</button></form>
-          <small>Or follow the <a href="/rss.xml">RSS feed</a>.</small>
+          <form
+            class="newsletter-form"
+            data-newsletter-form
+            action="https://api.web3forms.com/submit"
+            method="POST"
+          >
+            <input type="hidden" name="access_key" value="9650ee0d-81c2-4edb-9cab-69920938f8ab" />
+            <input type="hidden" name="subject" value="HAR Journal newsletter signup" />
+            <input type="hidden" name="message" value="Newsletter subscription from harproject.cloud/blog" />
+            <input type="checkbox" name="botcheck" class="hidden" tabindex="-1" autocomplete="off" />
+            <label class="sr-only" for="newsletter-email">Email</label>
+            <input id="newsletter-email" name="email" type="email" placeholder="you@company.com" required />
+            <button type="submit">Subscribe</button>
+          </form>
+          <small data-newsletter-status aria-live="polite">Or follow the <a href="/rss.xml">RSS feed</a>.</small>
         </div>
       </div>
     </section>
