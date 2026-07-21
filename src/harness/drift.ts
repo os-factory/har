@@ -3,6 +3,11 @@ import * as path from 'path';
 import type { HarnessProfile } from './generator';
 import { readHarnessEnv } from './env';
 import {
+  harnessFileForTemplate,
+  isExpectedHarnessOnlyFile,
+  templateFileForHarness,
+} from './gitignore-template';
+import {
   computeFileChecksum,
   GENERATOR_VERSION,
   getHarnessDir,
@@ -130,24 +135,25 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const unchanged: string[] = [];
 
   for (const file of templateFiles) {
+    const harnessFile = harnessFileForTemplate(file);
     const templatePath = path.join(boilerplateDir, file);
-    const harnessPath = path.join(harnessDir, file);
+    const harnessPath = path.join(harnessDir, harnessFile);
     let templateContent = fs.readFileSync(templatePath, 'utf8');
     if (file === 'harness.env') {
       templateContent = substituteProjectName(templateContent, projectName);
     }
 
     if (!fs.existsSync(harnessPath)) {
-      missing.push(file);
+      missing.push(harnessFile);
       continue;
     }
 
     const harnessChecksum = computeFileChecksum(fs.readFileSync(harnessPath, 'utf8'));
     const templateChecksum = computeFileChecksum(templateContent);
     if (harnessChecksum === templateChecksum) {
-      unchanged.push(file);
+      unchanged.push(harnessFile);
     } else {
-      checksumMismatch.push(file);
+      checksumMismatch.push(harnessFile);
     }
   }
 
@@ -158,7 +164,12 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
       if (file === 'manifest.json' || file.startsWith('ADAPT-PROMPT')) continue;
       if (profile === 'cli' && CLI_EXPECTED_ABSENT.has(file)) {
         extra.push(file);
-      } else if (!templateFiles.includes(file)) {
+      } else if (isExpectedHarnessOnlyFile(file, templateFiles)) {
+        continue;
+      } else if (
+        !templateFiles.includes(file) &&
+        !templateFiles.includes(templateFileForHarness(file))
+      ) {
         extra.push(file);
       }
     }

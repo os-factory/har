@@ -74,6 +74,7 @@ describe('har env init --no-agents / --no-cursor-rule (CLI)', () => {
     expect(combined).toMatch(/Harness initialized/);
     expect(combined).not.toMatch(/raw\.split is not a function/);
     expect(fs.existsSync(path.join(dir, '.har', 'manifest.json'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, '.har', '.gitignore'))).toBe(true);
     expect(fs.existsSync(path.join(dir, '.cursor', 'rules', 'har-workflow.mdc'))).toBe(false);
     expect(fs.existsSync(path.join(dir, '.claude', 'skills', 'setup-har', 'SKILL.md'))).toBe(false);
     expect(fs.existsSync(path.join(dir, '.cursor', 'commands', 'setup-har.md'))).toBe(false);

@@ -5,6 +5,7 @@ import { writeFileSafe } from '../utils/file-ops';
 import { run } from '../utils/shell';
 import type { HarnessProfile } from './generator';
 import type { HarnessDriftResult } from './drift';
+import { templateFileForHarness } from './gitignore-template';
 import { getHarnessDir, readManifest } from './manifest';
 import { resolveTemplatesDir } from '../utils/paths';
 import type { ValidationIssue, ValidationResult } from './validator';
@@ -71,7 +72,7 @@ function readBundledTemplateContent(
   profile: HarnessProfile,
   file: string,
 ): string {
-  const templatePath = path.join(boilerplateDirForProfile(profile), file);
+  const templatePath = path.join(boilerplateDirForProfile(profile), templateFileForHarness(file));
   let content = fs.readFileSync(templatePath, 'utf8');
   if (file === 'harness.env') {
     content = substituteProjectName(content, projectNameFromRepo(repoPath));
