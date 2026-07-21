@@ -432,4 +432,6 @@ docker login
 ./release/publish-control-image.sh
 ```
 
-Releases also publish via the Release workflow automatically. To republish an existing tag manually, use [Publish Docker (manual)](.github/workflows/publish-docker.yml) or `./release/publish-control-image.sh`.
+Releases also publish via the Release workflow automatically. To republish an existing tag manually, use [Publish Docker](.github/workflows/publish-docker.yml) (workflow_dispatch; set **force** to rebuild if the version tag already exists) or `./release/publish-control-image.sh`.
+
+Docker publish builds `linux/amd64` and `linux/arm64` in parallel on native runners (not QEMU), with per-platform GitHub Actions cache. If the exact `theosfactory/har-control:X.Y.Z` tag already exists, the build is skipped unless **force** is set.

@@ -1,27 +1,52 @@
-name: Publish Docker (manual)
+name: Publish Docker
 
-# Normal releases cut the version first, then publish Docker, then npm
-# (see .github/workflows/release.yml). Use this workflow only to republish
-# an existing tag to Docker Hub.
+# Builds and pushes theosfactory/har-control for linux/amd64 + linux/arm64.
+# Used by Release after a version cut, or manually to republish an existing tag.
+#
+# Speed notes:
+# - Platforms build in parallel on native runners (no QEMU arm64 emulation).
+# - Per-platform GitHub Actions cache (scope=har-control-<platform>).
+# - Skips the build when the exact version tag already exists on Docker Hub
+#   (re-runs / retries). Pass force=true to rebuild and retag anyway.
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Git tag to publish (e.g. v0.2.0)
+        required: true
+        type: string
+      force:
+        description: Rebuild even if the version tag already exists on Docker Hub
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
         description: Git tag to publish (e.g. v0.2.0)
         required: true
         type: string
+      force:
+        description: Rebuild even if the version tag already exists on Docker Hub
+        required: false
+        type: boolean
+        default: false
 
 env:
   DOCKERHUB_USERNAME: theosfactory
   IMAGE: theosfactory/har-control
 
 jobs:
-  publish:
+  prepare:
     runs-on: ubuntu-latest
     environment: npm-publish
     permissions:
       contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      should_build: ${{ steps.exists.outputs.should_build }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,7 +81,57 @@ jobs:
             fi
           done
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Skip build if version already published
+        id: exists
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          FORCE="${{ inputs.force }}"
+          if [ "$FORCE" = "true" ]; then
+            echo "Force rebuild requested"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if docker buildx imagetools inspect "${{ env.IMAGE }}:${VERSION}" >/dev/null 2>&1; then
+            echo "Image ${{ env.IMAGE }}:${VERSION} already exists — skipping rebuild"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Image ${{ env.IMAGE }}:${VERSION} not found — will build"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    environment: npm-publish
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Platform cache scope
+        run: |
+          echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -70,18 +145,91 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=semver,pattern={{version}},value=${{ steps.meta.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.meta.outputs.tag }}
-            type=semver,pattern={{major}},value=${{ steps.meta.outputs.tag }}
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.prepare.outputs.tag }}
             type=raw,value=latest
 
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           file: control/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.docker_meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.docker_meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=har-control-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=har-control-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: docker_meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.prepare.outputs.tag }}
+            type=raw,value=latest
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Create multi-arch manifest and push tags
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          mapfile -t DIGEST_FILES < <(printf '%s\n' *)
+          if [ "${#DIGEST_FILES[@]}" -eq 0 ]; then
+            echo "No digests downloaded" >&2
+            exit 1
+          fi
+
+          TAG_ARGS=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            TAG_ARGS+=(-t "$tag")
+          done <<< "${{ steps.docker_meta.outputs.tags }}"
+
+          DIGEST_REFS=()
+          for digest_file in "${DIGEST_FILES[@]}"; do
+            DIGEST_REFS+=("${{ env.IMAGE }}@sha256:${digest_file}")
+          done
+
+          docker buildx imagetools create \
+            "${TAG_ARGS[@]}" \
+            "${DIGEST_REFS[@]}"
+
+          echo "Published ${{ env.IMAGE }}:${{ needs.prepare.outputs.version }} (multi-arch)"

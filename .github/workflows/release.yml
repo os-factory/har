@@ -14,10 +14,6 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  DOCKERHUB_USERNAME: theosfactory
-  CONTROL_IMAGE: theosfactory/har-control
-
 jobs:
   verify:
     if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')
@@ -152,65 +148,15 @@ jobs:
             echo "No new release — skipped version cut and downstream publish jobs"
           fi
 
+  # Native amd64 + arm64 builds in parallel (see publish-docker.yml). Skips
+  # rebuild when the exact version tag already exists (e.g. re-run after npm failed).
   publish-docker:
     needs: release
     if: needs.release.outputs.released == 'true'
-    runs-on: ubuntu-latest
-    environment: npm-publish
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.release.outputs.tag }}
-
-      - name: Validate tag matches package.json
-        run: |
-          ROOT_VERSION="$(node -p "require('./package.json').version")"
-          CONTROL_VERSION="$(node -p "require('./control/package.json').version")"
-          SCHEMAS_VERSION="$(node -p "require('./packages/schemas/package.json').version")"
-          EXPECTED="${{ needs.release.outputs.version }}"
-          for label_version in \
-            "package.json:${ROOT_VERSION}" \
-            "control/package.json:${CONTROL_VERSION}" \
-            "packages/schemas/package.json:${SCHEMAS_VERSION}"; do
-            FILE="${label_version%%:*}"
-            ACTUAL="${label_version#*:}"
-            if [ "$ACTUAL" != "$EXPECTED" ]; then
-              echo "$FILE version ($ACTUAL) does not match tag (${{ needs.release.outputs.tag }})" >&2
-              exit 1
-            fi
-          done
-
-      - uses: docker/setup-qemu-action@v3
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - uses: docker/metadata-action@v5
-        id: docker_meta
-        with:
-          images: ${{ env.CONTROL_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}},value=${{ needs.release.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release.outputs.tag }}
-            type=semver,pattern={{major}},value=${{ needs.release.outputs.tag }}
-            type=raw,value=latest
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: control/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.docker_meta.outputs.tags }}
-          labels: ${{ steps.docker_meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+    uses: ./.github/workflows/publish-docker.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit
 
   # Publish to npm only after Docker Hub has the matching version (avoids CLI
   # pointing users at har control up for a tag that does not exist on Docker Hub).

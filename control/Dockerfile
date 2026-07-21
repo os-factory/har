@@ -1,10 +1,17 @@
 FROM node:20-alpine AS deps
+ENV npm_config_audit=false \
+    npm_config_fund=false \
+    npm_config_update_notifier=false
 WORKDIR /app
-COPY packages/schemas ./packages/schemas
-RUN npm install --prefix packages/schemas --omit=dev
+# Copy package manifests only so source edits don't invalidate npm install layers.
+COPY packages/schemas/package.json packages/schemas/package-lock.json ./packages/schemas/
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci --prefix packages/schemas --omit=dev
 WORKDIR /app/control
-COPY control/package.json control/package-lock.json* ./
-RUN npm install
+COPY control/package.json control/package-lock.json ./
+# Schemas deps are installed above; skip control postinstall re-install.
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci --ignore-scripts
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -27,8 +34,10 @@ COPY --from=builder /app/control/public ./public
 COPY --from=builder /app/control/.next/standalone ./
 COPY --from=builder /app/control/.next/static ./.next/static
 COPY --from=builder /app/control/prisma ./prisma
-# Pin Prisma CLI (devDependency at build time; npx would fetch Prisma 7+).
-RUN npm install prisma@6.19.3 --omit=dev
+# Reuse Prisma CLI from the builder (avoids a registry fetch in the runner stage).
+COPY --from=builder /app/control/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/control/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/control/node_modules/.bin/prisma ./node_modules/.bin/prisma
 RUN mkdir -p /data
 VOLUME ["/data"]
 EXPOSE 3847
