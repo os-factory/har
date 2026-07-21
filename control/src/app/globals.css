@@ -4,67 +4,66 @@
 
 @layer base {
   :root {
-    /* Brand palette: Soft Peach, Gray Asparagus, Green Spring, Lemon Grass */
-    --background: 0 25% 94%;
-    --foreground: 124 11% 30%;
-    --card: 0 22% 96%;
-    --card-foreground: 124 11% 30%;
-    --popover: 0 22% 96%;
-    --popover-foreground: 124 11% 30%;
+    /* Aligned with docs landing: paper, ink, olive primary, spring green */
+    --background: 45 31% 95%;
+    --foreground: 215 26% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 26% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 26% 9%;
     --primary: 124 11% 30%;
-    --primary-foreground: 0 25% 94%;
-    --secondary: 120 12% 88%;
-    --secondary-foreground: 124 11% 30%;
-    --muted: 120 10% 90%;
-    --muted-foreground: 124 10% 36%;
-    --accent: 120 5% 69%;
+    --primary-foreground: 45 31% 95%;
+    --secondary: 47 21% 92%;
+    --secondary-foreground: 215 26% 9%;
+    --muted: 47 21% 92%;
+    --muted-foreground: 219 14% 40%;
+    --accent: 47 18% 90%;
     --accent-foreground: 124 11% 30%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 25% 94%;
-    --border: 90 8% 75%;
-    --input: 90 8% 75%;
+    --destructive-foreground: 45 31% 95%;
+    --border: 218 17% 87%;
+    --input: 218 17% 87%;
     --ring: 124 11% 30%;
     --radius: 0.5rem;
-    --sidebar-background: 0 20% 92%;
-    --sidebar-foreground: 124 11% 30%;
+    --sidebar-background: 47 21% 92%;
+    --sidebar-foreground: 215 26% 9%;
     --sidebar-primary: 124 11% 30%;
-    --sidebar-primary-foreground: 0 25% 94%;
-    --sidebar-accent: 120 12% 86%;
-    --sidebar-accent-foreground: 124 11% 30%;
-    --sidebar-border: 90 8% 72%;
+    --sidebar-primary-foreground: 45 31% 95%;
+    --sidebar-accent: 45 22% 88%;
+    --sidebar-accent-foreground: 215 26% 9%;
+    --sidebar-border: 218 17% 84%;
     --sidebar-ring: 124 11% 30%;
   }
 
   .dark {
-    /* Dark surfaces keep the brand hue (124) but at ~1/3 the saturation —
-       color reads much stronger on dark backgrounds than on light ones */
-    --background: 124 4% 9%;
-    --foreground: 0 25% 94%;
-    --card: 124 4% 15%;
-    --card-foreground: 0 25% 94%;
-    --popover: 124 4% 15%;
-    --popover-foreground: 0 25% 94%;
-    --primary: 120 5% 69%;
-    --primary-foreground: 124 4% 9%;
-    --secondary: 124 3% 21%;
-    --secondary-foreground: 0 25% 94%;
-    --muted: 124 3% 21%;
-    --muted-foreground: 90 6% 61%;
-    --accent: 124 3% 25%;
-    --accent-foreground: 0 25% 94%;
+    /* Docs ink surfaces + spring primary */
+    --background: 213 29% 6%;
+    --foreground: 45 31% 95%;
+    --card: 212 25% 10%;
+    --card-foreground: 45 31% 95%;
+    --popover: 212 25% 10%;
+    --popover-foreground: 45 31% 95%;
+    --primary: 149 42% 64%;
+    --primary-foreground: 213 29% 6%;
+    --secondary: 213 26% 14%;
+    --secondary-foreground: 45 31% 95%;
+    --muted: 213 26% 14%;
+    --muted-foreground: 214 9% 62%;
+    --accent: 213 26% 16%;
+    --accent-foreground: 45 31% 95%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 25% 94%;
-    --border: 124 3% 27%;
-    --input: 124 3% 27%;
-    --ring: 120 5% 69%;
-    --sidebar-background: 124 4% 9%;
-    --sidebar-foreground: 0 25% 94%;
-    --sidebar-primary: 120 5% 69%;
-    --sidebar-primary-foreground: 124 4% 9%;
-    --sidebar-accent: 124 3% 19%;
-    --sidebar-accent-foreground: 0 25% 94%;
-    --sidebar-border: 124 3% 23%;
-    --sidebar-ring: 120 5% 69%;
+    --destructive-foreground: 45 31% 95%;
+    --border: 213 20% 18%;
+    --input: 213 20% 18%;
+    --ring: 149 42% 64%;
+    --sidebar-background: 213 29% 6%;
+    --sidebar-foreground: 45 31% 95%;
+    --sidebar-primary: 149 42% 64%;
+    --sidebar-primary-foreground: 213 29% 6%;
+    --sidebar-accent: 213 26% 12%;
+    --sidebar-accent-foreground: 45 31% 95%;
+    --sidebar-border: 213 20% 16%;
+    --sidebar-ring: 149 42% 64%;
   }
 }
 
@@ -73,6 +72,6 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
 }
