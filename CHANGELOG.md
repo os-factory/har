@@ -1,3 +1,10 @@
+## [0.16.1](https://github.com/os-factory/har/compare/v0.16.0...v0.16.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **control:** restore Prisma CLI boot in Docker image ([#67](https://github.com/os-factory/har/issues/67)) ([5f4b5eb](https://github.com/os-factory/har/commit/5f4b5ebdea277b0760226f6f6a80f5bed52c129c))
+
 # [0.16.0](https://github.com/os-factory/har/compare/v0.15.0...v0.16.0) (2026-07-21)
 
 
