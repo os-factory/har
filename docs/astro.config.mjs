@@ -1,12 +1,41 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
+
+const legacyDocPaths = [
+	'getting-started/introduction',
+	'getting-started/installation',
+	'getting-started/quick-start',
+	'getting-started/concepts',
+	'guides/agent-workflow',
+	'guides/profiles',
+	'guides/stages',
+	'guides/agent-integrations',
+	'guides/verification',
+	'guides/mission-control',
+	'guides/upgrading',
+	'reference/cli',
+	'reference/mcp',
+	'reference/harness-files',
+	'reference/environment',
+	'project/architecture',
+	'project/contributing',
+	'project/faq',
+];
+
+/** @type {Record<string, string>} */
+const redirects = Object.fromEntries(
+	legacyDocPaths.map((slug) => [`/${slug}`, `/docs/${slug}/`]),
+);
 
 export default defineConfig({
 	site: 'https://harproject.cloud',
 	base: '/',
 	devToolbar: { enabled: false },
+	redirects,
 	integrations: [
+		react(),
 		starlight({
 			title: 'HAR',
 			description:
@@ -15,8 +44,9 @@ export default defineConfig({
 				src: '../logo.png',
 				alt: '.har',
 			},
-			favicon: '/favicon.svg',
+			favicon: '/assets/har-logo.png',
 			customCss: ['./src/styles/custom.css'],
+			disable404Route: true,
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/os-factory/har' },
 			],
@@ -25,42 +55,44 @@ export default defineConfig({
 			},
 			lastUpdated: true,
 			sidebar: [
+				{ label: 'Website', link: '/' },
+				{ label: 'Blog', link: '/blog' },
 				{
 					label: 'Start here',
 					items: [
-						{ label: 'Introduction', slug: 'getting-started/introduction' },
-						{ label: 'Installation', slug: 'getting-started/installation' },
-						{ label: 'Quick start', slug: 'getting-started/quick-start' },
-						{ label: 'Core concepts', slug: 'getting-started/concepts' },
+						{ label: 'Introduction', slug: 'docs/getting-started/introduction' },
+						{ label: 'Installation', slug: 'docs/getting-started/installation' },
+						{ label: 'Quick start', slug: 'docs/getting-started/quick-start' },
+						{ label: 'Core concepts', slug: 'docs/getting-started/concepts' },
 					],
 				},
 				{
 					label: 'Guides',
 					items: [
-						{ label: 'Agent workflow', slug: 'guides/agent-workflow' },
-						{ label: 'Profiles & configuration', slug: 'guides/profiles' },
-						{ label: 'Stages & artifacts', slug: 'guides/stages' },
-						{ label: 'Agent integrations', slug: 'guides/agent-integrations' },
-						{ label: 'Verification & commit gate', slug: 'guides/verification' },
-						{ label: 'Mission Control', slug: 'guides/mission-control' },
-						{ label: 'Upgrade a harness', slug: 'guides/upgrading' },
+						{ label: 'Agent workflow', slug: 'docs/guides/agent-workflow' },
+						{ label: 'Profiles & configuration', slug: 'docs/guides/profiles' },
+						{ label: 'Stages & artifacts', slug: 'docs/guides/stages' },
+						{ label: 'Agent integrations', slug: 'docs/guides/agent-integrations' },
+						{ label: 'Verification & commit gate', slug: 'docs/guides/verification' },
+						{ label: 'Mission Control', slug: 'docs/guides/mission-control' },
+						{ label: 'Upgrade a harness', slug: 'docs/guides/upgrading' },
 					],
 				},
 				{
 					label: 'Reference',
 					items: [
-						{ label: 'CLI', slug: 'reference/cli' },
-						{ label: 'MCP tools', slug: 'reference/mcp' },
-						{ label: 'Harness files', slug: 'reference/harness-files' },
-						{ label: 'Environment variables', slug: 'reference/environment' },
+						{ label: 'CLI', slug: 'docs/reference/cli' },
+						{ label: 'MCP tools', slug: 'docs/reference/mcp' },
+						{ label: 'Harness files', slug: 'docs/reference/harness-files' },
+						{ label: 'Environment variables', slug: 'docs/reference/environment' },
 					],
 				},
 				{
 					label: 'Project',
 					items: [
-						{ label: 'Architecture', slug: 'project/architecture' },
-						{ label: 'Contributing', slug: 'project/contributing' },
-						{ label: 'FAQ', slug: 'project/faq' },
+						{ label: 'Architecture', slug: 'docs/project/architecture' },
+						{ label: 'Contributing', slug: 'docs/project/contributing' },
+						{ label: 'FAQ', slug: 'docs/project/faq' },
 					],
 				},
 			],

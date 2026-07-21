@@ -1,0 +1,46 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  bodyClass?: string;
+  canonicalPath?: string;
+}
+
+const {
+  title,
+  description = 'HAR makes repositories agent-ready with project-owned harnesses, isolated worktrees, and verifiable runs.',
+  bodyClass = '',
+  canonicalPath = Astro.url.pathname,
+} = Astro.props;
+const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c1016" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/png" href="/assets/har-logo.png" />
+    <title>{title}</title>
+    <script is:inline>
+      (() => {
+        const stored = localStorage.getItem('har-theme');
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored === 'light' || stored === 'dark' ? stored : (systemDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
+  </head>
+  <body class={bodyClass}>
+    <slot />
+    <script>
+      import '../scripts/site';
+    </script>
+  </body>
+</html>

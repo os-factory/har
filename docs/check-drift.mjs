@@ -4,13 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+const docsRoot = 'docs/src/content/docs/docs';
 const docs = {
-  cli: read('docs/src/content/docs/reference/cli.md'),
-  mcp: read('docs/src/content/docs/reference/mcp.md'),
-  stages: read('docs/src/content/docs/guides/stages.md'),
-  profiles: read('docs/src/content/docs/guides/profiles.md'),
-  integrations: read('docs/src/content/docs/guides/agent-integrations.md'),
-  harnessFiles: read('docs/src/content/docs/reference/harness-files.md'),
+  cli: read(`${docsRoot}/reference/cli.md`),
+  mcp: read(`${docsRoot}/reference/mcp.md`),
+  stages: read(`${docsRoot}/guides/stages.md`),
+  profiles: read(`${docsRoot}/guides/profiles.md`),
+  integrations: read(`${docsRoot}/guides/agent-integrations.md`),
+  harnessFiles: read(`${docsRoot}/reference/harness-files.md`),
 };
 const failures = [];
 

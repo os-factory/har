@@ -1,0 +1,242 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import HeroFlow from '../components/HeroFlow';
+---
+<BaseLayout title="HAR — Harnesses for coding agents" bodyClass="home-page" canonicalPath="/">
+  <Header active="home" />
+  <main>
+<section class="hero blueprint-surface">
+<div class="container hero-grid">
+<div class="hero-copy reveal">
+<div class="eyebrow"><span class="eyebrow-dot"></span> Open-source agent infrastructure</div>
+<h1>Give coding agents a <span class="ink-underline">real place</span> to work.</h1>
+<p class="hero-lede">HAR turns any repository into a reproducible workspace with isolated worktrees, project-owned commands, and evidence that changes actually pass.</p>
+<div class="hero-actions">
+<a class="button button-primary" href="/docs/getting-started/quick-start/">Get started <span aria-hidden="true">→</span></a>
+<a class="button button-ghost" href="https://github.com/os-factory/har">View on GitHub <span aria-hidden="true">↗</span></a>
+</div>
+<button aria-label="Copy install command" class="install-command" data-copy="npm install -g @osfactory/har" type="button">
+<span class="terminal-prompt">$</span>
+<code>npm install -g @osfactory/har</code>
+<span class="copy-label" data-copy-label="">Copy</span>
+</button>
+<div class="compatibility">
+<span>Works with</span>
+<div class="compatibility-list">
+<span>Claude Code</span><i></i><span>Cursor</span><i></i><span>Codex</span><i></i><span>Any MCP agent</span>
+</div>
+</div>
+</div>
+<div class="hero-visual reveal reveal-delay-1" aria-label="HAR workflow diagram">
+          <HeroFlow client:load />
+          <div class="floating-note floating-note-top"><span>agentSlots</span><strong>4</strong></div>
+          <div class="floating-note floating-note-bottom"><span>last run</span><strong>passed in 31.2s</strong></div>
+        </div>
+</div>
+<div class="hero-fade"></div>
+</section>
+<section class="signal-strip">
+<div class="container signal-grid">
+<div><span class="signal-number">01</span><h3>Project-owned</h3><p>The workflow lives with the code, not inside a vendor dashboard.</p></div>
+<div><span class="signal-number">02</span><h3>Agent-agnostic</h3><p>One stable contract for CLI users, MCP agents, and future tools.</p></div>
+<div><span class="signal-number">03</span><h3>Evidence-first</h3><p>Every run can leave logs, artifacts, status, and a validated tree hash.</p></div>
+</div>
+</section>
+<section class="section section-light" id="why">
+<div class="container split-intro reveal">
+<div>
+<div class="section-kicker">The missing operating layer</div>
+<h2>Your agent should not have to rediscover how your repository works.</h2>
+</div>
+<p>Most coding agents are good at editing files. The hard part is everything around the edit: launching the stack, isolating parallel work, running the right checks, and producing a trustworthy handoff.</p>
+</div>
+<div class="container feature-bento">
+<article class="feature-card feature-card-large reveal">
+<div class="feature-copy">
+<span class="feature-index">01 / Contract</span>
+<h3>The repository explains itself.</h3>
+<p>HAR scaffolds a human-readable, machine-readable <code>.har/</code> folder. Your team owns it, reviews it, and evolves it with the project.</p>
+<a href="/docs/">Explore the harness contract <span>→</span></a>
+</div>
+<div aria-label="HAR file tree example" class="file-tree-panel">
+<div class="code-topbar"><span>.har/</span><span>project-owned</span></div>
+<pre><span class="tree-dim">my-app/</span>
+├── <span class="tree-accent">AGENT.md</span>
+└── <span class="tree-accent">.har/</span>
+    ├── README.md
+    ├── stages.json
+    ├── launch.sh
+    ├── verify.sh
+    ├── harness.env
+    ├── logs/
+    └── artifacts/</pre>
+<div class="code-caption"><span class="status-dot"></span> editable like any other code</div>
+</div>
+</article>
+<article class="feature-card feature-card-worktrees reveal reveal-delay-1">
+<span class="feature-index">02 / Isolation</span>
+<h3>Parallel work without collisions.</h3>
+<p>Each agent gets a dedicated worktree and environment slot.</p>
+<div class="mini-worktrees">
+<div><span>main</span><i></i></div>
+<div><span>slot-01</span><i></i><b>agent A</b></div>
+<div><span>slot-02</span><i></i><b>agent B</b></div>
+<div><span>slot-03</span><i></i><b>agent C</b></div>
+</div>
+</article>
+<article class="feature-card feature-card-proof reveal reveal-delay-2">
+<span class="feature-index">03 / Verification</span>
+<h3>Proof, not “looks good.”</h3>
+<p>Normalized stages surface exactly what ran, how long it took, and what passed.</p>
+<div class="proof-console">
+<div><span>factory-lint</span><b>5.3s</b><em>passed</em></div>
+<div><span>unit-tests</span><b>25.7s</b><em>passed</em></div>
+<div><span>browser-e2e</span><b>41.2s</b><em>passed</em></div>
+</div>
+</article>
+</div>
+</section>
+<section class="section section-dark blueprint-dark" id="workflow">
+<div class="container workflow-heading reveal">
+<div>
+<div class="section-kicker section-kicker-dark">One workflow, every agent</div>
+<h2>From “take this task” to a validated branch.</h2>
+</div>
+<p>HAR normalizes the infrastructure around coding so the agent can focus on the code—and the reviewer can trust the result.</p>
+</div>
+<div class="container workflow-stage reveal">
+<div aria-label="Workflow stages" class="workflow-tabs" role="tablist">
+<button class="active" data-workflow-tab="discover" type="button"><span>01</span> Discover</button>
+<button data-workflow-tab="isolate" type="button"><span>02</span> Isolate</button>
+<button data-workflow-tab="execute" type="button"><span>03</span> Execute</button>
+<button data-workflow-tab="verify" type="button"><span>04</span> Verify</button>
+<button data-workflow-tab="handoff" type="button"><span>05</span> Hand off</button>
+</div>
+<div class="workflow-detail">
+<div class="workflow-copy" data-workflow-copy="">
+<span class="workflow-label">01 — Discover</span>
+<h3>The agent reads one stable interface.</h3>
+<p>Instead of guessing project-specific shell commands, the agent asks HAR what the repository can launch, verify, inspect, reset, and tear down.</p>
+<div class="workflow-command"><span>$</span><code>har env status --json</code></div>
+</div>
+<div class="workflow-visual-panel">
+<div class="visual-panel-header"><span>HAR MCP</span><small>project description</small></div>
+<div class="mcp-call">
+<span class="mcp-method">tool</span>
+<strong>har_describe_project</strong>
+<small>repo: /workspace/my-app</small>
+</div>
+<div class="json-card"><pre>&#123;
+  <span>"profile"</span>: "default",
+  <span>"agentSlots"</span>: 4,
+  <span>"stages"</span>: [
+    "launch", "verify", "test"
+  ]
+&#125;</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section class="section control-section" id="control">
+<div class="container control-grid">
+<div class="control-copy reveal">
+<div class="section-kicker">Mission Control</div>
+<h2>See the factory, not just the final diff.</h2>
+<p>A local dashboard for repositories, active slots, run history, verification stages, logs, and artifacts. The open-source control plane stays close to your machine and your code.</p>
+<ul class="clean-list">
+<li><span>✓</span> Observe every agent slot in one place</li>
+<li><span>✓</span> Inspect deterministic verification stages</li>
+<li><span>✓</span> Keep local and self-hosted workflows portable</li>
+</ul>
+<a class="text-link" href="/docs/guides/mission-control/">Read about Mission Control <span>→</span></a>
+</div>
+<div class="dashboard-frame reveal reveal-delay-1">
+<div class="dashboard-chrome">
+<div><i></i><i></i><i></i></div>
+<span>localhost:3847 / mission-control</span>
+<b>HAR</b>
+</div>
+<img alt="HAR Mission Control repository dashboard" src="/assets/mission-control-overview.png"/>
+<div class="dashboard-overlay dashboard-overlay-one"><span>Active slots</span><strong>27</strong><small>across 6 repositories</small></div>
+<div class="dashboard-overlay dashboard-overlay-two"><span>Latest verification</span><strong><i></i> All checks passed</strong><small>31.2 seconds ago</small></div>
+</div>
+</div>
+</section>
+<section class="section not-section">
+<div class="container not-grid reveal">
+<div>
+<div class="section-kicker">A deliberately narrow layer</div>
+<h2>HAR coordinates the work around the model.</h2>
+</div>
+<div class="not-columns">
+<div class="not-card is-card">
+<span>HAR is</span>
+<ul>
+<li>A project-owned runtime contract</li>
+<li>An agent-agnostic CLI + MCP surface</li>
+<li>A reproducible launch and verification layer</li>
+<li>A record of runs, artifacts, and evidence</li>
+</ul>
+</div>
+<div class="not-card isnt-card">
+<span>HAR is not</span>
+<ul>
+<li>A coding model</li>
+<li>A replacement for CI/CD</li>
+<li>A new test runner</li>
+<li>A hosted platform lock-in</li>
+</ul>
+</div>
+</div>
+</div>
+</section>
+<section class="section journal-section">
+<div class="container section-heading-row reveal">
+<div><div class="section-kicker">From the HAR journal</div><h2>Building the operating layer for agentic software.</h2></div>
+<a class="text-link" href="/blog">View all writing <span>→</span></a>
+</div>
+<div class="container article-grid">
+<a class="article-card article-featured reveal" href="/blog/why-coding-agents-need-a-harness">
+<div class="article-art blueprint-card-art">
+<div class="art-node n1">agent</div><div class="art-node n2">worktree</div><div class="art-node n3">verify</div>
+<svg viewBox="0 0 600 240"><path d="M96 114H250M344 114H498"></path></svg>
+</div>
+<div class="article-meta"><span>Architecture</span><time>8 min read</time></div>
+<h3>Why coding agents need a harness, not another prompt.</h3>
+<p>The gap between generating code and safely operating inside a real repository.</p>
+</a>
+<a class="article-card reveal reveal-delay-1" href="/blog/why-coding-agents-need-a-harness">
+<div class="article-number-art">.har/</div>
+<div class="article-meta"><span>Design notes</span><time>5 min read</time></div>
+<h3>The repository should own the agent contract.</h3>
+<p>Why launch, verification, and teardown belong beside the source code.</p>
+</a>
+<a class="article-card reveal reveal-delay-2" href="/blog/why-coding-agents-need-a-harness">
+<div class="article-number-art article-number-art-dark">03</div>
+<div class="article-meta"><span>Workflow</span><time>6 min read</time></div>
+<h3>Evidence-first development for autonomous agents.</h3>
+<p>Move from confidence theater to deterministic, reviewable handoffs.</p>
+</a>
+</div>
+</section>
+<section class="final-cta blueprint-surface">
+<div class="container final-cta-inner reveal">
+<div class="final-mark"><img alt="" src="/assets/har-logo.png"/></div>
+<div>
+<span class="section-kicker">Start with one repository</span>
+<h2>Make your project agent-ready in minutes.</h2>
+<p>Install HAR, scaffold the contract, and let your coding agent work inside a reproducible environment.</p>
+</div>
+<div class="final-actions">
+<a class="button button-primary" href="/docs/getting-started/quick-start/">Read the quick start <span>→</span></a>
+<button aria-label="Copy install command" class="install-command install-command-light" data-copy="npm install -g @osfactory/har" type="button">
+<span class="terminal-prompt">$</span><code>npm i -g @osfactory/har</code><span class="copy-label" data-copy-label="">Copy</span>
+</button>
+</div>
+</div>
+</section>
+  </main>
+  <Footer />
+</BaseLayout>

@@ -1,0 +1,25 @@
+---
+interface Props {
+  minimal?: boolean;
+}
+const { minimal = false } = Astro.props;
+---
+<footer class="site-footer">
+  {!minimal && (
+    <div class="container footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/"><span class="brand-mark"><img src="/assets/har-logo.png" alt="" /></span><span class="brand-word">HAR</span></a>
+        <p>Harnesses for coding agents.<br />Project-owned. Agent-agnostic. Evidence-first.</p>
+      </div>
+      <div class="footer-links">
+        <div><strong>Product</strong><a href="/#why">Why HAR</a><a href="/#workflow">Workflow</a><a href="/#control">Mission Control</a></div>
+        <div><strong>Resources</strong><a href="/docs">Documentation</a><a href="/blog">Blog</a><a href="https://www.npmjs.com/package/@osfactory/har">npm</a></div>
+        <div><strong>Open source</strong><a href="https://github.com/os-factory/har">GitHub</a><a href="https://github.com/os-factory/har/blob/main/CONTRIBUTING.md">Contributing</a><a href="https://github.com/os-factory/har/blob/main/LICENSE">License</a></div>
+      </div>
+    </div>
+  )}
+  <div class="container footer-bottom">
+    <span>© 2026 HAR / OS Factory</span>
+    <span>{minimal ? <a href="/blog">Back to the journal</a> : 'Built for humans and agents.'}</span>
+  </div>
+</footer>

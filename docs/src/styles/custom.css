@@ -1,35 +1,37 @@
+/* Starlight theme aligned with the HAR website palette */
 :root {
-	--sl-color-accent-low: #153724;
-	--sl-color-accent: #38c976;
-	--sl-color-accent-high: #b9f4ce;
-	--sl-color-white: #f7faf7;
-	--sl-color-gray-1: #e7ece8;
-	--sl-color-gray-2: #bac5bd;
-	--sl-color-gray-3: #7f8e83;
-	--sl-color-gray-4: #4d5b51;
-	--sl-color-gray-5: #2d3730;
-	--sl-color-gray-6: #1b231e;
-	--sl-color-black: #101512;
+	--sl-color-accent-low: #1a2240;
+	--sl-color-accent: #6680ff;
+	--sl-color-accent-high: #a9b7ff;
+	--sl-color-white: #edf1f7;
+	--sl-color-gray-1: #d9e0ea;
+	--sl-color-gray-2: #9aa6b4;
+	--sl-color-gray-3: #78818b;
+	--sl-color-gray-4: #4e5661;
+	--sl-color-gray-5: #27313d;
+	--sl-color-gray-6: #151c25;
+	--sl-color-black: #0c1016;
 	--sl-font: Inter, ui-sans-serif, system-ui, sans-serif;
+	--sl-text-xs: 0.8125rem;
 }
 
 :root[data-theme='light'] {
-	--sl-color-accent-low: #d9f8e4;
-	--sl-color-accent: #147a40;
-	--sl-color-accent-high: #0b4124;
-	--sl-color-white: #121713;
+	--sl-color-accent-low: #e9ebff;
+	--sl-color-accent: #6680ff;
+	--sl-color-accent-high: #4059d8;
+	--sl-color-white: #11161d;
 	--sl-color-gray-1: #283229;
-	--sl-color-gray-2: #465249;
-	--sl-color-gray-3: #68766b;
-	--sl-color-gray-4: #a5afa7;
-	--sl-color-gray-5: #dce2dd;
-	--sl-color-gray-6: #eef2ef;
-	--sl-color-gray-7: #f7f9f7;
+	--sl-color-gray-2: #505965;
+	--sl-color-gray-3: #68717d;
+	--sl-color-gray-4: #a5aeb8;
+	--sl-color-gray-5: #d9dde4;
+	--sl-color-gray-6: #eeece5;
+	--sl-color-gray-7: #f6f4ee;
 	--sl-color-black: #ffffff;
 }
 
-.hero .tagline {
-	max-width: 44rem;
+::selection {
+	background: rgba(102, 128, 255, 0.28);
 }
 
 .sl-markdown-content img {
@@ -40,4 +42,15 @@
 
 .sl-markdown-content table {
 	font-size: 0.9rem;
+}
+
+.sl-markdown-content code:not(pre code) {
+	padding: 0.12em 0.35em;
+	border-radius: 0.35rem;
+	background: rgba(102, 128, 255, 0.12);
+	color: #4059d8;
+}
+
+:root[data-theme='dark'] .sl-markdown-content code:not(pre code) {
+	color: #a9b7ff;
 }

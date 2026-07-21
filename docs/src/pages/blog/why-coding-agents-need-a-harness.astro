@@ -1,0 +1,65 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+---
+<BaseLayout
+  title="Why coding agents need a harness — HAR Journal"
+  description="Coding models can edit files. A harness gives them a safe, reproducible, and reviewable way to operate inside a real repository."
+  bodyClass="article-page"
+  canonicalPath="/blog/why-coding-agents-need-a-harness"
+>
+  <Header active="blog" solid />
+  <main>
+<article>
+      <header class="article-hero blueprint-surface">
+        <div class="container article-hero-inner">
+          <a class="article-back" href="/blog">← HAR journal</a>
+          <div class="article-meta article-meta-large"><span>Architecture</span><time>July 18, 2026 · 8 min read</time></div>
+          <h1>Why coding agents need a harness, not another prompt.</h1>
+          <p class="article-deck">The model can write code. The harness gives it a safe, reproducible, and reviewable way to operate inside a real repository.</p>
+          <div class="author-row"><div class="author-avatar">AF</div><div><strong>Antoine Frau</strong><span>Creator of HAR</span></div></div>
+        </div>
+      </header>
+      <div class="article-cover blueprint-dark">
+        <div class="article-cover-grid"></div>
+        <div class="cover-node cover-node-one"><span>01</span><strong>Agent</strong><small>intent</small></div>
+        <div class="cover-node cover-node-two"><span>02</span><strong>Harness</strong><small>operation</small></div>
+        <div class="cover-node cover-node-three"><span>03</span><strong>Evidence</strong><small>trust</small></div>
+        <svg viewBox="0 0 1200 540" preserveAspectRatio="none"><path d="M294 270H456M744 270H906" /></svg>
+      </div>
+      <div class="container article-layout">
+        <aside class="article-toc"><strong>In this essay</strong><a class="active" href="#gap">The operational gap</a><a href="#contract">A project-owned contract</a><a href="#proof">Evidence as an output</a><a href="#boundary">A narrow boundary</a></aside>
+        <div class="article-body">
+          <p class="lead">The popular story about coding agents is mostly about intelligence: stronger models, larger context windows, better planning, and more capable tools. Those improvements matter. But they do not solve the most ordinary problem in software development: every repository is operated differently.</p>
+          <h2 id="gap">The operational gap</h2>
+          <p>An agent can understand a TypeScript function and still fail to launch the application. It can write a migration and still run it against the wrong database. It can add a test and still leave the repository in a dirty state that another agent cannot safely use.</p>
+          <p>This is not primarily a reasoning failure. It is an infrastructure failure. The project contains operational knowledge, but that knowledge is often fragmented across documentation, shell history, CI configuration, and the memory of experienced teammates.</p>
+          <blockquote>Reliable agentic development requires a stable operating interface around the model.</blockquote>
+          <h2 id="contract">A project-owned contract</h2>
+          <p>A harness makes the unwritten workflow explicit. In HAR, that contract lives in a <code>.har/</code> directory inside the repository. It describes how to create an isolated slot, launch the stack, verify changes, collect artifacts, reset state, and tear everything down.</p>
+          <pre><code>$ har env launch 1
+✓ worktree created
+✓ environment allocated
+✓ services healthy
+
+$ har env verify 1 --full
+✓ lint          5.3s
+✓ unit tests   25.7s
+✓ browser e2e  41.2s</code></pre>
+          <p>Keeping the contract in the project matters. The team can review it, adapt it to the stack, and use the same interface from a terminal, an MCP-capable agent, or a local dashboard.</p>
+          <h2 id="proof">Evidence as an output</h2>
+          <p>An autonomous system should not finish with “the task is done.” It should finish with evidence: which checks ran, which artifacts were produced, which tree was validated, and what the reviewer can inspect next.</p>
+          <div class="article-callout"><span>Design principle</span><strong>Verification is not a side effect. It is a first-class product output.</strong><p>This changes the handoff from a confidence claim into a reviewable record.</p></div>
+          <h2 id="boundary">A narrow boundary</h2>
+          <p>HAR does not choose the coding model, replace your test runner, or become your CI platform. Its job is smaller: expose a predictable operating contract that all of those systems can use.</p>
+          <p>That narrow boundary is what makes the harness portable. Models can change. Hosted platforms can change. The repository still knows how it should be operated.</p>
+          <hr />
+          <div class="article-end"><span>Next essay</span><a href="#">The repository should own the agent contract <b>→</b></a></div>
+        </div>
+        <aside class="article-share"><a href="#">Copy link</a><a href="#">Share on X</a><a href="#">Discuss on GitHub</a></aside>
+      </div>
+    </article>
+  </main>
+  <Footer minimal />
+</BaseLayout>

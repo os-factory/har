@@ -1,19 +1,6 @@
 ---
 title: HAR documentation
 description: Make any repository safe and reproducible for coding agents.
-template: splash
-hero:
-  tagline: A project-owned harness and control plane for reproducible AI agent development.
-  image:
-    file: ../../../../logo.png
-  actions:
-    - text: Get started
-      link: /getting-started/quick-start/
-      icon: right-arrow
-    - text: Understand HAR
-      link: /getting-started/introduction/
-      icon: open-book
-      variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -52,6 +39,9 @@ har env launch 1
 har env verify 1 --full
 har env complete 1
 ```
+
+Start with the [quick start](/docs/getting-started/quick-start/) guide or read the
+[introduction](/docs/getting-started/introduction/) for the full mental model.
 
 HAR is not a coding model, test runner, or CI/CD replacement. It is the stable
 operating contract that lets those systems work with a real repository safely.
