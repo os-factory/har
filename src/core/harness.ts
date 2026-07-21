@@ -10,7 +10,7 @@ import {
   removeMaintainBundle,
 } from '../harness/maintain-bundle';
 import { readManifest, getHarnessDir } from '../harness/manifest';
-import { getVerificationStageIds, getAgentSlotRange, listStages } from '../harness/stages';
+import { getVerificationStageIds, getAgentSlotRange, listStages, syncAgentSlotsToHarnessEnv } from '../harness/stages';
 import {
   applyStageTemplate,
   ApplyStageTemplateOptions,
@@ -111,6 +111,7 @@ export async function initHarness(options: InitHarnessOptions): Promise<InitHarn
     force: options.force,
     profile: options.profile,
   });
+  syncAgentSlotsToHarnessEnv(repoPath);
   let adaptationSummary: string | undefined;
 
   if (options.auto) {
@@ -172,6 +173,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     if (!validation.pass) {
       throw new Error('Cannot finalize: harness validation has errors. Fix them first.');
     }
+    syncAgentSlotsToHarnessEnv(repoPath);
     const existing = readManifest(repoPath);
     finalizeHarness(
       repoPath,

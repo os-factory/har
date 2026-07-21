@@ -15,8 +15,8 @@ work around it with ad-hoc commands.
 
 ## Before making changes
 
-1. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP), `har env launch 1`, or `./.har/launch.sh 1`. Launch always creates a **fresh session worktree** from the current HEAD and returns its **work dir**.
-2. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `./.har/agent-cli.sh <id> restart` if a change doesn't take.
+1. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1`. Launch always creates a **fresh session worktree** from the current HEAD and returns its **work dir**.
+2. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `har env restart <id>` or `./.har/agent-cli.sh <id> restart` if a change doesn't take.
 3. Read [AGENT.md](./AGENT.md) at the repo root
 4. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
 5. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
@@ -26,7 +26,7 @@ Relaunching a slot **replaces** its previous session (the old branch is kept). R
 ### Slot safety (read before launch)
 
 - **One slot ≈ one task** — do not share slot 1 across unrelated chats; use slot 2+ for parallel work.
-- **Call `har_get_status` / `./.har/agent-cli.sh <id> status`** before launch when a slot may be occupied.
+- **Call `har_get_status` / `har env status`** before launch when a slot may be occupied.
 - **Never** set `force`/`confirmReplace` without the user explicitly approving replacement.
 - **Commit early and often** in the session worktree — teardown keeps the branch, not uncommitted work.
 - **Gitignored paths are ephemeral** (`state/`, `runs/`, local clones) — they are lost when the worktree is removed.

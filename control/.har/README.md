@@ -91,7 +91,7 @@ Always use `./.har/agent-cli.sh <id> ...` — never hardcoded ports.
 
 Each agent slot gets isolated app ports. Defaults follow `BASE + (AGENT_ID × HARNESS_PORT_STEP)`; when a default is busy, `launch.sh` scans the slot lane and writes resolved ports to `.env.agent.<id>` and `.har/slots/agent-<id>.json`.
 
-Configure how many slots your machine can run in parallel in `stages.json` (`agentSlots`) and `harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`). Keep both in sync.
+Configure how many slots your machine can run in parallel in `.har/stages.json` (`agentSlots`). Bash scripts and the CLI read that first; `harness.env` keeps legacy `HARNESS_AGENT_SLOT_*` exports in sync via `har env maintain --finalize`.
 
 | Service | Agent 1 (default) | Agent 2 (default) | Agent 3 (default) |
 |---------|-------------------|-------------------|-------------------|

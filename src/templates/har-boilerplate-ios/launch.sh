@@ -31,6 +31,7 @@ for arg in "$@"; do
 done
 
 if [[ -z "$AGENT_ID" ]]; then
+  har_load_agent_slot_limits
   echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] [--purpose=label]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1

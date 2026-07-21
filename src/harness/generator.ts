@@ -6,6 +6,7 @@ import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
 import { writeHarnessGitignore } from './gitignore-template';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
+import { syncAgentSlotsToHarnessEnv } from './stages';
 
 export type HarnessProfile = 'default' | 'cli' | 'ios';
 
@@ -86,6 +87,8 @@ export function scaffoldHarnessBoilerplate(
   if (profile === 'cli') {
     pruneCliProfile(harnessDir);
   }
+
+  syncAgentSlotsToHarnessEnv(repoPath);
 
   const harnessEnvPath = path.join(harnessDir, 'harness.env');
   if (fs.existsSync(harnessEnvPath)) {

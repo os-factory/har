@@ -27,7 +27,8 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
-  echo "No .env.agent.${AGENT_ID} found. Run: ./.har/launch.sh ${AGENT_ID}" >&2
+  echo "No .env.agent.${AGENT_ID} found." >&2
+  har_suggest_launch "$AGENT_ID" >&2
   exit 1
 }
 

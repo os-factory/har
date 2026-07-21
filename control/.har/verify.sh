@@ -25,7 +25,8 @@ validate_agent_id "$AGENT_ID"
 API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
 
 ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
-  echo "No .env.agent.${AGENT_ID} found. Run: ./.har/launch.sh ${AGENT_ID}" >&2
+  echo "No .env.agent.${AGENT_ID} found." >&2
+  har_suggest_launch "$AGENT_ID" >&2
   exit 1
 }
 
