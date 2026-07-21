@@ -97,13 +97,13 @@
     {
       "id": "docker-build",
       "kind": "test",
-      "description": "Build Mission Control Docker image (no push; native platform)",
+      "description": "Build Mission Control Docker image and smoke-boot it (prisma db push + /api/health; no push; native platform)",
       "script": "stages/docker-build.sh",
       "artifacts": [
         {
           "path": ".har/artifacts/docker-build",
           "kind": "directory",
-          "description": "Docker build logs"
+          "description": "Docker build logs and smoke-boot logs"
         }
       ],
       "requiresAgentId": true

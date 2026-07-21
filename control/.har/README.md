@@ -66,7 +66,7 @@ Read **`stages.json`** for registered stages and **`verificationStages`** for th
 | Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint + optional readiness smoke + **`browser-e2e`** + **`docker-build`** (when those stage scripts exist) |
 
 Install Playwright stage: `har env add-stage playwright` (optional). UI changes should add or update specs under `tests/`.
-The `docker-build` stage builds `control/Dockerfile` against the session worktree (no push; native platform) so Dockerfile / `next build` regressions fail verification before release.
+The `docker-build` stage builds `control/Dockerfile` against the session worktree (no push; native platform), then smoke-boots the image and waits for `/api/health`. That catches first-boot failures (for example a broken Prisma CLI / missing wasm) that a build-only check would miss. PR CI runs this via `control` job `./.har/verify.sh 1 --full`.
 
 ## Run history
 

@@ -45,6 +45,8 @@ jobs:
         working-directory: control
         run: ./.har/launch.sh 1 --no-worktree
 
+      # Full verify includes docker-build: image build + smoke-boot (prisma db push
+      # and /api/health). Build-only checks miss first-boot CLI/runtime regressions.
       - name: Verify Mission Control (full)
         working-directory: control
         env:
