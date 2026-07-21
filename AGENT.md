@@ -168,6 +168,44 @@ Design for a closed core with open seams — do not build a full plugin registry
 - When CLI and core share a code path, keep parity tests (see `tests/run-service-parity.test.ts`)
 - After changes: run the harness verify stage (see below)
 
+## Branch names, CI, and releases
+
+Git **branch names do not skip CI or releases**. Name the base branch for clarity, then match the **commit / squash-merge title** to the rules below (that title becomes the commit on `main`).
+
+### Recommended base-branch prefixes
+
+| Work | Base branch | Commit / PR title |
+|------|-------------|-------------------|
+| Docs site or markdown only (`docs/**`, `*.md`) | `docs/<short-topic>` | `docs: …` |
+| CI / workflows only | `ci/<short-topic>` | `ci: …` or `chore(ci): …` |
+| Benchmarks only | `benchmark/<short-topic>` | `chore(benchmark): …` (or any type with `(benchmark)` scope) |
+| Product changes | `feat/…`, `fix/…`, etc. | `feat:` / `fix:` (these **do** release) |
+
+HAR session branches are derived from whatever base you launch from (`docs-…-har-agent-…`). Prefer starting from a `docs/…` or `ci/…` base when the change is non-releasing.
+
+### What actually avoids a release
+
+[semantic-release](./release.config.cjs) cuts a version from Conventional Commits on `main`. These **do not** publish:
+
+| Pattern | Example |
+|---------|---------|
+| Type `docs`, `chore`, `test`, `refactor`, or `ci` | `docs: fix newsletter layout` |
+| Scope `ci` or `benchmark` (any type) | `fix(ci): tighten workflow paths` |
+
+**Do not** use `feat(docs):` or `fix(docs):` for docs-only work — type `feat`/`fix` still releases; only type `docs` (or the scopes above) is suppressed. Squash-merge PR titles must follow the same format.
+
+Details and the full prefix table: [CONTRIBUTING.md](./CONTRIBUTING.md#commit-messages-required-for-releases).
+
+### What actually skips CI jobs
+
+| Workflow | When it runs | How to skip / limit |
+|----------|--------------|---------------------|
+| [Test](.github/workflows/test.yml) | Every PR → `main` | Not skipped by branch name or `docs:` commits today |
+| [Release](.github/workflows/release.yml) | Push to `main` | Add `[skip ci]` to the merge commit message to skip verify + release jobs |
+| [Docs](.github/workflows/docs.yml) | Push/PR touching `docs/**` (and related paths) | Path-filtered — only runs when those paths change |
+
+For docs-only updates: use branch `docs/<topic>`, commit/PR title `docs: …`, and if you need the Release workflow not to run at all after merge, include `[skip ci]` in the squash message (e.g. `docs: refresh landing copy [skip ci]`). The Docs workflow may still run when `docs/**` changes — that is intentional.
+
 ## Before finishing
 
 ```bash
