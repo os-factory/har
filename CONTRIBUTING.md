@@ -323,7 +323,7 @@ Releases are cut automatically when PRs merge to `main`. [semantic-release](http
 | `feat:` | Minor |
 | `feat!:` or `BREAKING CHANGE:` footer | Major |
 | `chore:`, `docs:`, `test:`, `refactor:`, `ci:` | No release |
-| `feat(benchmark):`, `*(ci):`, `docs(*):` | No release (scope rules in [release.config.cjs](release.config.cjs)) |
+| `feat(benchmark):`, `*(ci):`, `docs(*):` | No release (type/scope rules in [release.config.cjs](release.config.cjs): types `ci` + `docs`, scopes `ci` + `benchmark`) |
 
 Examples:
 

@@ -170,41 +170,42 @@ Design for a closed core with open seams — do not build a full plugin registry
 
 ## Branch names, CI, and releases
 
-Git **branch names do not skip CI or releases**. Name the base branch for clarity, then match the **commit / squash-merge title** to the rules below (that title becomes the commit on `main`).
+Git **branch names do not skip CI or releases**. Name the base branch for clarity, then match the **commit / squash-merge title** to [CONTRIBUTING.md](./CONTRIBUTING.md#commit-messages-required-for-releases) (that title becomes the commit on `main`).
 
 ### Recommended base-branch prefixes
 
 | Work | Base branch | Commit / PR title |
 |------|-------------|-------------------|
 | Docs site or markdown only (`docs/**`, `*.md`) | `docs/<short-topic>` | `docs: …` |
-| CI / workflows only | `ci/<short-topic>` | `ci: …` or `chore(ci): …` |
-| Benchmarks only | `benchmark/<short-topic>` | `chore(benchmark): …` (or any type with `(benchmark)` scope) |
+| CI / workflows only | `ci/<short-topic>` | `ci: …` |
+| Benchmarks only | `benchmark/<short-topic>` | any type with `(benchmark)` scope, e.g. `chore(benchmark): …` |
 | Product changes | `feat/…`, `fix/…`, etc. | `feat:` / `fix:` (these **do** release) |
 
 HAR session branches are derived from whatever base you launch from (`docs-…-har-agent-…`). Prefer starting from a `docs/…` or `ci/…` base when the change is non-releasing.
 
 ### What actually avoids a release
 
-[semantic-release](./release.config.cjs) cuts a version from Conventional Commits on `main`. These **do not** publish:
+[semantic-release](./release.config.cjs) cuts a version from Conventional Commits on `main`. Matching [CONTRIBUTING.md](./CONTRIBUTING.md#commit-messages-required-for-releases):
 
-| Pattern | Example |
-|---------|---------|
-| Type `docs`, `chore`, `test`, `refactor`, or `ci` | `docs: fix newsletter layout` |
-| Scope `ci` or `benchmark` (any type) | `fix(ci): tighten workflow paths` |
+| Commit prefix | Release |
+|---------------|---------|
+| `fix:` | Patch |
+| `feat:` | Minor |
+| `feat!:` or `BREAKING CHANGE:` footer | Major |
+| `chore:`, `docs:`, `test:`, `refactor:`, `ci:` | No release |
+| `feat(benchmark):`, `*(ci):`, `docs(*):` | No release ([release.config.cjs](./release.config.cjs) rules) |
 
-**Do not** use `feat(docs):` or `fix(docs):` for docs-only work — type `feat`/`fix` still releases; only type `docs` (or the scopes above) is suppressed. Squash-merge PR titles must follow the same format.
-
-Details and the full prefix table: [CONTRIBUTING.md](./CONTRIBUTING.md#commit-messages-required-for-releases).
+Explicit analyzer rules in [release.config.cjs](./release.config.cjs): type `ci`, type `docs`, scope `ci`, and scope `benchmark` all set `release: false`. Prefer type `ci:` / `docs:` for those-only PRs — not `feat(docs):` or `fix(docs):` (type `feat`/`fix` still releases unless the scope is `ci` or `benchmark`). Squash-merge PR titles must follow the same format.
 
 ### What actually skips CI jobs
 
 | Workflow | When it runs | How to skip / limit |
 |----------|--------------|---------------------|
-| [Test](.github/workflows/test.yml) | Every PR → `main` | Not skipped by branch name or `docs:` commits today |
+| [Test](.github/workflows/test.yml) | Every PR → `main` | Not skipped by branch name or `docs:` / `ci:` commits today |
 | [Release](.github/workflows/release.yml) | Push to `main` | Add `[skip ci]` to the merge commit message to skip verify + release jobs |
 | [Docs](.github/workflows/docs.yml) | Push/PR touching `docs/**` (and related paths) | Path-filtered — only runs when those paths change |
 
-For docs-only updates: use branch `docs/<topic>`, commit/PR title `docs: …`, and if you need the Release workflow not to run at all after merge, include `[skip ci]` in the squash message (e.g. `docs: refresh landing copy [skip ci]`). The Docs workflow may still run when `docs/**` changes — that is intentional.
+For docs-only updates: branch `docs/<topic>`, title `docs: …`. For CI-only updates: branch `ci/<topic>`, title `ci: …`. To also skip the Release workflow after merge, add `[skip ci]` to the squash message (e.g. `docs: refresh landing copy [skip ci]`). The Docs workflow may still run when `docs/**` changes — that is intentional.
 
 ## Before finishing
 
