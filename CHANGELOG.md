@@ -1,3 +1,15 @@
+# [0.16.0](https://github.com/os-factory/har/compare/v0.15.0...v0.16.0) (2026-07-21)
+
+
+### Bug Fixes
+
+* **docs:** hide newsletter spam trap ([#63](https://github.com/os-factory/har/issues/63)) ([c189cd9](https://github.com/os-factory/har/commit/c189cd9c7579cd56dcbc117997a51571a11a01f6))
+
+
+### Features
+
+* **control:** align Mission Control palette with docs landing ([#65](https://github.com/os-factory/har/issues/65)) ([6e9600b](https://github.com/os-factory/har/commit/6e9600bd4aabe8476bc75849263ee270be96d09e))
+
 # [0.15.0](https://github.com/os-factory/har/compare/v0.14.2...v0.15.0) (2026-07-21)
 
 
