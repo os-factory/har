@@ -1,3 +1,10 @@
+# [0.15.0](https://github.com/os-factory/har/compare/v0.14.2...v0.15.0) (2026-07-21)
+
+
+### Features
+
+* **docs:** replace docs landing with marketing website ([#61](https://github.com/os-factory/har/issues/61)) ([83f1ca0](https://github.com/os-factory/har/commit/83f1ca003e38bb5bf0a369b62d85a2b1ea93a43b))
+
 ## [0.14.2](https://github.com/os-factory/har/compare/v0.14.1...v0.14.2) (2026-07-21)
 
 
