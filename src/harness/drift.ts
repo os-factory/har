@@ -13,6 +13,7 @@ import {
   getHarnessDir,
   readManifest,
 } from './manifest';
+import { detectAgentSlotEnvMismatch } from './stages';
 import { resolveTemplatesDir } from '../utils/paths';
 
 const PROFILE_DIRS: Record<HarnessProfile, string> = {
@@ -39,6 +40,11 @@ export interface HarnessDriftResult {
   unchanged: string[];
   /** Port-allocation knobs from harness.env that the bundled template expects. */
   missingPortVars: string[];
+  /** stages.json agentSlots disagree with HARNESS_AGENT_SLOT_* in harness.env. */
+  agentSlotMismatch: {
+    stages: { min: number; max: number };
+    env: { min: number; max: number };
+  } | null;
 }
 
 const APP_PORT_VARS = [
@@ -178,6 +184,7 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const installed = manifest?.generatorVersion;
   const harnessEnv = readHarnessEnv(resolved);
   const missingPortVars = missingPortDocumentationVars(profile, harnessEnv);
+  const agentSlotMismatch = detectAgentSlotEnvMismatch(resolved);
 
   return {
     generatorVersion: {
@@ -190,5 +197,6 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
     extra,
     unchanged,
     missingPortVars,
+    agentSlotMismatch,
   };
 }

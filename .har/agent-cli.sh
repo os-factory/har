@@ -116,7 +116,7 @@ process.stdin.on('end', () => {
       echo "  API:       http://localhost:${API_PORT}"
     else
       echo "No active environment for agent ${AGENT_ID}"
-      echo "  Run: ./.har/launch.sh ${AGENT_ID}"
+      har_suggest_launch "$AGENT_ID"
     fi
     ;;
 

@@ -127,7 +127,7 @@ Document ports in `.har/README.md` and configure them in `.har/harness.env`. Res
 
 CLI and iOS profiles typically have no per-slot app ports; optional backends still use the shared-infra model.
 
-Set slot limits in `.har/stages.json` (`agentSlots`) and `.har/harness.env` (`HARNESS_AGENT_SLOT_MIN` / `HARNESS_AGENT_SLOT_MAX`) based on machine capacity.
+Set slot limits in `.har/stages.json` (`agentSlots`) based on machine capacity. `har env maintain --finalize` syncs legacy `HARNESS_AGENT_SLOT_*` exports in `harness.env`.
 
 ### Do not
 

@@ -41,6 +41,7 @@ export interface MaintainBundleReport {
   actions: MaintainAction[];
   stale: MaintainStaleFile[];
   missingPortVars: string[];
+  agentSlotMismatch: HarnessDriftResult['agentSlotMismatch'];
   validation: {
     pass: boolean;
     errors: ValidationIssue[];
@@ -216,6 +217,19 @@ function buildReadme(report: MaintainBundleReport): string {
     }
   }
 
+  if (report.agentSlotMismatch) {
+    lines.push(
+      '',
+      '## Agent slot limit mismatch',
+      '',
+      `- \`stages.json\` agentSlots: ${report.agentSlotMismatch.stages.min}–${report.agentSlotMismatch.stages.max}`,
+      `- \`harness.env\` HARNESS_AGENT_SLOT_*: ${report.agentSlotMismatch.env.min}–${report.agentSlotMismatch.env.max}`,
+      '',
+      'Canonical source is `.har/stages.json`. Run `har env maintain` to sync legacy exports in `harness.env`, or edit `agentSlots` there.',
+      '',
+    );
+  }
+
   lines.push('', '## Stale files (review)', '');
 
   if (report.stale.length === 0) {
@@ -324,6 +338,7 @@ export function buildMaintainBundle(
     actions: buildActions(repoPath, profile, drift),
     stale: buildStale(drift),
     missingPortVars: drift.missingPortVars,
+    agentSlotMismatch: drift.agentSlotMismatch,
     validation: {
       pass: validation.pass,
       errors,
@@ -388,10 +403,23 @@ export function formatMaintainBundlePromptSection(report: MaintainBundleReport):
     lines.push('');
   }
 
+  if (report.agentSlotMismatch) {
+    lines.push(
+      '### Agent slot limit mismatch',
+      '',
+      `- \`stages.json\` agentSlots: ${report.agentSlotMismatch.stages.min}–${report.agentSlotMismatch.stages.max}`,
+      `- \`harness.env\` HARNESS_AGENT_SLOT_*: ${report.agentSlotMismatch.env.min}–${report.agentSlotMismatch.env.max}`,
+      '',
+      'Canonical source is `.har/stages.json`. `har env maintain --finalize` syncs legacy exports in `harness.env`.',
+      '',
+    );
+  }
+
   if (
     report.actions.length === 0 &&
     report.stale.length === 0 &&
     report.missingPortVars.length === 0 &&
+    !report.agentSlotMismatch &&
     report.validation.errors.length === 0
   ) {
     lines.push('No template drift detected. Review repo stack changes manually if needed.', '');

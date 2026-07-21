@@ -5,13 +5,50 @@
 #   source "$SCRIPT_DIR/agent-slot.sh"
 #   validate_agent_id "$AGENT_ID"
 
+# Canonical slot limits live in stages.json (agentSlots); harness.env is legacy fallback.
+har_load_agent_slot_limits() {
+  local registry="${SCRIPT_DIR}/stages.json"
+  if [[ -f "$registry" ]]; then
+    local parsed
+    parsed="$(node -e '
+try {
+  const slots = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).agentSlots;
+  if (slots && Number.isInteger(slots.min) && Number.isInteger(slots.max)) {
+    process.stdout.write(String(slots.min) + " " + String(slots.max));
+  }
+} catch {}
+' "$registry" 2>/dev/null || true)"
+    if [[ -n "$parsed" ]]; then
+      HARNESS_AGENT_SLOT_MIN="${parsed%% *}"
+      HARNESS_AGENT_SLOT_MAX="${parsed#* }"
+      export HARNESS_AGENT_SLOT_MIN HARNESS_AGENT_SLOT_MAX
+      return 0
+    fi
+  fi
+}
+
+har_suggest_launch() {
+  local id="$1"
+  echo "  Launch: har env launch ${id}     # or har_launch_environment (MCP)" >&2
+  echo "  Fallback: ./.har/launch.sh ${id}  # when har CLI/MCP unavailable" >&2
+}
+
+har_suggest_status() {
+  local id="${1:-}"
+  echo "  Status: har env status           # or har_get_status (MCP)" >&2
+  if [[ -n "$id" ]]; then
+    echo "  Fallback: ./.har/agent-cli.sh ${id} status" >&2
+  fi
+}
+
 validate_agent_id() {
   local id="${1:-}"
+  har_load_agent_slot_limits
   local min="${HARNESS_AGENT_SLOT_MIN:-1}"
   local max="${HARNESS_AGENT_SLOT_MAX:-}"
 
   if [[ -z "$max" ]]; then
-    echo "Error: HARNESS_AGENT_SLOT_MAX is not set in harness.env" >&2
+    echo "Error: configure agentSlots in .har/stages.json or HARNESS_AGENT_SLOT_MAX in harness.env" >&2
     exit 1
   fi
 

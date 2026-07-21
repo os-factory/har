@@ -185,6 +185,63 @@ export function getAgentSlotIds(repoPath: string): number[] {
   return ids;
 }
 
+/** When both stages.json and harness.env define limits, returns a mismatch or null. */
+export function detectAgentSlotEnvMismatch(
+  repoPath: string,
+): { stages: { min: number; max: number }; env: { min: number; max: number } } | null {
+  const registryPath = getStageRegistryPath(repoPath);
+  if (!fs.existsSync(registryPath)) return null;
+
+  let stagesSlots: { min: number; max: number } | null = null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    if (
+      raw.agentSlots &&
+      Number.isInteger(raw.agentSlots.min) &&
+      Number.isInteger(raw.agentSlots.max)
+    ) {
+      stagesSlots = { min: raw.agentSlots.min, max: raw.agentSlots.max };
+    }
+  } catch {
+    return null;
+  }
+  if (!stagesSlots) return null;
+
+  const env = readHarnessEnv(repoPath);
+  const envMax = parseHarnessEnvInt(env, 'HARNESS_AGENT_SLOT_MAX');
+  if (envMax === undefined) return null;
+  const envMin = parseHarnessEnvInt(env, 'HARNESS_AGENT_SLOT_MIN') ?? HAR_AGENT_SLOT_MIN;
+  if (envMin === stagesSlots.min && envMax === stagesSlots.max) return null;
+  return { stages: stagesSlots, env: { min: envMin, max: envMax } };
+}
+
+/** Sync legacy HARNESS_AGENT_SLOT_* exports in harness.env from stages.json agentSlots. */
+export function syncAgentSlotsToHarnessEnv(repoPath: string): boolean {
+  const mismatch = detectAgentSlotEnvMismatch(repoPath);
+  if (!mismatch) return false;
+
+  const envPath = path.join(getHarnessDir(repoPath), 'harness.env');
+  if (!fs.existsSync(envPath)) return false;
+
+  let content = fs.readFileSync(envPath, 'utf8');
+  const minLine = `export HARNESS_AGENT_SLOT_MIN=${mismatch.stages.min}`;
+  const maxLine = `export HARNESS_AGENT_SLOT_MAX=${mismatch.stages.max}`;
+
+  if (/^export HARNESS_AGENT_SLOT_MIN=/m.test(content)) {
+    content = content.replace(/^export HARNESS_AGENT_SLOT_MIN=.*$/m, minLine);
+  } else {
+    content = `${content.replace(/\s*$/, '')}\n${minLine}\n`;
+  }
+  if (/^export HARNESS_AGENT_SLOT_MAX=/m.test(content)) {
+    content = content.replace(/^export HARNESS_AGENT_SLOT_MAX=.*$/m, maxLine);
+  } else {
+    content = `${content.replace(/\s*$/, '')}\n${maxLine}\n`;
+  }
+
+  fs.writeFileSync(envPath, content);
+  return true;
+}
+
 export function stageRequiresAgentId(stage: HarnessStage): boolean {
   if (typeof stage.requiresAgentId === 'boolean') return stage.requiresAgentId;
   return AGENT_REQUIRED_KINDS.has(stage.kind);

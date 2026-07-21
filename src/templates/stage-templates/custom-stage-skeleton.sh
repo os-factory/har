@@ -25,7 +25,8 @@ AGENT_ID="${1:?Usage: __STAGE_ID__.sh <agent-id> [extra args...]}"
 validate_agent_id "$AGENT_ID"
 
 ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
-  echo "No .env.agent.${AGENT_ID} found. Run: ./.har/launch.sh ${AGENT_ID}" >&2
+  echo "No .env.agent.${AGENT_ID} found." >&2
+  har_suggest_launch "$AGENT_ID" >&2
   exit 1
 }
 set -a

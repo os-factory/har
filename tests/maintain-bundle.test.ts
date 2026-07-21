@@ -132,6 +132,7 @@ describe('adaptation prompts with maintain bundle', () => {
       ],
       stale: [{ file: 'legacy.sh', hint: 'Delete after merge.' }],
       missingPortVars: ['HARNESS_DB_PORT_DEFAULT'],
+      agentSlotMismatch: null,
       validation: {
         pass: false,
         errors: [{ file: 'provision-toolchain.sh', message: 'Required file missing', severity: 'error' }],

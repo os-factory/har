@@ -23,7 +23,7 @@ resolve_work_dir() {
   local env_file
   env_file="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
     echo "No active environment for agent ${AGENT_ID}" >&2
-    echo "  Run: ./.har/launch.sh ${AGENT_ID}" >&2
+    har_suggest_launch "$AGENT_ID"
     exit 1
   }
   # shellcheck source=/dev/null
@@ -46,7 +46,7 @@ case "$COMMAND" in
       echo "  Bundle ID: ${HARNESS_BUNDLE_ID:-not set}"
     else
       echo "No active environment for agent ${AGENT_ID}"
-      echo "  Run: ./.har/launch.sh ${AGENT_ID}"
+      har_suggest_launch "$AGENT_ID"
     fi
     ;;
 

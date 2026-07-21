@@ -13,7 +13,7 @@ Edit shared configuration in `.har/harness.env`. Launch expands resolved values 
 | `HARNESS_PROJECT_NAME` | Stable project identifier used for processes and infrastructure |
 | `HARNESS_USE_WORKTREE` | Whether launch uses isolated worktrees by default |
 | `HARNESS_PRIMARY_APP` | Primary per-slot application in the web profile |
-| `HARNESS_AGENT_SLOT_MIN` / `MAX` | Allowed slot id range |
+| `HARNESS_AGENT_SLOT_MIN` / `MAX` | Legacy fallback for slot id range — canonical limits are in `.har/stages.json` (`agentSlots`) |
 | `HAR_SESSION_PURPOSE` | Optional label stored with a launched session |
 
 ## Toolchain

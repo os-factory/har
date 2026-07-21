@@ -35,6 +35,7 @@ for arg in "$@"; do
 done
 
 if [[ -z "$AGENT_ID" ]]; then
+  har_load_agent_slot_limits
   echo "Usage: $0 <agent-id> [--no-worktree] [--claude] [--replace] [--force] [--resume] [--purpose=label]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
@@ -78,7 +79,7 @@ if [ "$RESUME" = true ]; then
         write_slot_registry
       log "  Work dir:  ${WORK_DIR}"
       log "  Env file:  ${ENV_FILE}"
-      log "  Recovery:  ./.har/launch.sh ${AGENT_ID} --resume"
+      log "  Recovery:  har env launch ${AGENT_ID} --resume  # or ./.har/launch.sh ${AGENT_ID} --resume"
     fi
   }
   trap mark_slot_failed EXIT
@@ -197,7 +198,7 @@ if [ "$RESUME" != true ]; then
         write_slot_registry
       log "  Work dir:  ${WORK_DIR}"
       log "  Env file:  ${ENV_FILE}"
-      log "  Recovery:  ./.har/launch.sh ${AGENT_ID} --resume"
+      log "  Recovery:  har env launch ${AGENT_ID} --resume  # or ./.har/launch.sh ${AGENT_ID} --resume"
     fi
   }
   trap mark_slot_failed EXIT

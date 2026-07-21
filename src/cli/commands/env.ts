@@ -924,12 +924,19 @@ function printDrift(drift: HarnessDriftResult): void {
     );
     warn('  See maintain/templates/harness.env in the maintenance bundle.');
   }
+  if (drift.agentSlotMismatch) {
+    warn(
+      `  Agent slot limits disagree: stages.json ${drift.agentSlotMismatch.stages.min}–${drift.agentSlotMismatch.stages.max}, harness.env ${drift.agentSlotMismatch.env.min}–${drift.agentSlotMismatch.env.max}`,
+    );
+    warn('  Canonical source is .har/stages.json — har env maintain --finalize syncs harness.env.');
+  }
   if (
     !drift.generatorVersion.outdated &&
     drift.checksumMismatch.length === 0 &&
     drift.missing.length === 0 &&
     drift.extra.length === 0 &&
-    drift.missingPortVars.length === 0
+    drift.missingPortVars.length === 0 &&
+    !drift.agentSlotMismatch
   ) {
     success('  Harness matches bundled templates');
   }
