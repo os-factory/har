@@ -1,0 +1,42 @@
+---
+import ThemeToggle from './ThemeToggle.astro';
+
+interface Props {
+  active?: 'home' | 'blog';
+  solid?: boolean;
+}
+
+const { active = 'home', solid = false } = Astro.props;
+const homePrefix = active === 'home' ? '' : '/';
+---
+<header class:list={['site-header', { 'site-header-solid': solid }]} data-header>
+  <div class="container nav-shell">
+    <a class="brand" href="/" aria-label="HAR home">
+      <span class="brand-mark"><img src="/assets/har-logo.png" alt="" /></span>
+      <span class="brand-word">HAR</span>
+    </a>
+    <nav class="desktop-nav" aria-label="Primary navigation">
+      <a href={`${homePrefix}#why`}>Why HAR</a>
+      <a href={`${homePrefix}#workflow`}>Workflow</a>
+      <a href={`${homePrefix}#control`}>Mission Control</a>
+      <a class:list={{ active: active === 'blog' }} href="/blog">Blog</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="nav-link" href="/docs">Docs</a>
+      <ThemeToggle />
+      <a class="button button-dark button-small" href="https://github.com/os-factory/har">GitHub <span aria-hidden="true">↗</span></a>
+      <button class="menu-button" type="button" aria-expanded="false" aria-controls="mobile-menu" data-menu-button>
+        <span></span><span></span>
+        <span class="sr-only">Toggle menu</span>
+      </button>
+    </div>
+  </div>
+  <div class="mobile-menu" id="mobile-menu" data-mobile-menu>
+    <a href={`${homePrefix}#why`}>Why HAR</a>
+    <a href={`${homePrefix}#workflow`}>Workflow</a>
+    <a href={`${homePrefix}#control`}>Mission Control</a>
+    <a href="/blog">Blog</a>
+    <a href="/docs">Documentation</a>
+    <a href="https://github.com/os-factory/har">GitHub</a>
+  </div>
+</header>

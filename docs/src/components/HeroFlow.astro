@@ -1,0 +1,108 @@
+<div class="flow-window">
+  <div class="window-topbar">
+    <div class="window-lights"><span></span><span></span><span></span></div>
+    <span class="window-label">agent-session / slot-03</span>
+    <span class="window-status"><i></i> running</span>
+  </div>
+
+  <div class="flow-canvas desktop-flow" aria-label="HAR agent workflow">
+    <svg class="flow-lines" viewBox="0 0 620 450" preserveAspectRatio="xMidYMid meet">
+      <path class="flow-line" d="M 142 67 H 190" />
+      <path class="flow-line" d="M 340 67 H 400" />
+      <path class="flow-line" d="M 465 106 V 178" />
+      <path class="flow-line" d="M 400 217 H 320" />
+      <path class="flow-line" d="M 190 217 H 140" />
+      <path class="flow-line flow-line-final" d="M 75 256 V 300 C 75 326 110 326 145 326" />
+      <path class="flow-line flow-line-final" d="M 265 256 V 300 C 265 326 280 326 269 326" />
+      <path class="flow-line flow-line-final" d="M 465 256 V 300 C 465 326 420 326 393 326" />
+    </svg>
+
+    <div class="flow-node" style="--x: 10px; --y: 28px; --w: 132px;">
+      <span class="node-icon node-icon-agent">A</span>
+      <div>
+        <strong>Agent</strong>
+        <span>requests task</span>
+      </div>
+    </div>
+
+    <div class="flow-node" style="--x: 190px; --y: 28px; --w: 150px;">
+      <span class="node-icon">⌘</span>
+      <div>
+        <strong>Repository</strong>
+        <span>reads .har/</span>
+      </div>
+    </div>
+
+    <div class="flow-node" style="--x: 400px; --y: 28px; --w: 130px;">
+      <span class="node-icon"><span class="node-index">01</span></span>
+      <div>
+        <strong>Create slot</strong>
+        <span>isolated worktree</span>
+      </div>
+      <span class="node-check">✓</span>
+    </div>
+
+    <div class="flow-node" style="--x: 400px; --y: 178px; --w: 130px;">
+      <span class="node-icon"><span class="node-index">02</span></span>
+      <div>
+        <strong>Launch stack</strong>
+        <span>ports + services</span>
+      </div>
+      <span class="node-check">✓</span>
+    </div>
+
+    <div class="flow-node" style="--x: 190px; --y: 178px; --w: 130px;">
+      <span class="node-icon"><span class="node-index">03</span></span>
+      <div>
+        <strong>Make changes</strong>
+        <span>inside worktree</span>
+      </div>
+      <span class="node-live" aria-label="Active"></span>
+    </div>
+
+    <div class="flow-node" style="--x: 10px; --y: 178px; --w: 130px;">
+      <span class="node-icon"><span class="node-index">04</span></span>
+      <div>
+        <strong>Verify</strong>
+        <span>project checks</span>
+      </div>
+      <span class="node-check">✓</span>
+    </div>
+
+    <div class="evidence-node" style="--x: 145px; --y: 326px;">
+      <span class="evidence-icon">✓</span>
+      <div>
+        <strong>Validated branch</strong>
+        <span>logs · artifacts · tree hash</span>
+      </div>
+      <span class="evidence-pill">ready</span>
+    </div>
+  </div>
+
+  <div class="flow-mobile mobile-flow">
+    <div class="mobile-flow-step">
+      <span>01</span>
+      <div><strong>Read the project contract</strong><small>Agent discovers the repository through <code>.har/</code></small></div>
+    </div>
+    <i></i>
+    <div class="mobile-flow-step">
+      <span>02</span>
+      <div><strong>Create an isolated slot</strong><small>Fresh worktree, ports, services, and environment</small></div>
+    </div>
+    <i></i>
+    <div class="mobile-flow-step">
+      <span>03</span>
+      <div><strong>Launch, change, verify</strong><small>Run the same workflow your team trusts</small></div>
+    </div>
+    <i></i>
+    <div class="mobile-flow-step mobile-flow-final">
+      <span>✓</span>
+      <div><strong>Hand off evidence</strong><small>Logs, artifacts, exact validated tree hash</small></div>
+    </div>
+  </div>
+
+  <div class="flow-footer">
+    <span><i></i> deterministic workflow</span>
+    <code>har env verify 3 --full</code>
+  </div>
+</div>

@@ -1,9 +1,11 @@
-# HAR documentation site
+# HAR website & documentation
 
-The public documentation is an [Astro Starlight](https://starlight.astro.build/)
-static site deployed to GitHub Pages at:
+The public site is an [Astro](https://astro.build/) project deployed to GitHub
+Pages at <https://harproject.cloud/>:
 
-<https://harproject.cloud/>
+- `/` — marketing landing page with interactive workflow hero
+- `/blog` — journal index and articles
+- `/docs` — Starlight documentation (same content as before, new theme)
 
 ## Local development
 
@@ -41,3 +43,11 @@ Update both if the domain or Pages path changes.
 
 Documentation content is licensed under
 [CC BY-SA 4.0](../DOCUMENTATION-LICENSE.md).
+
+## Source layout
+
+- `src/pages/index.astro` — landing page
+- `src/pages/blog/` — journal pages
+- `src/content/docs/docs/` — documentation (served under `/docs`)
+- `src/styles/global.css` — landing/blog theme
+- `src/styles/custom.css` — Starlight theme overrides

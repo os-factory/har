@@ -21,5 +21,6 @@ lychee \
   --no-progress \
   --root-dir "$DIST" \
   --exclude '^https://harproject\.cloud' \
+  --exclude '^https://www\.npmjs\.com' \
   --exclude-loopback \
   "$DIST"
