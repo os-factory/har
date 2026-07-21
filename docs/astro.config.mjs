@@ -39,7 +39,7 @@ export default defineConfig({
 			description:
 				'The open-source harness and control plane for reproducible AI agent development environments.',
 			logo: {
-				src: '../logo.png',
+				src: './public/assets/har-logo.png',
 				alt: '.har',
 			},
 			favicon: '/assets/har-logo.png',
