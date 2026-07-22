@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { readManifest } from '../harness/manifest';
+import { canonicalizeControlRepoPath } from './control-repo-path';
 
 interface ControlRegistry {
   repos: string[];
@@ -30,11 +31,16 @@ function writeRegistry(registry: ControlRegistry): void {
   fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n');
 }
 
+function registryChanged(before: string[], after: string[]): boolean {
+  if (before.length !== after.length) return true;
+  return before.some((repoPath, index) => repoPath !== after[index]);
+}
+
 /** Remember a repo so Mission Control can sync it when the dashboard starts. */
 export function recordRepoForControlSync(repoPath: string): void {
   if (process.env.HAR_CONTROL_DISABLED === 'true') return;
 
-  const resolved = path.resolve(repoPath);
+  const resolved = canonicalizeControlRepoPath(repoPath);
   if (!readManifest(resolved)) return;
 
   const registry = readRegistry();
@@ -47,9 +53,19 @@ export function recordRepoForControlSync(repoPath: string): void {
 /** Registered repos that still exist and have a harness manifest. */
 export function listRegisteredRepos(): string[] {
   const registry = readRegistry();
-  const kept = registry.repos.filter((repoPath) => fs.existsSync(repoPath) && readManifest(repoPath));
+  const kept: string[] = [];
+  const seen = new Set<string>();
 
-  if (kept.length !== registry.repos.length) {
+  for (const repoPath of registry.repos) {
+    if (!fs.existsSync(repoPath)) continue;
+    const canonical = canonicalizeControlRepoPath(repoPath);
+    if (!fs.existsSync(canonical) || !readManifest(canonical)) continue;
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    kept.push(canonical);
+  }
+
+  if (registryChanged(registry.repos, kept)) {
     writeRegistry({ repos: kept });
   }
 
