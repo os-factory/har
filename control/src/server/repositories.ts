@@ -110,11 +110,9 @@ export async function syncSlots(repositoryId: string, input: unknown) {
   for (const slot of slots) {
     const parsed = AgentSlotStatusSchema.parse(slot);
     const fields = buildAgentSlotSyncFields(parsed);
-    // purpose is derived from OTEL prompt capture — never overwrite from registry sync
-    const { purpose: _purpose, ...syncFields } = fields;
     // Prisma JSON columns need DbNull for SQL NULL (plain `null` is rejected).
     const data = {
-      ...syncFields,
+      ...fields,
       previewUrls:
         fields.previewUrls === null ? Prisma.DbNull : fields.previewUrls,
     };
