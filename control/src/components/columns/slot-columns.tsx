@@ -225,21 +225,26 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     id: 'branch',
     accessorFn: (row) => row.branch ?? '',
     header: 'Branch',
-    cell: ({ row }) =>
-      row.original.branch ? (
+    cell: ({ row }) => {
+      const { branch, baseBranch, baseCommit, active, worktreePath } = row.original;
+      if (!branch) return '—';
+      const lastSession = !active || !worktreePath;
+      const baseHint = baseBranch
+        ? `based on ${baseBranch} @ ${baseCommit?.slice(0, 7) ?? '?'}`
+        : undefined;
+      const title = lastSession
+        ? ['last session branch', baseHint].filter(Boolean).join(' · ')
+        : baseHint;
+      return (
         <span
           className="block max-w-56 truncate font-mono text-xs text-muted-foreground"
-          title={
-            row.original.baseBranch
-              ? `based on ${row.original.baseBranch} @ ${row.original.baseCommit?.slice(0, 7) ?? '?'}`
-              : undefined
-          }
+          title={title}
         >
-          {row.original.branch}
+          {lastSession ? <span className="text-muted-foreground/80">last </span> : null}
+          {branch}
         </span>
-      ) : (
-        '—'
-      ),
+      );
+    },
   },
   {
     accessorKey: 'harnessUsage',

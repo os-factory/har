@@ -82,7 +82,8 @@ export default async function HomePage() {
         <CardHeader>
           <CardTitle>Active sessions</CardTitle>
           <CardDescription>
-            Worktree, branch and drift per agent slot — status reflects the last `har` sync
+            Live worktrees only (active + path). Idle slots keep a last-session branch after
+            teardown — status reflects the last `har` sync
           </CardDescription>
         </CardHeader>
         <CardContent className="min-w-0">

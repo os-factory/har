@@ -5,7 +5,9 @@ import {
   SyncRunsInputSchema,
   SyncSlotsInputSchema,
 } from '@har/schemas';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
 
 function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as object;
@@ -52,8 +54,10 @@ export async function getRepository(id: string) {
 }
 
 export async function listActiveWorktrees() {
+  // Require a path so stale `active: true` rows without a worktree (missed sync
+  // after teardown) do not appear under Active sessions.
   return prisma.agentSlot.findMany({
-    where: { active: true },
+    where: { active: true, worktreePath: { not: null } },
     include: {
       repository: { select: { id: true, path: true, gitRemote: true } },
     },
@@ -105,37 +109,21 @@ export async function syncSlots(repositoryId: string, input: unknown) {
 
   for (const slot of slots) {
     const parsed = AgentSlotStatusSchema.parse(slot);
-    const fields = {
-      active: parsed.active,
-      workDir: parsed.workDir,
-      worktreePath: parsed.worktreePath,
-      branch: parsed.branch,
-      previewUrls: parsed.previewUrls ?? undefined,
-      harnessUsage: parsed.harnessUsage,
-      lastRunId: parsed.lastRunId,
-      lastRunAt: parsed.lastRunAt ? new Date(parsed.lastRunAt) : null,
-      lastVerifyStatus: parsed.lastVerifyStatus,
-      lastBuildPass: parsed.lastBuildPass,
-      mode: parsed.mode,
-      suffix: parsed.suffix,
-      baseBranch: parsed.baseBranch,
-      baseCommit: parsed.baseCommit,
-      sessionCreatedAt: parsed.sessionCreatedAt ? new Date(parsed.sessionCreatedAt) : null,
-      purpose: parsed.purpose,
-      detachedHead: parsed.detachedHead,
-      dirty: parsed.dirty,
-      ahead: parsed.ahead,
-      behind: parsed.behind,
-      stale: parsed.stale,
+    const fields = buildAgentSlotSyncFields(parsed);
+    // Prisma JSON columns need DbNull for SQL NULL (plain `null` is rejected).
+    const data = {
+      ...fields,
+      previewUrls:
+        fields.previewUrls === null ? Prisma.DbNull : fields.previewUrls,
     };
     await prisma.agentSlot.upsert({
       where: { repositoryId_slotId: { repositoryId, slotId: parsed.agentId } },
       create: {
         repositoryId,
         slotId: parsed.agentId,
-        ...fields,
+        ...data,
       },
-      update: fields,
+      update: data,
     });
   }
 
