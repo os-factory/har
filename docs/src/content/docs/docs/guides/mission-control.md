@@ -55,46 +55,43 @@ columns when agent telemetry is enabled (see below). Click a slot id for the
 slot leaf (LLM usage + Verify pipeline + session timeline). Repo catalog lives
 at `/repos`; cross-repo usage rollup at `/usage`.
 
-## Agent usage telemetry (Claude Code / Codex)
+## Agent usage telemetry (Cursor / Claude / Codex)
 
-HAR can attribute Claude Code and Codex token usage (and Claude cost estimates) to
-each worktree/session and show it in Mission Control. Preference shape:
+HAR attributes Cursor, Claude Code, and Codex activity to each worktree/session via
+[opentelemetry-hooks](https://github.com/o11y-dev/opentelemetry-hooks) and shows it in
+Mission Control. Preference shape:
 
 ```json
-{ "enabled": true, "signals": { "metrics": true, "logs": true, "prompts": false, "traces": false } }
+{ "enabled": true, "signals": { "metrics": true, "logs": true, "prompts": false, "traces": true } }
 ```
 
-Defaults when telemetry is on: **metrics + logs** (events without prompt bodies).
-Prompt text is **opt-in**.
+Defaults when telemetry is on: **traces + logs + derived metrics** (events without prompt
+bodies). Prompt text is **opt-in** and also fills the Mission Control **purpose** column
+from the first captured user prompt.
 
 ```bash
 har telemetry status
-har telemetry on              # metrics + logs; ensure Mission Control is running
-har telemetry on --prompts    # also ship user/assistant text to local MC
-har telemetry on --traces     # thin traces + Claude enhanced telemetry beta
-har telemetry off             # stop OTEL injection and usage harvest; keeps historical rows
+har telemetry on              # ensure Mission Control + install/configure opentelemetry-hooks
+har telemetry on --prompts    # also ship user prompt text (session purpose)
+har telemetry install-hooks   # re-run Cursor / Claude / Codex hook registration
+har telemetry off             # clear hooks OTLP export + stop MC auto-start; keeps historical rows
 ```
 
 Preference is stored in `~/.har/telemetry.json`. Override with `HAR_TELEMETRY=0|1`.
+Hooks config lives at `~/.har/otel-hooks/otel_config.json` (`HAR_OTEL_HOOKS_HOME` to override).
 
 When telemetry is on:
 
 1. `har env launch` auto-starts Mission Control if it is not reachable (`har control up`).
-2. Launch writes session tags and OTEL exporter env into `.env.agent.<id>` (Claude Code),
-   including `OTEL_LOGS_EXPORTER=otlp` when logs are enabled.
-3. Agents export metrics to `{HAR_CONTROL_API_URL}/api/otel/v1/metrics` and logs to
-   `/api/otel/v1/logs` (traces to `/api/otel/v1/traces` when opted in).
-4. `har control sync` also **harvests** local Claude/Codex session files as a fallback
-   (prompt summaries only when `signals.prompts` is true).
+2. `har telemetry on` installs `opentelemetry-hooks` and registers Cursor / Claude / Codex hooks
+   to export OTLP `http/json` to `{HAR_CONTROL_API_URL}/api/otel`.
+3. Launch writes session attribution into `.env.agent.<id>` (`HAR_SESSION_KEY`, resource attrs).
+   Mission Control matches sessions by `har.session_key` or by workspace/cwd → slot work dir.
+4. Token usage is derived from span `gen_ai.usage.*` attributes. `har control sync` also
+   **harvests** local Claude/Codex session files as a fallback when hooks telemetry is missing.
 
-**Privacy:** prompt/response text leaves the agent machine only when the prompts
-signal is on. Mission Control stores usage and events in local SQLite.
-
-For Codex, print a config snippet (merge into `~/.codex/config.toml` yourself):
-
-```bash
-har telemetry codex-snippet --agent-id 1 --write
-```
+**Privacy:** prompt text leaves the agent machine only when the prompts signal is on.
+Mission Control stores usage and events in local SQLite.
 
 Disable anytime: `har telemetry off`.
 

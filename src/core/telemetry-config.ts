@@ -19,7 +19,8 @@ const DEFAULT_SIGNALS_ON: TelemetrySignals = {
   metrics: true,
   logs: true,
   prompts: false,
-  traces: false,
+  /** Hooks are traces-first; usage metrics are derived from span gen_ai.usage.* in Mission Control. */
+  traces: true,
 };
 
 const DEFAULT_SIGNALS_OFF: TelemetrySignals = {
@@ -53,7 +54,7 @@ function normalizeSignals(
     metrics: raw?.metrics !== false,
     logs: raw?.logs !== false,
     prompts: raw?.prompts === true,
-    traces: raw?.traces === true,
+    traces: raw?.traces !== false,
   };
 }
 
@@ -115,9 +116,9 @@ export function getTelemetryPreferencePath(): string {
 }
 
 export const TELEMETRY_SIGNALS = [
-  'Metrics (default): tokens and estimated USD cost via OTEL metrics',
-  'Logs/events (default): session events (tool calls, api_request) without prompt bodies',
-  'Prompts (opt-in): user/assistant text via OTEL_LOG_USER_PROMPTS — har telemetry on --prompts',
-  'Traces (opt-in): thin span ingest when CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1',
-  'Fallback: har control sync harvests local Claude/Codex session files when OTEL is missing',
+  'Traces (default): Cursor / Claude / Codex activity via opentelemetry-hooks → Mission Control',
+  'Logs/events (default): hook lifecycle logs without prompt bodies',
+  'Metrics (default): token usage derived from span gen_ai.usage.* attributes',
+  'Prompts (opt-in): user prompt text via IDE_OTEL_CAPTURE_TEXT — har telemetry on --prompts (also fills Mission Control purpose)',
+  'Fallback: har control sync harvests local Claude/Codex session files when hooks telemetry is missing',
 ] as const;

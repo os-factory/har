@@ -13,6 +13,11 @@ import {
   buildSessionKey,
   buildTelemetryEnvBlock,
 } from '../src/core/telemetry-env';
+import {
+  buildOtelHooksConfig,
+  rewriteHookCommandsToWrapper,
+  writeOtelHooksConfig,
+} from '../src/core/otel-hooks';
 
 describe('telemetry preference', () => {
   const originalEnv = process.env.HAR_TELEMETRY;
@@ -36,7 +41,7 @@ describe('telemetry preference', () => {
   it('defaults to enabled when preference file is missing', () => {
     expect(readTelemetryPreference()).toEqual({
       enabled: true,
-      signals: { metrics: true, logs: true, prompts: false, traces: false },
+      signals: { metrics: true, logs: true, prompts: false, traces: true },
     });
     expect(isTelemetryEnabled()).toBe(true);
   });
@@ -49,8 +54,8 @@ describe('telemetry preference', () => {
     expect(isTelemetryEnabled()).toBe(true);
   });
 
-  it('persists prompt and trace signal flags', () => {
-    writeTelemetryPreference(true, { prompts: true, traces: true });
+  it('persists prompt signal flags and defaults traces on', () => {
+    writeTelemetryPreference(true, { prompts: true });
     const preference = readTelemetryPreference();
     expect(preference.signals.prompts).toBe(true);
     expect(preference.signals.traces).toBe(true);
@@ -92,7 +97,7 @@ describe('telemetry env', () => {
     );
   });
 
-  it('includes har.* resource attributes', () => {
+  it('includes har.* resource attributes without purpose', () => {
     const attrs = buildOtelResourceAttributes({
       sessionKey: 'main-abcd-har-agent-1-xy12',
       agentId: 1,
@@ -104,79 +109,117 @@ describe('telemetry env', () => {
     expect(attrs).toContain('har.session_key=main-abcd-har-agent-1-xy12');
     expect(attrs).toContain('har.agent_id=1');
     expect(attrs).toContain('har.repo_path=/repo');
+    expect(attrs).not.toContain('har.purpose');
   });
 
-  it('omits Claude OTEL exporters when telemetry disabled or otel not ready', () => {
-    process.env.HAR_TELEMETRY = '0';
-    const block = buildTelemetryEnvBlock(
-      {
-        sessionKey: 's1',
-        agentId: 1,
-        repoPath: '/repo',
-        workDir: '/repo',
-      },
-      { otelReady: true },
-    );
+  it('writes session attribution without Claude native OTEL exporters', () => {
+    process.env.HAR_TELEMETRY = '1';
+    const block = buildTelemetryEnvBlock({
+      sessionKey: 's1',
+      agentId: 1,
+      repoPath: '/repo',
+      workDir: '/repo',
+    });
     expect(block).toContain('HAR_SESSION_KEY=s1');
+    expect(block).toContain('OTEL_RESOURCE_ATTRIBUTES=');
+    expect(block).toContain('opentelemetry-hooks');
     expect(block).not.toContain('CLAUDE_CODE_ENABLE_TELEMETRY');
-  });
-
-  it('injects Claude OTEL exporters when enabled and ready', () => {
-    process.env.HAR_TELEMETRY = '1';
-    const block = buildTelemetryEnvBlock(
-      {
-        sessionKey: 's1',
-        agentId: 1,
-        repoPath: '/repo',
-        workDir: '/repo',
-      },
-      { otelReady: true },
-    );
-    expect(block).toContain('CLAUDE_CODE_ENABLE_TELEMETRY=1');
-    expect(block).toContain('OTEL_METRICS_EXPORTER=otlp');
-    expect(block).toContain('OTEL_LOGS_EXPORTER=otlp');
-    expect(block).not.toContain('OTEL_LOG_USER_PROMPTS');
+    expect(block).not.toContain('OTEL_METRICS_EXPORTER');
+    expect(block).not.toContain('OTEL_LOGS_EXPORTER');
     expect(block).not.toContain('OTEL_TRACES_EXPORTER');
-    expect(block).toContain('OTEL_EXPORTER_OTLP_ENDPOINT=');
-    expect(block).toContain('/api/otel');
-  });
-
-  it('injects prompt and trace flags when those signals are on', () => {
-    process.env.HAR_TELEMETRY = '1';
-    writeTelemetryPreference(true, { prompts: true, traces: true });
-    const block = buildTelemetryEnvBlock(
-      {
-        sessionKey: 's1',
-        agentId: 1,
-        repoPath: '/repo',
-        workDir: '/repo',
-      },
-      { otelReady: true },
-    );
-    expect(block).toContain('OTEL_LOG_USER_PROMPTS=1');
-    expect(block).toContain('OTEL_LOG_ASSISTANT_RESPONSES=1');
-    expect(block).toContain('OTEL_TRACES_EXPORTER=otlp');
-    expect(block).toContain('CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1');
   });
 
   it('replaces previous telemetry block when appending to env file', () => {
-    process.env.HAR_TELEMETRY = '1';
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-env-'));
     const envFile = path.join(dir, '.env.agent.1');
     fs.writeFileSync(envFile, 'AGENT_ID=1\n');
-    appendTelemetryEnvToFile(
-      envFile,
-      { sessionKey: 's1', agentId: 1, repoPath: '/r', workDir: '/r' },
-      { otelReady: true },
-    );
-    appendTelemetryEnvToFile(
-      envFile,
-      { sessionKey: 's2', agentId: 1, repoPath: '/r', workDir: '/r' },
-      { otelReady: true },
-    );
+    appendTelemetryEnvToFile(envFile, {
+      sessionKey: 's1',
+      agentId: 1,
+      repoPath: '/r',
+      workDir: '/r',
+    });
+    appendTelemetryEnvToFile(envFile, {
+      sessionKey: 's2',
+      agentId: 1,
+      repoPath: '/r',
+      workDir: '/r',
+    });
     const text = fs.readFileSync(envFile, 'utf8');
     expect(text).toContain('HAR_SESSION_KEY=s2');
     expect(text.match(/HAR_SESSION_KEY=/g)?.length).toBe(1);
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('otel hooks config', () => {
+  const originalTelemetry = process.env.HAR_TELEMETRY;
+  const originalPath = process.env.HAR_TELEMETRY_CONFIG_PATH;
+  const originalControl = process.env.HAR_CONTROL_API_URL;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-otel-hooks-'));
+    process.env.HAR_TELEMETRY_CONFIG_PATH = path.join(tmpDir, 'telemetry.json');
+    process.env.HAR_CONTROL_API_URL = 'http://localhost:3847';
+    delete process.env.HAR_TELEMETRY;
+  });
+
+  afterEach(() => {
+    if (originalTelemetry === undefined) delete process.env.HAR_TELEMETRY;
+    else process.env.HAR_TELEMETRY = originalTelemetry;
+    if (originalPath === undefined) delete process.env.HAR_TELEMETRY_CONFIG_PATH;
+    else process.env.HAR_TELEMETRY_CONFIG_PATH = originalPath;
+    if (originalControl === undefined) delete process.env.HAR_CONTROL_API_URL;
+    else process.env.HAR_CONTROL_API_URL = originalControl;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('maps HAR signals to hook knobs with http/json endpoint', () => {
+    writeTelemetryPreference(true, { prompts: true });
+    const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
+    expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://localhost:3847/api/otel/v1/traces');
+    expect(config.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/json');
+    expect(config.IDE_OTEL_CAPTURE_TEXT).toBe('true');
+    expect(config.IDE_OTEL_ENABLE_LOGS).toBe('true');
+    expect(config.IDE_OTEL_BATCH_ON_STOP).toBe('true');
+  });
+
+  it('nulls OTLP endpoint when telemetry disabled', () => {
+    const config = buildOtelHooksConfig({ enabled: false, apiUrl: 'http://localhost:3847' });
+    expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBeNull();
+    expect(config.IDE_OTEL_CAPTURE_TEXT).toBe('false');
+  });
+
+  it('writes config JSON under hooks home', () => {
+    const hooksHome = path.join(tmpDir, 'hooks');
+    const configPath = writeOtelHooksConfig(
+      buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' }),
+      hooksHome,
+    );
+    expect(configPath).toBe(path.join(hooksHome, 'otel_config.json'));
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+      OTEL_EXPORTER_OTLP_PROTOCOL: string;
+    };
+    expect(parsed.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/json');
+  });
+
+  it('rewrites hooks.json commands to the HAR wrapper', () => {
+    const hooksFile = path.join(tmpDir, 'hooks.json');
+    fs.writeFileSync(
+      hooksFile,
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          sessionStart: [{ command: 'otel-hook', timeout: 5 }],
+        },
+      }),
+    );
+    const wrapper = '/tmp/har-run-otel-hook.sh';
+    expect(rewriteHookCommandsToWrapper(hooksFile, wrapper)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(hooksFile, 'utf8')) as {
+      hooks: { sessionStart: Array<{ command: string }> };
+    };
+    expect(parsed.hooks.sessionStart[0].command).toBe(wrapper);
   });
 });

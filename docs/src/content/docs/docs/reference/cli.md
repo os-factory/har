@@ -125,16 +125,17 @@ har control login --api-key <key>
 
 ```bash
 har telemetry status [--json]
-har telemetry on
+har telemetry on [--prompts]
 har telemetry off
+har telemetry install-hooks
 har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
 har telemetry print-env --agent-id <n>
-har telemetry codex-snippet --agent-id <n> [--write]
 ```
 
-Controls agent usage telemetry (Claude Code / Codex → Mission Control). **Default: on.**
-`on` ensures Mission Control is running. Preference: `~/.har/telemetry.json` (override
-with `HAR_TELEMETRY=0|1`).
+Controls agent usage telemetry (Cursor / Claude / Codex via opentelemetry-hooks → Mission Control).
+**Default: on.** `on` ensures Mission Control is running and installs/configures hooks.
+Preference: `~/.har/telemetry.json` (override with `HAR_TELEMETRY=0|1`). Hooks config:
+`~/.har/otel-hooks/otel_config.json`.
 
 ## `har mcp`
 

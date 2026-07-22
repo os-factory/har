@@ -80,7 +80,11 @@ export default async function SlotDetailPage({
             {slot.active ? '● Active' : '○ Idle'}
           </span>
         </h2>
-        {slot.purpose && <p className="text-sm text-muted-foreground">Purpose: {slot.purpose}</p>}
+        {slot.purpose && (
+          <p className="text-sm text-muted-foreground" title={slot.purpose}>
+            Summary: {slot.purpose}
+          </p>
+        )}
         <p className="mt-1 text-xs text-muted-foreground">
           Prompt text is stored only when telemetry prompts are enabled (`har telemetry on --prompts`).
           Usage and events stay in local SQLite.
@@ -231,7 +235,13 @@ export default async function SlotDetailPage({
                       </td>
                       <td className="py-2 pr-4">
                         <Badge variant="outline">
-                          {row.agentTool === 'claude_code' ? 'Claude' : 'Codex'}
+                          {row.agentTool === 'claude_code'
+                            ? 'Claude'
+                            : row.agentTool === 'codex'
+                              ? 'Codex'
+                              : row.agentTool === 'cursor'
+                                ? 'Cursor'
+                                : row.agentTool}
                         </Badge>
                       </td>
                       <td className="py-2 pr-4 tabular-nums">

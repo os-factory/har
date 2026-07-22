@@ -211,7 +211,7 @@ slot_is_resumable() {
 
 har_resume_session_assignments() {
   local agent_id="$1"
-  local reg work_dir worktree branch suffix base_branch base_commit purpose mode env_file
+  local reg work_dir worktree branch suffix base_branch base_commit mode env_file
 
   if ! slot_is_resumable "$agent_id"; then
     local status
@@ -229,7 +229,6 @@ har_resume_session_assignments() {
   suffix="$(read_slot_field "$reg" suffix || true)"
   base_branch="$(read_slot_field "$reg" baseBranch || true)"
   base_commit="$(read_slot_field "$reg" baseCommit || true)"
-  purpose="$(read_slot_field "$reg" purpose || true)"
   mode="$(read_slot_field "$reg" mode || true)"
 
   if [ -z "$work_dir" ] || [ ! -d "$work_dir" ]; then
@@ -252,7 +251,6 @@ har_resume_session_assignments() {
     "SUFFIX='${suffix}'" \
     "BASE_BRANCH='${base_branch}'" \
     "BASE_COMMIT='${base_commit}'" \
-    "PURPOSE='${purpose}'" \
     "USE_WORKTREE=$([ "$mode" = worktree ] && echo true || echo false)" \
     "ENV_FILE='${env_file}'"
 }
@@ -302,7 +300,6 @@ EOF
       --work-dir "$work_dir" \
       ${SLOT_BRANCH:+--branch "$SLOT_BRANCH"} \
       ${SLOT_SUFFIX:+--suffix "$SLOT_SUFFIX"} \
-      ${SLOT_PURPOSE:+--purpose "$SLOT_PURPOSE"} \
       >/dev/null 2>&1 || true
   fi
 }
@@ -430,7 +427,7 @@ try {
 #   required: SLOT_AGENT_ID, SLOT_MODE (worktree|root), SLOT_WORK_DIR
 #   optional: SLOT_SUFFIX, SLOT_WORKTREE_PATH, SLOT_BRANCH, SLOT_BASE_BRANCH,
 #             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON,
-#             SLOT_PURPOSE, SLOT_STATUS, SLOT_LAST_ERROR
+#             SLOT_STATUS, SLOT_LAST_ERROR
 write_slot_registry() {
   local file
   file="$(slot_registry_file "$SLOT_AGENT_ID")"
@@ -452,7 +449,6 @@ if (e.SLOT_WORKTREE_PATH) entry.worktreePath = e.SLOT_WORKTREE_PATH;
 if (e.SLOT_BRANCH) entry.branch = e.SLOT_BRANCH;
 if (e.SLOT_BASE_BRANCH) entry.baseBranch = e.SLOT_BASE_BRANCH;
 if (e.SLOT_BASE_COMMIT) entry.baseCommit = e.SLOT_BASE_COMMIT;
-if (e.SLOT_PURPOSE) entry.purpose = e.SLOT_PURPOSE;
 if (e.SLOT_LAST_ERROR) entry.lastError = e.SLOT_LAST_ERROR;
 for (const [key, env] of [["ports", "SLOT_PORTS_JSON"], ["previewUrls", "SLOT_PREVIEW_URLS_JSON"]]) {
   if (e[env]) try { entry[key] = JSON.parse(e[env]); } catch {}
@@ -496,12 +492,11 @@ slot_dirty_summary() {
 # Print a warning before replacing an occupied slot (stdout — visible to agents).
 print_slot_replace_warning() {
   local agent_id="$1"
-  local reg wt branch work_dir purpose created status last_error dirty_summary head
+  local reg wt branch work_dir created status last_error dirty_summary head
   reg="$(slot_registry_file "$agent_id")"
   wt="$(existing_slot_worktree "$agent_id")"
   branch="$(read_slot_field "$reg" branch || true)"
   work_dir="$(read_slot_field "$reg" workDir || true)"
-  purpose="$(read_slot_field "$reg" purpose || true)"
   created="$(read_slot_field "$reg" createdAt || true)"
   status="$(read_slot_field "$reg" status || true)"
   last_error="$(read_slot_field "$reg" lastError || true)"
@@ -512,7 +507,6 @@ print_slot_replace_warning() {
 
   echo "" >&2
   echo "⚠ Slot ${agent_id} is already in use — replacing will REMOVE the worktree." >&2
-  [ -n "$purpose" ] && echo "  Purpose:   ${purpose}" >&2
   [ -n "$wt" ] && echo "  Worktree:  ${wt}" >&2
   [ -n "$work_dir" ] && echo "  Work dir:  ${work_dir}" >&2
   [ -n "$branch" ] && echo "  Branch:    ${branch}${head:+ @ ${head}}" >&2

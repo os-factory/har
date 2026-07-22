@@ -6,6 +6,63 @@ import { upsertSessionUsage } from '@/server/usage';
 
 const nodeRequire = createRequire(__filename);
 
+type ProtobufDecoder = {
+  decode: (data: Uint8Array) => unknown;
+  toObject: (
+    message: unknown,
+    options?: Record<string, unknown>,
+  ) => Record<string, unknown>;
+};
+
+function loadOtlpProtobufDecoder(
+  kind: 'trace' | 'logs' | 'metrics',
+): ProtobufDecoder | null {
+  try {
+    // Generated protobuf root ships with @opentelemetry/otlp-transformer.
+    // Newer package versions no longer expose deserializeRequest on serializers.
+    const root = nodeRequire(
+      '@opentelemetry/otlp-transformer/build/src/generated/root.js',
+    ) as {
+      opentelemetry?: {
+        proto?: {
+          collector?: {
+            trace?: { v1?: { ExportTraceServiceRequest?: ProtobufDecoder } };
+            logs?: { v1?: { ExportLogsServiceRequest?: ProtobufDecoder } };
+            metrics?: { v1?: { ExportMetricsServiceRequest?: ProtobufDecoder } };
+          };
+        };
+      };
+    };
+    const collector = root.opentelemetry?.proto?.collector;
+    if (kind === 'trace') return collector?.trace?.v1?.ExportTraceServiceRequest ?? null;
+    if (kind === 'logs') return collector?.logs?.v1?.ExportLogsServiceRequest ?? null;
+    return collector?.metrics?.v1?.ExportMetricsServiceRequest ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeOtlpProtobufJson(
+  kind: 'trace' | 'logs' | 'metrics',
+  body: Buffer,
+): unknown | null {
+  const decoder = loadOtlpProtobufDecoder(kind);
+  if (!decoder?.decode || !decoder?.toObject) return null;
+  try {
+    const message = decoder.decode(body);
+    return decoder.toObject(message, {
+      longs: String,
+      enums: String,
+      bytes: (value: Uint8Array) => Buffer.from(value).toString('hex'),
+      defaults: true,
+      arrays: true,
+      objects: true,
+    });
+  } catch {
+    return null;
+  }
+}
+
 interface AttrMap {
   [key: string]: string | number | boolean;
 }
@@ -101,13 +158,227 @@ function extractPointsFromResourceMetrics(payload: unknown): Array<{
 }
 
 function detectAgentTool(resource: AttrMap, serviceName?: string): AgentTool | null {
-  const explicit = String(resource['har.agent_tool'] ?? '').toLowerCase();
-  if (explicit === 'claude_code' || explicit === 'claude-code') return 'claude_code';
-  if (explicit === 'codex') return 'codex';
-  const svc = (serviceName ?? String(resource['service.name'] ?? '')).toLowerCase();
-  if (svc.includes('claude')) return 'claude_code';
-  if (svc.includes('codex')) return 'codex';
+  const candidates = [
+    String(resource['har.agent_tool'] ?? ''),
+    String(resource['gen_ai.client.name'] ?? ''),
+    serviceName ?? String(resource['service.name'] ?? ''),
+  ]
+    .map((v) => v.toLowerCase().trim())
+    .filter(Boolean);
+
+  for (const value of candidates) {
+    if (value === 'cursor' || value.includes('cursor')) return 'cursor';
+    if (value === 'codex' || value.includes('codex')) return 'codex';
+    if (
+      value === 'claude' ||
+      value === 'claude_code' ||
+      value === 'claude-code' ||
+      value.includes('claude')
+    ) {
+      return 'claude_code';
+    }
+  }
   return null;
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\/$/, '');
+}
+
+function workspaceFromAttrs(...maps: AttrMap[]): string {
+  for (const map of maps) {
+    for (const key of [
+      'gen_ai.client.workspace',
+      'har.work_dir',
+      'code.filepath',
+      'cwd',
+      'process.cwd',
+    ]) {
+      const raw = map[key];
+      if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    }
+  }
+  return '';
+}
+
+async function resolveSlotByWorkspace(workspace: string): Promise<{
+  repositoryId: string;
+  sessionKey: string;
+  agentId: number;
+  workDir?: string;
+  branch?: string;
+  suffix?: string;
+} | null> {
+  if (!workspace) return null;
+  const normalized = normalizePath(workspace);
+  const slots = await prisma.agentSlot.findMany({
+    where: {
+      OR: [
+        { workDir: { not: null } },
+        { worktreePath: { not: null } },
+      ],
+    },
+    select: {
+      repositoryId: true,
+      slotId: true,
+      workDir: true,
+      worktreePath: true,
+      branch: true,
+      suffix: true,
+    },
+  });
+
+  const match = slots.find((slot) => {
+    const candidates = [slot.workDir, slot.worktreePath]
+      .filter((p): p is string => Boolean(p))
+      .map(normalizePath);
+    return candidates.some(
+      (path) =>
+        path === normalized ||
+        normalized.startsWith(`${path}/`) ||
+        path.startsWith(`${normalized}/`),
+    );
+  });
+  if (!match) return null;
+
+  return {
+    repositoryId: match.repositoryId,
+    sessionKey: match.branch || `agent-${match.slotId}`,
+    agentId: match.slotId,
+    workDir: match.workDir ?? undefined,
+    branch: match.branch ?? undefined,
+    suffix: match.suffix ?? undefined,
+  };
+}
+
+interface ResolvedSessionContext {
+  repositoryId: string;
+  sessionKey: string;
+  agentId: number;
+  agentTool: AgentTool;
+  workDir?: string;
+  branch?: string;
+  suffix?: string;
+}
+
+async function resolveSessionContext(
+  resource: AttrMap,
+  attributes: AttrMap = {},
+): Promise<{ context: ResolvedSessionContext | null; reason?: string }> {
+  const tool =
+    detectAgentTool(attributes) ?? detectAgentTool(resource) ?? null;
+  const sessionKey = String(
+    resource['har.session_key'] ?? attributes['har.session_key'] ?? '',
+  );
+  const repoPath = String(resource['har.repo_path'] ?? attributes['har.repo_path'] ?? '');
+  const agentIdRaw = Number(resource['har.agent_id'] ?? attributes['har.agent_id'] ?? 0);
+  const workspace = workspaceFromAttrs(attributes, resource);
+
+  if (sessionKey) {
+    let repositoryId = await resolveRepositoryId(repoPath || undefined);
+    if (!repositoryId && workspace) {
+      const byWs = await resolveSlotByWorkspace(workspace);
+      repositoryId = byWs?.repositoryId ?? null;
+    }
+    if (!repositoryId) {
+      return { context: null, reason: `unknown repository for ${repoPath || workspace || '(empty)'}` };
+    }
+    return {
+      context: {
+        repositoryId,
+        sessionKey,
+        agentId: Number.isFinite(agentIdRaw) && agentIdRaw > 0 ? agentIdRaw : 1,
+        agentTool: tool ?? 'claude_code',
+        workDir: resource['har.work_dir']
+          ? String(resource['har.work_dir'])
+          : workspace || undefined,
+        branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
+        suffix: resource['har.suffix'] ? String(resource['har.suffix']) : undefined,
+      },
+    };
+  }
+
+  if (workspace) {
+    const byWs = await resolveSlotByWorkspace(workspace);
+    if (byWs) {
+      return {
+        context: {
+          repositoryId: byWs.repositoryId,
+          sessionKey: byWs.sessionKey,
+          agentId: byWs.agentId,
+          agentTool: tool ?? 'cursor',
+          workDir: byWs.workDir ?? workspace,
+          branch: byWs.branch,
+          suffix: byWs.suffix,
+        },
+      };
+    }
+    return { context: null, reason: `no slot matched workspace ${workspace}` };
+  }
+
+  return { context: null, reason: 'missing har.session_key and workspace' };
+}
+
+const PURPOSE_MAX_CHARS = 160;
+
+function extractPromptText(attributes: AttrMap, eventName?: string, bodyText?: string | null): string | null {
+  const keys = [
+    'gen_ai.prompt.0.content',
+    'gen_ai.prompt',
+    'user.prompt',
+    'prompt',
+    'gen_ai.input.messages',
+  ];
+  for (const key of keys) {
+    const value = attributes[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  const hookEvent = String(attributes['gen_ai.client.hook.event'] ?? eventName ?? '').toLowerCase();
+  if (
+    (hookEvent.includes('userprompt') ||
+      hookEvent.includes('beforesubmitprompt') ||
+      hookEvent.includes('user_prompt')) &&
+    bodyText?.trim()
+  ) {
+    return bodyText.trim();
+  }
+  return null;
+}
+
+async function maybeSetDerivedPurpose(
+  repositoryId: string,
+  agentId: number,
+  promptText: string | null,
+): Promise<void> {
+  if (!promptText) return;
+  const truncated =
+    promptText.length > PURPOSE_MAX_CHARS
+      ? `${promptText.slice(0, PURPOSE_MAX_CHARS - 1)}…`
+      : promptText;
+  const existing = await prisma.agentSlot.findUnique({
+    where: { repositoryId_slotId: { repositoryId, slotId: agentId } },
+    select: { purpose: true },
+  });
+  if (!existing || (existing.purpose && existing.purpose.trim())) return;
+  await prisma.agentSlot.update({
+    where: { repositoryId_slotId: { repositoryId, slotId: agentId } },
+    data: { purpose: truncated },
+  });
+}
+
+function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap): void {
+  const input = Number(
+    attributes['gen_ai.usage.input_tokens'] ?? attributes['gen_ai.usage.prompt_tokens'] ?? 0,
+  );
+  const output = Number(
+    attributes['gen_ai.usage.output_tokens'] ?? attributes['gen_ai.usage.completion_tokens'] ?? 0,
+  );
+  const cacheRead = Number(attributes['gen_ai.usage.cache_read.input_tokens'] ?? 0);
+  const cacheCreate = Number(attributes['gen_ai.usage.cache_creation.input_tokens'] ?? 0);
+  if (Number.isFinite(input) && input > 0) usage.tokensInput += input;
+  if (Number.isFinite(output) && output > 0) usage.tokensOutput += output;
+  if (Number.isFinite(cacheRead) && cacheRead > 0) usage.tokensCacheRead += cacheRead;
+  if (Number.isFinite(cacheCreate) && cacheCreate > 0) usage.tokensCacheCreation += cacheCreate;
 }
 
 function emptyUsage(
@@ -205,43 +476,29 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
   const reasons: string[] = [];
 
   for (const group of groups) {
-    const sessionKey = String(group.resource['har.session_key'] ?? '');
-    const repoPath = String(group.resource['har.repo_path'] ?? '');
-    const agentId = Number(group.resource['har.agent_id'] ?? 0);
-    const tool = detectAgentTool(group.resource);
-
-    if (!sessionKey) {
+    const resolved = await resolveSessionContext(group.resource);
+    if (!resolved.context) {
       dropped += 1;
-      reasons.push('missing har.session_key');
+      reasons.push(resolved.reason ?? 'unresolved session for metrics');
       continue;
     }
-    if (!tool) {
-      dropped += 1;
-      reasons.push(`unknown agent tool for session ${sessionKey}`);
-      continue;
-    }
-
-    const repositoryId = await resolveRepositoryId(repoPath || undefined);
-    if (!repositoryId) {
-      dropped += 1;
-      reasons.push(`unknown repository for ${repoPath || '(empty har.repo_path)'}`);
-      continue;
-    }
+    const { context } = resolved;
+    const tool = context.agentTool;
 
     const usage = emptyUsage({
-      sessionKey,
-      agentId: Number.isFinite(agentId) && agentId > 0 ? agentId : 1,
+      sessionKey: context.sessionKey,
+      agentId: context.agentId,
       agentTool: tool,
-      workDir: group.resource['har.work_dir']
-        ? String(group.resource['har.work_dir'])
-        : undefined,
-      branch: group.resource['har.branch'] ? String(group.resource['har.branch']) : undefined,
-      suffix: group.resource['har.suffix'] ? String(group.resource['har.suffix']) : undefined,
+      workDir: context.workDir,
+      branch: context.branch,
+      suffix: context.suffix,
     });
 
     for (const point of group.points) {
+      applyHooksUsageFromAttrs(usage, point.attributes);
       if (tool === 'claude_code') applyClaudePoint(usage, point);
-      else applyCodexPoint(usage, point);
+      else if (tool === 'codex') applyCodexPoint(usage, point);
+      else applyCodexPoint(usage, point); // cursor / generic metric names
     }
 
     usage.tokensTotal =
@@ -255,11 +512,11 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
       (usage.costUsd == null || usage.costUsd === 0)
     ) {
       dropped += 1;
-      reasons.push(`no token/cost points for ${sessionKey}`);
+      reasons.push(`no token/cost points for ${context.sessionKey}`);
       continue;
     }
 
-    await upsertSessionUsage(repositoryId, usage);
+    await upsertSessionUsage(context.repositoryId, usage);
     accepted += 1;
   }
 
@@ -285,11 +542,11 @@ export async function ingestOtelMetricsBody(
     }
   }
 
-  // Protobuf: try optional transformer; otherwise acknowledge without failing the exporter.
+  // Protobuf: decode via generated OTLP protos (hooks send proto.http by default).
   try {
     const { ProtobufMetricsSerializer } = nodeRequire('@opentelemetry/otlp-transformer') as {
       ProtobufMetricsSerializer?: {
-        deserializeRequest: (data: Uint8Array) => unknown;
+        deserializeRequest?: (data: Uint8Array) => unknown;
       };
     };
     if (ProtobufMetricsSerializer?.deserializeRequest) {
@@ -297,8 +554,11 @@ export async function ingestOtelMetricsBody(
       return ingestOtelMetricsJson(decoded);
     }
   } catch {
-    // optional dependency
+    // fall through to generated root decoder
   }
+
+  const decoded = decodeOtlpProtobufJson('metrics', body);
+  if (decoded) return ingestOtelMetricsJson(decoded);
 
   return {
     accepted: 0,
@@ -402,35 +662,17 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
   const reasons: string[] = [];
 
   for (const record of records) {
-    const sessionKey = String(
-      record.resource['har.session_key'] ?? record.attributes['har.session_key'] ?? '',
-    );
-    const repoPath = String(
-      record.resource['har.repo_path'] ?? record.attributes['har.repo_path'] ?? '',
-    );
-    const agentId = Number(
-      record.resource['har.agent_id'] ?? record.attributes['har.agent_id'] ?? 0,
-    );
-    const tool =
-      detectAgentTool(record.resource) ??
-      detectAgentTool(record.attributes) ??
-      'claude_code';
-
-    if (!sessionKey) {
+    const resolved = await resolveSessionContext(record.resource, record.attributes);
+    if (!resolved.context) {
       dropped += 1;
-      reasons.push('missing har.session_key on log');
+      reasons.push(resolved.reason ?? 'unresolved session for log');
       continue;
     }
-
-    const repositoryId = await resolveRepositoryId(repoPath || undefined);
-    if (!repositoryId) {
-      dropped += 1;
-      reasons.push(`unknown repository for log ${repoPath || '(empty)'}`);
-      continue;
-    }
+    const { context } = resolved;
 
     const promptText =
-      typeof record.attributes.prompt === 'string'
+      extractPromptText(record.attributes, record.eventName, record.bodyText) ??
+      (typeof record.attributes.prompt === 'string'
         ? record.attributes.prompt
         : typeof record.attributes['user.prompt'] === 'string'
           ? String(record.attributes['user.prompt'])
@@ -438,7 +680,7 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
             ? String(record.attributes['gen_ai.prompt'])
             : record.eventName.includes('user_prompt')
               ? record.bodyText
-              : null;
+              : null);
     const responseText =
       typeof record.attributes.response === 'string'
         ? record.attributes.response
@@ -450,10 +692,10 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
               ? record.bodyText
               : null;
 
-    await upsertSessionEvent(repositoryId, {
-      sessionKey,
-      agentId: Number.isFinite(agentId) && agentId > 0 ? agentId : 1,
-      agentTool: tool,
+    await upsertSessionEvent(context.repositoryId, {
+      sessionKey: context.sessionKey,
+      agentId: context.agentId,
+      agentTool: context.agentTool,
       eventName: record.eventName,
       sequence: Number.isFinite(record.sequence) ? Math.floor(record.sequence) : accepted + 1,
       timestamp: record.timestamp,
@@ -463,6 +705,24 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
       rawTruncated: record.bodyText,
       source: 'otel',
     });
+
+    await maybeSetDerivedPurpose(context.repositoryId, context.agentId, promptText);
+
+    const usage = emptyUsage({
+      sessionKey: context.sessionKey,
+      agentId: context.agentId,
+      agentTool: context.agentTool,
+      workDir: context.workDir,
+      branch: context.branch,
+      suffix: context.suffix,
+    });
+    applyHooksUsageFromAttrs(usage, record.attributes);
+    usage.tokensTotal =
+      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
+    if (usage.tokensTotal > 0) {
+      await upsertSessionUsage(context.repositoryId, usage);
+    }
+
     accepted += 1;
   }
 
@@ -485,6 +745,8 @@ export async function ingestOtelLogsBody(
       };
     }
   }
+  const decoded = decodeOtlpProtobufJson('logs', body);
+  if (decoded) return ingestOtelLogsJson(decoded);
   return {
     accepted: 0,
     dropped: 1,
@@ -554,42 +816,33 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
   const reasons: string[] = [];
 
   for (const span of spans) {
-    const sessionKey = String(
-      span.resource['har.session_key'] ?? span.attributes['har.session_key'] ?? '',
-    );
-    const repoPath = String(
-      span.resource['har.repo_path'] ?? span.attributes['har.repo_path'] ?? '',
-    );
-    const agentId = Number(span.resource['har.agent_id'] ?? span.attributes['har.agent_id'] ?? 0);
-    const tool =
-      detectAgentTool(span.resource) ?? detectAgentTool(span.attributes) ?? 'claude_code';
-
-    if (!sessionKey || !span.traceId || !span.spanId) {
+    if (!span.traceId || !span.spanId) {
       dropped += 1;
-      reasons.push('missing session/trace/span id');
+      reasons.push('missing trace/span id');
       continue;
     }
 
-    const repositoryId = await resolveRepositoryId(repoPath || undefined);
-    if (!repositoryId) {
+    const resolved = await resolveSessionContext(span.resource, span.attributes);
+    if (!resolved.context) {
       dropped += 1;
-      reasons.push(`unknown repository for span ${repoPath || '(empty)'}`);
+      reasons.push(resolved.reason ?? 'unresolved session for span');
       continue;
     }
+    const { context } = resolved;
 
     await prisma.agentSessionSpan.upsert({
       where: {
         repositoryId_traceId_spanId: {
-          repositoryId,
+          repositoryId: context.repositoryId,
           traceId: span.traceId,
           spanId: span.spanId,
         },
       },
       create: {
-        repositoryId,
-        sessionKey,
-        agentId: Number.isFinite(agentId) && agentId > 0 ? agentId : 1,
-        agentTool: tool,
+        repositoryId: context.repositoryId,
+        sessionKey: context.sessionKey,
+        agentId: context.agentId,
+        agentTool: context.agentTool,
         traceId: span.traceId,
         spanId: span.spanId,
         parentSpanId: span.parentSpanId,
@@ -607,10 +860,11 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
 
     // Also fold key spans into the event timeline for UI without a separate spans section.
     const { upsertSessionEvent } = await import('@/server/session-events');
-    await upsertSessionEvent(repositoryId, {
-      sessionKey,
-      agentId: Number.isFinite(agentId) && agentId > 0 ? agentId : 1,
-      agentTool: tool,
+    const promptText = extractPromptText(span.attributes, span.name);
+    await upsertSessionEvent(context.repositoryId, {
+      sessionKey: context.sessionKey,
+      agentId: context.agentId,
+      agentTool: context.agentTool,
       eventName: `span.${span.name}`,
       sequence: Math.abs(
         Number.parseInt(span.spanId.replace(/\D/g, '').slice(-8) || '0', 16) || accepted + 1,
@@ -621,8 +875,27 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
         traceId: span.traceId,
         spanId: span.spanId,
       } as Prisma.InputJsonValue,
+      promptText,
       source: 'otel',
     });
+
+    await maybeSetDerivedPurpose(context.repositoryId, context.agentId, promptText);
+
+    const usage = emptyUsage({
+      sessionKey: context.sessionKey,
+      agentId: context.agentId,
+      agentTool: context.agentTool,
+      workDir: context.workDir,
+      branch: context.branch,
+      suffix: context.suffix,
+    });
+    applyHooksUsageFromAttrs(usage, span.attributes);
+    usage.tokensTotal =
+      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
+    if (usage.tokensTotal > 0) {
+      await upsertSessionUsage(context.repositoryId, usage);
+    }
+
     accepted += 1;
   }
 
@@ -645,6 +918,8 @@ export async function ingestOtelTracesBody(
       };
     }
   }
+  const decoded = decodeOtlpProtobufJson('trace', body);
+  if (decoded) return ingestOtelTracesJson(decoded);
   return {
     accepted: 0,
     dropped: 1,
