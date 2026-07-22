@@ -201,6 +201,11 @@ export const envCommand = {
               type: 'boolean',
               default: false,
               describe: 'Resume a failed or partial launch without creating a new worktree',
+            })
+            .option('purpose', {
+              type: 'string',
+              describe:
+                'Optional session label stored in the slot registry (shown in status and occupied-slot warnings)',
             }),
         handleLaunch,
       )
@@ -684,6 +689,7 @@ export async function handleLaunch(argv: {
   replace: boolean;
   force: boolean;
   resume: boolean;
+  purpose?: string;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -741,6 +747,7 @@ export async function handleLaunch(argv: {
     confirmReplace,
     force,
     resume: argv.resume,
+    purpose: argv.purpose,
     capture: false,
   });
   if (result.blocked) {

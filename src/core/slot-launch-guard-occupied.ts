@@ -100,6 +100,7 @@ function collectOccupiedSlot(repoPath: string, agentId: number): AgentSlotStatus
     sessionStatus: session?.status,
     lastError: session?.lastError,
     sessionCreatedAt: session?.createdAt,
+    purpose: session?.purpose,
     dirty,
     harnessUsage: 'none',
   };
@@ -111,6 +112,7 @@ function formatOccupiedSlot(slot: AgentSlotStatus, resume?: boolean): string {
     slot.worktreePath ? `  Worktree: ${slot.worktreePath}` : undefined,
     slot.branch ? `  Branch:   ${slot.branch}` : undefined,
     slot.workDir ? `  Work dir: ${slot.workDir}` : undefined,
+    slot.purpose ? `  Purpose:  ${slot.purpose}` : undefined,
     slot.sessionStatus ? `  Status:   ${slot.sessionStatus}` : undefined,
     slot.lastError ? `  Error:    ${slot.lastError}` : undefined,
     slot.sessionCreatedAt ? `  Since:    ${slot.sessionCreatedAt}` : undefined,
