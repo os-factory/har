@@ -1,3 +1,10 @@
+# [0.18.0](https://github.com/os-factory/har/compare/v0.17.0...v0.18.0) (2026-07-22)
+
+
+### Features
+
+* **telemetry:** Cursor/Claude/Codex via OTEL hooks ([#71](https://github.com/os-factory/har/issues/71)) ([0bb7fd1](https://github.com/os-factory/har/commit/0bb7fd1a953ee97949f0b5673c65f973b004b1fd))
+
 # [0.17.0](https://github.com/os-factory/har/compare/v0.16.2...v0.17.0) (2026-07-22)
 
 
