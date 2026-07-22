@@ -1,3 +1,10 @@
+# [0.17.0](https://github.com/os-factory/har/compare/v0.16.2...v0.17.0) (2026-07-22)
+
+
+### Features
+
+* **env:** wire --purpose through CLI and MCP launch ([#69](https://github.com/os-factory/har/issues/69)) ([0c49762](https://github.com/os-factory/har/commit/0c497621239a159b9b75e7299dedbe3d827d30a9))
+
 ## [0.16.2](https://github.com/os-factory/har/compare/v0.16.1...v0.16.2) (2026-07-22)
 
 
