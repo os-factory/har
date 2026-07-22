@@ -177,22 +177,27 @@ export class RunService {
               branch: slot.branch,
               dirty: slot.dirty,
               sessionCreatedAt: slot.sessionCreatedAt,
-              purpose: slot.purpose,
             }
           : undefined,
       };
     }
 
     let telemetryBanner = '';
-    let otelReady = false;
     if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
       const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
-      otelReady = ensured.otelReady;
       if (ensured.message) {
-        telemetryBanner += `${ensured.message}\nUsage from Claude Code / Codex will appear under Worktrees. Disable: har telemetry off\n`;
+        telemetryBanner += `${ensured.message}\nUsage from Cursor / Claude / Codex (opentelemetry-hooks) will appear under Worktrees. Disable: har telemetry off\n`;
       }
       if (ensured.warning) {
         telemetryBanner += `${ensured.warning}\n`;
+      }
+      try {
+        const { ensureOtelHooks } = await import('./otel-hooks');
+        const hooks = ensureOtelHooks({ setupAgents: true });
+        if (hooks.message) telemetryBanner += `${hooks.message}\n`;
+        if (hooks.warning) telemetryBanner += `${hooks.warning}\n`;
+      } catch (err) {
+        telemetryBanner += `opentelemetry-hooks setup skipped: ${err instanceof Error ? err.message : String(err)}\n`;
       }
     }
 
@@ -207,7 +212,6 @@ export class RunService {
         confirmReplace: options.confirmReplace,
         force: options.force,
         resume: options.resume,
-        purpose: options.purpose,
       },
       trigger: 'cli',
     });
@@ -231,19 +235,14 @@ export class RunService {
         });
         const envFile = path.join(session.workDir, `.env.agent.${options.agentId}`);
         try {
-          appendTelemetryEnvToFile(
-            envFile,
-            {
-              sessionKey,
-              agentId: options.agentId,
-              repoPath: path.resolve(options.repoPath),
-              workDir: session.workDir,
-              branch: session.branch,
-              suffix: session.suffix,
-              purpose: session.purpose,
-            },
-            { otelReady: otelReady && isTelemetryEnabled() },
-          );
+          appendTelemetryEnvToFile(envFile, {
+            sessionKey,
+            agentId: options.agentId,
+            repoPath: path.resolve(options.repoPath),
+            workDir: session.workDir,
+            branch: session.branch,
+            suffix: session.suffix,
+          });
         } catch {
           // Env injection is best-effort; launch still succeeded.
         }

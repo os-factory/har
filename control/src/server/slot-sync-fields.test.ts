@@ -16,7 +16,6 @@ function activeSlot(overrides: Partial<AgentSlotStatus> = {}): AgentSlotStatus {
     behind: 0,
     stale: false,
     detachedHead: false,
-    purpose: 'demo',
     ...overrides,
   };
 }

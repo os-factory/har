@@ -117,7 +117,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   {
     id: 'purpose',
     accessorFn: (row) => row.purpose ?? '',
-    header: 'Purpose',
+    header: 'Summary',
     cell: ({ row }) =>
       row.original.purpose ? (
         <span className="max-w-40 truncate" title={row.original.purpose}>
@@ -158,7 +158,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
         <div className="flex flex-wrap gap-1">
           {tools.map((tool) => (
             <Badge key={tool} variant="outline">
-              {tool === 'claude_code' ? 'Claude' : tool === 'codex' ? 'Codex' : tool}
+              {tool === 'claude_code' ? 'Claude' : tool === 'codex' ? 'Codex' : tool === 'cursor' ? 'Cursor' : tool}
             </Badge>
           ))}
         </div>

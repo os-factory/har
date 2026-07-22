@@ -1,9 +1,14 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import type { Argv } from 'yargs';
 import { getControlApiUrl } from '../../core/control-config';
 import { isControlApiReachable } from '../../core/control-sync';
 import { resolveHarnessRoot } from '../../harness/manifest';
+import {
+  disableOtelHooksExport,
+  ensureOtelHooks,
+  getOtelHooksConfigPath,
+  getOtelHooksHome,
+} from '../../core/otel-hooks';
 import { readSlotRegistry } from '../../core/slot-registry';
 import {
   TELEMETRY_SIGNALS,
@@ -15,7 +20,7 @@ import {
 } from '../../core/telemetry-config';
 import {
   appendTelemetryEnvToFile,
-  buildCodexOtelSnippet,
+  buildOtelResourceAttributes,
   buildSessionKey,
   buildTelemetryEnvBlock,
 } from '../../core/telemetry-env';
@@ -46,6 +51,8 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
     controlApiUrl: apiUrl,
     controlReachable: reachable,
     otelEndpoint: `${apiUrl.replace(/\/$/, '')}/api/otel`,
+    otelHooksHome: getOtelHooksHome(),
+    otelHooksConfig: getOtelHooksConfigPath(),
     signalDescriptions: [...TELEMETRY_SIGNALS],
   };
 
@@ -62,26 +69,32 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   );
   info(`Mission Control: ${apiUrl} (${reachable ? 'reachable' : 'not reachable'})`);
   info(`OTLP endpoint: ${payload.otelEndpoint}`);
+  info(`Hooks home:    ${payload.otelHooksHome}`);
   printSignals();
 }
 
-async function handleOn(argv: { prompts?: boolean; traces?: boolean }): Promise<void> {
+async function handleOn(argv: { prompts?: boolean }): Promise<void> {
   header('har telemetry on');
   const preference = writeTelemetryPreference(true, {
     prompts: argv.prompts === true ? true : undefined,
-    traces: argv.traces === true ? true : undefined,
+    traces: true,
   });
-  success('Telemetry enabled (opt-out). Agent usage will be stored in local Mission Control.');
+  success('Telemetry enabled. Cursor / Claude / Codex export via opentelemetry-hooks → Mission Control.');
   info(
     `Signals: metrics=${preference.signals.metrics} logs=${preference.signals.logs} prompts=${preference.signals.prompts} traces=${preference.signals.traces}`,
   );
   if (preference.signals.prompts) {
-    warn('Prompt/response text will leave the agent machine for local Mission Control storage.');
+    warn('Prompt text will leave the agent machine for local Mission Control (also used as session purpose).');
   }
   printSignals();
+
   const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
   if (result.message) success(result.message);
   if (result.warning) warn(result.warning);
+
+  const hooks = ensureOtelHooks({ setupAgents: true });
+  if (hooks.message) success(hooks.message);
+  if (hooks.warning) warn(hooks.warning);
   if (result.otelReady) {
     info(`OTLP ingest: ${result.apiUrl.replace(/\/$/, '')}/api/otel`);
     info('Usage appears under Mission Control → Worktrees / Usage. Disable: har telemetry off');
@@ -91,9 +104,14 @@ async function handleOn(argv: { prompts?: boolean; traces?: boolean }): Promise<
 async function handleOff(): Promise<void> {
   header('har telemetry off');
   writeTelemetryPreference(false);
+  try {
+    disableOtelHooksExport();
+  } catch (err) {
+    warn(`Could not refresh hooks config: ${err instanceof Error ? err.message : String(err)}`);
+  }
   success('Telemetry disabled.');
-  info('Future launches will not inject OTEL exporters or auto-start Mission Control.');
-  info('Existing usage rows in Mission Control are kept. Historical data is not deleted.');
+  info('Hooks stay registered but OTLP export is cleared in ~/.har/otel-hooks/otel_config.json.');
+  info('Mission Control will not auto-start. Existing usage rows are kept.');
 }
 
 async function handleWriteEnv(argv: {
@@ -103,9 +121,7 @@ async function handleWriteEnv(argv: {
   workDir?: string;
   branch?: string;
   suffix?: string;
-  purpose?: string;
   sessionKey?: string;
-  otelReady?: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
   const harnessRoot = resolveHarnessRoot(repoPath);
@@ -113,7 +129,6 @@ async function handleWriteEnv(argv: {
   const workDir = argv.workDir ?? session?.workDir ?? repoPath;
   const branch = argv.branch ?? session?.branch;
   const suffix = argv.suffix ?? session?.suffix;
-  const purpose = argv.purpose ?? session?.purpose;
   const sessionKey =
     argv.sessionKey ??
     buildSessionKey({
@@ -126,12 +141,6 @@ async function handleWriteEnv(argv: {
     argv.envFile ??
     path.join(workDir, `.env.agent.${argv.agentId}`);
 
-  let otelReady = argv.otelReady;
-  if (otelReady === undefined && isTelemetryEnabled()) {
-    const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: false });
-    otelReady = ensured.otelReady;
-  }
-
   const attrs = {
     sessionKey,
     agentId: argv.agentId,
@@ -139,11 +148,18 @@ async function handleWriteEnv(argv: {
     workDir,
     branch,
     suffix,
-    purpose,
   };
 
-  appendTelemetryEnvToFile(envFile, attrs, { otelReady: otelReady !== false && isTelemetryEnabled() });
-  success(`Wrote telemetry env to ${envFile}`);
+  appendTelemetryEnvToFile(envFile, attrs);
+
+  if (isTelemetryEnabled()) {
+    ensureOtelHooks({
+      setupAgents: false,
+      resourceAttributes: buildOtelResourceAttributes(attrs),
+    });
+  }
+
+  success(`Wrote session attribution to ${envFile}`);
 }
 
 function handlePrintEnv(argv: {
@@ -152,7 +168,6 @@ function handlePrintEnv(argv: {
   workDir?: string;
   branch?: string;
   suffix?: string;
-  otelReady: boolean;
 }): void {
   const repoPath = path.resolve(argv.repo);
   const workDir = argv.workDir ?? repoPath;
@@ -162,66 +177,40 @@ function handlePrintEnv(argv: {
     suffix: argv.suffix,
   });
   process.stdout.write(
-    buildTelemetryEnvBlock(
-      {
-        sessionKey,
-        agentId: argv.agentId,
-        repoPath,
-        workDir,
-        branch: argv.branch,
-        suffix: argv.suffix,
-      },
-      { otelReady: argv.otelReady && isTelemetryEnabled() },
-    ),
+    buildTelemetryEnvBlock({
+      sessionKey,
+      agentId: argv.agentId,
+      repoPath,
+      workDir,
+      branch: argv.branch,
+      suffix: argv.suffix,
+    }),
   );
 }
 
-function handleCodexSnippet(argv: {
-  agentId: number;
-  repo: string;
-  workDir?: string;
-  branch?: string;
-  suffix?: string;
-  write: boolean;
-}): void {
-  const repoPath = path.resolve(argv.repo);
-  const harnessRoot = resolveHarnessRoot(repoPath);
-  const session = readSlotRegistry(harnessRoot, argv.agentId);
-  const workDir = argv.workDir ?? session?.workDir ?? repoPath;
-  const branch = argv.branch ?? session?.branch;
-  const suffix = argv.suffix ?? session?.suffix;
-  const sessionKey = buildSessionKey({
-    branch,
-    agentId: argv.agentId,
-    suffix,
-    createdAt: session?.createdAt,
-  });
-  const snippet = buildCodexOtelSnippet({
-    sessionKey,
-    agentId: argv.agentId,
-    repoPath,
-    workDir,
-    branch,
-    suffix,
-    purpose: session?.purpose,
-  });
-
-  if (argv.write) {
-    const outDir = path.join(harnessRoot, '.har', 'telemetry');
-    fs.mkdirSync(outDir, { recursive: true });
-    const outPath = path.join(outDir, 'codex.otel.toml.snippet');
-    fs.writeFileSync(outPath, snippet);
-    success(`Wrote ${outPath}`);
-    info('Merge the [otel] table into ~/.codex/config.toml manually.');
-    return;
+async function handleInstallHooks(): Promise<void> {
+  header('har telemetry install-hooks');
+  if (!isTelemetryEnabled()) {
+    warn('Telemetry is off — enabling preference so hooks can export.');
+    writeTelemetryPreference(true, { traces: true });
   }
-
-  process.stdout.write(snippet);
+  const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
+  if (result.message) success(result.message);
+  if (result.warning) warn(result.warning);
+  const hooks = ensureOtelHooks({ setupAgents: true });
+  if (hooks.ok) {
+    success(hooks.message ?? 'opentelemetry-hooks installed and agents registered');
+    info(`Config: ${hooks.configPath}`);
+    info(`Wrapper: ${hooks.wrapperPath}`);
+  } else {
+    error(hooks.warning ?? 'Failed to install opentelemetry-hooks');
+    process.exitCode = 1;
+  }
 }
 
 export const telemetryCommand = {
   command: 'telemetry <subcommand>',
-  describe: 'Agent usage telemetry (Claude Code / Codex → Mission Control)',
+  describe: 'Agent usage telemetry (Cursor / Claude / Codex via opentelemetry-hooks → Mission Control)',
   builder: (yargs: Argv) =>
     yargs
       .command(
@@ -234,37 +223,41 @@ export const telemetryCommand = {
       )
       .command(
         'on',
-        'Enable telemetry (default) and ensure Mission Control is running',
+        'Enable telemetry, ensure Mission Control, install/configure opentelemetry-hooks',
         (y: Argv) =>
-          y
-            .option('prompts', {
-              type: 'boolean',
-              default: false,
-              describe: 'Opt in to shipping user/assistant prompt text to Mission Control',
-            })
-            .option('traces', {
-              type: 'boolean',
-              default: false,
-              describe: 'Opt in to thin OTEL traces ingest (Claude beta)',
-            }),
+          y.option('prompts', {
+            type: 'boolean',
+            default: false,
+            describe: 'Opt in to shipping user prompt text (also fills Mission Control purpose)',
+          }),
         (argv) => {
           void handleOn({
             prompts: argv.prompts as boolean,
-            traces: argv.traces as boolean,
           });
         },
       )
       .command(
         'off',
-        'Disable telemetry (no OTEL injection, no MC auto-start)',
+        'Disable telemetry (clear hooks OTLP endpoint, no MC auto-start)',
         () => {},
         () => {
           void handleOff();
         },
       )
       .command(
+        'install-hooks',
+        'Install opentelemetry-hooks and register Cursor / Claude / Codex',
+        () => {},
+        () => {
+          void handleInstallHooks().catch((err) => {
+            error(err instanceof Error ? err.message : String(err));
+            process.exitCode = 1;
+          });
+        },
+      )
+      .command(
         'write-env',
-        'Append session + OTEL env vars to .env.agent.<id>',
+        'Append HAR session attribution to .env.agent.<id> and refresh hooks config',
         (y: Argv) =>
           y
             .option('agent-id', { type: 'number', demandOption: true })
@@ -273,9 +266,7 @@ export const telemetryCommand = {
             .option('work-dir', { type: 'string' })
             .option('branch', { type: 'string' })
             .option('suffix', { type: 'string' })
-            .option('purpose', { type: 'string' })
-            .option('session-key', { type: 'string' })
-            .option('otel-ready', { type: 'boolean' }),
+            .option('session-key', { type: 'string' }),
         (argv) =>
           handleWriteEnv({
             agentId: argv['agent-id'] as number,
@@ -284,9 +275,7 @@ export const telemetryCommand = {
             workDir: argv['work-dir'] as string | undefined,
             branch: argv.branch as string | undefined,
             suffix: argv.suffix as string | undefined,
-            purpose: argv.purpose as string | undefined,
             sessionKey: argv['session-key'] as string | undefined,
-            otelReady: argv['otel-ready'] as boolean | undefined,
           }).catch((err) => {
             error(err instanceof Error ? err.message : String(err));
             process.exitCode = 1;
@@ -294,15 +283,14 @@ export const telemetryCommand = {
       )
       .command(
         'print-env',
-        'Print telemetry env block to stdout',
+        'Print session attribution env block to stdout',
         (y: Argv) =>
           y
             .option('agent-id', { type: 'number', demandOption: true })
             .option('repo', { type: 'string', default: '.' })
             .option('work-dir', { type: 'string' })
             .option('branch', { type: 'string' })
-            .option('suffix', { type: 'string' })
-            .option('otel-ready', { type: 'boolean', default: true }),
+            .option('suffix', { type: 'string' }),
         (argv) =>
           handlePrintEnv({
             agentId: argv['agent-id'] as number,
@@ -310,34 +298,8 @@ export const telemetryCommand = {
             workDir: argv['work-dir'] as string | undefined,
             branch: argv.branch as string | undefined,
             suffix: argv.suffix as string | undefined,
-            otelReady: argv['otel-ready'] as boolean,
           }),
       )
-      .command(
-        'codex-snippet',
-        'Print or write a Codex [otel] config snippet',
-        (y: Argv) =>
-          y
-            .option('agent-id', { type: 'number', demandOption: true })
-            .option('repo', { type: 'string', default: '.' })
-            .option('work-dir', { type: 'string' })
-            .option('branch', { type: 'string' })
-            .option('suffix', { type: 'string' })
-            .option('write', {
-              type: 'boolean',
-              default: false,
-              describe: 'Write to .har/telemetry/codex.otel.toml.snippet',
-            }),
-        (argv) =>
-          handleCodexSnippet({
-            agentId: argv['agent-id'] as number,
-            repo: argv.repo as string,
-            workDir: argv['work-dir'] as string | undefined,
-            branch: argv.branch as string | undefined,
-            suffix: argv.suffix as string | undefined,
-            write: argv.write as boolean,
-          }),
-      )
-      .demandCommand(1, 'Please specify a subcommand: status, on, off, write-env, print-env, codex-snippet'),
+      .demandCommand(1, 'Please specify a subcommand: status, on, off, install-hooks, write-env, print-env'),
   handler: () => {},
 };

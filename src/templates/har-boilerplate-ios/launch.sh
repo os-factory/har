@@ -18,7 +18,6 @@ AGENT_ID="${1:-}"
 USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 FORCE=false
 REPLACE=false
-PURPOSE="${HAR_SESSION_PURPOSE:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -26,13 +25,12 @@ for arg in "$@"; do
     --worktree) USE_WORKTREE=true ;;
     --replace)  REPLACE=true ;;
     --force)    FORCE=true ;;
-    --purpose=*) PURPOSE="${arg#--purpose=}" ;;
   esac
 done
 
 if [[ -z "$AGENT_ID" ]]; then
   har_load_agent_slot_limits
-  echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] [--purpose=label]" >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] " >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -109,7 +107,6 @@ mark_slot_failed() {
     SLOT_BRANCH="${BRANCH:-}" \
     SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
     SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-    SLOT_PURPOSE="${PURPOSE}" \
     SLOT_STATUS="failed" \
     SLOT_LAST_ERROR="launch.sh exited with code ${exit_code}" \
       write_slot_registry
@@ -130,7 +127,6 @@ SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
 SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-SLOT_PURPOSE="${PURPOSE}" \
 SLOT_STATUS="starting" \
   write_slot_registry
 REGISTRY_WRITTEN=true
@@ -153,7 +149,6 @@ SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
 SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-SLOT_PURPOSE="${PURPOSE}" \
 SLOT_STATUS="active" \
   write_slot_registry
 

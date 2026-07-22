@@ -268,7 +268,6 @@ export const SlotRegistryEntrySchema = z
     /** Random per-session chars; absent in root mode. */
     suffix: z.string().optional(),
     createdAt: z.string(),
-    purpose: z.string().optional(),
     ports: z.record(z.number()).optional(),
     previewUrls: z.record(z.string()).optional(),
     status: z.enum(['starting', 'active', 'failed', 'completed']).default('active'),
@@ -330,6 +329,7 @@ export const AgentSlotStatusSchema = z.object({
   baseBranch: z.string().optional(),
   baseCommit: z.string().optional(),
   sessionCreatedAt: z.string().optional(),
+  /** Derived from first captured user prompt (OTEL hooks); not set at launch. */
   purpose: z.string().optional(),
   sessionStatus: z.enum(['starting', 'active', 'failed', 'completed']).optional(),
   lastError: z.string().optional(),
@@ -432,7 +432,7 @@ export const SyncValidationsInputSchema = z.object({
 
 export type SyncValidationsInput = z.infer<typeof SyncValidationsInputSchema>;
 
-export const AgentToolSchema = z.enum(['claude_code', 'codex']);
+export const AgentToolSchema = z.enum(['claude_code', 'codex', 'cursor']);
 export type AgentTool = z.infer<typeof AgentToolSchema>;
 
 export const UsageSourceSchema = z.enum(['otel', 'harvest']);

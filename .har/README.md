@@ -118,7 +118,6 @@ work dir printed by launch, never in the main checkout.
 - The session **branch is kept** on teardown if you committed; gitignored paths (`state/`,
   `runs/`, local clones) are **not** preserved when the worktree is removed.
 - Use **separate slots** for parallel unrelated tasks (`agentSlots.max` in `stages.json`).
-- Optional: `har env launch 1 --purpose=label`, `HAR_SESSION_PURPOSE=label`, or `./.har/launch.sh 1 --purpose=label` tags the session in status and occupied-slot warnings.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - If launch fails after creating a worktree/env file, the slot registry records

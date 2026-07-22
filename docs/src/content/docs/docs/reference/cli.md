@@ -61,14 +61,12 @@ har env add-stage <id> --custom --kind <kind>
 
 ```bash
 har env preflight 1 [--json] [--replace] [--force]
-har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume] [--purpose=label]
+har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume]
 har env recover 1
 ```
 
 `--replace` confirms replacement of an occupied slot. `--force` additionally
 permits discarding dirty uncommitted work and must only follow explicit approval.
-`--purpose` stores an optional session label (also via `HAR_SESSION_PURPOSE`) shown
-in `har env status` and occupied-slot warnings.
 
 ### Verify and finish
 
@@ -125,16 +123,17 @@ har control login --api-key <key>
 
 ```bash
 har telemetry status [--json]
-har telemetry on
+har telemetry on [--prompts]
 har telemetry off
+har telemetry install-hooks
 har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
 har telemetry print-env --agent-id <n>
-har telemetry codex-snippet --agent-id <n> [--write]
 ```
 
-Controls agent usage telemetry (Claude Code / Codex → Mission Control). **Default: on.**
-`on` ensures Mission Control is running. Preference: `~/.har/telemetry.json` (override
-with `HAR_TELEMETRY=0|1`).
+Controls agent usage telemetry (Cursor / Claude / Codex via opentelemetry-hooks → Mission Control).
+**Default: on.** `on` ensures Mission Control is running and installs/configures hooks.
+Preference: `~/.har/telemetry.json` (override with `HAR_TELEMETRY=0|1`). Hooks config:
+`~/.har/otel-hooks/otel_config.json`.
 
 ## `har mcp`
 

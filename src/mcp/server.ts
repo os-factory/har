@@ -97,11 +97,6 @@ export const HAR_MCP_TOOLS: Tool[] = [
           description:
             'Resume a failed or partial launch (status failed/starting) without --replace. Preserves worktree and env.',
         },
-        purpose: {
-          type: 'string',
-          description:
-            'Optional session label stored in the slot registry (shown in status and occupied-slot warnings).',
-        },
       },
       ['agentId'],
     ),
@@ -298,7 +293,6 @@ export async function handleMcpToolCall(
         confirmReplace: input.confirmReplace,
         force: input.force,
         resume: input.resume,
-        purpose: input.purpose,
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);

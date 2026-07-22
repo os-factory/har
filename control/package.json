@@ -28,6 +28,7 @@
     "@har/schemas": "file:../packages/schemas",
     "@headless-tree/core": "^1.7.0",
     "@headless-tree/react": "^1.7.0",
+    "@opentelemetry/otlp-transformer": "^0.57.2",
     "@prisma/client": "^6.0.0",
     "@radix-ui/react-avatar": "^1.2.1",
     "@radix-ui/react-checkbox": "^1.3.6",

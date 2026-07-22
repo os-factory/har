@@ -20,7 +20,6 @@ USE_CLAUDE=false
 FORCE=false
 REPLACE=false
 RESUME=false
-PURPOSE="${HAR_SESSION_PURPOSE:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -30,13 +29,12 @@ for arg in "$@"; do
     --replace)  REPLACE=true ;;
     --force)    FORCE=true ;;
     --resume)   RESUME=true ;;
-    --purpose=*) PURPOSE="${arg#--purpose=}" ;;
   esac
 done
 
 if [[ -z "$AGENT_ID" ]]; then
   har_load_agent_slot_limits
-  echo "Usage: $0 <agent-id> [--no-worktree] [--claude] [--replace] [--force] [--resume] [--purpose=label]" >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--claude] [--replace] [--force] [--resume] " >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -71,7 +69,6 @@ if [ "$RESUME" = true ]; then
       SLOT_BRANCH="${BRANCH:-}" \
       SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
       SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-      SLOT_PURPOSE="${PURPOSE}" \
       SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
       SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
       SLOT_STATUS="failed" \
@@ -190,7 +187,6 @@ if [ "$RESUME" != true ]; then
       SLOT_BRANCH="${BRANCH:-}" \
       SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
       SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-      SLOT_PURPOSE="${PURPOSE}" \
       SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
       SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
       SLOT_STATUS="failed" \
@@ -211,7 +207,6 @@ if [ "$RESUME" != true ]; then
   SLOT_BRANCH="${BRANCH:-}" \
   SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
   SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-  SLOT_PURPOSE="${PURPOSE}" \
   SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
   SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
   SLOT_STATUS="starting" \
@@ -229,7 +224,6 @@ else
   SLOT_BRANCH="${BRANCH:-}" \
   SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
   SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-  SLOT_PURPOSE="${PURPOSE}" \
   SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
   SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
   SLOT_STATUS="starting" \
@@ -356,7 +350,6 @@ SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
 SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
-SLOT_PURPOSE="${PURPOSE}" \
 SLOT_PORTS_JSON="{\"frontend\":${FE_PORT},\"api\":${API_PORT},\"debug\":${DEBUG_PORT},\"db\":${DB_PORT}}" \
 SLOT_PREVIEW_URLS_JSON="{\"frontend\":\"http://localhost:${FE_PORT}\",\"api\":\"http://localhost:${API_PORT}\"}" \
 SLOT_STATUS="active" \
