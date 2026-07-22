@@ -1,3 +1,10 @@
+## [0.16.2](https://github.com/os-factory/har/compare/v0.16.1...v0.16.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **control:** clear ghost worktrees after slot teardown ([#70](https://github.com/os-factory/har/issues/70)) ([2feac6a](https://github.com/os-factory/har/commit/2feac6a5d5ae4558d6f7cf27b3b3430d67cf5c5e))
+
 ## [0.16.1](https://github.com/os-factory/har/compare/v0.16.0...v0.16.1) (2026-07-21)
 
 
