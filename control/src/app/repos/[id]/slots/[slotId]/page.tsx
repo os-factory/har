@@ -98,6 +98,9 @@ export default async function SlotDetailPage({
             </p>
             {slot.branch && (
               <p className="mt-2 font-mono text-xs" title={slot.baseCommit ?? undefined}>
+                {!slot.active || !slot.worktreePath ? (
+                  <span className="text-muted-foreground">last session · </span>
+                ) : null}
                 {slot.branch}
               </p>
             )}
