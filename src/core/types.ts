@@ -29,6 +29,8 @@ export interface LaunchFlags {
   force?: boolean;
   /** Resume a failed or partial launch without creating a new worktree. */
   resume?: boolean;
+  /** Optional label stored on the session (shown in status / occupied-slot warnings). */
+  purpose?: string;
 }
 
 export interface StageRunOptions {
@@ -49,6 +51,8 @@ export interface LaunchOptions {
   confirmReplace?: boolean;
   force?: boolean;
   resume?: boolean;
+  /** Optional label stored on the session (shown in status / occupied-slot warnings). */
+  purpose?: string;
   capture?: boolean;
 }
 
@@ -85,6 +89,7 @@ export interface EnvironmentRunResult {
     branch?: string;
     dirty?: boolean;
     sessionCreatedAt?: string;
+    purpose?: string;
   };
 }
 

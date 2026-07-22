@@ -30,7 +30,7 @@ Relaunching a slot **replaces** its previous session (the old branch is kept). R
 - **Never** set `force`/`confirmReplace` without the user explicitly approving replacement.
 - **Commit early and often** in the session worktree — teardown keeps the branch, not uncommitted work.
 - **Gitignored paths are ephemeral** (`state/`, `runs/`, local clones) — they are lost when the worktree is removed.
-- Optional: set `HAR_SESSION_PURPOSE=label` or `--purpose=label` on launch so occupied-slot warnings show what you were doing.
+- Optional: set `har env launch <id> --purpose=label`, `HAR_SESSION_PURPOSE=label`, or `./.har/launch.sh <id> --purpose=label` so occupied-slot warnings show what you were doing.
 - If launch failed partway (registry `status: failed`), **resume** instead of replacing:
   `har env launch <id> --resume`, `har env recover <id>`, or `./.har/launch.sh <id> --resume`.
   Do not hand-roll PM2 or skip the harness.

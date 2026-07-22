@@ -14,10 +14,11 @@ description: The safe lifecycle for parallel coding tasks.
 ```bash
 har env status
 har env preflight 2
-har env launch 2
+har env launch 2 --purpose="my task label"
 ```
 
 Use one slot per task. Separate parallel tasks use separate slots.
+`--purpose` (or `HAR_SESSION_PURPOSE`) labels the session in status and occupied-slot warnings.
 
 ## Occupied and failed slots
 

@@ -14,10 +14,29 @@ import { buildStageResult, parseVerificationResult } from './results';
 import {
   ArtifactEntry,
   ExecutionContext,
+  LaunchFlags,
   StageExecutor,
   StageRunOptions,
 } from './types';
 import { readSlotRegistry } from './slot-registry';
+
+/** Quote a single argv token for `bash -lc` when it needs shell metacharacters. */
+export function quoteShellArg(arg: string): string {
+  if (/^[A-Za-z0-9_./:=+-]+$/.test(arg)) return arg;
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Argv fragments forwarded to launch.sh for a launch stage. */
+export function buildLaunchFlagArgs(flags: LaunchFlags): string[] {
+  const args: string[] = [];
+  if (flags.worktree === false) args.push('--no-worktree');
+  if (flags.claude) args.push('--claude');
+  if (flags.confirmReplace) args.push('--replace');
+  if (flags.force) args.push('--force');
+  if (flags.resume) args.push('--resume');
+  if (flags.purpose) args.push(`--purpose=${flags.purpose}`);
+  return args;
+}
 
 function resolveRepoPath(repoPath: string): string {
   return path.resolve(repoPath);
@@ -132,19 +151,18 @@ function buildExecutionPlan(
   const cwd = stage.cwd ? path.resolve(resolvedRepo, stage.cwd) : resolvedRepo;
   const extraArgs = options.args ?? [];
 
-  const launchFlagArgs: string[] = [];
-  if (stage.kind === 'launch' && options.launchFlags) {
-    if (options.launchFlags.worktree === false) launchFlagArgs.push('--no-worktree');
-    if (options.launchFlags.claude) launchFlagArgs.push('--claude');
-    if (options.launchFlags.confirmReplace) launchFlagArgs.push('--replace');
-    if (options.launchFlags.force) launchFlagArgs.push('--force');
-    if (options.launchFlags.resume) launchFlagArgs.push('--resume');
+  const launchFlagArgs =
+    stage.kind === 'launch' && options.launchFlags
+      ? buildLaunchFlagArgs(options.launchFlags)
+      : [];
+  if (stage.kind === 'launch' && options.launchFlags?.purpose) {
+    mergedEnv.HAR_SESSION_PURPOSE = options.launchFlags.purpose;
   }
 
   if (stage.command) {
     let shellCommand = substituteAgentId(stage.command, options.agentId);
     for (const extra of [...extraArgs, ...launchFlagArgs]) {
-      shellCommand = `${shellCommand} ${extra}`;
+      shellCommand = `${shellCommand} ${quoteShellArg(extra)}`;
     }
     return { mode: 'shell', shellCommand, args: [], cwd, env: mergedEnv };
   }

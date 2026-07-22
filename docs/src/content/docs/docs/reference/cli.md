@@ -61,12 +61,14 @@ har env add-stage <id> --custom --kind <kind>
 
 ```bash
 har env preflight 1 [--json] [--replace] [--force]
-har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume]
+har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume] [--purpose=label]
 har env recover 1
 ```
 
 `--replace` confirms replacement of an occupied slot. `--force` additionally
 permits discarding dirty uncommitted work and must only follow explicit approval.
+`--purpose` stores an optional session label (also via `HAR_SESSION_PURPOSE`) shown
+in `har env status` and occupied-slot warnings.
 
 ### Verify and finish
 

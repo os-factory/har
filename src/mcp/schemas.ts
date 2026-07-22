@@ -84,6 +84,12 @@ export const LaunchEnvironmentInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Resume a failed or partial launch without creating a new worktree.'),
+  purpose: z
+    .string()
+    .optional()
+    .describe(
+      'Optional session label stored in the slot registry (shown in status and occupied-slot warnings).',
+    ),
 });
 
 export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
@@ -103,6 +109,7 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
       branch: z.string().optional(),
       dirty: z.boolean().optional(),
       sessionCreatedAt: z.string().optional(),
+      purpose: z.string().optional(),
     })
     .optional(),
 });
