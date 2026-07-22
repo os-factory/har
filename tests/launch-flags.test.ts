@@ -1,17 +1,8 @@
 import { buildLaunchFlagArgs, quoteShellArg } from '../src/core/local-executor';
 import { LaunchEnvironmentInputSchema } from '../src/mcp/schemas';
 
-describe('launch purpose plumbing', () => {
-  it('forwards --purpose to launch.sh argv', () => {
-    expect(
-      buildLaunchFlagArgs({
-        worktree: true,
-        purpose: 'fix sqlite backend',
-      }),
-    ).toEqual(['--purpose=fix sqlite backend']);
-  });
-
-  it('includes purpose alongside other launch flags', () => {
+describe('launch flag plumbing', () => {
+  it('forwards replace/force/resume flags to launch.sh argv', () => {
     expect(
       buildLaunchFlagArgs({
         worktree: false,
@@ -19,23 +10,24 @@ describe('launch purpose plumbing', () => {
         force: true,
         resume: true,
         claude: true,
-        purpose: 'label',
       }),
-    ).toEqual(['--no-worktree', '--claude', '--replace', '--force', '--resume', '--purpose=label']);
+    ).toEqual(['--no-worktree', '--claude', '--replace', '--force', '--resume']);
   });
 
-  it('shell-quotes purpose values that contain spaces', () => {
+  it('shell-quotes values that contain spaces', () => {
     expect(quoteShellArg('--purpose=fix sqlite backend')).toBe(
       "'--purpose=fix sqlite backend'",
     );
     expect(quoteShellArg('--replace')).toBe('--replace');
   });
 
-  it('accepts purpose on MCP launch input', () => {
+  it('accepts MCP launch input without purpose', () => {
     const parsed = LaunchEnvironmentInputSchema.parse({
       agentId: 1,
-      purpose: 'wire launch purpose',
+      resume: true,
     });
-    expect(parsed.purpose).toBe('wire launch purpose');
+    expect(parsed.agentId).toBe(1);
+    expect(parsed.resume).toBe(true);
+    expect('purpose' in parsed).toBe(false);
   });
 });

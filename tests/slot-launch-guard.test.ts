@@ -15,7 +15,6 @@ function writeSlotRegistry(
   harDir: string,
   agentId: number,
   worktreePath: string,
-  extras: { purpose?: string } = {},
 ): void {
   const slotsDir = path.join(harDir, 'slots');
   fs.mkdirSync(slotsDir, { recursive: true });
@@ -32,7 +31,6 @@ function writeSlotRegistry(
         branch: 'session-branch',
         createdAt: '2026-01-01T00:00:00Z',
         status: 'active',
-        ...(extras.purpose ? { purpose: extras.purpose } : {}),
       },
       null,
       2,
@@ -75,15 +73,14 @@ describe('slot launch guard', () => {
     initGitRepo(repoPath);
     const worktreePath = path.join(os.tmpdir(), `har-guard-wt-${Date.now()}`);
     execSync(`git worktree add -b session-branch ${worktreePath}`, { cwd: repoPath });
-    writeSlotRegistry(harDir, 1, worktreePath, { purpose: 'fix sqlite backend' });
+    writeSlotRegistry(harDir, 1, worktreePath);
 
     const result = checkLaunchGuard(repoPath, 1, {});
     expect(result.allowed).toBe(false);
     expect(result.blocked).toBe(true);
     expect(result.slot?.worktreePath).toBe(worktreePath);
-    expect(result.slot?.purpose).toBe('fix sqlite backend');
     expect(result.reason).toContain('already in use');
-    expect(result.reason).toContain('Purpose:  fix sqlite backend');
+    expect(result.reason).not.toContain('Purpose:');
   });
 
   it('requires force when replacing a dirty occupied slot', () => {

@@ -177,7 +177,6 @@ export class RunService {
               branch: slot.branch,
               dirty: slot.dirty,
               sessionCreatedAt: slot.sessionCreatedAt,
-              purpose: slot.purpose,
             }
           : undefined,
       };
@@ -213,7 +212,6 @@ export class RunService {
         confirmReplace: options.confirmReplace,
         force: options.force,
         resume: options.resume,
-        purpose: options.purpose,
       },
       trigger: 'cli',
     });
