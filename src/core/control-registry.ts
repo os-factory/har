@@ -50,6 +50,22 @@ export function recordRepoForControlSync(repoPath: string): void {
   writeRegistry(registry);
 }
 
+/** Drop a repo from the local sync registry (does not touch Mission Control DB). */
+export function removeRegisteredRepo(repoPath: string): boolean {
+  const resolved = canonicalizeControlRepoPath(repoPath);
+  const registry = readRegistry();
+  const next = registry.repos.filter((entry) => {
+    try {
+      return canonicalizeControlRepoPath(entry) !== resolved;
+    } catch {
+      return path.resolve(entry) !== resolved;
+    }
+  });
+  if (next.length === registry.repos.length) return false;
+  writeRegistry({ repos: next });
+  return true;
+}
+
 /** Registered repos that still exist and have a harness manifest. */
 export function listRegisteredRepos(): string[] {
   const registry = readRegistry();

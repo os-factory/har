@@ -113,11 +113,17 @@ main-checkout edit guard instead. `check` and `record-commit` are hook workers.
 ```bash
 har control up [--build] [--no-detach]
 har control down
-har control register [--api-url <url>] [--dry-run]
+har control register [--repo .] [--api-url <url>] [--dry-run] [--force]
+har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control sync [--api-url <url>] [--dry-run] [--json] [--cloud]
 har control watch [--interval 10] [--api-url <url>]
 har control login --api-key <key>
 ```
+
+`unregister` removes the repository from Mission Control and `~/.har/repos.json`.
+Interactively it lists session worktrees and asks whether to delete them; pass
+`--delete-worktrees` (with `--yes` in non-TTY) to remove worktrees via harness
+teardown. Re-add later with `har control register`.
 
 ## `har telemetry`
 
