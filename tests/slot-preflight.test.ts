@@ -6,15 +6,24 @@ import { allocateAppPorts, isPortInUse } from '../src/core/slot-ports';
 
 const tmpDirs: string[] = [];
 
-function makeHarness(options: { pm2?: boolean; infraDb?: boolean } = {}): string {
+function makeHarness(
+  options: {
+    pm2?: boolean;
+    infraDb?: boolean;
+    feBase?: number;
+    apiBase?: number;
+  } = {},
+): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-preflight-'));
   tmpDirs.push(dir);
   const harDir = path.join(dir, '.har');
   fs.mkdirSync(harDir, { recursive: true });
+  const feBase = options.feBase ?? 3000;
+  const apiBase = options.apiBase ?? 8000;
   const lines = [
     'export HARNESS_PROJECT_NAME=test-project',
-    'export HARNESS_FE_BASE_PORT=3000',
-    'export HARNESS_API_BASE_PORT=8000',
+    `export HARNESS_FE_BASE_PORT=${feBase}`,
+    `export HARNESS_API_BASE_PORT=${apiBase}`,
     'export HARNESS_PORT_STEP=10',
     'export HARNESS_AGENT_SLOT_MIN=1',
     'export HARNESS_AGENT_SLOT_MAX=3',
@@ -97,12 +106,15 @@ describe('inspectSlotReadiness', () => {
 
 describe('allocateAppPorts', () => {
   it('returns defaults when ports are free', () => {
-    const repo = makeHarness({ pm2: true });
+    // Use high bases so busy local stacks (e.g. docker on 3010) do not flake this unit test.
+    const feBase = 47000;
+    const apiBase = 48000;
+    const repo = makeHarness({ pm2: true, feBase, apiBase });
     const ports = allocateAppPorts(repo, 1);
     expect('error' in ports).toBe(false);
     if (!('error' in ports)) {
-      expect(ports.frontend).toBe(3010);
-      expect(ports.api).toBe(8010);
+      expect(ports.frontend).toBe(feBase + 10);
+      expect(ports.api).toBe(apiBase + 10);
       expect(ports.allocated).toBe(false);
     }
   });
