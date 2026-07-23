@@ -105,7 +105,23 @@ function collectOccupiedSlot(repoPath: string, agentId: number): AgentSlotStatus
   };
 }
 
-function formatOccupiedSlot(slot: AgentSlotStatus, resume?: boolean): string {
+/** Describe the HEAD that a new launch would use (main checkout / --repo). */
+export function describeLaunchBase(repoPath: string): string[] {
+  const harnessRoot = resolveHarnessRoot(repoPath);
+  const branch = runGit(harnessRoot, 'rev-parse --abbrev-ref HEAD') ?? 'detached';
+  const sha = runGit(harnessRoot, 'rev-parse --short HEAD');
+  return [
+    `New session will be based on: ${branch}${sha ? ` @ ${sha}` : ''}`,
+    `  (HEAD of ${harnessRoot})`,
+    '  --replace does not choose this base — switch the main checkout first for a new unrelated task.',
+  ];
+}
+
+function formatOccupiedSlot(
+  slot: AgentSlotStatus,
+  repoPath: string,
+  resume?: boolean,
+): string {
   const lines = [
     `Slot ${slot.agentId} is already in use.`,
     slot.worktreePath ? `  Worktree: ${slot.worktreePath}` : undefined,
@@ -117,6 +133,8 @@ function formatOccupiedSlot(slot: AgentSlotStatus, resume?: boolean): string {
     slot.dirty
       ? '  Git:      dirty (uncommitted changes — commit or use force to discard)'
       : '  Git:      clean',
+    '',
+    ...describeLaunchBase(repoPath),
     '',
   ];
 
@@ -135,6 +153,7 @@ function formatOccupiedSlot(slot: AgentSlotStatus, resume?: boolean): string {
   }
 
   lines.push(
+    'Prefer complete/teardown when the previous task is finished, then launch.',
     'Replacing removes the worktree. The session branch is kept only if you committed.',
     'Gitignored paths (state/, runs/, local clones) are NOT preserved.',
     '',
@@ -178,7 +197,7 @@ export function checkLaunchGuard(
       allowed: false,
       blocked: true,
       slot,
-      reason: formatOccupiedSlot(slot),
+      reason: formatOccupiedSlot(slot, repoPath),
     };
   }
 
@@ -187,7 +206,7 @@ export function checkLaunchGuard(
       allowed: false,
       blocked: true,
       slot,
-      reason: formatOccupiedSlot(slot),
+      reason: formatOccupiedSlot(slot, repoPath),
     };
   }
 
@@ -197,7 +216,7 @@ export function checkLaunchGuard(
       blocked: true,
       slot,
       reason: [
-        formatOccupiedSlot(slot),
+        formatOccupiedSlot(slot, repoPath),
         '',
         'The occupied worktree has uncommitted changes.',
         'Pass force=true / --force to discard them (only after explicit user approval).',
