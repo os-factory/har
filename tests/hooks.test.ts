@@ -176,6 +176,12 @@ describe('isAgentWorktree', () => {
     const worktree = addAgentWorktree(dir, 3);
     expect(isAgentWorktree(worktree)).toBe(true);
   });
+
+  it('detects current suffixed HAR session branches', () => {
+    const dir = initRepo();
+    sh(dir, 'git checkout -q -b main-ab12-har-agent-3-z9x8');
+    expect(isAgentWorktree(dir)).toBe(true);
+  });
 });
 
 describe('install/uninstall/status', () => {

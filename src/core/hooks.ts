@@ -208,14 +208,20 @@ export function getCommitGateConfig(checkoutDir: string): CommitGateConfig {
   }
 }
 
-/** True when this checkout is a har agent worktree (har-agent-N branch or slot worktree path). */
+/** True when this checkout is a HAR session worktree (current or legacy naming). */
 export function isAgentWorktree(checkoutDir: string): boolean {
   const branch = getCurrentBranch(checkoutDir);
-  if (branch && /^har-agent-\d+$/.test(branch)) return true;
+  if (branch && (/^har-agent-\d+$/.test(branch) || /-har-agent-\d+-[a-z0-9]+$/.test(branch))) {
+    return true;
+  }
 
   const worktreesRoot = path.join(os.homedir(), 'worktrees');
   const resolved = path.resolve(checkoutDir);
-  return resolved.startsWith(`${worktreesRoot}${path.sep}`) && /-agent-\d+$/.test(path.basename(resolved));
+  const name = path.basename(resolved);
+  return (
+    resolved.startsWith(`${worktreesRoot}${path.sep}`) &&
+    (/-agent-\d+$/.test(name) || /-har-agent-\d+-[a-z0-9]+$/.test(name))
+  );
 }
 
 export function resolveEffectiveMode(checkoutDir: string, gate: CommitGateConfig): 'block' | 'warn' | 'off' {

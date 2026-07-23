@@ -124,6 +124,23 @@ export const CommitGateConfigSchema = z.object({
 
 export type CommitGateConfig = z.infer<typeof CommitGateConfigSchema>;
 
+/** User-level defaults applied when init/maintain flags are omitted. */
+export const OnboardingPreferencesSchema = z.object({
+  version: z.literal(1).default(1),
+  cursorRule: z.enum(['auto', 'on', 'off']).default('auto'),
+  agentSkills: z.union([z.literal('auto'), z.array(AgentSkillTargetSchema)]).default('auto'),
+  commitGate: z
+    .object({
+      install: z.enum(['prompt', 'always', 'never']).default('prompt'),
+      mode: z.enum(['block', 'warn']).default('block'),
+      scope: z.enum(['worktrees', 'all']).default('worktrees'),
+    })
+    .default({}),
+  updatedAt: z.string().optional(),
+});
+
+export type OnboardingPreferences = z.infer<typeof OnboardingPreferencesSchema>;
+
 export const HarnessStageRegistrySchema = z
   .object({
     version: z.string().default('1'),
