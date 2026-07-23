@@ -5,6 +5,9 @@ import { inspectSlotReadiness } from '../src/core/slot-preflight';
 import { allocateAppPorts, isPortInUse } from '../src/core/slot-ports';
 
 const tmpDirs: string[] = [];
+const TEST_PORT_OFFSET = (process.pid % 400) * 10;
+const TEST_FE_BASE = 40_000 + TEST_PORT_OFFSET;
+const TEST_API_BASE = 50_000 + TEST_PORT_OFFSET;
 
 function makeHarness(options: { pm2?: boolean; infraDb?: boolean } = {}): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-preflight-'));
@@ -13,8 +16,8 @@ function makeHarness(options: { pm2?: boolean; infraDb?: boolean } = {}): string
   fs.mkdirSync(harDir, { recursive: true });
   const lines = [
     'export HARNESS_PROJECT_NAME=test-project',
-    'export HARNESS_FE_BASE_PORT=3000',
-    'export HARNESS_API_BASE_PORT=8000',
+    `export HARNESS_FE_BASE_PORT=${TEST_FE_BASE}`,
+    `export HARNESS_API_BASE_PORT=${TEST_API_BASE}`,
     'export HARNESS_PORT_STEP=10',
     'export HARNESS_AGENT_SLOT_MIN=1',
     'export HARNESS_AGENT_SLOT_MAX=3',
@@ -88,10 +91,10 @@ describe('inspectSlotReadiness', () => {
 
   it('allocates app ports for PM2 harnesses', () => {
     const repo = makeHarness({ pm2: true });
-    const readiness = inspectSlotReadiness(repo, 2);
+    const readiness = inspectSlotReadiness(repo, 2, { pm2Processes: [] });
     expect(readiness.canLaunch).toBe(true);
-    expect(readiness.ports?.frontend).toBe(3020);
-    expect(readiness.ports?.api).toBe(8020);
+    expect(readiness.ports?.frontend).toBe(TEST_FE_BASE + 20);
+    expect(readiness.ports?.api).toBe(TEST_API_BASE + 20);
   });
 });
 
@@ -101,8 +104,8 @@ describe('allocateAppPorts', () => {
     const ports = allocateAppPorts(repo, 1);
     expect('error' in ports).toBe(false);
     if (!('error' in ports)) {
-      expect(ports.frontend).toBe(3010);
-      expect(ports.api).toBe(8010);
+      expect(ports.frontend).toBe(TEST_FE_BASE + 10);
+      expect(ports.api).toBe(TEST_API_BASE + 10);
       expect(ports.allocated).toBe(false);
     }
   });

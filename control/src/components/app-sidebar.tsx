@@ -19,7 +19,8 @@ import {
 } from '@/components/ui/sidebar';
 
 const navItems = [
-  { title: 'Worktrees', url: '/' },
+  { title: 'Factory', url: '/' },
+  { title: 'Operations', url: '/worktrees' },
   { title: 'Usage', url: '/usage' },
   { title: 'Repositories', url: '/repos' },
 ];

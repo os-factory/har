@@ -21,6 +21,17 @@ har env launch <id>   # or ./.har/launch.sh <id>
 
 Launch creates a fresh session worktree from HEAD and prints its **work dir** (also recorded in `.har/slots/agent-<id>.json`, path like `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`). If a previous launch failed partway, retry with `--resume` instead of replacing.
 
+If the task already has a stable issue or ticket ID, bind it without changing the
+methodology that produced it:
+
+```bash
+har env launch <id> --work-id "<provider-neutral-id>" --work-title "<title>"
+```
+
+External planning/TDD/review skills remain in control of implementation strategy.
+They must delegate worktree creation, runtime launch, final verification, and
+completion to HAR.
+
 ## 3. Do ALL work in the work dir
 
 - `cd` into the work dir; every read-modify-write of project files happens there.

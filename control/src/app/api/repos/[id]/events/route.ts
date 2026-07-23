@@ -34,6 +34,8 @@ export async function POST(
         responseText: ev.responseText,
         rawTruncated: ev.rawTruncated,
         source: ev.source,
+        workUnitId: ev.workUnitId,
+        attemptId: ev.attemptId,
       })),
     );
     return NextResponse.json(result);

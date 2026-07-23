@@ -13,6 +13,8 @@ export interface SessionEventInput {
   responseText?: string | null;
   rawTruncated?: string | null;
   source?: string;
+  workUnitId?: string;
+  attemptId?: string;
 }
 
 const PROMPT_MAX = 8_000;
@@ -33,6 +35,8 @@ export async function upsertSessionEvent(repositoryId: string, input: SessionEve
     responseText: trunc(input.responseText, PROMPT_MAX),
     rawTruncated: trunc(input.rawTruncated, RAW_MAX),
     source: input.source ?? 'otel',
+    workUnitId: input.workUnitId,
+    attemptId: input.attemptId,
   };
 
   return prisma.agentSessionEvent.upsert({

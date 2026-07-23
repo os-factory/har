@@ -1,11 +1,18 @@
 import { parseVerificationResult } from './results';
+import * as crypto from 'crypto';
 import { localScriptExecutor } from './local-executor';
 import { syncRepoWithControlAsync } from './control-sync';
 import { createRun, finishRun, resolveAgentWorkDir } from './runs';
-import { readSlotRegistry } from './slot-registry';
+import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
 import { checkLaunchGuard } from './slot-launch-guard';
 import { formatPreflightReport, inspectSlotReadiness } from './slot-preflight';
 import { recordValidation } from './validations';
+import {
+  bindValidationToAttempt,
+  createWorkAttempt,
+  decideWorkUnitOutcome,
+  upsertWorkUnit,
+} from './work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { getAgentSlotIds, resolveStage } from '../harness/stages';
 import { HarnessStage } from '../harness/schema';
@@ -78,11 +85,17 @@ export class RunService {
   constructor(private readonly executor: StageExecutor = localScriptExecutor) {}
 
   async runStage(options: StageRunOptions & { trigger?: ExecutionContext['trigger'] }): Promise<StageResult> {
+    const activeSession =
+      options.agentId !== undefined && options.kind !== 'launch'
+        ? readSlotRegistry(resolveHarnessRoot(options.repoPath), options.agentId)
+        : undefined;
     const ctx: ExecutionContext = {
       repoPath: options.repoPath,
       capture: options.capture,
       agentId: options.agentId,
       trigger: options.trigger,
+      workUnitId: options.workUnitId ?? activeSession?.workUnitId,
+      attemptId: options.attemptId ?? activeSession?.attemptId,
     };
 
     const stageLookup = options.stageId
@@ -201,10 +214,52 @@ export class RunService {
       }
     }
 
+    const harnessRoot = resolveHarnessRoot(options.repoPath);
+    const resumableSession = options.resume
+      ? readSlotRegistry(harnessRoot, options.agentId)
+      : undefined;
+    const workUnitId = options.workUnitId ?? resumableSession?.workUnitId;
+    const attemptId = workUnitId
+      ? resumableSession?.attemptId ?? crypto.randomUUID()
+      : undefined;
+
+    if (workUnitId && attemptId) {
+      const conflictingSession = listSlotRegistryEntries(harnessRoot).find(
+        (entry) =>
+          entry.workUnitId === workUnitId &&
+          !(
+            entry.agentId === options.agentId &&
+            (options.resume || options.confirmReplace)
+          ),
+      );
+      if (conflictingSession) {
+        return {
+          code: 2,
+          stdout: '',
+          stderr: `Work unit ${workUnitId} is already bound to slot ${conflictingSession.agentId} (attempt ${conflictingSession.attemptId ?? 'unknown'}).`,
+          blocked: true,
+        };
+      }
+      upsertWorkUnit(harnessRoot, {
+        workUnitId,
+        source: options.source,
+        sourceUrl: options.sourceUrl,
+        title: options.title,
+        parentWorkUnitId: options.parentWorkUnitId,
+      });
+      createWorkAttempt(harnessRoot, {
+        attemptId,
+        workUnitId,
+        agentId: options.agentId,
+      });
+    }
+
     const result = await this.runStage({
       repoPath: options.repoPath,
       kind: 'launch',
       agentId: options.agentId,
+      workUnitId,
+      attemptId,
       capture: options.capture ?? false,
       launchFlags: {
         worktree: options.worktree,
@@ -212,6 +267,8 @@ export class RunService {
         confirmReplace: options.confirmReplace,
         force: options.force,
         resume: options.resume,
+        workUnitId,
+        attemptId,
       },
       trigger: 'cli',
     });
@@ -219,13 +276,14 @@ export class RunService {
     if (envResult.code === 0) {
       // The session registry written by launch.sh knows where the code lives —
       // surface it so agents make their edits in the right checkout.
-      const harnessRoot = resolveHarnessRoot(options.repoPath);
       const session = readSlotRegistry(harnessRoot, options.agentId);
       if (session) {
         envResult.workDir = session.workDir;
         envResult.worktreePath = session.worktreePath;
         envResult.branch = session.branch;
         envResult.previewUrls = envResult.previewUrls ?? session.previewUrls;
+        envResult.workUnitId = session.workUnitId;
+        envResult.attemptId = session.attemptId;
 
         const sessionKey = buildSessionKey({
           branch: session.branch,
@@ -242,9 +300,24 @@ export class RunService {
             workDir: session.workDir,
             branch: session.branch,
             suffix: session.suffix,
+            workUnitId: session.workUnitId,
+            attemptId: session.attemptId,
           });
         } catch {
           // Env injection is best-effort; launch still succeeded.
+        }
+        if (session.workUnitId && session.attemptId) {
+          createWorkAttempt(harnessRoot, {
+            attemptId: session.attemptId,
+            workUnitId: session.workUnitId,
+            agentId: options.agentId,
+            sessionKey,
+            workDir: session.workDir,
+            worktreePath: session.worktreePath,
+            branch: session.branch,
+            baseCommit: session.baseCommit,
+            createdAt: session.createdAt,
+          });
         }
       }
       if (telemetryBanner) {
@@ -291,7 +364,7 @@ export class RunService {
           typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
             ? (result.data as { runId?: string }).runId
             : undefined;
-        recordValidation({
+        const validation = recordValidation({
           checkoutDir,
           harnessRoot,
           status: verification.status,
@@ -299,7 +372,22 @@ export class RunService {
           runId,
           agentId: options.agentId,
         });
+        const session = readSlotRegistry(harnessRoot, options.agentId);
+        if (session?.workUnitId && session.attemptId) {
+          bindValidationToAttempt(harnessRoot, {
+            workUnitId: session.workUnitId,
+            attemptId: session.attemptId,
+            validation,
+          });
+        }
         await syncRepoWithControlAsync(options.repoPath);
+        return {
+          code: shell.code,
+          stdout: shell.stdout,
+          stderr: shell.stderr,
+          verification,
+          validation,
+        };
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
       }
@@ -354,6 +442,7 @@ export class RunService {
     }
 
     let verification: VerificationResult | null | undefined;
+    let validation: import('../harness/schema').ValidationRecord | undefined;
     if (!options.skipVerify) {
       const verify = await this.runVerification({
         repoPath: options.repoPath,
@@ -363,6 +452,7 @@ export class RunService {
         trigger: options.trigger,
       });
       verification = verify.verification;
+      validation = verify.validation;
       if (verify.code !== 0 || verification?.status !== 'pass') {
         return {
           ...verify,
@@ -371,6 +461,32 @@ export class RunService {
             '\nVerification failed — session NOT completed. Fix the failures and rerun, or complete with skipVerify.',
         };
       }
+    }
+
+    if (
+      session.workUnitId &&
+      session.attemptId &&
+      !options.skipVerify &&
+      !validation
+    ) {
+      return {
+        code: 1,
+        stdout: '',
+        stderr:
+          'Full verification passed, but HAR could not record exact-tree validation proof. Session NOT completed.',
+        verification,
+      };
+    }
+
+    if (session.workUnitId && session.attemptId && validation) {
+      decideWorkUnitOutcome(harnessRoot, session.workUnitId, {
+        decision: 'completed',
+        decidedAt: new Date().toISOString(),
+        attemptId: session.attemptId,
+        validationId: validation.validationId,
+        treeHash: validation.treeHash,
+      });
+      await syncRepoWithControlAsync(options.repoPath);
     }
 
     const teardown = await this.teardownEnvironment({

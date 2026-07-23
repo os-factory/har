@@ -14,6 +14,10 @@ HAR is an open-source CLI and MCP control plane for project-owned development ha
 
 HAR does not own the coding LLM and does not replace CI/CD. It gives agents a stable, machine-readable way to use the workflow your team already trusts.
 
+Planning tools decide what to build. HAR binds that durable work identity to an
+isolated execution attempt and verifiable evidence: runs, artifacts, telemetry,
+and the exact Git tree that passed.
+
 ## How It Works
 
 1. **Project-owned harness** — `.har/` contains editable scripts, docs, environment metadata, logs, artifacts, and optional stage definitions.
@@ -22,6 +26,7 @@ HAR does not own the coding LLM and does not replace CI/CD. It gives agents a st
 4. **Generic stages** — setup, launch, verify, test, inspect, reset, teardown, and custom stages expose normalized status, logs, durations, artifacts, and URLs.
 5. **Configurable agent slots** — parallel environment limits are defined in `.har/stages.json` (`agentSlots`) and `.har/harness.env`, not by the HAR CLI.
 6. **Optional stage templates** — add workflows like Playwright with `har env add-stage playwright`. They compile to generic stages (`test`, `custom`, etc.), not hardcoded HAR APIs.
+7. **Durable work evidence** — optionally launch with `--work-id` so slot sessions, retries, cost, and exact-tree validations remain attributable after teardown.
 
 ## Install
 
@@ -78,6 +83,13 @@ git commit -m "Add agent harness"
 
 har env launch 1
 har env verify 1
+```
+
+To correlate execution with an issue or ticket:
+
+```bash
+har env launch 1 --work-id "github:acme/widget#123" --work-source github
+har env complete 1
 ```
 
 Shell fallback when the CLI is not installed: `./.har/setup-infra.sh`, `./.har/launch.sh 1`, `./.har/verify.sh 1`.

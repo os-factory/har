@@ -7,6 +7,8 @@ import {
   RunRecord,
   SyncRunsInputSchema,
   SyncSlotsInputSchema,
+  SyncWorkUnitsInputSchema,
+  SyncValidationBindingsInputSchema,
   SyncSessionEventsInputSchema,
   SyncUsageInputSchema,
   SyncValidationsInputSchema,
@@ -17,6 +19,11 @@ import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
+import {
+  listValidationBindings,
+  listWorkAttempts,
+  listWorkUnits,
+} from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
 import { isTelemetryEnabled } from './telemetry-config';
 import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
@@ -149,13 +156,22 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
     }
     const runs = listRuns(repoPath);
     const status = collectEnvironmentStatus(repoPath);
+    const harnessRoot = resolveHarnessRoot(repoPath);
     const response = await fetch(`${process.env.HAR_CLOUD_API_URL}/api/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${process.env.HAR_CLOUD_API_KEY}`,
       },
-      body: JSON.stringify({ path: repoPath, runs, slots: status.slots }),
+      body: JSON.stringify({
+        path: repoPath,
+        runs,
+        slots: status.slots,
+        workUnits: listWorkUnits(harnessRoot),
+        attempts: listWorkAttempts(harnessRoot),
+        validations: listValidations(harnessRoot),
+        validationBindings: listValidationBindings(harnessRoot),
+      }),
     });
     if (!response.ok) {
       throw new Error(`Cloud sync failed: ${response.status}`);
@@ -198,6 +214,14 @@ async function syncRepoRunsAndSlots(
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
 
+  const workUnitsBody = SyncWorkUnitsInputSchema.parse({
+    workUnits: listWorkUnits(resolveHarnessRoot(repoPath)),
+    attempts: listWorkAttempts(resolveHarnessRoot(repoPath)),
+  });
+  if (workUnitsBody.workUnits.length > 0 || workUnitsBody.attempts.length > 0) {
+    await postJson(`${apiUrl}/api/repos/${repoId}/work-units`, workUnitsBody, dryRun);
+  }
+
   if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
     try {
       const usage = status.slots.flatMap((slot) =>
@@ -211,6 +235,8 @@ async function syncRepoRunsAndSlots(
           repoPath,
         }).map((row) => ({
           ...row,
+          workUnitId: slot.workUnitId,
+          attemptId: slot.attemptId,
           sessionKey:
             row.sessionKey ||
             buildSessionKey({
@@ -235,7 +261,11 @@ async function syncRepoRunsAndSlots(
           suffix: slot.suffix,
           sessionCreatedAt: slot.sessionCreatedAt,
           repoPath,
-        }),
+        }).map((event) => ({
+          ...event,
+          workUnitId: slot.workUnitId,
+          attemptId: slot.attemptId,
+        })),
       );
       if (events.length > 0) {
         const eventsBody = SyncSessionEventsInputSchema.parse({ events });
@@ -251,6 +281,17 @@ async function syncRepoRunsAndSlots(
   if (validations.length > 0) {
     const validationsBody = SyncValidationsInputSchema.parse({ validations });
     await postJson(`${apiUrl}/api/repos/${repoId}/validations`, validationsBody, dryRun);
+  }
+
+  const bindingsBody = SyncValidationBindingsInputSchema.parse({
+    bindings: listValidationBindings(resolveHarnessRoot(repoPath)),
+  });
+  if (bindingsBody.bindings.length > 0) {
+    await postJson(
+      `${apiUrl}/api/repos/${repoId}/validation-bindings`,
+      bindingsBody,
+      dryRun,
+    );
   }
 }
 

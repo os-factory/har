@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { RegisterRepoInputSchema, RunRecordSchema } from '@har/schemas';
+import {
+  RegisterRepoInputSchema,
+  RunRecordSchema,
+  SyncWorkUnitsInputSchema,
+} from '@har/schemas';
 
 describe('RegisterRepoInputSchema', () => {
   it('parses minimal repo registration', () => {
@@ -7,6 +11,26 @@ describe('RegisterRepoInputSchema', () => {
       path: '/home/dev/my-app',
     });
     expect(result.path).toBe('/home/dev/my-app');
+  });
+});
+
+describe('SyncWorkUnitsInputSchema', () => {
+  it('parses provider-neutral work and attempt identity', () => {
+    const result = SyncWorkUnitsInputSchema.parse({
+      workUnits: [{
+        workUnitId: 'github:acme/widget#123',
+        source: 'github',
+        createdAt: '2026-07-23T20:00:00.000Z',
+        updatedAt: '2026-07-23T20:00:00.000Z',
+      }],
+      attempts: [{
+        attemptId: '11111111-1111-4111-8111-111111111111',
+        workUnitId: 'github:acme/widget#123',
+        agentId: 1,
+        createdAt: '2026-07-23T20:00:00.000Z',
+      }],
+    });
+    expect(result.attempts[0].workUnitId).toBe(result.workUnits[0].workUnitId);
   });
 });
 

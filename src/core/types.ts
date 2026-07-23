@@ -4,6 +4,7 @@ import type {
   SlotReadiness,
   StageKind,
   StageResult,
+  ValidationRecord,
   VerificationResult,
 } from '../harness/schema';
 import { z } from 'zod';
@@ -18,6 +19,8 @@ export interface ExecutionContext {
   capture?: boolean;
   agentId?: number;
   trigger?: z.infer<typeof RunRecordTriggerSchema>;
+  workUnitId?: string;
+  attemptId?: string;
 }
 
 export interface LaunchFlags {
@@ -29,6 +32,8 @@ export interface LaunchFlags {
   force?: boolean;
   /** Resume a failed or partial launch without creating a new worktree. */
   resume?: boolean;
+  workUnitId?: string;
+  attemptId?: string;
 }
 
 export interface StageRunOptions {
@@ -39,6 +44,8 @@ export interface StageRunOptions {
   args?: string[];
   capture?: boolean;
   launchFlags?: LaunchFlags;
+  workUnitId?: string;
+  attemptId?: string;
 }
 
 export interface LaunchOptions {
@@ -50,6 +57,11 @@ export interface LaunchOptions {
   force?: boolean;
   resume?: boolean;
   capture?: boolean;
+  workUnitId?: string;
+  source?: string;
+  sourceUrl?: string;
+  title?: string;
+  parentWorkUnitId?: string;
 }
 
 export interface PreflightOptions {
@@ -76,6 +88,8 @@ export interface EnvironmentRunResult {
   workDir?: string;
   worktreePath?: string;
   branch?: string;
+  workUnitId?: string;
+  attemptId?: string;
   /** Launch refused because the slot is occupied and confirmReplace was not set. */
   blocked?: boolean;
   occupiedSlot?: {
@@ -90,6 +104,7 @@ export interface EnvironmentRunResult {
 
 export interface VerificationRunResult extends EnvironmentRunResult {
   verification: VerificationResult | null;
+  validation?: ValidationRecord;
 }
 
 export interface LogsOptions {

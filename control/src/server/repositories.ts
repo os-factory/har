@@ -116,6 +116,8 @@ export async function syncRuns(repositoryId: string, input: unknown) {
         startedAt: new Date(parsed.startedAt),
         finishedAt: parsed.finishedAt ? new Date(parsed.finishedAt) : null,
         workDir: parsed.workDir,
+        workUnitId: parsed.workUnitId,
+        attemptId: parsed.attemptId,
         result: parsed.result ? toJson(parsed.result) : undefined,
       },
       update: {
@@ -123,6 +125,8 @@ export async function syncRuns(repositoryId: string, input: unknown) {
         durationMs: parsed.durationMs,
         finishedAt: parsed.finishedAt ? new Date(parsed.finishedAt) : null,
         workDir: parsed.workDir,
+        workUnitId: parsed.workUnitId,
+        attemptId: parsed.attemptId,
         result: parsed.result ? toJson(parsed.result) : undefined,
       },
     });

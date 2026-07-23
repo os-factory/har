@@ -201,6 +201,20 @@ export const envCommand = {
               type: 'boolean',
               default: false,
               describe: 'Resume a failed or partial launch without creating a new worktree',
+            })
+            .option('work-id', {
+              type: 'string',
+              describe: 'Bind this session to a durable external work identifier',
+            })
+            .option('work-source', {
+              type: 'string',
+              describe: 'Optional provider/source name (for example github or linear)',
+            })
+            .option('work-url', { type: 'string', describe: 'Optional source URL for the work' })
+            .option('work-title', { type: 'string', describe: 'Optional human-readable title' })
+            .option('parent-work-id', {
+              type: 'string',
+              describe: 'Optional parent work unit identifier',
             }),
         handleLaunch,
       )
@@ -684,6 +698,11 @@ export async function handleLaunch(argv: {
   replace: boolean;
   force: boolean;
   resume: boolean;
+  workId?: string;
+  workSource?: string;
+  workUrl?: string;
+  workTitle?: string;
+  parentWorkId?: string;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -741,6 +760,11 @@ export async function handleLaunch(argv: {
     confirmReplace,
     force,
     resume: argv.resume,
+    workUnitId: argv.workId,
+    source: argv.workSource,
+    sourceUrl: argv.workUrl,
+    title: argv.workTitle,
+    parentWorkUnitId: argv.parentWorkId,
     capture: false,
   });
   if (result.blocked) {
@@ -771,6 +795,11 @@ export async function handleRecover(argv: { id?: number; repo: string }): Promis
     replace: false,
     force: false,
     resume: true,
+    workId: undefined,
+    workSource: undefined,
+    workUrl: undefined,
+    workTitle: undefined,
+    parentWorkId: undefined,
   });
 }
 

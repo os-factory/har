@@ -61,3 +61,15 @@ CLI/MCP execution stores local run JSON and slot registries. `har control sync`
 normalizes and posts repository metadata, runs, and slot status to Mission Control.
 The dashboard derives repository health, worktrees, validation pipelines, change
 batches, artifacts, and trends from that synchronized evidence.
+
+## Work identity
+
+An optional durable work unit binds external intent to one or more sequential HAR
+attempts. Slot IDs remain reusable capacity and telemetry session keys remain
+observational correlations. Runs carry work and attempt IDs, while exact-tree
+validation stays reusable through a separate binding.
+
+Active, failed, and verified state is derived from evidence. Completion is the only
+successful terminal decision and must reference a passing full validation of the
+exact tree. See
+[ADR 0001](https://github.com/os-factory/har/blob/main/docs/architecture/decisions/0001-work-identity.md).
