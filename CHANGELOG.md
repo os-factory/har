@@ -1,3 +1,11 @@
+# [0.19.0](https://github.com/os-factory/har/compare/v0.18.1...v0.19.0) (2026-07-23)
+
+
+### Features
+
+* **cli:** clarify launch lifecycle and new session base ([#74](https://github.com/os-factory/har/issues/74)) ([eb9cbcf](https://github.com/os-factory/har/commit/eb9cbcfcd943ac45678c37376c15d4a040cd033b))
+* **control:** unregister repositories from CLI and Mission Control ([#76](https://github.com/os-factory/har/issues/76)) ([ffb9ec7](https://github.com/os-factory/har/commit/ffb9ec74dec9c3a43d57b4c7cd6cf71b7b2de146))
+
 ## [0.18.1](https://github.com/os-factory/har/compare/v0.18.0...v0.18.1) (2026-07-23)
 
 
