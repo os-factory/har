@@ -28,6 +28,8 @@ and the exact Git tree that passed.
 6. **Optional stage templates** — add workflows like Playwright with `har env add-stage playwright`. They compile to generic stages (`test`, `custom`, etc.), not hardcoded HAR APIs.
 7. **Durable work evidence** — optionally launch with `--work-id` so slot sessions, retries, cost, and exact-tree validations remain attributable after teardown.
 
+![Mission Control Factory overview](docs/public/assets/factory-overview.png)
+
 ## Install
 
 **From npm:**

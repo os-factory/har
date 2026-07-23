@@ -37,7 +37,43 @@ har control watch --interval 10
 `--dry-run` previews registration or sync, and `sync --json` produces structured
 output.
 
-## What the dashboard shows
+## Factory: work and evidence
+
+Factory is the default Mission Control experience. It answers four questions:
+
+1. What durable piece of work is this?
+2. Which isolated attempt executed it?
+3. What ran, how long did it take, and what did the agent cost?
+4. Which exact Git tree passed full verification?
+
+![Mission Control Factory overview showing completed and active work units](/assets/factory-overview.png)
+
+Launch with a provider-neutral work identifier to create that evidence chain:
+
+```bash
+har env launch 1 \
+  --work-id "github:acme/widget#123" \
+  --work-source github \
+  --work-title "Add saved filters"
+```
+
+Every fresh launch creates an immutable attempt ID. Runs and telemetry inherit the
+work and attempt correlation. Full verification produces exact-tree proof, and
+`har env complete 1` records the completed outcome before teardown.
+
+```text
+External issue → Work unit → Attempt → Slot/worktree → Runs → Exact-tree validation
+```
+
+Factory derives active, failed, and verified state from that evidence. It stores
+explicit state only for business outcomes such as completed or abandoned. A plain
+teardown is operational cleanup and never claims success.
+
+Historical repositories remain compatible: runs, validations, and slots without
+work metadata continue to appear under Operations and repository detail. They are
+not guessed into work units.
+
+## Operations: runtime and infrastructure
 
 The repository overview summarizes registered projects, total runs, active slots,
 and harness profiles. Repository detail provides:
@@ -49,11 +85,11 @@ and harness profiles. Repository detail provides:
 - files under `.har/artifacts/`;
 - verification trends and pass rates.
 
-The global **Worktrees** home page (`/`) highlights dirty, stale, detached, and
-bypass-warning sessions across repositories. It also shows **token and cost**
-columns when agent telemetry is enabled (see below). Click a slot id for the
-slot leaf (LLM usage + Verify pipeline + session timeline). Repo catalog lives
-at `/repos`; cross-repo usage rollup at `/usage`.
+The global **Operations** page (`/worktrees`) highlights dirty, stale, detached,
+and bypass-warning sessions across repositories. It also shows **token and cost**
+columns when agent telemetry is enabled (see below). Click a slot id for the slot
+leaf (LLM usage + Verify pipeline + session timeline). The repository catalog
+lives at `/repos`; cross-repo usage rollup at `/usage`.
 
 ## Agent usage telemetry (Cursor / Claude / Codex)
 
