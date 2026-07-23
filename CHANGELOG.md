@@ -1,3 +1,10 @@
+## [0.18.1](https://github.com/os-factory/har/compare/v0.18.0...v0.18.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **control:** stop counting session worktrees as repositories ([#72](https://github.com/os-factory/har/issues/72)) ([0ea4a8e](https://github.com/os-factory/har/commit/0ea4a8e30c4173e88efddbe2a27b408f58dadf3a))
+
 # [0.18.0](https://github.com/os-factory/har/compare/v0.17.0...v0.18.0) (2026-07-22)
 
 
