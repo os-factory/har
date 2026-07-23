@@ -13,11 +13,11 @@ All repository commands accept `--repo <path>`; the default is the current direc
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-stage [template]` | List/install shipped templates or register a custom stage |
 | `preflight <id>` | Check ports, processes, Docker, and slot occupation |
-| `launch <id>` | Create and start a fresh slot session |
+| `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
-| `teardown <id>` | Stop a slot and keep its branch |
+| `teardown <id>` | Free a slot without a completion validation; keep branch |
 | `status` | Inspect all slots |
 | `runs list` | List persisted run records |
 | `runs get <runId>` | Return one run record |
@@ -65,8 +65,15 @@ har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume]
 har env recover 1
 ```
 
-`--replace` confirms replacement of an occupied slot. `--force` additionally
-permits discarding dirty uncommitted work and must only follow explicit approval.
+Every `launch` creates a **new** session from the current HEAD of `--repo` (the
+main checkout). Occupied-slot warnings print that upcoming base so you can
+confirm it before replacing.
+
+`--replace` only confirms destroying the previous session on that slot id — it
+does not choose `main`. Prefer `complete` / `teardown` when the prior task is
+finished, then launch. `--force` additionally permits discarding dirty
+uncommitted work and must only follow explicit approval. Use `--resume` /
+`recover` for failed launches, not `--replace`.
 
 ### Verify and finish
 

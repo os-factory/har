@@ -35,10 +35,18 @@ import { recordRepoForControlSync } from '../../core/control-registry';
 import { writeFileSafe } from '../../utils/file-ops';
 import { requireApiKey, validateAgentId } from '../../utils/validation';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
+import {
+  HAR_ENV_EPILOG,
+  LAUNCH_COMMAND_DESCRIBE,
+  LAUNCH_EPILOG,
+  LAUNCH_FORCE_DESCRIBE,
+  LAUNCH_REPLACE_DESCRIBE,
+  LAUNCH_RESUME_DESCRIBE,
+} from '../help-text';
 
 export const envCommand = {
   command: 'env <subcommand>',
-  describe: 'Manage agent environments',
+  describe: 'Manage agent environments (launch → verify → complete)',
   builder: (yargs: Argv) =>
     yargs
       .command(
@@ -175,11 +183,15 @@ export const envCommand = {
       )
       .command(
         'launch <id>',
-        'Launch a fresh agent session (replaces any previous session for the slot)',
+        LAUNCH_COMMAND_DESCRIBE,
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
-            .option('repo', { type: 'string', default: '.' })
+            .option('repo', {
+              type: 'string',
+              default: '.',
+              describe: 'Main checkout whose HEAD becomes the new session base',
+            })
             .option('worktree', {
               type: 'boolean',
               default: true,
@@ -189,19 +201,19 @@ export const envCommand = {
             .option('replace', {
               type: 'boolean',
               default: false,
-              describe: 'Replace an occupied slot (prompts on TTY when omitted)',
+              describe: LAUNCH_REPLACE_DESCRIBE,
             })
             .option('force', {
               type: 'boolean',
               default: false,
-              describe:
-                'Discard uncommitted changes when replacing a dirty worktree (only after explicit approval)',
+              describe: LAUNCH_FORCE_DESCRIBE,
             })
             .option('resume', {
               type: 'boolean',
               default: false,
-              describe: 'Resume a failed or partial launch without creating a new worktree',
-            }),
+              describe: LAUNCH_RESUME_DESCRIBE,
+            })
+            .epilog(LAUNCH_EPILOG),
         handleLaunch,
       )
       .command(
@@ -314,7 +326,11 @@ export const envCommand = {
             .demandCommand(1, 'Use: runs list | runs get <runId>'),
         () => {},
       )
-      .demandCommand(1, 'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, runs'),
+      .demandCommand(
+        1,
+        'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, runs',
+      )
+      .epilog(HAR_ENV_EPILOG),
   handler: () => {},
 };
 

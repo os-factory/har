@@ -137,15 +137,17 @@ The authoring agent updates scripts and this README. Review changes before commi
 
 ## Session lifecycle
 
-Every `launch` starts a **fresh session**: a new git worktree from the current HEAD at
+Every `launch` starts a **fresh session**: a new git worktree from the **main
+checkout's current HEAD** at
 `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
-The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — status,
-verify, and teardown resolve the work dir through it. Make ALL file edits under the
-work dir printed by launch, never in the main checkout.
+Switch that checkout to your intended base before launch. The session is recorded in
+`.har/slots/agent-<id>.json` (the slot registry) — status, verify, and teardown resolve
+the work dir through it. Make ALL file edits under the work dir printed by launch,
+never in the main checkout.
 
-- Relaunching a slot **replaces** its previous session; replacement requires `--replace` /
-  `confirmReplace=true` (or an interactive prompt). Uncommitted changes also need `--force`
-  after explicit user approval.
+- Prefer `complete` / `teardown` when a task is finished, then launch.
+- `--replace` destroys the previous worktree (requires confirmation); it does **not**
+  choose `main`. Uncommitted changes also need `--force` after explicit user approval.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - If launch fails after creating a worktree/env file, resume with

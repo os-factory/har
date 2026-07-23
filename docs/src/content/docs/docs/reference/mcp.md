@@ -25,9 +25,13 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | `har_complete_environment` | `agentId`, `skipVerify` | Validation, teardown, and retained branch |
 | `har_teardown_environment` | `agentId`, `deleteBranch` | Teardown result |
 
-Launch is blocked when a slot is occupied until `confirmReplace` is true. Dirty
-replacement additionally requires `force`; agents should never set either without
-review and explicit approval. Use recovery, not replacement, for a failed launch.
+Every launch creates a new session from the main checkout's current HEAD.
+`confirmReplace` only confirms destroying the previous worktree on that slot —
+it does not choose `main`. Prefer `har_complete_environment` /
+`har_teardown_environment` when the prior task is finished, then launch.
+Occupied-slot errors include the upcoming base. Dirty replacement additionally
+requires `force`; agents should never set either without review and explicit
+approval. Use recovery, not replacement, for a failed launch.
 
 ## Execution
 

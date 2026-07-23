@@ -72,7 +72,7 @@ export const LaunchEnvironmentInputSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      'Replace an occupied slot. Required when a session is already active. Call har_get_status first; get explicit user approval before setting this.',
+      'Destroy the previous session on this slot and start another from main-checkout HEAD. Does not choose main. Prefer complete/teardown when the prior task is finished. Call har_get_status first; get explicit user approval.',
     ),
   force: z
     .boolean()

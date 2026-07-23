@@ -81,6 +81,16 @@ describe('slot launch guard', () => {
     expect(result.slot?.worktreePath).toBe(worktreePath);
     expect(result.reason).toContain('already in use');
     expect(result.reason).not.toContain('Purpose:');
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: repoPath,
+      encoding: 'utf8',
+    }).trim();
+    const sha = execSync('git rev-parse --short HEAD', {
+      cwd: repoPath,
+      encoding: 'utf8',
+    }).trim();
+    expect(result.reason).toContain(`New session will be based on: ${branch} @ ${sha}`);
+    expect(result.reason).toContain('--replace does not choose this base');
   });
 
   it('requires force when replacing a dirty occupied slot', () => {
