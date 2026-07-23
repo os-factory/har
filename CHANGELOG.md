@@ -1,3 +1,10 @@
+# [0.20.0](https://github.com/os-factory/har/compare/v0.19.0...v0.20.0) (2026-07-23)
+
+
+### Features
+
+* **cli:** add onboarding preferences and commit gate setup ([#79](https://github.com/os-factory/har/issues/79)) ([196bb6b](https://github.com/os-factory/har/commit/196bb6b7f09c369ac5438d32b1feedc2ba329fd1))
+
 # [0.19.0](https://github.com/os-factory/har/compare/v0.18.1...v0.19.0) (2026-07-23)
 
 
