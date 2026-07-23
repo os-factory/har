@@ -5,6 +5,7 @@ import {
   getControlRegistryPath,
   listRegisteredRepos,
   recordRepoForControlSync,
+  removeRegisteredRepo,
 } from '../src/core/control-registry';
 import { canonicalizeControlRepoPath } from '../src/core/control-repo-path';
 
@@ -60,5 +61,12 @@ describe('control registry', () => {
 
     expect(listRegisteredRepos()).toEqual([FIXTURE_CANONICAL]);
     expect(JSON.parse(fs.readFileSync(registryPath, 'utf8')).repos).toEqual([FIXTURE_CANONICAL]);
+  });
+
+  it('removes a registered repo from the registry', () => {
+    recordRepoForControlSync(FIXTURE);
+    expect(removeRegisteredRepo(FIXTURE)).toBe(true);
+    expect(listRegisteredRepos()).toEqual([]);
+    expect(removeRegisteredRepo(FIXTURE)).toBe(false);
   });
 });
