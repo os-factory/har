@@ -15,13 +15,14 @@ work around it with ad-hoc commands.
 
 ## Before making changes
 
-1. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1`. Launch always creates a **fresh session worktree** from the current HEAD and returns its **work dir**.
-2. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `har env restart <id>` or `./.har/agent-cli.sh <id> restart` if a change doesn't take.
-3. Read [AGENT.md](./AGENT.md) at the repo root
-4. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
-5. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
+1. **On the main checkout, switch to the intended base** (usually `main`) — every launch creates a worktree from that HEAD. `--replace` does not select the base.
+2. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1`. Launch always creates a **fresh session worktree** and returns its **work dir**.
+3. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `har env restart <id>` or `./.har/agent-cli.sh <id> restart` if a change doesn't take.
+4. Read [AGENT.md](./AGENT.md) at the repo root
+5. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
+6. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
 
-Relaunching a slot **replaces** its previous session (the old branch is kept). Replacement requires explicit confirmation (`--replace`, `confirmReplace=true`, or an interactive prompt). If the previous session has uncommitted changes, you must also pass `force`/`--force` after **explicit user approval** — never autonomously.
+When a slot is occupied: prefer `complete` / `teardown` if the previous task is finished, then launch. Use `--replace` / `confirmReplace=true` only to reuse the same slot id immediately (destroys the old worktree; the old branch is kept if committed). If the previous session has uncommitted changes, you must also pass `force`/`--force` after **explicit user approval** — never autonomously. Failed launches: `--resume` / `recover`, not `--replace`.
 
 ### Slot safety (read before launch)
 
@@ -30,7 +31,7 @@ Relaunching a slot **replaces** its previous session (the old branch is kept). R
 - **Never** set `force`/`confirmReplace` without the user explicitly approving replacement.
 - **Commit early and often** in the session worktree — teardown keeps the branch, not uncommitted work.
 - **Gitignored paths are ephemeral** (`state/`, `runs/`, local clones) — they are lost when the worktree is removed.
-- Optional: set `har env launch <id> --purpose=label`, `HAR_SESSION_PURPOSE=label`, or `./.har/launch.sh <id> --purpose=label` so occupied-slot warnings show what you were doing.
+- With telemetry prompts enabled, Mission Control derives session purpose from the first captured user prompt.
 
 <!-- Monorepo: if this repository contains multiple .har harnesses, list them here
      and pick by the files you are changing. Example:

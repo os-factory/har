@@ -113,10 +113,14 @@ When your app talks to a local backend, read the resolved host port from `.env.a
 
 ## Session lifecycle
 
-Every `launch` starts a **fresh session**: a new git worktree from the current HEAD at
+Every `launch` starts a **fresh session**: a new git worktree from the **main
+checkout's current HEAD** at
 `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
-The session is recorded in `.har/slots/agent-<id>.json`.
+Switch that checkout to your intended base before launch. The session is recorded in
+`.har/slots/agent-<id>.json`.
 
-- Relaunching a slot **replaces** its previous session; uncommitted changes require `--force`.
+- Prefer `complete` / `teardown` when a task is finished, then launch.
+- `--replace` destroys the previous worktree; it does **not** choose `main`.
+  Uncommitted changes also require `--force` after explicit approval.
 - `teardown` removes the worktree but **keeps the session branch** for push / PR.
 - `har env complete <id>` finishes a session: full verify + teardown, branch kept.

@@ -30,15 +30,25 @@ import {
 import { checkLaunchGuard } from '../../core/slot-launch-guard';
 import { listRuns, getRun } from '../../core/runs';
 import { collectEnvironmentStatus } from '../../core/slot-status';
+import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
+import { readOnboardingPreferences } from '../../core/onboarding-preferences';
 import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
 import { recordRepoForControlSync } from '../../core/control-registry';
 import { writeFileSafe } from '../../utils/file-ops';
 import { requireApiKey, validateAgentId } from '../../utils/validation';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
+import {
+  HAR_ENV_EPILOG,
+  LAUNCH_COMMAND_DESCRIBE,
+  LAUNCH_EPILOG,
+  LAUNCH_FORCE_DESCRIBE,
+  LAUNCH_REPLACE_DESCRIBE,
+  LAUNCH_RESUME_DESCRIBE,
+} from '../help-text';
 
 export const envCommand = {
   command: 'env <subcommand>',
-  describe: 'Manage agent environments',
+  describe: 'Manage agent environments (launch → verify → complete)',
   builder: (yargs: Argv) =>
     yargs
       .command(
@@ -65,7 +75,7 @@ export const envCommand = {
             .option('yes', {
               type: 'boolean',
               default: false,
-              describe: 'Auto-apply AGENT.md proposal without prompting (--auto only)',
+              describe: 'Accept recommended onboarding actions without prompting',
             })
             .option('cursor-rule', {
               type: 'boolean',
@@ -80,6 +90,18 @@ export const envCommand = {
               // declare a separate --no-agents boolean — it collides and crashes parseAgentTargets.
               describe:
                 'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted; --no-agents to skip',
+            })
+            .option('commit-gate', {
+              choices: ['prompt', 'always', 'never'] as const,
+              describe: 'Install commit hooks during onboarding (defaults to user preferences)',
+            })
+            .option('gate-mode', {
+              choices: ['block', 'warn'] as const,
+              describe: 'Policy for commits without a passing full verification',
+            })
+            .option('gate-scope', {
+              choices: ['worktrees', 'all'] as const,
+              describe: 'Apply the commit policy to HAR worktrees or every checkout',
             }),
         handleInit,
       )
@@ -96,7 +118,11 @@ export const envCommand = {
               default: false,
               describe: 'Run built-in Claude adaptation (requires ANTHROPIC_API_KEY)',
             })
-            .option('yes', { type: 'boolean', default: false, describe: 'Auto-apply AGENT.md proposal (--auto only)' })
+            .option('yes', {
+              type: 'boolean',
+              default: false,
+              describe: 'Accept recommended maintenance actions without prompting',
+            })
             .option('finalize', {
               type: 'boolean',
               default: false,
@@ -116,6 +142,18 @@ export const envCommand = {
               type: 'string',
               describe:
                 'Scaffold agent skills for these targets (comma-separated: claude,cursor,codex); auto-detected when omitted; --no-agents to skip',
+            })
+            .option('commit-gate', {
+              choices: ['prompt', 'always', 'never'] as const,
+              describe: 'Install or refresh commit hooks (defaults to user preferences)',
+            })
+            .option('gate-mode', {
+              choices: ['block', 'warn'] as const,
+              describe: 'Policy for commits without a passing full verification',
+            })
+            .option('gate-scope', {
+              choices: ['worktrees', 'all'] as const,
+              describe: 'Apply the commit policy to HAR worktrees or every checkout',
             }),
         handleMaintain,
       )
@@ -175,11 +213,15 @@ export const envCommand = {
       )
       .command(
         'launch <id>',
-        'Launch a fresh agent session (replaces any previous session for the slot)',
+        LAUNCH_COMMAND_DESCRIBE,
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
-            .option('repo', { type: 'string', default: '.' })
+            .option('repo', {
+              type: 'string',
+              default: '.',
+              describe: 'Main checkout whose HEAD becomes the new session base',
+            })
             .option('worktree', {
               type: 'boolean',
               default: true,
@@ -189,18 +231,17 @@ export const envCommand = {
             .option('replace', {
               type: 'boolean',
               default: false,
-              describe: 'Replace an occupied slot (prompts on TTY when omitted)',
+              describe: LAUNCH_REPLACE_DESCRIBE,
             })
             .option('force', {
               type: 'boolean',
               default: false,
-              describe:
-                'Discard uncommitted changes when replacing a dirty worktree (only after explicit approval)',
+              describe: LAUNCH_FORCE_DESCRIBE,
             })
             .option('resume', {
               type: 'boolean',
               default: false,
-              describe: 'Resume a failed or partial launch without creating a new worktree',
+              describe: LAUNCH_RESUME_DESCRIBE,
             })
             .option('work-id', {
               type: 'string',
@@ -215,7 +256,8 @@ export const envCommand = {
             .option('parent-work-id', {
               type: 'string',
               describe: 'Optional parent work unit identifier',
-            }),
+            })
+            .epilog(LAUNCH_EPILOG),
         handleLaunch,
       )
       .command(
@@ -328,7 +370,11 @@ export const envCommand = {
             .demandCommand(1, 'Use: runs list | runs get <runId>'),
         () => {},
       )
-      .demandCommand(1, 'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, runs'),
+      .demandCommand(
+        1,
+        'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, runs',
+      )
+      .epilog(HAR_ENV_EPILOG),
   handler: () => {},
 };
 
@@ -345,8 +391,12 @@ export async function handleInit(argv: {
   cursorRule?: boolean;
   /** String from --agents=…, or `false` when --no-agents (yargs negation). */
   agents?: string | false;
+  commitGate?: 'prompt' | 'always' | 'never';
+  gateMode?: 'block' | 'warn';
+  gateScope?: 'worktrees' | 'all';
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
+  const onboarding = resolveOnboardingOptions(argv);
 
   header('har env init');
   info(`Repository: ${repoPath}`);
@@ -392,15 +442,20 @@ export async function handleInit(argv: {
     divider();
     success('Harness initialized!');
     recordRepoForControlSync(repoPath);
+    await handleCommitGateOnboarding({
+      repoPath,
+      ...onboarding.commitGate,
+      autoYes: argv.yes,
+    });
     await handleCursorRule({
       repoPath,
-      cursorRule: resolveCursorRuleFlag(argv.cursorRule),
+      cursorRule: onboarding.cursorRule,
       autoYes: argv.yes,
       mode: 'init',
     });
     await handleAgentSkills({
       repoPath,
-      ...resolveAgentsScaffoldOptions(argv.agents),
+      ...onboarding.agentSkills,
       autoYes: argv.yes,
       force: argv.force,
       mode: 'init',
@@ -424,8 +479,12 @@ export async function handleMaintain(argv: {
   cursorRule?: boolean;
   /** String from --agents=…, or `false` when --no-agents (yargs negation). */
   agents?: string | false;
+  commitGate?: 'prompt' | 'always' | 'never';
+  gateMode?: 'block' | 'warn';
+  gateScope?: 'worktrees' | 'all';
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
+  const onboarding = resolveOnboardingOptions(argv);
 
   header('har env maintain');
   info(`Repository: ${repoPath}`);
@@ -484,15 +543,20 @@ export async function handleMaintain(argv: {
     } else {
       success('Harness updated!');
     }
+    await handleCommitGateOnboarding({
+      repoPath,
+      ...onboarding.commitGate,
+      autoYes: argv.yes,
+    });
     await handleCursorRule({
       repoPath,
-      cursorRule: resolveCursorRuleFlag(argv.cursorRule),
+      cursorRule: onboarding.cursorRule,
       autoYes: argv.yes,
       mode: 'maintain',
     });
     await handleAgentSkills({
       repoPath,
-      ...resolveAgentsScaffoldOptions(argv.agents),
+      ...onboarding.agentSkills,
       autoYes: argv.yes,
       mode: 'maintain',
     });
@@ -521,6 +585,43 @@ export function resolveAgentsScaffoldOptions(agents: string | false | undefined)
   if (agents === false) return { enabled: false };
   if (typeof agents === 'string') return { agents };
   return {};
+}
+
+export function resolveOnboardingOptions(argv: {
+  cursorRule?: boolean;
+  agents?: string | false;
+  commitGate?: 'prompt' | 'always' | 'never';
+  gateMode?: 'block' | 'warn';
+  gateScope?: 'worktrees' | 'all';
+}): {
+  cursorRule?: boolean;
+  agentSkills: { agents?: string; enabled?: boolean };
+  commitGate: {
+    install: 'prompt' | 'always' | 'never';
+    mode: 'block' | 'warn';
+    scope: 'worktrees' | 'all';
+  };
+} {
+  const preferences = readOnboardingPreferences();
+  const preferredCursorRule =
+    preferences.cursorRule === 'auto' ? undefined : preferences.cursorRule === 'on';
+  const preferredAgentSkills =
+    preferences.agentSkills === 'auto'
+      ? {}
+      : preferences.agentSkills.length === 0
+        ? { enabled: false }
+        : { agents: preferences.agentSkills.join(',') };
+
+  return {
+    cursorRule: argv.cursorRule ?? preferredCursorRule,
+    agentSkills:
+      argv.agents === undefined ? preferredAgentSkills : resolveAgentsScaffoldOptions(argv.agents),
+    commitGate: {
+      install: argv.commitGate ?? preferences.commitGate.install,
+      mode: argv.gateMode ?? preferences.commitGate.mode,
+      scope: argv.gateScope ?? preferences.commitGate.scope,
+    },
+  };
 }
 
 function emitManualAdaptationPrompt(

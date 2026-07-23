@@ -104,19 +104,25 @@ har env maintain --no-cursor-rule  # skip Cursor rule scaffolding
 
 ## Session lifecycle
 
-Every `launch` starts a **fresh session**: a new git worktree from the current HEAD at
+Every `launch` starts a **fresh session**: a new git worktree from the **main
+checkout's current HEAD** at
 `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
-The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — status,
-verify, and teardown resolve the work dir through it. Make ALL file edits under the
-work dir printed by launch, never in the main checkout.
+Switch that checkout to `main` (or your intended base) before launch for a new
+unrelated task. The session is recorded in `.har/slots/agent-<id>.json` (the slot
+registry) — status, verify, and teardown resolve the work dir through it. Make ALL
+file edits under the work dir printed by launch, never in the main checkout.
 
-- Relaunching a slot **replaces** its previous session and **requires explicit confirmation**
-  (`--replace`, `HAR_CONFIRM_REPLACE=1`, `har env launch --replace`, or MCP `confirmReplace=true`).
-  Launch prints a warning showing the occupied worktree, branch, and dirty state.
-- If the old worktree has uncommitted changes, you must also pass `--force` — **only after
-  explicit user approval** (agents must never set force autonomously).
-- The session **branch is kept** on teardown if you committed; gitignored paths (`state/`,
-  `runs/`, local clones) are **not** preserved when the worktree is removed.
+- Prefer `har env complete <id>` (or `teardown`) when a task is finished, then
+  launch — that frees the slot without mixing bases.
+- Relaunching with `--replace` **destroys** the previous worktree and **requires
+  explicit confirmation** (`--replace`, `HAR_CONFIRM_REPLACE=1`, or MCP
+  `confirmReplace=true`). It does **not** choose `main`; the new session still
+  uses current HEAD. Occupied warnings show both the old session and the
+  upcoming base.
+- If the old worktree has uncommitted changes, you must also pass `--force` —
+  **only after explicit user approval** (agents must never set force autonomously).
+- The session **branch is kept** on teardown if you committed; gitignored paths
+  (`state/`, `runs/`, local clones) are **not** preserved when the worktree is removed.
 - Use **separate slots** for parallel unrelated tasks (`agentSlots.max` in `stages.json`).
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).

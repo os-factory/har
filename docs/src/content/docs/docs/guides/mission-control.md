@@ -37,6 +37,24 @@ har control watch --interval 10
 `--dry-run` previews registration or sync, and `sync --json` produces structured
 output.
 
+## Unregister
+
+Remove a repository from Mission Control (and stop auto-sync) from the CLI or the
+repo detail page (**Unregister**):
+
+```bash
+har control unregister --repo /path/to/project
+# non-interactive:
+har control unregister --repo /path/to/project --yes --delete-worktrees
+```
+
+Unregister deletes synced runs/slots/telemetry for that path and records a
+blocklist entry so background sync does not immediately re-add it. The CLI
+proposes deleting session worktrees; confirm interactively or pass
+`--delete-worktrees`. The dashboard checkbox does the same, but the packaged
+Docker image often cannot see host worktree paths — use the CLI when host cleanup
+is required. Re-register with `har control register`.
+
 ## Factory: work and evidence
 
 Factory is the default Mission Control experience. It answers four questions:

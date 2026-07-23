@@ -5,20 +5,43 @@ import {
   RunRecordSchema,
   SyncRunsInputSchema,
   SyncSlotsInputSchema,
+  UnregisterRepoInputSchema,
+  type UnregisterRepoResult,
 } from '@har/schemas';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
+import { cleanupSessionWorktrees } from '@/server/worktree-cleanup';
 
 function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as object;
+}
+
+export class RepositoryUnregisteredError extends Error {
+  readonly path: string;
+
+  constructor(repoPath: string) {
+    super(
+      `Repository was unregistered: ${repoPath}. Re-register with har control register --force (or force: true).`,
+    );
+    this.name = 'RepositoryUnregisteredError';
+    this.path = repoPath;
+  }
 }
 
 export async function registerRepository(input: unknown) {
   const data = RegisterRepoInputSchema.parse(input);
   const requested = path.resolve(data.path);
   const repoPath = canonicalizeControlRepoPath(requested);
+
+  const blocked = await prisma.unregisteredRepository.findUnique({ where: { path: repoPath } });
+  if (blocked && data.force !== true) {
+    throw new RepositoryUnregisteredError(repoPath);
+  }
+  if (blocked && data.force === true) {
+    await prisma.unregisteredRepository.delete({ where: { path: repoPath } });
+  }
 
   const repo = await prisma.repository.upsert({
     where: { path: repoPath },
@@ -43,6 +66,55 @@ export async function registerRepository(input: unknown) {
   }
 
   return repo;
+}
+
+export async function deleteRepository(
+  id: string,
+  input: unknown = {},
+): Promise<UnregisterRepoResult | null> {
+  const options = UnregisterRepoInputSchema.parse(input ?? {});
+  const repo = await prisma.repository.findUnique({
+    where: { id },
+    include: { slots: true },
+  });
+  if (!repo) return null;
+
+  const targets = repo.slots
+    .map((slot) => ({
+      agentId: slot.slotId,
+      worktreePath: slot.worktreePath ?? slot.workDir ?? '',
+    }))
+    .filter((t) => Boolean(t.worktreePath));
+
+  const worktrees = options.deleteWorktrees
+    ? cleanupSessionWorktrees(repo.path, targets)
+    : targets.map((t) => ({
+        path: path.resolve(t.worktreePath),
+        agentId: t.agentId,
+        deleted: false,
+      }));
+
+  await prisma.unregisteredRepository.upsert({
+    where: { path: repo.path },
+    create: {
+      path: repo.path,
+      deleteWorktrees: options.deleteWorktrees === true,
+    },
+    update: {
+      unregisteredAt: new Date(),
+      deleteWorktrees: options.deleteWorktrees === true,
+    },
+  });
+
+  await prisma.repository.delete({ where: { id: repo.id } });
+
+  return {
+    ok: true,
+    id: repo.id,
+    path: repo.path,
+    deleteWorktrees: options.deleteWorktrees === true,
+    worktrees,
+  };
 }
 
 /** Remove linked-worktree rows when the main checkout is already registered. */

@@ -9,15 +9,24 @@ const TEST_PORT_OFFSET = (process.pid % 400) * 10;
 const TEST_FE_BASE = 40_000 + TEST_PORT_OFFSET;
 const TEST_API_BASE = 50_000 + TEST_PORT_OFFSET;
 
-function makeHarness(options: { pm2?: boolean; infraDb?: boolean } = {}): string {
+function makeHarness(
+  options: {
+    pm2?: boolean;
+    infraDb?: boolean;
+    feBase?: number;
+    apiBase?: number;
+  } = {},
+): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-preflight-'));
   tmpDirs.push(dir);
   const harDir = path.join(dir, '.har');
   fs.mkdirSync(harDir, { recursive: true });
+  const feBase = options.feBase ?? TEST_FE_BASE;
+  const apiBase = options.apiBase ?? TEST_API_BASE;
   const lines = [
     'export HARNESS_PROJECT_NAME=test-project',
-    `export HARNESS_FE_BASE_PORT=${TEST_FE_BASE}`,
-    `export HARNESS_API_BASE_PORT=${TEST_API_BASE}`,
+    `export HARNESS_FE_BASE_PORT=${feBase}`,
+    `export HARNESS_API_BASE_PORT=${apiBase}`,
     'export HARNESS_PORT_STEP=10',
     'export HARNESS_AGENT_SLOT_MIN=1',
     'export HARNESS_AGENT_SLOT_MAX=3',
@@ -100,12 +109,15 @@ describe('inspectSlotReadiness', () => {
 
 describe('allocateAppPorts', () => {
   it('returns defaults when ports are free', () => {
-    const repo = makeHarness({ pm2: true });
+    // Use high bases so busy local stacks (e.g. docker on 3010) do not flake this unit test.
+    const feBase = 47000;
+    const apiBase = 48000;
+    const repo = makeHarness({ pm2: true, feBase, apiBase });
     const ports = allocateAppPorts(repo, 1);
     expect('error' in ports).toBe(false);
     if (!('error' in ports)) {
-      expect(ports.frontend).toBe(TEST_FE_BASE + 10);
-      expect(ports.api).toBe(TEST_API_BASE + 10);
+      expect(ports.frontend).toBe(feBase + 10);
+      expect(ports.api).toBe(apiBase + 10);
       expect(ports.allocated).toBe(false);
     }
   });

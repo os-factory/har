@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { listRepositories, registerRepository } from '@/server/repositories';
+import {
+  listRepositories,
+  registerRepository,
+  RepositoryUnregisteredError,
+} from '@/server/repositories';
 
 export async function GET() {
   const repos = await listRepositories();
@@ -22,6 +26,9 @@ export async function POST(request: Request) {
     const repo = await registerRepository(body);
     return NextResponse.json({ id: repo.id, path: repo.path });
   } catch (err: unknown) {
+    if (err instanceof RepositoryUnregisteredError) {
+      return NextResponse.json({ error: err.message, path: err.path }, { status: 409 });
+    }
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 400 });
   }

@@ -7,8 +7,10 @@ description: The safe lifecycle for parallel coding tasks.
 
 1. Read the repository's `AGENT.md`, `.har/README.md`, and `.har/stages.json`.
 2. Check status before choosing a slot.
-3. Launch once and record the returned work directory.
-4. Read `.har/CLAUDE.agent.md` in that worktree for resolved URLs and the
+3. On the **main checkout**, switch to the branch you want as the session base
+   (usually `main`) — every launch creates a worktree from that HEAD.
+4. Launch once and record the returned work directory.
+5. Read `.har/CLAUDE.agent.md` in that worktree for resolved URLs and the
    repository-specific definition of done.
 
 ```bash
@@ -23,15 +25,25 @@ fills the session purpose from the first captured user prompt.
 
 ## Occupied and failed slots
 
-A normal launch never silently replaces an active session.
+A normal launch never silently replaces an active session. Prefer finishing the
+previous task first:
+
+```bash
+har env complete 2   # or: har env teardown 2
+har env launch 2
+```
+
+To reuse the same slot id immediately, pass `--replace` after reviewing the
+occupied warning (it shows the **new** session base — HEAD of `--repo` — not
+only the old worktree). `--replace` destroys the previous worktree; it does
+**not** select `main`.
 
 ```bash
 har env launch 2 --replace
 ```
 
-Only use `--replace` after reviewing the current branch and worktree. If that
-worktree has uncommitted changes, replacement remains blocked until the owner
-explicitly approves `--force`.
+If that worktree has uncommitted changes, replacement remains blocked until the
+owner explicitly approves `--force`.
 
 A launch that failed partway is different. Preserve and resume its existing state:
 

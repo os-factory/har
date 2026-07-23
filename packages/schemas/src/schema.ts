@@ -124,6 +124,23 @@ export const CommitGateConfigSchema = z.object({
 
 export type CommitGateConfig = z.infer<typeof CommitGateConfigSchema>;
 
+/** User-level defaults applied when init/maintain flags are omitted. */
+export const OnboardingPreferencesSchema = z.object({
+  version: z.literal(1).default(1),
+  cursorRule: z.enum(['auto', 'on', 'off']).default('auto'),
+  agentSkills: z.union([z.literal('auto'), z.array(AgentSkillTargetSchema)]).default('auto'),
+  commitGate: z
+    .object({
+      install: z.enum(['prompt', 'always', 'never']).default('prompt'),
+      mode: z.enum(['block', 'warn']).default('block'),
+      scope: z.enum(['worktrees', 'all']).default('worktrees'),
+    })
+    .default({}),
+  updatedAt: z.string().optional(),
+});
+
+export type OnboardingPreferences = z.infer<typeof OnboardingPreferencesSchema>;
+
 export const HarnessStageRegistrySchema = z
   .object({
     version: z.string().default('1'),
@@ -448,9 +465,37 @@ export const RegisterRepoInputSchema = z.object({
   gitRemote: z.string().optional(),
   manifest: HarnessManifestSchema.optional(),
   stagesRegistry: HarnessStageRegistrySchema.optional(),
+  /** Clear a prior unregister blocklist entry and re-register. */
+  force: z.boolean().optional(),
 });
 
 export type RegisterRepoInput = z.infer<typeof RegisterRepoInputSchema>;
+
+export const UnregisterRepoInputSchema = z.object({
+  /** When true, attempt to remove session worktrees on disk (host paths). */
+  deleteWorktrees: z.boolean().optional().default(false),
+});
+
+export type UnregisterRepoInput = z.infer<typeof UnregisterRepoInputSchema>;
+
+export const UnregisterWorktreeResultSchema = z.object({
+  path: z.string(),
+  agentId: z.number().optional(),
+  deleted: z.boolean(),
+  error: z.string().optional(),
+});
+
+export type UnregisterWorktreeResult = z.infer<typeof UnregisterWorktreeResultSchema>;
+
+export const UnregisterRepoResultSchema = z.object({
+  ok: z.literal(true),
+  id: z.string(),
+  path: z.string(),
+  deleteWorktrees: z.boolean(),
+  worktrees: z.array(UnregisterWorktreeResultSchema),
+});
+
+export type UnregisterRepoResult = z.infer<typeof UnregisterRepoResultSchema>;
 
 export const SyncRunsInputSchema = z.object({
   runs: z.array(RunRecordSchema),

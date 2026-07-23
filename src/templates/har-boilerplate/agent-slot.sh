@@ -537,6 +537,17 @@ print_slot_replace_warning() {
   [ -n "$created" ] && echo "  Since:     ${created}" >&2
   echo "  Git:       ${dirty_summary}" >&2
   echo "" >&2
+  local base_root="${HARNESS_ROOT:-${REPO_ROOT:-}}"
+  if [ -n "$base_root" ] && [ -d "$base_root" ]; then
+    local base_branch base_sha
+    base_branch="$(git -C "$base_root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)"
+    base_sha="$(git -C "$base_root" rev-parse --short HEAD 2>/dev/null || true)"
+    echo "  New session will be based on: ${base_branch}${base_sha:+ @ ${base_sha}}" >&2
+    echo "  (HEAD of ${base_root})" >&2
+    echo "  --replace does not choose this base — switch that checkout first for a new unrelated task." >&2
+    echo "" >&2
+  fi
+  echo "  Prefer complete/teardown when the previous task is finished, then launch." >&2
   echo "  The session branch is kept only if you committed. Gitignored paths" >&2
   echo "  (state/, runs/, local clones, .env.local) are NOT preserved." >&2
   echo "" >&2

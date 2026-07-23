@@ -250,3 +250,10 @@ model CloudConfig {
   enabled   Boolean  @default(false)
   updatedAt DateTime @updatedAt
 }
+
+/** Paths removed via unregister — blocks auto-sync re-registration until force register. */
+model UnregisteredRepository {
+  path             String   @id
+  unregisteredAt   DateTime @default(now())
+  deleteWorktrees  Boolean  @default(false)
+}

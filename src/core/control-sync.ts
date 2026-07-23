@@ -14,7 +14,7 @@ import {
   SyncValidationsInputSchema,
 } from '../harness/schema';
 import { getControlApiUrl, isControlEnabled } from './control-config';
-import { listRegisteredRepos } from './control-registry';
+import { listRegisteredRepos, removeRegisteredRepo } from './control-registry';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
@@ -34,6 +34,8 @@ export interface ControlSyncOptions {
   apiUrl?: string;
   dryRun?: boolean;
   cloud?: boolean;
+  /** Re-register even if the path was previously unregistered. */
+  force?: boolean;
 }
 
 export interface ControlRegisterOptions extends ControlSyncOptions {
@@ -140,9 +142,29 @@ export async function registerRepoWithControl(
     gitRemote: options.gitRemote,
     manifest: manifest ?? undefined,
     stagesRegistry: stagesRegistry ?? undefined,
+    force: options.force,
   };
 
-  return postJson<{ id: string }>(`${apiUrl}/api/repos`, body, options.dryRun);
+  if (options.dryRun) return null;
+
+  const response = await fetch(`${apiUrl}/api/repos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 409) {
+    // Previously unregistered — drop from local registry so auto-sync stops retrying.
+    removeRegisteredRepo(repoPath);
+    return null;
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Control API ${response.status}: ${text || response.statusText}`);
+  }
+
+  return (await response.json()) as { id: string };
 }
 
 export async function syncRepoWithControl(options: ControlSyncOptions): Promise<void> {
@@ -187,7 +209,10 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
     if (!listResponse.ok) throw new Error('Failed to list repos from Control API');
     const repos = (await listResponse.json()) as { id: string; path: string }[];
     const existing = repos.find((r) => path.resolve(r.path) === repoPath);
-    if (!existing) throw new Error(`Repo not registered: ${repoPath}`);
+    if (!existing) {
+      // Unregistered / blocked — nothing to sync.
+      return;
+    }
     await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, options.dryRun);
     return;
   }

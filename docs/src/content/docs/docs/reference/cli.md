@@ -13,11 +13,11 @@ All repository commands accept `--repo <path>`; the default is the current direc
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-stage [template]` | List/install shipped templates or register a custom stage |
 | `preflight <id>` | Check ports, processes, Docker, and slot occupation |
-| `launch <id>` | Create and start a fresh slot session |
+| `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
-| `teardown <id>` | Stop a slot and keep its branch |
+| `teardown <id>` | Free a slot without a completion validation; keep branch |
 | `status` | Inspect all slots |
 | `runs list` | List persisted run records |
 | `runs get <runId>` | Return one run record |
@@ -67,8 +67,15 @@ har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume]
 har env recover 1
 ```
 
-`--replace` confirms replacement of an occupied slot. `--force` additionally
-permits discarding dirty uncommitted work and must only follow explicit approval.
+Every `launch` creates a **new** session from the current HEAD of `--repo` (the
+main checkout). Occupied-slot warnings print that upcoming base so you can
+confirm it before replacing.
+
+`--replace` only confirms destroying the previous session on that slot id — it
+does not choose `main`. Prefer `complete` / `teardown` when the prior task is
+finished, then launch. `--force` additionally permits discarding dirty
+uncommitted work and must only follow explicit approval. Use `--resume` /
+`recover` for failed launches, not `--replace`.
 
 Work metadata is optional and backward compatible. A fresh bound launch creates an
 immutable attempt UUID; `--resume` preserves the failed session's attempt.
@@ -99,6 +106,21 @@ har agents remove [--claude] [--cursor] [--codex]
 
 Without target flags, HAR detects supported agent directories.
 
+## `har preferences`
+
+```bash
+har preferences show [--json]
+har preferences configure
+har preferences configure --cursor-rule <auto|on|off>
+  --agents <auto|none|claude,cursor,codex>
+  --commit-gate <prompt|always|never>
+  --gate-mode <block|warn>
+  --gate-scope <worktrees|all>
+```
+
+Preferences are user-level defaults stored in `~/.har/preferences.json`.
+Repository policy remains visible and versioned in `.har/stages.json`.
+
 ## `har hooks`
 
 ```bash
@@ -118,11 +140,17 @@ main-checkout edit guard instead. `check` and `record-commit` are hook workers.
 ```bash
 har control up [--build] [--no-detach]
 har control down
-har control register [--api-url <url>] [--dry-run]
+har control register [--repo .] [--api-url <url>] [--dry-run] [--force]
+har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control sync [--api-url <url>] [--dry-run] [--json] [--cloud]
 har control watch [--interval 10] [--api-url <url>]
 har control login --api-key <key>
 ```
+
+`unregister` removes the repository from Mission Control and `~/.har/repos.json`.
+Interactively it lists session worktrees and asks whether to delete them; pass
+`--delete-worktrees` (with `--yes` in non-TTY) to remove worktrees via harness
+teardown. Re-add later with `har control register`.
 
 ## `har telemetry`
 

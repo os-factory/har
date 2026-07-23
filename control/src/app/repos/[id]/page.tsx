@@ -5,6 +5,7 @@ import { ArtifactTable } from '@/components/artifact-table';
 import { ChangeBatchList } from '@/components/change-batch-list';
 import { RunTimeline } from '@/components/run-timeline';
 import { SlotGrid } from '@/components/slot-grid';
+import { UnregisterRepoButton } from '@/components/unregister-repo-button';
 import { ValidationPipeline } from '@/components/validation-pipeline';
 import { ValidationStages } from '@/components/validation-stages';
 import { VerificationTrendChart } from '@/components/verification-trend-chart';
@@ -50,12 +51,26 @@ export default async function RepoDetailPage({
 
   return (
     <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
-      <div>
-        <Link href="/repos" className="text-sm text-muted-foreground hover:underline">
-          ← Repos
-        </Link>
-        <h2 className="mt-2 text-2xl font-semibold">{repo.path}</h2>
-        {repo.gitRemote && <p className="text-sm text-muted-foreground">{repo.gitRemote}</p>}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Link href="/repos" className="text-sm text-muted-foreground hover:underline">
+            ← Repos
+          </Link>
+          <h2 className="mt-2 text-2xl font-semibold">{repo.path}</h2>
+          {repo.gitRemote && <p className="text-sm text-muted-foreground">{repo.gitRemote}</p>}
+        </div>
+        <UnregisterRepoButton
+          repoId={repo.id}
+          repoPath={repo.path}
+          worktrees={repo.slots
+            .filter((slot) => Boolean(slot.worktreePath || slot.workDir))
+            .map((slot) => ({
+              agentId: slot.slotId,
+              path: slot.worktreePath ?? slot.workDir ?? '',
+              active: slot.active,
+              dirty: slot.dirty,
+            }))}
+        />
       </div>
 
       {health && (
