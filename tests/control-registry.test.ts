@@ -6,8 +6,11 @@ import {
   listRegisteredRepos,
   recordRepoForControlSync,
 } from '../src/core/control-registry';
+import { canonicalizeControlRepoPath } from '../src/core/control-repo-path';
 
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
+/** Mission Control identity is the main checkout path, even from a session worktree. */
+const FIXTURE_CANONICAL = canonicalizeControlRepoPath(FIXTURE);
 
 describe('control registry', () => {
   let tempHome: string;
@@ -26,7 +29,7 @@ describe('control registry', () => {
 
   it('records a repo with a harness manifest', () => {
     recordRepoForControlSync(FIXTURE);
-    expect(listRegisteredRepos()).toEqual([path.resolve(FIXTURE)]);
+    expect(listRegisteredRepos()).toEqual([FIXTURE_CANONICAL]);
     expect(fs.existsSync(getControlRegistryPath())).toBe(true);
   });
 
@@ -55,9 +58,7 @@ describe('control registry', () => {
       JSON.stringify({ repos: [path.resolve(FIXTURE), '/tmp/missing-har-repo'] }, null, 2),
     );
 
-    expect(listRegisteredRepos()).toEqual([path.resolve(FIXTURE)]);
-    expect(JSON.parse(fs.readFileSync(registryPath, 'utf8')).repos).toEqual([
-      path.resolve(FIXTURE),
-    ]);
+    expect(listRegisteredRepos()).toEqual([FIXTURE_CANONICAL]);
+    expect(JSON.parse(fs.readFileSync(registryPath, 'utf8')).repos).toEqual([FIXTURE_CANONICAL]);
   });
 });

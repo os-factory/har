@@ -13,6 +13,7 @@ import {
 } from '../harness/schema';
 import { getControlApiUrl, isControlEnabled } from './control-config';
 import { listRegisteredRepos } from './control-registry';
+import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
@@ -88,7 +89,7 @@ export async function syncAllKnownReposWithControl(options?: {
   const repoPaths = new Set<string>(listRegisteredRepos());
 
   if (options?.cwd) {
-    const cwd = path.resolve(options.cwd);
+    const cwd = canonicalizeControlRepoPath(options.cwd);
     if (readManifest(cwd)) repoPaths.add(cwd);
   }
 
@@ -97,7 +98,7 @@ export async function syncAllKnownReposWithControl(options?: {
     if (listResponse.ok) {
       const repos = (await listResponse.json()) as { path: string }[];
       for (const repo of repos) {
-        const resolved = path.resolve(repo.path);
+        const resolved = canonicalizeControlRepoPath(repo.path);
         if (readManifest(resolved)) repoPaths.add(resolved);
       }
     }
@@ -122,7 +123,7 @@ export async function syncAllKnownReposWithControl(options?: {
 export async function registerRepoWithControl(
   options: ControlRegisterOptions,
 ): Promise<{ id: string } | null> {
-  const repoPath = path.resolve(options.repoPath);
+  const repoPath = canonicalizeControlRepoPath(options.repoPath);
   const apiUrl = options.apiUrl ?? getControlApiUrl();
   const manifest = readManifest(repoPath);
   const stagesRegistry = readStageRegistry(repoPath);
@@ -138,7 +139,7 @@ export async function registerRepoWithControl(
 }
 
 export async function syncRepoWithControl(options: ControlSyncOptions): Promise<void> {
-  const repoPath = path.resolve(options.repoPath);
+  const repoPath = canonicalizeControlRepoPath(options.repoPath);
   const apiUrl = options.apiUrl ?? getControlApiUrl();
 
   if (options.cloud) {
@@ -282,7 +283,12 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
       }
       return;
     }
-    await withTimeout(syncRepoWithControl({ repoPath, apiUrl }), SYNC_TIMEOUT_MS, 'control sync');
+    const canonical = canonicalizeControlRepoPath(repoPath);
+    await withTimeout(
+      syncRepoWithControl({ repoPath: canonical, apiUrl }),
+      SYNC_TIMEOUT_MS,
+      'control sync',
+    );
   } catch (err: unknown) {
     if (verbose) {
       const message = err instanceof Error ? err.message : String(err);
@@ -299,14 +305,15 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
     const reachable = await isControlApiReachable(apiUrl);
     if (!reachable) return;
 
-    const registerResult = await registerRepoWithControl({ repoPath, apiUrl });
+    const canonical = canonicalizeControlRepoPath(repoPath);
+    const registerResult = await registerRepoWithControl({ repoPath: canonical, apiUrl });
     let repoId = registerResult?.id;
 
     if (!repoId) {
       const listResponse = await fetch(`${apiUrl}/api/repos`);
       if (!listResponse.ok) return;
       const repos = (await listResponse.json()) as { id: string; path: string }[];
-      repoId = repos.find((r) => path.resolve(r.path) === path.resolve(repoPath))?.id;
+      repoId = repos.find((r) => path.resolve(r.path) === canonical)?.id;
     }
 
     if (!repoId) return;

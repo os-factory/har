@@ -1,3 +1,4 @@
+import * as path from 'path';
 import {
   AgentSlotStatusSchema,
   RegisterRepoInputSchema,
@@ -7,6 +8,7 @@ import {
 } from '@har/schemas';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
 
 function toJson(value: unknown) {
@@ -15,11 +17,13 @@ function toJson(value: unknown) {
 
 export async function registerRepository(input: unknown) {
   const data = RegisterRepoInputSchema.parse(input);
+  const requested = path.resolve(data.path);
+  const repoPath = canonicalizeControlRepoPath(requested);
 
-  return prisma.repository.upsert({
-    where: { path: data.path },
+  const repo = await prisma.repository.upsert({
+    where: { path: repoPath },
     create: {
-      path: data.path,
+      path: repoPath,
       gitRemote: data.gitRemote,
       manifest: data.manifest ? toJson(data.manifest) : undefined,
       stagesRegistry: data.stagesRegistry ? toJson(data.stagesRegistry) : undefined,
@@ -32,15 +36,43 @@ export async function registerRepository(input: unknown) {
       lastSyncAt: new Date(),
     },
   });
+
+  // Drop a prior row that registered the linked worktree path as its own repo.
+  if (requested !== repoPath) {
+    await prisma.repository.deleteMany({ where: { path: requested } });
+  }
+
+  return repo;
+}
+
+/** Remove linked-worktree rows when the main checkout is already registered. */
+async function pruneWorktreeRepositoryDuplicates<
+  T extends { id: string; path: string },
+>(repos: T[]): Promise<T[]> {
+  const paths = new Set(repos.map((repo) => repo.path));
+  const duplicateIds: string[] = [];
+
+  for (const repo of repos) {
+    const canonical = canonicalizeControlRepoPath(repo.path);
+    if (canonical !== repo.path && paths.has(canonical)) {
+      duplicateIds.push(repo.id);
+    }
+  }
+
+  if (duplicateIds.length === 0) return repos;
+
+  await prisma.repository.deleteMany({ where: { id: { in: duplicateIds } } });
+  return repos.filter((repo) => !duplicateIds.includes(repo.id));
 }
 
 export async function listRepositories() {
-  return prisma.repository.findMany({
+  const repos = await prisma.repository.findMany({
     orderBy: { updatedAt: 'desc' },
     include: {
       _count: { select: { runs: true, slots: true } },
     },
   });
+  return pruneWorktreeRepositoryDuplicates(repos);
 }
 
 export async function getRepository(id: string) {
