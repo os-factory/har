@@ -67,4 +67,6 @@ git add .har/ AGENT.md CLAUDE.md .claude/ .cursor/ 2>/dev/null || git add .har/ 
 git commit -m "chore: add har agent harness"
 ```
 
-Optionally recommend `har hooks install` (commit gate) and `har hooks install --claude` (worktree guard for Claude Code).
+Init applies the user's `har preferences` commit-gate policy. Confirm with
+`har hooks status`; recommend `har hooks install --claude` separately when the
+Claude Code main-checkout worktree guard is useful.

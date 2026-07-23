@@ -175,6 +175,7 @@ See `.har/stages/PLAYWRIGHT.md` in the target repo after applying the template.
 | `har env teardown 1` | Tear down agent slot 1 |
 | `har agents install` | Scaffold agent skills (`/setup-har`, `/har-wt`, `/har-maintain`) for Claude Code / Cursor / Codex |
 | `har agents remove` | Remove har-managed agent skill files |
+| `har preferences configure` | Select user defaults for rules, skills, and commit-gate onboarding |
 | `har hooks install` | Install the git commit gate (`--claude` for the Claude Code worktree guard) |
 | `har control up` | Start local Mission Control dashboard (Docker Compose) |
 | `har control register` | Register a repo with Mission Control |
@@ -182,7 +183,8 @@ See `.har/stages/PLAYWRIGHT.md` in the target repo after applying the template.
 | `har control watch` | Continuously sync registered repos |
 | `har mcp` | Start the HAR MCP server (stdio) |
 
-Options: `--force`, `--auto` (built-in Claude adaptation), `--smoke`, `--yes` (auto-apply AGENT.md with `--auto`), `--verbose`, `--profile <default|cli|ios>`
+Options: `--force`, `--auto` (built-in Claude adaptation), `--smoke`, `--yes`
+(accept recommended onboarding actions), `--verbose`, `--profile <default|cli|ios>`
 
 ## MCP Surface
 

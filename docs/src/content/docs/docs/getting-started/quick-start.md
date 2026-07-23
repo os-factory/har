@@ -8,8 +8,13 @@ description: Initialize a harness and complete the first isolated agent session.
 From your project root:
 
 ```bash
+har preferences configure
 har env init
 ```
+
+The preferences wizard stores user-level onboarding defaults in
+`~/.har/preferences.json`. It controls Cursor rules, agent skills, and whether
+init/maintain should install the commit gate. Explicit command flags still win.
 
 The default profile targets web applications. Use `--profile cli` for libraries
 and command-line tools or `--profile ios` for an Xcode project.

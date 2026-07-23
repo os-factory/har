@@ -101,6 +101,21 @@ har agents remove [--claude] [--cursor] [--codex]
 
 Without target flags, HAR detects supported agent directories.
 
+## `har preferences`
+
+```bash
+har preferences show [--json]
+har preferences configure
+har preferences configure --cursor-rule <auto|on|off>
+  --agents <auto|none|claude,cursor,codex>
+  --commit-gate <prompt|always|never>
+  --gate-mode <block|warn>
+  --gate-scope <worktrees|all>
+```
+
+Preferences are user-level defaults stored in `~/.har/preferences.json`.
+Repository policy remains visible and versioned in `.har/stages.json`.
+
 ## `har hooks`
 
 ```bash

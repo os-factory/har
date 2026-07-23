@@ -20,6 +20,15 @@ for full verification. A later source edit invalidates that validation.
 
 ## Install the commit gate
 
+Init and maintain now offer to install the gate according to the user's onboarding
+preferences. Configure that default once:
+
+```bash
+har preferences configure
+```
+
+Install or inspect it directly at any time:
+
 ```bash
 har hooks install
 har hooks status
