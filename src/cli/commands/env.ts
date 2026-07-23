@@ -35,12 +35,18 @@ import { recordRepoForControlSync } from '../../core/control-registry';
 import { writeFileSafe } from '../../utils/file-ops';
 import { requireApiKey, validateAgentId } from '../../utils/validation';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
+import {
+  ENV_LIFECYCLE_EPILOG,
+  LAUNCH_COMMAND_DESCRIBE,
+  LAUNCH_LIFECYCLE_EPILOG,
+} from '../lifecycle-help';
 
 export const envCommand = {
   command: 'env <subcommand>',
-  describe: 'Manage agent environments',
+  describe: 'Manage agent environments (launch → verify → complete)',
   builder: (yargs: Argv) =>
     yargs
+      .epilog(ENV_LIFECYCLE_EPILOG)
       .command(
         'init',
         'Copy harness boilerplate into .har/ (use --auto for built-in Claude adaptation)',
@@ -175,7 +181,7 @@ export const envCommand = {
       )
       .command(
         'launch <id>',
-        'Launch a fresh agent session (replaces any previous session for the slot)',
+        LAUNCH_COMMAND_DESCRIBE,
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
@@ -189,19 +195,27 @@ export const envCommand = {
             .option('replace', {
               type: 'boolean',
               default: false,
-              describe: 'Replace an occupied slot (prompts on TTY when omitted)',
+              describe:
+                'Abandon the previous session on this slot and start another from main-checkout HEAD (does not select main; prefer complete/teardown then launch)',
             })
             .option('force', {
               type: 'boolean',
               default: false,
               describe:
-                'Discard uncommitted changes when replacing a dirty worktree (only after explicit approval)',
+                'With --replace only: discard dirty uncommitted work after explicit user approval — never set autonomously',
             })
             .option('resume', {
               type: 'boolean',
               default: false,
-              describe: 'Resume a failed or partial launch without creating a new worktree',
-            }),
+              describe:
+                'Resume a failed or partial launch without --replace (alias: har env recover)',
+            })
+            .option('purpose', {
+              type: 'string',
+              describe:
+                'Human-facing task label stored in the slot registry (recommended; also HAR_SESSION_PURPOSE). Does not select the git base.',
+            })
+            .epilog(LAUNCH_LIFECYCLE_EPILOG),
         handleLaunch,
       )
       .command(
@@ -684,6 +698,7 @@ export async function handleLaunch(argv: {
   replace: boolean;
   force: boolean;
   resume: boolean;
+  purpose?: string;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -741,6 +756,7 @@ export async function handleLaunch(argv: {
     confirmReplace,
     force,
     resume: argv.resume,
+    purpose: argv.purpose,
     capture: false,
   });
   if (result.blocked) {

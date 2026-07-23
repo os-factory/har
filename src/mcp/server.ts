@@ -75,7 +75,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_launch_environment',
     description:
-      'Start a FRESH agent session. Run this BEFORE editing any file: it returns workDir — ALL file edits must go under that path, never the main checkout. If the slot is already occupied, launch is BLOCKED until confirmReplace=true (call har_get_status first; get explicit user approval). force=true discards dirty uncommitted work — never set without user approval. Edits under workDir hot-reload in the running slot.',
+      'Start a NEW agent session worktree from main-checkout HEAD. Run BEFORE editing any file: returns workDir — ALL edits go there. confirmReplace abandons the previous session on this slot (does not select main or inherit the old task); prefer complete/teardown then launch. force discards dirty work — never without user approval. Set purpose as the human-facing task label.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -85,7 +85,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
         confirmReplace: {
           type: 'boolean',
           description:
-            'Replace an occupied slot. Required when a session is active. Call har_get_status first; get explicit user approval before setting true.',
+            'Abandon the previous session on this slot and start another from main-checkout HEAD. Does not select main. Prefer complete/teardown then launch. Get explicit user approval before setting true.',
         },
         force: {
           type: 'boolean',
@@ -96,6 +96,11 @@ export const HAR_MCP_TOOLS: Tool[] = [
           type: 'boolean',
           description:
             'Resume a failed or partial launch (status failed/starting) without --replace. Preserves worktree and env.',
+        },
+        purpose: {
+          type: 'string',
+          description:
+            'Human-facing task label stored in the slot registry (recommended). Does not select the git base.',
         },
       },
       ['agentId'],
@@ -293,6 +298,7 @@ export async function handleMcpToolCall(
         confirmReplace: input.confirmReplace,
         force: input.force,
         resume: input.resume,
+        purpose: input.purpose,
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);

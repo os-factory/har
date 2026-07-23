@@ -9,7 +9,7 @@
 | **Agent ID** | ${AGENT_ID} |
 | **Work dir** | Fresh session worktree per launch — see the launch output or `.har/slots/agent-${AGENT_ID}.json` |
 
-**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. Relaunching replaces the session (branch kept) and requires explicit confirmation (`--replace` / `confirmReplace`); dirty worktrees also need `--force` after user approval — never autonomously.
+**Never edit the main checkout** — launch FIRST with `--purpose=label`, then make ALL file edits under the work dir from the launch output. Prefer `complete`/`teardown` then `launch` to free a slot; `--replace` / `confirmReplace` abandons the previous session from main-checkout HEAD (does not select main). Dirty worktrees need `--force` after user approval — never autonomously.
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status

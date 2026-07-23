@@ -13,7 +13,7 @@ Run `har env maintain` to refresh it.
 - **Work dir**: fresh session worktree per launch — see the launch output or `.har/slots/agent-${AGENT_ID}.json` (path looks like `~/worktrees/<base>-<sha4>-har-agent-${AGENT_ID}-<rand4>`)
 - **Infra**: none for this repo (`HARNESS_INFRA_SERVICES` is empty)
 
-Launch FIRST, then make ALL file edits under the work dir. Relaunching replaces the session (branch kept); a dirty previous session is refused unless `--force`.
+Launch FIRST, then make ALL file edits under the work dir. Prefer complete/teardown then launch to free a slot. `--replace` abandons the previous session from main-checkout HEAD (does not select main). Always set `--purpose`. Dirty previous sessions need `--force` after user approval.
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status

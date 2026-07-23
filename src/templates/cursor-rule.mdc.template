@@ -15,13 +15,22 @@ work around it with ad-hoc commands.
 
 ## Before making changes
 
-1. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1`. Launch always creates a **fresh session worktree** from the current HEAD and returns its **work dir**.
+1. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1 --purpose=label`. Launch always creates a **new session worktree** from the current HEAD of the **main checkout** (`$REPO_ROOT`) and returns its **work dir**.
 2. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `har env restart <id>` or `./.har/agent-cli.sh <id> restart` if a change doesn't take.
 3. Read [AGENT.md](./AGENT.md) at the repo root
 4. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
 5. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
 
-Relaunching a slot **replaces** its previous session (the old branch is kept). Replacement requires explicit confirmation (`--replace`, `confirmReplace=true`, or an interactive prompt). If the previous session has uncommitted changes, you must also pass `force`/`--force` after **explicit user approval** — never autonomously.
+### Slot / session lifecycle
+
+- **Slot** = reusable lane (id, ports, DB). **Session** = one task’s worktree + env.
+- Typical flow: `status` / `preflight` → `launch` → work + `verify` → `complete` (or `teardown` to abandon).
+- User says free/clean slots → prefer `complete` / `teardown`, then `launch`. Do **not** treat `--replace` as “start a clean new task.”
+- New unrelated task → ensure the main checkout is on `main` (or the user-named base) before launch. `--replace` does **not** select `main` and does **not** inherit the previous task’s branch.
+- Finished handoff → `har env complete <id>` so Mission Control does not keep a misleading active worktree.
+- Always set `--purpose` / `HAR_SESSION_PURPOSE` / MCP `purpose` as the human-facing task label.
+- Replacement (`--replace` / `confirmReplace`) requires explicit confirmation. Dirty sessions also need `force`/`--force` after **explicit user approval** — never autonomously.
+- Failed/starting launch → `--resume` / `recover` (never `--replace`).
 
 ### Slot safety (read before launch)
 
@@ -30,7 +39,6 @@ Relaunching a slot **replaces** its previous session (the old branch is kept). R
 - **Never** set `force`/`confirmReplace` without the user explicitly approving replacement.
 - **Commit early and often** in the session worktree — teardown keeps the branch, not uncommitted work.
 - **Gitignored paths are ephemeral** (`state/`, `runs/`, local clones) — they are lost when the worktree is removed.
-- Optional: set `har env launch <id> --purpose=label`, `HAR_SESSION_PURPOSE=label`, or `./.har/launch.sh <id> --purpose=label` so occupied-slot warnings show what you were doing.
 
 <!-- Monorepo: if this repository contains multiple .har harnesses, list them here
      and pick by the files you are changing. Example:
@@ -60,17 +68,17 @@ Validate through the harness — do not skip verification or substitute ad-hoc n
 ### 2. HAR CLI (when `har` is installed)
 
 ```bash
-har env launch 1        # FIRST, before editing — prints the work dir
+har env launch 1 --purpose=label   # FIRST, before editing — prints the work dir
 har env verify 1
 har env verify 1 --full
-har env complete 1      # done: verify + validate + teardown, branch kept for PR
-har env teardown 1      # plain cleanup (--delete-branch to drop the branch)
+har env complete 1                 # done: verify + validate + teardown, branch kept for PR
+har env teardown 1                 # plain cleanup (--delete-branch to drop the branch)
 ```
 
 ### 3. Shell fallback (no CLI/MCP installed)
 
 ```bash
-./.har/launch.sh 1
+./.har/launch.sh 1 --purpose=label
 ./.har/verify.sh 1
 ./.har/verify.sh 1 --full
 ./.har/teardown.sh 1

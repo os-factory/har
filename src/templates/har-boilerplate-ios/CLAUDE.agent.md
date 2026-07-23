@@ -11,7 +11,7 @@
 | **Simulator** | Configured in `.har/harness.env` — `HARNESS_SIMULATOR_NAME` |
 | **Scheme** | Configured in `.har/harness.env` — `HARNESS_XCODE_SCHEME` |
 
-**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. Relaunching replaces the session (branch kept) and requires explicit confirmation; dirty worktrees also need `--force` after user approval.
+**Never edit the main checkout** — launch FIRST with `--purpose=label`, then make ALL file edits under the work dir from the launch output. Prefer `complete`/`teardown` then `launch` to free a slot; `--replace` abandons the previous session from main-checkout HEAD (does not select main). Dirty worktrees need `--force` after user approval.
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status

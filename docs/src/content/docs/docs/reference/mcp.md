@@ -18,16 +18,20 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_preflight_environment` | `agentId`, `confirmReplace`, `force` | Readiness, blockers, and whether launch is safe |
-| `har_launch_environment` | `agentId`, `worktree`, `claude`, `confirmReplace`, `force`, `resume` | Work directory, branch, URLs, and normalized stage result |
+| `har_launch_environment` | `agentId`, `worktree`, `claude`, `confirmReplace`, `force`, `resume`, `purpose` | Work directory, branch, URLs, and normalized stage result |
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
 | `har_get_status` | optional `agentId` | Slot, process, worktree, branch, and dirty state |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |
 | `har_complete_environment` | `agentId`, `skipVerify` | Validation, teardown, and retained branch |
 | `har_teardown_environment` | `agentId`, `deleteBranch` | Teardown result |
 
-Launch is blocked when a slot is occupied until `confirmReplace` is true. Dirty
-replacement additionally requires `force`; agents should never set either without
-review and explicit approval. Use recovery, not replacement, for a failed launch.
+Launch creates a new session from main-checkout HEAD. Prefer
+`har_complete_environment` / `har_teardown_environment`, then launch, when freeing
+a slot. `confirmReplace` abandons the previous session on that slot — it does not
+select `main` or inherit the old task. Set `purpose` as the human-facing task
+label. Dirty replacement additionally requires `force`; agents should never set
+either without review and explicit approval. Use recovery, not replacement, for a
+failed launch.
 
 ## Execution
 

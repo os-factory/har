@@ -13,11 +13,11 @@ All repository commands accept `--repo <path>`; the default is the current direc
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-stage [template]` | List/install shipped templates or register a custom stage |
 | `preflight <id>` | Check ports, processes, Docker, and slot occupation |
-| `launch <id>` | Create and start a fresh slot session |
+| `launch <id>` | New session worktree from main-checkout HEAD |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
-| `teardown <id>` | Stop a slot and keep its branch |
+| `teardown <id>` | Free a slot and keep its branch |
 | `status` | Inspect all slots |
 | `runs list` | List persisted run records |
 | `runs get <runId>` | Return one run record |
@@ -62,11 +62,23 @@ har env add-stage <id> --custom --kind <kind>
 ```bash
 har env preflight 1 [--json] [--replace] [--force]
 har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume]
+                 [--purpose=<label>]
 har env recover 1
 ```
 
-`--replace` confirms replacement of an occupied slot. `--force` additionally
-permits discarding dirty uncommitted work and must only follow explicit approval.
+Every launch creates a **new** session from `$REPO_ROOT` HEAD (the main checkout).
+It does not inherit the previous session’s branch.
+
+| Flag | Meaning |
+| --- | --- |
+| `--purpose` | Human-facing task label (also `HAR_SESSION_PURPOSE`). Recommended on every launch. Does not select the git base. |
+| `--replace` | Abandon the previous session on this slot and start another from main-checkout HEAD. Does **not** select `main`. Prefer `complete` / `teardown`, then `launch`, when cleaning a slot. |
+| `--force` | With `--replace` only: discard dirty uncommitted work after explicit approval. |
+| `--resume` | Recover a failed/starting launch without replacing (alias: `har env recover`). |
+
+Occupied-slot warnings show what will be destroyed **and** what the new session
+will be based on (`branch @ sha` of `$REPO_ROOT`). For a new unrelated task,
+switch the main checkout to `main` before launch.
 
 ### Verify and finish
 

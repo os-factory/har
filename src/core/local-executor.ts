@@ -34,6 +34,7 @@ export function buildLaunchFlagArgs(flags: LaunchFlags): string[] {
   if (flags.confirmReplace) args.push('--replace');
   if (flags.force) args.push('--force');
   if (flags.resume) args.push('--resume');
+  if (flags.purpose) args.push(`--purpose=${flags.purpose}`);
   return args;
 }
 
@@ -154,6 +155,9 @@ function buildExecutionPlan(
     stage.kind === 'launch' && options.launchFlags
       ? buildLaunchFlagArgs(options.launchFlags)
       : [];
+  if (stage.kind === 'launch' && options.launchFlags?.purpose) {
+    mergedEnv.HAR_SESSION_PURPOSE = options.launchFlags.purpose;
+  }
 
   if (stage.command) {
     let shellCommand = substituteAgentId(stage.command, options.agentId);

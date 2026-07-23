@@ -270,6 +270,8 @@ export const SlotRegistryEntrySchema = z
     createdAt: z.string(),
     ports: z.record(z.number()).optional(),
     previewUrls: z.record(z.string()).optional(),
+    /** Optional human-facing task label from launch --purpose / HAR_SESSION_PURPOSE. */
+    purpose: z.string().optional(),
     status: z.enum(['starting', 'active', 'failed', 'completed']).default('active'),
     lastError: z.string().optional(),
   })
@@ -329,7 +331,10 @@ export const AgentSlotStatusSchema = z.object({
   baseBranch: z.string().optional(),
   baseCommit: z.string().optional(),
   sessionCreatedAt: z.string().optional(),
-  /** Derived from first captured user prompt (OTEL hooks); not set at launch. */
+  /**
+   * Human-facing task label: launch --purpose / HAR_SESSION_PURPOSE on the slot
+   * registry, or Mission Control OTEL-derived purpose from the first captured prompt.
+   */
   purpose: z.string().optional(),
   sessionStatus: z.enum(['starting', 'active', 'failed', 'completed']).optional(),
   lastError: z.string().optional(),

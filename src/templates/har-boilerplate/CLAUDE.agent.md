@@ -12,7 +12,7 @@
 | **Database** | `agent_${AGENT_ID}` on `localhost:${DB_PORT}` (when `db` is in `HARNESS_INFRA_SERVICES`) |
 | **Work dir** | Fresh session worktree per launch — see the launch output or `.har/slots/agent-${AGENT_ID}.json` |
 
-**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. Edits there hot-reload in the running slot; use `./.har/agent-cli.sh ${AGENT_ID} restart` if a change doesn't take. Relaunching replaces the session (branch kept) and requires explicit confirmation; dirty worktrees also need `--force` after user approval.
+**Never edit the main checkout** — launch FIRST with `--purpose=label`, then make ALL file edits under the work dir from the launch output. Edits there hot-reload in the running slot; use `./.har/agent-cli.sh ${AGENT_ID} restart` if a change doesn't take. Prefer `complete`/`teardown` then `launch` to free a slot; `--replace` abandons the previous session from main-checkout HEAD (does not select main). Dirty worktrees need `--force` after user approval.
 
 This slot runs **only the primary application** (`HARNESS_PRIMARY_APP`). External dependencies and any supporting services run once, shared by all slots — `setup-infra.sh` manages them; never start them yourself.
 

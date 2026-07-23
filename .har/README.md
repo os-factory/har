@@ -104,22 +104,26 @@ har env maintain --no-cursor-rule  # skip Cursor rule scaffolding
 
 ## Session lifecycle
 
-Every `launch` starts a **fresh session**: a new git worktree from the current HEAD at
+Every `launch` starts a **new session**: a git worktree from the current HEAD of the
+**main checkout** (`$REPO_ROOT`) at
 `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
+Set `--purpose=label` / `HAR_SESSION_PURPOSE` on every launch as the human-facing task label.
 The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — status,
 verify, and teardown resolve the work dir through it. Make ALL file edits under the
 work dir printed by launch, never in the main checkout.
 
-- Relaunching a slot **replaces** its previous session and **requires explicit confirmation**
-  (`--replace`, `HAR_CONFIRM_REPLACE=1`, `har env launch --replace`, or MCP `confirmReplace=true`).
-  Launch prints a warning showing the occupied worktree, branch, and dirty state.
-- If the old worktree has uncommitted changes, you must also pass `--force` — **only after
-  explicit user approval** (agents must never set force autonomously).
+- To free/clean a slot: prefer `har env complete <id>` or `teardown`, then `launch`.
+  `--replace` is only for reusing the same slot id immediately — it does **not** select
+  `main` or inherit the previous task’s branch.
+- For a new unrelated task, switch the main checkout to `main` before launch.
+- Occupied-slot warnings show what will be destroyed **and** the new session base
+  (`$REPO_ROOT` branch @ sha).
+- Replacement requires explicit confirmation (`--replace`, `HAR_CONFIRM_REPLACE=1`,
+  or MCP `confirmReplace=true`). Dirty worktrees also need `--force` after **explicit
+  user approval** (never autonomously).
 - The session **branch is kept** on teardown if you committed; gitignored paths (`state/`,
   `runs/`, local clones) are **not** preserved when the worktree is removed.
 - Use **separate slots** for parallel unrelated tasks (`agentSlots.max` in `stages.json`).
-- `teardown` removes the worktree but **keeps the session branch** so you can push it
-  or open a PR (`--delete-branch` to drop it).
 - If launch fails after creating a worktree/env file, the slot registry records
   `status: failed`. Resume without `--replace`:
   `har env launch <id> --resume` or `har env recover <id>` (alias).

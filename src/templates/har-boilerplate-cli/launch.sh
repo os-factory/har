@@ -3,7 +3,7 @@
 # Every launch starts a FRESH session: any previous session for the slot is torn
 # down (its branch is kept) and a new suffixed worktree is created from HEAD.
 #
-# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--replace] [--force] [--resume]
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--replace] [--force] [--resume] [--purpose=label]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +19,7 @@ USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 FORCE=false
 REPLACE=false
 RESUME=false
+PURPOSE="${HAR_SESSION_PURPOSE:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -27,12 +28,13 @@ for arg in "$@"; do
     --replace)  REPLACE=true ;;
     --force)    FORCE=true ;;
     --resume)   RESUME=true ;;
+    --purpose=*) PURPOSE="${arg#--purpose=}" ;;
   esac
 done
 
 if [[ -z "$AGENT_ID" ]]; then
   har_load_agent_slot_limits
-  echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] [--resume] " >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] [--resume] [--purpose=label]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -67,6 +69,7 @@ if [ "$RESUME" = true ]; then
       SLOT_BRANCH="${BRANCH:-}" \
       SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
       SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+      SLOT_PURPOSE="${PURPOSE}" \
       SLOT_STATUS="failed" \
       SLOT_LAST_ERROR="launch.sh --resume exited with code ${exit_code}" \
         write_slot_registry
@@ -137,6 +140,7 @@ if [ "$RESUME" != true ]; then
       SLOT_BRANCH="${BRANCH:-}" \
       SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
       SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+      SLOT_PURPOSE="${PURPOSE}" \
       SLOT_STATUS="failed" \
       SLOT_LAST_ERROR="launch.sh exited with code ${exit_code}" \
         write_slot_registry
@@ -155,6 +159,7 @@ if [ "$RESUME" != true ]; then
   SLOT_BRANCH="${BRANCH:-}" \
   SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
   SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+  SLOT_PURPOSE="${PURPOSE}" \
   SLOT_STATUS="starting" \
     write_slot_registry
   REGISTRY_WRITTEN=true
@@ -170,6 +175,7 @@ else
   SLOT_BRANCH="${BRANCH:-}" \
   SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
   SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+  SLOT_PURPOSE="${PURPOSE}" \
   SLOT_STATUS="starting" \
     write_slot_registry
 fi
@@ -197,6 +203,7 @@ SLOT_WORKTREE_PATH="${WORKTREE_DIR:-}" \
 SLOT_BRANCH="${BRANCH:-}" \
 SLOT_BASE_BRANCH="${BASE_BRANCH:-}" \
 SLOT_BASE_COMMIT="${BASE_COMMIT:-}" \
+SLOT_PURPOSE="${PURPOSE}" \
 SLOT_STATUS="active" \
   write_slot_registry
 

@@ -179,15 +179,21 @@ The authoring agent updates scripts and this README. Review changes before commi
 
 ## Session lifecycle
 
-Every `launch` starts a **fresh session**: a new git worktree from the current HEAD at
+Every `launch` starts a **new session**: a git worktree from the current HEAD of the
+**main checkout** (`$REPO_ROOT`) at
 `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
+Set `--purpose=label` / `HAR_SESSION_PURPOSE` on every launch as the human-facing task label.
 The session is recorded in `.har/slots/agent-<id>.json` (the slot registry) — status,
 verify, and teardown resolve the work dir through it. Make ALL file edits under the
 work dir printed by launch, never in the main checkout.
 
-- Relaunching a slot **replaces** its previous session; replacement requires `--replace` /
-  `confirmReplace=true` (or an interactive prompt). Uncommitted changes also need `--force`
-  after explicit user approval.
+- To free/clean a slot: prefer `complete` / `teardown`, then `launch`. `--replace` only
+  reuses the same slot id immediately — it does **not** select `main` or inherit the
+  previous task. For a new unrelated task, switch the main checkout to `main` first.
+- Occupied-slot warnings show what will be destroyed **and** the new session base
+  (`$REPO_ROOT` branch @ sha).
+- Replacement requires `--replace` / `confirmReplace=true` (or an interactive prompt).
+  Dirty worktrees also need `--force` after explicit user approval.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - If launch fails after creating a worktree/env file, the registry records `status: failed`.

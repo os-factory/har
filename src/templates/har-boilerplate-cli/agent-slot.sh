@@ -427,7 +427,7 @@ try {
 #   required: SLOT_AGENT_ID, SLOT_MODE (worktree|root), SLOT_WORK_DIR
 #   optional: SLOT_SUFFIX, SLOT_WORKTREE_PATH, SLOT_BRANCH, SLOT_BASE_BRANCH,
 #             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON,
-#             SLOT_STATUS, SLOT_LAST_ERROR
+#             SLOT_PURPOSE, SLOT_STATUS, SLOT_LAST_ERROR
 write_slot_registry() {
   local file
   file="$(slot_registry_file "$SLOT_AGENT_ID")"
@@ -449,6 +449,7 @@ if (e.SLOT_WORKTREE_PATH) entry.worktreePath = e.SLOT_WORKTREE_PATH;
 if (e.SLOT_BRANCH) entry.branch = e.SLOT_BRANCH;
 if (e.SLOT_BASE_BRANCH) entry.baseBranch = e.SLOT_BASE_BRANCH;
 if (e.SLOT_BASE_COMMIT) entry.baseCommit = e.SLOT_BASE_COMMIT;
+if (e.SLOT_PURPOSE) entry.purpose = e.SLOT_PURPOSE;
 if (e.SLOT_LAST_ERROR) entry.lastError = e.SLOT_LAST_ERROR;
 for (const [key, env] of [["ports", "SLOT_PORTS_JSON"], ["previewUrls", "SLOT_PREVIEW_URLS_JSON"]]) {
   if (e[env]) try { entry[key] = JSON.parse(e[env]); } catch {}
@@ -492,11 +493,12 @@ slot_dirty_summary() {
 # Print a warning before replacing an occupied slot (stdout — visible to agents).
 print_slot_replace_warning() {
   local agent_id="$1"
-  local reg wt branch work_dir created status last_error dirty_summary head
+  local reg wt branch work_dir purpose created status last_error dirty_summary head
   reg="$(slot_registry_file "$agent_id")"
   wt="$(existing_slot_worktree "$agent_id")"
   branch="$(read_slot_field "$reg" branch || true)"
   work_dir="$(read_slot_field "$reg" workDir || true)"
+  purpose="$(read_slot_field "$reg" purpose || true)"
   created="$(read_slot_field "$reg" createdAt || true)"
   status="$(read_slot_field "$reg" status || true)"
   last_error="$(read_slot_field "$reg" lastError || true)"
@@ -507,6 +509,7 @@ print_slot_replace_warning() {
 
   echo "" >&2
   echo "⚠ Slot ${agent_id} is already in use — replacing will REMOVE the worktree." >&2
+  [ -n "$purpose" ] && echo "  Purpose:   ${purpose}" >&2
   [ -n "$wt" ] && echo "  Worktree:  ${wt}" >&2
   [ -n "$work_dir" ] && echo "  Work dir:  ${work_dir}" >&2
   [ -n "$branch" ] && echo "  Branch:    ${branch}${head:+ @ ${head}}" >&2
@@ -518,6 +521,15 @@ print_slot_replace_warning() {
   echo "  The session branch is kept only if you committed. Gitignored paths" >&2
   echo "  (state/, runs/, local clones, .env.local) are NOT preserved." >&2
   echo "" >&2
+  base_branch="$(git -C "${REPO_ROOT:-$SCRIPT_DIR/..}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  base_sha="$(git -C "${REPO_ROOT:-$SCRIPT_DIR/..}" rev-parse --short HEAD 2>/dev/null || true)"
+  if [ -n "$base_branch" ] || [ -n "$base_sha" ]; then
+    echo "  New session will be based on: ${base_branch:-unknown} @ ${base_sha:-unknown}" >&2
+    echo "    (HEAD of $(cd "${REPO_ROOT:-$SCRIPT_DIR/..}" && pwd))" >&2
+    echo "    --replace does not select main; switch the main checkout first for a new unrelated task." >&2
+    echo "    Prefer: har env complete ${agent_id} / teardown, then launch — not replace to 'clean'." >&2
+    echo "" >&2
+  fi
 }
 
 # Require explicit confirmation before replacing an occupied slot.

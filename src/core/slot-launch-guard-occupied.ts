@@ -100,14 +100,33 @@ function collectOccupiedSlot(repoPath: string, agentId: number): AgentSlotStatus
     sessionStatus: session?.status,
     lastError: session?.lastError,
     sessionCreatedAt: session?.createdAt,
+    purpose: session?.purpose,
     dirty,
     harnessUsage: 'none',
   };
 }
 
-function formatOccupiedSlot(slot: AgentSlotStatus, resume?: boolean): string {
+function formatNewSessionBase(repoPath: string, agentId: number): string[] {
+  const resolved = path.resolve(repoPath);
+  const branch = runGit(resolved, 'rev-parse --abbrev-ref HEAD');
+  const sha = runGit(resolved, 'rev-parse --short HEAD');
+  if (!branch && !sha) return [];
+  return [
+    `New session will be based on: ${branch ?? 'unknown'} @ ${sha ?? 'unknown'}`,
+    `  (HEAD of ${resolved})`,
+    '  --replace does not select main; switch the main checkout first for a new unrelated task.',
+    `  Prefer: har env complete ${agentId} / teardown, then launch — not replace to "clean".`,
+  ];
+}
+
+function formatOccupiedSlot(
+  slot: AgentSlotStatus,
+  options: { resume?: boolean; repoPath?: string } = {},
+): string {
+  const { resume, repoPath } = options;
   const lines = [
     `Slot ${slot.agentId} is already in use.`,
+    slot.purpose ? `  Purpose:  ${slot.purpose}` : undefined,
     slot.worktreePath ? `  Worktree: ${slot.worktreePath}` : undefined,
     slot.branch ? `  Branch:   ${slot.branch}` : undefined,
     slot.workDir ? `  Work dir: ${slot.workDir}` : undefined,
@@ -134,11 +153,19 @@ function formatOccupiedSlot(slot: AgentSlotStatus, resume?: boolean): string {
     );
   }
 
+  if (repoPath) {
+    const base = formatNewSessionBase(repoPath, slot.agentId);
+    if (base.length > 0) {
+      lines.push(...base, '');
+    }
+  }
+
   lines.push(
     'Replacing removes the worktree. The session branch is kept only if you committed.',
     'Gitignored paths (state/, runs/, local clones) are NOT preserved.',
     '',
-    'To replace: pass confirmReplace=true (MCP), --replace (CLI), or answer y at the prompt.',
+    'To free the slot cleanly: har env complete / teardown, then launch.',
+    'To replace immediately: confirmReplace=true (MCP), --replace (CLI), or answer y at the prompt.',
     'If the worktree is dirty, also pass force=true / --force after explicit user approval.',
   );
   return lines.filter(Boolean).join('\n');
@@ -178,7 +205,7 @@ export function checkLaunchGuard(
       allowed: false,
       blocked: true,
       slot,
-      reason: formatOccupiedSlot(slot),
+      reason: formatOccupiedSlot(slot, { repoPath }),
     };
   }
 
@@ -187,7 +214,7 @@ export function checkLaunchGuard(
       allowed: false,
       blocked: true,
       slot,
-      reason: formatOccupiedSlot(slot),
+      reason: formatOccupiedSlot(slot, { repoPath }),
     };
   }
 
@@ -197,7 +224,7 @@ export function checkLaunchGuard(
       blocked: true,
       slot,
       reason: [
-        formatOccupiedSlot(slot),
+        formatOccupiedSlot(slot, { repoPath }),
         '',
         'The occupied worktree has uncommitted changes.',
         'Pass force=true / --force to discard them (only after explicit user approval).',
