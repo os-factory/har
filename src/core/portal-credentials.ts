@@ -6,6 +6,7 @@ export interface PortalCredentials {
   portalUrl: string;
   token: string;
   workspace?: string;
+  email?: string;
   createdAt: string;
 }
 
@@ -25,6 +26,7 @@ export function readPortalCredentials(): PortalCredentials | null {
       portalUrl: parsed.portalUrl,
       token: parsed.token,
       workspace: parsed.workspace,
+      email: parsed.email,
       createdAt: parsed.createdAt ?? '',
     };
   } catch {

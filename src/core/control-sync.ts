@@ -20,6 +20,7 @@ import {
   PortalTarget,
 } from './control-config';
 import { listRegisteredRepos, removeRegisteredRepo } from './control-registry';
+import { readPortalCredentials } from './portal-credentials';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
@@ -64,14 +65,15 @@ async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promis
   return (await response.json()) as T;
 }
 
-async function postPortalSync(
+async function postPortal(
   target: PortalTarget,
+  endpoint: string,
   body: unknown,
   dryRun?: boolean,
 ): Promise<void> {
   if (dryRun) return;
 
-  const response = await fetch(`${target.url}/api/sync`, {
+  const response = await fetch(`${target.url}${endpoint}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -91,14 +93,102 @@ async function postPortalSync(
   }
 }
 
-function buildPortalSyncBody(repoPath: string): Record<string, unknown> {
+function resolvePortalUserEmail(): string | undefined {
+  return readPortalCredentials()?.email || undefined;
+}
+
+function dropNullFields(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== null));
+}
+
+function modelsFromBreakdown(
+  breakdown: Record<string, unknown> | undefined,
+): Record<string, unknown>[] {
+  if (!breakdown) return [];
+  return Object.entries(breakdown).map(([model, totals]) => ({
+    model,
+    ...(totals && typeof totals === 'object' ? totals : {}),
+  }));
+}
+
+function collectPortalTelemetry(
+  repoPath: string,
+  slots: EnvironmentStatus['slots'],
+): { usage: Record<string, unknown>[]; events: Record<string, unknown>[] } {
+  if (!isTelemetryEnabled()) return { usage: [], events: [] };
+  try {
+    const userEmail = resolvePortalUserEmail();
+    const usage = slots.flatMap((slot) =>
+      harvestUsageForSlot({
+        agentId: slot.agentId,
+        workDir: slot.workDir,
+        worktreePath: slot.worktreePath,
+        branch: slot.branch,
+        suffix: slot.suffix,
+        sessionCreatedAt: slot.sessionCreatedAt,
+        repoPath,
+      }).map((row) => {
+        const models = modelsFromBreakdown(
+          row.modelBreakdown as Record<string, unknown> | undefined,
+        );
+        return {
+          ...row,
+          workUnitId: slot.workUnitId ?? row.workUnitId,
+          attemptId: slot.attemptId ?? row.attemptId,
+          sessionKey:
+            row.sessionKey ||
+            buildSessionKey({
+              branch: slot.branch,
+              agentId: slot.agentId,
+              suffix: slot.suffix,
+              createdAt: slot.sessionCreatedAt,
+            }),
+          ...(userEmail ? { userEmail } : {}),
+          ...(models.length > 0 ? { models } : {}),
+        };
+      }),
+    );
+
+    const events = slots.flatMap((slot) =>
+      harvestEventsForSlot({
+        agentId: slot.agentId,
+        workDir: slot.workDir,
+        worktreePath: slot.worktreePath,
+        branch: slot.branch,
+        suffix: slot.suffix,
+        sessionCreatedAt: slot.sessionCreatedAt,
+        repoPath,
+      }).map((event) =>
+        dropNullFields({
+          ...event,
+          workUnitId: slot.workUnitId ?? event.workUnitId,
+          attemptId: slot.attemptId ?? event.attemptId,
+        }),
+      ),
+    );
+
+    return { usage, events };
+  } catch {
+    return { usage: [], events: [] };
+  }
+}
+
+function buildPortalPayload(repoPath: string): {
+  syncBody: Record<string, unknown>;
+  events: Record<string, unknown>[];
+} {
   const runs = listRuns(repoPath);
   const status = collectEnvironmentStatus(repoPath);
   const manifest = readManifest(repoPath);
   const stagesRegistry = readStageRegistry(repoPath);
-  const validations = listValidations(resolveHarnessRoot(repoPath));
+  const harnessRoot = resolveHarnessRoot(repoPath);
+  const validations = listValidations(harnessRoot);
+  const workUnits = listWorkUnits(harnessRoot);
+  const attempts = listWorkAttempts(harnessRoot);
+  const validationBindings = listValidationBindings(harnessRoot);
+  const { usage, events } = collectPortalTelemetry(repoPath, status.slots);
 
-  return {
+  const syncBody: Record<string, unknown> = {
     path: repoPath,
     ...(manifest ? { manifest } : {}),
     ...(stagesRegistry ? { stagesRegistry } : {}),
@@ -106,7 +196,13 @@ function buildPortalSyncBody(repoPath: string): Record<string, unknown> {
     slots: status.slots,
     generatedAt: status.generatedAt,
     ...(validations.length > 0 ? { validations } : {}),
+    ...(workUnits.length > 0 ? { workUnits } : {}),
+    ...(attempts.length > 0 ? { attempts } : {}),
+    ...(validationBindings.length > 0 ? { validationBindings } : {}),
+    ...(usage.length > 0 ? { usage } : {}),
   };
+
+  return { syncBody, events };
 }
 
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
@@ -254,7 +350,16 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
 
   const portal = getPortalTarget();
   if (portal) {
-    await postPortalSync(portal, buildPortalSyncBody(repoPath), options.dryRun);
+    const { syncBody, events } = buildPortalPayload(repoPath);
+    await postPortal(portal, '/api/sync', syncBody, options.dryRun);
+    if (events.length > 0) {
+      await postPortal(
+        portal,
+        '/api/otel',
+        { path: repoPath, events, spans: [] },
+        options.dryRun,
+      );
+    }
     return;
   }
 
@@ -429,7 +534,7 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
     try {
       if (!(await isControlApiReachable(portal.url))) return;
       const canonical = canonicalizeControlRepoPath(repoPath);
-      await postPortalSync(portal, { path: canonical, runs: [run] });
+      await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[har control] run sync skipped: ${message}\n`);
