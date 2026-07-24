@@ -97,6 +97,17 @@ export const HAR_MCP_TOOLS: Tool[] = [
           description:
             'Resume a failed or partial launch (status failed/starting) without confirmReplace. Preserves worktree and env.',
         },
+        workUnitId: {
+          type: 'string',
+          description: 'Durable external work identifier to bind to this session.',
+        },
+        source: { type: 'string', description: 'Optional provider/source name.' },
+        sourceUrl: { type: 'string', description: 'Optional source URL.' },
+        title: { type: 'string', description: 'Optional human-readable work title.' },
+        parentWorkUnitId: {
+          type: 'string',
+          description: 'Optional parent work unit identifier.',
+        },
       },
       ['agentId'],
     ),
@@ -293,6 +304,11 @@ export async function handleMcpToolCall(
         confirmReplace: input.confirmReplace,
         force: input.force,
         resume: input.resume,
+        workUnitId: input.workUnitId,
+        source: input.source,
+        sourceUrl: input.sourceUrl,
+        title: input.title,
+        parentWorkUnitId: input.parentWorkUnitId,
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
@@ -313,6 +329,11 @@ export async function handleMcpToolCall(
         confirmReplace: false,
         force: false,
         resume: true,
+        workUnitId: input.workUnitId,
+        source: input.source,
+        sourceUrl: input.sourceUrl,
+        title: input.title,
+        parentWorkUnitId: input.parentWorkUnitId,
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);

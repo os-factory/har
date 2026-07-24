@@ -208,6 +208,8 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
   workDir?: string;
   branch?: string;
   suffix?: string;
+  workUnitId?: string;
+  attemptId?: string;
 } | null> {
   if (!workspace) return null;
   const normalized = normalizePath(workspace);
@@ -225,6 +227,8 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
       worktreePath: true,
       branch: true,
       suffix: true,
+      workUnitId: true,
+      attemptId: true,
     },
   });
 
@@ -248,6 +252,8 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
     workDir: match.workDir ?? undefined,
     branch: match.branch ?? undefined,
     suffix: match.suffix ?? undefined,
+    workUnitId: match.workUnitId ?? undefined,
+    attemptId: match.attemptId ?? undefined,
   };
 }
 
@@ -259,6 +265,8 @@ interface ResolvedSessionContext {
   workDir?: string;
   branch?: string;
   suffix?: string;
+  workUnitId?: string;
+  attemptId?: string;
 }
 
 async function resolveSessionContext(
@@ -294,6 +302,12 @@ async function resolveSessionContext(
           : workspace || undefined,
         branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
         suffix: resource['har.suffix'] ? String(resource['har.suffix']) : undefined,
+        workUnitId: resource['har.work_unit_id']
+          ? String(resource['har.work_unit_id'])
+          : undefined,
+        attemptId: resource['har.attempt_id']
+          ? String(resource['har.attempt_id'])
+          : undefined,
       },
     };
   }
@@ -310,6 +324,8 @@ async function resolveSessionContext(
           workDir: byWs.workDir ?? workspace,
           branch: byWs.branch,
           suffix: byWs.suffix,
+          workUnitId: byWs.workUnitId,
+          attemptId: byWs.attemptId,
         },
       };
     }
@@ -382,7 +398,8 @@ function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap)
 }
 
 function emptyUsage(
-  base: Pick<AgentSessionUsage, 'sessionKey' | 'agentId' | 'agentTool' | 'workDir' | 'branch' | 'suffix'>,
+  base: Pick<AgentSessionUsage, 'sessionKey' | 'agentId' | 'agentTool' | 'workDir' | 'branch' | 'suffix'> &
+    Partial<Pick<AgentSessionUsage, 'workUnitId' | 'attemptId'>>,
 ): AgentSessionUsage {
   const now = new Date().toISOString();
   return {
@@ -492,6 +509,8 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
       workDir: context.workDir,
       branch: context.branch,
       suffix: context.suffix,
+      workUnitId: context.workUnitId,
+      attemptId: context.attemptId,
     });
 
     for (const point of group.points) {
@@ -704,6 +723,8 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
       responseText,
       rawTruncated: record.bodyText,
       source: 'otel',
+      workUnitId: context.workUnitId,
+      attemptId: context.attemptId,
     });
 
     await maybeSetDerivedPurpose(context.repositoryId, context.agentId, promptText);
@@ -715,6 +736,8 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
       workDir: context.workDir,
       branch: context.branch,
       suffix: context.suffix,
+      workUnitId: context.workUnitId,
+      attemptId: context.attemptId,
     });
     applyHooksUsageFromAttrs(usage, record.attributes);
     usage.tokensTotal =
@@ -843,6 +866,8 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
         sessionKey: context.sessionKey,
         agentId: context.agentId,
         agentTool: context.agentTool,
+        workUnitId: context.workUnitId,
+        attemptId: context.attemptId,
         traceId: span.traceId,
         spanId: span.spanId,
         parentSpanId: span.parentSpanId,
@@ -854,6 +879,8 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
       update: {
         name: span.name,
         endTime: span.endTime,
+        workUnitId: context.workUnitId,
+        attemptId: context.attemptId,
         attributes: span.attributes as Prisma.InputJsonValue,
       },
     });
@@ -877,6 +904,8 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
       } as Prisma.InputJsonValue,
       promptText,
       source: 'otel',
+      workUnitId: context.workUnitId,
+      attemptId: context.attemptId,
     });
 
     await maybeSetDerivedPurpose(context.repositoryId, context.agentId, promptText);
@@ -888,6 +917,8 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
       workDir: context.workDir,
       branch: context.branch,
       suffix: context.suffix,
+      workUnitId: context.workUnitId,
+      attemptId: context.attemptId,
     });
     applyHooksUsageFromAttrs(usage, span.attributes);
     usage.tokensTotal =

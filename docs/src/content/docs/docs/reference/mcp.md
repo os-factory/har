@@ -18,7 +18,7 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_preflight_environment` | `agentId`, `confirmReplace`, `force` | Readiness, blockers, and whether launch is safe |
-| `har_launch_environment` | `agentId`, `worktree`, `claude`, `confirmReplace`, `force`, `resume` | Work directory, branch, URLs, and normalized stage result |
+| `har_launch_environment` | `agentId`, lifecycle flags, optional `workUnitId`, `source`, `sourceUrl`, `title`, `parentWorkUnitId` | Work directory, branch, work/attempt IDs, URLs, and normalized stage result |
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
 | `har_get_status` | optional `agentId` | Slot, process, worktree, branch, and dirty state |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |

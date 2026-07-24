@@ -9,6 +9,8 @@ export interface TelemetrySessionAttrs {
   workDir: string;
   branch?: string;
   suffix?: string;
+  workUnitId?: string;
+  attemptId?: string;
 }
 
 function escapeAttrValue(value: string): string {
@@ -24,6 +26,10 @@ export function buildOtelResourceAttributes(attrs: TelemetrySessionAttrs): strin
   ];
   if (attrs.branch) parts.push(`har.branch=${escapeAttrValue(attrs.branch)}`);
   if (attrs.suffix) parts.push(`har.suffix=${escapeAttrValue(attrs.suffix)}`);
+  if (attrs.workUnitId) {
+    parts.push(`har.work_unit_id=${escapeAttrValue(attrs.workUnitId)}`);
+  }
+  if (attrs.attemptId) parts.push(`har.attempt_id=${attrs.attemptId}`);
   return parts.join(',');
 }
 
@@ -48,6 +54,8 @@ export function buildTelemetryEnvBlock(attrs: TelemetrySessionAttrs): string {
     '',
     '# HAR session attribution (generated)',
     `HAR_SESSION_KEY=${attrs.sessionKey}`,
+    ...(attrs.workUnitId ? [`HAR_WORK_UNIT_ID=${attrs.workUnitId}`] : []),
+    ...(attrs.attemptId ? [`HAR_ATTEMPT_ID=${attrs.attemptId}`] : []),
     `HAR_CONTROL_API_URL=${apiUrl}`,
     `OTEL_RESOURCE_ATTRIBUTES=${buildOtelResourceAttributes(attrs)}`,
     '# Agent telemetry: opentelemetry-hooks → Mission Control (har telemetry on|off)',

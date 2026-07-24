@@ -62,6 +62,8 @@ har env add-stage <id> --custom --kind <kind>
 ```bash
 har env preflight 1 [--json] [--replace] [--force]
 har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume]
+  [--work-id <id>] [--work-source <name>] [--work-url <url>]
+  [--work-title <title>] [--parent-work-id <id>]
 har env recover 1
 ```
 
@@ -74,6 +76,9 @@ does not choose `main`. Prefer `complete` / `teardown` when the prior task is
 finished, then launch. `--force` additionally permits discarding dirty
 uncommitted work and must only follow explicit approval. Use `--resume` /
 `recover` for failed launches, not `--replace`.
+
+Work metadata is optional and backward compatible. A fresh bound launch creates an
+immutable attempt UUID; `--resume` preserves the failed session's attempt.
 
 ### Verify and finish
 

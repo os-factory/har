@@ -84,6 +84,11 @@ export const LaunchEnvironmentInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Resume a failed or partial launch without creating a new worktree.'),
+  workUnitId: z.string().min(1).max(128).optional(),
+  source: z.string().min(1).max(64).optional(),
+  sourceUrl: z.string().url().optional(),
+  title: z.string().min(1).max(256).optional(),
+  parentWorkUnitId: z.string().min(1).max(128).optional(),
 });
 
 export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
@@ -94,6 +99,8 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
     .describe('Where the session code lives — ALL file edits must go under this path'),
   worktreePath: z.string().optional(),
   branch: z.string().optional(),
+  workUnitId: z.string().optional(),
+  attemptId: z.string().uuid().optional(),
   blocked: z.boolean().optional(),
   occupiedSlot: z
     .object({

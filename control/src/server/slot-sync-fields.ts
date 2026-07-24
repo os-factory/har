@@ -25,6 +25,8 @@ export type AgentSlotSyncFields = {
   baseBranch: string | null;
   baseCommit: string | null;
   sessionCreatedAt: Date | null;
+  workUnitId: string | null;
+  attemptId: string | null;
   detachedHead: boolean | null;
   dirty: boolean | null;
   ahead: number | null;
@@ -50,6 +52,8 @@ export function buildAgentSlotSyncFields(parsed: AgentSlotStatus): AgentSlotSync
     baseBranch: parsed.baseBranch ?? null,
     baseCommit: parsed.baseCommit ?? null,
     sessionCreatedAt: parsed.sessionCreatedAt ? new Date(parsed.sessionCreatedAt) : null,
+    workUnitId: active ? parsed.workUnitId ?? null : null,
+    attemptId: active ? parsed.attemptId ?? null : null,
     // purpose is OTEL-derived — never synced from the harness registry
     detachedHead: active ? parsed.detachedHead ?? null : null,
     dirty: active ? parsed.dirty ?? null : null,

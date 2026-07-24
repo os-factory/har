@@ -1,26 +1,28 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Worktrees home', () => {
-  test('shows worktrees heading', async ({ page }) => {
+test.describe('Factory and operations', () => {
+  test('shows Factory as the work-centric home', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Worktrees' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Factory' })).toBeVisible();
+    await expect(page.getByText('Work', { exact: true })).toBeVisible();
   });
 
-  test('renders worktrees table or empty active sessions', async ({ page }) => {
-    await page.goto('/');
+  test('renders the operations worktree table', async ({ page }) => {
+    await page.goto('/worktrees');
     await expect(page.getByText('Active sessions')).toBeVisible();
     await expect(page.getByRole('table')).toBeVisible();
   });
 
-  test('sidebar lists Worktrees, Usage, and Repositories', async ({ page }) => {
+  test('sidebar separates Factory and Operations', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('link', { name: 'Worktrees', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Factory', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Operations', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Usage', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Repositories', exact: true })).toBeVisible();
   });
 
   test('keeps horizontal scroll inside the table, not the page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/worktrees');
     await expect(page.getByRole('table')).toBeVisible();
 
     const metrics = await page.evaluate(() => {
@@ -34,14 +36,14 @@ test.describe('Worktrees home', () => {
   });
 
   test('exposes search, columns, and repository filter', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/worktrees');
     await expect(page.getByRole('searchbox', { name: /search worktrees/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /columns/i })).toBeVisible();
     await expect(page.getByLabel('Filter by repository')).toBeVisible();
   });
 
   test('repository filter updates the URL and narrows rows', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/worktrees');
     const filter = page.getByLabel('Filter by repository');
     await expect(filter).toBeVisible();
 
@@ -70,7 +72,7 @@ test.describe('Worktrees home', () => {
   });
 
   test('clicking a worktree row opens the slot detail page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/worktrees');
     const table = page.getByRole('table');
     await expect(table).toBeVisible();
 

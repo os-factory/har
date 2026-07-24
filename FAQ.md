@@ -8,6 +8,18 @@ It helps a team turn repo-specific knowledge into an editable `.har/` contract t
 
 HAR is not a coding LLM, a browser test runner, or a CI/CD replacement. It is the layer that tells any capable agent how to operate safely inside a real codebase.
 
+<details>
+<summary><strong>Q: Does HAR replace my issue tracker or coding methodology?</strong></summary>
+
+**A:** No. Humans, trackers, and skill packs own intent, decomposition, TDD,
+debugging, and review. HAR can bind their stable work identifier to one or more
+isolated attempts, then preserve execution and exact-tree verification evidence.
+
+Mission Control derives operational state from that evidence. It does not copy
+mutable tracker workflows into HAR.
+
+</details>
+
 ## Basic Concepts
 
 <details>

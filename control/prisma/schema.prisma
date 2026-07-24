@@ -22,6 +22,9 @@ model Repository {
   sessionUsage    AgentSessionUsage[]
   sessionEvents   AgentSessionEvent[]
   sessionSpans    AgentSessionSpan[]
+  workUnits       WorkUnit[]
+  workAttempts    WorkAttempt[]
+  validationBindings ValidationBinding[]
 }
 
 model AgentSlot {
@@ -45,6 +48,8 @@ model AgentSlot {
   baseCommit       String?
   sessionCreatedAt DateTime?
   purpose          String?
+  workUnitId       String?
+  attemptId        String?
   detachedHead     Boolean?
   dirty            Boolean?
   ahead            Int?
@@ -65,6 +70,8 @@ model AgentSessionUsage {
   workDir             String?
   branch              String?
   suffix              String?
+  workUnitId          String?
+  attemptId           String?
   tokensInput         BigInt     @default(0)
   tokensOutput        BigInt     @default(0)
   tokensCacheRead     BigInt     @default(0)
@@ -97,6 +104,8 @@ model AgentSessionEvent {
   responseText   String?
   rawTruncated   String?
   source         String     @default("otel")
+  workUnitId     String?
+  attemptId      String?
   createdAt      DateTime   @default(now())
 
   @@unique([repositoryId, sessionKey, agentTool, eventName, sequence])
@@ -111,6 +120,8 @@ model AgentSessionSpan {
   sessionKey     String
   agentId        Int
   agentTool      String
+  workUnitId     String?
+  attemptId      String?
   traceId        String
   spanId         String
   parentSpanId   String?
@@ -138,11 +149,75 @@ model Run {
   startedAt    DateTime
   finishedAt   DateTime?
   workDir      String?
+  workUnitId   String?
+  attemptId    String?
   result       Json?
   createdAt    DateTime   @default(now())
 
   @@unique([repositoryId, runId])
   @@index([repositoryId, startedAt])
+}
+
+model WorkUnit {
+  id               String     @id @default(uuid())
+  repositoryId     String
+  repository       Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workUnitId       String
+  source           String?
+  sourceUrl        String?
+  title            String?
+  parentWorkUnitId String?
+  outcome          Json?
+  sourceCreatedAt  DateTime
+  sourceUpdatedAt  DateTime
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  attempts         WorkAttempt[]
+  validationBindings ValidationBinding[]
+
+  @@unique([repositoryId, workUnitId])
+  @@index([repositoryId, sourceUpdatedAt])
+}
+
+model WorkAttempt {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workUnitDbId String
+  workUnit     WorkUnit   @relation(fields: [workUnitDbId], references: [id], onDelete: Cascade)
+  attemptId    String
+  agentId      Int
+  sessionKey   String?
+  workDir      String?
+  worktreePath String?
+  branch       String?
+  baseCommit   String?
+  sourceCreatedAt DateTime
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  validationBindings ValidationBinding[]
+
+  @@unique([repositoryId, attemptId])
+  @@index([workUnitDbId, sourceCreatedAt])
+}
+
+model ValidationBinding {
+  id           String      @id @default(uuid())
+  repositoryId String
+  repository   Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  bindingId    String
+  workUnitDbId String
+  workUnit     WorkUnit    @relation(fields: [workUnitDbId], references: [id], onDelete: Cascade)
+  attemptDbId  String
+  attempt      WorkAttempt @relation(fields: [attemptDbId], references: [id], onDelete: Cascade)
+  validationId String
+  treeHash     String
+  sourceCreatedAt DateTime
+  createdAt    DateTime    @default(now())
+
+  @@unique([repositoryId, bindingId])
+  @@index([repositoryId, validationId])
+  @@index([workUnitDbId, sourceCreatedAt])
 }
 
 model ChangeBatch {

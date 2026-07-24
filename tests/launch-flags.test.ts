@@ -10,8 +10,18 @@ describe('launch flag plumbing', () => {
         force: true,
         resume: true,
         claude: true,
+        workUnitId: 'ISSUE-123',
+        attemptId: '11111111-1111-4111-8111-111111111111',
       }),
-    ).toEqual(['--no-worktree', '--claude', '--replace', '--force', '--resume']);
+    ).toEqual([
+      '--no-worktree',
+      '--claude',
+      '--replace',
+      '--force',
+      '--resume',
+      '--work-id=ISSUE-123',
+      '--attempt-id=11111111-1111-4111-8111-111111111111',
+    ]);
   });
 
   it('shell-quotes values that contain spaces', () => {

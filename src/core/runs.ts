@@ -175,6 +175,8 @@ export function createRun(ctx: ExecutionContext, meta: CreateRunMeta): RunRecord
     startedAt,
     relativePath,
     trigger: ctx.trigger ?? 'cli',
+    workUnitId: ctx.workUnitId,
+    attemptId: ctx.attemptId,
   });
 
   fs.writeFileSync(runFilePath, JSON.stringify(run, null, 2) + '\n');

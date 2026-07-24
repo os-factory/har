@@ -239,6 +239,78 @@ export type StageResult = HarnessStageRunResult;
 
 export const RunRecordTriggerSchema = z.enum(['cli', 'mcp', 'script']);
 
+export const WorkUnitIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._:/#@-]*$/,
+    'work unit id must start with an alphanumeric character and contain only stable identifier characters',
+  );
+
+export const WorkAttemptIdSchema = z.string().uuid();
+
+export const WorkUnitMetadataSchema = z.object({
+  workUnitId: WorkUnitIdSchema,
+  source: z.string().min(1).max(64).optional(),
+  sourceUrl: z.string().url().optional(),
+  title: z.string().min(1).max(256).optional(),
+  parentWorkUnitId: WorkUnitIdSchema.optional(),
+});
+
+export type WorkUnitMetadata = z.infer<typeof WorkUnitMetadataSchema>;
+
+export const WorkUnitOutcomeSchema = z
+  .object({
+    decision: z.enum(['completed', 'abandoned']),
+    decidedAt: z.string(),
+    attemptId: WorkAttemptIdSchema.optional(),
+    validationId: z.string().uuid().optional(),
+    treeHash: z.string().regex(/^[0-9a-f]{40,64}$/).optional(),
+    reason: z.string().max(2000).optional(),
+  })
+  .superRefine((outcome, ctx) => {
+    if (
+      outcome.decision === 'completed' &&
+      (!outcome.attemptId || !outcome.validationId || !outcome.treeHash)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'completed work must reference an attempt and exact-tree validation',
+      });
+    }
+  });
+
+export type WorkUnitOutcome = z.infer<typeof WorkUnitOutcomeSchema>;
+
+/** Durable intent and explicit business outcome. Execution state is derived from evidence. */
+export const WorkUnitRecordSchema = WorkUnitMetadataSchema.extend({
+  version: z.number().int().default(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  outcome: WorkUnitOutcomeSchema.optional(),
+}).passthrough();
+
+export type WorkUnitRecord = z.infer<typeof WorkUnitRecordSchema>;
+
+/** Immutable identity for one launch/session attempt of a work unit. */
+export const WorkAttemptRecordSchema = z
+  .object({
+    version: z.number().int().default(1),
+    attemptId: WorkAttemptIdSchema,
+    workUnitId: WorkUnitIdSchema,
+    agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
+    sessionKey: z.string().min(1).optional(),
+    workDir: z.string().optional(),
+    worktreePath: z.string().optional(),
+    branch: z.string().optional(),
+    baseCommit: z.string().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+
+export type WorkAttemptRecord = z.infer<typeof WorkAttemptRecordSchema>;
+
 export const RunRecordSchema = z
   .object({
     runId: z.string().uuid(),
@@ -256,6 +328,8 @@ export const RunRecordSchema = z
     command: z.string().optional(),
     workDir: z.string().optional(),
     harnessRoot: z.string().optional(),
+    workUnitId: WorkUnitIdSchema.optional(),
+    attemptId: WorkAttemptIdSchema.optional(),
   })
   .passthrough();
 
@@ -287,6 +361,8 @@ export const SlotRegistryEntrySchema = z
     createdAt: z.string(),
     ports: z.record(z.number()).optional(),
     previewUrls: z.record(z.string()).optional(),
+    workUnitId: WorkUnitIdSchema.optional(),
+    attemptId: WorkAttemptIdSchema.optional(),
     status: z.enum(['starting', 'active', 'failed', 'completed']).default('active'),
     lastError: z.string().optional(),
   })
@@ -348,6 +424,8 @@ export const AgentSlotStatusSchema = z.object({
   sessionCreatedAt: z.string().optional(),
   /** Derived from first captured user prompt (OTEL hooks); not set at launch. */
   purpose: z.string().optional(),
+  workUnitId: WorkUnitIdSchema.optional(),
+  attemptId: WorkAttemptIdSchema.optional(),
   sessionStatus: z.enum(['starting', 'active', 'failed', 'completed']).optional(),
   lastError: z.string().optional(),
   /** Set when a failed/starting session can be resumed without --replace. */
@@ -432,6 +510,13 @@ export const SyncSlotsInputSchema = z.object({
 
 export type SyncSlotsInput = z.infer<typeof SyncSlotsInputSchema>;
 
+export const SyncWorkUnitsInputSchema = z.object({
+  workUnits: z.array(WorkUnitRecordSchema),
+  attempts: z.array(WorkAttemptRecordSchema),
+});
+
+export type SyncWorkUnitsInput = z.infer<typeof SyncWorkUnitsInputSchema>;
+
 /** Git name-status letters (rename/copy carry oldPath). */
 export const ChangedFileStatusSchema = z.enum(['A', 'M', 'D', 'R', 'C', 'T', 'U']);
 
@@ -477,6 +562,24 @@ export const SyncValidationsInputSchema = z.object({
 
 export type SyncValidationsInput = z.infer<typeof SyncValidationsInputSchema>;
 
+/** Many-to-many proof link: one exact-tree validation may prove multiple work attempts. */
+export const ValidationBindingRecordSchema = z.object({
+  bindingId: z.string().uuid(),
+  workUnitId: WorkUnitIdSchema,
+  attemptId: WorkAttemptIdSchema,
+  validationId: z.string().uuid(),
+  treeHash: z.string().regex(/^[0-9a-f]{40,64}$/),
+  createdAt: z.string(),
+});
+
+export type ValidationBindingRecord = z.infer<typeof ValidationBindingRecordSchema>;
+
+export const SyncValidationBindingsInputSchema = z.object({
+  bindings: z.array(ValidationBindingRecordSchema),
+});
+
+export type SyncValidationBindingsInput = z.infer<typeof SyncValidationBindingsInputSchema>;
+
 export const AgentToolSchema = z.enum(['claude_code', 'codex', 'cursor']);
 export type AgentTool = z.infer<typeof AgentToolSchema>;
 
@@ -491,6 +594,8 @@ export const AgentSessionUsageSchema = z.object({
   workDir: z.string().optional(),
   branch: z.string().optional(),
   suffix: z.string().optional(),
+  workUnitId: WorkUnitIdSchema.optional(),
+  attemptId: WorkAttemptIdSchema.optional(),
   tokensInput: z.number().nonnegative().default(0),
   tokensOutput: z.number().nonnegative().default(0),
   tokensCacheRead: z.number().nonnegative().default(0),
@@ -519,6 +624,8 @@ export const AgentSessionEventSchema = z.object({
   eventName: z.string().min(1),
   sequence: z.number().int().nonnegative().default(0),
   timestamp: z.string(),
+  workUnitId: WorkUnitIdSchema.optional(),
+  attemptId: WorkAttemptIdSchema.optional(),
   attributes: z.record(z.unknown()).optional(),
   promptText: z.string().nullable().optional(),
   responseText: z.string().nullable().optional(),

@@ -105,10 +105,14 @@ describe('telemetry env', () => {
       workDir: '/repo/wt',
       branch: 'main-abcd-har-agent-1-xy12',
       suffix: 'xy12',
+      workUnitId: 'ISSUE-123',
+      attemptId: '11111111-1111-4111-8111-111111111111',
     });
     expect(attrs).toContain('har.session_key=main-abcd-har-agent-1-xy12');
     expect(attrs).toContain('har.agent_id=1');
     expect(attrs).toContain('har.repo_path=/repo');
+    expect(attrs).toContain('har.work_unit_id=ISSUE-123');
+    expect(attrs).toContain('har.attempt_id=11111111-1111-4111-8111-111111111111');
     expect(attrs).not.toContain('har.purpose');
   });
 

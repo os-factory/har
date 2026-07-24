@@ -16,6 +16,8 @@ export async function GET() {
       sessionKey: row.sessionKey,
       agentId: row.agentId,
       agentTool: row.agentTool,
+      workUnitId: row.workUnitId,
+      attemptId: row.attemptId,
       tokensTotal: Number(row.tokensTotal),
       costUsd: row.costUsd == null ? null : Number(row.costUsd),
       sources: row.sources,

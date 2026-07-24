@@ -16,6 +16,8 @@ function activeSlot(overrides: Partial<AgentSlotStatus> = {}): AgentSlotStatus {
     behind: 0,
     stale: false,
     detachedHead: false,
+    workUnitId: 'ISSUE-123',
+    attemptId: '11111111-1111-4111-8111-111111111111',
     ...overrides,
   };
 }
@@ -30,6 +32,7 @@ describe('buildAgentSlotSyncFields', () => {
     expect(fields.previewUrls).toEqual({ frontend: 'http://localhost:3000' });
     expect(fields.dirty).toBe(true);
     expect(fields.ahead).toBe(2);
+    expect(fields.workUnitId).toBe('ISSUE-123');
   });
 
   it('nulls worktree path, preview, and drift when idle (teardown sync)', () => {
@@ -57,6 +60,8 @@ describe('buildAgentSlotSyncFields', () => {
     expect(fields.behind).toBeNull();
     expect(fields.stale).toBeNull();
     expect(fields.detachedHead).toBeNull();
+    expect(fields.workUnitId).toBeNull();
+    expect(fields.attemptId).toBeNull();
     // Omitted branch on idle → leave previous DB value (field absent).
     expect(fields).not.toHaveProperty('branch');
   });

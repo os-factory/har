@@ -80,6 +80,8 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     workDir: input.workDir ?? existing?.workDir ?? null,
     branch: input.branch ?? existing?.branch ?? null,
     suffix: input.suffix ?? existing?.suffix ?? null,
+    workUnitId: input.workUnitId ?? existing?.workUnitId ?? null,
+    attemptId: input.attemptId ?? existing?.attemptId ?? null,
     tokensInput,
     tokensOutput,
     tokensCacheRead,

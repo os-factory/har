@@ -282,6 +282,8 @@ function collectSlotStatus(
     baseBranch: session?.baseBranch,
     baseCommit: session?.baseCommit,
     sessionCreatedAt: session?.createdAt,
+    workUnitId: session?.workUnitId,
+    attemptId: session?.attemptId,
     sessionStatus: session?.status,
     lastError: session?.lastError,
     resumeHint,
