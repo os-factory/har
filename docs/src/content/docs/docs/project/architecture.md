@@ -71,5 +71,4 @@ validation stays reusable through a separate binding.
 
 Active, failed, and verified state is derived from evidence. Completion is the only
 successful terminal decision and must reference a passing full validation of the
-exact tree. See
-[ADR 0001](https://github.com/os-factory/har/blob/main/docs/architecture/decisions/0001-work-identity.md).
+exact tree. See `docs/architecture/decisions/0001-work-identity.md`.

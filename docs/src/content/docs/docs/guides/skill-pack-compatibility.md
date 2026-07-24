@@ -84,8 +84,7 @@ tracker hidden inside the harness.
 
 ## Reproducible showcase
 
-The repository includes
-[`examples/factory-showcase`](https://github.com/os-factory/har/tree/main/examples/factory-showcase),
-a dependency-free application and one ticket that can be run through either
-methodology. The fixture uses the same work ID and expected behavior so Mission
-Control evidence can be compared without copying third-party skill content.
+The repository includes `examples/factory-showcase`, a dependency-free application
+and one ticket that can be run through either methodology. The fixture uses the
+same work ID and expected behavior so Mission Control evidence can be compared
+without copying third-party skill content.
