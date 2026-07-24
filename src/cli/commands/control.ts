@@ -8,6 +8,8 @@ import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   syncRepoWithControl,
 } from '../../core/control-sync';
+import { writePortalCredentials } from '../../core/portal-credentials';
+import { loginViaBrowser } from '../../core/portal-login';
 import { startMissionControl, syncReposAfterControlStart, stopMissionControl } from '../../core/control-lifecycle';
 import {
   confirmUnregister,
@@ -106,9 +108,14 @@ export const controlCommand = {
       )
       .command(
         'login',
-        'Configure HAR Cloud API credentials (hosted sync)',
+        'Log in to a har-portal (browser SSO) and store an ingest token',
         (y: Argv) =>
-          y.option('api-key', { type: 'string', describe: 'HAR Cloud API key' }),
+          y
+            .option('portal', { type: 'string', describe: 'Portal base URL (or set HAR_PORTAL_URL)' })
+            .option('api-key', {
+              type: 'string',
+              describe: 'Store this ingest token directly instead of browser login',
+            }),
         handleLogin,
       )
       .demandCommand(
@@ -370,13 +377,34 @@ async function handleWatch(argv: {
   }, argv.interval * 1000);
 }
 
-async function handleLogin(argv: { apiKey?: string }): Promise<void> {
+async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<void> {
   header('har control login');
-  if (!argv.apiKey) {
-    error('Provide --api-key (HAR Cloud API key)');
+  const portalUrl = (argv.portal ?? process.env.HAR_PORTAL_URL ?? '').replace(/\/+$/, '');
+  if (!portalUrl) {
+    error('Provide --portal <url> (or set HAR_PORTAL_URL)');
     process.exit(1);
   }
-  process.env.HAR_CLOUD_API_KEY = argv.apiKey;
-  success('HAR_CLOUD_API_KEY set for this process. Export it in your shell for persistence.');
-  info('Sync to cloud: har control sync --cloud');
+
+  if (argv.apiKey) {
+    writePortalCredentials({
+      portalUrl,
+      token: argv.apiKey,
+      createdAt: new Date().toISOString(),
+    });
+    success(`Saved ingest token for ${portalUrl}`);
+    info('Sync: har control sync');
+    return;
+  }
+
+  try {
+    const creds = await loginViaBrowser(portalUrl);
+    writePortalCredentials(creds);
+    success(
+      `Logged in to ${portalUrl}${creds.workspace ? ` (workspace: ${creds.workspace})` : ''}`,
+    );
+    info('Sync: har control sync');
+  } catch (err) {
+    error(`Login failed: ${(err as Error).message}`);
+    process.exit(1);
+  }
 }
