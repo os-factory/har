@@ -1,3 +1,10 @@
+# [0.21.0](https://github.com/os-factory/har/compare/v0.20.0...v0.21.0) (2026-07-24)
+
+
+### Features
+
+* add durable work identity and Factory control plane ([#80](https://github.com/os-factory/har/issues/80)) ([3a1d961](https://github.com/os-factory/har/commit/3a1d961aa9546e9abbedb0c898fb006a70d2c482))
+
 # [0.20.0](https://github.com/os-factory/har/compare/v0.19.0...v0.20.0) (2026-07-23)
 
 
