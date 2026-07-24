@@ -1,3 +1,5 @@
+import { readPortalCredentials } from './portal-credentials';
+
 /** Default Mission Control API base URL (local Docker Compose). */
 export const DEFAULT_CONTROL_API_URL = 'http://localhost:3847';
 
@@ -14,9 +16,29 @@ export interface PortalTarget {
   token: string;
 }
 
+function normalizeUrl(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
 export function getPortalTarget(): PortalTarget | null {
-  const url = process.env.HAR_PORTAL_URL ?? process.env.HAR_CLOUD_API_URL;
-  const token = process.env.HAR_PORTAL_TOKEN ?? process.env.HAR_CLOUD_API_KEY;
-  if (!url || !token) return null;
-  return { url: url.replace(/\/+$/, ''), token };
+  if (process.env.HAR_PORTAL_URL && process.env.HAR_PORTAL_TOKEN) {
+    return {
+      url: normalizeUrl(process.env.HAR_PORTAL_URL),
+      token: process.env.HAR_PORTAL_TOKEN,
+    };
+  }
+
+  const stored = readPortalCredentials();
+  if (stored) {
+    return { url: normalizeUrl(stored.portalUrl), token: stored.token };
+  }
+
+  if (process.env.HAR_CLOUD_API_URL && process.env.HAR_CLOUD_API_KEY) {
+    return {
+      url: normalizeUrl(process.env.HAR_CLOUD_API_URL),
+      token: process.env.HAR_CLOUD_API_KEY,
+    };
+  }
+
+  return null;
 }

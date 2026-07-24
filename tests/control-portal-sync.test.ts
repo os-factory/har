@@ -5,6 +5,7 @@ import { syncRepoWithControl } from '../src/core/control-sync';
 // collectors are exercised by their own suites — here we only care that the
 // portal push targets the right URL, sends the bearer token, and shapes the
 // omnibus body from whatever the collectors return.
+jest.mock('../src/core/portal-credentials', () => ({ readPortalCredentials: () => null }));
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
 }));
