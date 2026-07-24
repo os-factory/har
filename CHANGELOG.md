@@ -1,3 +1,10 @@
+# [0.22.0](https://github.com/os-factory/har/compare/v0.21.0...v0.22.0) (2026-07-24)
+
+
+### Features
+
+* authenticate har CLI/control push to a har-portal instance ([#82](https://github.com/os-factory/har/issues/82)) ([57deba2](https://github.com/os-factory/har/commit/57deba2530217bb5c7acd56aab8a2303bc864606))
+
 # [0.21.0](https://github.com/os-factory/har/compare/v0.20.0...v0.21.0) (2026-07-24)
 
 
