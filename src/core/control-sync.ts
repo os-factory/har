@@ -2,6 +2,8 @@ import * as path from 'path';
 import { readManifest, resolveHarnessRoot } from '../harness/manifest';
 import { readStageRegistry } from '../harness/stages';
 import {
+  AgentSessionEvent,
+  AgentSessionUsage,
   EnvironmentStatus,
   RegisterRepoInput,
   RunRecord,
@@ -11,7 +13,12 @@ import {
   SyncUsageInputSchema,
   SyncValidationsInputSchema,
 } from '../harness/schema';
-import { getControlApiUrl, isControlEnabled } from './control-config';
+import {
+  getControlApiUrl,
+  getPortalTarget,
+  isControlEnabled,
+  PortalTarget,
+} from './control-config';
 import { listRegisteredRepos, removeRegisteredRepo } from './control-registry';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
@@ -52,6 +59,99 @@ async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promis
   return (await response.json()) as T;
 }
 
+async function postPortalSync(
+  target: PortalTarget,
+  body: unknown,
+  dryRun?: boolean,
+): Promise<void> {
+  if (dryRun) return;
+
+  const response = await fetch(`${target.url}/api/sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${target.token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        `har-portal rejected the ingest token (HTTP ${response.status}) — check HAR_PORTAL_TOKEN.`,
+      );
+    }
+    const text = await response.text().catch(() => '');
+    throw new Error(`har-portal sync failed: HTTP ${response.status}${text ? ` — ${text}` : ''}`);
+  }
+}
+
+function collectSessionUsage(
+  status: EnvironmentStatus,
+  repoPath: string,
+): AgentSessionUsage[] {
+  if (!isTelemetryEnabled() || process.env.NODE_ENV === 'test') return [];
+  return status.slots.flatMap((slot) =>
+    harvestUsageForSlot({
+      agentId: slot.agentId,
+      workDir: slot.workDir,
+      worktreePath: slot.worktreePath,
+      branch: slot.branch,
+      suffix: slot.suffix,
+      sessionCreatedAt: slot.sessionCreatedAt,
+      repoPath,
+    }).map((row) => ({
+      ...row,
+      sessionKey:
+        row.sessionKey ||
+        buildSessionKey({
+          branch: slot.branch,
+          agentId: slot.agentId,
+          suffix: slot.suffix,
+          createdAt: slot.sessionCreatedAt,
+        }),
+    })),
+  );
+}
+
+function collectSessionEvents(
+  status: EnvironmentStatus,
+  repoPath: string,
+): AgentSessionEvent[] {
+  if (!isTelemetryEnabled() || process.env.NODE_ENV === 'test') return [];
+  return status.slots.flatMap((slot) =>
+    harvestEventsForSlot({
+      agentId: slot.agentId,
+      workDir: slot.workDir,
+      worktreePath: slot.worktreePath,
+      branch: slot.branch,
+      suffix: slot.suffix,
+      sessionCreatedAt: slot.sessionCreatedAt,
+      repoPath,
+    }),
+  );
+}
+
+function buildPortalSyncBody(repoPath: string): Record<string, unknown> {
+  const runs = listRuns(repoPath);
+  const status = collectEnvironmentStatus(repoPath);
+  const manifest = readManifest(repoPath);
+  const stagesRegistry = readStageRegistry(repoPath);
+  const validations = listValidations(resolveHarnessRoot(repoPath));
+  const usage = collectSessionUsage(status, repoPath);
+
+  return {
+    path: repoPath,
+    ...(manifest ? { manifest } : {}),
+    ...(stagesRegistry ? { stagesRegistry } : {}),
+    runs,
+    slots: status.slots,
+    generatedAt: status.generatedAt,
+    ...(validations.length > 0 ? { validations } : {}),
+    ...(usage.length > 0 ? { usage } : {}),
+  };
+}
+
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
   try {
     const response = await fetch(`${apiUrl}/api/health`, {
@@ -84,7 +184,8 @@ export async function syncAllKnownReposWithControl(options?: {
   if (!isControlEnabled()) return { synced: 0, failed: 0 };
 
   const apiUrl = options?.apiUrl ?? getControlApiUrl();
-  if (!(await isControlApiReachable(apiUrl))) {
+  const portal = getPortalTarget();
+  if (!(await isControlApiReachable(portal ? portal.url : apiUrl))) {
     return { synced: 0, failed: 0 };
   }
 
@@ -185,6 +286,12 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
     return;
   }
 
+  const portal = getPortalTarget();
+  if (portal) {
+    await postPortalSync(portal, buildPortalSyncBody(repoPath), options.dryRun);
+    return;
+  }
+
   const registerResult = await registerRepoWithControl({ ...options, repoPath });
   const repoId = registerResult?.id;
 
@@ -223,53 +330,21 @@ async function syncRepoRunsAndSlots(
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
 
-  if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
-    try {
-      const usage = status.slots.flatMap((slot) =>
-        harvestUsageForSlot({
-          agentId: slot.agentId,
-          workDir: slot.workDir,
-          worktreePath: slot.worktreePath,
-          branch: slot.branch,
-          suffix: slot.suffix,
-          sessionCreatedAt: slot.sessionCreatedAt,
-          repoPath,
-        }).map((row) => ({
-          ...row,
-          sessionKey:
-            row.sessionKey ||
-            buildSessionKey({
-              branch: slot.branch,
-              agentId: slot.agentId,
-              suffix: slot.suffix,
-              createdAt: slot.sessionCreatedAt,
-            }),
-        })),
-      );
-      if (usage.length > 0) {
-        const usageBody = SyncUsageInputSchema.parse({ usage });
-        await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
-      }
-
-      const events = status.slots.flatMap((slot) =>
-        harvestEventsForSlot({
-          agentId: slot.agentId,
-          workDir: slot.workDir,
-          worktreePath: slot.worktreePath,
-          branch: slot.branch,
-          suffix: slot.suffix,
-          sessionCreatedAt: slot.sessionCreatedAt,
-          repoPath,
-        }),
-      );
-      if (events.length > 0) {
-        const eventsBody = SyncSessionEventsInputSchema.parse({ events });
-        await postJson(`${apiUrl}/api/repos/${repoId}/events`, eventsBody, dryRun);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[har control] usage harvest skipped: ${message}\n`);
+  try {
+    const usage = collectSessionUsage(status, repoPath);
+    if (usage.length > 0) {
+      const usageBody = SyncUsageInputSchema.parse({ usage });
+      await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
     }
+
+    const events = collectSessionEvents(status, repoPath);
+    if (events.length > 0) {
+      const eventsBody = SyncSessionEventsInputSchema.parse({ events });
+      await postJson(`${apiUrl}/api/repos/${repoId}/events`, eventsBody, dryRun);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[har control] usage harvest skipped: ${message}\n`);
   }
 
   const validations = listValidations(resolveHarnessRoot(repoPath));
@@ -301,16 +376,17 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
 
   const verbose = process.env.HAR_CONTROL_VERBOSE === 'true';
   try {
-    const apiUrl = getControlApiUrl();
-    if (!(await isControlApiReachable(apiUrl))) {
+    const portal = getPortalTarget();
+    const healthUrl = portal ? portal.url : getControlApiUrl();
+    if (!(await isControlApiReachable(healthUrl))) {
       if (verbose) {
-        process.stderr.write(`[har control] sync skipped: control API not reachable at ${apiUrl}\n`);
+        process.stderr.write(`[har control] sync skipped: not reachable at ${healthUrl}\n`);
       }
       return;
     }
     const canonical = canonicalizeControlRepoPath(repoPath);
     await withTimeout(
-      syncRepoWithControl({ repoPath: canonical, apiUrl }),
+      syncRepoWithControl({ repoPath: canonical }),
       SYNC_TIMEOUT_MS,
       'control sync',
     );
@@ -324,6 +400,19 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
 
 export async function syncRunWithControlAsync(repoPath: string, run: RunRecord): Promise<void> {
   if (process.env.HAR_CONTROL_DISABLED === 'true') return;
+
+  const portal = getPortalTarget();
+  if (portal) {
+    try {
+      if (!(await isControlApiReachable(portal.url))) return;
+      const canonical = canonicalizeControlRepoPath(repoPath);
+      await postPortalSync(portal, { path: canonical, runs: [run] });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[har control] run sync skipped: ${message}\n`);
+    }
+    return;
+  }
 
   const apiUrl = getControlApiUrl();
   try {
