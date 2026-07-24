@@ -50,18 +50,28 @@ function readJsonlRecords(filePath: string): unknown[] {
   return out;
 }
 
+export interface ModelUsageTotals {
+  tokensInput: number;
+  tokensOutput: number;
+  tokensCacheRead: number;
+  tokensCacheCreation: number;
+  tokensTotal: number;
+}
+
 function extractClaudeUsageFromRecords(records: unknown[]): {
   tokensInput: number;
   tokensOutput: number;
   tokensCacheRead: number;
   tokensCacheCreation: number;
   costUsd: number | null;
+  modelBreakdown: Record<string, ModelUsageTotals>;
 } {
   let tokensInput = 0;
   let tokensOutput = 0;
   let tokensCacheRead = 0;
   let tokensCacheCreation = 0;
   let costUsd: number | null = null;
+  const modelBreakdown: Record<string, ModelUsageTotals> = {};
 
   for (const record of records) {
     if (!record || typeof record !== 'object') continue;
@@ -76,19 +86,40 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
       if (payload.total_cost_usd != null) costUsd = Number(payload.total_cost_usd);
     }
     // Some transcripts nest usage on message/assistant events — accumulate when present.
-    const nestedUsage = (payload.usage ??
-      (payload.message as { usage?: Record<string, unknown> } | undefined)?.usage) as
+    const message = payload.message as
+      | { usage?: Record<string, unknown>; model?: string }
+      | undefined;
+    const nestedUsage = (payload.usage ?? message?.usage) as
       | Record<string, unknown>
       | undefined;
     if (nestedUsage && payload.type !== 'result') {
-      tokensInput += Number(nestedUsage.input_tokens ?? 0);
-      tokensOutput += Number(nestedUsage.output_tokens ?? 0);
-      tokensCacheRead += Number(nestedUsage.cache_read_input_tokens ?? 0);
-      tokensCacheCreation += Number(nestedUsage.cache_creation_input_tokens ?? 0);
+      const i = Number(nestedUsage.input_tokens ?? 0);
+      const o = Number(nestedUsage.output_tokens ?? 0);
+      const cr = Number(nestedUsage.cache_read_input_tokens ?? 0);
+      const cc = Number(nestedUsage.cache_creation_input_tokens ?? 0);
+      tokensInput += i;
+      tokensOutput += o;
+      tokensCacheRead += cr;
+      tokensCacheCreation += cc;
+      const model = typeof message?.model === 'string' ? message.model : undefined;
+      if (model && model !== '<synthetic>') {
+        const totals = (modelBreakdown[model] ??= {
+          tokensInput: 0,
+          tokensOutput: 0,
+          tokensCacheRead: 0,
+          tokensCacheCreation: 0,
+          tokensTotal: 0,
+        });
+        totals.tokensInput += i;
+        totals.tokensOutput += o;
+        totals.tokensCacheRead += cr;
+        totals.tokensCacheCreation += cc;
+        totals.tokensTotal += i + o + cr + cc;
+      }
     }
   }
 
-  return { tokensInput, tokensOutput, tokensCacheRead, tokensCacheCreation, costUsd };
+  return { tokensInput, tokensOutput, tokensCacheRead, tokensCacheCreation, costUsd, modelBreakdown };
 }
 
 function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePath: string; records: unknown[]; mtimeMs: number }> {
@@ -228,6 +259,9 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
     tokensCacheCreation: best.tokensCacheCreation,
     tokensTotal,
     costUsd: best.costUsd,
+    ...(Object.keys(best.modelBreakdown).length > 0
+      ? { modelBreakdown: best.modelBreakdown }
+      : {}),
     sources: ['harvest'],
     firstSeenAt: slot.sessionCreatedAt ?? now,
     lastSeenAt: now,

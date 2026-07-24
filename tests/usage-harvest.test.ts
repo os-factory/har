@@ -54,6 +54,53 @@ describe('usage harvest claude', () => {
     expect(usage!.costUsd).toBe(0.42);
     expect(usage!.sources).toEqual(['harvest']);
   });
+
+  it('rolls up a per-model breakdown from assistant messages', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-2-zz99';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: workDir }),
+        JSON.stringify({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            model: 'claude-opus-4-8',
+            usage: { input_tokens: 30, output_tokens: 10, cache_read_input_tokens: 4 },
+          },
+        }),
+        JSON.stringify({
+          type: 'assistant',
+          message: { role: 'assistant', model: '<synthetic>', usage: { output_tokens: 999 } },
+        }),
+        JSON.stringify({
+          type: 'result',
+          usage: { input_tokens: 30, output_tokens: 10, cache_read_input_tokens: 4 },
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestClaudeUsage({
+      agentId: 2,
+      workDir,
+      branch: 'main-abcd-har-agent-2-zz99',
+      suffix: 'zz99',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage).not.toBeNull();
+    expect(usage!.modelBreakdown).toEqual({
+      'claude-opus-4-8': {
+        tokensInput: 30,
+        tokensOutput: 10,
+        tokensCacheRead: 4,
+        tokensCacheCreation: 0,
+        tokensTotal: 44,
+      },
+    });
+  });
 });
 
 describe('usage harvest codex', () => {
