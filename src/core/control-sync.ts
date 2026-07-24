@@ -2,8 +2,6 @@ import * as path from 'path';
 import { readManifest, resolveHarnessRoot } from '../harness/manifest';
 import { readStageRegistry } from '../harness/stages';
 import {
-  AgentSessionEvent,
-  AgentSessionUsage,
   EnvironmentStatus,
   RegisterRepoInput,
   RunRecord,
@@ -86,59 +84,12 @@ async function postPortalSync(
   }
 }
 
-function collectSessionUsage(
-  status: EnvironmentStatus,
-  repoPath: string,
-): AgentSessionUsage[] {
-  if (!isTelemetryEnabled() || process.env.NODE_ENV === 'test') return [];
-  return status.slots.flatMap((slot) =>
-    harvestUsageForSlot({
-      agentId: slot.agentId,
-      workDir: slot.workDir,
-      worktreePath: slot.worktreePath,
-      branch: slot.branch,
-      suffix: slot.suffix,
-      sessionCreatedAt: slot.sessionCreatedAt,
-      repoPath,
-    }).map((row) => ({
-      ...row,
-      sessionKey:
-        row.sessionKey ||
-        buildSessionKey({
-          branch: slot.branch,
-          agentId: slot.agentId,
-          suffix: slot.suffix,
-          createdAt: slot.sessionCreatedAt,
-        }),
-    })),
-  );
-}
-
-function collectSessionEvents(
-  status: EnvironmentStatus,
-  repoPath: string,
-): AgentSessionEvent[] {
-  if (!isTelemetryEnabled() || process.env.NODE_ENV === 'test') return [];
-  return status.slots.flatMap((slot) =>
-    harvestEventsForSlot({
-      agentId: slot.agentId,
-      workDir: slot.workDir,
-      worktreePath: slot.worktreePath,
-      branch: slot.branch,
-      suffix: slot.suffix,
-      sessionCreatedAt: slot.sessionCreatedAt,
-      repoPath,
-    }),
-  );
-}
-
 function buildPortalSyncBody(repoPath: string): Record<string, unknown> {
   const runs = listRuns(repoPath);
   const status = collectEnvironmentStatus(repoPath);
   const manifest = readManifest(repoPath);
   const stagesRegistry = readStageRegistry(repoPath);
   const validations = listValidations(resolveHarnessRoot(repoPath));
-  const usage = collectSessionUsage(status, repoPath);
 
   return {
     path: repoPath,
@@ -148,7 +99,6 @@ function buildPortalSyncBody(repoPath: string): Record<string, unknown> {
     slots: status.slots,
     generatedAt: status.generatedAt,
     ...(validations.length > 0 ? { validations } : {}),
-    ...(usage.length > 0 ? { usage } : {}),
   };
 }
 
@@ -330,21 +280,53 @@ async function syncRepoRunsAndSlots(
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
 
-  try {
-    const usage = collectSessionUsage(status, repoPath);
-    if (usage.length > 0) {
-      const usageBody = SyncUsageInputSchema.parse({ usage });
-      await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
-    }
+  if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
+    try {
+      const usage = status.slots.flatMap((slot) =>
+        harvestUsageForSlot({
+          agentId: slot.agentId,
+          workDir: slot.workDir,
+          worktreePath: slot.worktreePath,
+          branch: slot.branch,
+          suffix: slot.suffix,
+          sessionCreatedAt: slot.sessionCreatedAt,
+          repoPath,
+        }).map((row) => ({
+          ...row,
+          sessionKey:
+            row.sessionKey ||
+            buildSessionKey({
+              branch: slot.branch,
+              agentId: slot.agentId,
+              suffix: slot.suffix,
+              createdAt: slot.sessionCreatedAt,
+            }),
+        })),
+      );
+      if (usage.length > 0) {
+        const usageBody = SyncUsageInputSchema.parse({ usage });
+        await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
+      }
 
-    const events = collectSessionEvents(status, repoPath);
-    if (events.length > 0) {
-      const eventsBody = SyncSessionEventsInputSchema.parse({ events });
-      await postJson(`${apiUrl}/api/repos/${repoId}/events`, eventsBody, dryRun);
+      const events = status.slots.flatMap((slot) =>
+        harvestEventsForSlot({
+          agentId: slot.agentId,
+          workDir: slot.workDir,
+          worktreePath: slot.worktreePath,
+          branch: slot.branch,
+          suffix: slot.suffix,
+          sessionCreatedAt: slot.sessionCreatedAt,
+          repoPath,
+        }),
+      );
+      if (events.length > 0) {
+        const eventsBody = SyncSessionEventsInputSchema.parse({ events });
+        await postJson(`${apiUrl}/api/repos/${repoId}/events`, eventsBody, dryRun);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[har control] usage harvest skipped: ${message}\n`);
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[har control] usage harvest skipped: ${message}\n`);
   }
 
   const validations = listValidations(resolveHarnessRoot(repoPath));
