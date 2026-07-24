@@ -1,3 +1,10 @@
+# [0.23.0](https://github.com/os-factory/har/compare/v0.22.0...v0.23.0) (2026-07-24)
+
+
+### Features
+
+* **control:** forward full sync payload to a har-portal instance ([#83](https://github.com/os-factory/har/issues/83)) ([0865db3](https://github.com/os-factory/har/commit/0865db3ae1e55791513b439c647ffd24542e1be1))
+
 # [0.22.0](https://github.com/os-factory/har/compare/v0.21.0...v0.22.0) (2026-07-24)
 
 
