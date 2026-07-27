@@ -2,7 +2,9 @@
 
 Guide for developing the CLI locally and testing it against real (or sample) repositories.
 
-**Coding agents:** read [AGENT.md](./AGENT.md) first for architecture rules, where to put changes, and extension points. This file covers setup, workflow, and PR details.
+**Coding agents:** read [AGENT.md](./AGENT.md) first for architecture rules, where to put changes, and extension points. This file covers setup, the dogfood harness loop, workflow, and PR details.
+
+**Maintainers:** release pipeline, npm/Docker secrets, and version coupling live in [RELEASING.md](./RELEASING.md).
 
 By participating in this project, you agree to abide by our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
@@ -13,13 +15,13 @@ By submitting a pull request or other contribution, you agree to the [Contributo
 - **Node.js ≥ 20**
 - **npm**
 - **`ANTHROPIC_API_KEY`** — required only for `--auto` on `har env init` / `har env maintain`
-- **Docker** — optional; needed when running harness scripts (`setup-infra.sh`, `launch.sh`, etc.) on projects that use containers
+- **Docker** — optional; needed when running harness scripts on projects that use containers, and for `har control up`
 
 ## Setup
 
 ```bash
-git clone https://github.com/antoineFrau/har har-project
-cd har-project
+git clone https://github.com/os-factory/har.git
+cd har
 npm install
 npm run build
 ```
@@ -32,9 +34,82 @@ To use HAR tools from Cursor (`har_launch_environment`, `har_run_verification`, 
 cp .cursor/mcp.json.example .cursor/mcp.json
 ```
 
-Edit `.cursor/mcp.json` and replace `/path/to/your/checkout` with the absolute path to your clone of this repo. The file is gitignored — each contributor keeps their own copy.
+Edit `.cursor/mcp.json` and replace `/path/to/your-checkout` with the absolute path to your clone of this repo. The file is gitignored — each contributor keeps their own copy.
 
 Restart Cursor (or reload MCP servers) after creating or changing the file.
+
+## How HAR works
+
+HAR is a layered CLI + MCP control plane. Business logic lives in `core/` and `harness/`. `cli/` and `mcp/` are thin adapters: parse input, call core, format output.
+
+```
+cli/  mcp/          ← adapters (flags, JSON, MCP tool schemas)
+  ↓
+core/               ← orchestration, public execution API (run-service.ts)
+  ↓
+harness/            ← .har/ contract, schemas, manifest/stages I/O
+  ↓
+utils/              ← generic helpers (shell, paths, logging)
+```
+
+`llm/` is the optional authoring agent for `har env init --auto` and `har env maintain --auto`. `templates/` holds scaffold assets copied into target repos — not runtime logic.
+
+Canonical schemas live in [`packages/schemas/src/schema.ts`](packages/schemas/src/schema.ts) and are re-exported by [`src/harness/schema.ts`](src/harness/schema.ts).
+
+### Dependency rules
+
+| Layer | May import | Must not import |
+|-------|------------|-----------------|
+| `cli/`, `mcp/` | `core/`, `harness/`, `utils/` | each other |
+| `core/` | `harness/`, `utils/`, `llm/` | `cli/`, `mcp/` |
+| `harness/` | `utils/` | `core/`, `cli/`, `mcp/`, `llm/` |
+| `utils/` | other `utils/` | anything with HAR domain concepts |
+| `llm/` | `harness/`, `utils/` | `core/`, `cli/`, `mcp/` |
+
+### Concepts you will hit often
+
+| Concept | Meaning | Primary code |
+|---------|---------|--------------|
+| **Slot** | Numbered agent environment (1..N) with its own ports/env | [`src/core/slot-registry.ts`](src/core/slot-registry.ts) |
+| **Session worktree** | Isolated git worktree created on `launch`; all edits go here | [`src/core/run-service.ts`](src/core/run-service.ts) + `.har/launch.sh` |
+| **Stage** | Project-defined runnable step (`launch`, `verify`, `test`, …) | [`src/harness/stages.ts`](src/harness/stages.ts) |
+| **Validation** | Tree-hash record written after a passing full verify | [`src/core/validations.ts`](src/core/validations.ts) |
+| **Commit gate** | Git hooks that block commits unless the staged tree matches a validation | [`src/core/hooks.ts`](src/core/hooks.ts) |
+
+## Use HAR to develop HAR
+
+This repository **dogfoods** HAR. Prefer the harness over ad-hoc shell commands.
+
+| Harness | Profile | Use when changing |
+|---------|---------|-------------------|
+| [`.har/`](.har/) | `cli` | `src/`, `packages/`, `tests/`, root docs |
+| [`control/.har/`](control/.har/) | `default` | `control/` Mission Control app |
+
+Run harness commands from the directory that owns the harness (e.g. `cd control` for Mission Control).
+
+### Required loop
+
+1. **Launch before editing** — `har env launch 1` (or `./.har/launch.sh 1`). Launch creates a fresh session worktree and prints its **work dir**.
+2. **Edit only in that work dir** — never in the main checkout. Changes there hot-reload for running slots when applicable.
+3. **Verify through the harness** — `har env verify 1` (fast) then `har env verify 1 --full` before declaring done.
+4. **Commit in the session worktree** — if the commit gate is installed, commits that do not match a passing full-verify validation are blocked.
+5. **Complete or teardown when finished** — `har env complete 1` (full verify + validation + teardown) or `har env teardown 1`. The session **branch is kept** so you can push a PR.
+
+```bash
+har env launch 1
+# make ALL edits under the printed work dir
+har env verify 1
+har env verify 1 --full
+har env complete 1
+```
+
+Shell fallback when the CLI is not installed: `./.har/launch.sh 1`, `./.har/verify.sh 1 --full`, `./.har/teardown.sh 1`.
+
+In Cursor, prefer MCP tools (`har_launch_environment`, `har_run_verification`, `har_complete_environment`) once [`.cursor/mcp.json`](.cursor/mcp.json.example) points at your checkout.
+
+### Commit gate
+
+With `har hooks install`, `git commit` is blocked unless the staged tree matches a state that passed full verify (a tree hash under `.har/validations/`). Any edit after verify requires re-running `har env verify <id> --full`. Stage everything you verified (`git add -A`); do not bypass the gate (`--no-verify`, `HAR_SKIP_GATE=1`).
 
 ## Running the CLI locally
 
@@ -70,8 +145,6 @@ npm run dev -- env --help
 npm install -g .
 ```
 
-Same as a global npm install, but from your working tree. Re-run after rebuilding.
-
 ### Run the built binary directly
 
 ```bash
@@ -94,6 +167,7 @@ npm unlink -g @osfactory/har
 | `npm run test:watch` | Run tests in watch mode |
 | `npm run typecheck` | TypeScript check (`tsc --noEmit`) |
 | `npm run lint` | ESLint on `src/` |
+| `npm run drift --prefix docs` | Docs contract check (CLI/MCP/schemas vs docs site) |
 
 The build step bundles TypeScript with esbuild and copies:
 
@@ -102,24 +176,38 @@ The build step bundles TypeScript with esbuild and copies:
 
 If you change templates or prompts, rebuild before testing a linked install.
 
+### Docs drift
+
+Full verify runs `docs-drift` (`npm run drift --prefix docs`). Changing public CLI commands, MCP tools, stage kinds, stage templates, or skill IDs without updating the docs site will fail verification. Fix the docs under `docs/src/content/docs/` (and keep [docs/check-drift.mjs](docs/check-drift.mjs) green).
+
+## CLI surface
+
+Top-level command groups (see `har <cmd> --help`):
+
+| Command | Purpose |
+|---------|---------|
+| `har env …` | Harness lifecycle (init, maintain, launch, verify, complete, …) |
+| `har agents …` | Scaffold/remove agent skills (`/setup-har`, `/har-wt`, `/har-maintain`) |
+| `har control …` | Local Mission Control dashboard |
+| `har hooks …` | Commit gate and Claude worktree guard |
+| `har mcp` | MCP stdio server |
+| `har preferences …` | User onboarding defaults (`~/.har/preferences.json`) |
+| `har telemetry …` | Agent usage telemetry via opentelemetry-hooks |
+
 ## Testing on a project
 
 ### Quick test (no API key)
-
-Scaffold boilerplate and print the coding-agent adaptation prompt:
 
 ```bash
 cd /path/to/your-project
 har env init
 ```
 
-For CLI/library repos (no PM2; optional Docker via `harness.env` infra flags):
+For CLI/library repos:
 
 ```bash
 har env init --profile cli
 ```
-
-This creates `.har/` with scripts and config. Validation will warn about TODO placeholders in `harness.env` and `verify.sh` until you paste the prompt into your coding agent (or edit manually).
 
 ### Full test (with built-in Claude adaptation)
 
@@ -128,8 +216,6 @@ export ANTHROPIC_API_KEY=your_key
 cd /path/to/your-project
 har env init --auto
 ```
-
-The CLI will copy the boilerplate, call Claude to adapt it to the repo, and propose `AGENT.md` at the repo root. Apply the proposal when prompted, or pass `--yes` to auto-apply.
 
 ### Useful flags
 
@@ -141,10 +227,9 @@ The CLI will copy the boilerplate, call Claude to adapt it to the repo, and prop
 | `--yes` | Auto-apply the `AGENT.md` proposal (with `--auto`) |
 | `--smoke` | Run `setup-infra.sh` after init |
 | `--verbose` | Extra logging |
+| `--profile <default\|cli\|ios>` | Choose harness boilerplate |
 
 ### Mission Control dashboard
-
-Local observability UI (Next.js + shadcn/ui + Postgres):
 
 ```bash
 har control up          # pulls theosfactory/har-control:<cli-version> from Docker Hub
@@ -156,22 +241,18 @@ cd control && npm run dev   # dashboard development without Docker app image
 
 **Port 3847** is shared by `har control up` (Docker) and Mission Control harness slot 1 (`cd control && har env launch 1`). Do not run both at once on the default port:
 
-- **Agent dev** (hot reload, worktrees): `cd control && har env launch 1` — preflight auto-picks an alternate port when 3847 is busy and names `har control up` as the cause.
-- **Packaged dashboard** (Docker image): `har control up` / `har control down` — warns if harness slot 1 is already active.
+- **Agent dev** (hot reload, worktrees): `cd control && har env launch 1`
+- **Packaged dashboard** (Docker image): `har control up` / `har control down`
 
 See [`control/AGENT.md`](./control/AGENT.md).
 
 ### Sample fixtures
 
-The repo includes minimal apps under `tests/fixtures/`:
-
 | Fixture | Stack | Notes |
 |---------|-------|-------|
-| `go-gin-pg/` | Go + Gin + PostgreSQL | Clean — no `.har/` yet |
-| `python-fastapi-pg/` | Python + FastAPI + PostgreSQL | Clean |
-| `node-react-pg/` | Node + Express + PostgreSQL | May already have `.har/` — use `--force` or another fixture |
-
-Copy a fixture to a temp directory to avoid modifying the repo:
+| `tests/fixtures/go-gin-pg/` | Go + Gin + PostgreSQL | Clean — no `.har/` yet |
+| `tests/fixtures/python-fastapi-pg/` | Python + FastAPI + PostgreSQL | Clean |
+| `tests/fixtures/node-react-pg/` | Node + Express + PostgreSQL | May already have `.har/` — use `--force` or another fixture |
 
 ```bash
 cp -r tests/fixtures/go-gin-pg /tmp/har-test
@@ -181,8 +262,6 @@ har env init
 
 ### After init — run the harness
 
-**Preferred — har CLI or MCP** (persists run history):
-
 ```bash
 har env launch 1
 har env verify 1
@@ -191,16 +270,7 @@ har env teardown 1
 har env status
 ```
 
-In Cursor: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
-
-**Shell fallback** (no CLI/MCP installed):
-
-```bash
-./.har/setup-infra.sh
-./.har/launch.sh 1
-./.har/verify.sh 1
-./.har/teardown.sh 1
-```
+Shell fallback: `./.har/setup-infra.sh`, `./.har/launch.sh 1`, `./.har/verify.sh 1`, `./.har/teardown.sh 1`.
 
 ## Upgrading HAR
 
@@ -228,63 +298,70 @@ src/
 ├── index.ts                 # Entry point
 ├── cli/
 │   ├── index.ts             # yargs setup
-│   └── commands/            # env.ts, mcp.ts
+│   └── commands/            # env, agents, control, hooks, mcp, preferences, telemetry
 ├── core/
 │   ├── harness.ts           # init, maintain, describe
 │   ├── run-service.ts       # Public execution API (CLI/MCP import this)
 │   ├── local-executor.ts    # Local bash/script stage runner
+│   ├── slot-registry.ts     # .har/slots/agent-<id>.json
+│   ├── validations.ts       # Tree-hash validation records
+│   ├── hooks.ts             # Commit gate install / check
 │   ├── runs.ts              # Local run history (.har/runs/)
-│   ├── results.ts           # Normalized stage result parsing
-│   ├── types.ts             # ExecutionContext, StageExecutor, shared types
-│   └── run.ts               # Re-exports from run-service (compat)
+│   └── types.ts             # ExecutionContext, StageExecutor, shared types
 ├── harness/
 │   ├── generator.ts         # Copy boilerplate into .har/
-│   ├── drift.ts             # Compare .har/ to bundled templates
-│   ├── manifest.ts          # manifest.json read/write
 │   ├── stages.ts            # stages.json registry I/O
-│   ├── validator.ts         # Post-scaffold validation + smoke tests
-│   ├── parser.ts            # harness presence helpers
-│   ├── agent-md.ts          # AGENT.md proposal flow
-│   └── schema.ts            # Canonical Zod schemas
-├── mcp/
-│   ├── server.ts            # MCP tool handlers
-│   ├── schemas.ts           # MCP input/output Zod schemas
-│   └── schema-tools.ts      # Shared JSON Schema helpers
-├── llm/
-│   ├── authoring-agent.ts   # Claude agent for repo adaptation
-│   ├── tools.ts             # LLM tool definitions
-│   └── prompts/             # System prompts (copied to dist/ on build)
-├── templates/
-│   ├── har-boilerplate/     # Files copied into target .har/
-│   └── AGENT.md.template    # Template for root AGENT.md proposal
+│   ├── schema.ts            # Re-exports packages/schemas
+│   ├── stage-templates.ts   # har env add-stage playwright|rocketsim
+│   └── …
+├── mcp/                     # MCP stdio adapter
+├── llm/                     # Optional --auto authoring agent
+├── templates/               # Files copied into target .har/ on init
 └── utils/                   # File ops, shell, logging, validation
 
-tests/
-├── fixtures/                # minimal-harness, node-react-pg, go-gin-pg, ...
-└── *.test.ts                # Unit/integration tests
+packages/schemas/            # Canonical Zod schemas (@har/schemas)
+control/                     # Mission Control (Next.js) + control/.har/
+docs/                        # Astro/Starlight site (harproject.cloud)
+tests/                       # Jest tests + fixtures/
+release/                     # semantic-release helpers
+.har/                        # Dogfood harness for the CLI
 ```
+
+## Where to put changes
+
+| Change | Location |
+|--------|----------|
+| Schema, stage kinds, result shapes | `packages/schemas/src/schema.ts` (+ `src/harness/schema.ts` re-export) |
+| Manifest / stages.json I/O | `src/harness/manifest.ts`, `stages.ts` |
+| Scaffold copy, boilerplate wiring | `src/harness/generator.ts` |
+| Init / maintain / describe orchestration | `src/core/harness.ts` |
+| Run orchestration (launch, verify, teardown) | `src/core/run-service.ts` |
+| CLI subcommand or flag | `src/cli/commands/<group>.ts` (+ register in `src/cli/index.ts` if new top-level) |
+| MCP tool handler or JSON Schema | `src/mcp/server.ts`, `schemas.ts` |
+| Files copied into target `.har/` | `src/templates/har-boilerplate*/` |
+| Optional stage templates | `src/templates/stage-templates/` (via `har env add-stage`) |
+| Generic shell/path/logging helper | `src/utils/` |
+
+When unsure: put domain logic in `harness/` or `core/`, never in an adapter. See [AGENT.md](./AGENT.md) for anti-patterns and extension points.
 
 ## TypeScript conventions
 
-- **Zod at boundaries** — canonical schemas live in `src/harness/schema.ts`. Parse CLI/MCP inputs with `.parse()` / `.safeParse()`; infer types with `z.infer`.
+- **Zod at boundaries** — parse CLI/MCP inputs with `.parse()` / `.safeParse()`; infer types with `z.infer`.
 - **`strict: true` always** — do not weaken compiler settings in `tsconfig.json`.
 - **Prefer `unknown` over `any`** — narrow with Zod or type guards before use.
 - **Const arrays for enums** — e.g. `HAR_STAGE_KINDS` drives Zod, MCP JSON Schema, and tests from one source.
 - **Core vs adapters** — business logic in `src/core/` and `src/harness/`; `cli/` and `mcp/` handle argument parsing and formatting only.
-- **Dependency direction** — `harness/` must not import from `core/` or `mcp/`; `utils/` stays generic.
-- **Explicit public API** — import execution from `src/core/run-service.ts` (or `run.ts` re-export).
 - **Fixture-first tests** — mock `.har/` scripts under `tests/fixtures/minimal-harness/`; avoid real Docker in unit tests.
-- **Parity tests** — when legacy wrappers delegate to `runStage`, keep tests that both paths behave the same.
-- **Run `npm run typecheck`, `npm run lint`, and `npm test`** before opening a PR.
+- **Run `npm run typecheck`, `npm run lint`, and `npm test`** before opening a PR (or rely on `har env verify 1 --full`).
 
 ## Making changes
 
-### Templates (`src/templates/har-boilerplate/`)
+### Templates (`src/templates/har-boilerplate*/`)
 
 These files are copied verbatim into a target repo's `.har/` on `har env init`. After editing:
 
 1. Run `npm run build`
-2. Test with `har env init --force --profile cli` on a fixture
+2. Test with `har env init --force --profile cli` on a fixture (or `--profile default` / `ios`)
 
 Placeholders like `__PROJECT_NAME__` in `harness.env` are substituted during scaffold.
 
@@ -294,21 +371,27 @@ System prompts for the optional `--auto` authoring agent. Rebuild to copy them i
 
 ### CLI commands
 
-Add or modify subcommands in `src/cli/commands/env.ts` and register them in the yargs builder there.
+Add or modify subcommands in the matching file under `src/cli/commands/` (`env.ts`, `agents.ts`, `control.ts`, `hooks.ts`, `mcp.ts`, `preferences.ts`, `telemetry.ts`). Register new top-level commands in `src/cli/index.ts`. Prefer implementing orchestration in `src/core/` and keeping the CLI as a thin adapter.
+
+### Stage templates
+
+1. Add a bundle under `src/templates/stage-templates/<name>/`
+2. Register the id in `src/harness/stage-templates.ts`
+3. Rebuild and test with `har env add-stage <name>` on a fixture
 
 ### Tests
 
-Jest is configured to pick up `tests/**/*.test.ts`. Add unit tests alongside fixtures as the test suite grows.
+Jest picks up `tests/**/*.test.ts`. Add unit tests alongside fixtures as the suite grows. Mission Control uses Vitest and Playwright under `control/`.
 
 ## Pull requests
 
 Before opening a PR:
 
 ```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
+har env verify 1 --full
+# or, without the harness:
+npm run typecheck && npm run lint && npm test && npm run build
+npm run drift --prefix docs   # if you touched CLI/MCP/schemas/templates/docs
 ```
 
 Describe how you tested (e.g. `har env init` on `go-gin-pg` fixture).
@@ -337,101 +420,4 @@ BREAKING CHANGE: run records now require runId v2 fields
 
 Use scopes when helpful (`feat(cli):`, `fix(control):`). Squash-merge PR titles should follow the same format — they become the commit on `main`.
 
-## Releases
-
-### npm packages
-
-| Package | Published? | Notes |
-|---------|------------|-------|
-| `@osfactory/har` | **Yes** | Public npm package; global `har` binary |
-| `@har/control` | No | `"private": true`; Mission Control source in monorepo |
-| `@har/schemas` | No | `"private": true`; consumed via monorepo path in `control/` |
-
-### npm organization (`@osfactory`)
-
-Before the first public release, maintainers must own the **`@osfactory`** scope on npm:
-
-1. Sign in at [npmjs.com](https://www.npmjs.com/) as a project maintainer.
-2. Create the **`@osfactory`** organization: [npmjs.com/org/create](https://www.npmjs.com/org/create) (free for public packages).
-3. Add other maintainers under **Organization → Members**.
-4. Create an **Automation** token with **Publish** access to `@osfactory/har` (and scope-wide publish if you prefer).
-5. Add the token as the `NPM_TOKEN` repository secret (see below).
-
-The root `package.json` sets `"publishConfig": { "access": "public" }` so scoped publishes are public by default.
-
-### Initial public version
-
-The first npm release is **`0.1.0`**, matching the current root `package.json`. Tag that baseline on `main` once before enabling automated releases (see below).
-
-### Test a publish tarball locally
-
-`prepublishOnly` runs `npm run build` automatically. To smoke-test the packed artifact before release:
-
-```bash
-npm run build
-npm pack
-npm install -g osfactory-har-*.tgz
-har --help
-npm uninstall -g @osfactory/har
-rm osfactory-har-*.tgz
-```
-
-The tarball should contain `dist/` (bundled CLI + templates + prompts), `control/docker-compose*.yml`, plus `package.json`, `README.md`, `LICENSE`, and this changelog — not the Mission Control app source or test fixtures.
-
-Maintainers do **not** hand-cut version tags after the baseline. Merge conventional commits to `main`; the [Release workflow](.github/workflows/release.yml) runs on every push to `main` and, when semantic-release finds releasable commits:
-
-1. Runs full CLI + Mission Control verification
-2. Bumps `@osfactory/har`, `@har/control`, and `@har/schemas` to the same version (npm package prepared, **not** published yet)
-3. Creates git tag `vX.Y.Z` and a **GitHub Release** (with CLI tarball + compose assets)
-4. Pushes **`theosfactory/har-control`** to Docker Hub (`X.Y.Z`, `X.Y`, `X`, and `latest`)
-5. Publishes `@osfactory/har` to **npm** only after the Docker push succeeds
-
-If there is nothing to release, verify still runs and publish steps are skipped. If Docker publish fails, npm is **not** published for that tag (fix the image, then use [Publish Docker (manual)](.github/workflows/publish-docker.yml) and publish npm from the tag, or re-run the failed jobs).
-
-### Maintainer setup
-
-Before the first automated release, tag the current baseline on `main` so semantic-release continues from the existing version:
-
-```bash
-# one-time, when package.json is already 0.1.0
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-Repository secrets:
-
-| Secret | Used by |
-|--------|---------|
-| `NPM_TOKEN` | npm publish for `@osfactory/har` (Automation token with publish access to the `@osfactory` scope) |
-| `DOCKERHUB_TOKEN` | Docker Hub publish for `theosfactory/har-control` (PAT with read/write on the repo) |
-| `GITHUB_TOKEN` | GitHub Release (provided by Actions) |
-
-Dry-run the next release from the Actions tab (**Release → Run workflow → Dry run**) or locally:
-
-```bash
-npm ci
-GITHUB_TOKEN=... NPM_TOKEN=... npx semantic-release --dry-run
-```
-
-### Version coupling
-
-`@osfactory/har`, Mission Control (`control/`), and `@har/schemas` share one semver. [semantic-release](release.config.cjs) keeps them aligned:
-
-1. `@semantic-release/npm` bumps root `package.json` with `npmPublish: false` (prepare only)
-2. [`release/sync-package-versions.js`](release/sync-package-versions.js) syncs `control/` and `packages/schemas/`
-3. `@semantic-release/github` creates git tag `vX.Y.Z` and the GitHub Release
-4. The Release workflow `publish-docker` job pushes `theosfactory/har-control:X.Y.Z` (plus `X.Y`, `X`, and **`latest`**)
-5. The `publish-npm` job publishes `@osfactory/har@X.Y.Z` to npmjs **after** Docker succeeds
-6. Installed CLI reads its own `package.json` version and pulls `theosfactory/har-control:<same-version>` on `har control up`
-
-Override with `HAR_CONTROL_IMAGE` / `HAR_CONTROL_IMAGE_TAG`, or use `har control up --build` / `HAR_CONTROL_BUILD=true` to build locally from a git checkout.
-
-To publish the Mission Control image manually (maintainers):
-
-```bash
-docker login
-./release/publish-control-image.sh
-```
-
-Releases also publish via the Release workflow automatically. To republish an existing tag manually, use [Publish Docker](.github/workflows/publish-docker.yml) (workflow_dispatch; set **force** to rebuild if the version tag already exists) or `./release/publish-control-image.sh`.
-
-Docker publish builds `linux/amd64` and `linux/arm64` in parallel on native runners (not QEMU), with per-platform GitHub Actions cache. If the exact `theosfactory/har-control:X.Y.Z` tag already exists, the build is skipped unless **force** is set.
+Maintainer release mechanics (npm, Docker Hub, secrets, version coupling): [RELEASING.md](./RELEASING.md).

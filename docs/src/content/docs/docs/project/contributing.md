@@ -3,7 +3,13 @@ title: Contributing
 description: Develop and validate HAR itself.
 ---
 
-## Setup
+The full contributor guide lives in the repository:
+
+**[CONTRIBUTING.md on GitHub](https://github.com/os-factory/har/blob/main/CONTRIBUTING.md)**
+
+That document covers setup, architecture layers, the dogfood harness loop, commit conventions, and where to put changes. Coding agents should also read [AGENT.md](https://github.com/os-factory/har/blob/main/AGENT.md). Maintainer release mechanics are in [RELEASING.md](https://github.com/os-factory/har/blob/main/RELEASING.md).
+
+## Short version
 
 ```bash
 git clone https://github.com/os-factory/har.git
@@ -12,56 +18,25 @@ npm install
 npm run build
 ```
 
-Node.js 20 or newer is required. Docker is required for Mission Control and fixture
-harnesses that use shared infrastructure.
+Node.js 20 or newer is required. Docker is required for Mission Control and fixture harnesses that use shared infrastructure.
 
-## Use HAR to develop HAR
-
-The repository dogfoods two harnesses:
+This repository dogfoods two harnesses:
 
 | Harness | Owns |
 | --- | --- |
 | root `.har/` (`cli` profile) | CLI, MCP, schemas, templates, and tests |
 | `control/.har/` (`default` profile) | Mission Control Next.js app and browser tests |
 
-Launch the harness that owns the files before editing:
+Launch the harness that owns the files **before** editing, make all changes in the printed work directory, and run full verification before declaring work complete:
 
 ```bash
 har env launch 1
-```
-
-Make all edits in its returned work directory. Full verification is required before
-declaring work complete:
-
-```bash
+# edit only under the printed work dir
 har env verify 1 --full
 ```
 
-## Development commands
+If the commit gate is installed, commits must match a tree that passed full verify.
 
-The root package provides `build`, `dev`, `test`, `test:watch`, `typecheck`, and
-`lint`. Run them through the active harness or its `agent-cli.sh` helper.
+Public CLI, MCP, schema, and template changes must keep the docs contract green (`npm run drift --prefix docs`, also run as `docs-drift` during full verify).
 
-Template changes require a rebuild before testing because the build copies
-`src/templates/` and authoring prompts into `dist/`.
-
-## Tests
-
-Root Jest tests live under `tests/` and use fixture harnesses instead of real Docker
-where possible. Keep CLI/MCP parity tests when adapters share a core path.
-
-Mission Control uses Vitest and Playwright under `control/`. UI behavior should have
-browser coverage in the control harness.
-
-## Pull requests and releases
-
-Use Conventional Commits. `fix:` produces a patch, `feat:` a minor, and a breaking
-change a major release. Documentation, CI, tests, and refactors do not publish a
-package by themselves.
-
-On releasable changes, semantic-release verifies the CLI and dashboard, aligns the
-CLI/control/schema versions, publishes `@osfactory/har`, creates a GitHub release,
-and publishes matching Mission Control Docker tags.
-
-Read the repository's `CONTRIBUTING.md`, Code of Conduct, CLA, security policy, and
-license files before submitting changes.
+Read the repository's Code of Conduct, CLA, security policy, and license files before submitting changes.
