@@ -3,9 +3,11 @@ title: Introduction
 description: What HAR solves and where it fits in an agent development workflow.
 ---
 
-HAR is an open-source CLI and MCP control plane for **project-owned development
-harnesses**. It makes a repository operable by coding agents without tying that
-repository to one model, editor, test framework, or hosted platform.
+HAR is an open-source, agent-agnostic standard for building **multi-agent coding
+workflows**. It makes your repository agent-ready so you can run a fleet of coding
+agents in parallel, with deterministic validation gates, verifiable proof, and full
+observability across every agent — without tying the repository to one model,
+editor, test framework, or hosted platform.
 
 ## The problem
 

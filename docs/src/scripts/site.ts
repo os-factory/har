@@ -129,15 +129,15 @@ const workflowContent: Record<string, WorkflowContent> = {
   isolate: {
     label: '02 — Isolate',
     title: 'Every task gets a clean slot.',
-    body: 'HAR creates a dedicated session worktree and allocates the environment details the project needs, from ports to local services.',
+    body: 'HAR creates a dedicated session worktree and allocates the environment the project needs, from ports to local services.',
     command: 'har env launch 2',
     method: 'har_launch_environment',
     detail: 'slot allocation',
     json: '{\n  "slot": 2,\n  "worktree": ".../slot-02",\n  "previewUrl": "localhost:4102",\n  "status": "ready"\n}',
   },
-  execute: {
-    label: '03 — Execute',
-    title: 'The model edits inside the harness.',
+  build: {
+    label: '03 — Build',
+    title: 'The agent edits inside the harness.',
     body: 'The agent works in the printed worktree, uses the project’s existing tools, and can inspect logs or status without touching the main checkout.',
     command: 'cd .har/worktrees/slot-02',
     method: 'har_get_status',

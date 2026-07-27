@@ -116,7 +116,7 @@ const packageJson = JSON.parse(read('package.json'));
 if (!read('README.md').includes(packageJson.homepage)) {
   failures.push(`README is missing package homepage ${packageJson.homepage}`);
 }
-if (!astroConfig.includes("site: 'https://harproject.cloud'") || !astroConfig.includes("base: '/'")) {
+if (!astroConfig.includes("site: 'https://harproject.dev'") || !astroConfig.includes("base: '/'")) {
   failures.push('Astro site/base no longer match the documentation custom domain');
 }
 
