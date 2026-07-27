@@ -25,7 +25,7 @@ lychee \
   --no-progress \
   --root-dir "$DIST" \
   --remap "https://github.com/os-factory/har/blob/main/(.*) file://${REPO_ROOT}/\$1" \
-  --exclude '^https://harproject\.cloud' \
+  --exclude '^https://harproject\.dev' \
   --exclude '^https://www\.npmjs\.com' \
   --exclude '^https://api\.web3forms\.com' \
   --exclude-loopback \

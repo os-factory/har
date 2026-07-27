@@ -67,7 +67,7 @@
     "type": "git",
     "url": "https://github.com/os-factory/har"
   },
-  "homepage": "https://harproject.cloud/",
+  "homepage": "https://harproject.dev/",
   "bugs": "https://github.com/os-factory/har/issues",
   "author": "Antoine Frau",
   "license": "AGPL-3.0-only",

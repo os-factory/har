@@ -1,7 +1,7 @@
 # HAR website & documentation
 
 The public site is an [Astro](https://astro.build/) project deployed to GitHub
-Pages at <https://harproject.cloud/>:
+Pages at <https://harproject.dev/>:
 
 - `/` — marketing landing page with interactive workflow hero
 - `/blog` — journal index and articles
@@ -38,7 +38,7 @@ workflow run all three commands.
 `main` through GitHub Pages. In repository settings, set **Pages → Build and
 deployment → Source** to **GitHub Actions** once.
 
-The Astro `site` and `base` values target the custom domain `harproject.cloud`.
+The Astro `site` and `base` values target the custom domain `harproject.dev`.
 Update both if the domain or Pages path changes.
 
 Documentation content is licensed under

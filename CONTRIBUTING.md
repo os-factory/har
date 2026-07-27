@@ -321,7 +321,7 @@ src/
 
 packages/schemas/            # Canonical Zod schemas (@har/schemas)
 control/                     # Mission Control (Next.js) + control/.har/
-docs/                        # Astro/Starlight site (harproject.cloud)
+docs/                        # Astro/Starlight site (harproject.dev)
 tests/                       # Jest tests + fixtures/
 release/                     # semantic-release helpers
 .har/                        # Dogfood harness for the CLI

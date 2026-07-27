@@ -6,7 +6,7 @@
 
 [![Release](https://img.shields.io/github/v/release/os-factory/har)](https://github.com/os-factory/har/releases)
 [![CI](https://github.com/os-factory/har/actions/workflows/test.yml/badge.svg)](https://github.com/os-factory/har/actions/workflows/test.yml)
-[![Documentation](https://img.shields.io/badge/docs-harproject.cloud-38c976)](https://harproject.cloud/)
+[![Documentation](https://img.shields.io/badge/docs-harproject.dev-38c976)](https://harproject.dev/)
 
 **Give coding agents a real place to work.**
 
@@ -31,7 +31,7 @@ har env verify 1 --full   # run the project's real checks, record what passed
 
 That’s it. Your agents discover launch, verify, and teardown through the project’s `.har/` contract — not by guessing shell commands.
 
-Full walkthrough: [Quick start](https://harproject.cloud/docs/getting-started/quick-start/).
+Full walkthrough: [Quick start](https://harproject.dev/docs/getting-started/quick-start/).
 
 ## How it works
 
@@ -58,11 +58,11 @@ HAR coordinates the work around the model so agents can focus on the code — an
 
 ## Documentation
 
-Everything beyond install and first commands lives at **[https://harproject.cloud/](https://harproject.cloud/)**:
+Everything beyond install and first commands lives at **[https://harproject.dev/](https://harproject.dev/)**:
 
-- [Introduction](https://harproject.cloud/docs/getting-started/introduction/) · [Core concepts](https://harproject.cloud/docs/getting-started/concepts/)
-- [CLI reference](https://harproject.cloud/docs/reference/cli/) · [MCP tools](https://harproject.cloud/docs/reference/mcp/)
-- [Mission Control](https://harproject.cloud/docs/guides/mission-control/) · [Architecture](https://harproject.cloud/docs/project/architecture/)
+- [Introduction](https://harproject.dev/docs/getting-started/introduction/) · [Core concepts](https://harproject.dev/docs/getting-started/concepts/)
+- [CLI reference](https://harproject.dev/docs/reference/cli/) · [MCP tools](https://harproject.dev/docs/reference/mcp/)
+- [Mission Control](https://harproject.dev/docs/guides/mission-control/) · [Architecture](https://harproject.dev/docs/project/architecture/)
 
 ## Contributing
 

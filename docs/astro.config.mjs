@@ -30,7 +30,7 @@ const redirects = Object.fromEntries(
 );
 
 export default defineConfig({
-	site: 'https://harproject.cloud',
+	site: 'https://harproject.dev',
 	base: '/',
 	devToolbar: { enabled: false },
 	redirects,
