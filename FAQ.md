@@ -88,7 +88,7 @@ The repo-owned `.har/` directory remains the runtime contract. HAR should make i
 
 **A:** It creates a `.har/` directory with scripts, docs, metadata, environment templates, and optional stage definitions for the current repo.
 
-By default, `har env init` scaffolds boilerplate and prints a copy-paste prompt for your coding agent to adapt the harness and repo-root `AGENT.md`. Pass `--auto` to run built-in Claude adaptation instead (requires `ANTHROPIC_API_KEY`).
+By default, `har env init` scaffolds boilerplate and prints a copy-paste prompt for your coding agent to adapt the harness and repo-root `AGENT.md`. In a TTY it also offers to copy that prompt to the clipboard (or copies automatically with `--yes`). Pass `--auto` to run built-in Claude adaptation instead (requires `ANTHROPIC_API_KEY`).
 
 A typical harness includes scripts such as:
 

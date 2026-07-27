@@ -13,6 +13,7 @@ import type { MaintainBundleReport } from '../../harness/maintain-bundle';
 import {
   buildInitAdaptationPrompt,
   buildMaintainAdaptationPrompt,
+  offerAdaptationPromptClipboard,
   printAdaptationPrompt,
   writeAdaptationPrompt,
 } from '../../harness/adaptation-prompt';
@@ -436,7 +437,7 @@ export async function handleInit(argv: {
     if (argv.auto) {
       await handleAgentMdProposal(repoPath, argv.yes);
     } else {
-      emitManualAdaptationPrompt(repoPath, 'init', argv.profile);
+      await emitManualAdaptationPrompt(repoPath, 'init', argv.profile, undefined, argv.yes);
     }
 
     divider();
@@ -531,7 +532,13 @@ export async function handleMaintain(argv: {
       if (!result.validation.pass) {
         warn('Harness has validation errors — fix them before running --finalize.');
       }
-      emitManualAdaptationPrompt(repoPath, 'maintain', 'default', result.bundle?.report);
+      await emitManualAdaptationPrompt(
+        repoPath,
+        'maintain',
+        'default',
+        result.bundle?.report,
+        argv.yes,
+      );
       info('After your coding agent finishes adapting, record it with: har env maintain --finalize');
     }
 
@@ -624,12 +631,13 @@ export function resolveOnboardingOptions(argv: {
   };
 }
 
-function emitManualAdaptationPrompt(
+async function emitManualAdaptationPrompt(
   repoPath: string,
   mode: 'init' | 'maintain',
   profile: 'default' | 'cli' | 'ios' = 'default',
   bundleReport?: MaintainBundleReport,
-): void {
+  autoYes = false,
+): Promise<void> {
   const prompt =
     mode === 'init'
       ? buildInitAdaptationPrompt(repoPath, profile)
@@ -650,6 +658,7 @@ function emitManualAdaptationPrompt(
     info('  Reference templates are in .har/maintain/templates/');
   }
   printAdaptationPrompt(prompt);
+  await offerAdaptationPromptClipboard(prompt, { autoYes });
 }
 
 async function handleAgentMdProposal(repoPath: string, autoYes: boolean): Promise<void> {
@@ -1087,7 +1096,7 @@ function printNextSteps(auto: boolean): void {
   console.error('');
   console.error('  Read:         .har/README.md');
   if (!auto) {
-    console.error('  Adapt:        paste prompt above into your coding agent');
+    console.error('  Adapt:        paste clipboard / prompt above into your coding agent');
     console.error('  Prompt file:  .har/ADAPT-PROMPT.md');
   } else {
     console.error('  Agent guide:  AGENT.md (repo root, if applied)');
