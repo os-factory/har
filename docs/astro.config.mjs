@@ -38,7 +38,7 @@ export default defineConfig({
 		starlight({
 			title: 'HAR',
 			description:
-				'The open-source harness and control plane for reproducible AI agent development environments.',
+				'An open-source, agent-agnostic standard for multi-agent coding workflows — parallel agents, deterministic validation, verifiable proof, and observability.',
 			logo: {
 				src: './public/assets/har-logo.png',
 				alt: '.har',

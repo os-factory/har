@@ -10,7 +10,7 @@
 
 **Give coding agents a real place to work.**
 
-HAR turns any repository into a reproducible workspace with isolated worktrees, project-owned commands, and evidence that changes actually pass.
+HAR is an open-source, agent-agnostic standard for building multi-agent coding workflows. It makes your repository agent-ready, so you can run a whole fleet of coding agents in parallel, with deterministic validation gates, verifiable proof, and full observability across every agent.
 
 Works with **Claude Code** · **Cursor** · **Codex** · any MCP agent.
 
@@ -32,6 +32,14 @@ har env verify 1 --full   # run the project's real checks, record what passed
 That’s it. Your agents discover launch, verify, and teardown through the project’s `.har/` contract — not by guessing shell commands.
 
 Full walkthrough: [Quick start](https://harproject.cloud/docs/getting-started/quick-start/).
+
+## How it works
+
+1. **Discover** — The agent reads one stable interface instead of guessing project-specific shell commands.
+2. **Isolate** — Every task gets a clean slot: dedicated session worktree, ports, and local services.
+3. **Build** — The agent edits inside the harness, without touching the main checkout.
+4. **Verify** — Project checks become a deterministic pipeline with normalized status, logs, and artifacts.
+5. **Hand off** — Reviewers get a branch plus evidence: what ran and the exact validated tree.
 
 ## Why HAR
 
