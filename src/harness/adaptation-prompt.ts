@@ -1,6 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as readline from 'readline';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { writeFileSafe } from '../utils/file-ops';
+import { info, success, warn } from '../utils/logging';
 import { resolveTemplateFile } from '../utils/paths';
 import { getHarnessDir } from './manifest';
 import type { HarnessProfile } from './generator';
@@ -72,4 +75,59 @@ export function printAdaptationPrompt(content: string): void {
   }
   process.stderr.write(`${border}\n`);
   process.stderr.write('\n');
+}
+
+function askYesNo(question: string): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  return new Promise((resolve) => {
+    process.stderr.write(`${question} `);
+    rl.once('line', (answer) => {
+      rl.close();
+      const trimmed = answer.trim();
+      resolve(trimmed === '' || /^y(es)?$/i.test(trimmed));
+    });
+  });
+}
+
+export interface OfferClipboardCopyOptions {
+  /** When true, copy without prompting (still requires a TTY for OSC 52 fallback). */
+  autoYes?: boolean;
+}
+
+/**
+ * Offer to copy the adaptation prompt so the user can paste it into a coding agent.
+ * Interactive TTY: prompt [Y/n]. With autoYes: copy immediately. Non-TTY: skip.
+ */
+export async function offerAdaptationPromptClipboard(
+  content: string,
+  options: OfferClipboardCopyOptions = {},
+): Promise<boolean> {
+  const interactive = Boolean(process.stdin.isTTY && process.stderr.isTTY);
+  if (!interactive && !options.autoYes) {
+    info('Prompt also saved to .har/ADAPT-PROMPT.md (open or copy from there)');
+    return false;
+  }
+
+  let shouldCopy = options.autoYes === true;
+  if (!shouldCopy && interactive) {
+    shouldCopy = await askYesNo('Copy adaptation prompt to clipboard for your coding agent? [Y/n]');
+  }
+  if (!shouldCopy) {
+    info('Skipped clipboard copy — prompt is in .har/ADAPT-PROMPT.md');
+    return false;
+  }
+
+  const result = copyTextToClipboard(content);
+  if (result.ok) {
+    success(
+      result.method === 'osc52'
+        ? 'Copied adaptation prompt to clipboard (terminal OSC 52) — paste into your coding agent'
+        : 'Copied adaptation prompt to clipboard — paste into your coding agent',
+    );
+    return true;
+  }
+
+  warn(`Could not copy to clipboard: ${result.detail}`);
+  info('Open .har/ADAPT-PROMPT.md and paste that into your coding agent instead');
+  return false;
 }

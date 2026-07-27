@@ -1,3 +1,10 @@
+# [0.24.0](https://github.com/os-factory/har/compare/v0.23.0...v0.24.0) (2026-07-27)
+
+
+### Features
+
+* **cli:** clipboard copy for adaptation prompts ([#85](https://github.com/os-factory/har/issues/85)) ([266ce9f](https://github.com/os-factory/har/commit/266ce9f9b73890b7f10d4b8c312926a8b8108d07))
+
 # [0.23.0](https://github.com/os-factory/har/compare/v0.22.0...v0.23.0) (2026-07-24)
 
 
