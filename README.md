@@ -69,7 +69,7 @@ cd MyApp && har env init --profile ios
 har env add-stage rocketsim   # optional: UI flow validation on the simulator
 ```
 
-After init, paste the printed adaptation prompt into your coding agent to tailor scripts to your stack. For built-in Claude adaptation: `har env init --auto` (requires `ANTHROPIC_API_KEY`).
+After init, paste the adaptation prompt into your coding agent (interactive terminals offer a clipboard copy; also saved to `.har/ADAPT-PROMPT.md`) to tailor scripts to your stack. For built-in Claude adaptation: `har env init --auto` (requires `ANTHROPIC_API_KEY`).
 
 Optional stage templates depend on the profile: `har env add-stage playwright` for browser E2E on web apps, `har env add-stage rocketsim` for simulator user-flow checks on iOS.
 

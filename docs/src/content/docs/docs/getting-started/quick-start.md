@@ -20,8 +20,10 @@ The default profile targets web applications. Use `--profile cli` for libraries
 and command-line tools or `--profile ios` for an Xcode project.
 
 HAR copies an editable `.har/` scaffold, validates it, and writes an adaptation
-prompt to `.har/ADAPT-PROMPT.md`. Give that prompt to your coding agent so it can
-replace placeholders with your actual install, launch, database, and test commands.
+prompt to `.har/ADAPT-PROMPT.md`. In an interactive terminal it offers to copy
+that prompt to the clipboard (macOS / Linux / Windows, with OSC 52 fallback)
+so you can paste it into your coding agent. The agent can also read the file
+directly.
 
 To let HAR perform the Claude-based adaptation:
 
