@@ -26,6 +26,9 @@ jest.mock('../src/core/usage-harvest', () => ({
   harvestUsageForSlot: jest.fn(() => []),
   harvestEventsForSlot: jest.fn(() => []),
 }));
+jest.mock('../src/core/control-persisted-usage', () => ({
+  fetchPersistedPortalTelemetry: jest.fn(async () => ({ usage: [], events: [] })),
+}));
 jest.mock('../src/core/telemetry-config', () => ({ isTelemetryEnabled: () => true }));
 jest.mock('../src/harness/manifest', () => ({
   readManifest: () => null,
@@ -41,6 +44,7 @@ import {
   listValidationBindings,
 } from '../src/core/work-units';
 import { harvestUsageForSlot, harvestEventsForSlot } from '../src/core/usage-harvest';
+import { fetchPersistedPortalTelemetry } from '../src/core/control-persisted-usage';
 
 const collectEnvironmentStatusMock = collectEnvironmentStatus as jest.Mock;
 const readPortalCredentialsMock = readPortalCredentials as jest.Mock;
@@ -49,6 +53,7 @@ const listWorkAttemptsMock = listWorkAttempts as jest.Mock;
 const listValidationBindingsMock = listValidationBindings as jest.Mock;
 const harvestUsageForSlotMock = harvestUsageForSlot as jest.Mock;
 const harvestEventsForSlotMock = harvestEventsForSlot as jest.Mock;
+const fetchPersistedPortalTelemetryMock = fetchPersistedPortalTelemetry as jest.Mock;
 
 function resetPayloadMocks(): void {
   collectEnvironmentStatusMock.mockReturnValue({
@@ -61,6 +66,7 @@ function resetPayloadMocks(): void {
   listValidationBindingsMock.mockReturnValue([]);
   harvestUsageForSlotMock.mockReturnValue([]);
   harvestEventsForSlotMock.mockReturnValue([]);
+  fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [] });
 }
 
 const PORTAL_ENV = [
@@ -376,5 +382,112 @@ describe('syncRepoWithControl — portal full payload', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect('userEmail' in body.usage[0]).toBe(false);
+  });
+
+  it('forwards Mission Control persisted usage when the slot is torn down', async () => {
+    // No live slots — tokens only survive in the control DB.
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [
+        {
+          sessionKey: 'feat/gone',
+          agentId: 2,
+          agentTool: 'claude_code',
+          tokensTotal: 4200,
+          modelBreakdown: {
+            'claude-opus-4-8': { tokensInput: 2000, tokensOutput: 2200, tokensTotal: 4200 },
+          },
+          sources: ['harvest'],
+          firstSeenAt: '2026-01-01T00:00:00.000Z',
+          lastSeenAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+      events: [],
+    });
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://portal.example.com/api/sync');
+    const body = JSON.parse(init.body as string);
+    expect(body.usage).toHaveLength(1);
+    expect(body.usage[0].sessionKey).toBe('feat/gone');
+    expect(body.usage[0].tokensTotal).toBe(4200);
+    expect(body.usage[0].models).toEqual([
+      { model: 'claude-opus-4-8', tokensInput: 2000, tokensOutput: 2200, tokensTotal: 4200 },
+    ]);
+  });
+
+  it('dedupes an overlapping live + persisted session into one max-merged row', async () => {
+    collectEnvironmentStatusMock.mockReturnValue({
+      slots: [{ agentId: 1, branch: 'feat/x' }],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    harvestUsageForSlotMock.mockReturnValue([
+      {
+        sessionKey: 'feat/x',
+        agentId: 1,
+        agentTool: 'claude_code',
+        tokensTotal: 100,
+        sources: ['harvest'],
+        firstSeenAt: '2026-01-01T00:00:00.000Z',
+        lastSeenAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [
+        {
+          sessionKey: 'feat/x',
+          agentId: 1,
+          agentTool: 'claude_code',
+          tokensTotal: 250,
+          sources: ['otel'],
+          firstSeenAt: '2026-01-01T00:00:00.000Z',
+          lastSeenAt: '2026-01-03T00:00:00.000Z',
+        },
+      ],
+      events: [],
+    });
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.usage).toHaveLength(1);
+    expect(body.usage[0].tokensTotal).toBe(250);
+    expect(body.usage[0].sources.sort()).toEqual(['harvest', 'otel']);
+    expect(body.usage[0].lastSeenAt).toBe('2026-01-03T00:00:00.000Z');
+  });
+
+  it('forwards persisted events to /api/otel when the slot is torn down', async () => {
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [],
+      events: [
+        {
+          sessionKey: 'feat/gone',
+          agentId: 2,
+          agentTool: 'claude_code',
+          eventName: 'claude_code.user_prompt',
+          sequence: 1,
+          timestamp: '2026-01-01T00:00:00.000Z',
+          promptText: 'persisted',
+          responseText: null,
+          rawTruncated: null,
+          source: 'harvest',
+        },
+      ],
+    });
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [otelUrl, otelInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(otelUrl).toBe('https://portal.example.com/api/otel');
+    const otelBody = JSON.parse(otelInit.body as string);
+    expect(otelBody.events).toHaveLength(1);
+    expect(otelBody.events[0].promptText).toBe('persisted');
+    expect('responseText' in otelBody.events[0]).toBe(false);
   });
 });

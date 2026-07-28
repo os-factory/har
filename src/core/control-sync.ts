@@ -34,6 +34,9 @@ import { createRemoteExecutor } from './cloud-executor';
 import { isTelemetryEnabled } from './telemetry-config';
 import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
+import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
+import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
+import type { AgentSessionEvent, AgentSessionUsage } from '../harness/schema';
 
 export interface ControlSyncOptions {
   repoPath: string;
@@ -111,14 +114,15 @@ function modelsFromBreakdown(
   }));
 }
 
-function collectPortalTelemetry(
+async function collectPortalTelemetry(
   repoPath: string,
   slots: EnvironmentStatus['slots'],
-): { usage: Record<string, unknown>[]; events: Record<string, unknown>[] } {
+  controlApiUrl: string,
+): Promise<{ usage: Record<string, unknown>[]; events: Record<string, unknown>[] }> {
   if (!isTelemetryEnabled()) return { usage: [], events: [] };
   try {
     const userEmail = resolvePortalUserEmail();
-    const usage = slots.flatMap((slot) =>
+    const liveUsage: AgentSessionUsage[] = slots.flatMap((slot) =>
       harvestUsageForSlot({
         agentId: slot.agentId,
         workDir: slot.workDir,
@@ -127,29 +131,22 @@ function collectPortalTelemetry(
         suffix: slot.suffix,
         sessionCreatedAt: slot.sessionCreatedAt,
         repoPath,
-      }).map((row) => {
-        const models = modelsFromBreakdown(
-          row.modelBreakdown as Record<string, unknown> | undefined,
-        );
-        return {
-          ...row,
-          workUnitId: slot.workUnitId ?? row.workUnitId,
-          attemptId: slot.attemptId ?? row.attemptId,
-          sessionKey:
-            row.sessionKey ||
-            buildSessionKey({
-              branch: slot.branch,
-              agentId: slot.agentId,
-              suffix: slot.suffix,
-              createdAt: slot.sessionCreatedAt,
-            }),
-          ...(userEmail ? { userEmail } : {}),
-          ...(models.length > 0 ? { models } : {}),
-        };
-      }),
+      }).map((row) => ({
+        ...row,
+        workUnitId: slot.workUnitId ?? row.workUnitId,
+        attemptId: slot.attemptId ?? row.attemptId,
+        sessionKey:
+          row.sessionKey ||
+          buildSessionKey({
+            branch: slot.branch,
+            agentId: slot.agentId,
+            suffix: slot.suffix,
+            createdAt: slot.sessionCreatedAt,
+          }),
+      })),
     );
 
-    const events = slots.flatMap((slot) =>
+    const liveEvents: AgentSessionEvent[] = slots.flatMap((slot) =>
       harvestEventsForSlot({
         agentId: slot.agentId,
         workDir: slot.workDir,
@@ -158,13 +155,26 @@ function collectPortalTelemetry(
         suffix: slot.suffix,
         sessionCreatedAt: slot.sessionCreatedAt,
         repoPath,
-      }).map((event) =>
-        dropNullFields({
-          ...event,
-          workUnitId: slot.workUnitId ?? event.workUnitId,
-          attemptId: slot.attemptId ?? event.attemptId,
-        }),
-      ),
+      }).map((event) => ({
+        ...event,
+        workUnitId: slot.workUnitId ?? event.workUnitId,
+        attemptId: slot.attemptId ?? event.attemptId,
+      })),
+    );
+
+    const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl);
+
+    const usage = mergePortalUsage(liveUsage, persisted.usage).map((row) => {
+      const models = modelsFromBreakdown(row.modelBreakdown as Record<string, unknown> | undefined);
+      return {
+        ...row,
+        ...(userEmail ? { userEmail } : {}),
+        ...(models.length > 0 ? { models } : {}),
+      };
+    });
+
+    const events = dedupePortalEvents(liveEvents, persisted.events).map((event) =>
+      dropNullFields({ ...event }),
     );
 
     return { usage, events };
@@ -173,10 +183,13 @@ function collectPortalTelemetry(
   }
 }
 
-function buildPortalPayload(repoPath: string): {
+async function buildPortalPayload(
+  repoPath: string,
+  controlApiUrl: string,
+): Promise<{
   syncBody: Record<string, unknown>;
   events: Record<string, unknown>[];
-} {
+}> {
   const runs = listRuns(repoPath);
   const status = collectEnvironmentStatus(repoPath);
   const manifest = readManifest(repoPath);
@@ -186,7 +199,7 @@ function buildPortalPayload(repoPath: string): {
   const workUnits = listWorkUnits(harnessRoot);
   const attempts = listWorkAttempts(harnessRoot);
   const validationBindings = listValidationBindings(harnessRoot);
-  const { usage, events } = collectPortalTelemetry(repoPath, status.slots);
+  const { usage, events } = await collectPortalTelemetry(repoPath, status.slots, controlApiUrl);
 
   const syncBody: Record<string, unknown> = {
     path: repoPath,
@@ -350,7 +363,7 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
 
   const portal = getPortalTarget();
   if (portal) {
-    const { syncBody, events } = buildPortalPayload(repoPath);
+    const { syncBody, events } = await buildPortalPayload(repoPath, apiUrl);
     await postPortal(portal, '/api/sync', syncBody, options.dryRun);
     if (events.length > 0) {
       await postPortal(
