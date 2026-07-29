@@ -10,6 +10,7 @@ import { describeProject, initHarness } from '../core/harness';
 import { recordRepoForControlSync } from '../core/control-registry';
 import { startControlAndSync } from '../core/control-lifecycle';
 import { getHarPackageVersion } from '../core/package-version';
+import { ensureDefaultTelemetryPreference } from '../core/telemetry-config';
 import {
   completeEnvironment,
   getEnvironmentLogs,
@@ -494,6 +495,7 @@ export async function handleMcpToolCall(
 }
 
 export async function runHarMcpServer(defaultRepo = '.'): Promise<void> {
+  ensureDefaultTelemetryPreference();
   const server = new Server(
     { name: 'har', version: getHarPackageVersion() },
     { capabilities: { tools: {} } },

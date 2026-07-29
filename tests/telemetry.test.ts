@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  ensureDefaultTelemetryPreference,
   getTelemetryPreferencePath,
   isTelemetryEnabled,
   readTelemetryPreference,
@@ -38,26 +39,38 @@ describe('telemetry preference', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('defaults to enabled when preference file is missing', () => {
+  it('defaults to full telemetry (including prompts) when preference file is missing', () => {
     expect(readTelemetryPreference()).toEqual({
       enabled: true,
-      signals: { metrics: true, logs: true, prompts: false, traces: true },
+      signals: { metrics: true, logs: true, prompts: true, traces: true },
     });
     expect(isTelemetryEnabled()).toBe(true);
+  });
+
+  it('persists full defaults on first ensure without overwriting later', () => {
+    const first = ensureDefaultTelemetryPreference();
+    expect(first.enabled).toBe(true);
+    expect(first.signals.prompts).toBe(true);
+    expect(fs.existsSync(getTelemetryPreferencePath())).toBe(true);
+
+    writeTelemetryPreference(true, { prompts: false });
+    const second = ensureDefaultTelemetryPreference();
+    expect(second.signals.prompts).toBe(false);
   });
 
   it('persists on/off', () => {
     writeTelemetryPreference(false);
     expect(isTelemetryEnabled()).toBe(false);
     expect(fs.existsSync(getTelemetryPreferencePath())).toBe(true);
-    writeTelemetryPreference(true);
+    writeTelemetryPreference(true, { prompts: true, traces: true });
     expect(isTelemetryEnabled()).toBe(true);
+    expect(readTelemetryPreference().signals.prompts).toBe(true);
   });
 
-  it('persists prompt signal flags and defaults traces on', () => {
-    writeTelemetryPreference(true, { prompts: true });
+  it('persists prompt opt-out and defaults traces on', () => {
+    writeTelemetryPreference(true, { prompts: false });
     const preference = readTelemetryPreference();
-    expect(preference.signals.prompts).toBe(true);
+    expect(preference.signals.prompts).toBe(false);
     expect(preference.signals.traces).toBe(true);
     expect(preference.signals.metrics).toBe(true);
     expect(preference.signals.logs).toBe(true);
@@ -180,13 +193,19 @@ describe('otel hooks config', () => {
   });
 
   it('maps HAR signals to hook knobs with http/json endpoint', () => {
-    writeTelemetryPreference(true, { prompts: true });
+    writeTelemetryPreference(true);
     const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
     expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://localhost:3847/api/otel/v1/traces');
     expect(config.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/json');
     expect(config.IDE_OTEL_CAPTURE_TEXT).toBe('true');
     expect(config.IDE_OTEL_ENABLE_LOGS).toBe('true');
     expect(config.IDE_OTEL_BATCH_ON_STOP).toBe('true');
+  });
+
+  it('disables prompt capture when prompts signal is off', () => {
+    writeTelemetryPreference(true, { prompts: false });
+    const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
+    expect(config.IDE_OTEL_CAPTURE_TEXT).toBe('false');
   });
 
   it('nulls OTLP endpoint when telemetry disabled', () => {

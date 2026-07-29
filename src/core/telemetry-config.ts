@@ -18,7 +18,7 @@ export interface TelemetryPreference {
 const DEFAULT_SIGNALS_ON: TelemetrySignals = {
   metrics: true,
   logs: true,
-  prompts: false,
+  prompts: true,
   /** Hooks are traces-first; usage metrics are derived from span gen_ai.usage.* in Mission Control. */
   traces: true,
 };
@@ -53,7 +53,7 @@ function normalizeSignals(
   return {
     metrics: raw?.metrics !== false,
     logs: raw?.logs !== false,
-    prompts: raw?.prompts === true,
+    prompts: raw?.prompts !== false,
     traces: raw?.traces !== false,
   };
 }
@@ -98,6 +98,22 @@ export function writeTelemetryPreference(
   return preference;
 }
 
+/**
+ * Persist full default telemetry (including prompts) when no preference file exists.
+ * Does not overwrite an existing choice (e.g. prior `har telemetry off` or prompts=false).
+ * Skips writing when HAR_TELEMETRY explicitly disables telemetry.
+ */
+export function ensureDefaultTelemetryPreference(): TelemetryPreference {
+  const preferencePath = getPreferencePath();
+  if (fs.existsSync(preferencePath)) {
+    return readTelemetryPreference();
+  }
+  if (parseEnvOverride(process.env.HAR_TELEMETRY) === false) {
+    return { enabled: false, signals: { ...DEFAULT_SIGNALS_OFF } };
+  }
+  return writeTelemetryPreference(true, { ...DEFAULT_SIGNALS_ON });
+}
+
 /** Effective telemetry flag: HAR_TELEMETRY env wins over ~/.har/telemetry.json; default on. */
 export function isTelemetryEnabled(): boolean {
   const envOverride = parseEnvOverride(process.env.HAR_TELEMETRY);
@@ -119,6 +135,6 @@ export const TELEMETRY_SIGNALS = [
   'Traces (default): Cursor / Claude / Codex activity via opentelemetry-hooks → Mission Control',
   'Logs/events (default): hook lifecycle logs without prompt bodies',
   'Metrics (default): token usage derived from span gen_ai.usage.* attributes',
-  'Prompts (opt-in): user prompt text via IDE_OTEL_CAPTURE_TEXT — har telemetry on --prompts (also fills Mission Control purpose)',
+  'Prompts (default): user prompt text via IDE_OTEL_CAPTURE_TEXT (also fills Mission Control purpose); disable with har telemetry on --no-prompts',
   'Fallback: har control sync harvests local Claude/Codex session files when hooks telemetry is missing',
 ] as const;

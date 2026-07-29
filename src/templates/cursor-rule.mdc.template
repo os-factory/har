@@ -31,7 +31,7 @@ When a slot is occupied: prefer `complete` / `teardown` if the previous task is 
 - **Never** set `force`/`confirmReplace` without the user explicitly approving replacement.
 - **Commit early and often** in the session worktree — teardown keeps the branch, not uncommitted work.
 - **Gitignored paths are ephemeral** (`state/`, `runs/`, local clones) — they are lost when the worktree is removed.
-- With telemetry prompts enabled, Mission Control derives session purpose from the first captured user prompt.
+- With telemetry on (default, including prompts), Mission Control derives session purpose from the first captured user prompt.
 
 <!-- Monorepo: if this repository contains multiple .har harnesses, list them here
      and pick by the files you are changing. Example:

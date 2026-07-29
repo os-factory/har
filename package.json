@@ -16,6 +16,7 @@
   },
   "files": [
     "dist",
+    "scripts/ensure-telemetry-default.cjs",
     "control/docker-compose.yml",
     "control/docker-compose.build.yml"
   ],
@@ -26,6 +27,7 @@
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
+    "postinstall": "node scripts/ensure-telemetry-default.cjs",
     "prepublishOnly": "npm run build",
     "release": "semantic-release"
   },

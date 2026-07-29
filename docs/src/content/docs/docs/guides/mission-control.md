@@ -116,17 +116,18 @@ HAR attributes Cursor, Claude Code, and Codex activity to each worktree/session 
 Mission Control. Preference shape:
 
 ```json
-{ "enabled": true, "signals": { "metrics": true, "logs": true, "prompts": false, "traces": true } }
+{ "enabled": true, "signals": { "metrics": true, "logs": true, "prompts": true, "traces": true } }
 ```
 
-Defaults when telemetry is on: **traces + logs + derived metrics** (events without prompt
-bodies). Prompt text is **opt-in** and also fills the Mission Control **purpose** column
-from the first captured user prompt.
+**Default: full telemetry on** (traces + logs + derived metrics + prompts). Install
+(`npm install -g @osfactory/har`) and the first `har` / MCP invocation persist this
+preference to `~/.har/telemetry.json` when the file is missing. Prompt text also fills
+the Mission Control **purpose** column from the first captured user prompt.
 
 ```bash
 har telemetry status
-har telemetry on              # ensure Mission Control + install/configure opentelemetry-hooks
-har telemetry on --prompts    # also ship user prompt text (session purpose)
+har telemetry on              # full telemetry + Mission Control + opentelemetry-hooks
+har telemetry on --no-prompts # keep traces/logs/metrics; disable prompt text capture
 har telemetry install-hooks   # re-run Cursor / Claude / Codex hook registration
 har telemetry off             # clear hooks OTLP export + stop MC auto-start; keeps historical rows
 ```
@@ -137,17 +138,15 @@ Hooks config lives at `~/.har/otel-hooks/otel_config.json` (`HAR_OTEL_HOOKS_HOME
 When telemetry is on:
 
 1. `har env launch` auto-starts Mission Control if it is not reachable (`har control up`).
-2. `har telemetry on` installs `opentelemetry-hooks` and registers Cursor / Claude / Codex hooks
+2. `har telemetry on` (and launch) install `opentelemetry-hooks` and register Cursor / Claude / Codex hooks
    to export OTLP `http/json` to `{HAR_CONTROL_API_URL}/api/otel`.
 3. Launch writes session attribution into `.env.agent.<id>` (`HAR_SESSION_KEY`, resource attrs).
    Mission Control matches sessions by `har.session_key` or by workspace/cwd → slot work dir.
 4. Token usage is derived from span `gen_ai.usage.*` attributes. `har control sync` also
    **harvests** local Claude/Codex session files as a fallback when hooks telemetry is missing.
 
-**Privacy:** prompt text leaves the agent machine only when the prompts signal is on.
-Mission Control stores usage and events in local SQLite.
-
-Disable anytime: `har telemetry off`.
+**Privacy:** prompt text is included by default and stays in local Mission Control (SQLite).
+Opt out with `har telemetry on --no-prompts` or disable everything with `har telemetry off`.
 
 ## Local development
 

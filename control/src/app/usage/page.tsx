@@ -21,7 +21,7 @@ export default async function UsagePage() {
         <h2 className="text-2xl font-semibold">Usage</h2>
         <p className="text-sm text-muted-foreground">
           Cross-repo LLM token and cost rollup from OTEL ingest and harvest. Prompt bodies are
-          stored only when `har telemetry on --prompts` is set. Data stays in local SQLite.
+          included by default (opt out: `har telemetry on --no-prompts`). Data stays in local SQLite.
         </p>
       </div>
 

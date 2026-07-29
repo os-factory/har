@@ -156,7 +156,7 @@ teardown. Re-add later with `har control register`.
 
 ```bash
 har telemetry status [--json]
-har telemetry on [--prompts]
+har telemetry on [--prompts|--no-prompts]
 har telemetry off
 har telemetry install-hooks
 har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
@@ -164,9 +164,10 @@ har telemetry print-env --agent-id <n>
 ```
 
 Controls agent usage telemetry (Cursor / Claude / Codex via opentelemetry-hooks → Mission Control).
-**Default: on.** `on` ensures Mission Control is running and installs/configures hooks.
-Preference: `~/.har/telemetry.json` (override with `HAR_TELEMETRY=0|1`). Hooks config:
-`~/.har/otel-hooks/otel_config.json`.
+**Default: full on** (traces, logs, metrics, prompts). Install and the first `har` invocation
+persist `~/.har/telemetry.json` when missing. `on` ensures Mission Control is running and
+installs/configures hooks. Use `--no-prompts` to keep telemetry without prompt text.
+Override with `HAR_TELEMETRY=0|1`. Hooks config: `~/.har/otel-hooks/otel_config.json`.
 
 ## `har mcp`
 
