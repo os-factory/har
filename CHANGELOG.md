@@ -1,3 +1,12 @@
+# [0.26.0](https://github.com/os-factory/har/compare/v0.25.0...v0.26.0) (2026-07-29)
+
+
+### Features
+
+* **control:** har control sync interactive multi-repo selection with persisted choice ([#88](https://github.com/os-factory/har/issues/88)) ([dac1437](https://github.com/os-factory/har/commit/dac1437b0450e101e32c884590a69dc710294b15))
+* rename stage-templates to plugins ([#89](https://github.com/os-factory/har/issues/89)) ([79f5eea](https://github.com/os-factory/har/commit/79f5eea90d4cc0661c60634d77de96496336522d))
+* **telemetry:** enable full telemetry including prompts by default ([#90](https://github.com/os-factory/har/issues/90)) ([44b10da](https://github.com/os-factory/har/commit/44b10da613c1dc6ce6c9e94794455a2b4c8db366))
+
 # [0.25.0](https://github.com/os-factory/har/compare/v0.24.0...v0.25.0) (2026-07-29)
 
 
