@@ -23,6 +23,7 @@ from lib.common import (  # noqa: E402
     load_benchmark_env,
     new_run_id,
     now_iso,
+    read_json,
     render_template,
     sanitize_instance_row,
     write_json,
@@ -40,6 +41,7 @@ from lib.har_utils import (  # noqa: E402
 from lib.har_cache import (  # noqa: E402
     har_cache_exists,
     invalidate_har_cache,
+    list_verification_stage_ids,
     load_har_cache,
     save_har_cache,
 )
@@ -161,6 +163,7 @@ def run_har_arm(
     post_fix_verify_full: bool,
     setup_budget_minutes: int,
     setup_max_rounds: int,
+    fix_max_rounds: int = 3,
 ) -> dict[str, Any]:
     cfg = benchmark_config()
     harness_root = run_dir / "har" / "repo"
@@ -192,6 +195,10 @@ def run_har_arm(
     if har_cache_exists(instance["repo"], profile):
         cache_hit = load_har_cache(instance["repo"], harness_root)
         record["har_cache_hit"] = cache_hit
+
+    # Repo-generic verification stages only — task-scoped stages must not enter .har-cache.
+    baseline_verification_ids = set(list_verification_stage_ids(harness_root))
+    record["har_baseline_verification_stages"] = sorted(baseline_verification_ids)
 
     need_bootstrap = not cache_hit
     bootstrap_attempts: list[dict[str, Any]] = []
@@ -238,6 +245,9 @@ def run_har_arm(
             )
             har_teardown_slot(harness_root, env=env)
             need_bootstrap = False
+            # After bootstrap, treat current verificationStages as the new repo baseline.
+            baseline_verification_ids = set(list_verification_stage_ids(harness_root))
+            record["har_baseline_verification_stages"] = sorted(baseline_verification_ids)
 
         readiness_prompt = render_template(
             PROMPTS / "har-task-readiness.md",
@@ -277,7 +287,20 @@ def run_har_arm(
         record[f"har_gate_round_{round_index}"] = gate
 
         if gate["ready"]:
-            save_har_cache(instance["repo"], harness_root, profile)
+            # Persist only repo-generic stages; keep task-scoped ones live for this run.
+            task_stage_ids = sorted(
+                set(list_verification_stage_ids(harness_root)) - baseline_verification_ids
+            )
+            record["har_task_verification_stages"] = task_stage_ids
+            _snapshot_task_stages(harness_root, task_overlay_dir, task_stage_ids)
+            save_har_cache(
+                instance["repo"],
+                harness_root,
+                profile,
+                keep_verification_stage_ids=baseline_verification_ids,
+            )
+            # Re-apply task stages after cache strip so fix/verify still see them.
+            _restore_task_stages(harness_root, task_overlay_dir)
             record["har_cache_saved"] = True
             break
 
@@ -340,25 +363,61 @@ def run_har_arm(
     record["har_ready_for_fix"] = True
 
     solve_started = time.time()
-    fix_prompt = render_template(
-        PROMPTS / "har-fix.md",
-        prompt_values(instance, work_dir=str(workdir)),
-    )
-    fix_codex = run_codex_turn(
-        cwd=workdir,
-        prompt=fix_prompt,
-        model=model,
-        api_key=env.get("OPENAI_API_KEY"),
-        timeout_seconds=solve_timeout_minutes * 60,
-        artifacts_dir=run_dir / "har" / "codex-fix",
-    )
-    record["codex_fix"] = fix_codex.result
-    record["solve_seconds"] = round(time.time() - solve_started, 2)
+    fix_attempts: list[dict[str, Any]] = []
+    verify_result: dict[str, Any] = {"verified": False, "full": post_fix_verify_full}
+    fix_failure_context = ""
 
-    verify_result = har_verify(harness_root, full=post_fix_verify_full, env=env)
+    for fix_round in range(1, max(1, fix_max_rounds) + 1):
+        remaining_solve = max(
+            60,
+            solve_timeout_minutes * 60 - int(time.time() - solve_started),
+        )
+        fix_prompt = render_template(
+            PROMPTS / "har-fix.md",
+            prompt_values(
+                instance,
+                work_dir=str(workdir),
+                fix_failure_context=fix_failure_context,
+                fix_round=str(fix_round),
+                fix_max_rounds=str(fix_max_rounds),
+            ),
+        )
+        fix_codex = run_codex_turn(
+            cwd=workdir,
+            prompt=fix_prompt,
+            model=model,
+            api_key=env.get("OPENAI_API_KEY"),
+            timeout_seconds=remaining_solve,
+            artifacts_dir=run_dir / "har" / f"codex-fix-r{fix_round}",
+        )
+        verify_result = har_verify(
+            harness_root,
+            full=post_fix_verify_full,
+            env=_merge_task_overlay_env(env, task_overlay_dir),
+        )
+        fix_attempts.append(
+            {
+                "round": fix_round,
+                "codex": fix_codex.result,
+                "wall_clock_seconds": fix_codex.wall_clock_seconds,
+                "verify": {
+                    "verified": verify_result.get("verified"),
+                    "full": verify_result.get("full"),
+                    "exit_code": verify_result.get("exit_code"),
+                },
+            }
+        )
+        if verify_result.get("verified"):
+            break
+        fix_failure_context = _format_post_fix_verify_failure(verify_result, fix_round)
+
+    record["codex_fix"] = fix_attempts[-1]["codex"] if fix_attempts else {}
+    record["har_fix_attempts"] = fix_attempts
+    record["har_fix_rounds"] = len(fix_attempts)
+    record["solve_seconds"] = round(time.time() - solve_started, 2)
     record["har_verify"] = verify_result
     record["har_verify_attempted"] = True
-    record["har_verify_passed"] = verify_result["verified"]
+    record["har_verify_passed"] = bool(verify_result.get("verified"))
     record["har_runs_recorded"] = har_runs_exist(harness_root)
 
     patch = extract_model_patch(workdir, instance["base_commit"])
@@ -375,6 +434,8 @@ def run_har_arm(
         invalid_reasons.append("launch_gate_failed")
     if not record["har_verify_attempted"]:
         invalid_reasons.append("no_verify_attempt")
+    if post_fix_verify_full and not record["har_verify_passed"]:
+        invalid_reasons.append("post_fix_verify_failed")
     if not record["har_runs_recorded"]:
         invalid_reasons.append("no_har_run_records")
 
@@ -402,6 +463,104 @@ def _list_task_overlay_files(task_overlay_dir: Path) -> list[str]:
     )
 
 
+def _snapshot_task_stages(
+    harness_root: Path,
+    task_overlay_dir: Path,
+    task_stage_ids: list[str],
+) -> None:
+    """Copy task-scoped stage definitions/scripts into the per-run overlay."""
+    if not task_stage_ids:
+        return
+    stages_path = harness_root / ".har" / "stages.json"
+    if not stages_path.exists():
+        return
+    data = read_json(stages_path)
+    stages = data.get("stages") or []
+    if isinstance(stages, dict):
+        entries = []
+        for key, value in stages.items():
+            if isinstance(value, dict):
+                entry = dict(value)
+                entry.setdefault("id", key)
+                entries.append(entry)
+    else:
+        entries = [s for s in stages if isinstance(s, dict)]
+
+    wanted = set(task_stage_ids)
+    snap_entries: list[dict[str, Any]] = []
+    overlay_stages = task_overlay_dir / "stages"
+    overlay_stages.mkdir(parents=True, exist_ok=True)
+    for entry in entries:
+        sid = str(entry.get("id") or "")
+        if sid not in wanted:
+            continue
+        copied = dict(entry)
+        script = copied.get("script")
+        if isinstance(script, str) and script:
+            src = harness_root / ".har" / script
+            if src.exists():
+                dest = overlay_stages / Path(script).name
+                dest.write_bytes(src.read_bytes())
+                copied["script"] = f"stages/{dest.name}"
+        snap_entries.append(copied)
+    write_json(
+        task_overlay_dir / "task-stages.json",
+        {"verificationStages": task_stage_ids, "stages": snap_entries},
+    )
+
+
+def _restore_task_stages(harness_root: Path, task_overlay_dir: Path) -> None:
+    """Merge task-scoped stages from overlay back into the live harness."""
+    snap_path = task_overlay_dir / "task-stages.json"
+    if not snap_path.exists():
+        return
+    snap = read_json(snap_path)
+    stages_path = harness_root / ".har" / "stages.json"
+    if stages_path.exists():
+        data = read_json(stages_path)
+    else:
+        data = {"verificationStages": [], "stages": []}
+
+    existing_ids = {str(x) for x in (data.get("verificationStages") or [])}
+    for sid in snap.get("verificationStages") or []:
+        sid = str(sid)
+        if sid not in existing_ids:
+            data.setdefault("verificationStages", []).append(sid)
+            existing_ids.add(sid)
+
+    live_entries = data.get("stages") or []
+    if isinstance(live_entries, dict):
+        live_list = []
+        for key, value in live_entries.items():
+            if isinstance(value, dict):
+                entry = dict(value)
+                entry.setdefault("id", key)
+                live_list.append(entry)
+        live_entries = live_list
+    live_by_id = {str(e.get("id") or ""): e for e in live_entries if isinstance(e, dict)}
+
+    stages_dir = harness_root / ".har" / "stages"
+    stages_dir.mkdir(parents=True, exist_ok=True)
+    for entry in snap.get("stages") or []:
+        if not isinstance(entry, dict):
+            continue
+        entry = dict(entry)
+        sid = str(entry.get("id") or "")
+        script = entry.get("script")
+        if isinstance(script, str) and script:
+            overlay_script = task_overlay_dir / script
+            if not overlay_script.exists():
+                overlay_script = task_overlay_dir / "stages" / Path(script).name
+            if overlay_script.exists():
+                dest = stages_dir / Path(script).name
+                dest.write_bytes(overlay_script.read_bytes())
+                entry["script"] = f"stages/{dest.name}"
+        live_by_id[sid] = entry
+
+    data["stages"] = list(live_by_id.values())
+    write_json(stages_path, data)
+
+
 def _merge_task_overlay_env(env: dict[str, str], task_overlay_dir: Path) -> dict[str, str]:
     merged = dict(env)
     task_env = task_overlay_dir / "task.env"
@@ -414,6 +573,23 @@ def _merge_task_overlay_env(env: dict[str, str], task_overlay_dir: Path) -> dict
         key, value = line.split("=", 1)
         merged[key.strip()] = value.strip().strip('"').strip("'")
     return merged
+
+
+def _format_post_fix_verify_failure(verify: dict[str, Any], fix_round: int) -> str:
+    return (
+        f"\n## Previous fix round {fix_round}: HAR verify --full failed\n"
+        "HAR is a sandbox for verifying that your change works. Do not stop until "
+        "`har env verify 1 --full` passes.\n"
+        "- You may add or update a verification stage on the fly "
+        "(`har env add-stage … --custom --verification`).\n"
+        "- You may add a small focused regression check / test that proves the fix "
+        "(prefer a stage; keep it narrow — not the full suite).\n"
+        "- Prefer fail-before/pass-after: the check should fail on the broken tree and "
+        "pass after your fix.\n\n"
+        f"exit_code: {verify.get('exit_code')}\n"
+        f"stderr (tail):\n```\n{(verify.get('stderr') or '')[-3000:]}\n```\n"
+        f"stdout (tail):\n```\n{(verify.get('stdout') or '')[-2000:]}\n```\n"
+    )
 
 
 def _format_readiness_failure(gate: dict[str, Any], round_index: int) -> str:
@@ -524,6 +700,7 @@ def main() -> int:
             post_fix_verify_full=bool(cfg.get("har_verify_full", False)),
             setup_budget_minutes=setup_budget,
             setup_max_rounds=setup_max_rounds,
+            fix_max_rounds=int(cfg.get("fix_max_rounds", 3)),
         )
 
     run_record["finished_at"] = now_iso()

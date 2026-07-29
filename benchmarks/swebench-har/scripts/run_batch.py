@@ -64,6 +64,7 @@ def run_one_instance(
     post_fix_verify_full: bool,
     setup_budget_minutes: int,
     setup_max_rounds: int,
+    fix_max_rounds: int = 3,
 ) -> dict[str, Any]:
     instance, run_dir = prepare_instance_row(row, seed)
     record: dict[str, Any] = {
@@ -102,6 +103,7 @@ def run_one_instance(
             post_fix_verify_full=post_fix_verify_full,
             setup_budget_minutes=setup_budget_minutes,
             setup_max_rounds=setup_max_rounds,
+            fix_max_rounds=fix_max_rounds,
         )
 
     record["finished_at"] = now_iso()
@@ -130,6 +132,7 @@ def main() -> int:
     readiness_timeout = int(cfg.get("readiness_timeout_minutes", 20))
     setup_budget = int(cfg.get("setup_budget_minutes", 120))
     setup_max_rounds = int(cfg.get("setup_max_rounds", 6))
+    fix_max_rounds = int(cfg.get("fix_max_rounds", 3))
     post_fix_verify_full = bool(cfg.get("har_verify_full", False))
 
     rows = load_split(cfg["dataset_name"], cfg["split"])
@@ -175,6 +178,7 @@ def main() -> int:
                 post_fix_verify_full=post_fix_verify_full,
                 setup_budget_minutes=setup_budget,
                 setup_max_rounds=setup_max_rounds,
+                fix_max_rounds=fix_max_rounds,
             )
             entry["run_id"] = result["run_id"]
             entry["status"] = "completed"
