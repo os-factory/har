@@ -1,5 +1,6 @@
 import * as path from 'path';
 import type { AgentSessionEvent, AgentSessionUsage, AgentTool, UsageSource } from '../harness/schema';
+import { selectSince } from './portal-watermark';
 
 const FETCH_TIMEOUT_MS = 3000;
 
@@ -22,6 +23,7 @@ interface PersistedUsageRow {
   sources?: unknown;
   firstSeenAt: string;
   lastSeenAt: string;
+  updatedAt?: string | null;
 }
 
 interface PersistedEventRow {
@@ -38,6 +40,7 @@ interface PersistedEventRow {
   source?: string | null;
   workUnitId?: string | null;
   attemptId?: string | null;
+  createdAt?: string | null;
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
@@ -118,26 +121,44 @@ function normalizeEvent(row: PersistedEventRow): AgentSessionEvent {
   };
 }
 
+function maxTimestamp(a: string | null, b: string | null): string | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a > b ? a : b;
+}
+
 /**
  * Best-effort read of persisted telemetry from a locally-reachable Mission
  * Control. Returns empty when the control API is unreachable or the repo is not
  * registered there, so a portal sync always falls back to the live-slot
  * harvest. Never throws.
+ *
+ * When `since` is set, only rows changed after it are returned — usage by its
+ * cumulative `updatedAt` (a live session that gained tokens re-syncs even
+ * though its event time looks old), events by their append-only `createdAt`.
+ * `maxSyncedAt` is the newest timestamp among the returned rows, for advancing
+ * the caller's watermark to the max actually sent.
  */
 export async function fetchPersistedPortalTelemetry(
   repoPath: string,
   apiUrl: string,
-): Promise<{ usage: AgentSessionUsage[]; events: AgentSessionEvent[] }> {
+  options?: { since?: string | null },
+): Promise<{ usage: AgentSessionUsage[]; events: AgentSessionEvent[]; maxSyncedAt: string | null }> {
   const repoId = await resolveControlRepoId(apiUrl, repoPath);
-  if (!repoId) return { usage: [], events: [] };
+  if (!repoId) return { usage: [], events: [], maxSyncedAt: null };
 
+  const since = options?.since ?? null;
   const [usageResponse, eventsResponse] = await Promise.all([
     getJson<{ usage: PersistedUsageRow[] }>(`${apiUrl}/api/repos/${repoId}/usage`),
     getJson<{ events: PersistedEventRow[] }>(`${apiUrl}/api/repos/${repoId}/events`),
   ]);
 
+  const usage = selectSince(usageResponse?.usage ?? [], since, (row) => row.updatedAt ?? row.lastSeenAt);
+  const events = selectSince(eventsResponse?.events ?? [], since, (row) => row.createdAt ?? row.timestamp);
+
   return {
-    usage: (usageResponse?.usage ?? []).map(normalizeUsage),
-    events: (eventsResponse?.events ?? []).map(normalizeEvent),
+    usage: usage.selected.map(normalizeUsage),
+    events: events.selected.map(normalizeEvent),
+    maxSyncedAt: maxTimestamp(usage.maxSyncedAt, events.maxSyncedAt),
   };
 }

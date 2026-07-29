@@ -28,7 +28,7 @@ describe('fetchPersistedPortalTelemetry', () => {
   it('returns empty when Mission Control does not know the repo', async () => {
     routedFetch({ '/api/repos': { status: 200, json: [{ id: 'r1', path: '/other/repo' }] } });
     const result = await fetchPersistedPortalTelemetry('/repo/x', API);
-    expect(result).toEqual({ usage: [], events: [] });
+    expect(result).toEqual({ usage: [], events: [], maxSyncedAt: null });
   });
 
   it('returns empty (never throws) when the control API is unreachable', async () => {
@@ -39,6 +39,7 @@ describe('fetchPersistedPortalTelemetry', () => {
     await expect(fetchPersistedPortalTelemetry('/repo/x', API)).resolves.toEqual({
       usage: [],
       events: [],
+      maxSyncedAt: null,
     });
   });
 
@@ -111,5 +112,93 @@ describe('fetchPersistedPortalTelemetry', () => {
     expect(result.events[0].sessionKey).toBe('feat/gone');
     expect(result.events[0].promptText).toBe('hello');
     expect(result.events[0].source).toBe('harvest');
+  });
+
+  function usageRow(sessionKey: string, updatedAt: string, lastSeenAt: string) {
+    return {
+      id: sessionKey,
+      repositoryId: 'repo-1',
+      sessionKey,
+      agentId: 1,
+      agentTool: 'claude_code',
+      tokensInput: 1,
+      tokensOutput: 1,
+      tokensCacheRead: 0,
+      tokensCacheCreation: 0,
+      tokensTotal: 2,
+      costUsd: null,
+      sources: ['harvest'],
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt,
+      updatedAt,
+    };
+  }
+
+  function eventRow(sessionKey: string, createdAt: string, timestamp: string) {
+    return {
+      id: sessionKey,
+      repositoryId: 'repo-1',
+      sessionKey,
+      agentId: 1,
+      agentTool: 'claude_code',
+      eventName: 'claude_code.user_prompt',
+      sequence: 1,
+      timestamp,
+      source: 'harvest',
+      createdAt,
+    };
+  }
+
+  it('forwards only rows changed after the watermark and reports the max sent', async () => {
+    routedFetch({
+      '/api/repos': { status: 200, json: [{ id: 'repo-1', path: '/repo/x' }] },
+      '/api/repos/repo-1/usage': {
+        status: 200,
+        json: {
+          usage: [
+            usageRow('old', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+            usageRow('grew', '2026-01-05T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+          ],
+        },
+      },
+      '/api/repos/repo-1/events': {
+        status: 200,
+        json: {
+          events: [
+            eventRow('old-ev', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+            eventRow('new-ev', '2026-01-04T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+          ],
+        },
+      },
+    });
+
+    const result = await fetchPersistedPortalTelemetry('/repo/x', API, {
+      since: '2026-01-02T00:00:00.000Z',
+    });
+
+    // The cumulative 'grew' session re-syncs on updatedAt even though its event
+    // time (lastSeenAt) predates the watermark; the stale 'old' row is dropped.
+    expect(result.usage.map((u) => u.sessionKey)).toEqual(['grew']);
+    expect(result.events.map((e) => e.sessionKey)).toEqual(['new-ev']);
+    expect(result.maxSyncedAt).toBe('2026-01-05T00:00:00.000Z');
+  });
+
+  it('sends nothing when no row changed since the watermark', async () => {
+    routedFetch({
+      '/api/repos': { status: 200, json: [{ id: 'repo-1', path: '/repo/x' }] },
+      '/api/repos/repo-1/usage': {
+        status: 200,
+        json: { usage: [usageRow('old', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')] },
+      },
+      '/api/repos/repo-1/events': { status: 200, json: { events: [] } },
+    });
+
+    const result = await fetchPersistedPortalTelemetry('/repo/x', API, {
+      since: '2026-06-01T00:00:00.000Z',
+    });
+
+    expect(result.usage).toEqual([]);
+    expect(result.events).toEqual([]);
+    expect(result.maxSyncedAt).toBeNull();
   });
 });
