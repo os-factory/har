@@ -12,6 +12,7 @@ import {
 import { readSlotRegistry } from '../../core/slot-registry';
 import {
   TELEMETRY_SIGNALS,
+  ensureDefaultTelemetryPreference,
   getTelemetryPreferencePath,
   getTelemetrySignals,
   isTelemetryEnabled,
@@ -73,10 +74,10 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   printSignals();
 }
 
-async function handleOn(argv: { prompts?: boolean }): Promise<void> {
+async function handleOn(argv: { prompts: boolean }): Promise<void> {
   header('har telemetry on');
   const preference = writeTelemetryPreference(true, {
-    prompts: argv.prompts === true ? true : undefined,
+    prompts: argv.prompts,
     traces: true,
   });
   success('Telemetry enabled. Cursor / Claude / Codex export via opentelemetry-hooks → Mission Control.');
@@ -85,6 +86,8 @@ async function handleOn(argv: { prompts?: boolean }): Promise<void> {
   );
   if (preference.signals.prompts) {
     warn('Prompt text will leave the agent machine for local Mission Control (also used as session purpose).');
+  } else {
+    info('Prompt capture is off — enable with: har telemetry on --prompts');
   }
   printSignals();
 
@@ -190,9 +193,10 @@ function handlePrintEnv(argv: {
 
 async function handleInstallHooks(): Promise<void> {
   header('har telemetry install-hooks');
+  ensureDefaultTelemetryPreference();
   if (!isTelemetryEnabled()) {
     warn('Telemetry is off — enabling preference so hooks can export.');
-    writeTelemetryPreference(true, { traces: true });
+    writeTelemetryPreference(true, { traces: true, prompts: true });
   }
   const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
   if (result.message) success(result.message);
@@ -223,16 +227,23 @@ export const telemetryCommand = {
       )
       .command(
         'on',
-        'Enable telemetry, ensure Mission Control, install/configure opentelemetry-hooks',
+        'Enable full telemetry (incl. prompts), ensure Mission Control, install/configure opentelemetry-hooks',
         (y: Argv) =>
-          y.option('prompts', {
-            type: 'boolean',
-            default: false,
-            describe: 'Opt in to shipping user prompt text (also fills Mission Control purpose)',
-          }),
+          y
+            .option('prompts', {
+              type: 'boolean',
+              default: true,
+              describe: 'Ship user prompt text (also fills Mission Control purpose; default on)',
+            })
+            .option('no-prompts', {
+              type: 'boolean',
+              default: false,
+              describe: 'Disable prompt text capture (traces/logs/metrics still on)',
+            }),
         (argv) => {
+          const noPrompts = argv['no-prompts'] as boolean;
           void handleOn({
-            prompts: argv.prompts as boolean,
+            prompts: noPrompts ? false : (argv.prompts as boolean),
           });
         },
       )

@@ -1,7 +1,7 @@
 import { getControlApiUrl, isControlEnabled } from './control-config';
 import { startMissionControl } from './control-lifecycle';
 import { isControlApiReachable, waitForControlApi } from './control-sync';
-import { isTelemetryEnabled } from './telemetry-config';
+import { ensureDefaultTelemetryPreference, isTelemetryEnabled } from './telemetry-config';
 
 export interface EnsureTelemetryResult {
   telemetryEnabled: boolean;
@@ -22,6 +22,7 @@ export async function ensureTelemetryInfrastructure(options?: {
   startIfNeeded?: boolean;
 }): Promise<EnsureTelemetryResult> {
   const apiUrl = getControlApiUrl();
+  ensureDefaultTelemetryPreference();
   const telemetryEnabled = isTelemetryEnabled();
   const controlEnabled = isControlEnabled();
   const startIfNeeded = options?.startIfNeeded !== false;

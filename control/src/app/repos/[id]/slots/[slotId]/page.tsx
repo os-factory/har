@@ -86,7 +86,7 @@ export default async function SlotDetailPage({
           </p>
         )}
         <p className="mt-1 text-xs text-muted-foreground">
-          Prompt text is stored only when telemetry prompts are enabled (`har telemetry on --prompts`).
+          Prompt text is included by default (opt out: `har telemetry on --no-prompts`).
           Usage and events stay in local SQLite.
         </p>
       </div>

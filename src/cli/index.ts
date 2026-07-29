@@ -1,6 +1,7 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { getHarPackageVersion } from '../core/package-version';
+import { ensureDefaultTelemetryPreference } from '../core/telemetry-config';
 import { agentsCommand } from './commands/agents';
 import { envCommand } from './commands/env';
 import { controlCommand } from './commands/control';
@@ -11,6 +12,7 @@ import { telemetryCommand } from './commands/telemetry';
 import { HAR_ROOT_EPILOG } from './help-text';
 
 export async function runCli(): Promise<void> {
+  ensureDefaultTelemetryPreference();
   await yargs(hideBin(process.argv))
     .scriptName('har')
     .usage('$0 <command> [options]')

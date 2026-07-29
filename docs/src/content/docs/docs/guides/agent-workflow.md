@@ -20,8 +20,8 @@ har env launch 2
 ```
 
 Use one slot per task. Separate parallel tasks use separate slots.
-With telemetry prompts enabled (`har telemetry on --prompts`), Mission Control
-fills the session purpose from the first captured user prompt.
+With telemetry on (the default, including prompts), Mission Control fills the
+session purpose from the first captured user prompt.
 
 ## Occupied and failed slots
 
