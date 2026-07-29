@@ -243,18 +243,23 @@ export async function waitForControlApi(
   return false;
 }
 
-export async function syncAllKnownReposWithControl(options?: {
+export interface SyncRepoResult {
+  repoPath: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Every har repo Mission Control knows about: the local registry, an optional
+ * cwd, and whatever the portal/control API already tracks — all manifest-gated
+ * and canonicalized. Shared by the all-repos auto-sync and the interactive
+ * `har control sync` selection.
+ */
+export async function discoverHarRepos(options?: {
   apiUrl?: string;
   cwd?: string;
-}): Promise<{ synced: number; failed: number }> {
-  if (!isControlEnabled()) return { synced: 0, failed: 0 };
-
+}): Promise<string[]> {
   const apiUrl = options?.apiUrl ?? getControlApiUrl();
-  const portal = getPortalTarget();
-  if (!(await isControlApiReachable(portal ? portal.url : apiUrl))) {
-    return { synced: 0, failed: 0 };
-  }
-
   const repoPaths = new Set<string>(listRegisteredRepos());
 
   if (options?.cwd) {
@@ -275,17 +280,56 @@ export async function syncAllKnownReposWithControl(options?: {
     // Best-effort — registry + cwd repos are enough for first sync.
   }
 
+  return [...repoPaths];
+}
+
+/**
+ * Push a specific set of repos, one per timeout-guarded call. Returns the
+ * summary counts plus a per-repo result so callers can print outcomes.
+ */
+export async function syncReposWithControl(options: {
+  repoPaths: string[];
+  apiUrl?: string;
+  dryRun?: boolean;
+  cloud?: boolean;
+}): Promise<{ synced: number; failed: number; results: SyncRepoResult[] }> {
+  const apiUrl = options.apiUrl ?? getControlApiUrl();
+  const results: SyncRepoResult[] = [];
   let synced = 0;
   let failed = 0;
-  for (const repoPath of repoPaths) {
+
+  for (const repoPath of options.repoPaths) {
     try {
-      await withTimeout(syncRepoWithControl({ repoPath, apiUrl }), SYNC_TIMEOUT_MS, 'control sync');
+      await withTimeout(
+        syncRepoWithControl({ repoPath, apiUrl, dryRun: options.dryRun, cloud: options.cloud }),
+        SYNC_TIMEOUT_MS,
+        'control sync',
+      );
       synced++;
-    } catch {
+      results.push({ repoPath, ok: true });
+    } catch (err: unknown) {
       failed++;
+      results.push({ repoPath, ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
+  return { synced, failed, results };
+}
+
+export async function syncAllKnownReposWithControl(options?: {
+  apiUrl?: string;
+  cwd?: string;
+}): Promise<{ synced: number; failed: number }> {
+  if (!isControlEnabled()) return { synced: 0, failed: 0 };
+
+  const apiUrl = options?.apiUrl ?? getControlApiUrl();
+  const portal = getPortalTarget();
+  if (!(await isControlApiReachable(portal ? portal.url : apiUrl))) {
+    return { synced: 0, failed: 0 };
+  }
+
+  const repoPaths = await discoverHarRepos({ apiUrl, cwd: options?.cwd });
+  const { synced, failed } = await syncReposWithControl({ repoPaths, apiUrl });
   return { synced, failed };
 }
 
