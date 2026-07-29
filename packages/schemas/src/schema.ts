@@ -497,6 +497,38 @@ export const UnregisterRepoResultSchema = z.object({
 
 export type UnregisterRepoResult = z.infer<typeof UnregisterRepoResultSchema>;
 
+/** Wipe all Mission Control data. Requires confirm === "RESET". */
+export const ResetMissionControlInputSchema = z.object({
+  confirm: z.literal('RESET'),
+  /**
+   * When true, delete `.har/{runs,validations,state,slots}` under each registered
+   * repository path (best-effort; Docker often cannot see host paths).
+   */
+  scrubLocalHarness: z.boolean().optional().default(true),
+});
+
+export type ResetMissionControlInput = z.infer<typeof ResetMissionControlInputSchema>;
+
+export const HarnessScrubResultSchema = z.object({
+  path: z.string(),
+  directory: z.string(),
+  deleted: z.boolean(),
+  error: z.string().optional(),
+});
+
+export type HarnessScrubResult = z.infer<typeof HarnessScrubResultSchema>;
+
+export const ResetMissionControlResultSchema = z.object({
+  ok: z.literal(true),
+  repositoriesDeleted: z.number().int().nonnegative(),
+  unregisteredCleared: z.number().int().nonnegative(),
+  scrubLocalHarness: z.boolean(),
+  scrubbed: z.array(HarnessScrubResultSchema),
+  repoPaths: z.array(z.string()),
+});
+
+export type ResetMissionControlResult = z.infer<typeof ResetMissionControlResultSchema>;
+
 export const SyncRunsInputSchema = z.object({
   runs: z.array(RunRecordSchema),
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   RegisterRepoInputSchema,
+  ResetMissionControlInputSchema,
   RunRecordSchema,
   SyncWorkUnitsInputSchema,
 } from '@har/schemas';
@@ -45,5 +46,13 @@ describe('RunRecordSchema', () => {
       trigger: 'mcp',
     });
     expect(result.trigger).toBe('mcp');
+  });
+});
+
+describe('ResetMissionControlInputSchema', () => {
+  it('requires confirm RESET and defaults scrubLocalHarness', () => {
+    const result = ResetMissionControlInputSchema.parse({ confirm: 'RESET' });
+    expect(result.scrubLocalHarness).toBe(true);
+    expect(() => ResetMissionControlInputSchema.parse({ confirm: 'yes' })).toThrow();
   });
 });
