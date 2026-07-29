@@ -103,11 +103,15 @@ and harness profiles. Repository detail provides:
 - files under `.har/artifacts/`;
 - verification trends and pass rates.
 
-The global **Operations** page (`/worktrees`) highlights dirty, stale, detached,
-and bypass-warning sessions across repositories. It also shows **token and cost**
-columns when agent telemetry is enabled (see below). Click a slot id for the slot
-leaf (LLM usage + Verify pipeline + session timeline). The repository catalog
-lives at `/repos`; cross-repo usage rollup at `/usage`.
+The global **Operations** page (`/worktrees`) lists session worktrees across
+repositories (active and idle), with an **On disk** indicator, row selection,
+select-all, and **Delete selected** to remove worktree directories and clear the
+matching Mission Control slot rows (repository registration is kept). It also
+highlights dirty/missing paths and shows **token and cost** columns when agent
+telemetry is enabled (see below). Click a row for the slot leaf (LLM usage +
+Verify pipeline + session timeline). Packaged Docker Mission Control may not see
+host paths — use `har env teardown <id>` on the host when deletion fails. The
+repository catalog lives at `/repos`; cross-repo usage rollup at `/usage`.
 
 ## Agent usage telemetry (Cursor / Claude / Codex)
 

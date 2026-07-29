@@ -36,7 +36,8 @@ export function cleanupSessionWorktrees(
         path: worktreePath,
         agentId: target.agentId,
         deleted: false,
-        error: 'path not visible to Mission Control (use har control unregister --delete-worktrees)',
+        error:
+          'path not visible to Mission Control (use har env teardown <id> or delete the worktree on the host)',
       });
       continue;
     }

@@ -1,11 +1,20 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import {
   type ColumnDef,
   type ColumnFiltersState,
   type FilterFn,
   type OnChangeFn,
+  type RowSelectionState,
   type SortingState,
   type VisibilityState,
   flexRender,
@@ -17,6 +26,7 @@ import {
   type Table as TanstackTable,
 } from '@tanstack/react-table';
 
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -84,6 +94,35 @@ function withSortableHeaders<TData, TValue>(
   });
 }
 
+function selectionColumn<TData>(): ColumnDef<TData, unknown> {
+  return {
+    id: 'select',
+    enableSorting: false,
+    enableHiding: false,
+    header: ({ table }) => (
+      <div data-row-click-ignore className="px-1" onClick={(event) => event.stopPropagation()}>
+        <Checkbox
+          aria-label="Select all rows"
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && 'indeterminate')
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(value === true)}
+        />
+      </div>
+    ),
+    cell: ({ row }) => (
+      <div data-row-click-ignore className="px-1" onClick={(event) => event.stopPropagation()}>
+        <Checkbox
+          aria-label={`Select row ${row.id}`}
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(value === true)}
+        />
+      </div>
+    ),
+  };
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
@@ -103,6 +142,10 @@ interface DataTableProps<TData, TValue> {
   columnVisibility?: VisibilityState;
   onRowClick?: (row: TData) => void;
   getRowClassName?: (row: TData) => string | undefined;
+  enableRowSelection?: boolean;
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>;
+  toolbarExtra?: ReactNode;
 }
 
 export function DataTable<TData, TValue>({
@@ -124,6 +167,10 @@ export function DataTable<TData, TValue>({
   columnVisibility: controlledColumnVisibility,
   onRowClick,
   getRowClassName,
+  enableRowSelection = false,
+  rowSelection: controlledRowSelection,
+  onRowSelectionChange,
+  toolbarExtra,
 }: DataTableProps<TData, TValue>) {
   const paginationId = useId();
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
@@ -131,27 +178,36 @@ export function DataTable<TData, TValue>({
   const [internalGlobalFilter, setInternalGlobalFilter] = useState('');
   const [internalColumnFilters, setInternalColumnFilters] = useState<ColumnFiltersState>([]);
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<VisibilityState>({});
+  const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({});
 
   const globalFilter = controlledGlobalFilter ?? internalGlobalFilter;
   const setGlobalFilter = onGlobalFilterChange ?? setInternalGlobalFilter;
   const columnFilters = controlledColumnFilters ?? internalColumnFilters;
   const setColumnFilters = onColumnFiltersChange ?? setInternalColumnFilters;
+  const rowSelection = controlledRowSelection ?? internalRowSelection;
+  const setRowSelection = onRowSelectionChange ?? setInternalRowSelection;
   const columnVisibility = {
     ...internalColumnVisibility,
     ...controlledColumnVisibility,
   };
 
-  const enhancedColumns = useMemo(() => withSortableHeaders(columns), [columns]);
+  const enhancedColumns = useMemo(() => {
+    const sortable = withSortableHeaders(columns);
+    if (!enableRowSelection) return sortable;
+    return [selectionColumn<TData>(), ...sortable] as ColumnDef<TData, TValue>[];
+  }, [columns, enableRowSelection]);
 
   const internalTable = useReactTable({
     data,
     columns: enhancedColumns,
     getRowId,
+    enableRowSelection,
     state: {
       sorting,
       globalFilter,
       columnFilters,
       columnVisibility,
+      ...(enableRowSelection ? { rowSelection } : {}),
       ...(showPagination ? { pagination } : {}),
     },
     onSortingChange: setSorting,
@@ -159,6 +215,7 @@ export function DataTable<TData, TValue>({
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setInternalColumnVisibility,
+    onRowSelectionChange: enableRowSelection ? setRowSelection : undefined,
     globalFilterFn: (globalFilterFn ?? defaultGlobalFilterFn) as FilterFn<TData>,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -194,12 +251,19 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="min-w-0 space-y-4">
-      {showToolbar ? (
-        <DataTableToolbar
-          table={table}
-          searchPlaceholder={searchPlaceholder}
-          searchAriaLabel={searchAriaLabel}
-        />
+      {showToolbar || toolbarExtra ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {showToolbar ? (
+            <DataTableToolbar
+              table={table}
+              searchPlaceholder={searchPlaceholder}
+              searchAriaLabel={searchAriaLabel}
+            />
+          ) : (
+            <div />
+          )}
+          {toolbarExtra}
+        </div>
       ) : null}
       <div className="min-w-0 overflow-x-auto rounded-md border">
         <Table>

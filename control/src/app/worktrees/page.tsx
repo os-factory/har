@@ -1,16 +1,19 @@
+import * as fs from 'fs';
 import { Suspense } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { WorktreeGrid, type WorktreeRow } from '@/components/worktree-grid';
-import { listActiveWorktrees } from '@/server/repositories';
+import { listSessionWorktrees } from '@/server/repositories';
 import { summarizeUsageForBranch } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
 
 export default async function WorktreesPage() {
-  const slots = await listActiveWorktrees();
+  const slots = await listSessionWorktrees();
   const rows: WorktreeRow[] = await Promise.all(
     slots.map(async (s) => {
       const usage = await summarizeUsageForBranch(s.repositoryId, s.branch, s.suffix);
+      const path = s.worktreePath ?? s.workDir;
+      const onDisk = path ? fs.existsSync(path) : false;
       return {
         repoId: s.repository.id,
         repoPath: s.repository.path,
@@ -37,34 +40,54 @@ export default async function WorktreesPage() {
         costUsd: usage.costUsd,
         agentTools: usage.agentTools,
         usageSources: usage.sources,
+        onDisk,
       };
     }),
   );
   const summary = [
-    { label: 'Active worktrees', value: rows.length, alert: false },
-    { label: 'Dirty', value: rows.filter((row) => row.dirty).length, alert: rows.some((row) => row.dirty) },
-    { label: 'Stale or detached', value: rows.filter((row) => row.stale || row.detachedHead).length, alert: rows.some((row) => row.stale || row.detachedHead) },
-    { label: 'Bypass warnings', value: rows.filter((row) => row.harnessUsage === 'bypass_warning').length, alert: rows.some((row) => row.harnessUsage === 'bypass_warning') },
+    { label: 'Session worktrees', value: rows.length, alert: false },
+    { label: 'Active', value: rows.filter((row) => row.active).length, alert: false },
+    {
+      label: 'Missing on disk',
+      value: rows.filter((row) => row.onDisk === false).length,
+      alert: rows.some((row) => row.onDisk === false),
+    },
+    {
+      label: 'Dirty',
+      value: rows.filter((row) => row.dirty).length,
+      alert: rows.some((row) => row.dirty),
+    },
   ];
 
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
       <div>
         <h2 className="text-2xl font-semibold">Operations</h2>
-        <p className="text-sm text-muted-foreground">Live worktrees, capacity, and harness health.</p>
+        <p className="text-sm text-muted-foreground">
+          Session worktrees across registered repositories — select and delete to clean up.
+        </p>
       </div>
       <div className="grid gap-4 md:grid-cols-4">
         {summary.map((item) => (
           <Card key={item.label}>
-            <CardHeader><CardTitle className="text-base">{item.label}</CardTitle></CardHeader>
-            <CardContent><p className={`text-2xl font-bold ${item.alert ? 'text-amber-500' : ''}`}>{item.value}</p></CardContent>
+            <CardHeader>
+              <CardTitle className="text-base">{item.label}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={`text-2xl font-bold ${item.alert ? 'text-amber-500' : ''}`}>
+                {item.value}
+              </p>
+            </CardContent>
           </Card>
         ))}
       </div>
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Active sessions</CardTitle>
-          <CardDescription>Infrastructure state remains separate from durable work identity.</CardDescription>
+          <CardTitle>Session worktrees</CardTitle>
+          <CardDescription>
+            Active and idle slots with a recorded worktree path. Use select-all to delete many at
+            once; repository registration is kept.
+          </CardDescription>
         </CardHeader>
         <CardContent className="min-w-0">
           <Suspense fallback={<p className="text-sm text-muted-foreground">Loading worktrees…</p>}>

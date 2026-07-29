@@ -9,8 +9,10 @@ test.describe('Factory and operations', () => {
 
   test('renders the operations worktree table', async ({ page }) => {
     await page.goto('/worktrees');
-    await expect(page.getByText('Active sessions')).toBeVisible();
+    await expect(page.getByText('Session worktrees').first()).toBeVisible();
     await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('button', { name: /delete selected/i })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /select all rows/i })).toBeVisible();
   });
 
   test('sidebar separates Factory and Operations', async ({ page }) => {

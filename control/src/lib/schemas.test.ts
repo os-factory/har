@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DeleteWorktreesInputSchema,
   RegisterRepoInputSchema,
   RunRecordSchema,
   SyncWorkUnitsInputSchema,
@@ -45,5 +46,15 @@ describe('RunRecordSchema', () => {
       trigger: 'mcp',
     });
     expect(result.trigger).toBe('mcp');
+  });
+});
+
+describe('DeleteWorktreesInputSchema', () => {
+  it('requires at least one worktree target', () => {
+    const result = DeleteWorktreesInputSchema.parse({
+      worktrees: [{ repoId: 'r1', slotId: 2 }],
+    });
+    expect(result.clearMissing).toBe(true);
+    expect(() => DeleteWorktreesInputSchema.parse({ worktrees: [] })).toThrow();
   });
 });
