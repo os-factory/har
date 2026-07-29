@@ -12,6 +12,9 @@ setup_max_rounds: 6
 har_verify_full: true
 # Fix agent retries when post-fix verify --full fails
 fix_max_rounds: 3
+# Diversity sampling (null = uniform random.sample)
+sample_max_per_repo: 5
+sample_max_repos_per_language: 10
 har_cache_dir: .har-cache
 runs_dir: runs
 results_dir: results

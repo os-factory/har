@@ -14,6 +14,7 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from lib.common import benchmark_config, render_template, sanitize_instance_row  # noqa: E402
+from lib.dataset import infer_language, sample_rows, sample_rows_diverse  # noqa: E402
 from lib.har_cache import har_cache_exists, invalidate_har_cache, load_har_cache, save_har_cache  # noqa: E402
 from lib.har_utils import (  # noqa: E402
     build_init_adapt_prompt,
@@ -38,6 +39,39 @@ def test_config_loads() -> None:
     assert cfg["setup_budget_minutes"] == 120
     assert cfg["setup_max_rounds"] == 6
     assert cfg["readiness_timeout_minutes"] == 20
+    assert cfg.get("sample_max_per_repo") == 5
+    assert cfg.get("sample_max_repos_per_language") == 10
+
+
+def test_diverse_sampling_caps() -> None:
+    rows = []
+    for i in range(20):
+        rows.append({"instance_id": f"django__django-{i}", "repo": "django/django"})
+    for i in range(20):
+        rows.append({"instance_id": f"sympy__sympy-{i}", "repo": "sympy/sympy"})
+    for i in range(8):
+        rows.append({"instance_id": f"flask__flask-{i}", "repo": "pallets/flask"})
+    selected = sample_rows(
+        rows,
+        count=12,
+        seed=42,
+        max_per_repo=5,
+        max_repos_per_language=10,
+    )
+    assert len(selected) == 12
+    from collections import Counter
+
+    counts = Counter(r["repo"] for r in selected)
+    assert all(v <= 5 for v in counts.values())
+    assert infer_language({"repo": "django/django"}) == "python"
+
+    # Under-constrained pool should error clearly
+    tiny = [{"instance_id": "a", "repo": "pallets/flask"}]
+    try:
+        sample_rows_diverse(tiny, count=5, seed=0, max_per_repo=1, max_repos_per_language=1)
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "diversity constraints" in str(exc)
 
 
 def test_har_cache_roundtrip() -> None:
@@ -250,6 +284,7 @@ def test_evaluate_dry_run() -> None:
 def main() -> int:
     tests = [
         test_config_loads,
+        test_diverse_sampling_caps,
         test_har_cache_roundtrip,
         test_har_cache_invalidate,
         test_task_readiness_prompt_render,
