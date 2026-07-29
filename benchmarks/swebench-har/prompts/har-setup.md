@@ -35,9 +35,10 @@ is smoke for the pre-fix gate. Functional proof is `verify --full` via
 
 Document in `.har/CLAUDE.agent.md` / `AGENT.md`:
 - quick verify = smoke
-- done = `verify --full`
+- done = `verify --full` with a **change-specific behavioral** stage (smoke alone ≠ done)
+- agents **must** use fail-before / pass-after when adding stages for a bug
 - agents **may add stages on the fly** and may add a small focused test/check when needed
-- HAR is the verification sandbox for changes
+- HAR is the verification sandbox for changes; keep issue stages out of the long-lived cache
 
 ## Generic HAR adaptation prompt (from `har env init`)
 

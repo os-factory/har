@@ -40,7 +40,9 @@ If `.har/` already exists, stop and suggest `/har-maintain` instead.
 
 ## 5. Register functional verification stages
 
-HAR's job is to let coding agents **prove their changes work**, not only that the project compiles. Convert the repository's real checks into registered stages so they run in `verify --full`. Read `.har/STAGES.md`, then:
+HAR's job is to let coding agents **prove their changes work** (better PRs), not
+only that the project compiles. Convert the repository's real checks into
+registered stages so they run in `verify --full`. Read `.har/STAGES.md`, then:
 
 ```bash
 # Prefer a small functional / workflow check for definition of done:
@@ -50,8 +52,15 @@ har env add-stage feature-smoke --custom --kind test --command "<cli dry-run | a
 har env add-stage unit-tests --custom --kind test --command "npm test" --verification
 ```
 
+- **Quick verify** (`har env verify 1`) stays smoke (compile/import/build/health).
+- **Full verify** (`har env verify 1 --full`) must include at least one stage that
+  exercises **real behavior**. Compile/import-only stages are not enough for done.
+- When agents later fix a bug, they should add a **change-specific** stage that
+  **fails before** the fix and **passes after** (see `.har/STAGES.md`).
 - Use `--command` for one-liner checks; use `--script` when a check needs the slot's env, ports, or artifacts (then implement the scaffolded `.har/stages/<id>.sh`).
 - Rich integrations ship as **plugins**: `har env add-plugin --list`, then e.g. `har env add-plugin playwright` (web) or `har env add-plugin rocketsim` (iOS). Plugins install stages; agents only talk to the stage registry.
+- Update `AGENT.md` / `.har/CLAUDE.agent.md` so definition of done requires `--full`,
+  a behavioral oracle, and fail-before/pass-after when adding stages for a change.
 
 ## 6. Prove the harness works
 
