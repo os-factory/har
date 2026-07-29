@@ -1,4 +1,9 @@
-import { enrichUsageWithPricing, estimateModelCostUsd, pricingModelCandidates } from '../packages/schemas/src/usage-pricing';
+import {
+  enrichUsageWithPricing,
+  estimateModelCostUsd,
+  pricingModelCandidates,
+  toGenaiPricesUsage,
+} from '../packages/schemas/src/usage-pricing';
 import type { AgentSessionUsage } from '../packages/schemas/src/schema';
 
 function usage(overrides: Partial<AgentSessionUsage> = {}): AgentSessionUsage {
@@ -27,6 +32,37 @@ describe('pricingModelCandidates', () => {
   });
 });
 
+describe('toGenaiPricesUsage', () => {
+  it('builds inclusive input_tokens for Claude-style disjoint buckets', () => {
+    expect(
+      toGenaiPricesUsage({
+        tokensInput: 2,
+        tokensCacheCreation: 26207,
+      }),
+    ).toEqual({
+      input_tokens: 26209,
+      output_tokens: 0,
+      cache_read_tokens: 0,
+      cache_write_tokens: 26207,
+    });
+  });
+
+  it('does not double-count cache read when input already includes it', () => {
+    expect(
+      toGenaiPricesUsage({
+        tokensInput: 1200,
+        tokensCacheRead: 1000,
+        tokensCacheCreation: 50,
+      }),
+    ).toEqual({
+      input_tokens: 1250,
+      output_tokens: 0,
+      cache_read_tokens: 1000,
+      cache_write_tokens: 50,
+    });
+  });
+});
+
 describe('estimateModelCostUsd', () => {
   it('prices anthropic models from per-model token totals', () => {
     const cost = estimateModelCostUsd(
@@ -36,6 +72,19 @@ describe('estimateModelCostUsd', () => {
         tokensOutput: 100,
         tokensCacheRead: 200,
         tokensCacheCreation: 50,
+      },
+      'claude_code',
+    );
+    expect(cost).not.toBeNull();
+    expect(cost!).toBeGreaterThan(0);
+  });
+
+  it('prices Claude cache_creation rows without validation errors', () => {
+    const cost = estimateModelCostUsd(
+      'claude-opus-4-8',
+      {
+        tokensInput: 2,
+        tokensCacheCreation: 26207,
       },
       'claude_code',
     );
