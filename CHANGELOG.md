@@ -1,3 +1,10 @@
+# [0.28.0](https://github.com/os-factory/har/compare/v0.27.0...v0.28.0) (2026-07-29)
+
+
+### Features
+
+* **control:** Mission Control factory reset to clear dashboard data ([#93](https://github.com/os-factory/har/issues/93)) ([47cabc1](https://github.com/os-factory/har/commit/47cabc1cc5c0be0502489d7671fd5de01516d038))
+
 # [0.27.0](https://github.com/os-factory/har/compare/v0.26.0...v0.27.0) (2026-07-29)
 
 
