@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { listAllSessionUsage, summarizeUsageRows } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
@@ -117,9 +118,7 @@ export default async function UsagePage() {
                         {row.sessionKey}
                       </td>
                       <td className="py-2 pr-4">
-                        <Badge variant="outline">
-                          {row.agentTool === 'claude_code' ? 'Claude' : 'Codex'}
-                        </Badge>
+                        <Badge variant="outline">{formatAgentToolLabel(row.agentTool)}</Badge>
                       </td>
                       <td className="py-2 pr-4 tabular-nums">
                         {formatTokens(Number(row.tokensTotal))}
