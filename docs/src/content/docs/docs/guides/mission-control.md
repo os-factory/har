@@ -55,6 +55,28 @@ proposes deleting session worktrees; confirm interactively or pass
 Docker image often cannot see host worktree paths — use the CLI when host cleanup
 is required. Re-register with `har control register`.
 
+## Clear all data (factory reset)
+
+To wipe the entire Mission Control database (and optionally scrub local harness
+history so a later register/sync starts empty), use **Settings → Danger zone** in
+the dashboard, or the CLI:
+
+![Mission Control Settings danger zone with clear-all confirmation sheet](/assets/mission-control-reset.png)
+
+```bash
+har control reset
+# non-interactive:
+har control reset --yes
+```
+
+Reset deletes every repository row (runs, slots, validations, telemetry cascade)
+and clears the unregister blocklist. Cloud / portal credentials are kept.
+With local scrub enabled (default), it also removes `.har/runs`,
+`.har/validations`, `.har/state`, and `.har/slots` under each registered
+repository, and clears `~/.har/repos.json`. Packaged Docker Mission Control may
+not see host paths — prefer the CLI when host scrubbing is required.
+Re-register afterward with `har control register`.
+
 ## Factory: work and evidence
 
 Factory is the default Mission Control experience. It answers four questions:

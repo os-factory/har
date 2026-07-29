@@ -23,6 +23,7 @@ const navItems = [
   { title: 'Operations', url: '/worktrees' },
   { title: 'Usage', url: '/usage' },
   { title: 'Repositories', url: '/repos' },
+  { title: 'Settings', url: '/settings' },
 ];
 
 function isItemActive(pathname: string, url: string) {

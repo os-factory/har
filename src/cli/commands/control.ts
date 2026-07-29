@@ -24,8 +24,12 @@ import {
   listUnregisterWorktreeCandidates,
   unregisterRepoWithControl,
 } from '../../core/control-unregister';
+import {
+  confirmControlReset,
+  resetMissionControlFromCli,
+} from '../../core/control-reset';
 import { error, header, info, success, warn } from '../../utils/logging';
-import { recordRepoForControlSync } from '../../core/control-registry';
+import { listRegisteredRepos, recordRepoForControlSync } from '../../core/control-registry';
 
 export const controlCommand = {
   command: 'control <subcommand>',
@@ -135,9 +139,35 @@ export const controlCommand = {
             }),
         handleLogin,
       )
+      .command(
+        'reset',
+        'Clear all Mission Control data and optionally scrub local .har history',
+        (y: Argv) =>
+          y
+            .option('api-url', { type: 'string', describe: 'Control API URL' })
+            .option('yes', {
+              alias: 'y',
+              type: 'boolean',
+              default: false,
+              describe: 'Skip confirmation prompt',
+            })
+            .option('no-scrub-local', {
+              type: 'boolean',
+              default: false,
+              describe: 'Keep local .har/{runs,validations,state,slots} directories',
+            })
+            .option('keep-registry', {
+              type: 'boolean',
+              default: false,
+              describe: 'Keep ~/.har/repos.json entries (default clears them)',
+            })
+            .option('dry-run', { type: 'boolean', default: false })
+            .option('json', { type: 'boolean', default: false }),
+        handleReset,
+      )
       .demandCommand(
         1,
-        'Please specify a subcommand: up, down, register, unregister, sync, watch, login',
+        'Please specify a subcommand: up, down, register, unregister, sync, watch, login, reset',
       ),
   handler: () => {},
 };
@@ -228,6 +258,93 @@ async function handleRegister(argv: {
       success('Registered and synced with Mission Control');
     }
   } catch (err: unknown) {
+    error((err as Error).message);
+    process.exit(1);
+  }
+}
+
+async function handleReset(argv: {
+  apiUrl?: string;
+  yes: boolean;
+  noScrubLocal: boolean;
+  keepRegistry: boolean;
+  dryRun: boolean;
+  json: boolean;
+}): Promise<void> {
+  try {
+    const repoCount = listRegisteredRepos().length;
+    if (!argv.yes && !argv.dryRun) {
+      const proceed = await confirmControlReset({ yes: false, repoCount });
+      if (!proceed) {
+        error('Aborted — Mission Control left unchanged.');
+        process.exit(2);
+      }
+    }
+
+    const result = await resetMissionControlFromCli({
+      apiUrl: argv.apiUrl,
+      dryRun: argv.dryRun,
+      scrubLocalHarness: !argv.noScrubLocal,
+      clearRegistry: !argv.keepRegistry,
+    });
+
+    if (argv.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+      return;
+    }
+
+    header('har control reset');
+    if (argv.dryRun) {
+      info(
+        `Dry run — would clear Mission Control for ${result.repoPaths.length} repositor${
+          result.repoPaths.length === 1 ? 'y' : 'ies'
+        }`,
+      );
+      if (result.scrubLocalHarness) {
+        info(`Would scrub ${result.scrubbed.length} local .har director${result.scrubbed.length === 1 ? 'y' : 'ies'}`);
+      }
+      if (result.clearRegistry) {
+        info('Would clear local sync registry (~/.har/repos.json)');
+      }
+      return;
+    }
+
+    if (result.apiUnreachable) {
+      warn('Mission Control API unreachable — dashboard DB not cleared');
+    } else {
+      success(
+        `Cleared ${result.repositoriesDeleted} repositor${
+          result.repositoriesDeleted === 1 ? 'y' : 'ies'
+        } from Mission Control`,
+      );
+      if (result.unregisteredCleared > 0) {
+        success(`Cleared ${result.unregisteredCleared} unregister blocklist entr${result.unregisteredCleared === 1 ? 'y' : 'ies'}`);
+      }
+    }
+
+    if (result.scrubLocalHarness) {
+      const deleted = result.scrubbed.filter((row) => row.deleted).length;
+      const failed = result.scrubbed.filter((row) => !row.deleted && row.error);
+      success(`Scrubbed ${deleted} local .har director${deleted === 1 ? 'y' : 'ies'}`);
+      for (const failure of failed) {
+        warn(`Failed to delete ${failure.path}: ${failure.error}`);
+      }
+    }
+
+    if (result.registryCleared) {
+      success('Cleared local sync registry (~/.har/repos.json)');
+    } else if (result.clearRegistry) {
+      info('Local sync registry was already empty');
+    }
+
+    info('Re-register with: har control register --repo <path>');
+  } catch (err: unknown) {
+    if (argv.json) {
+      process.stdout.write(
+        JSON.stringify({ ok: false, error: (err as Error).message }, null, 2) + '\n',
+      );
+      process.exit(1);
+    }
     error((err as Error).message);
     process.exit(1);
   }
