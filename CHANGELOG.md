@@ -1,3 +1,10 @@
+# [0.25.0](https://github.com/os-factory/har/compare/v0.24.0...v0.25.0) (2026-07-29)
+
+
+### Features
+
+* **control:** forward persisted usage from Mission Control on portal sync ([#87](https://github.com/os-factory/har/issues/87)) ([c3f2c1e](https://github.com/os-factory/har/commit/c3f2c1e9c6659a10f1d755958ad33daec655b92d))
+
 # [0.24.0](https://github.com/os-factory/har/compare/v0.23.0...v0.24.0) (2026-07-27)
 
 
