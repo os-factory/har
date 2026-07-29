@@ -1,3 +1,11 @@
+## [0.31.1](https://github.com/os-factory/har/compare/v0.31.0...v0.31.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **control:** normalize HAR token buckets for genai-prices ([#98](https://github.com/os-factory/har/issues/98)) ([970d45b](https://github.com/os-factory/har/commit/970d45ba1e1e9ffbd2cc19e2b9bda310e0c01c71))
+* **telemetry:** fully retire legacy Python otel-hook registrations ([#97](https://github.com/os-factory/har/issues/97)) ([4167ca6](https://github.com/os-factory/har/commit/4167ca6b9c991f931623962cb99840133219f5cc))
+
 # [0.31.0](https://github.com/os-factory/har/compare/v0.30.0...v0.31.0) (2026-07-29)
 
 
