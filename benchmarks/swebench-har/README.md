@@ -6,6 +6,10 @@ Paired one-instance benchmark comparing **raw Codex (GPT-5 Mini)** against **HAR
 - **HAR arm:** scaffold-only `har env init` (no `--auto`), **GPT-5.5** adapts `.har/` using the init `ADAPT-PROMPT.md` plus benchmark constraints, runner enforces launch + smoke gates, **GPT-5 Mini** fixes inside the slot.
 - **Scoring:** official SWE-bench Docker harness via `swebench.harness.run_evaluation`.
 
+## Running on EC2 (`sshbench`)
+
+Multi-hour / n=50 campaigns: see **[EC2.md](./EC2.md)** (connect, sync, bootstrap, `tmux` + `ec2_run.sh`, monitoring, eval).
+
 ## Prerequisites
 
 - Node.js >= 20 and a built HAR CLI (`npm run build` in the repo root, or `har` on `PATH`)
