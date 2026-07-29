@@ -21,8 +21,18 @@ export default async function UsagePage() {
       <div>
         <h2 className="text-2xl font-semibold">Usage</h2>
         <p className="text-sm text-muted-foreground">
-          Cross-repo LLM token and cost rollup from OTEL ingest and harvest. Prompt bodies are
-          included by default (opt out: `har telemetry on --no-prompts`). Data stays in local SQLite.
+          Cross-repo LLM token and cost rollup from OTEL ingest and harvest. Costs use agent-reported
+          USD when available, otherwise{' '}
+          <a
+            href="https://github.com/pydantic/genai-prices"
+            className="underline underline-offset-2"
+            target="_blank"
+            rel="noreferrer"
+          >
+            genai-prices
+          </a>{' '}
+          estimates from modelBreakdown. Prompt bodies are included by default (opt out:
+          `har telemetry on --no-prompts`). Data stays in local SQLite.
         </p>
       </div>
 

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type { AgentSessionUsage, UsageSource } from '@har/schemas';
+import { enrichUsageWithPricing } from '@har/schemas';
 import { prisma } from '@/lib/db';
 
 function toBigInt(n: number | bigint | undefined | null): bigint {
@@ -108,7 +109,6 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     toBigInt(existing?.tokensTotal),
     toBigInt(input.tokensTotal) || tokensInput + tokensOutput + tokensCacheRead + tokensCacheCreation,
   );
-  const costUsd = maxCost(existing?.costUsd, input.costUsd ?? null);
   const firstSeenAt = existing
     ? new Date(
         Math.min(existing.firstSeenAt.getTime(), new Date(input.firstSeenAt).getTime()),
@@ -117,6 +117,22 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
   const lastSeenAt = existing
     ? new Date(Math.max(existing.lastSeenAt.getTime(), new Date(input.lastSeenAt).getTime()))
     : new Date(input.lastSeenAt);
+
+  const mergedModelBreakdown = mergeModelBreakdown(existing?.modelBreakdown, input.modelBreakdown);
+  const reportedCost = maxCost(existing?.costUsd, input.costUsd ?? null);
+
+  const priced = enrichUsageWithPricing({
+    agentTool: input.agentTool,
+    costUsd: reportedCost == null ? null : Number(reportedCost),
+    modelBreakdown: mergedModelBreakdown as AgentSessionUsage['modelBreakdown'],
+  });
+
+  const costUsd =
+    priced.costUsd == null
+      ? reportedCost
+      : new Prisma.Decimal(
+          Math.max(Number(reportedCost ?? 0), priced.costUsd) || priced.costUsd,
+        );
 
   const fields = {
     agentId: input.agentId,
@@ -131,7 +147,7 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     tokensCacheCreation,
     tokensTotal,
     costUsd,
-    modelBreakdown: mergeModelBreakdown(existing?.modelBreakdown, input.modelBreakdown),
+    modelBreakdown: (priced.modelBreakdown ?? mergedModelBreakdown) as Prisma.InputJsonValue | undefined,
     sources: mergeSources(existing?.sources, input.sources ?? []),
     firstSeenAt,
     lastSeenAt,

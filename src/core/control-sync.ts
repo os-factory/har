@@ -36,6 +36,7 @@ import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
+import { enrichUsageWithPricing } from '../harness/schema';
 import { readPortalWatermark, writePortalWatermark } from './portal-watermark';
 import type { AgentSessionEvent, AgentSessionUsage } from '../harness/schema';
 
@@ -173,9 +174,12 @@ async function collectPortalTelemetry(
     const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl, { since });
 
     const usage = mergePortalUsage(liveUsage, persisted.usage).map((row) => {
-      const models = modelsFromBreakdown(row.modelBreakdown as Record<string, unknown> | undefined);
+      const priced = enrichUsageWithPricing(row);
+      const models = modelsFromBreakdown(
+        priced.modelBreakdown as Record<string, unknown> | undefined,
+      );
       return {
-        ...row,
+        ...priced,
         ...(userEmail ? { userEmail } : {}),
         ...(models.length > 0 ? { models } : {}),
       };
