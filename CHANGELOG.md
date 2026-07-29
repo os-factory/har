@@ -1,3 +1,10 @@
+# [0.29.0](https://github.com/os-factory/har/compare/v0.28.0...v0.29.0) (2026-07-29)
+
+
+### Features
+
+* **control:** bulk-select and delete session worktrees in Operations ([#94](https://github.com/os-factory/har/issues/94)) ([846e486](https://github.com/os-factory/har/commit/846e486b60156d4845ae8c0dd675b3dcdc311d9d))
+
 # [0.28.0](https://github.com/os-factory/har/compare/v0.27.0...v0.28.0) (2026-07-29)
 
 
