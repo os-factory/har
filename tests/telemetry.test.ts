@@ -16,6 +16,7 @@ import {
 } from '../src/core/telemetry-env';
 import {
   buildOtelHooksConfig,
+  pruneLegacyCursorHookEvents,
   rewriteHookCommandsToWrapper,
   writeOtelHooksConfig,
   writeOtelHooksWrapper,
@@ -274,6 +275,51 @@ describe('otel hooks config', () => {
       hooks: { sessionStart: Array<{ command: string }> };
     };
     expect(parsed.hooks.sessionStart[0].command).toBe(`${wrapper} --provider cursor`);
+  });
+
+  it('normalizes legacy --cursor on an already-wrapped command', () => {
+    const hooksFile = path.join(tmpDir, 'wrapped-legacy-flags.json');
+    const wrapper = '/tmp/har-run-otel-hook.sh';
+    fs.writeFileSync(
+      hooksFile,
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          beforeShellExecution: [{ command: `${wrapper} --cursor` }],
+        },
+      }),
+    );
+    expect(rewriteHookCommandsToWrapper(hooksFile, wrapper)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(hooksFile, 'utf8')) as {
+      hooks: { beforeShellExecution: Array<{ command: string }> };
+    };
+    expect(parsed.hooks.beforeShellExecution[0].command).toBe(`${wrapper} --provider cursor`);
+  });
+
+  it('prunes legacy-only Cursor hook events registered by the Python installer', () => {
+    const hooksFile = path.join(tmpDir, 'cursor-hooks.json');
+    const wrapper = '/tmp/har-run-otel-hook.sh';
+    fs.writeFileSync(
+      hooksFile,
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          preToolUse: [{ command: `${wrapper} --provider cursor` }],
+          beforeShellExecution: [
+            { command: 'other-tool do-something' },
+            { command: `${wrapper} --provider cursor` },
+          ],
+          subagentStart: [{ command: `${wrapper} --provider cursor` }],
+        },
+      }),
+    );
+    expect(pruneLegacyCursorHookEvents(hooksFile, wrapper)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(hooksFile, 'utf8')) as {
+      hooks: Record<string, unknown>;
+    };
+    expect(parsed.hooks.preToolUse).toBeDefined();
+    expect(parsed.hooks.beforeShellExecution).toEqual([{ command: 'other-tool do-something' }]);
+    expect(parsed.hooks.subagentStart).toBeUndefined();
   });
 
   it('writes a wrapper that invokes the TypeScript CLI with HAR paths', () => {

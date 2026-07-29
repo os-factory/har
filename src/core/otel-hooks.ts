@@ -229,10 +229,12 @@ function tryInstallPackage(hooksHome: string): { ok: boolean; detail: string } {
 }
 
 /** Best-effort removal of the legacy Python package so only the TS CLI remains. */
-function uninstallLegacyPythonHooks(): void {
+function uninstallLegacyPythonHooks(hooksHome: string): void {
   const attempts: Array<[string, string[]]> = [
     ['uv', ['tool', 'uninstall', 'opentelemetry-hooks']],
     ['pipx', ['uninstall', 'opentelemetry-hooks']],
+    ['pip', ['uninstall', '-y', 'opentelemetry-hooks']],
+    ['pip3', ['uninstall', '-y', 'opentelemetry-hooks']],
   ];
   for (const [cmd, args] of attempts) {
     if (!commandExists(cmd)) continue;
@@ -242,7 +244,61 @@ function uninstallLegacyPythonHooks(): void {
       // ignore
     }
   }
+  removeLegacyPythonArtifacts(hooksHome);
 }
+
+/** Drop the old prefix-local Python venv and config files HAR no longer uses. */
+function removeLegacyPythonArtifacts(hooksHome: string): void {
+  const legacyPaths = [
+    path.join(hooksHome, '.venv'),
+    path.join(hooksHome, 'otel_config.yaml'),
+    path.join(hooksHome, 'venv'),
+  ];
+  for (const target of legacyPaths) {
+    try {
+      if (fs.existsSync(target)) {
+        fs.rmSync(target, { recursive: true, force: true });
+      }
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+function isOtelHookCommand(command: string, wrapperPath?: string): boolean {
+  if (
+    command.includes('otel-hook') ||
+    command.includes('otel_hook.py') ||
+    command.includes('opentelemetry-hooks')
+  ) {
+    return true;
+  }
+  return wrapperPath !== undefined && command.includes(wrapperPath);
+}
+
+function normalizeLegacyProviderFlagsInCommand(command: string): string {
+  return command
+    .replace(/(^|\s)--cursor(?=\s|$)/g, '$1--provider cursor')
+    .replace(/(^|\s)--claude(?=\s|$)/g, '$1--provider claude-code')
+    .replace(/(^|\s)--codex(?=\s|$)/g, '$1--provider codex');
+}
+
+/**
+ * Cursor events the legacy Python installer registered but the TypeScript
+ * otel-hook deliberately skips (duplicate or unpairable telemetry).
+ * Keep in sync with otel-hook `CURSOR_UNREGISTERED_HOOK_EVENTS`.
+ */
+export const LEGACY_CURSOR_ONLY_HOOK_EVENTS = [
+  'afterAgentResponse',
+  'afterAgentThought',
+  'beforeShellExecution',
+  'afterShellExecution',
+  'beforeMCPExecution',
+  'afterMCPExecution',
+  'beforeReadFile',
+  'subagentStart',
+  'subagentStop',
+] as const;
 
 function runSetupProvider(
   providerId: OtelHooksProviderId,
@@ -298,16 +354,15 @@ export function rewriteHookCommandsToWrapper(
   if (!parsed || typeof parsed !== 'object') return false;
 
   const rewriteCommand = (command: string): string => {
-    if (
-      !command.includes('otel-hook') &&
-      !command.includes('otel_hook.py') &&
-      !command.includes('opentelemetry-hooks')
-    ) {
+    if (!isOtelHookCommand(command, wrapperPath)) {
       return command;
     }
-    if (command.includes(wrapperPath)) return command;
+    const normalized = normalizeLegacyProviderFlagsInCommand(command);
+    if (command.includes(wrapperPath)) {
+      return normalized;
+    }
     // Preserve current CLI args while translating legacy Python source flags.
-    const rewritten = command.replace(
+    const rewritten = normalized.replace(
       /(?:^|[;&|]\s*)(?:env\s+[^=\s]+=\S+\s+)*(?:python3?\s+)?(?:npx\s+)?(?:\S*otel[_-]hook\S*|\S*opentelemetry-hooks\S*)/,
       (match) =>
         match.replace(
@@ -315,10 +370,7 @@ export function rewriteHookCommandsToWrapper(
           wrapperPath,
         ),
     );
-    return rewritten
-      .replace(/(^|\s)--cursor(?=\s|$)/g, '$1--provider cursor')
-      .replace(/(^|\s)--claude(?=\s|$)/g, '$1--provider claude-code')
-      .replace(/(^|\s)--codex(?=\s|$)/g, '$1--provider codex');
+    return normalizeLegacyProviderFlagsInCommand(rewritten);
   };
 
   const walk = (node: unknown): boolean => {
@@ -345,6 +397,59 @@ export function rewriteHookCommandsToWrapper(
   return true;
 }
 
+/**
+ * Remove otel-hook registrations on Cursor events the TypeScript adapter does
+ * not manage. The legacy Python installer registered these; they duplicate
+ * preToolUse/postToolUse or cannot pair (subagentStop, beforeReadFile).
+ */
+export function pruneLegacyCursorHookEvents(
+  filePath: string,
+  wrapperPath: string,
+): boolean {
+  if (!fs.existsSync(filePath)) return false;
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return false;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (!parsed || typeof parsed !== 'object') return false;
+  const root = parsed as Record<string, unknown>;
+  if (!root.hooks || typeof root.hooks !== 'object' || Array.isArray(root.hooks)) {
+    return false;
+  }
+  const hooks = root.hooks as Record<string, unknown>;
+  let changed = false;
+
+  for (const event of LEGACY_CURSOR_ONLY_HOOK_EVENTS) {
+    const list = hooks[event];
+    if (!Array.isArray(list)) continue;
+    const kept = list.filter((entry) => {
+      if (!entry || typeof entry !== 'object') return true;
+      const command = (entry as { command?: unknown }).command;
+      if (typeof command !== 'string') return true;
+      return !isOtelHookCommand(command, wrapperPath);
+    });
+    if (kept.length === list.length) continue;
+    changed = true;
+    if (kept.length === 0) {
+      delete hooks[event];
+    } else {
+      hooks[event] = kept;
+    }
+  }
+
+  if (!changed) return false;
+  fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`);
+  return true;
+}
+
 function rewriteKnownHookRegistrations(wrapperPath: string): void {
   const home = os.homedir();
   const candidates = [
@@ -355,6 +460,9 @@ function rewriteKnownHookRegistrations(wrapperPath: string): void {
   for (const filePath of candidates) {
     try {
       rewriteHookCommandsToWrapper(filePath, wrapperPath);
+      if (filePath.endsWith(`${path.sep}.cursor${path.sep}hooks.json`)) {
+        pruneLegacyCursorHookEvents(filePath, wrapperPath);
+      }
     } catch {
       // best-effort
     }
@@ -453,7 +561,7 @@ export function ensureOtelHooks(options?: {
   const wrapperPath = writeOtelHooksWrapper(resolvedCommand, hooksHome);
   // Remove the old Python tool only after the npm replacement and wrapper are
   // ready. If npm installation fails, an existing HAR hook remains usable.
-  uninstallLegacyPythonHooks();
+  uninstallLegacyPythonHooks(hooksHome);
 
   if (options?.setupAgents !== false && isTelemetryEnabled()) {
     for (const provider of OTEL_HOOKS_PROVIDERS) {
