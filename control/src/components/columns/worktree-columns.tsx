@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { type ColumnDef } from '@tanstack/react-table';
 
+import { Badge } from '@/components/ui/badge';
 import { slotColumns, type SlotRow } from '@/components/columns/slot-columns';
 import { timeAgo } from '@/lib/time';
 
@@ -10,6 +11,8 @@ export interface WorktreeRow extends SlotRow {
   repoId: string;
   repoPath: string;
   syncedAt: Date;
+  /** Whether Mission Control can see the worktree path on disk. */
+  onDisk?: boolean;
 }
 
 const SYNC_WARN_MS = 60 * 60 * 1000;
@@ -48,8 +51,21 @@ const syncedColumn: ColumnDef<WorktreeRow> = {
   },
 };
 
+const onDiskColumn: ColumnDef<WorktreeRow> = {
+  id: 'onDisk',
+  accessorFn: (row) => (row.onDisk === false ? 0 : 1),
+  header: 'On disk',
+  cell: ({ row }) =>
+    row.original.onDisk === false ? (
+      <Badge variant="outline">missing</Badge>
+    ) : (
+      <Badge variant="secondary">yes</Badge>
+    ),
+};
+
 export const worktreeColumns: ColumnDef<WorktreeRow>[] = [
   repoColumn,
+  onDiskColumn,
   ...(slotColumns as ColumnDef<WorktreeRow>[]),
   syncedColumn,
 ];

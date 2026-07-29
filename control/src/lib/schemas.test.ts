@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DeleteWorktreesInputSchema,
   RegisterRepoInputSchema,
   ResetMissionControlInputSchema,
   RunRecordSchema,
@@ -54,5 +55,15 @@ describe('ResetMissionControlInputSchema', () => {
     const result = ResetMissionControlInputSchema.parse({ confirm: 'RESET' });
     expect(result.scrubLocalHarness).toBe(true);
     expect(() => ResetMissionControlInputSchema.parse({ confirm: 'yes' })).toThrow();
+  });
+});
+
+describe('DeleteWorktreesInputSchema', () => {
+  it('requires at least one worktree target', () => {
+    const result = DeleteWorktreesInputSchema.parse({
+      worktrees: [{ repoId: 'r1', slotId: 2 }],
+    });
+    expect(result.clearMissing).toBe(true);
+    expect(() => DeleteWorktreesInputSchema.parse({ worktrees: [] })).toThrow();
   });
 });

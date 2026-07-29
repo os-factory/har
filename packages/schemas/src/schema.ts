@@ -529,6 +529,43 @@ export const ResetMissionControlResultSchema = z.object({
 
 export type ResetMissionControlResult = z.infer<typeof ResetMissionControlResultSchema>;
 
+/** Bulk-delete session worktrees recorded in Mission Control. */
+export const DeleteWorktreesInputSchema = z.object({
+  worktrees: z
+    .array(
+      z.object({
+        repoId: z.string().min(1),
+        slotId: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+  /**
+   * When true (default), also drop Mission Control slot rows when the path is
+   * already missing on disk (stale dashboard entries).
+   */
+  clearMissing: z.boolean().optional().default(true),
+});
+
+export type DeleteWorktreesInput = z.infer<typeof DeleteWorktreesInputSchema>;
+
+export const DeleteWorktreeResultSchema = z.object({
+  repoId: z.string(),
+  slotId: z.number(),
+  path: z.string(),
+  deleted: z.boolean(),
+  clearedFromDashboard: z.boolean(),
+  error: z.string().optional(),
+});
+
+export type DeleteWorktreeResult = z.infer<typeof DeleteWorktreeResultSchema>;
+
+export const DeleteWorktreesResultSchema = z.object({
+  ok: z.literal(true),
+  results: z.array(DeleteWorktreeResultSchema),
+});
+
+export type DeleteWorktreesResult = z.infer<typeof DeleteWorktreesResultSchema>;
+
 export const SyncRunsInputSchema = z.object({
   runs: z.array(RunRecordSchema),
 });

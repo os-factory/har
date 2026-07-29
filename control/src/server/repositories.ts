@@ -169,6 +169,19 @@ export async function listActiveWorktrees() {
   });
 }
 
+/** All session slots that record a worktree/work dir path (active or idle). */
+export async function listSessionWorktrees() {
+  return prisma.agentSlot.findMany({
+    where: {
+      OR: [{ worktreePath: { not: null } }, { workDir: { not: null } }],
+    },
+    include: {
+      repository: { select: { id: true, path: true, gitRemote: true } },
+    },
+    orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
+  });
+}
+
 export async function syncRuns(repositoryId: string, input: unknown) {
   const { runs } = SyncRunsInputSchema.parse(input);
 
