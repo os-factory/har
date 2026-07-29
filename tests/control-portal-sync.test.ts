@@ -270,8 +270,15 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(body.usage[0].attemptId).toBe('AT-1');
     expect(body.usage[0].sessionKey).toBe('feat/x');
     expect(body.usage[0].models).toEqual([
-      { model: 'claude-opus-4-8', tokensInput: 60, tokensOutput: 40, tokensTotal: 100 },
+      {
+        model: 'claude-opus-4-8',
+        tokensInput: 60,
+        tokensOutput: 40,
+        tokensTotal: 100,
+        costUsd: 0.0013,
+      },
     ]);
+    expect(body.usage[0].costUsd).toBe(0.0013);
   });
 
   it('pushes harvested events to /api/otel with the same bearer token', async () => {
@@ -424,8 +431,15 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(body.usage[0].sessionKey).toBe('feat/gone');
     expect(body.usage[0].tokensTotal).toBe(4200);
     expect(body.usage[0].models).toEqual([
-      { model: 'claude-opus-4-8', tokensInput: 2000, tokensOutput: 2200, tokensTotal: 4200 },
+      {
+        model: 'claude-opus-4-8',
+        tokensInput: 2000,
+        tokensOutput: 2200,
+        tokensTotal: 4200,
+        costUsd: 0.065,
+      },
     ]);
+    expect(body.usage[0].costUsd).toBe(0.065);
   });
 
   it('dedupes an overlapping live + persisted session into one max-merged row', async () => {
