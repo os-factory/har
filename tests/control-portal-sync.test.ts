@@ -27,7 +27,11 @@ jest.mock('../src/core/usage-harvest', () => ({
   harvestEventsForSlot: jest.fn(() => []),
 }));
 jest.mock('../src/core/control-persisted-usage', () => ({
-  fetchPersistedPortalTelemetry: jest.fn(async () => ({ usage: [], events: [] })),
+  fetchPersistedPortalTelemetry: jest.fn(async () => ({ usage: [], events: [], maxSyncedAt: null })),
+}));
+jest.mock('../src/core/portal-watermark', () => ({
+  readPortalWatermark: jest.fn(() => null),
+  writePortalWatermark: jest.fn(),
 }));
 jest.mock('../src/core/telemetry-config', () => ({ isTelemetryEnabled: () => true }));
 jest.mock('../src/harness/manifest', () => ({
@@ -45,6 +49,7 @@ import {
 } from '../src/core/work-units';
 import { harvestUsageForSlot, harvestEventsForSlot } from '../src/core/usage-harvest';
 import { fetchPersistedPortalTelemetry } from '../src/core/control-persisted-usage';
+import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
 
 const collectEnvironmentStatusMock = collectEnvironmentStatus as jest.Mock;
 const readPortalCredentialsMock = readPortalCredentials as jest.Mock;
@@ -54,6 +59,8 @@ const listValidationBindingsMock = listValidationBindings as jest.Mock;
 const harvestUsageForSlotMock = harvestUsageForSlot as jest.Mock;
 const harvestEventsForSlotMock = harvestEventsForSlot as jest.Mock;
 const fetchPersistedPortalTelemetryMock = fetchPersistedPortalTelemetry as jest.Mock;
+const readPortalWatermarkMock = readPortalWatermark as jest.Mock;
+const writePortalWatermarkMock = writePortalWatermark as jest.Mock;
 
 function resetPayloadMocks(): void {
   collectEnvironmentStatusMock.mockReturnValue({
@@ -66,7 +73,10 @@ function resetPayloadMocks(): void {
   listValidationBindingsMock.mockReturnValue([]);
   harvestUsageForSlotMock.mockReturnValue([]);
   harvestEventsForSlotMock.mockReturnValue([]);
-  fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [] });
+  fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [], maxSyncedAt: null });
+  readPortalWatermarkMock.mockReset();
+  readPortalWatermarkMock.mockReturnValue(null);
+  writePortalWatermarkMock.mockReset();
 }
 
 const PORTAL_ENV = [
@@ -489,5 +499,85 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(otelBody.events).toHaveLength(1);
     expect(otelBody.events[0].promptText).toBe('persisted');
     expect('responseText' in otelBody.events[0]).toBe(false);
+  });
+});
+
+describe('syncRepoWithControl — portal watermark', () => {
+  const realFetch = global.fetch;
+  beforeEach(() => {
+    resetPayloadMocks();
+    clearPortalEnv();
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_x';
+  });
+  afterEach(() => {
+    (global as unknown as { fetch: unknown }).fetch = realFetch;
+  });
+  afterAll(clearPortalEnv);
+
+  it('passes the stored watermark as `since` and advances it to the max sent', async () => {
+    readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [],
+      events: [],
+      maxSyncedAt: '2026-01-09T00:00:00.000Z',
+    });
+    mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    expect(fetchPersistedPortalTelemetryMock).toHaveBeenCalledWith('/repo/x', expect.any(String), {
+      since: '2026-01-02T00:00:00.000Z',
+    });
+    expect(writePortalWatermarkMock).toHaveBeenCalledWith(
+      '/repo/x',
+      'https://portal.example.com',
+      '2026-01-09T00:00:00.000Z',
+    );
+  });
+
+  it('--full ignores the stored watermark (since=null) but still advances it', async () => {
+    readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [],
+      events: [],
+      maxSyncedAt: '2026-01-09T00:00:00.000Z',
+    });
+    mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x', full: true });
+
+    expect(fetchPersistedPortalTelemetryMock).toHaveBeenCalledWith('/repo/x', expect.any(String), {
+      since: null,
+    });
+    expect(readPortalWatermarkMock).not.toHaveBeenCalled();
+    expect(writePortalWatermarkMock).toHaveBeenCalledWith(
+      '/repo/x',
+      'https://portal.example.com',
+      '2026-01-09T00:00:00.000Z',
+    );
+  });
+
+  it('does not advance the watermark when nothing new was sent', async () => {
+    readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [], maxSyncedAt: null });
+    mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    expect(writePortalWatermarkMock).not.toHaveBeenCalled();
+  });
+
+  it('does not advance the watermark on dry-run', async () => {
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [],
+      events: [],
+      maxSyncedAt: '2026-01-09T00:00:00.000Z',
+    });
+    mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x', dryRun: true });
+
+    expect(writePortalWatermarkMock).not.toHaveBeenCalled();
   });
 });

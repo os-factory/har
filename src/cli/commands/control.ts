@@ -105,6 +105,11 @@ export const controlCommand = {
               type: 'boolean',
               default: false,
               describe: 'Sync to HAR Cloud instead of local Mission Control',
+            })
+            .option('full', {
+              type: 'boolean',
+              default: false,
+              describe: 'Ignore the portal watermark and resend the complete payload',
             }),
         handleSync,
       )
@@ -318,6 +323,7 @@ async function handleSync(argv: {
   dryRun: boolean;
   json: boolean;
   cloud?: boolean;
+  full: boolean;
 }): Promise<void> {
   const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const discovered = await discoverHarRepos({ apiUrl: argv.apiUrl, cwd: process.cwd() });
@@ -381,6 +387,7 @@ async function handleSync(argv: {
     apiUrl: argv.apiUrl,
     dryRun: argv.dryRun,
     cloud: argv.cloud,
+    full: argv.full,
   });
 
   if (argv.json) {

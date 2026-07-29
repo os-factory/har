@@ -36,6 +36,7 @@ import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
+import { readPortalWatermark, writePortalWatermark } from './portal-watermark';
 import type { AgentSessionEvent, AgentSessionUsage } from '../harness/schema';
 
 export interface ControlSyncOptions {
@@ -45,6 +46,8 @@ export interface ControlSyncOptions {
   cloud?: boolean;
   /** Re-register even if the path was previously unregistered. */
   force?: boolean;
+  /** Ignore the portal watermark and resend the complete persisted payload. */
+  full?: boolean;
 }
 
 export interface ControlRegisterOptions extends ControlSyncOptions {
@@ -118,8 +121,13 @@ async function collectPortalTelemetry(
   repoPath: string,
   slots: EnvironmentStatus['slots'],
   controlApiUrl: string,
-): Promise<{ usage: Record<string, unknown>[]; events: Record<string, unknown>[] }> {
-  if (!isTelemetryEnabled()) return { usage: [], events: [] };
+  since: string | null,
+): Promise<{
+  usage: Record<string, unknown>[];
+  events: Record<string, unknown>[];
+  maxSyncedAt: string | null;
+}> {
+  if (!isTelemetryEnabled()) return { usage: [], events: [], maxSyncedAt: null };
   try {
     const userEmail = resolvePortalUserEmail();
     const liveUsage: AgentSessionUsage[] = slots.flatMap((slot) =>
@@ -162,7 +170,7 @@ async function collectPortalTelemetry(
       })),
     );
 
-    const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl);
+    const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl, { since });
 
     const usage = mergePortalUsage(liveUsage, persisted.usage).map((row) => {
       const models = modelsFromBreakdown(row.modelBreakdown as Record<string, unknown> | undefined);
@@ -177,18 +185,20 @@ async function collectPortalTelemetry(
       dropNullFields({ ...event }),
     );
 
-    return { usage, events };
+    return { usage, events, maxSyncedAt: persisted.maxSyncedAt };
   } catch {
-    return { usage: [], events: [] };
+    return { usage: [], events: [], maxSyncedAt: null };
   }
 }
 
 async function buildPortalPayload(
   repoPath: string,
   controlApiUrl: string,
+  since: string | null,
 ): Promise<{
   syncBody: Record<string, unknown>;
   events: Record<string, unknown>[];
+  maxSyncedAt: string | null;
 }> {
   const runs = listRuns(repoPath);
   const status = collectEnvironmentStatus(repoPath);
@@ -199,7 +209,12 @@ async function buildPortalPayload(
   const workUnits = listWorkUnits(harnessRoot);
   const attempts = listWorkAttempts(harnessRoot);
   const validationBindings = listValidationBindings(harnessRoot);
-  const { usage, events } = await collectPortalTelemetry(repoPath, status.slots, controlApiUrl);
+  const { usage, events, maxSyncedAt } = await collectPortalTelemetry(
+    repoPath,
+    status.slots,
+    controlApiUrl,
+    since,
+  );
 
   const syncBody: Record<string, unknown> = {
     path: repoPath,
@@ -215,7 +230,7 @@ async function buildPortalPayload(
     ...(usage.length > 0 ? { usage } : {}),
   };
 
-  return { syncBody, events };
+  return { syncBody, events, maxSyncedAt };
 }
 
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
@@ -292,6 +307,7 @@ export async function syncReposWithControl(options: {
   apiUrl?: string;
   dryRun?: boolean;
   cloud?: boolean;
+  full?: boolean;
 }): Promise<{ synced: number; failed: number; results: SyncRepoResult[] }> {
   const apiUrl = options.apiUrl ?? getControlApiUrl();
   const results: SyncRepoResult[] = [];
@@ -301,7 +317,7 @@ export async function syncReposWithControl(options: {
   for (const repoPath of options.repoPaths) {
     try {
       await withTimeout(
-        syncRepoWithControl({ repoPath, apiUrl, dryRun: options.dryRun, cloud: options.cloud }),
+        syncRepoWithControl({ repoPath, apiUrl, dryRun: options.dryRun, cloud: options.cloud, full: options.full }),
         SYNC_TIMEOUT_MS,
         'control sync',
       );
@@ -407,7 +423,8 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
 
   const portal = getPortalTarget();
   if (portal) {
-    const { syncBody, events } = await buildPortalPayload(repoPath, apiUrl);
+    const since = options.full ? null : readPortalWatermark(repoPath, portal.url);
+    const { syncBody, events, maxSyncedAt } = await buildPortalPayload(repoPath, apiUrl, since);
     await postPortal(portal, '/api/sync', syncBody, options.dryRun);
     if (events.length > 0) {
       await postPortal(
@@ -416,6 +433,9 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
         { path: repoPath, events, spans: [] },
         options.dryRun,
       );
+    }
+    if (!options.dryRun && maxSyncedAt) {
+      writePortalWatermark(repoPath, portal.url, maxSyncedAt);
     }
     return;
   }
