@@ -131,7 +131,7 @@ These are non-negotiable. Do not introduce imports that violate them.
 | CLI subcommand or flag | `src/cli/commands/` |
 | MCP tool handler or JSON Schema | `src/mcp/server.ts`, `schemas.ts` |
 | Files copied into target `.har/` | `src/templates/har-boilerplate/` |
-| Optional stage templates | `src/templates/stage-templates/` (applied via `har env add-stage`) |
+| Optional verification plugins | `src/templates/plugins/` (applied via `har env add-plugin`) |
 | Generic shell/path/logging helper | `src/utils/` |
 
 When unsure: put domain logic in `harness/` or `core/`, never in an adapter.
@@ -146,11 +146,14 @@ Const arrays like `HAR_STAGE_KINDS` are the single source of truth — use them 
 
 ## Extension points
 
-Design for a closed core with open seams — do not build a full plugin registry until there is a concrete second implementation.
+Design for a closed core with open seams. **Plugins** are first-class installable
+bundles under `src/templates/plugins/` (`har env add-plugin`). A *remote community
+plugin marketplace* can wait until there is a concrete external publisher —
+naming plugins ≠ shipping a marketplace.
 
 - **`StageExecutor`** (`src/core/types.ts`) — swap local vs cloud execution by injecting a different executor into `RunService`. `local-executor.ts` is the current implementation.
 - **Project-owned stages** — runtime behavior lives in the target repo's `.har/` scripts and `stages.json`, not as hardcoded tool APIs in core.
-- **Stage templates** — optional bundles applied with `har env add-stage <template>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`.
+- **Plugins** — optional bundles applied with `har env add-plugin <id>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`. Philosophy: *plugins install stages; agents only talk to the stage registry.*
 
 ## Anti-patterns
 

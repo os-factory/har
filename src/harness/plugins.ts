@@ -7,38 +7,49 @@ import { harnessExists } from './parser';
 import { HarnessStageRegistry, HarnessStageSchema } from './schema';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
-export const STAGE_TEMPLATE_IDS = ['playwright', 'rocketsim'] as const;
-export type StageTemplateId = (typeof STAGE_TEMPLATE_IDS)[number];
+export const PLUGIN_IDS = ['playwright', 'rocketsim'] as const;
+export type PluginId = (typeof PLUGIN_IDS)[number];
 
-const TemplateManifestFileSchema = z.object({
+/** @deprecated Use PLUGIN_IDS */
+export const STAGE_TEMPLATE_IDS = PLUGIN_IDS;
+/** @deprecated Use PluginId */
+export type StageTemplateId = PluginId;
+
+const PluginManifestFileSchema = z.object({
   src: z.string().min(1),
   dest: z.string().min(1),
   executable: z.boolean().optional(),
   skipFlag: z.string().optional(),
 });
 
-export const StageTemplateManifestSchema = z.object({
-  id: z.enum(STAGE_TEMPLATE_IDS),
+export const PluginManifestSchema = z.object({
+  id: z.enum(PLUGIN_IDS),
   stageId: z.string().min(1),
   verificationStages: z.array(z.string().min(1)).min(1),
   stage: z.record(z.unknown()),
-  files: z.array(TemplateManifestFileSchema).min(1),
-  optionalFiles: z.array(TemplateManifestFileSchema).optional(),
+  files: z.array(PluginManifestFileSchema).min(1),
+  optionalFiles: z.array(PluginManifestFileSchema).optional(),
   merge: z.record(z.string()).optional(),
   nextSteps: z.array(z.string().min(1)).min(1),
   docsPath: z.string().min(1),
 });
 
-type TemplateManifestFile = z.infer<typeof TemplateManifestFileSchema>;
-type TemplateManifest = z.infer<typeof StageTemplateManifestSchema>;
+/** @deprecated Use PluginManifestSchema */
+export const StageTemplateManifestSchema = PluginManifestSchema;
 
-export interface ApplyStageTemplateOptions {
+type PluginManifestFile = z.infer<typeof PluginManifestFileSchema>;
+type PluginManifest = z.infer<typeof PluginManifestSchema>;
+
+export interface ApplyPluginOptions {
   force?: boolean;
   skipCi?: boolean;
 }
 
-export interface ApplyStageTemplateResult {
-  templateId: StageTemplateId;
+/** @deprecated Use ApplyPluginOptions */
+export type ApplyStageTemplateOptions = ApplyPluginOptions;
+
+export interface ApplyPluginResult {
+  pluginId: PluginId;
   stageId: string;
   filesWritten: string[];
   warnings: string[];
@@ -46,26 +57,41 @@ export interface ApplyStageTemplateResult {
   docsPath: string;
 }
 
-function resolveTemplateDir(templateId: StageTemplateId): string {
-  const dir = path.join(resolveTemplatesDir(), 'stage-templates', templateId);
+/** @deprecated Use ApplyPluginResult — `templateId` mirrors `pluginId` */
+export interface ApplyStageTemplateResult {
+  templateId: PluginId;
+  stageId: string;
+  filesWritten: string[];
+  warnings: string[];
+  nextSteps: string[];
+  docsPath: string;
+}
+
+function resolvePluginDir(pluginId: PluginId): string {
+  const dir = path.join(resolveTemplatesDir(), 'plugins', pluginId);
   if (!fs.existsSync(dir)) {
-    throw new Error(`Stage template not found: ${templateId}. Run npm run build.`);
+    throw new Error(`Plugin not found: ${pluginId}. Run npm run build.`);
   }
   return dir;
 }
 
-export function readTemplateManifest(templateId: StageTemplateId): TemplateManifest {
-  const manifestPath = path.join(resolveTemplateDir(templateId), 'template.manifest.json');
-  const parsed = StageTemplateManifestSchema.safeParse(
+export function readPluginManifest(pluginId: PluginId): PluginManifest {
+  const manifestPath = path.join(resolvePluginDir(pluginId), 'template.manifest.json');
+  const parsed = PluginManifestSchema.safeParse(
     JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
   );
   if (!parsed.success) {
-    throw new Error(`Invalid template manifest for ${templateId}: ${parsed.error.message}`);
+    throw new Error(`Invalid plugin manifest for ${pluginId}: ${parsed.error.message}`);
   }
-  if (parsed.data.id !== templateId) {
-    throw new Error(`Template manifest id mismatch: expected ${templateId}, got ${parsed.data.id}`);
+  if (parsed.data.id !== pluginId) {
+    throw new Error(`Plugin manifest id mismatch: expected ${pluginId}, got ${parsed.data.id}`);
   }
   return parsed.data;
+}
+
+/** @deprecated Use readPluginManifest */
+export function readTemplateManifest(pluginId: PluginId): PluginManifest {
+  return readPluginManifest(pluginId);
 }
 
 function ensureParentDir(filePath: string): void {
@@ -75,17 +101,17 @@ function ensureParentDir(filePath: string): void {
   }
 }
 
-function copyTemplateFile(
-  templateDir: string,
-  file: TemplateManifestFile,
+function copyPluginFile(
+  pluginDir: string,
+  file: PluginManifestFile,
   repoPath: string,
   force: boolean,
 ): { written: boolean; path: string } {
-  const srcPath = path.join(templateDir, file.src);
+  const srcPath = path.join(pluginDir, file.src);
   const destPath = path.join(repoPath, file.dest);
 
   if (!fs.existsSync(srcPath)) {
-    throw new Error(`Template file missing: ${file.src}`);
+    throw new Error(`Plugin file missing: ${file.src}`);
   }
 
   if (fs.existsSync(destPath) && !force) {
@@ -105,16 +131,16 @@ function copyTemplateFile(
 
 function mergePackageJson(
   repoPath: string,
-  templateDir: string,
+  pluginDir: string,
   fragmentRelPath: string,
   warnings: string[],
 ): void {
   const packagePath = path.join(repoPath, 'package.json');
   if (!fs.existsSync(packagePath)) {
-    throw new Error('No package.json in repo root. Add one before applying this stage template.');
+    throw new Error('No package.json in repo root. Add one before applying this plugin.');
   }
 
-  const fragmentPath = path.join(templateDir, fragmentRelPath);
+  const fragmentPath = path.join(pluginDir, fragmentRelPath);
   if (!fs.existsSync(fragmentPath)) {
     throw new Error(`Package fragment missing: ${fragmentRelPath}`);
   }
@@ -140,7 +166,7 @@ function mergePackageJson(
 
 function patchStageRegistry(
   repoPath: string,
-  manifest: TemplateManifest,
+  manifest: PluginManifest,
   force: boolean,
 ): void {
   const registry = readStageRegistry(repoPath);
@@ -206,11 +232,11 @@ function assertStageNotPresent(repoPath: string, stageId: string, force?: boolea
   }
 }
 
-export function applyStageTemplate(
+export function applyPlugin(
   repoPath: string,
-  templateId: StageTemplateId,
-  options: ApplyStageTemplateOptions = {},
-): ApplyStageTemplateResult {
+  pluginId: PluginId,
+  options: ApplyPluginOptions = {},
+): ApplyPluginResult {
   const resolved = path.resolve(repoPath);
   const force = options.force ?? false;
   const warnings: string[] = [];
@@ -218,13 +244,13 @@ export function applyStageTemplate(
 
   assertHarnessPresent(resolved);
 
-  const manifest = readTemplateManifest(templateId);
+  const manifest = readPluginManifest(pluginId);
   assertStageNotPresent(resolved, manifest.stageId, force);
 
-  const templateDir = resolveTemplateDir(templateId);
+  const pluginDir = resolvePluginDir(pluginId);
 
   for (const file of manifest.files) {
-    const result = copyTemplateFile(templateDir, file, resolved, force);
+    const result = copyPluginFile(pluginDir, file, resolved, force);
     if (result.written) {
       filesWritten.push(result.path);
     }
@@ -239,7 +265,7 @@ export function applyStageTemplate(
         warnings.push(`Skipped optional file (exists): ${file.dest}`);
         continue;
       }
-      const result = copyTemplateFile(templateDir, file, resolved, force);
+      const result = copyPluginFile(pluginDir, file, resolved, force);
       if (result.written) {
         filesWritten.push(result.path);
       }
@@ -248,14 +274,14 @@ export function applyStageTemplate(
 
   if (manifest.merge) {
     for (const fragmentRel of Object.values(manifest.merge)) {
-      mergePackageJson(resolved, templateDir, fragmentRel, warnings);
+      mergePackageJson(resolved, pluginDir, fragmentRel, warnings);
       filesWritten.push('package.json');
     }
   }
 
   patchStageRegistry(resolved, manifest, force);
 
-  success(`Applied stage template: ${templateId}`);
+  success(`Applied plugin: ${pluginId}`);
   info(`Registered stage: ${manifest.stageId}`);
   for (const file of filesWritten) {
     info(`  + ${file}`);
@@ -265,7 +291,7 @@ export function applyStageTemplate(
   }
 
   return {
-    templateId,
+    pluginId,
     stageId: manifest.stageId,
     filesWritten,
     warnings,
@@ -274,15 +300,35 @@ export function applyStageTemplate(
   };
 }
 
-export function listStageTemplateIds(): StageTemplateId[] {
-  const root = path.join(resolveTemplatesDir(), 'stage-templates');
-  if (!fs.existsSync(root)) return [...STAGE_TEMPLATE_IDS];
+/** @deprecated Use applyPlugin */
+export function applyStageTemplate(
+  repoPath: string,
+  pluginId: PluginId,
+  options: ApplyPluginOptions = {},
+): ApplyStageTemplateResult {
+  const result = applyPlugin(repoPath, pluginId, options);
+  return {
+    templateId: result.pluginId,
+    stageId: result.stageId,
+    filesWritten: result.filesWritten,
+    warnings: result.warnings,
+    nextSteps: result.nextSteps,
+    docsPath: result.docsPath,
+  };
+}
+
+export function listPluginIds(): PluginId[] {
+  const root = path.join(resolveTemplatesDir(), 'plugins');
+  if (!fs.existsSync(root)) return [...PLUGIN_IDS];
 
   return fs
     .readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .filter((name): name is StageTemplateId =>
-      (STAGE_TEMPLATE_IDS as readonly string[]).includes(name),
-    );
+    .filter((name): name is PluginId => (PLUGIN_IDS as readonly string[]).includes(name));
+}
+
+/** @deprecated Use listPluginIds */
+export function listStageTemplateIds(): PluginId[] {
+  return listPluginIds();
 }

@@ -47,7 +47,7 @@ har env add-stage unit-tests --custom --kind test --command "npm test" --verific
 ```
 
 - Use `--command` for one-liner checks; use `--script` when a check needs the slot's env, ports, or artifacts (then implement the scaffolded `.har/stages/<id>.sh`).
-- Rich integrations ship as templates: `har env add-stage --list`, then e.g. `har env add-stage playwright` (web) or `har env add-stage rocketsim` (iOS).
+- Rich integrations ship as **plugins**: `har env add-plugin --list`, then e.g. `har env add-plugin playwright` (web) or `har env add-plugin rocketsim` (iOS). Plugins install stages; agents only talk to the stage registry.
 
 ## 6. Prove the harness works
 

@@ -87,36 +87,18 @@ Full verification runs registered `test` and `custom` stages listed in
 verification. IDs without a registered stage remain inline steps owned by
 `.har/verify.sh`. Mission Control uses the same list to render the expected pipeline.
 
-## List shipped templates
+## Install plugins
+
+Framework integrations (Playwright, RocketSim, …) ship as **plugins**. They
+install files and register stages — agents still only talk to the stage registry.
 
 ```bash
-har env add-stage --list
+har env add-plugin --list
+har env add-plugin playwright
+har env add-plugin rocketsim
 ```
 
-## Playwright template
-
-```bash
-har env add-stage playwright
-```
-
-This adds:
-
-- a `browser-e2e` test stage;
-- Playwright configuration;
-- frontend, API health, and accessibility smoke specs;
-- CI workflow and artifact directories unless `--skip-ci` is used.
-
-Adapt selectors and URLs after installation. Full verification automatically invokes
-the browser stage when `.har/stages/browser-e2e.sh` exists.
-
-## RocketSim template
-
-```bash
-har env add-stage rocketsim
-```
-
-This installs a `rocketsim-flows` runner, authoring guidance, and an example iOS
-flow. RocketSim itself and a booted simulator are external requirements.
+See [Plugins](/docs/guides/plugins/) for details.
 
 ## Custom stages
 

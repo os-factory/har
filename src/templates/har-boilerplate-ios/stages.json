@@ -32,7 +32,7 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Verification pipeline (quick: build + unit-tests; --full adds lint + rocketsim-flows)",
+      "description": "Verification pipeline (quick smoke by default; --full runs the registry's verificationStages)",
       "command": "./.har/verify.sh {agentId}",
       "acceptsArgs": ["--full"],
       "artifacts": [

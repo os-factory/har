@@ -53,7 +53,7 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 ./.har/teardown.sh 1
 ```
 
-Read **`stages.json`** and **`verificationStages`**. Optional: `har env add-stage playwright`.
+Read **`stages.json`** and **`verificationStages`**. Optional: `har env add-plugin playwright`.
 
 ## Verification contract
 

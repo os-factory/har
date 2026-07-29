@@ -25,7 +25,7 @@ CLI adapters       MCP adapters
 | `src/llm` | Optional Claude authoring agent for `--auto` |
 | `src/utils` | Generic filesystem, shell, logging, path, and validation helpers |
 | `packages/schemas` | Shared Zod schemas used by CLI and Mission Control |
-| `src/templates` | Generated harness profiles, agent workflows, and stage templates |
+| `src/templates` | Generated harness profiles, agent workflows, and verification plugins |
 | `control` | Local Next.js Mission Control dashboard |
 
 Dependency direction runs downward. Core never imports CLI or MCP, and harness code
@@ -48,12 +48,12 @@ drive TypeScript, input validation, MCP JSON Schema, and tests.
 
 - project-owned scripts can implement any stack or workflow;
 - `stages.json` can register any generic operation;
-- stage templates add optional bundles without hardcoding APIs;
+- **plugins** (`har env add-plugin`) add optional framework bundles without hardcoding APIs — they compile to generic stages; agents only talk to the stage registry;
 - profiles provide different starting runtime models;
 - executor injection allows local or remote execution.
 
-HAR intentionally avoids a broad plugin registry until a concrete second
-implementation requires one.
+Plugins are first-class installable bundles. A remote community marketplace can wait
+until there is a concrete external publisher.
 
 ## Mission Control data flow
 

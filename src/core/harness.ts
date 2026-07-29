@@ -12,11 +12,11 @@ import {
 import { readManifest, getHarnessDir } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages, syncAgentSlotsToHarnessEnv } from '../harness/stages';
 import {
-  applyStageTemplate,
-  ApplyStageTemplateOptions,
-  ApplyStageTemplateResult,
-  StageTemplateId,
-} from '../harness/stage-templates';
+  applyPlugin,
+  ApplyPluginOptions,
+  ApplyPluginResult,
+  PluginId,
+} from '../harness/plugins';
 import { harnessExists } from '../harness/parser';
 import { requireApiKey } from '../utils/validation';
 import { HarnessManifest, HarnessStage } from '../harness/schema';
@@ -198,10 +198,19 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   };
 }
 
+export function addPlugin(
+  repoPath: string,
+  pluginId: PluginId,
+  options: ApplyPluginOptions = {},
+): ApplyPluginResult {
+  return applyPlugin(repoPath, pluginId, options);
+}
+
+/** @deprecated Use addPlugin */
 export function addStageTemplate(
   repoPath: string,
-  templateId: StageTemplateId,
-  options: ApplyStageTemplateOptions = {},
-): ApplyStageTemplateResult {
-  return applyStageTemplate(repoPath, templateId, options);
+  pluginId: PluginId,
+  options: ApplyPluginOptions = {},
+): ApplyPluginResult {
+  return addPlugin(repoPath, pluginId, options);
 }

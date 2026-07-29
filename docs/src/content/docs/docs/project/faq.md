@@ -31,7 +31,7 @@ structured agent access to the same core.
 
 ## Is Playwright built into HAR?
 
-No. It is an optional stage template. The resulting `browser-e2e` stage is an
+No. It is an optional plugin. The resulting `browser-e2e` stage is an
 ordinary project stage, just like a migration check or load smoke test.
 
 ## Where does local data live?

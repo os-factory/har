@@ -5,7 +5,7 @@ Paired benchmark framework comparing **raw Claude Code** against **Claude Code i
 Design principles:
 
 - **One neutral issue-fix prompt** for both arms (`prompts/fix-issue.md`)
-- **HAR specialization only during harness setup** (`har env init`, `har env add-stage playwright`, setup prompt)
+- **HAR specialization only during harness setup** (`har env init`, `har env add-plugin playwright`, setup prompt)
 - **Langfuse** for traces/scores; **local run JSON** for HAR artifacts and verification evidence
 
 ## Layout

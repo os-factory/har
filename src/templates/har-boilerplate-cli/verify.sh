@@ -189,7 +189,7 @@ if [ -n "$FULL" ]; then
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   # Registered verification stages from .har/stages.json (see .har/STAGES.md).
   # Every stage listed in verificationStages with a registered script/command
-  # runs here -- stage templates and custom stages alike.
+  # runs here -- plugins and custom stages alike.
   while IFS=$'\t' read -r STAGE_ID STAGE_CMD; do
     [ -n "$STAGE_ID" ] || continue
     run_step "$STAGE_ID" "$STAGE_CMD" || true

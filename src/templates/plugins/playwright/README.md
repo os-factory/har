@@ -1,6 +1,6 @@
-# Playwright HAR stage template
+# Playwright HAR plugin
 
-This template was added by `har env add-stage playwright`. It registers a `browser-e2e` stage and scaffolds a minimal Playwright test suite.
+This plugin was added by `har env add-plugin playwright`. It registers a `browser-e2e` stage and scaffolds a minimal Playwright test suite.
 
 ## Next steps
 

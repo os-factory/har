@@ -178,7 +178,7 @@ If you change templates or prompts, rebuild before testing a linked install.
 
 ### Docs drift
 
-Full verify runs `docs-drift` (`npm run drift --prefix docs`). Changing public CLI commands, MCP tools, stage kinds, stage templates, or skill IDs without updating the docs site will fail verification. Fix the docs under `docs/src/content/docs/` (and keep [docs/check-drift.mjs](docs/check-drift.mjs) green).
+Full verify runs `docs-drift` (`npm run drift --prefix docs`). Changing public CLI commands, MCP tools, stage kinds, plugins, or skill IDs without updating the docs site will fail verification. Fix the docs under `docs/src/content/docs/` (and keep [docs/check-drift.mjs](docs/check-drift.mjs) green).
 
 ## CLI surface
 
@@ -312,7 +312,7 @@ src/
 │   ├── generator.ts         # Copy boilerplate into .har/
 │   ├── stages.ts            # stages.json registry I/O
 │   ├── schema.ts            # Re-exports packages/schemas
-│   ├── stage-templates.ts   # har env add-stage playwright|rocketsim
+│   ├── plugins.ts           # har env add-plugin playwright|rocketsim
 │   └── …
 ├── mcp/                     # MCP stdio adapter
 ├── llm/                     # Optional --auto authoring agent
@@ -339,7 +339,7 @@ release/                     # semantic-release helpers
 | CLI subcommand or flag | `src/cli/commands/<group>.ts` (+ register in `src/cli/index.ts` if new top-level) |
 | MCP tool handler or JSON Schema | `src/mcp/server.ts`, `schemas.ts` |
 | Files copied into target `.har/` | `src/templates/har-boilerplate*/` |
-| Optional stage templates | `src/templates/stage-templates/` (via `har env add-stage`) |
+| Optional verification plugins | `src/templates/plugins/` (via `har env add-plugin`) |
 | Generic shell/path/logging helper | `src/utils/` |
 
 When unsure: put domain logic in `harness/` or `core/`, never in an adapter. See [AGENT.md](./AGENT.md) for anti-patterns and extension points.
@@ -373,11 +373,11 @@ System prompts for the optional `--auto` authoring agent. Rebuild to copy them i
 
 Add or modify subcommands in the matching file under `src/cli/commands/` (`env.ts`, `agents.ts`, `control.ts`, `hooks.ts`, `mcp.ts`, `preferences.ts`, `telemetry.ts`). Register new top-level commands in `src/cli/index.ts`. Prefer implementing orchestration in `src/core/` and keeping the CLI as a thin adapter.
 
-### Stage templates
+### Plugins
 
-1. Add a bundle under `src/templates/stage-templates/<name>/`
-2. Register the id in `src/harness/stage-templates.ts`
-3. Rebuild and test with `har env add-stage <name>` on a fixture
+1. Add a bundle under `src/templates/plugins/<name>/`
+2. Register the id in `src/harness/plugins.ts` (`PLUGIN_IDS`)
+3. Rebuild and test with `har env add-plugin <name>` on a fixture
 
 ### Tests
 

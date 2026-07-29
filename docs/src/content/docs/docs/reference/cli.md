@@ -11,7 +11,8 @@ All repository commands accept `--repo <path>`; the default is the current direc
 | --- | --- |
 | `init` | Scaffold and adapt a new `.har/` |
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
-| `add-stage [template]` | List/install shipped templates or register a custom stage |
+| `add-plugin [plugin]` | Install a shipped plugin (registers stages) |
+| `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
 | `preflight <id>` | Check ports, processes, Docker, and slot occupation |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
@@ -42,20 +43,25 @@ har env maintain [--auto] [--yes] [--finalize]
                  [--cursor-rule|--no-cursor-rule]
 ```
 
-### Stages
+### Plugins and stages
 
 ```bash
-har env add-stage --list
-har env add-stage playwright [--force] [--skip-ci]
-har env add-stage rocketsim [--force]
+har env add-plugin --list
+har env add-plugin playwright [--force] [--skip-ci]
+har env add-plugin rocketsim [--force]
 har env add-stage <id> --custom --kind <kind>
                        [--command <shell-command>|--script]
                        [--description <text>] [--verification] [--force]
 ```
 
+`add-plugin` installs a framework bundle that registers one or more stages.
+`add-stage --custom` registers a project-specific stage. `har env add-stage
+playwright` remains as a deprecated alias of `add-plugin playwright`.
+
 `--command` registers a direct command. `--script` scaffolds a contract-compliant
 `.har/stages/<id>.sh`; implement its TODO before verification can pass. See
-`.har/STAGES.md` in every generated harness.
+`.har/STAGES.md` in every generated harness and the [Plugins](/docs/guides/plugins/)
+guide.
 
 ### Launch and recovery
 

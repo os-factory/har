@@ -73,7 +73,7 @@ The stock commands are deliberately generic conventions keyed by
 adaptation; do not leave Node/npm, Python, Go, Rust, Java, or Ruby defaults in
 place when they do not match the project.
 
-Install Playwright stage: `har env add-stage playwright` (optional). UI changes should add or update specs under `tests/`.
+Install Playwright plugin: `har env add-plugin playwright` (optional). UI changes should add or update specs under `tests/`.
 
 ## Readiness layers
 

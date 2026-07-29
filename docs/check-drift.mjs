@@ -9,6 +9,7 @@ const docs = {
   cli: read(`${docsRoot}/reference/cli.md`),
   mcp: read(`${docsRoot}/reference/mcp.md`),
   stages: read(`${docsRoot}/guides/stages.md`),
+  plugins: read(`${docsRoot}/guides/plugins.md`),
   profiles: read(`${docsRoot}/guides/profiles.md`),
   integrations: read(`${docsRoot}/guides/agent-integrations.md`),
   harnessFiles: read(`${docsRoot}/reference/harness-files.md`),
@@ -69,17 +70,22 @@ requireTerms(docs.stages, stageFields.map((value) => `\`${value}\``), 'Stages gu
 requireTerms(docs.profiles, profiles.map((value) => `\`${value}\``), 'Profiles guide');
 requireTerms(docs.integrations, agentTargets, 'Agent integrations guide');
 
-const templateRoot = path.join(root, 'src/templates/stage-templates');
-const templateIds = fs
-  .readdirSync(templateRoot, { withFileTypes: true })
+const pluginRoot = path.join(root, 'src/templates/plugins');
+const pluginIds = fs
+  .readdirSync(pluginRoot, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
-  .map((entry) => path.join(templateRoot, entry.name, 'template.manifest.json'))
+  .map((entry) => path.join(pluginRoot, entry.name, 'template.manifest.json'))
   .filter((manifestPath) => fs.existsSync(manifestPath))
   .map((manifestPath) => JSON.parse(fs.readFileSync(manifestPath, 'utf8')).id);
 requireTerms(
   docs.stages,
-  templateIds.map((value) => `add-stage ${value}`),
+  pluginIds.map((value) => `add-plugin ${value}`),
   'Stages guide',
+);
+requireTerms(
+  docs.plugins,
+  pluginIds.map((value) => `add-plugin ${value}`),
+  'Plugins guide',
 );
 
 const mcpTools = [
@@ -127,5 +133,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation contract is current: ${envCommands.length} CLI signatures, ${mcpTools.length} MCP tools, ${stageKinds.length} stage kinds, ${templateIds.length} templates, ${skillIds.length} skills.`,
+  `Documentation contract is current: ${envCommands.length} CLI signatures, ${mcpTools.length} MCP tools, ${stageKinds.length} stage kinds, ${pluginIds.length} plugins, ${skillIds.length} skills.`,
 );
