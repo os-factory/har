@@ -46,7 +46,7 @@ export function buildSessionKey(input: {
 
 /**
  * Session attribution for .env.agent.<id>.
- * Agent OTEL export is owned by opentelemetry-hooks (har telemetry on) — not Claude/Codex native exporters.
+ * Agent OTEL export is owned by @osfactory/otel-hook (har telemetry on) — not Claude/Codex native exporters.
  */
 export function buildTelemetryEnvBlock(attrs: TelemetrySessionAttrs): string {
   const apiUrl = getControlApiUrl().replace(/\/$/, '');
@@ -58,7 +58,7 @@ export function buildTelemetryEnvBlock(attrs: TelemetrySessionAttrs): string {
     ...(attrs.attemptId ? [`HAR_ATTEMPT_ID=${attrs.attemptId}`] : []),
     `HAR_CONTROL_API_URL=${apiUrl}`,
     `OTEL_RESOURCE_ATTRIBUTES=${buildOtelResourceAttributes(attrs)}`,
-    '# Agent telemetry: opentelemetry-hooks → Mission Control (har telemetry on|off)',
+    '# Agent telemetry: @osfactory/otel-hook → Mission Control (har telemetry on|off)',
   ];
   return lines.join('\n') + '\n';
 }

@@ -18,6 +18,7 @@ import {
   buildOtelHooksConfig,
   rewriteHookCommandsToWrapper,
   writeOtelHooksConfig,
+  writeOtelHooksWrapper,
 } from '../src/core/otel-hooks';
 
 describe('telemetry preference', () => {
@@ -139,7 +140,7 @@ describe('telemetry env', () => {
     });
     expect(block).toContain('HAR_SESSION_KEY=s1');
     expect(block).toContain('OTEL_RESOURCE_ATTRIBUTES=');
-    expect(block).toContain('opentelemetry-hooks');
+    expect(block).toContain('@osfactory/otel-hook');
     expect(block).not.toContain('CLAUDE_CODE_ENABLE_TELEMETRY');
     expect(block).not.toContain('OTEL_METRICS_EXPORTER');
     expect(block).not.toContain('OTEL_LOGS_EXPORTER');
@@ -192,26 +193,31 @@ describe('otel hooks config', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('maps HAR signals to hook knobs with http/json endpoint', () => {
+  it('maps HAR signals to @osfactory/otel-hook config with protobuf endpoint', () => {
     writeTelemetryPreference(true);
     const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
-    expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://localhost:3847/api/otel/v1/traces');
-    expect(config.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/json');
-    expect(config.IDE_OTEL_CAPTURE_TEXT).toBe('true');
-    expect(config.IDE_OTEL_ENABLE_LOGS).toBe('true');
-    expect(config.IDE_OTEL_BATCH_ON_STOP).toBe('true');
+    expect(config.exporter.endpoint).toBe('http://localhost:3847/api/otel/v1/traces');
+    expect(config.exporter.protocol).toBe('http/protobuf');
+    expect(config.exporter.enabled).toBe(true);
+    expect(config.exporter.logs.enabled).toBe(true);
+    expect(config.exporter.logs.includeContent).toBe(true);
+    expect(config.privacy.contentMode).toBe('raw');
+    expect(config.privacy.allowRawContent).toBe(true);
   });
 
   it('disables prompt capture when prompts signal is off', () => {
     writeTelemetryPreference(true, { prompts: false });
     const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
-    expect(config.IDE_OTEL_CAPTURE_TEXT).toBe('false');
+    expect(config.privacy.contentMode).toBe('omit');
+    expect(config.privacy.allowRawContent).toBe(false);
+    expect(config.exporter.logs.includeContent).toBe(false);
   });
 
-  it('nulls OTLP endpoint when telemetry disabled', () => {
+  it('disables exporter when telemetry is off', () => {
     const config = buildOtelHooksConfig({ enabled: false, apiUrl: 'http://localhost:3847' });
-    expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBeNull();
-    expect(config.IDE_OTEL_CAPTURE_TEXT).toBe('false');
+    expect(config.exporter.enabled).toBe(false);
+    expect(config.exporter.endpoint).toBeUndefined();
+    expect(config.privacy.contentMode).toBe('omit');
   });
 
   it('writes config JSON under hooks home', () => {
@@ -222,9 +228,9 @@ describe('otel hooks config', () => {
     );
     expect(configPath).toBe(path.join(hooksHome, 'otel_config.json'));
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-      OTEL_EXPORTER_OTLP_PROTOCOL: string;
+      exporter: { protocol: string };
     };
-    expect(parsed.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/json');
+    expect(parsed.exporter.protocol).toBe('http/protobuf');
   });
 
   it('rewrites hooks.json commands to the HAR wrapper', () => {
@@ -244,5 +250,41 @@ describe('otel hooks config', () => {
       hooks: { sessionStart: Array<{ command: string }> };
     };
     expect(parsed.hooks.sessionStart[0].command).toBe(wrapper);
+  });
+
+  it('upgrades a copied Python hook command to the HAR wrapper', () => {
+    const hooksFile = path.join(tmpDir, 'legacy-hooks.json');
+    fs.writeFileSync(
+      hooksFile,
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          sessionStart: [
+            {
+              command:
+                'python3 /repo/.cursor/hooks/opentelemetry-hook/otel_hook.py --cursor',
+            },
+          ],
+        },
+      }),
+    );
+    const wrapper = '/tmp/har-run-otel-hook.sh';
+    expect(rewriteHookCommandsToWrapper(hooksFile, wrapper)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(hooksFile, 'utf8')) as {
+      hooks: { sessionStart: Array<{ command: string }> };
+    };
+    expect(parsed.hooks.sessionStart[0].command).toBe(`${wrapper} --provider cursor`);
+  });
+
+  it('writes a wrapper that invokes the TypeScript CLI with HAR paths', () => {
+    const hooksHome = path.join(tmpDir, 'hooks');
+    const binary = path.join(hooksHome, 'node_modules', '.bin', 'otel-hook');
+    const wrapper = writeOtelHooksWrapper(binary, hooksHome);
+    const script = fs.readFileSync(wrapper, 'utf8');
+    expect(script).toContain(`exec "${binary}" run`);
+    expect(script).toContain(`--config-file "${path.join(hooksHome, 'otel_config.json')}"`);
+    expect(script).toContain(`--state-dir "${path.join(hooksHome, 'state')}"`);
+    expect(script).not.toContain('python');
+    expect(fs.statSync(wrapper).mode & 0o111).not.toBe(0);
   });
 });

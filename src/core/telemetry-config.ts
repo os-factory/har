@@ -132,9 +132,9 @@ export function getTelemetryPreferencePath(): string {
 }
 
 export const TELEMETRY_SIGNALS = [
-  'Traces (default): Cursor / Claude / Codex activity via opentelemetry-hooks → Mission Control',
+  'Traces (default): Cursor / Claude / Codex activity via @osfactory/otel-hook → Mission Control',
   'Logs/events (default): hook lifecycle logs without prompt bodies',
   'Metrics (default): token usage derived from span gen_ai.usage.* attributes',
-  'Prompts (default): user prompt text via IDE_OTEL_CAPTURE_TEXT (also fills Mission Control purpose); disable with har telemetry on --no-prompts',
+  'Prompts (default): user prompt text via otel-hook contentMode=raw (also fills Mission Control purpose); disable with har telemetry on --no-prompts',
   'Fallback: har control sync harvests local Claude/Codex session files when hooks telemetry is missing',
 ] as const;

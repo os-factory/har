@@ -192,7 +192,7 @@ Top-level command groups (see `har <cmd> --help`):
 | `har hooks …` | Commit gate and Claude worktree guard |
 | `har mcp` | MCP stdio server |
 | `har preferences …` | User onboarding defaults (`~/.har/preferences.json`) |
-| `har telemetry …` | Agent usage telemetry via opentelemetry-hooks |
+| `har telemetry …` | Agent usage telemetry via `@osfactory/otel-hook` |
 
 ## Testing on a project
 

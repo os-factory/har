@@ -5,22 +5,43 @@ import * as path from 'path';
 import { getControlApiUrl } from './control-config';
 import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 
-/** Pinned PyPI release for reproducible installs. */
-export const OTEL_HOOKS_PACKAGE = 'opentelemetry-hooks==0.14.0';
+/** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
+export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.1.1';
 
+/** Providers HAR registers with `otel-hook setup --provider`. */
+export const OTEL_HOOKS_PROVIDERS = [
+  { id: 'cursor', label: 'cursor' },
+  { id: 'claude-code', label: 'claude' },
+  { id: 'codex', label: 'codex' },
+] as const;
+
+export type OtelHooksProviderId = (typeof OTEL_HOOKS_PROVIDERS)[number]['id'];
+
+/** @deprecated Use OTEL_HOOKS_PROVIDERS — kept for callers that still say "agents". */
 export const OTEL_HOOKS_AGENTS = ['cursor', 'claude', 'codex'] as const;
 export type OtelHooksAgent = (typeof OTEL_HOOKS_AGENTS)[number];
 
+/**
+ * HAR-managed `@osfactory/otel-hook` config file (`--config-file`).
+ * Shape matches the package's `OtelHookConfigPatch` (not the old Python IDE_OTEL_* keys).
+ */
 export interface OtelHooksConfig {
-  OTEL_EXPORTER_OTLP_ENDPOINT: string | null;
-  OTEL_EXPORTER_OTLP_PROTOCOL: string;
-  OTEL_SERVICE_NAME: string;
-  IDE_OTEL_BATCH_ON_STOP: string;
-  IDE_OTEL_ENABLE_LOGS: string;
-  IDE_OTEL_LOG_ALL_EVENTS: string;
-  IDE_OTEL_CAPTURE_TEXT: string;
-  IDE_OTEL_MASK_PROMPTS: string;
-  OTEL_RESOURCE_ATTRIBUTES?: string | null;
+  exporter: {
+    enabled: boolean;
+    endpoint?: string;
+    protocol: 'http/protobuf';
+    serviceName: string;
+    resourceAttributes?: Record<string, string | number | boolean>;
+    logs: {
+      enabled: boolean;
+      endpoint?: string;
+      includeContent: boolean;
+    };
+  };
+  privacy: {
+    contentMode: 'omit' | 'raw';
+    allowRawContent: boolean;
+  };
 }
 
 export interface EnsureOtelHooksResult {
@@ -32,6 +53,7 @@ export interface EnsureOtelHooksResult {
   message?: string;
   warning?: string;
   agentsSetup: OtelHooksAgent[];
+  providersSetup: OtelHooksProviderId[];
   errors: string[];
 }
 
@@ -50,6 +72,55 @@ export function getOtelHooksWrapperPath(hooksHome = getOtelHooksHome()): string 
   return path.join(hooksHome, 'run-otel-hook.sh');
 }
 
+export function getOtelHooksStateDir(hooksHome = getOtelHooksHome()): string {
+  return path.join(hooksHome, 'state');
+}
+
+function localOtelHookBin(hooksHome: string): string {
+  return path.join(hooksHome, 'node_modules', '.bin', 'otel-hook');
+}
+
+function installedPackageVersion(hooksHome: string): string | null {
+  try {
+    const pkgPath = path.join(
+      hooksHome,
+      'node_modules',
+      '@osfactory',
+      'otel-hook',
+      'package.json',
+    );
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+    return typeof pkg.version === 'string' ? pkg.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function pinnedVersion(): string {
+  const at = OTEL_HOOKS_PACKAGE.lastIndexOf('@');
+  // package name is @osfactory/otel-hook@version — split on the last @
+  return at > 0 ? OTEL_HOOKS_PACKAGE.slice(at + 1) : OTEL_HOOKS_PACKAGE;
+}
+
+/** Parse `OTEL_RESOURCE_ATTRIBUTES` / HAR session attrs into a config object. */
+export function parseResourceAttributesString(
+  raw: string | null | undefined,
+): Record<string, string> {
+  if (!raw?.trim()) return {};
+  const out: Record<string, string> = {};
+  for (const part of raw.split(',')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (!key || key === 'service.name' || key === 'service.namespace') continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 /** Build HAR-managed otel-hook config from current telemetry signals. */
 export function buildOtelHooksConfig(options?: {
   enabled?: boolean;
@@ -59,17 +130,26 @@ export function buildOtelHooksConfig(options?: {
   const enabled = options?.enabled ?? isTelemetryEnabled();
   const signals = getTelemetrySignals();
   const apiUrl = (options?.apiUrl ?? getControlApiUrl()).replace(/\/$/, '');
+  const resourceAttributes = parseResourceAttributesString(options?.resourceAttributes);
+  const capturePrompts = enabled && signals.prompts;
 
   return {
-    OTEL_EXPORTER_OTLP_ENDPOINT: enabled ? `${apiUrl}/api/otel/v1/traces` : null,
-    OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
-    OTEL_SERVICE_NAME: 'har-ide-agent',
-    IDE_OTEL_BATCH_ON_STOP: 'true',
-    IDE_OTEL_ENABLE_LOGS: enabled && signals.logs ? 'true' : 'false',
-    IDE_OTEL_LOG_ALL_EVENTS: enabled && signals.logs ? 'true' : 'false',
-    IDE_OTEL_CAPTURE_TEXT: enabled && signals.prompts ? 'true' : 'false',
-    IDE_OTEL_MASK_PROMPTS: 'false',
-    OTEL_RESOURCE_ATTRIBUTES: options?.resourceAttributes ?? null,
+    exporter: {
+      enabled,
+      ...(enabled ? { endpoint: `${apiUrl}/api/otel/v1/traces` } : {}),
+      protocol: 'http/protobuf',
+      serviceName: 'har-ide-agent',
+      ...(Object.keys(resourceAttributes).length > 0 ? { resourceAttributes } : {}),
+      logs: {
+        enabled: enabled && signals.logs,
+        ...(enabled && signals.logs ? { endpoint: `${apiUrl}/api/otel/v1/logs` } : {}),
+        includeContent: capturePrompts,
+      },
+    },
+    privacy: {
+      contentMode: capturePrompts ? 'raw' : 'omit',
+      allowRawContent: capturePrompts,
+    },
   };
 }
 
@@ -92,12 +172,17 @@ export function writeOtelHooksWrapper(
   hooksHome = getOtelHooksHome(),
 ): string {
   fs.mkdirSync(hooksHome, { recursive: true });
+  fs.mkdirSync(getOtelHooksStateDir(hooksHome), { recursive: true });
   const wrapperPath = getOtelHooksWrapperPath(hooksHome);
+  const configPath = getOtelHooksConfigPath(hooksHome);
+  const stateDir = getOtelHooksStateDir(hooksHome);
   const script = `#!/usr/bin/env bash
-# Managed by har telemetry — invokes opentelemetry-hooks with HAR config home.
+# Managed by har telemetry — invokes @osfactory/otel-hook with HAR config.
 set -euo pipefail
-export IDE_OTEL_HOOK_HOME="${hooksHome}"
-exec "${otelHookCommand}" "$@"
+exec "${otelHookCommand}" run \\
+  --config-file "${configPath}" \\
+  --state-dir "${stateDir}" \\
+  "$@"
 `;
   fs.writeFileSync(wrapperPath, script, { mode: 0o755 });
   try {
@@ -115,88 +200,83 @@ function commandExists(command: string): boolean {
   return result.status === 0 && Boolean(result.stdout?.trim());
 }
 
-function resolveOtelHookCommand(): string | null {
-  if (commandExists('otel-hook')) {
-    const which = spawnSync('sh', ['-c', 'command -v otel-hook'], { encoding: 'utf8' });
-    return which.stdout?.trim() || 'otel-hook';
-  }
+function resolveOtelHookCommand(hooksHome: string): string | null {
+  const local = localOtelHookBin(hooksHome);
+  if (fs.existsSync(local)) return local;
   return null;
 }
 
-function tryInstallPackage(): { ok: boolean; detail: string } {
-  if (commandExists('uv')) {
-    const result = spawnSync(
-      'uv',
-      ['tool', 'install', '--force', OTEL_HOOKS_PACKAGE],
-      { encoding: 'utf8', timeout: 180_000 },
-    );
-    if (result.status === 0) {
-      return { ok: true, detail: `uv tool install ${OTEL_HOOKS_PACKAGE}` };
-    }
-  }
-
-  if (commandExists('pipx')) {
-    const result = spawnSync('pipx', ['install', '--force', OTEL_HOOKS_PACKAGE], {
-      encoding: 'utf8',
-      timeout: 180_000,
-    });
-    if (result.status === 0) {
-      return { ok: true, detail: `pipx install ${OTEL_HOOKS_PACKAGE}` };
-    }
+function tryInstallPackage(hooksHome: string): { ok: boolean; detail: string } {
+  fs.mkdirSync(hooksHome, { recursive: true });
+  if (!commandExists('npm')) {
     return {
       ok: false,
-      detail: `pipx install failed: ${(result.stderr || result.stdout || '').trim().slice(0, 400)}`,
+      detail: 'npm not found; install Node.js to use @osfactory/otel-hook',
     };
   }
-
-  if (commandExists('pip3') || commandExists('pip')) {
-    const pip = commandExists('pip3') ? 'pip3' : 'pip';
-    const result = spawnSync(
-      pip,
-      ['install', '--user', OTEL_HOOKS_PACKAGE],
-      { encoding: 'utf8', timeout: 180_000 },
-    );
-    if (result.status === 0) {
-      return { ok: true, detail: `${pip} install --user ${OTEL_HOOKS_PACKAGE}` };
-    }
-    return {
-      ok: false,
-      detail: `${pip} install failed: ${(result.stderr || result.stdout || '').trim().slice(0, 400)}`,
-    };
+  const result = spawnSync(
+    'npm',
+    ['install', '--prefix', hooksHome, '--no-fund', '--no-audit', OTEL_HOOKS_PACKAGE],
+    { encoding: 'utf8', timeout: 180_000 },
+  );
+  if (result.status === 0 && fs.existsSync(localOtelHookBin(hooksHome))) {
+    return { ok: true, detail: `npm install --prefix ${hooksHome} ${OTEL_HOOKS_PACKAGE}` };
   }
-
   return {
     ok: false,
-    detail:
-      'Neither uv, pipx, nor pip3/pip found; install Python tooling to use opentelemetry-hooks',
+    detail: `npm install ${OTEL_HOOKS_PACKAGE} failed: ${(result.stderr || result.stdout || '').trim().slice(0, 400)}`,
   };
 }
 
-function runSetupAgent(
-  agent: OtelHooksAgent,
+/** Best-effort removal of the legacy Python package so only the TS CLI remains. */
+function uninstallLegacyPythonHooks(): void {
+  const attempts: Array<[string, string[]]> = [
+    ['uv', ['tool', 'uninstall', 'opentelemetry-hooks']],
+    ['pipx', ['uninstall', 'opentelemetry-hooks']],
+  ];
+  for (const [cmd, args] of attempts) {
+    if (!commandExists(cmd)) continue;
+    try {
+      spawnSync(cmd, args, { encoding: 'utf8', timeout: 60_000 });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function runSetupProvider(
+  providerId: OtelHooksProviderId,
   otelHookCommand: string,
-  hooksHome: string,
+  wrapperPath: string,
 ): { ok: boolean; detail: string } {
-  const result = spawnSync(otelHookCommand, ['setup', '--agent', agent], {
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      IDE_OTEL_HOOK_HOME: hooksHome,
-    },
-    timeout: 60_000,
-  });
+  const hookCommand = `${wrapperPath} --provider ${providerId}`;
+  const result = spawnSync(
+    otelHookCommand,
+    [
+      'setup',
+      '--provider',
+      providerId,
+      '--scope',
+      'global',
+      '--hook-command',
+      hookCommand,
+      '--managed-marker',
+      'otel-hook',
+    ],
+    { encoding: 'utf8', timeout: 60_000 },
+  );
   if (result.status === 0) {
-    return { ok: true, detail: `setup --agent ${agent}` };
+    return { ok: true, detail: `setup --provider ${providerId}` };
   }
   return {
     ok: false,
-    detail: `setup --agent ${agent} failed: ${(result.stderr || result.stdout || '').trim().slice(0, 400)}`,
+    detail: `setup --provider ${providerId} failed: ${(result.stderr || result.stdout || '').trim().slice(0, 400)}`,
   };
 }
 
 /**
  * Rewrite hook command entries that invoke otel-hook so they use the HAR wrapper
- * (ensures IDE_OTEL_HOOK_HOME points at ~/.har/otel-hooks).
+ * (ensures --config-file / --state-dir point at ~/.har/otel-hooks).
  */
 export function rewriteHookCommandsToWrapper(
   filePath: string,
@@ -217,15 +297,28 @@ export function rewriteHookCommandsToWrapper(
   }
   if (!parsed || typeof parsed !== 'object') return false;
 
-  const quoted = JSON.stringify(wrapperPath);
   const rewriteCommand = (command: string): string => {
-    if (!command.includes('otel-hook') && !command.includes('otel_hook.py')) return command;
+    if (
+      !command.includes('otel-hook') &&
+      !command.includes('otel_hook.py') &&
+      !command.includes('opentelemetry-hooks')
+    ) {
+      return command;
+    }
     if (command.includes(wrapperPath)) return command;
-    // Preserve trailing args if any; replace the executable portion.
-    return command.replace(
-      /(?:^|[;&|]\s*)(?:env\s+[^=\s]+=\S+\s+)*(?:python3?\s+)?(?:\S*otel[_-]hook\S*)/,
-      (match) => match.replace(/(?:python3?\s+)?(?:\S*otel[_-]hook\S*)/, quoted.slice(1, -1)),
+    // Preserve current CLI args while translating legacy Python source flags.
+    const rewritten = command.replace(
+      /(?:^|[;&|]\s*)(?:env\s+[^=\s]+=\S+\s+)*(?:python3?\s+)?(?:npx\s+)?(?:\S*otel[_-]hook\S*|\S*opentelemetry-hooks\S*)/,
+      (match) =>
+        match.replace(
+          /(?:python3?\s+)?(?:npx\s+)?(?:\S*otel[_-]hook\S*|\S*opentelemetry-hooks\S*)/,
+          wrapperPath,
+        ),
     );
+    return rewritten
+      .replace(/(^|\s)--cursor(?=\s|$)/g, '$1--provider cursor')
+      .replace(/(^|\s)--claude(?=\s|$)/g, '$1--provider claude-code')
+      .replace(/(^|\s)--codex(?=\s|$)/g, '$1--provider codex');
   };
 
   const walk = (node: unknown): boolean => {
@@ -268,8 +361,15 @@ function rewriteKnownHookRegistrations(wrapperPath: string): void {
   }
 }
 
+function providerLabel(id: OtelHooksProviderId): OtelHooksAgent {
+  if (id === 'claude-code') return 'claude';
+  if (id === 'cursor') return 'cursor';
+  return 'codex';
+}
+
 /**
- * Install opentelemetry-hooks (if needed), write HAR config, register Cursor/Claude/Codex.
+ * Install @osfactory/otel-hook (if needed), write HAR config, register Cursor/Claude/Codex.
+ * Replaces the legacy Python opentelemetry-hooks install path.
  */
 export function ensureOtelHooks(options?: {
   setupAgents?: boolean;
@@ -277,13 +377,16 @@ export function ensureOtelHooks(options?: {
 }): EnsureOtelHooksResult {
   const hooksHome = getOtelHooksHome();
   const errors: string[] = [];
-  const agentsSetup: OtelHooksAgent[] = [];
+  const providersSetup: OtelHooksProviderId[] = [];
 
   fs.mkdirSync(hooksHome, { recursive: true });
 
-  let otelHookCommand = resolveOtelHookCommand();
-  if (!otelHookCommand) {
-    const installed = tryInstallPackage();
+  let otelHookCommand = resolveOtelHookCommand(hooksHome);
+  const needsInstall =
+    !otelHookCommand || installedPackageVersion(hooksHome) !== pinnedVersion();
+  if (needsInstall) {
+    // Prefer a prefix-local install so HAR pins the version under ~/.har/otel-hooks.
+    const installed = tryInstallPackage(hooksHome);
     if (!installed.ok) {
       errors.push(installed.detail);
       const configPath = writeOtelHooksConfig(
@@ -297,13 +400,14 @@ export function ensureOtelHooks(options?: {
         wrapperPath: getOtelHooksWrapperPath(hooksHome),
         otelHookCommand: null,
         warning: installed.detail,
-        agentsSetup,
+        agentsSetup: [],
+        providersSetup,
         errors,
       };
     }
-    otelHookCommand = resolveOtelHookCommand();
+    otelHookCommand = resolveOtelHookCommand(hooksHome);
     if (!otelHookCommand) {
-      errors.push('opentelemetry-hooks installed but otel-hook is not on PATH');
+      errors.push('@osfactory/otel-hook installed but otel-hook binary is missing');
       const configPath = writeOtelHooksConfig(
         buildOtelHooksConfig({ resourceAttributes: options?.resourceAttributes }),
         hooksHome,
@@ -315,44 +419,70 @@ export function ensureOtelHooks(options?: {
         wrapperPath: getOtelHooksWrapperPath(hooksHome),
         otelHookCommand: null,
         warning: errors[errors.length - 1],
-        agentsSetup,
+        agentsSetup: [],
+        providersSetup,
         errors,
       };
     }
+  }
+
+  const resolvedCommand = otelHookCommand;
+  if (!resolvedCommand) {
+    errors.push('@osfactory/otel-hook binary is missing');
+    const configPath = writeOtelHooksConfig(
+      buildOtelHooksConfig({ resourceAttributes: options?.resourceAttributes }),
+      hooksHome,
+    );
+    return {
+      ok: false,
+      hooksHome,
+      configPath,
+      wrapperPath: getOtelHooksWrapperPath(hooksHome),
+      otelHookCommand: null,
+      warning: errors[errors.length - 1],
+      agentsSetup: [],
+      providersSetup,
+      errors,
+    };
   }
 
   const configPath = writeOtelHooksConfig(
     buildOtelHooksConfig({ resourceAttributes: options?.resourceAttributes }),
     hooksHome,
   );
-  const wrapperPath = writeOtelHooksWrapper(otelHookCommand, hooksHome);
+  const wrapperPath = writeOtelHooksWrapper(resolvedCommand, hooksHome);
+  // Remove the old Python tool only after the npm replacement and wrapper are
+  // ready. If npm installation fails, an existing HAR hook remains usable.
+  uninstallLegacyPythonHooks();
 
   if (options?.setupAgents !== false && isTelemetryEnabled()) {
-    for (const agent of OTEL_HOOKS_AGENTS) {
-      const setup = runSetupAgent(agent, otelHookCommand, hooksHome);
-      if (setup.ok) agentsSetup.push(agent);
+    for (const provider of OTEL_HOOKS_PROVIDERS) {
+      const setup = runSetupProvider(provider.id, resolvedCommand, wrapperPath);
+      if (setup.ok) providersSetup.push(provider.id);
       else errors.push(setup.detail);
     }
     rewriteKnownHookRegistrations(wrapperPath);
   }
 
+  const agentsSetup = providersSetup.map(providerLabel);
   const ok = errors.length === 0;
   return {
     ok,
     hooksHome,
     configPath,
     wrapperPath,
-    otelHookCommand,
+    otelHookCommand: resolvedCommand,
     message: ok
-      ? `opentelemetry-hooks ready (${agentsSetup.join(', ') || 'config only'}) → ${configPath}`
+      ? `@osfactory/otel-hook ready (${agentsSetup.join(', ') || 'config only'}) → ${configPath}`
       : undefined,
     warning: errors.length ? errors.join('; ') : undefined,
     agentsSetup,
+    providersSetup,
     errors,
   };
 }
 
-/** Refresh config for telemetry off (null endpoint) without uninstalling hooks. */
+/** Refresh config for telemetry off (exporter disabled) without uninstalling hooks. */
 export function disableOtelHooksExport(): string {
   return writeOtelHooksConfig(buildOtelHooksConfig({ enabled: false }));
 }

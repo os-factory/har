@@ -80,7 +80,7 @@ async function handleOn(argv: { prompts: boolean }): Promise<void> {
     prompts: argv.prompts,
     traces: true,
   });
-  success('Telemetry enabled. Cursor / Claude / Codex export via opentelemetry-hooks → Mission Control.');
+  success('Telemetry enabled. Cursor / Claude / Codex export via @osfactory/otel-hook → Mission Control.');
   info(
     `Signals: metrics=${preference.signals.metrics} logs=${preference.signals.logs} prompts=${preference.signals.prompts} traces=${preference.signals.traces}`,
   );
@@ -203,18 +203,18 @@ async function handleInstallHooks(): Promise<void> {
   if (result.warning) warn(result.warning);
   const hooks = ensureOtelHooks({ setupAgents: true });
   if (hooks.ok) {
-    success(hooks.message ?? 'opentelemetry-hooks installed and agents registered');
+    success(hooks.message ?? '@osfactory/otel-hook installed and agents registered');
     info(`Config: ${hooks.configPath}`);
     info(`Wrapper: ${hooks.wrapperPath}`);
   } else {
-    error(hooks.warning ?? 'Failed to install opentelemetry-hooks');
+    error(hooks.warning ?? 'Failed to install @osfactory/otel-hook');
     process.exitCode = 1;
   }
 }
 
 export const telemetryCommand = {
   command: 'telemetry <subcommand>',
-  describe: 'Agent usage telemetry (Cursor / Claude / Codex via opentelemetry-hooks → Mission Control)',
+  describe: 'Agent usage telemetry (Cursor / Claude / Codex via @osfactory/otel-hook → Mission Control)',
   builder: (yargs: Argv) =>
     yargs
       .command(
@@ -227,7 +227,7 @@ export const telemetryCommand = {
       )
       .command(
         'on',
-        'Enable full telemetry (incl. prompts), ensure Mission Control, install/configure opentelemetry-hooks',
+        'Enable full telemetry (incl. prompts), ensure Mission Control, install/configure @osfactory/otel-hook',
         (y: Argv) =>
           y
             .option('prompts', {
@@ -257,7 +257,7 @@ export const telemetryCommand = {
       )
       .command(
         'install-hooks',
-        'Install opentelemetry-hooks and register Cursor / Claude / Codex',
+        'Install @osfactory/otel-hook and register Cursor / Claude / Codex',
         () => {},
         () => {
           void handleInstallHooks().catch((err) => {

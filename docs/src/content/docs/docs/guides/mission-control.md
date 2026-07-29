@@ -112,7 +112,7 @@ lives at `/repos`; cross-repo usage rollup at `/usage`.
 ## Agent usage telemetry (Cursor / Claude / Codex)
 
 HAR attributes Cursor, Claude Code, and Codex activity to each worktree/session via
-[opentelemetry-hooks](https://github.com/o11y-dev/opentelemetry-hooks) and shows it in
+[`@osfactory/otel-hook`](https://www.npmjs.com/package/@osfactory/otel-hook) and shows it in
 Mission Control. Preference shape:
 
 ```json
@@ -126,7 +126,7 @@ the Mission Control **purpose** column from the first captured user prompt.
 
 ```bash
 har telemetry status
-har telemetry on              # full telemetry + Mission Control + opentelemetry-hooks
+har telemetry on              # full telemetry + Mission Control + @osfactory/otel-hook
 har telemetry on --no-prompts # keep traces/logs/metrics; disable prompt text capture
 har telemetry install-hooks   # re-run Cursor / Claude / Codex hook registration
 har telemetry off             # clear hooks OTLP export + stop MC auto-start; keeps historical rows
@@ -134,12 +134,26 @@ har telemetry off             # clear hooks OTLP export + stop MC auto-start; ke
 
 Preference is stored in `~/.har/telemetry.json`. Override with `HAR_TELEMETRY=0|1`.
 Hooks config lives at `~/.har/otel-hooks/otel_config.json` (`HAR_OTEL_HOOKS_HOME` to override).
+The package itself is installed under `~/.har/otel-hooks/node_modules` (pinned
+`@osfactory/otel-hook`).
+
+### Upgrading from the Python hook
+
+Run `har telemetry install-hooks` after upgrading HAR. HAR installs the TypeScript
+package in its managed hooks directory, replaces existing HAR hook registrations,
+and then removes the legacy `opentelemetry-hooks` tool when it was installed with
+`uv` or `pipx`. The command name remains `otel-hook`, but HAR registrations use
+`~/.har/otel-hooks/run-otel-hook.sh`; the old Python executable does not need to
+remain on `PATH`. Python is no longer required for HAR telemetry.
+
+For a standalone, user-wide `otel-hook` command outside HAR, install it separately
+with `npm install -g @osfactory/otel-hook`.
 
 When telemetry is on:
 
 1. `har env launch` auto-starts Mission Control if it is not reachable (`har control up`).
-2. `har telemetry on` (and launch) install `opentelemetry-hooks` and register Cursor / Claude / Codex hooks
-   to export OTLP `http/json` to `{HAR_CONTROL_API_URL}/api/otel`.
+2. `har telemetry on` (and launch) install `@osfactory/otel-hook` and register Cursor / Claude / Codex hooks
+   to export OTLP `http/protobuf` to `{HAR_CONTROL_API_URL}/api/otel`.
 3. Launch writes session attribution into `.env.agent.<id>` (`HAR_SESSION_KEY`, resource attrs).
    Mission Control matches sessions by `har.session_key` or by workspace/cwd → slot work dir.
 4. Token usage is derived from span `gen_ai.usage.*` attributes. `har control sync` also
