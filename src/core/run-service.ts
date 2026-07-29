@@ -199,7 +199,7 @@ export class RunService {
     if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
       const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
       if (ensured.message) {
-        telemetryBanner += `${ensured.message}\nUsage from Cursor / Claude / Codex (opentelemetry-hooks) will appear under Worktrees. Disable: har telemetry off\n`;
+        telemetryBanner += `${ensured.message}\nUsage from Cursor / Claude / Codex (@osfactory/otel-hook) will appear under Worktrees. Disable: har telemetry off\n`;
       }
       if (ensured.warning) {
         telemetryBanner += `${ensured.warning}\n`;
@@ -210,7 +210,7 @@ export class RunService {
         if (hooks.message) telemetryBanner += `${hooks.message}\n`;
         if (hooks.warning) telemetryBanner += `${hooks.warning}\n`;
       } catch (err) {
-        telemetryBanner += `opentelemetry-hooks setup skipped: ${err instanceof Error ? err.message : String(err)}\n`;
+        telemetryBanner += `@osfactory/otel-hook setup skipped: ${err instanceof Error ? err.message : String(err)}\n`;
       }
     }
 

@@ -177,7 +177,7 @@ har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
 har telemetry print-env --agent-id <n>
 ```
 
-Controls agent usage telemetry (Cursor / Claude / Codex via opentelemetry-hooks → Mission Control).
+Controls agent usage telemetry (Cursor / Claude / Codex via `@osfactory/otel-hook` → Mission Control).
 **Default: full on** (traces, logs, metrics, prompts). Install and the first `har` invocation
 persist `~/.har/telemetry.json` when missing. `on` ensures Mission Control is running and
 installs/configures hooks. Use `--no-prompts` to keep telemetry without prompt text.
