@@ -1,4 +1,5 @@
 import * as path from 'path';
+import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import {
   getControlApiUrl,
@@ -6,8 +7,15 @@ import {
 } from '../../core/control-config';
 import { inspectControlUpReadiness } from '../../core/control-port';
 import {
+  discoverHarRepos,
   syncRepoWithControl,
+  syncReposWithControl,
 } from '../../core/control-sync';
+import {
+  readSyncSelection,
+  resolveSyncSelection,
+  writeSyncSelection,
+} from '../../core/control-sync-selection';
 import { writePortalCredentials } from '../../core/portal-credentials';
 import { loginViaBrowser } from '../../core/portal-login';
 import { startMissionControl, syncReposAfterControlStart, stopMissionControl } from '../../core/control-lifecycle';
@@ -85,7 +93,11 @@ export const controlCommand = {
         'Sync runs and slot status to Mission Control',
         (y: Argv) =>
           y
-            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('select', {
+              type: 'boolean',
+              default: false,
+              describe: 'Choose which repositories to sync (interactive)',
+            })
             .option('api-url', { type: 'string', describe: 'Control API URL' })
             .option('dry-run', { type: 'boolean', default: false })
             .option('json', { type: 'boolean', default: false })
@@ -301,37 +313,95 @@ async function handleUnregister(argv: {
 }
 
 async function handleSync(argv: {
-  repo: string;
+  select: boolean;
   apiUrl?: string;
   dryRun: boolean;
   json: boolean;
   cloud?: boolean;
 }): Promise<void> {
-  const repoPath = path.resolve(argv.repo);
+  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const discovered = await discoverHarRepos({ apiUrl: argv.apiUrl, cwd: process.cwd() });
 
-  try {
-    await syncRepoWithControl({
-      repoPath,
-      apiUrl: argv.apiUrl,
-      dryRun: argv.dryRun,
-      cloud: argv.cloud,
-    });
+  if (argv.select && !isTTY) {
+    error('--select needs an interactive terminal.');
+    process.exit(1);
+  }
 
+  if (discovered.length === 0) {
     if (argv.json) {
-      process.stdout.write(JSON.stringify({ ok: true, repoPath }, null, 2) + '\n');
+      process.stdout.write(JSON.stringify({ ok: true, synced: 0, failed: 0, results: [] }, null, 2) + '\n');
     } else {
       header('har control sync');
-      info(`Repository: ${repoPath}`);
-      success('Sync complete');
+      info('No repositories are registered with Mission Control.');
+      info('Register one with: har control register --repo <path>');
     }
-  } catch (err: unknown) {
+    return;
+  }
+
+  const resolution = resolveSyncSelection({
+    discovered,
+    stored: readSyncSelection(),
+    forceSelect: argv.select,
+    isTTY,
+  });
+
+  let repoPaths = resolution.toSync;
+  if (resolution.needsPrompt) {
+    info('Only repositories registered with Mission Control are listed.');
+    info('Missing one? Register it with: har control register --repo <path>');
+    const defaults = new Set(resolution.promptDefaults);
+    const { selection } = await inquirer.prompt<{ selection: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'selection',
+        message: 'Select repositories to sync',
+        choices: discovered.map((repoPath) => ({
+          name: repoPath,
+          value: repoPath,
+          checked: defaults.has(repoPath),
+        })),
+      },
+    ]);
+    writeSyncSelection(selection);
+    repoPaths = selection;
+  }
+
+  if (repoPaths.length === 0) {
     if (argv.json) {
-      process.stdout.write(
-        JSON.stringify({ ok: false, error: (err as Error).message }, null, 2) + '\n',
-      );
-      process.exit(1);
+      process.stdout.write(JSON.stringify({ ok: true, results: [] }, null, 2) + '\n');
+    } else {
+      header('har control sync');
+      info('No repositories selected to sync.');
     }
-    error((err as Error).message);
+    return;
+  }
+
+  const { synced, failed, results } = await syncReposWithControl({
+    repoPaths,
+    apiUrl: argv.apiUrl,
+    dryRun: argv.dryRun,
+    cloud: argv.cloud,
+  });
+
+  if (argv.json) {
+    process.stdout.write(JSON.stringify({ ok: failed === 0, synced, failed, results }, null, 2) + '\n');
+    if (failed > 0) process.exit(1);
+    return;
+  }
+
+  header('har control sync');
+  for (const result of results) {
+    if (result.ok) {
+      success(`Synced ${result.repoPath}`);
+    } else {
+      warn(`Failed ${result.repoPath}: ${result.error}`);
+    }
+  }
+  if (synced > 0) {
+    success(`Synced ${synced} ${synced === 1 ? 'repository' : 'repositories'}`);
+  }
+  if (failed > 0) {
+    warn(`${failed} ${failed === 1 ? 'repository' : 'repositories'} could not be synced`);
     process.exit(1);
   }
 }
