@@ -29,6 +29,30 @@ function providerHint(agentTool: AgentTool): string | undefined {
   return undefined;
 }
 
+/**
+ * Map HAR token buckets to genai-prices semantics.
+ * genai-prices treats `input_tokens` as the inclusive parent; cache read/write are subsets.
+ * Claude harvest reports disjoint buckets (uncached input vs cache creation).
+ */
+export function toGenaiPricesUsage(totals: ModelUsageTotals): {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+} {
+  const rawInput = num(totals.tokensInput);
+  const cacheRead = num(totals.tokensCacheRead);
+  const cacheWrite = num(totals.tokensCacheCreation);
+  const uncached = rawInput >= cacheRead ? rawInput - cacheRead : rawInput;
+  const inclusiveInput = uncached + cacheRead + cacheWrite;
+  return {
+    input_tokens: inclusiveInput,
+    output_tokens: num(totals.tokensOutput),
+    cache_read_tokens: cacheRead,
+    cache_write_tokens: cacheWrite,
+  };
+}
+
 /** Cursor prefixes opaque slugs — try the stripped id against the catalog too. */
 export function pricingModelCandidates(modelId: string): string[] {
   const out = [modelId];
@@ -42,23 +66,18 @@ export function estimateModelCostUsd(
   totals: ModelUsageTotals,
   agentTool: AgentTool,
 ): number | null {
-  const usage = {
-    input_tokens: num(totals.tokensInput),
-    output_tokens: num(totals.tokensOutput),
-    cache_read_tokens: num(totals.tokensCacheRead),
-    cache_write_tokens: num(totals.tokensCacheCreation),
-  };
-  const tokenSum =
-    usage.input_tokens +
-    usage.output_tokens +
-    usage.cache_read_tokens +
-    usage.cache_write_tokens;
+  const usage = toGenaiPricesUsage(totals);
+  const tokenSum = usage.input_tokens + usage.output_tokens;
   if (tokenSum <= 0) return null;
 
   const providerId = providerHint(agentTool);
   for (const candidate of pricingModelCandidates(modelId)) {
-    const result = calcPrice(usage, candidate, providerId ? { providerId } : undefined);
-    if (result) return result.total_price;
+    try {
+      const result = calcPrice(usage, candidate, providerId ? { providerId } : undefined);
+      if (result) return result.total_price;
+    } catch {
+      continue;
+    }
   }
   return null;
 }
