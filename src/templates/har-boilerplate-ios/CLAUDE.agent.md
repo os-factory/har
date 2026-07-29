@@ -57,7 +57,7 @@ Adapt for your scheme and simulator — see `.har/harness.env`.
 
 ## User-flow validation (RocketSim)
 
-If the RocketSim stage template is installed (`har env add-stage rocketsim`):
+If the RocketSim plugin is installed (`har env add-plugin rocketsim`):
 
 ```bash
 ./.har/stages/rocketsim-flows.sh ${AGENT_ID}

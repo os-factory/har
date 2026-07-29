@@ -1,11 +1,11 @@
 import * as path from 'path';
 import type { Argv } from 'yargs';
-import { initHarness, maintainHarness, addStageTemplate } from '../../core/harness';
+import { initHarness, maintainHarness, addPlugin } from '../../core/harness';
 import {
-  STAGE_TEMPLATE_IDS,
-  StageTemplateId,
-  listStageTemplateIds,
-} from '../../harness/stage-templates';
+  PLUGIN_IDS,
+  PluginId,
+  listPluginIds,
+} from '../../harness/plugins';
 import { addCustomStage } from '../../harness/custom-stage';
 import type { HarnessStageKind } from '../../harness/schema';
 import { HarnessDriftResult } from '../../harness/drift';
@@ -159,23 +159,50 @@ export const envCommand = {
         handleMaintain,
       )
       .command(
-        'add-stage [template]',
-        `Add a stage template (${STAGE_TEMPLATE_IDS.join(', ')}) or a custom stage (--custom)`,
+        'add-plugin [plugin]',
+        `Install a verification plugin (${PLUGIN_IDS.join(', ')}) that registers stages`,
         (y: Argv) =>
           y
-            .positional('template', {
+            .positional('plugin', {
               type: 'string',
-              describe: `Stage template id (${STAGE_TEMPLATE_IDS.join(', ')}), or the new stage id with --custom`,
+              describe: `Plugin id (${PLUGIN_IDS.join(', ')})`,
             })
             .option('list', {
               type: 'boolean',
               default: false,
-              describe: 'List available stage templates and exit',
+              describe: 'List available plugins and exit',
+            })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('force', {
+              type: 'boolean',
+              default: false,
+              describe: 'Overwrite existing plugin files and stage entry',
+            })
+            .option('skip-ci', {
+              type: 'boolean',
+              default: false,
+              describe: 'Do not copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
+            }),
+        handleAddPlugin,
+      )
+      .command(
+        'add-stage [template]',
+        `Register a custom stage (--custom), or install a plugin (deprecated alias for add-plugin)`,
+        (y: Argv) =>
+          y
+            .positional('template', {
+              type: 'string',
+              describe: `Custom stage id with --custom, or a plugin id (${PLUGIN_IDS.join(', ')}) as a deprecated alias`,
+            })
+            .option('list', {
+              type: 'boolean',
+              default: false,
+              describe: 'List available plugins and exit (prefer: har env add-plugin --list)',
             })
             .option('custom', {
               type: 'boolean',
               default: false,
-              describe: 'Register a custom stage instead of a shipped template',
+              describe: 'Register a custom stage instead of installing a plugin',
             })
             .option('kind', {
               type: 'string',
@@ -203,7 +230,7 @@ export const envCommand = {
             .option('force', {
               type: 'boolean',
               default: false,
-              describe: 'Overwrite existing template files and stage entry',
+              describe: 'Overwrite existing plugin files and stage entry',
             })
             .option('skip-ci', {
               type: 'boolean',
@@ -674,6 +701,56 @@ async function handleAgentMdProposal(repoPath: string, autoYes: boolean): Promis
   await promptApplyAgentMdProposal(repoPath);
 }
 
+export async function handleAddPlugin(argv: {
+  plugin?: string;
+  list: boolean;
+  repo: string;
+  force: boolean;
+  skipCi: boolean;
+}): Promise<void> {
+  const repoPath = path.resolve(argv.repo);
+  const available = listPluginIds();
+
+  if (argv.list) {
+    for (const id of available) {
+      console.log(id);
+    }
+    return;
+  }
+
+  if (!argv.plugin || !available.includes(argv.plugin as PluginId)) {
+    error(
+      `Unknown plugin: ${argv.plugin ?? '(missing)'}. Available: ${available.join(', ')}. For a project-specific stage, use: har env add-stage <id> --custom`,
+    );
+    process.exit(1);
+  }
+
+  header('har env add-plugin');
+  info(`Repository: ${repoPath}`);
+  info(`Plugin: ${argv.plugin}`);
+
+  try {
+    const result = addPlugin(repoPath, argv.plugin as PluginId, {
+      force: argv.force,
+      skipCi: argv.skipCi,
+    });
+
+    divider();
+    success(`Plugin applied — registered stage: ${result.stageId}`);
+    console.error('');
+    console.error('  Next steps:');
+    for (const step of result.nextSteps) {
+      console.error(`    ${step}`);
+    }
+    console.error('');
+    console.error(`  Docs: ${result.docsPath}`);
+    console.error('');
+  } catch (err: unknown) {
+    error((err as Error).message);
+    process.exit(1);
+  }
+}
+
 export async function handleAddStage(argv: {
   template?: string;
   list: boolean;
@@ -688,9 +765,10 @@ export async function handleAddStage(argv: {
   skipCi: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
-  const available = listStageTemplateIds();
+  const available = listPluginIds();
 
   if (argv.list) {
+    warn('har env add-stage --list is deprecated; prefer: har env add-plugin --list');
     for (const id of available) {
       console.log(id);
     }
@@ -740,37 +818,23 @@ export async function handleAddStage(argv: {
     return;
   }
 
-  if (!argv.template || !available.includes(argv.template as StageTemplateId)) {
+  if (!argv.template || !available.includes(argv.template as PluginId)) {
     error(
-      `Unknown stage template: ${argv.template ?? '(missing)'}. Available: ${available.join(', ')}. For a project-specific stage, use: har env add-stage <id> --custom`,
+      `Unknown plugin: ${argv.template ?? '(missing)'}. Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-specific stage, use: har env add-stage <id> --custom`,
     );
     process.exit(1);
   }
 
-  header('har env add-stage');
-  info(`Repository: ${repoPath}`);
-  info(`Template: ${argv.template}`);
-
-  try {
-    const result = addStageTemplate(repoPath, argv.template as StageTemplateId, {
-      force: argv.force,
-      skipCi: argv.skipCi,
-    });
-
-    divider();
-    success(`Stage template applied: ${result.stageId}`);
-    console.error('');
-    console.error('  Next steps:');
-    for (const step of result.nextSteps) {
-      console.error(`    ${step}`);
-    }
-    console.error('');
-    console.error(`  Docs: ${result.docsPath}`);
-    console.error('');
-  } catch (err: unknown) {
-    error((err as Error).message);
-    process.exit(1);
-  }
+  warn(
+    `har env add-stage ${argv.template} is deprecated; use: har env add-plugin ${argv.template}`,
+  );
+  await handleAddPlugin({
+    plugin: argv.template,
+    list: false,
+    repo: argv.repo,
+    force: argv.force,
+    skipCi: argv.skipCi,
+  });
 }
 
 export async function handlePreflight(argv: {

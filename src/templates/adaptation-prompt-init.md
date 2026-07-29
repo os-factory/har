@@ -117,7 +117,7 @@ scripts or document why no substitute is needed. In particular:
   `.env.agent.<id>`, and `verify.sh` resolves env/work dir through `agent-slot.sh`.
 
 ### Optional Playwright stage
-If the user ran `har env add-stage playwright` (or `@playwright/test` is in package.json):
+If the user ran `har env add-plugin playwright` (or `@playwright/test` is in package.json):
 
 - Adapt `tests/**` selectors and API paths for this stack
 - Ensure `HARNESS_HEALTH_CHECK_PATH` matches the app health route used in API smoke tests

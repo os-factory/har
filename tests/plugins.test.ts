@@ -1,21 +1,21 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 import {
-  applyStageTemplate,
-  listStageTemplateIds,
-  readTemplateManifest,
-} from '../src/harness/stage-templates';
+  applyPlugin,
+  listPluginIds,
+  readPluginManifest,
+} from '../src/harness/plugins';
 import { readStageRegistry } from '../src/harness/stages';
 
 function makeTempRepo(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
 }
 
-describe('stage templates', () => {
-  it('applies playwright template to a scaffolded harness', () => {
+describe('plugins', () => {
+  it('applies playwright plugin to a scaffolded harness', () => {
     const repoPath = makeTempRepo('har-playwright');
     fs.writeFileSync(
       path.join(repoPath, 'package.json'),
@@ -24,8 +24,9 @@ describe('stage templates', () => {
 
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
 
-    const result = applyStageTemplate(repoPath, 'playwright', { skipCi: true });
+    const result = applyPlugin(repoPath, 'playwright', { skipCi: true });
 
+    expect(result.pluginId).toBe('playwright');
     expect(result.stageId).toBe('browser-e2e');
     expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'browser-e2e.sh'))).toBe(true);
     expect(fs.existsSync(path.join(repoPath, 'playwright.config.js'))).toBe(true);
@@ -55,12 +56,13 @@ describe('stage templates', () => {
     expect(pkg.devDependencies['@playwright/test']).toBe('^1.40.0');
   });
 
-  it('applies rocketsim template to a scaffolded harness', () => {
+  it('applies rocketsim plugin to a scaffolded harness', () => {
     const repoPath = makeTempRepo('har-rocketsim');
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'ios' });
 
-    const result = applyStageTemplate(repoPath, 'rocketsim');
+    const result = applyPlugin(repoPath, 'rocketsim');
 
+    expect(result.pluginId).toBe('rocketsim');
     expect(result.stageId).toBe('rocketsim-flows');
     expect(result.docsPath).toBe('.har/stages/ROCKETSIM.md');
     expect(result.nextSteps.length).toBeGreaterThan(0);
@@ -80,12 +82,12 @@ describe('stage templates', () => {
     expect(verify?.description).not.toContain('browser-e2e');
   });
 
-  it('every shipped template manifest passes schema validation', () => {
-    const ids = listStageTemplateIds();
+  it('every shipped plugin manifest passes schema validation', () => {
+    const ids = listPluginIds();
     expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim']));
 
     for (const id of ids) {
-      const manifest = readTemplateManifest(id);
+      const manifest = readPluginManifest(id);
       expect(manifest.nextSteps.length).toBeGreaterThan(0);
       expect(manifest.docsPath).toMatch(/^\.har\//);
       expect(manifest.files.map((f) => f.dest)).toContain(manifest.docsPath);
@@ -100,9 +102,9 @@ describe('stage templates', () => {
       JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
     );
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
-    applyStageTemplate(repoPath, 'playwright', { skipCi: true });
+    applyPlugin(repoPath, 'playwright', { skipCi: true });
 
-    expect(() => applyStageTemplate(repoPath, 'playwright')).toThrow(/already/);
+    expect(() => applyPlugin(repoPath, 'playwright')).toThrow(/already/);
   });
 
   it('scaffolds CLAUDE.md on init when missing', () => {
@@ -123,10 +125,10 @@ describe('stage templates', () => {
       JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
     );
 
-    expect(() => applyStageTemplate(repoPath, 'playwright')).toThrow(/har env init/);
+    expect(() => applyPlugin(repoPath, 'playwright')).toThrow(/har env init/);
   });
 
-  it('CLI add-stage applies playwright template', () => {
+  it('CLI add-plugin applies playwright plugin', () => {
     const repoPath = makeTempRepo('har-playwright-cli');
     fs.writeFileSync(
       path.join(repoPath, 'package.json'),
@@ -139,7 +141,7 @@ describe('stage templates', () => {
       [
         path.join(__dirname, '..', 'dist', 'index.js'),
         'env',
-        'add-stage',
+        'add-plugin',
         'playwright',
         '--repo',
         repoPath,
@@ -151,5 +153,32 @@ describe('stage templates', () => {
     expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'browser-e2e.sh'))).toBe(true);
     const registry = readStageRegistry(repoPath);
     expect(registry.stages.some((s) => s.id === 'browser-e2e')).toBe(true);
+  });
+
+  it('CLI add-stage <plugin> still works as deprecated alias', () => {
+    const repoPath = makeTempRepo('har-playwright-cli-alias');
+    fs.writeFileSync(
+      path.join(repoPath, 'package.json'),
+      JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
+    );
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'dist', 'index.js'),
+        'env',
+        'add-stage',
+        'playwright',
+        '--repo',
+        repoPath,
+        '--skip-ci',
+      ],
+      { encoding: 'utf8' },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toMatch(/deprecated/);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'browser-e2e.sh'))).toBe(true);
   });
 });

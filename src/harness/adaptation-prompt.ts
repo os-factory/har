@@ -20,7 +20,7 @@ const PROFILE_HINTS: Record<HarnessProfile, string> = {
   cli:
     'CLI/library profile (typical SWE-bench) — no PM2. Optional Docker Compose via HARNESS_INFRA_SERVICES. Git worktree by default. Launch provisions toolchain declaratively (HARNESS_ECOSYSTEM auto-detects common ecosystems); verify must use resolved tool paths from .env.agent.<id>, never hardcoded interpreter or package-manager paths.',
   ios:
-    'iOS mobile app profile — xcodebuild + iOS Simulator in an isolated git worktree. Set HARNESS_XCODE_SCHEME, workspace/project, HARNESS_SIMULATOR_NAME, HARNESS_BUNDLE_ID. Launch writes XCODEBUILD_BIN to .env.agent.<id>; verify uses it. Install RocketSim stage (har env add-stage rocketsim) for user-flow validation.',
+    'iOS mobile app profile — xcodebuild + iOS Simulator in an isolated git worktree. Set HARNESS_XCODE_SCHEME, workspace/project, HARNESS_SIMULATOR_NAME, HARNESS_BUNDLE_ID. Launch writes XCODEBUILD_BIN to .env.agent.<id>; verify uses it. Install RocketSim plugin (har env add-plugin rocketsim) for user-flow validation.',
 };
 
 function loadTemplate(name: string): string {

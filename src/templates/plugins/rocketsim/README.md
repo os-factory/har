@@ -1,9 +1,9 @@
-# RocketSim Stage Template
+# RocketSim plugin
 
 Add reusable RocketSim user-flow validation to your iOS harness.
 
 ```bash
-har env add-stage rocketsim
+har env add-plugin rocketsim
 ```
 
 ## What this installs
@@ -42,7 +42,7 @@ Full verify (`verify --full`) runs all flows after lint.
 
 ```bash
 # 1. Install the stage
-har env add-stage rocketsim
+har env add-plugin rocketsim
 
 # 2. Check RocketSim health
 rocketsim doctor

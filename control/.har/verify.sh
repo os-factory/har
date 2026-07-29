@@ -143,8 +143,13 @@ run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_P
 if [ -n "$FULL" ]; then
   run_step "lint" "npm run lint" || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
-  run_step "browser-e2e" "run_browser_e2e_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
-  run_step "docker-build" "run_docker_build_if_present \"$SCRIPT_DIR\" \"$AGENT_ID\"" || true
+  # Registered verification stages from .har/stages.json (see .har/STAGES.md).
+  # Every stage listed in verificationStages with a registered script/command
+  # runs here -- plugins and custom stages alike.
+  while IFS=$'\t' read -r STAGE_ID STAGE_CMD; do
+    [ -n "$STAGE_ID" ] || continue
+    run_step "$STAGE_ID" "$STAGE_CMD" || true
+  done < <(list_registered_verification_stage_commands "$SCRIPT_DIR" "$AGENT_ID")
 fi
 
 # ── Output results ────────────────────────────────────────────────────────────

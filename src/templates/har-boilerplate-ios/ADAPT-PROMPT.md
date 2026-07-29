@@ -30,12 +30,12 @@ Run `./.har/launch.sh 1`, then `./.har/verify.sh 1`.
 Common adaptations:
 - If the project uses a custom test plan, add `-testPlan MyTests` to the `xcodebuild test` invocation.
 - If SwiftLint is not used, remove or comment out the `lint` step.
-- If there are UI tests that require a running app, move them to a RocketSim flow (`har env add-stage rocketsim`) rather than xcodebuild tests.
+- If there are UI tests that require a running app, move them to a RocketSim flow (`har env add-plugin rocketsim`) rather than xcodebuild tests.
 
-## 4 — Add the RocketSim stage template (recommended)
+## 4 — Add the RocketSim plugin (recommended)
 
 ```bash
-har env add-stage rocketsim
+har env add-plugin rocketsim
 ```
 
 Then adapt `flows/example-smoke.sh` to navigate to your app's main screen and verify it loads.

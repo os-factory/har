@@ -1,11 +1,13 @@
 # HAR Stages — authoring guide
 
 Stages are the harness's single vocabulary for runnable checks and lifecycle
-actions. Everything — shipped templates (`playwright`, `rocketsim`), your
+actions. Everything — shipped plugins (`playwright`, `rocketsim`), your
 project's test/lint commands, bespoke validation scripts — registers in
 `.har/stages.json` with the same schema, and agents interact with stages only
 through that registry (CLI `har env verify`, MCP `har_run_stage` /
 `har_run_verification`), never through stack-specific tooling.
+
+Philosophy: *plugins install stages; agents only talk to the stage registry.*
 
 ## The registry: `.har/stages.json`
 
@@ -83,9 +85,9 @@ The registry also holds the optional `commitGate` config (installed via
 "worktrees" | "all" } }` controls whether unverified change batches may be
 committed.
 
-## Shipped stage templates
+## Shipped plugins
 
-`har env add-stage --list` shows available templates; `har env add-stage
-playwright` (web) or `har env add-stage rocketsim` (iOS) installs one. A
-template is just packaging: it copies files, merges `package.json` fragments,
-and registers stages through the exact same registry as `--custom`.
+`har env add-plugin --list` shows available plugins; `har env add-plugin
+playwright` (web) or `har env add-plugin rocketsim` (iOS) installs one. A
+plugin is just packaging: it copies files, merges `package.json` fragments,
+and registers stages through the exact same registry as `add-stage --custom`.

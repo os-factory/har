@@ -157,12 +157,12 @@ The core idea is generic: a stage has an id, a command, a status, a duration, lo
 <details>
 <summary><strong>Q: Is Playwright a core HAR concept?</strong></summary>
 
-**A:** No. Playwright is an optional stage template for browser workflows — HAR does not expose a hardcoded `run_playwright` MCP tool.
+**A:** No. Playwright is an optional plugin for browser workflows — HAR does not expose a hardcoded `run_playwright` MCP tool.
 
 Add it with:
 
 ```bash
-har env add-stage playwright
+har env add-plugin playwright
 ```
 
 This registers a `browser-e2e` stage (`kind: test`) and scaffolds `@playwright/test` specs for frontend, API, and accessibility checks. Run it after launch:
@@ -180,7 +180,7 @@ A Playwright workflow is just a `browser-e2e` stage that produces traces, screen
 <details>
 <summary><strong>Q: Are migrations, accessibility checks, and load tests built in?</strong></summary>
 
-**A:** They should be optional stage templates, not mandatory product assumptions.
+**A:** They should be optional plugins, not mandatory product assumptions.
 
 Teams can add stages such as `migration-check`, `accessibility`, or `load-smoke` when those workflows matter. HAR runs them through the same generic stage/result contract as any other project operation.
 

@@ -88,7 +88,7 @@ export function addCustomStage(
     }
     const skeletonPath = path.join(
       resolveTemplatesDir(),
-      'stage-templates',
+      'plugins',
       'custom-stage-skeleton.sh',
     );
     const skeleton = fs
