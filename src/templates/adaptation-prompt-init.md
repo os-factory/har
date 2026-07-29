@@ -74,10 +74,16 @@ not the repo's final contract. Replace conventions that do not match this projec
 | Mode | Command | Intent |
 |------|---------|--------|
 | Quick (default) | `har env verify 1` | Smoke — compile / import / build / health only |
-| Full | `har env verify 1 --full` | Stricter — unit tests, lint, readiness, optional browser-e2e |
+| Full | `har env verify 1 --full` | Functional proof — registered `verificationStages` that show the work actually works |
 
 - **Quick** must stay fast and minimal (syntax, compile, import smoke) — not the full test suite.
-- **Full** holds unit tests, lint, and heavier checks; optional Playwright runs on `--full` when installed.
+- **Full** is how agents prove changes are **functional**, not merely compiling. Register stages in `.har/stages.json` `verificationStages` (see `.har/STAGES.md`). Prefer a small **behavior** check over dumping the entire CI suite: a CLI dry-run, one API/workflow smoke, import+exercise of the changed module, a focused regression script, health+auth path, etc. Full-suite unit tests are fine when they are already the project's real check — they are not the goal by themselves.
+- During adaptation, add at least one verification stage that a coding agent can use as definition of done for product changes. Example:
+
+  ```bash
+  har env add-stage feature-smoke --custom --kind test --command "<project-appropriate functional check>" --verification
+  ```
+
 - Reuse real commands from `package.json`, `Makefile`, CI, `pyproject.toml`, etc.
 - Remove stock npm/pytest/go/cargo/maven/gradle examples that do not apply.
 - Replace all TODO placeholders in both tiers.
@@ -182,6 +188,7 @@ If **no `AGENT.md` exists**, create one at the repo root using this structure:
 - Shell fallback: `./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh` (when CLI is not installed)
 - Rules (no hardcoded ports, use `./.har/agent-cli.sh`, do not touch other agents' resources)
 - Project-specific notes (stack, credentials, definition of done)
+- **Definition of done:** quick verify is smoke only; finishing a change requires `har env verify <id> --full` (registered functional `verificationStages`). If no stage proves the change works, add one with `har env add-stage … --custom --verification` before stopping — do not declare done on compile/import alone.
 
 If **`AGENT.md` already exists**, add or update a concise **HAR / agent environment** section — do not replace unrelated content.
 

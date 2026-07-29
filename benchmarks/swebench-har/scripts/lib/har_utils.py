@@ -22,10 +22,27 @@ def har_init_scaffold(repo_path: Path, profile: str, env: dict[str, str] | None 
     launch = repo_path / ".har" / "launch.sh"
     if launch.exists():
         return
-    run_command(
-        [*har_cmd("init", "--profile", profile, env=env)],
+    # Non-interactive: skip cursor-rule / agent-skills prompts (tmux/SSH is a TTY).
+    # Also tolerate exit 1 from a known yargs --no-agents quirk if scaffold landed.
+    result = run_command(
+        [
+            *har_cmd(
+                "init",
+                "--profile",
+                profile,
+                "--no-cursor-rule",
+                "--no-agents",
+                env=env,
+            )
+        ],
         cwd=repo_path,
-        check=True,
+        check=False,
+    )
+    if launch.exists():
+        return
+    raise RuntimeError(
+        f"har env init failed ({result.returncode}): {' '.join(result.args) if hasattr(result, 'args') else 'init'}\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
 
 

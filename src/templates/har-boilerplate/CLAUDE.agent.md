@@ -37,15 +37,25 @@ is alive; it does not automatically mean an agent can use the app.
 
 ## Definition of done
 
-- [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+Quick verify is **smoke only** (compile/import/build/health). Do **not** treat it as proof the change works.
+
+- [ ] **Functional proof:** `har env verify ${AGENT_ID} --full` (or MCP `har_run_verification` with `full: true`) returns `"status": "pass"` — runs `stages.json` `verificationStages`
+- [ ] Those stages exercise real behavior for this change (API/UI/workflow/focused check) — not health/compile alone
+- [ ] If no registered stage can confirm the change is functional, **add one** before stopping:
+
+  ```bash
+  har env add-stage <id> --custom --kind test --command "<functional check>" --verification
+  # or: har env add-stage <id> --custom --script --verification
+  ```
+
+  See `.har/STAGES.md`. Then re-run `har env verify ${AGENT_ID} --full`.
 - [ ] The slot is agent-usable for this repo's documented smoke workflow, not only health-check green
-- [ ] Full verify runs every registered stage in `stages.json` `verificationStages` (Playwright, custom checks, …) — when `stages/browser-e2e.sh` exists, adapt specs under `tests/` for UI changes
-- [ ] New behavior has automated test coverage (unit and/or browser as appropriate)
+- [ ] When `stages/browser-e2e.sh` exists, adapt specs under `tests/` for UI changes
 - [ ] Changes committed **in the session worktree** with a clear message
 - [ ] The user got the preview URLs to test the app themselves
 - [ ] Finish with `har env complete ${AGENT_ID}` (or MCP `har_complete_environment`) — records the validation and tears down while **keeping the session branch** for the user to push / open a PR
 
-Quick loop during development: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har/verify.sh ${AGENT_ID}` (smoke + health only; `--full` adds the registered verification stages).
+Quick loop while iterating: `har env verify ${AGENT_ID}` (smoke). Before you stop: `--full`.
 
 Stages are the harness's single vocabulary for checks: templates and custom stages compile to generic kinds in `.har/stages.json`, and you interact with them only through the registry (`har_run_stage`, `verify`), never stack-specific tooling. Authoring guide: `.har/STAGES.md`.
 

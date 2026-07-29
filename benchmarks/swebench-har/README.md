@@ -170,6 +170,20 @@ If the gate fails after a cache hit, the cache is **invalidated** and repo boots
 uv run scripts/test_swebench_har.py
 ```
 
+## Running on EC2 (`sshbench`)
+
+Full re-run instructions for the shared benchmark host (connect, sync code, bootstrap, tmux, artifacts, pitfalls): see **[EC2.md](./EC2.md)**.
+
+Quick start:
+
+```bash
+alias sshbench="ssh -i ~/Documents/kerno/Antoine.pem ec2-user@ec2-3-250-195-78.eu-west-1.compute.amazonaws.com"
+sshbench
+cd ~/har && bash benchmarks/swebench-har/scripts/ec2_bootstrap.sh
+tmux new -s swebench
+cd ~/har/benchmarks/swebench-har && bash scripts/ec2_run.sh
+```
+
 ## Caveats
 
 - One random instance is a feasibility smoke test, not a statistically meaningful benchmark.

@@ -26,14 +26,16 @@ seeded data, or a simulator flow, document it here and wire the smoke into
 
 ## Definition of done
 
-- [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+Quick verify is **smoke only**. Do **not** treat it as proof the change works.
+
+- [ ] **Functional proof:** `har env verify ${AGENT_ID} --full` returns `"status": "pass"` (runs `verificationStages` — e.g. RocketSim flows when installed)
+- [ ] If no stage confirms the change is functional, add one (`har env add-stage … --custom --verification` or `rocketsim`) then re-run `--full`
 - [ ] The slot is agent-usable for this repo's documented smoke workflow when runtime services are involved
 - [ ] When `stages/rocketsim-flows.sh` exists, full verify includes user-flow validation — add or update flow scripts in `flows/` for UI changes
-- [ ] New behavior has automated test coverage (unit tests via XCTest)
 - [ ] Changes committed **in the session worktree** with a clear message
 - [ ] Finish with `har env complete ${AGENT_ID}` (or MCP `har_complete_environment`) — records the validation and tears down while **keeping the session branch** for the user to push / open a PR
 
-Quick loop: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har/verify.sh ${AGENT_ID}`
+Quick loop while iterating: `har env verify ${AGENT_ID}` (smoke). Before you stop: `--full`.
 
 Stages are the harness's single vocabulary for checks: templates and custom stages compile to generic kinds in `.har/stages.json`, and you interact with them only through the registry (`har_run_stage`, `verify`), never stack-specific tooling. Authoring guide: `.har/STAGES.md`.
 

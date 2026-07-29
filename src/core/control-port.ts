@@ -49,6 +49,7 @@ export function listDockerContainers(): DockerRow[] {
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 3000,
     });
+    if (typeof raw !== 'string') return [];
     return raw
       .split('\n')
       .map((line) => line.trim())
