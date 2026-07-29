@@ -1,3 +1,11 @@
+# [0.30.0](https://github.com/os-factory/har/compare/v0.29.0...v0.30.0) (2026-07-29)
+
+
+### Features
+
+* **control:** richer session events table and model-aware usage ([#95](https://github.com/os-factory/har/issues/95)) ([09a809e](https://github.com/os-factory/har/commit/09a809eb8ece906907bfe7f84e3ed6ef95995852))
+* **telemetry:** replace Python hooks with TypeScript package ([#92](https://github.com/os-factory/har/issues/92)) ([c1a403e](https://github.com/os-factory/har/commit/c1a403ed6fd0f5b5a2571d95bfb6e5b56c189e8f))
+
 # [0.29.0](https://github.com/os-factory/har/compare/v0.28.0...v0.29.0) (2026-07-29)
 
 
