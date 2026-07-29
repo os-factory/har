@@ -91,3 +91,12 @@ export function listRegisteredRepos(): string[] {
 export function getControlRegistryPath(): string {
   return getRegistryPath();
 }
+
+/** Clear every path from the local sync registry. Returns how many entries were removed. */
+export function clearRegisteredRepos(): number {
+  const registry = readRegistry();
+  const count = registry.repos.length;
+  if (count === 0) return 0;
+  writeRegistry({ repos: [] });
+  return count;
+}

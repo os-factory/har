@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  clearRegisteredRepos,
   getControlRegistryPath,
   listRegisteredRepos,
   recordRepoForControlSync,
@@ -69,4 +70,12 @@ describe('control registry', () => {
     expect(listRegisteredRepos()).toEqual([]);
     expect(removeRegisteredRepo(FIXTURE)).toBe(false);
   });
+
+  it('clears every registered repo', () => {
+    recordRepoForControlSync(FIXTURE);
+    expect(clearRegisteredRepos()).toBe(1);
+    expect(listRegisteredRepos()).toEqual([]);
+    expect(clearRegisteredRepos()).toBe(0);
+  });
 });
+
