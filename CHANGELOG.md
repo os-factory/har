@@ -1,3 +1,10 @@
+# [0.27.0](https://github.com/os-factory/har/compare/v0.26.0...v0.27.0) (2026-07-29)
+
+
+### Features
+
+* **control:** har control sync incremental portal push via a per-(repo, portal) watermark ([#91](https://github.com/os-factory/har/issues/91)) ([a8e01a1](https://github.com/os-factory/har/commit/a8e01a1b0611365061cb11a3f261cfae252be097))
+
 # [0.26.0](https://github.com/os-factory/har/compare/v0.25.0...v0.26.0) (2026-07-29)
 
 
