@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { type ColumnDef } from '@tanstack/react-table';
 
 import { Badge } from '@/components/ui/badge';
+import { formatAgentToolLabel } from '@/lib/agent-tool';
 
 export interface SlotRow {
   slotId: number;
@@ -158,7 +159,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
         <div className="flex flex-wrap gap-1">
           {tools.map((tool) => (
             <Badge key={tool} variant="outline">
-              {tool === 'claude_code' ? 'Claude' : tool === 'codex' ? 'Codex' : tool === 'cursor' ? 'Cursor' : tool}
+              {formatAgentToolLabel(tool)}
             </Badge>
           ))}
         </div>

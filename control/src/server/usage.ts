@@ -37,6 +37,49 @@ function mergeSources(
   return [...new Set([...base, ...incoming])];
 }
 
+function asBreakdownRecord(
+  value: unknown,
+): Record<string, Record<string, number>> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const out: Record<string, Record<string, number>> = {};
+  for (const [model, totals] of Object.entries(value as Record<string, unknown>)) {
+    if (!model || !totals || typeof totals !== 'object' || Array.isArray(totals)) {
+      out[model] = {};
+      continue;
+    }
+    const numeric: Record<string, number> = {};
+    for (const [key, raw] of Object.entries(totals as Record<string, unknown>)) {
+      const n = Number(raw);
+      if (Number.isFinite(n)) numeric[key] = n;
+    }
+    out[model] = numeric;
+  }
+  return out;
+}
+
+/** Max-merge per-model counters; always keeps every model id seen. */
+function mergeModelBreakdown(
+  existing: Prisma.JsonValue | null | undefined,
+  incoming: unknown,
+): Prisma.InputJsonValue | undefined {
+  const left = asBreakdownRecord(existing);
+  const right = asBreakdownRecord(incoming);
+  if (!left && !right) return undefined;
+  const models = new Set([...Object.keys(left ?? {}), ...Object.keys(right ?? {})]);
+  const out: Record<string, Record<string, number>> = {};
+  for (const model of models) {
+    const a = left?.[model] ?? {};
+    const b = right?.[model] ?? {};
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    const merged: Record<string, number> = {};
+    for (const key of keys) {
+      merged[key] = Math.max(Number(a[key] ?? 0), Number(b[key] ?? 0));
+    }
+    out[model] = merged;
+  }
+  return out as Prisma.InputJsonValue;
+}
+
 export type UsageUpsertInput = AgentSessionUsage;
 
 /** Max-merge upsert so OTEL and harvest never double-count cumulative counters. */
@@ -88,10 +131,7 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     tokensCacheCreation,
     tokensTotal,
     costUsd,
-    modelBreakdown:
-      (input.modelBreakdown as Prisma.InputJsonValue | undefined) ??
-      (existing?.modelBreakdown as Prisma.InputJsonValue | undefined) ??
-      undefined,
+    modelBreakdown: mergeModelBreakdown(existing?.modelBreakdown, input.modelBreakdown),
     sources: mergeSources(existing?.sources, input.sources ?? []),
     firstSeenAt,
     lastSeenAt,

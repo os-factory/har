@@ -65,7 +65,7 @@ export async function listSessionEventsForSlot(repositoryId: string, agentId: nu
   return prisma.agentSessionEvent.findMany({
     where: { repositoryId, agentId },
     orderBy: { timestamp: 'desc' },
-    take: 100,
+    take: 500,
   });
 }
 

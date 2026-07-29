@@ -19,7 +19,7 @@ test.describe('Repository validation stages', () => {
     await expect(validationTab).toBeVisible();
     await validationTab.click();
 
-    await expect(page.getByText('Validation stages')).toBeVisible();
+    await expect(page.getByText('Validation stages', { exact: true })).toBeVisible();
 
     const panel = page.getByRole('tabpanel');
     const table = panel.getByRole('table');

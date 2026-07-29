@@ -2,8 +2,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { SessionEventsTable } from '@/components/session-events-table';
 import { SessionTimeline } from '@/components/session-timeline';
 import { ValidationPipeline } from '@/components/validation-pipeline';
+import { formatAgentToolLabel } from '@/lib/agent-tool';
+import { eventModel } from '@/lib/session-event-detail';
+import { formatModelId, modelsFromBreakdown } from '@/lib/usage-models';
 import { getRepository } from '@/server/repositories';
 import { listSessionEventsForSlot } from '@/server/session-events';
 import { listSessionUsageForSlot } from '@/server/usage';
@@ -43,6 +47,22 @@ export default async function SlotDetailPage({
       take: 20,
     }),
   ]);
+
+  const modelsByUsageKey = new Map<string, string[]>();
+  for (const ev of events) {
+    const model = eventModel(ev.attributes);
+    if (!model) continue;
+    const key = `${ev.sessionKey}::${ev.agentTool}`;
+    const list = modelsByUsageKey.get(key) ?? [];
+    if (!list.includes(model)) list.push(model);
+    modelsByUsageKey.set(key, list);
+  }
+
+  const resolveModels = (sessionKey: string, agentTool: string, breakdown: unknown): string[] => {
+    const stored = modelsFromBreakdown(breakdown);
+    if (stored.length > 0) return stored;
+    return (modelsByUsageKey.get(`${sessionKey}::${agentTool}`) ?? []).sort();
+  };
 
   const totals = usageRows.reduce(
     (acc, row) => {
@@ -163,9 +183,10 @@ export default async function SlotDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Session timeline</CardTitle>
+          <CardTitle>Session activity</CardTitle>
           <CardDescription>
-            LLM usage, verify runs, and OTEL log events for this slot
+            LLM usage and verify runs — model ids come from usage.modelBreakdown (OTEL
+            gen_ai.request.model), with event fallback for older rows.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -178,6 +199,7 @@ export default async function SlotDetailPage({
               tokensTotal: Number(row.tokensTotal),
               costUsd: row.costUsd == null ? null : Number(row.costUsd),
               sources: row.sources,
+              models: resolveModels(row.sessionKey, row.agentTool, row.modelBreakdown),
               at: row.lastSeenAt,
             }))}
             verifyRuns={verifyRuns.map((run) => ({
@@ -187,15 +209,31 @@ export default async function SlotDetailPage({
               status: run.status,
               at: run.startedAt,
             }))}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Session events</CardTitle>
+          <CardDescription>
+            Filter by Activity / Tools / Files / Prompts / Errors / Logs. Activity hides raw log
+            noise and keeps the spans that explain what the agent did.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SessionEventsTable
             events={events.map((ev) => ({
               id: ev.id,
-              kind: 'event' as const,
               eventName: ev.eventName,
               sessionKey: ev.sessionKey,
               agentTool: ev.agentTool,
               promptText: ev.promptText,
               responseText: ev.responseText,
-              at: ev.timestamp,
+              attributes: ev.attributes,
+              rawTruncated: ev.rawTruncated,
+              source: ev.source,
+              timestamp: ev.timestamp,
             }))}
           />
         </CardContent>
@@ -205,7 +243,8 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Usage by agent</CardTitle>
           <CardDescription>
-            Max-merged from OTEL ingest and sync harvest — sources shown per row
+            Max-merged from OTEL ingest and sync harvest — model ids stored on modelBreakdown for
+            pricing
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -221,6 +260,7 @@ export default async function SlotDetailPage({
                   <tr className="border-b text-muted-foreground">
                     <th className="py-2 pr-4 font-medium">Session</th>
                     <th className="py-2 pr-4 font-medium">Agent</th>
+                    <th className="py-2 pr-4 font-medium">Models</th>
                     <th className="py-2 pr-4 font-medium">Tokens</th>
                     <th className="py-2 pr-4 font-medium">Cost</th>
                     <th className="py-2 pr-4 font-medium">Sources</th>
@@ -228,42 +268,55 @@ export default async function SlotDetailPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {usageRows.map((row) => (
-                    <tr key={row.id} className="border-b border-border/60">
-                      <td className="max-w-xs truncate py-2 pr-4 font-mono text-xs" title={row.sessionKey}>
-                        {row.sessionKey}
-                      </td>
-                      <td className="py-2 pr-4">
-                        <Badge variant="outline">
-                          {row.agentTool === 'claude_code'
-                            ? 'Claude'
-                            : row.agentTool === 'codex'
-                              ? 'Codex'
-                              : row.agentTool === 'cursor'
-                                ? 'Cursor'
-                                : row.agentTool}
-                        </Badge>
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums">
-                        {formatTokens(Number(row.tokensTotal))}
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums">
-                        {row.costUsd == null ? '—' : `$${Number(row.costUsd).toFixed(4)}`}
-                      </td>
-                      <td className="py-2 pr-4">
-                        <div className="flex flex-wrap gap-1">
-                          {row.sources.map((s) => (
-                            <Badge key={s} variant="secondary">
-                              {s}
-                            </Badge>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-2 text-muted-foreground" suppressHydrationWarning>
-                        {row.lastSeenAt.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
+                  {usageRows.map((row) => {
+                    const models = resolveModels(row.sessionKey, row.agentTool, row.modelBreakdown);
+                    return (
+                      <tr key={row.id} className="border-b border-border/60">
+                        <td className="max-w-xs truncate py-2 pr-4 font-mono text-xs" title={row.sessionKey}>
+                          {row.sessionKey}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <Badge variant="outline">{formatAgentToolLabel(row.agentTool)}</Badge>
+                        </td>
+                        <td className="py-2 pr-4">
+                          {models.length === 0 ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <div className="flex max-w-xs flex-wrap gap-1">
+                              {models.map((model) => (
+                                <Badge
+                                  key={model}
+                                  variant="secondary"
+                                  className="font-mono text-[10px]"
+                                  title={model}
+                                >
+                                  {formatModelId(model)}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4 tabular-nums">
+                          {formatTokens(Number(row.tokensTotal))}
+                        </td>
+                        <td className="py-2 pr-4 tabular-nums">
+                          {row.costUsd == null ? '—' : `$${Number(row.costUsd).toFixed(4)}`}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <div className="flex flex-wrap gap-1">
+                            {row.sources.map((s) => (
+                              <Badge key={s} variant="secondary">
+                                {s}
+                              </Badge>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-2 text-muted-foreground" suppressHydrationWarning>
+                          {row.lastSeenAt.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

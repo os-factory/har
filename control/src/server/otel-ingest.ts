@@ -337,17 +337,57 @@ async function resolveSessionContext(
 
 const PURPOSE_MAX_CHARS = 160;
 
+/** Unwrap GenAI messages JSON (`[{role, parts:[{content}]}]`) into plain text. */
+function textFromGenAiMessages(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return trimmed;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    const messages = Array.isArray(parsed) ? parsed : [parsed];
+    const parts: string[] = [];
+    for (const msg of messages) {
+      if (!msg || typeof msg !== 'object') continue;
+      const record = msg as { content?: unknown; parts?: unknown[]; text?: unknown };
+      if (typeof record.content === 'string' && record.content.trim()) {
+        parts.push(record.content.trim());
+        continue;
+      }
+      if (typeof record.text === 'string' && record.text.trim()) {
+        parts.push(record.text.trim());
+        continue;
+      }
+      if (Array.isArray(record.parts)) {
+        for (const part of record.parts) {
+          if (!part || typeof part !== 'object') continue;
+          const content =
+            (part as { content?: unknown; text?: unknown }).content ??
+            (part as { text?: unknown }).text;
+          if (typeof content === 'string' && content.trim()) parts.push(content.trim());
+        }
+      }
+    }
+    return parts.length > 0 ? parts.join('\n') : null;
+  } catch {
+    return trimmed;
+  }
+}
+
 function extractPromptText(attributes: AttrMap, eventName?: string, bodyText?: string | null): string | null {
   const keys = [
+    'gen_ai.client.prompt.text',
     'gen_ai.prompt.0.content',
     'gen_ai.prompt',
     'user.prompt',
     'prompt',
-    'gen_ai.input.messages',
   ];
   for (const key of keys) {
     const value = attributes[key];
     if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  const inputMessages = attributes['gen_ai.input.messages'];
+  if (typeof inputMessages === 'string' && inputMessages.trim()) {
+    const unwrapped = textFromGenAiMessages(inputMessages);
+    if (unwrapped) return unwrapped;
   }
   const hookEvent = String(attributes['gen_ai.client.hook.event'] ?? eventName ?? '').toLowerCase();
   if (
@@ -356,6 +396,32 @@ function extractPromptText(attributes: AttrMap, eventName?: string, bodyText?: s
       hookEvent.includes('user_prompt')) &&
     bodyText?.trim()
   ) {
+    return bodyText.trim();
+  }
+  return null;
+}
+
+function extractResponseText(
+  attributes: AttrMap,
+  eventName?: string,
+  bodyText?: string | null,
+): string | null {
+  const keys = [
+    'gen_ai.client.response.text',
+    'assistant.response',
+    'gen_ai.completion',
+    'response',
+  ];
+  for (const key of keys) {
+    const value = attributes[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  const outputMessages = attributes['gen_ai.output.messages'];
+  if (typeof outputMessages === 'string' && outputMessages.trim()) {
+    const unwrapped = textFromGenAiMessages(outputMessages);
+    if (unwrapped) return unwrapped;
+  }
+  if (String(eventName ?? '').toLowerCase().includes('assistant') && bodyText?.trim()) {
     return bodyText.trim();
   }
   return null;
@@ -382,6 +448,11 @@ async function maybeSetDerivedPurpose(
   });
 }
 
+function shouldPersistUsage(usage: AgentSessionUsage): boolean {
+  if (usage.tokensTotal > 0) return true;
+  return Boolean(usage.modelBreakdown && Object.keys(usage.modelBreakdown).length > 0);
+}
+
 function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap): void {
   const input = Number(
     attributes['gen_ai.usage.input_tokens'] ?? attributes['gen_ai.usage.prompt_tokens'] ?? 0,
@@ -391,10 +462,42 @@ function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap)
   );
   const cacheRead = Number(attributes['gen_ai.usage.cache_read.input_tokens'] ?? 0);
   const cacheCreate = Number(attributes['gen_ai.usage.cache_creation.input_tokens'] ?? 0);
-  if (Number.isFinite(input) && input > 0) usage.tokensInput += input;
-  if (Number.isFinite(output) && output > 0) usage.tokensOutput += output;
-  if (Number.isFinite(cacheRead) && cacheRead > 0) usage.tokensCacheRead += cacheRead;
-  if (Number.isFinite(cacheCreate) && cacheCreate > 0) usage.tokensCacheCreation += cacheCreate;
+  const safeInput = Number.isFinite(input) && input > 0 ? input : 0;
+  const safeOutput = Number.isFinite(output) && output > 0 ? output : 0;
+  const safeCacheRead = Number.isFinite(cacheRead) && cacheRead > 0 ? cacheRead : 0;
+  const safeCacheCreate = Number.isFinite(cacheCreate) && cacheCreate > 0 ? cacheCreate : 0;
+  if (safeInput > 0) usage.tokensInput += safeInput;
+  if (safeOutput > 0) usage.tokensOutput += safeOutput;
+  if (safeCacheRead > 0) usage.tokensCacheRead += safeCacheRead;
+  if (safeCacheCreate > 0) usage.tokensCacheCreation += safeCacheCreate;
+
+  // Associate usage with model id for later pricing (even when this span has no token attrs).
+  const model = String(
+    attributes['gen_ai.request.model'] ?? attributes['gen_ai.response.model'] ?? '',
+  ).trim();
+  if (!model) return;
+  const breakdown = (usage.modelBreakdown ??= {}) as Record<
+    string,
+    {
+      tokensInput: number;
+      tokensOutput: number;
+      tokensCacheRead: number;
+      tokensCacheCreation: number;
+      tokensTotal: number;
+    }
+  >;
+  const totals = (breakdown[model] ??= {
+    tokensInput: 0,
+    tokensOutput: 0,
+    tokensCacheRead: 0,
+    tokensCacheCreation: 0,
+    tokensTotal: 0,
+  });
+  totals.tokensInput += safeInput;
+  totals.tokensOutput += safeOutput;
+  totals.tokensCacheRead += safeCacheRead;
+  totals.tokensCacheCreation += safeCacheCreate;
+  totals.tokensTotal += safeInput + safeOutput + safeCacheRead + safeCacheCreate;
 }
 
 function emptyUsage(
@@ -689,27 +792,12 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
     }
     const { context } = resolved;
 
-    const promptText =
-      extractPromptText(record.attributes, record.eventName, record.bodyText) ??
-      (typeof record.attributes.prompt === 'string'
-        ? record.attributes.prompt
-        : typeof record.attributes['user.prompt'] === 'string'
-          ? String(record.attributes['user.prompt'])
-          : typeof record.attributes['gen_ai.prompt'] === 'string'
-            ? String(record.attributes['gen_ai.prompt'])
-            : record.eventName.includes('user_prompt')
-              ? record.bodyText
-              : null);
-    const responseText =
-      typeof record.attributes.response === 'string'
-        ? record.attributes.response
-        : typeof record.attributes['assistant.response'] === 'string'
-          ? String(record.attributes['assistant.response'])
-          : typeof record.attributes['gen_ai.completion'] === 'string'
-            ? String(record.attributes['gen_ai.completion'])
-            : record.eventName.includes('assistant')
-              ? record.bodyText
-              : null;
+    const promptText = extractPromptText(record.attributes, record.eventName, record.bodyText);
+    const responseText = extractResponseText(
+      record.attributes,
+      record.eventName,
+      record.bodyText,
+    );
 
     await upsertSessionEvent(context.repositoryId, {
       sessionKey: context.sessionKey,
@@ -742,7 +830,7 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
     applyHooksUsageFromAttrs(usage, record.attributes);
     usage.tokensTotal =
       usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
-    if (usage.tokensTotal > 0) {
+    if (shouldPersistUsage(usage)) {
       await upsertSessionUsage(context.repositoryId, usage);
     }
 
@@ -888,6 +976,7 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
     // Also fold key spans into the event timeline for UI without a separate spans section.
     const { upsertSessionEvent } = await import('@/server/session-events');
     const promptText = extractPromptText(span.attributes, span.name);
+    const responseText = extractResponseText(span.attributes, span.name);
     await upsertSessionEvent(context.repositoryId, {
       sessionKey: context.sessionKey,
       agentId: context.agentId,
@@ -903,6 +992,7 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
         spanId: span.spanId,
       } as Prisma.InputJsonValue,
       promptText,
+      responseText,
       source: 'otel',
       workUnitId: context.workUnitId,
       attemptId: context.attemptId,
@@ -923,7 +1013,7 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
     applyHooksUsageFromAttrs(usage, span.attributes);
     usage.tokensTotal =
       usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
-    if (usage.tokensTotal > 0) {
+    if (shouldPersistUsage(usage)) {
       await upsertSessionUsage(context.repositoryId, usage);
     }
 
