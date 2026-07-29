@@ -6,6 +6,8 @@ export interface UsageModelTotals {
   tokensCacheRead?: number;
   tokensCacheCreation?: number;
   tokensTotal?: number;
+  /** USD cost for this model (agent-reported or genai-prices estimate). */
+  costUsd?: number;
 }
 
 export function modelsFromBreakdown(breakdown: unknown): string[] {
@@ -32,4 +34,9 @@ export function modelTotalsFromBreakdown(
 /** Format model id for badges (strip common cursor- prefix noise). */
 export function formatModelId(model: string): string {
   return model.replace(/^cursor-/, '');
+}
+
+export function formatCostUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return `$${value.toFixed(4)}`;
 }

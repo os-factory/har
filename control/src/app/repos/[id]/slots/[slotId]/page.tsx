@@ -7,7 +7,7 @@ import { SessionTimeline } from '@/components/session-timeline';
 import { ValidationPipeline } from '@/components/validation-pipeline';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { eventModel } from '@/lib/session-event-detail';
-import { formatModelId, modelsFromBreakdown } from '@/lib/usage-models';
+import { formatModelId, formatCostUsd, modelTotalsFromBreakdown, modelsFromBreakdown, type UsageModelTotals } from '@/lib/usage-models';
 import { getRepository } from '@/server/repositories';
 import { listSessionEventsForSlot } from '@/server/session-events';
 import { listSessionUsageForSlot } from '@/server/usage';
@@ -150,7 +150,17 @@ export default async function SlotDetailPage({
             <p className="text-2xl font-bold tabular-nums">
               {totals.hasCost ? `$${totals.costUsd.toFixed(4)}` : '—'}
             </p>
-            <p className="text-xs text-muted-foreground">Claude reports USD; Codex may be token-only</p>
+            <p className="text-xs text-muted-foreground">
+              Agent-reported USD when available; otherwise estimated via{' '}
+              <a
+                href="https://github.com/pydantic/genai-prices"
+                className="underline underline-offset-2"
+                target="_blank"
+                rel="noreferrer"
+              >
+                genai-prices
+              </a>
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -243,8 +253,8 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Usage by agent</CardTitle>
           <CardDescription>
-            Max-merged from OTEL ingest and sync harvest — model ids stored on modelBreakdown for
-            pricing
+            Max-merged from OTEL ingest and sync harvest — per-model token totals and USD estimates
+            (genai-prices) live on modelBreakdown for the portal
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -269,6 +279,7 @@ export default async function SlotDetailPage({
                 </thead>
                 <tbody>
                   {usageRows.map((row) => {
+                    const modelRows = modelTotalsFromBreakdown(row.modelBreakdown);
                     const models = resolveModels(row.sessionKey, row.agentTool, row.modelBreakdown);
                     return (
                       <tr key={row.id} className="border-b border-border/60">
@@ -279,19 +290,31 @@ export default async function SlotDetailPage({
                           <Badge variant="outline">{formatAgentToolLabel(row.agentTool)}</Badge>
                         </td>
                         <td className="py-2 pr-4">
-                          {models.length === 0 ? (
+                          {modelRows.length === 0 && models.length === 0 ? (
                             <span className="text-muted-foreground">—</span>
                           ) : (
-                            <div className="flex max-w-xs flex-wrap gap-1">
-                              {models.map((model) => (
-                                <Badge
-                                  key={model}
-                                  variant="secondary"
-                                  className="font-mono text-[10px]"
-                                  title={model}
-                                >
-                                  {formatModelId(model)}
-                                </Badge>
+                            <div className="flex max-w-md flex-col gap-1">
+                              {(modelRows.length > 0
+                                ? modelRows
+                                : models.map((model) => ({
+                                    model,
+                                    totals: {} as UsageModelTotals,
+                                  }))
+                              ).map(({ model, totals }) => (
+                                <div key={model} className="flex flex-wrap items-center gap-1">
+                                  <Badge
+                                    variant="secondary"
+                                    className="font-mono text-[10px]"
+                                    title={model}
+                                  >
+                                    {formatModelId(model)}
+                                  </Badge>
+                                  {totals.costUsd != null ? (
+                                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                                      {formatCostUsd(totals.costUsd)}
+                                    </span>
+                                  ) : null}
+                                </div>
                               ))}
                             </div>
                           )}
@@ -300,7 +323,7 @@ export default async function SlotDetailPage({
                           {formatTokens(Number(row.tokensTotal))}
                         </td>
                         <td className="py-2 pr-4 tabular-nums">
-                          {row.costUsd == null ? '—' : `$${Number(row.costUsd).toFixed(4)}`}
+                          {formatCostUsd(row.costUsd == null ? null : Number(row.costUsd))}
                         </td>
                         <td className="py-2 pr-4">
                           <div className="flex flex-wrap gap-1">

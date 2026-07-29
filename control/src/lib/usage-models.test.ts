@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatModelId, modelsFromBreakdown, modelTotalsFromBreakdown } from './usage-models';
+import { formatCostUsd, formatModelId, modelsFromBreakdown, modelTotalsFromBreakdown } from './usage-models';
 
 describe('usage-models', () => {
   it('lists model ids from breakdown', () => {
@@ -19,8 +19,15 @@ describe('usage-models', () => {
   it('returns totals entries', () => {
     expect(
       modelTotalsFromBreakdown({
-        'grok-4.5': { tokensInput: 5, tokensOutput: 1, tokensTotal: 6 },
+        'grok-4.5': { tokensInput: 5, tokensOutput: 1, tokensTotal: 6, costUsd: 0.0042 },
       }),
-    ).toEqual([{ model: 'grok-4.5', totals: { tokensInput: 5, tokensOutput: 1, tokensTotal: 6 } }]);
+    ).toEqual([
+      { model: 'grok-4.5', totals: { tokensInput: 5, tokensOutput: 1, tokensTotal: 6, costUsd: 0.0042 } },
+    ]);
+  });
+
+  it('formats cost values', () => {
+    expect(formatCostUsd(null)).toBe('—');
+    expect(formatCostUsd(0.1234)).toBe('$0.1234');
   });
 });
