@@ -1,3 +1,10 @@
+# [0.31.0](https://github.com/os-factory/har/compare/v0.30.0...v0.31.0) (2026-07-29)
+
+
+### Features
+
+* **control:** estimate and persist LLM costs via genai-prices ([#96](https://github.com/os-factory/har/issues/96)) ([3d32181](https://github.com/os-factory/har/commit/3d3218103339a444afbfb0de86ee9741ae15158c))
+
 # [0.30.0](https://github.com/os-factory/har/compare/v0.29.0...v0.30.0) (2026-07-29)
 
 
