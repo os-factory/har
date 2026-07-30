@@ -1,3 +1,10 @@
+## [0.32.2](https://github.com/os-factory/har/compare/v0.32.1...v0.32.2) (2026-07-30)
+
+
+### Bug Fixes
+
+* **telemetry:** stop writing unknown _comment into otel-hook config ([#101](https://github.com/os-factory/har/issues/101)) ([0ebfd2d](https://github.com/os-factory/har/commit/0ebfd2de946366d22c40f82cf72ef35c5a1dcf89))
+
 ## [0.32.1](https://github.com/os-factory/har/compare/v0.32.0...v0.32.1) (2026-07-30)
 
 
