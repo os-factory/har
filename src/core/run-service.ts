@@ -6,7 +6,7 @@ import { createRun, finishRun, resolveAgentWorkDir } from './runs';
 import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
 import { checkLaunchGuard } from './slot-launch-guard';
 import { formatPreflightReport, inspectSlotReadiness } from './slot-preflight';
-import { recordValidation } from './validations';
+import { recordValidation, resolveValidationCheckoutDir } from './validations';
 import {
   bindValidationToAttempt,
   createWorkAttempt,
@@ -359,7 +359,12 @@ export class RunService {
     if (verification) {
       try {
         const harnessRoot = resolveHarnessRoot(options.repoPath);
-        const checkoutDir = resolveAgentWorkDir(harnessRoot, options.agentId) ?? harnessRoot;
+        const session = readSlotRegistry(harnessRoot, options.agentId);
+        const checkoutDir = resolveValidationCheckoutDir({
+          worktreePath: session?.worktreePath,
+          workDir: resolveAgentWorkDir(harnessRoot, options.agentId),
+          harnessRoot,
+        });
         const runId =
           typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
             ? (result.data as { runId?: string }).runId
@@ -372,7 +377,6 @@ export class RunService {
           runId,
           agentId: options.agentId,
         });
-        const session = readSlotRegistry(harnessRoot, options.agentId);
         if (session?.workUnitId && session.attemptId) {
           bindValidationToAttempt(harnessRoot, {
             workUnitId: session.workUnitId,

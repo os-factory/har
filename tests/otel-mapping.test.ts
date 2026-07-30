@@ -226,6 +226,17 @@ describe('hooks agent tool + usage mapping', () => {
     });
   });
 
+  it('does not treat model-only zero-token rows as persistable usage', () => {
+    const usage = applyHooksUsageFromAttrs({
+      'gen_ai.request.model': 'gpt-test',
+    });
+    const tokensTotal =
+      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
+    expect(tokensTotal).toBe(0);
+    // Mission Control only persists usage when tokensTotal > 0 or costUsd > 0.
+    expect(tokensTotal > 0).toBe(false);
+  });
+
   it('derives truncated purpose from first prompt content', () => {
     const prompt = extractPromptText({
       'gen_ai.client.hook.event': 'UserPromptSubmit',
