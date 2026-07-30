@@ -1,3 +1,10 @@
+## [0.32.1](https://github.com/os-factory/har/compare/v0.32.0...v0.32.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **harness:** point stage SCRIPT_DIR at .har/ for slot registry ([#100](https://github.com/os-factory/har/issues/100)) ([3cbe8ce](https://github.com/os-factory/har/commit/3cbe8ce88d57f21be3e4ac725f6aa3f032ea24f2))
+
 # [0.32.0](https://github.com/os-factory/har/compare/v0.31.1...v0.32.0) (2026-07-30)
 
 
