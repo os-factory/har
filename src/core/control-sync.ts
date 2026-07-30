@@ -492,6 +492,7 @@ async function syncRepoRunsAndSlots(
 
   if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
     try {
+      const userEmail = resolvePortalUserEmail();
       const usage = status.slots.flatMap((slot) =>
         harvestUsageForSlot({
           agentId: slot.agentId,
@@ -513,6 +514,7 @@ async function syncRepoRunsAndSlots(
               suffix: slot.suffix,
               createdAt: slot.sessionCreatedAt,
             }),
+          ...(userEmail ? { userEmail } : {}),
         })),
       );
       if (usage.length > 0) {

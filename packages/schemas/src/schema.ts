@@ -176,6 +176,7 @@ export const HarnessVerificationResultSchema = z.object({
   status: z.enum(['pass', 'fail']),
   agent_id: z.number().int().min(HAR_AGENT_SLOT_MIN),
   total_ms: z.number().optional(),
+  coverage: z.number().min(0).max(100).optional(),
   stages: z.array(HarnessVerificationStepSchema),
 });
 
@@ -660,6 +661,7 @@ export const AgentSessionUsageSchema = z.object({
   sessionKey: z.string().min(1),
   agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
   agentTool: AgentToolSchema,
+  userEmail: z.string().email().optional(),
   workDir: z.string().optional(),
   branch: z.string().optional(),
   suffix: z.string().optional(),

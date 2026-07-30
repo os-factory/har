@@ -22,6 +22,17 @@ describe('parseVerificationResult', () => {
     });
   });
 
+  it('retains a coverage figure emitted by verify.sh', () => {
+    const stdout = `${JSON.stringify({
+      status: 'pass',
+      agent_id: 1,
+      coverage: 87.5,
+      stages: [{ name: 'unit-tests', pass: true }],
+    })}\n`;
+
+    expect(parseVerificationResult(stdout)?.coverage).toBe(87.5);
+  });
+
   it('returns null for invalid output', () => {
     expect(parseVerificationResult('not json')).toBeNull();
   });
