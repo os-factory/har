@@ -1,3 +1,10 @@
+# [0.32.0](https://github.com/os-factory/har/compare/v0.31.1...v0.32.0) (2026-07-30)
+
+
+### Features
+
+* **control:** carry session-usage userEmail and verify coverage through portal sync ([#99](https://github.com/os-factory/har/issues/99)) ([83d0828](https://github.com/os-factory/har/commit/83d0828c8ff595d8f61e9b1c8905a818c9bd925e))
+
 ## [0.31.1](https://github.com/os-factory/har/compare/v0.31.0...v0.31.1) (2026-07-29)
 
 
