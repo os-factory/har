@@ -57,7 +57,9 @@ then implement the TODO block in `.har/stages/db-integrity.sh`.
 
 Every script under `.har/stages/` must:
 
-1. Source `harness.env` and `agent-slot.sh` from `.har/`.
+1. Source `harness.env` and `agent-slot.sh` from `.har/`. Before sourcing,
+   set `SCRIPT_DIR` to the `.har/` directory (not `stages/`) — `agent-slot.sh`
+   resolves the slot registry via `$SCRIPT_DIR/slots/...`.
 2. Take the agent slot id as `$1` (validate with `validate_agent_id`); extra
    args may follow.
 3. Load the slot env via `resolve_agent_env_file` and run checks from the

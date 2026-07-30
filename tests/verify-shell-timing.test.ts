@@ -44,3 +44,21 @@ describe('verify.sh portable timing', () => {
     expect(script).not.toMatch(/^\s*mapfile/m);
   });
 });
+
+describe('stage scripts set SCRIPT_DIR to .har/', () => {
+  // Stages live under .har/stages/; agent-slot.sh resolves the slot registry via
+  // $SCRIPT_DIR/slots/..., so SCRIPT_DIR must be reassigned to HARNESS_DIR (.har/)
+  // or verify/e2e silently falls back to the main checkout.
+  const stagePaths = [
+    'src/templates/plugins/playwright/.har/stages/browser-e2e.sh',
+    'src/templates/plugins/rocketsim/.har/stages/rocketsim-flows.sh',
+    'src/templates/plugins/custom-stage-skeleton.sh',
+    'control/.har/stages/browser-e2e.sh',
+    'control/.har/stages/docker-build.sh',
+  ];
+
+  it.each(stagePaths)('%s reassigns SCRIPT_DIR to HARNESS_DIR', (relPath) => {
+    const script = fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
+    expect(script).toMatch(/HARNESS_DIR=.*\nREPO_ROOT=.*\n(?:#.*\n)*SCRIPT_DIR="\$HARNESS_DIR"/);
+  });
+});
