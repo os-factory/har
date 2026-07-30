@@ -15,6 +15,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HARNESS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$HARNESS_DIR/.." && pwd)"
+# agent-slot.sh expects SCRIPT_DIR to be .har/ (slot registry lives there)
+SCRIPT_DIR="$HARNESS_DIR"
 
 # shellcheck source=/dev/null
 source "$HARNESS_DIR/harness.env"
