@@ -8,6 +8,7 @@ import {
   findValidation,
   listValidations,
   recordValidation,
+  resolveValidationCheckoutDir,
 } from '../src/core/validations';
 
 function sh(cwd: string, command: string): string {
@@ -117,5 +118,19 @@ describe('validation store', () => {
     fs.mkdirSync(path.join(dir, '.har', 'validations'), { recursive: true });
     fs.writeFileSync(path.join(dir, '.har', 'validations', 'garbage.json'), 'not json');
     expect(listValidations(dir)).toEqual([]);
+  });
+
+  it('prefers the worktree root over a nested harness workDir', () => {
+    const dir = initRepo();
+    const nested = path.join(dir, 'control');
+    fs.mkdirSync(nested, { recursive: true });
+
+    expect(
+      resolveValidationCheckoutDir({
+        worktreePath: dir,
+        workDir: nested,
+        harnessRoot: nested,
+      }),
+    ).toBe(dir);
   });
 });

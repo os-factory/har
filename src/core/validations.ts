@@ -6,6 +6,22 @@ import { computeWorktreeSnapshot, isCheckoutRoot } from './change-batch';
 
 export const VALIDATIONS_DIR = 'validations';
 
+/**
+ * Pick the git checkout root to snapshot for a validation record.
+ * Nested harnesses (e.g. `control/`) often set workDir to a subdirectory;
+ * prefer the linked worktree root when present.
+ */
+export function resolveValidationCheckoutDir(input: {
+  worktreePath?: string;
+  workDir?: string;
+  harnessRoot: string;
+}): string {
+  const candidates = [input.worktreePath, input.workDir, input.harnessRoot].filter(
+    (value): value is string => Boolean(value),
+  );
+  return candidates.find(isCheckoutRoot) ?? candidates[0] ?? input.harnessRoot;
+}
+
 function getValidationsDir(checkoutDir: string): string {
   return path.join(checkoutDir, '.har', VALIDATIONS_DIR);
 }

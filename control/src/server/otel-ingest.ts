@@ -3,6 +3,12 @@ import type { Prisma } from '@prisma/client';
 import type { AgentSessionUsage, AgentTool } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { upsertSessionUsage } from '@/server/usage';
+import {
+  normalizeOtelPath,
+  pickBestRepoPathMatch,
+  pickPathForWorkspaceId,
+  shouldPersistOtelUsage,
+} from '@/server/otel-workspace';
 
 const nodeRequire = createRequire(__filename);
 
@@ -182,14 +188,16 @@ function detectAgentTool(resource: AttrMap, serviceName?: string): AgentTool | n
 }
 
 function normalizePath(value: string): string {
-  return value.replace(/\/$/, '');
+  return normalizeOtelPath(value);
 }
 
 function workspaceFromAttrs(...maps: AttrMap[]): string {
   for (const map of maps) {
     for (const key of [
       'gen_ai.client.workspace',
+      'gen_ai.client.repository_root',
       'har.work_dir',
+      'har.repo_path',
       'code.filepath',
       'cwd',
       'process.cwd',
@@ -197,6 +205,22 @@ function workspaceFromAttrs(...maps: AttrMap[]): string {
       const raw = map[key];
       if (typeof raw === 'string' && raw.trim()) return raw.trim();
     }
+  }
+  return '';
+}
+
+function workspaceIdFromAttrs(...maps: AttrMap[]): string {
+  for (const map of maps) {
+    const raw = map['otelhook.workspace.id'];
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  }
+  return '';
+}
+
+function sessionIdFromAttrs(...maps: AttrMap[]): string {
+  for (const map of maps) {
+    const raw = map['session.id'];
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
   }
   return '';
 }
@@ -269,33 +293,161 @@ interface ResolvedSessionContext {
   attemptId?: string;
 }
 
+async function resolveRepositoryByWorkspacePath(
+  workspace: string,
+): Promise<{ repositoryId: string; path: string } | null> {
+  const repos = await prisma.repository.findMany({ select: { id: true, path: true } });
+  const best = pickBestRepoPathMatch(
+    workspace,
+    repos.map((r) => r.path),
+  );
+  if (!best) return null;
+  const match = repos.find((r) => normalizePath(r.path) === best);
+  return match ? { repositoryId: match.id, path: match.path } : null;
+}
+
+async function resolveRepositoryByWorkspaceId(
+  workspaceId: string,
+): Promise<{ repositoryId: string; path: string; matchedPath: string } | null> {
+  const [repos, slots] = await Promise.all([
+    prisma.repository.findMany({ select: { id: true, path: true } }),
+    prisma.agentSlot.findMany({
+      where: {
+        OR: [{ workDir: { not: null } }, { worktreePath: { not: null } }],
+      },
+      select: { repositoryId: true, workDir: true, worktreePath: true },
+    }),
+  ]);
+
+  const candidates: Array<{ repositoryId: string; path: string; candidate: string }> = [];
+  for (const repo of repos) {
+    candidates.push({ repositoryId: repo.id, path: repo.path, candidate: repo.path });
+  }
+  for (const slot of slots) {
+    const repo = repos.find((r) => r.id === slot.repositoryId);
+    if (!repo) continue;
+    for (const candidate of [slot.workDir, slot.worktreePath]) {
+      if (candidate) {
+        candidates.push({ repositoryId: repo.id, path: repo.path, candidate });
+      }
+    }
+  }
+
+  const matchedPath = pickPathForWorkspaceId(
+    workspaceId,
+    candidates.map((c) => c.candidate),
+  );
+  if (!matchedPath) return null;
+  const hit = candidates.find((c) => normalizePath(c.candidate) === matchedPath);
+  return hit
+    ? { repositoryId: hit.repositoryId, path: hit.path, matchedPath }
+    : null;
+}
+
+async function defaultAgentIdForRepo(repositoryId: string): Promise<number> {
+  const active = await prisma.agentSlot.findFirst({
+    where: { repositoryId, active: true },
+    orderBy: { updatedAt: 'desc' },
+    select: { slotId: true },
+  });
+  return active?.slotId ?? 1;
+}
+
 async function resolveSessionContext(
   resource: AttrMap,
   attributes: AttrMap = {},
 ): Promise<{ context: ResolvedSessionContext | null; reason?: string }> {
   const tool =
     detectAgentTool(attributes) ?? detectAgentTool(resource) ?? null;
-  const sessionKey = String(
+  const harSessionKey = String(
     resource['har.session_key'] ?? attributes['har.session_key'] ?? '',
   );
   const repoPath = String(resource['har.repo_path'] ?? attributes['har.repo_path'] ?? '');
   const agentIdRaw = Number(resource['har.agent_id'] ?? attributes['har.agent_id'] ?? 0);
   const workspace = workspaceFromAttrs(attributes, resource);
+  const workspaceId = workspaceIdFromAttrs(attributes, resource);
+  const providerSessionId = sessionIdFromAttrs(attributes, resource);
+  const explicitAgentId =
+    Number.isFinite(agentIdRaw) && agentIdRaw > 0 ? agentIdRaw : undefined;
 
-  if (sessionKey) {
+  // Prefer live workspace/slot matching over stale global har.session_key
+  // resource attributes left behind by the last `har env launch`.
+  if (workspace) {
+    const byWs = await resolveSlotByWorkspace(workspace);
+    if (byWs) {
+      return {
+        context: {
+          repositoryId: byWs.repositoryId,
+          sessionKey: harSessionKey || byWs.sessionKey || providerSessionId,
+          agentId: explicitAgentId ?? byWs.agentId,
+          agentTool: tool ?? 'cursor',
+          workDir: byWs.workDir ?? workspace,
+          branch: byWs.branch,
+          suffix: byWs.suffix,
+          workUnitId: byWs.workUnitId,
+          attemptId: byWs.attemptId,
+        },
+      };
+    }
+
+    const byRepo = await resolveRepositoryByWorkspacePath(workspace);
+    if (byRepo) {
+      return {
+        context: {
+          repositoryId: byRepo.repositoryId,
+          sessionKey:
+            harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`,
+          agentId: explicitAgentId ?? (await defaultAgentIdForRepo(byRepo.repositoryId)),
+          agentTool: tool ?? 'cursor',
+          workDir: workspace,
+          branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
+          suffix: resource['har.suffix'] ? String(resource['har.suffix']) : undefined,
+          workUnitId: resource['har.work_unit_id']
+            ? String(resource['har.work_unit_id'])
+            : undefined,
+          attemptId: resource['har.attempt_id']
+            ? String(resource['har.attempt_id'])
+            : undefined,
+        },
+      };
+    }
+  }
+
+  if (workspaceId) {
+    const byId = await resolveRepositoryByWorkspaceId(workspaceId);
+    if (byId) {
+      return {
+        context: {
+          repositoryId: byId.repositoryId,
+          sessionKey:
+            harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`,
+          agentId: explicitAgentId ?? (await defaultAgentIdForRepo(byId.repositoryId)),
+          agentTool: tool ?? 'cursor',
+          workDir: byId.matchedPath,
+          branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
+          suffix: resource['har.suffix'] ? String(resource['har.suffix']) : undefined,
+        },
+      };
+    }
+  }
+
+  if (harSessionKey) {
     let repositoryId = await resolveRepositoryId(repoPath || undefined);
     if (!repositoryId && workspace) {
       const byWs = await resolveSlotByWorkspace(workspace);
       repositoryId = byWs?.repositoryId ?? null;
     }
     if (!repositoryId) {
-      return { context: null, reason: `unknown repository for ${repoPath || workspace || '(empty)'}` };
+      return {
+        context: null,
+        reason: `unknown repository for ${repoPath || workspace || workspaceId || '(empty)'}`,
+      };
     }
     return {
       context: {
         repositoryId,
-        sessionKey,
-        agentId: Number.isFinite(agentIdRaw) && agentIdRaw > 0 ? agentIdRaw : 1,
+        sessionKey: harSessionKey,
+        agentId: explicitAgentId ?? 1,
         agentTool: tool ?? 'claude_code',
         workDir: resource['har.work_dir']
           ? String(resource['har.work_dir'])
@@ -312,27 +464,10 @@ async function resolveSessionContext(
     };
   }
 
-  if (workspace) {
-    const byWs = await resolveSlotByWorkspace(workspace);
-    if (byWs) {
-      return {
-        context: {
-          repositoryId: byWs.repositoryId,
-          sessionKey: byWs.sessionKey,
-          agentId: byWs.agentId,
-          agentTool: tool ?? 'cursor',
-          workDir: byWs.workDir ?? workspace,
-          branch: byWs.branch,
-          suffix: byWs.suffix,
-          workUnitId: byWs.workUnitId,
-          attemptId: byWs.attemptId,
-        },
-      };
-    }
-    return { context: null, reason: `no slot matched workspace ${workspace}` };
-  }
-
-  return { context: null, reason: 'missing har.session_key and workspace' };
+  return {
+    context: null,
+    reason: `no repository matched workspace ${workspace || workspaceId || '(empty)'}`,
+  };
 }
 
 const PURPOSE_MAX_CHARS = 160;
@@ -449,8 +584,8 @@ async function maybeSetDerivedPurpose(
 }
 
 function shouldPersistUsage(usage: AgentSessionUsage): boolean {
-  if (usage.tokensTotal > 0) return true;
-  return Boolean(usage.modelBreakdown && Object.keys(usage.modelBreakdown).length > 0);
+  // Model-only / zero-token rows are not real usage — keep events/spans, skip usage table.
+  return shouldPersistOtelUsage(usage);
 }
 
 function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap): void {
