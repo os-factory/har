@@ -223,15 +223,19 @@ describe('otel hooks config', () => {
 
   it('writes config JSON under hooks home', () => {
     const hooksHome = path.join(tmpDir, 'hooks');
-    const configPath = writeOtelHooksConfig(
-      buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' }),
-      hooksHome,
-    );
+    const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
+    const configPath = writeOtelHooksConfig(config, hooksHome);
     expect(configPath).toBe(path.join(hooksHome, 'otel_config.json'));
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-      exporter: { protocol: string };
+      exporter: { protocol: string; endpoint?: string };
+      privacy: { contentMode: string };
+      _comment?: string;
     };
     expect(parsed.exporter.protocol).toBe('http/protobuf');
+    expect(parsed.exporter.endpoint).toBe('http://localhost:3847/api/otel/v1/traces');
+    // otel-hook rejects unknown keys and disables OTLP; keep the file schema-clean.
+    expect(parsed).not.toHaveProperty('_comment');
+    expect(Object.keys(parsed).sort()).toEqual(['exporter', 'privacy']);
   });
 
   it('rewrites hooks.json commands to the HAR wrapper', () => {
