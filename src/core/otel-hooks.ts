@@ -159,11 +159,9 @@ export function writeOtelHooksConfig(
 ): string {
   fs.mkdirSync(hooksHome, { recursive: true });
   const configPath = getOtelHooksConfigPath(hooksHome);
-  const payload = {
-    _comment: 'Managed by har telemetry — do not edit by hand; use: har telemetry on|off',
-    ...config,
-  };
-  fs.writeFileSync(configPath, `${JSON.stringify(payload, null, 2)}\n`);
+  // Write schema-only JSON — @osfactory/otel-hook rejects unknown keys (e.g. `_comment`)
+  // and falls back to defaults with OTLP export disabled.
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   return configPath;
 }
 
