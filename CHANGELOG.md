@@ -1,3 +1,10 @@
+## [0.32.3](https://github.com/os-factory/har/compare/v0.32.2...v0.32.3) (2026-07-30)
+
+
+### Bug Fixes
+
+* **control:** attribute IDE OTEL by workspace, not last launch ([#102](https://github.com/os-factory/har/issues/102)) ([31cf6c3](https://github.com/os-factory/har/commit/31cf6c31571f0ceccb2fea73a0cca581d476622d))
+
 ## [0.32.2](https://github.com/os-factory/har/compare/v0.32.1...v0.32.2) (2026-07-30)
 
 
