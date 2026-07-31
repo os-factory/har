@@ -5,7 +5,7 @@
 # Usage: ./.har/verify.sh <agent-id> [--full]
 #
 # Quick (default): typecheck + build + docs check/build
-# Full (--full):   + unit tests, lint, readiness, and registered verification stages (docs-drift)
+# Full (--full):   + unit tests, lint, readiness, and registered verification stages
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,7 +61,7 @@ run_step() {
   start=$(now_ms)
 
   set +e
-  output=$(cd "$WORK_DIR" && eval "$cmd" 2>&1)
+  output=$(cd "$WORK_DIR" && set -a && . "$ENV_FILE" && set +a && eval "$cmd" 2>&1)
   exit_code=$?
   set -e
 
@@ -93,20 +93,18 @@ process.stdout.write(JSON.stringify(arr));
   fi
 }
 
-run_step "typecheck" "npm run typecheck" || { [ -z "$FULL" ] && true; }
+# ── @osfactory/har verification ─────────────────────────────────────────────
+run_step "typecheck" '${NPM_BIN:-npm} run typecheck' || { [ -z "$FULL" ] && true; }
 # Some unit tests exec dist/index.js (e.g. plugins CLI add-plugin).
-run_step "build" "npm run build" || { [ -z "$FULL" ] && true; }
-run_step "docs-check" "npm run check --prefix docs" || { [ -z "$FULL" ] && true; }
-run_step "docs-build" "npm run build --prefix docs" || { [ -z "$FULL" ] && true; }
+run_step "build" '${NPM_BIN:-npm} run build' || { [ -z "$FULL" ] && true; }
+run_step "docs-check" '${NPM_BIN:-npm} run check --prefix docs' || { [ -z "$FULL" ] && true; }
+run_step "docs-build" '${NPM_BIN:-npm} run build --prefix docs' || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
-  # Full-mode steps for this repo — customize when adapting the harness elsewhere.
-  run_step "unit-tests" "npm test" || true
-  run_step "lint" "npm run lint" || true
+  run_step "unit-tests" '${NPM_BIN:-npm} test' || true
+  run_step "lint" '${NPM_BIN:-npm} run lint' || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   # Registered verification stages from .har/stages.json (see .har/STAGES.md).
-  # Every stage listed in verificationStages with a registered script/command
-  # runs here -- plugins and custom stages alike.
   while IFS=$'\t' read -r STAGE_ID STAGE_CMD; do
     [ -n "$STAGE_ID" ] || continue
     run_step "$STAGE_ID" "$STAGE_CMD" || true

@@ -19,6 +19,8 @@ USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 FORCE=false
 REPLACE=false
 RESUME=false
+WORK_UNIT_ID="${HAR_WORK_UNIT_ID:-}"
+ATTEMPT_ID="${HAR_ATTEMPT_ID:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -27,8 +29,16 @@ for arg in "$@"; do
     --replace)  REPLACE=true ;;
     --force)    FORCE=true ;;
     --resume)   RESUME=true ;;
+    --work-id=*) WORK_UNIT_ID="${arg#*=}" ;;
+    --attempt-id=*) ATTEMPT_ID="${arg#*=}" ;;
   esac
 done
+
+if [[ -n "$WORK_UNIT_ID" && -z "$ATTEMPT_ID" ]]; then
+  ATTEMPT_ID="$(node -e 'process.stdout.write(require("crypto").randomUUID())')"
+fi
+export SLOT_WORK_UNIT_ID="$WORK_UNIT_ID"
+export SLOT_ATTEMPT_ID="$ATTEMPT_ID"
 
 if [[ -z "$AGENT_ID" ]]; then
   har_load_agent_slot_limits

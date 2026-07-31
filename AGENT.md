@@ -12,7 +12,7 @@ This is a monorepo with **two harnesses** — pick the one that owns the files y
 
 | Path | Profile | Runs | Use when changing | Docs |
 |------|---------|------|-------------------|------|
-| `.har/` | cli | `@osfactory/har` (typecheck, unit tests, build) | `src/`, `packages/`, `tests/` | [.har/README.md](.har/README.md) |
+| `.har/` | cli | `@osfactory/har` (typecheck, build, docs, unit tests, lint) | `src/`, `packages/`, `tests/`, `docs/` | [.har/README.md](.har/README.md) |
 | `control/.har/` | default | Mission Control (Next.js + Postgres, browser-e2e) | `control/` | [control/.har/README.md](control/.har/README.md) |
 
 Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`). See [control/AGENT.md](control/AGENT.md) for the webapp guide.
@@ -27,7 +27,7 @@ After making changes, validate through the harness (not ad-hoc shell commands).
 
 - `har_launch_environment` with `agentId: 1` — once per session
 - `har_run_verification` with `agentId: 1` — typecheck + unit tests (fast)
-- `har_run_verification` with `agentId: 1, full: true` — + lint + build (before declaring done)
+- `har_run_verification` with `agentId: 1, full: true` — + lint, docs check/build, docs-drift (before declaring done)
 - `har_teardown_environment` with `agentId: 1` — cleanup
 
 **CLI** (when `har` is installed):
@@ -124,7 +124,6 @@ These are non-negotiable. Do not introduce imports that violate them.
 | Manifest / stages.json I/O | `src/harness/manifest.ts`, `stages.ts` |
 | Scaffold copy, boilerplate wiring | `src/harness/generator.ts` |
 | Init / maintain / describe orchestration | `src/core/harness.ts` |
-| Guided first-run onboarding (`har onboard`) | `src/core/onboarding.ts`, `src/cli/commands/onboard.ts` |
 | Run orchestration (launch, verify, teardown) | `src/core/run-service.ts` |
 | Local bash/script execution | `src/core/local-executor.ts` |
 | Run history (`.har/runs/`) | `src/core/runs.ts` |
