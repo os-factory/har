@@ -1,3 +1,10 @@
+## [0.33.1](https://github.com/os-factory/har/compare/v0.33.0...v0.33.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* **control:** sync to local Mission Control when portal is configured ([#105](https://github.com/os-factory/har/issues/105)) ([f9bf43b](https://github.com/os-factory/har/commit/f9bf43b6459d8030c11f249e6e718c654b9a451d))
+
 # [0.33.0](https://github.com/os-factory/har/compare/v0.32.3...v0.33.0) (2026-07-31)
 
 
