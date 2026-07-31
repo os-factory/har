@@ -24,7 +24,8 @@ in the same `@osfactory/har` package.
 Install activates **full agent telemetry by default** (traces, logs, metrics, and
 prompts → local Mission Control). Preference is written to `~/.har/telemetry.json`
 when missing. Disable with `har telemetry off`, or keep usage without prompt text
-via `har telemetry on --no-prompts`.
+via `har telemetry on --no-prompts`. For a guided first-run in a repository
+(including telemetry and Mission Control choices), use `har onboard`.
 
 ## Install from source
 

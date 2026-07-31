@@ -124,6 +124,7 @@ These are non-negotiable. Do not introduce imports that violate them.
 | Manifest / stages.json I/O | `src/harness/manifest.ts`, `stages.ts` |
 | Scaffold copy, boilerplate wiring | `src/harness/generator.ts` |
 | Init / maintain / describe orchestration | `src/core/harness.ts` |
+| Guided first-run onboarding (`har onboard`) | `src/core/onboarding.ts`, `src/cli/commands/onboard.ts` |
 | Run orchestration (launch, verify, teardown) | `src/core/run-service.ts` |
 | Local bash/script execution | `src/core/local-executor.ts` |
 | Run history (`.har/runs/`) | `src/core/runs.ts` |

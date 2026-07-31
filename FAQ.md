@@ -84,11 +84,18 @@ The repo-owned `.har/` directory remains the runtime contract. HAR should make i
 </details>
 
 <details>
+<summary><strong>Q: How do I set up HAR in a new repository?</strong></summary>
+
+**A:** Run `har onboard` for the guided first-run flow (how HAR works, telemetry, Mission Control, optional plugins, then the adaptation prompt on the clipboard). For a non-interactive scaffold only, use `har env init` (or `har onboard --yes --no-control --no-plugins`).
+
+</details>
+
+<details>
 <summary><strong>Q: What does `har env init` create?</strong></summary>
 
 **A:** It creates a `.har/` directory with scripts, docs, metadata, environment templates, and optional stage definitions for the current repo.
 
-By default, `har env init` scaffolds boilerplate and prints a copy-paste prompt for your coding agent to adapt the harness and repo-root `AGENT.md`. In a TTY it also offers to copy that prompt to the clipboard (or copies automatically with `--yes`). Pass `--auto` to run built-in Claude adaptation instead (requires `ANTHROPIC_API_KEY`).
+By default, `har env init` scaffolds boilerplate and prints a copy-paste prompt for your coding agent to adapt the harness and repo-root `AGENT.md`. In a TTY it also offers to copy that prompt to the clipboard (or copies automatically with `--yes`). Pass `--auto` to run built-in Claude adaptation instead (requires `ANTHROPIC_API_KEY`). Prefer `har onboard` when you also want telemetry / Mission Control / plugin choices in one pass.
 
 A typical harness includes scripts such as:
 

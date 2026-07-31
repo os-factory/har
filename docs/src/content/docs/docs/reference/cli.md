@@ -5,6 +5,28 @@ description: Commands and important options exposed by the HAR executable.
 
 All repository commands accept `--repo <path>`; the default is the current directory.
 
+## `har onboard`
+
+Interactive first-run guide: how HAR works, telemetry, Mission Control, plugins,
+then the adaptation prompt (clipboard + `.har/ADAPT-PROMPT.md`).
+
+```bash
+har onboard [--repo .] [--yes] [--skip-guide] [--skip-init]
+            [--profile default|cli|ios]
+            [--telemetry on|on-no-prompts|off]
+            [--control|--no-control]
+            [--plugins playwright,rocketsim|--no-plugins]
+            [--force]
+            [--agents claude,cursor,codex] [--no-agents]
+            [--cursor-rule|--no-cursor-rule]
+            [--commit-gate prompt|always|never]
+            [--gate-mode block|warn] [--gate-scope worktrees|all]
+```
+
+`--yes` accepts defaults (telemetry on, start Mission Control, no plugins) without
+prompts. Prefer this over hand-rolling `preferences` + `env init` + `telemetry`
++ `control up` for new repositories.
+
 ## `har env`
 
 | Command | Purpose |

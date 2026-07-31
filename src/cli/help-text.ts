@@ -1,6 +1,9 @@
 /** Shared CLI epilog / launch copy for `har --help` and `har env` help. */
 
-export const HAR_ROOT_EPILOG = `Typical agent workflow:
+export const HAR_ROOT_EPILOG = `First time in a repo:
+  har onboard                    # guided setup → adaptation prompt on clipboard
+
+Typical agent workflow:
   har env status                 # see which slots are free / occupied
   har env launch <id>            # new session from the main checkout's HEAD
   # …edit only under the printed work dir…
