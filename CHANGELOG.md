@@ -1,3 +1,10 @@
+# [0.33.0](https://github.com/os-factory/har/compare/v0.32.3...v0.33.0) (2026-07-31)
+
+
+### Features
+
+* add interactive har onboard first-run wizard ([#103](https://github.com/os-factory/har/issues/103)) ([3c7d0b7](https://github.com/os-factory/har/commit/3c7d0b70b93bb47fe8849c45fba87d2628011030))
+
 ## [0.32.3](https://github.com/os-factory/har/compare/v0.32.2...v0.32.3) (2026-07-30)
 
 
