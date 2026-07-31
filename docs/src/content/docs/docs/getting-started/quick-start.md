@@ -3,9 +3,31 @@ title: Quick start
 description: Initialize a harness and complete the first isolated agent session.
 ---
 
-## 1. Initialize the repository
+## 1. Onboard (recommended)
 
 From your project root:
+
+```bash
+har onboard
+```
+
+The guided wizard walks through how HAR works, then lets you:
+
+- choose agent telemetry (`on` / `on-no-prompts` / `off`)
+- start Mission Control
+- pick optional plugins (for example Playwright)
+- scaffold `.har/` for a profile (`default`, `cli`, or `ios`)
+
+It finishes by writing `.har/ADAPT-PROMPT.md` and offering to copy that prompt
+to the clipboard so you can paste it into your coding agent.
+
+Non-interactive defaults:
+
+```bash
+har onboard --yes --profile cli --no-control --no-plugins
+```
+
+### Manual init (equivalent pieces)
 
 ```bash
 har preferences configure
@@ -18,12 +40,6 @@ init/maintain should install the commit gate. Explicit command flags still win.
 
 The default profile targets web applications. Use `--profile cli` for libraries
 and command-line tools or `--profile ios` for an Xcode project.
-
-HAR copies an editable `.har/` scaffold, validates it, and writes an adaptation
-prompt to `.har/ADAPT-PROMPT.md`. In an interactive terminal it offers to copy
-that prompt to the clipboard (macOS / Linux / Windows, with OSC 52 fallback)
-so you can paste it into your coding agent. The agent can also read the file
-directly.
 
 To let HAR perform the Claude-based adaptation:
 

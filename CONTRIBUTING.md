@@ -186,6 +186,7 @@ Top-level command groups (see `har <cmd> --help`):
 
 | Command | Purpose |
 |---------|---------|
+| `har onboard` | Guided first-run setup (telemetry, Mission Control, plugins, adapt prompt) |
 | `har env …` | Harness lifecycle (init, maintain, launch, verify, complete, …) |
 | `har agents …` | Scaffold/remove agent skills (`/setup-har`, `/har-wt`, `/har-maintain`) |
 | `har control …` | Local Mission Control dashboard |
@@ -200,7 +201,8 @@ Top-level command groups (see `har <cmd> --help`):
 
 ```bash
 cd /path/to/your-project
-har env init
+har onboard --yes --no-control --no-plugins
+# or: har env init
 ```
 
 For CLI/library repos:
