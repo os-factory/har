@@ -18,16 +18,17 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
-| `setup-infra.sh` | Start shared Docker infra + create template database |
-| `launch.sh` | Launch one agent slot (ports, DB clone, PM2 processes) |
+| `setup-infra.sh` | Start optional shared Docker infra (unused — Mission Control uses embedded SQLite) |
+| `launch.sh` | Launch one agent slot (worktree, toolchain, PM2 processes) |
+| `provision-toolchain.sh` | Install deps (`control/`, monorepo root, `@har/schemas`) and write `NODE_BIN` / `NPM_BIN` to `.env.agent.<id>` |
 | `verify.sh` | Verification pipeline (typecheck, tests, health) |
 | `teardown.sh` | Tear down one agent slot |
-| `agent-cli.sh` | Manage a running agent (status, logs, psql, health) |
+| `agent-cli.sh` | Manage a running agent (status, logs, sqlite, health) |
 | `attach.sh` | Attach to agent tmux session |
 | `env.template` | Per-agent env vars (expanded by `launch.sh`) |
 | `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded by `launch.sh`) |
 | `ecosystem.shared.config.cjs` | Optional — shared app services started once by `setup-infra.sh` (not used by Control today) |
-| `docker-compose.agent.yml` | Shared Postgres — one instance serves all slots |
+| `docker-compose.agent.yml` | Optional shared infra menu (not used — SQLite per slot) |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
 
@@ -49,7 +50,7 @@ In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verifi
 
 ```bash
 cd control
-./.har/setup-infra.sh          # starts shared Postgres + template DB (launch runs it too)
+./.har/setup-infra.sh          # no-op when HARNESS_INFRA_SERVICES is empty (default)
 ./.har/launch.sh 1
 ./.har/verify.sh 1             # quick: typecheck, tests, health
 ./.har/verify.sh 1 --full      # done gate: + lint + browser-e2e (if Playwright stage installed)
