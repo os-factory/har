@@ -343,8 +343,7 @@ export async function syncAllKnownReposWithControl(options?: {
   if (!isControlEnabled()) return { synced: 0, failed: 0 };
 
   const apiUrl = options?.apiUrl ?? getControlApiUrl();
-  const portal = getPortalTarget();
-  if (!(await isControlApiReachable(portal ? portal.url : apiUrl))) {
+  if (!(await isControlApiReachable(apiUrl))) {
     return { synced: 0, failed: 0 };
   }
 
@@ -391,6 +390,52 @@ export async function registerRepoWithControl(
   return (await response.json()) as { id: string };
 }
 
+async function syncRepoWithLocalControl(
+  options: ControlSyncOptions & { repoPath: string },
+): Promise<void> {
+  const apiUrl = options.apiUrl ?? getControlApiUrl();
+  const { repoPath, dryRun } = options;
+
+  const registerResult = await registerRepoWithControl({ ...options, repoPath });
+  const repoId = registerResult?.id;
+
+  if (!repoId && !dryRun) {
+    const listResponse = await fetch(`${apiUrl}/api/repos`);
+    if (!listResponse.ok) throw new Error('Failed to list repos from Control API');
+    const repos = (await listResponse.json()) as { id: string; path: string }[];
+    const existing = repos.find((r) => path.resolve(r.path) === repoPath);
+    if (!existing) {
+      // Unregistered / blocked — nothing to sync locally.
+      return;
+    }
+    await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, dryRun);
+    return;
+  }
+
+  if (repoId) {
+    await syncRepoRunsAndSlots(apiUrl, repoId, repoPath, dryRun);
+  }
+}
+
+async function syncRepoWithPortal(
+  options: ControlSyncOptions & { repoPath: string },
+  controlApiUrl: string,
+): Promise<void> {
+  const portal = getPortalTarget();
+  if (!portal) return;
+
+  const { repoPath, dryRun, full } = options;
+  const since = full ? null : readPortalWatermark(repoPath, portal.url);
+  const { syncBody, events, maxSyncedAt } = await buildPortalPayload(repoPath, controlApiUrl, since);
+  await postPortal(portal, '/api/sync', syncBody, dryRun);
+  if (events.length > 0) {
+    await postPortal(portal, '/api/otel', { path: repoPath, events, spans: [] }, dryRun);
+  }
+  if (!dryRun && maxSyncedAt) {
+    writePortalWatermark(repoPath, portal.url, maxSyncedAt);
+  }
+}
+
 export async function syncRepoWithControl(options: ControlSyncOptions): Promise<void> {
   const repoPath = canonicalizeControlRepoPath(options.repoPath);
   const apiUrl = options.apiUrl ?? getControlApiUrl();
@@ -425,44 +470,8 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
     return;
   }
 
-  const portal = getPortalTarget();
-  if (portal) {
-    const since = options.full ? null : readPortalWatermark(repoPath, portal.url);
-    const { syncBody, events, maxSyncedAt } = await buildPortalPayload(repoPath, apiUrl, since);
-    await postPortal(portal, '/api/sync', syncBody, options.dryRun);
-    if (events.length > 0) {
-      await postPortal(
-        portal,
-        '/api/otel',
-        { path: repoPath, events, spans: [] },
-        options.dryRun,
-      );
-    }
-    if (!options.dryRun && maxSyncedAt) {
-      writePortalWatermark(repoPath, portal.url, maxSyncedAt);
-    }
-    return;
-  }
-
-  const registerResult = await registerRepoWithControl({ ...options, repoPath });
-  const repoId = registerResult?.id;
-
-  if (!repoId && !options.dryRun) {
-    const listResponse = await fetch(`${apiUrl}/api/repos`);
-    if (!listResponse.ok) throw new Error('Failed to list repos from Control API');
-    const repos = (await listResponse.json()) as { id: string; path: string }[];
-    const existing = repos.find((r) => path.resolve(r.path) === repoPath);
-    if (!existing) {
-      // Unregistered / blocked — nothing to sync.
-      return;
-    }
-    await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, options.dryRun);
-    return;
-  }
-
-  if (repoId) {
-    await syncRepoRunsAndSlots(apiUrl, repoId, repoPath, options.dryRun);
-  }
+  await syncRepoWithLocalControl({ ...options, repoPath, apiUrl });
+  await syncRepoWithPortal({ ...options, repoPath }, apiUrl);
 }
 
 async function syncRepoRunsAndSlots(
@@ -587,11 +596,10 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
 
   const verbose = process.env.HAR_CONTROL_VERBOSE === 'true';
   try {
-    const portal = getPortalTarget();
-    const healthUrl = portal ? portal.url : getControlApiUrl();
-    if (!(await isControlApiReachable(healthUrl))) {
+    const apiUrl = getControlApiUrl();
+    if (!(await isControlApiReachable(apiUrl))) {
       if (verbose) {
-        process.stderr.write(`[har control] sync skipped: not reachable at ${healthUrl}\n`);
+        process.stderr.write(`[har control] sync skipped: not reachable at ${apiUrl}\n`);
       }
       return;
     }
@@ -609,42 +617,48 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
   }
 }
 
+async function syncRunWithLocalControl(
+  repoPath: string,
+  run: RunRecord,
+  apiUrl: string,
+): Promise<void> {
+  const registerResult = await registerRepoWithControl({ repoPath, apiUrl });
+  let repoId = registerResult?.id;
+
+  if (!repoId) {
+    const listResponse = await fetch(`${apiUrl}/api/repos`);
+    if (!listResponse.ok) return;
+    const repos = (await listResponse.json()) as { id: string; path: string }[];
+    repoId = repos.find((r) => path.resolve(r.path) === repoPath)?.id;
+  }
+
+  if (!repoId) return;
+
+  const runsBody = SyncRunsInputSchema.parse({ runs: [run] });
+  await postJson(`${apiUrl}/api/repos/${repoId}/runs`, runsBody);
+}
+
 export async function syncRunWithControlAsync(repoPath: string, run: RunRecord): Promise<void> {
   if (process.env.HAR_CONTROL_DISABLED === 'true') return;
 
-  const portal = getPortalTarget();
-  if (portal) {
-    try {
-      if (!(await isControlApiReachable(portal.url))) return;
-      const canonical = canonicalizeControlRepoPath(repoPath);
-      await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[har control] run sync skipped: ${message}\n`);
+  const apiUrl = getControlApiUrl();
+  const canonical = canonicalizeControlRepoPath(repoPath);
+
+  try {
+    if (await isControlApiReachable(apiUrl)) {
+      await syncRunWithLocalControl(canonical, run, apiUrl);
     }
-    return;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[har control] run sync skipped: ${message}\n`);
   }
 
-  const apiUrl = getControlApiUrl();
+  const portal = getPortalTarget();
+  if (!portal) return;
+
   try {
-    const reachable = await isControlApiReachable(apiUrl);
-    if (!reachable) return;
-
-    const canonical = canonicalizeControlRepoPath(repoPath);
-    const registerResult = await registerRepoWithControl({ repoPath: canonical, apiUrl });
-    let repoId = registerResult?.id;
-
-    if (!repoId) {
-      const listResponse = await fetch(`${apiUrl}/api/repos`);
-      if (!listResponse.ok) return;
-      const repos = (await listResponse.json()) as { id: string; path: string }[];
-      repoId = repos.find((r) => path.resolve(r.path) === canonical)?.id;
-    }
-
-    if (!repoId) return;
-
-    const runsBody = SyncRunsInputSchema.parse({ runs: [run] });
-    await postJson(`${apiUrl}/api/repos/${repoId}/runs`, runsBody);
+    if (!(await isControlApiReachable(portal.url))) return;
+    await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[har control] run sync skipped: ${message}\n`);

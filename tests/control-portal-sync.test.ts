@@ -92,13 +92,68 @@ function clearPortalEnv(): void {
 
 type FetchResult = { status: number; body?: string };
 
+function portalSlot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    agentId: 1,
+    active: true,
+    harnessUsage: 'cli',
+    ...overrides,
+  };
+}
+
+function portalCalls(fetchMock: jest.Mock): [string, RequestInit][] {
+  return fetchMock.mock.calls.filter(([url]) =>
+    String(url).includes('portal.example.com'),
+  ) as [string, RequestInit][];
+}
+
+function portalSyncCall(fetchMock: jest.Mock): [string, RequestInit] {
+  const call = portalCalls(fetchMock).find(([url]) => url.endsWith('/api/sync'));
+  if (!call) throw new Error('expected a portal /api/sync call');
+  return call;
+}
+
+function portalOtelCall(fetchMock: jest.Mock): [string, RequestInit] {
+  const call = portalCalls(fetchMock).find(([url]) => url.endsWith('/api/otel'));
+  if (!call) throw new Error('expected a portal /api/otel call');
+  return call;
+}
+
 function mockFetch(result: FetchResult): jest.Mock {
-  const fn = jest.fn(async () => ({
-    ok: result.status >= 200 && result.status < 300,
-    status: result.status,
-    text: async () => result.body ?? '',
-    json: async () => ({}),
-  }));
+  const fn = jest.fn(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET';
+    if (String(url).includes('portal.example.com')) {
+      return {
+        ok: result.status >= 200 && result.status < 300,
+        status: result.status,
+        text: async () => result.body ?? '',
+        json: async () => ({}),
+      };
+    }
+    // Local Mission Control — keep sync tests deterministic.
+    if (String(url).endsWith('/api/repos') && method === 'POST') {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '',
+        json: async () => ({ id: 'local-repo-1' }),
+      };
+    }
+    if (String(url).endsWith('/api/repos') && method === 'GET') {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '',
+        json: async () => [],
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      text: async () => '',
+      json: async () => ({}),
+    };
+  });
   (global as unknown as { fetch: unknown }).fetch = fn;
   return fn;
 }
@@ -157,8 +212,9 @@ describe('syncRepoWithControl — portal push', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const portal = portalCalls(fetchMock);
+    expect(portal).toHaveLength(1);
+    const [url, init] = portal[0];
     expect(url).toBe('https://portal.example.com/api/sync');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>).Authorization).toBe(
@@ -169,6 +225,25 @@ describe('syncRepoWithControl — portal push', () => {
     expect(Array.isArray(body.runs)).toBe(true);
     expect(Array.isArray(body.slots)).toBe(true);
     expect(body.generatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('syncs to local Mission Control before pushing to the portal', async () => {
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    const localRegisterIdx = urls.findIndex(
+      (url) => url.endsWith('/api/repos') && !url.includes('portal.example.com'),
+    );
+    const portalSyncIdx = urls.findIndex((url) => url.includes('/api/sync'));
+    expect(localRegisterIdx).toBeGreaterThanOrEqual(0);
+    expect(portalSyncIdx).toBeGreaterThan(localRegisterIdx);
+    expect(
+      urls.some((url) => url.includes('/api/repos/local-repo-1/runs')),
+    ).toBe(true);
   });
 
   it('raises a token error on 401 (bad/revoked token)', async () => {
@@ -223,22 +298,45 @@ describe('syncRepoWithControl — portal full payload', () => {
   it('forwards usage (with userEmail + models), work identity to /api/sync', async () => {
     collectEnvironmentStatusMock.mockReturnValue({
       slots: [
-        {
-          agentId: 1,
+        portalSlot({
           workDir: '/repo/x/wt-1',
           worktreePath: '/repo/x/wt-1',
           branch: 'feat/x',
           suffix: 'a',
           sessionCreatedAt: '2026-01-01T00:00:00.000Z',
-          workUnitId: 'WU-1',
-          attemptId: 'AT-1',
-        },
+          workUnitId: 'github:acme/widget#123',
+          attemptId: '00000000-0000-4000-8000-000000000002',
+        }),
       ],
       generatedAt: '2026-01-01T00:00:00.000Z',
     });
-    listWorkUnitsMock.mockReturnValue([{ workUnitId: 'WU-1', title: 't' }]);
-    listWorkAttemptsMock.mockReturnValue([{ attemptId: 'AT-1', workUnitId: 'WU-1' }]);
-    listValidationBindingsMock.mockReturnValue([{ bindingId: 'B-1' }]);
+    listWorkUnitsMock.mockReturnValue([
+      {
+        workUnitId: 'github:acme/widget#123',
+        source: 'github',
+        title: 't',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    listWorkAttemptsMock.mockReturnValue([
+      {
+        attemptId: '00000000-0000-4000-8000-000000000002',
+        workUnitId: 'github:acme/widget#123',
+        agentId: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    listValidationBindingsMock.mockReturnValue([
+      {
+        bindingId: '00000000-0000-4000-8000-000000000004',
+        workUnitId: 'github:acme/widget#123',
+        attemptId: '00000000-0000-4000-8000-000000000002',
+        validationId: '00000000-0000-4000-8000-000000000003',
+        treeHash: 'a'.repeat(40),
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
     harvestUsageForSlotMock.mockReturnValue([
       {
         sessionKey: '',
@@ -257,8 +355,9 @@ describe('syncRepoWithControl — portal full payload', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const portal = portalCalls(fetchMock);
+    expect(portal).toHaveLength(1);
+    const [url, init] = portal[0];
     expect(url).toBe('https://portal.example.com/api/sync');
     const body = JSON.parse(init.body as string);
     expect(body.workUnits).toHaveLength(1);
@@ -266,8 +365,8 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(body.validationBindings).toHaveLength(1);
     expect(body.usage).toHaveLength(1);
     expect('userEmail' in body.usage[0]).toBe(false);
-    expect(body.usage[0].workUnitId).toBe('WU-1');
-    expect(body.usage[0].attemptId).toBe('AT-1');
+    expect(body.usage[0].workUnitId).toBe('github:acme/widget#123');
+    expect(body.usage[0].attemptId).toBe('00000000-0000-4000-8000-000000000002');
     expect(body.usage[0].sessionKey).toBe('feat/x');
     expect(body.usage[0].models).toEqual([
       {
@@ -284,14 +383,13 @@ describe('syncRepoWithControl — portal full payload', () => {
   it('pushes harvested events to /api/otel with the same bearer token', async () => {
     collectEnvironmentStatusMock.mockReturnValue({
       slots: [
-        {
-          agentId: 1,
+        portalSlot({
           workDir: '/repo/x/wt-1',
           worktreePath: '/repo/x/wt-1',
           branch: 'feat/x',
-          workUnitId: 'WU-1',
-          attemptId: 'AT-1',
-        },
+          workUnitId: 'github:acme/widget#123',
+          attemptId: '00000000-0000-4000-8000-000000000002',
+        }),
       ],
       generatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -313,9 +411,9 @@ describe('syncRepoWithControl — portal full payload', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [syncUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const [otelUrl, otelInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(portalCalls(fetchMock)).toHaveLength(2);
+    const [syncUrl] = portalSyncCall(fetchMock);
+    const [otelUrl, otelInit] = portalOtelCall(fetchMock);
     expect(syncUrl).toBe('https://portal.example.com/api/sync');
     expect(otelUrl).toBe('https://portal.example.com/api/otel');
     expect((otelInit.headers as Record<string, string>).Authorization).toBe(
@@ -324,7 +422,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     const otelBody = JSON.parse(otelInit.body as string);
     expect(otelBody.path).toBe('/repo/x');
     expect(otelBody.events).toHaveLength(1);
-    expect(otelBody.events[0].workUnitId).toBe('WU-1');
+    expect(otelBody.events[0].workUnitId).toBe('github:acme/widget#123');
     expect(otelBody.events[0].promptText).toBe('hi');
     expect('responseText' in otelBody.events[0]).toBe(false);
     expect('rawTruncated' in otelBody.events[0]).toBe(false);
@@ -334,10 +432,8 @@ describe('syncRepoWithControl — portal full payload', () => {
   it('does not call /api/otel when there are no events', async () => {
     const fetchMock = mockFetch({ status: 200 });
     await syncRepoWithControl({ repoPath: '/repo/x' });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect((fetchMock.mock.calls[0] as [string])[0]).toBe(
-      'https://portal.example.com/api/sync',
-    );
+    expect(portalCalls(fetchMock)).toHaveLength(1);
+    expect(portalSyncCall(fetchMock)[0]).toBe('https://portal.example.com/api/sync');
   });
 
   it('attributes usage to the authenticated login email from credentials', async () => {
@@ -348,7 +444,7 @@ describe('syncRepoWithControl — portal full payload', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
     });
     collectEnvironmentStatusMock.mockReturnValue({
-      slots: [{ agentId: 1, branch: 'feat/x' }],
+      slots: [portalSlot({ branch: 'feat/x' })],
       generatedAt: '2026-01-01T00:00:00.000Z',
     });
     harvestUsageForSlotMock.mockReturnValue([
@@ -366,7 +462,7 @@ describe('syncRepoWithControl — portal full payload', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [, init] = portalSyncCall(fetchMock);
     const body = JSON.parse(init.body as string);
     expect(body.usage[0].userEmail).toBe('login@haulieros.io');
   });
@@ -378,7 +474,7 @@ describe('syncRepoWithControl — portal full payload', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
     });
     collectEnvironmentStatusMock.mockReturnValue({
-      slots: [{ agentId: 1, branch: 'feat/x' }],
+      slots: [portalSlot({ branch: 'feat/x' })],
       generatedAt: '2026-01-01T00:00:00.000Z',
     });
     harvestUsageForSlotMock.mockReturnValue([
@@ -396,7 +492,7 @@ describe('syncRepoWithControl — portal full payload', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [, init] = portalSyncCall(fetchMock);
     const body = JSON.parse(init.body as string);
     expect('userEmail' in body.usage[0]).toBe(false);
   });
@@ -424,7 +520,7 @@ describe('syncRepoWithControl — portal full payload', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = portalSyncCall(fetchMock);
     expect(url).toBe('https://portal.example.com/api/sync');
     const body = JSON.parse(init.body as string);
     expect(body.usage).toHaveLength(1);
@@ -444,7 +540,7 @@ describe('syncRepoWithControl — portal full payload', () => {
 
   it('dedupes an overlapping live + persisted session into one max-merged row', async () => {
     collectEnvironmentStatusMock.mockReturnValue({
-      slots: [{ agentId: 1, branch: 'feat/x' }],
+      slots: [portalSlot({ branch: 'feat/x' })],
       generatedAt: '2026-01-01T00:00:00.000Z',
     });
     harvestUsageForSlotMock.mockReturnValue([
@@ -476,7 +572,7 @@ describe('syncRepoWithControl — portal full payload', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [, init] = portalSyncCall(fetchMock);
     const body = JSON.parse(init.body as string);
     expect(body.usage).toHaveLength(1);
     expect(body.usage[0].tokensTotal).toBe(250);
@@ -506,8 +602,8 @@ describe('syncRepoWithControl — portal full payload', () => {
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [otelUrl, otelInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(portalCalls(fetchMock)).toHaveLength(2);
+    const [otelUrl, otelInit] = portalOtelCall(fetchMock);
     expect(otelUrl).toBe('https://portal.example.com/api/otel');
     const otelBody = JSON.parse(otelInit.body as string);
     expect(otelBody.events).toHaveLength(1);
