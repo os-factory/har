@@ -3,7 +3,7 @@
   "generatorVersion": "0.4.0",
   "outputDir": ".har",
   "createdAt": "2026-07-07T13:01:30.993Z",
-  "updatedAt": "2026-07-07T13:01:30.993Z",
+  "updatedAt": "2026-07-31T16:07:11.300Z",
   "stack": {
     "language": "typescript",
     "packageManager": "npm"
@@ -26,5 +26,70 @@
     "stages.json": "fd6bd948bac9f237",
     "teardown.sh": "14917f84ef02434b",
     "verify.sh": "21de98d5ddc18dc6"
-  }
+  },
+  "scaffoldedAgentFiles": [
+    {
+      "path": ".claude/skills/setup-har/SKILL.md",
+      "agent": "claude",
+      "skill": "setup-har",
+      "checksum": "6d09016be7015ddb",
+      "scope": "repo"
+    },
+    {
+      "path": ".cursor/commands/setup-har.md",
+      "agent": "cursor",
+      "skill": "setup-har",
+      "checksum": "b6a4529db3e7e4dd",
+      "scope": "repo"
+    },
+    {
+      "path": "~/.codex/prompts/har-setup.md",
+      "agent": "codex",
+      "skill": "setup-har",
+      "checksum": "b6a4529db3e7e4dd",
+      "scope": "global"
+    },
+    {
+      "path": ".claude/skills/har-wt/SKILL.md",
+      "agent": "claude",
+      "skill": "har-wt",
+      "checksum": "0a9838513a98d5ad",
+      "scope": "repo"
+    },
+    {
+      "path": ".cursor/commands/har-wt.md",
+      "agent": "cursor",
+      "skill": "har-wt",
+      "checksum": "11924490c456f8ec",
+      "scope": "repo"
+    },
+    {
+      "path": "~/.codex/prompts/har-wt.md",
+      "agent": "codex",
+      "skill": "har-wt",
+      "checksum": "11924490c456f8ec",
+      "scope": "global"
+    },
+    {
+      "path": ".claude/skills/har-maintain/SKILL.md",
+      "agent": "claude",
+      "skill": "har-maintain",
+      "checksum": "5fd83820ba9a90cb",
+      "scope": "repo"
+    },
+    {
+      "path": ".cursor/commands/har-maintain.md",
+      "agent": "cursor",
+      "skill": "har-maintain",
+      "checksum": "c6a5735c22f87848",
+      "scope": "repo"
+    },
+    {
+      "path": "~/.codex/prompts/har-maintain.md",
+      "agent": "codex",
+      "skill": "har-maintain",
+      "checksum": "c6a5735c22f87848",
+      "scope": "global"
+    }
+  ]
 }

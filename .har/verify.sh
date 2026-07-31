@@ -4,10 +4,8 @@
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]
 #
-# Quick (default): smoke — typecheck + build
-# Full (--full):   + unit tests, lint, optional readiness + browser-e2e
-# Steps below are adapted for @osfactory/har — not a universal checklist.
-# Add, remove, or reorder run_step calls to match each repository's toolchain.
+# Quick (default): typecheck + build + docs check/build
+# Full (--full):   + unit tests, lint, readiness, and registered verification stages (docs-drift)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

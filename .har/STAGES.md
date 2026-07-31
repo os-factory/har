@@ -1,5 +1,7 @@
 # HAR Stages — authoring guide
 
+> **This monorepo:** root `.har/` is the CLI profile (no Playwright). Browser E2E is registered in [`control/.har/stages.json`](../control/.har/stages.json).
+
 Stages are the harness's single vocabulary for runnable checks and lifecycle
 actions. Everything — shipped plugins (`playwright`, `rocketsim`), your
 project's test/lint commands, bespoke validation scripts — registers in
