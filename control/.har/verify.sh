@@ -22,7 +22,7 @@ done
 
 validate_agent_id "$AGENT_ID"
 
-API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))
+API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * ${HARNESS_PORT_STEP:-10} ))
 
 ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
   echo "No .env.agent.${AGENT_ID} found." >&2
@@ -136,12 +136,12 @@ process.stdout.write(JSON.stringify(arr));
 # ── Verification stages ─────────────────────────────────────────────────────
 # Edit this section directly — do not use a separate config file.
 
-run_step "typecheck" "npm run typecheck" || { [ -z "$FULL" ] && true; }
-run_step "unit-tests" "npm test" || { [ -z "$FULL" ] && true; }
+run_step "typecheck" '${NPM_BIN:-npm} run typecheck' || { [ -z "$FULL" ] && true; }
+run_step "unit-tests" '${NPM_BIN:-npm} test' || { [ -z "$FULL" ] && true; }
 run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}" || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
-  run_step "lint" "npm run lint" || true
+  run_step "lint" '${NPM_BIN:-npm} run lint' || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   # Registered verification stages from .har/stages.json (see .har/STAGES.md).
   # Every stage listed in verificationStages with a registered script/command

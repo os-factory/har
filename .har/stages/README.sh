@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Per-stage scripts live here (e.g. ./.har/stages/browser-e2e.sh <agent-id>).
+# Per-stage scripts live here (e.g. a custom `./.har/stages/<id>.sh <agent-id>`).
 #
 # Read .har/STAGES.md for the authoring guide: the stage script contract,
 # command vs script stages, and how verificationStages controls verify --full.

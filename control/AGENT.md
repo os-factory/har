@@ -6,7 +6,7 @@ Part of the har monorepo — this app has its own harness (`control/.har/`). For
 
 ## Stack
 
-- Next.js, shadcn/ui, Tailwind, Prisma + PostgreSQL, Zod (`@har/schemas`)
+- Prisma + SQLite, Zod (`@har/schemas`)
 
 ## Layout
 
@@ -21,4 +21,4 @@ prisma/            schema
 
 Runnable stages, verification, and definition of done live in **[`.har/`](.har/README.md)** — read `README.md` and `stages.json` there first.
 
-**The harness is how you run this app.** To see Mission Control live (manual testing, browser, screenshots): `./.har/launch.sh 1` (or `har env launch 1`) — shared infra (Postgres) starts automatically. Don't hand-roll dev-server startup; if a harness command fails, fix the harness or report it.
+**The harness is how you run this app.** To see Mission Control live (manual testing, browser, screenshots): `./.har/launch.sh 1` (or `har env launch 1`). Don't hand-roll dev-server startup; if a harness command fails, fix the harness or report it.

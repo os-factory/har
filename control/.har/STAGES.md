@@ -1,6 +1,6 @@
 # HAR Stages — authoring guide
 
-> **This monorepo:** root `.har/` is the CLI profile (no Playwright). Browser E2E is registered in [`control/.har/stages.json`](../control/.har/stages.json).
+> **Mission Control:** per-slot SQLite (`prisma/agent_<id>.db`), Playwright via `browser-e2e`, Docker smoke via `docker-build`. See `verificationStages` in `stages.json`.
 
 Stages are the harness's single vocabulary for runnable checks and lifecycle
 actions. Everything — shipped plugins (`playwright`, `rocketsim`), your

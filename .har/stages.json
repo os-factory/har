@@ -4,7 +4,14 @@
     "min": 1,
     "max": 3
   },
-  "verificationStages": ["docs-drift"],
+  "verificationStages": [
+    "docs-drift"
+  ],
+  "commitGate": {
+    "enabled": true,
+    "mode": "block",
+    "scope": "worktrees"
+  },
   "stages": [
     {
       "id": "setup-infra",
@@ -28,7 +35,7 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Verification pipeline (quick by default; --full adds lint, browser-e2e when installed)",
+      "description": "Verification pipeline (quick: typecheck/build/docs; --full adds tests, lint, docs-drift)",
       "command": "./.har/verify.sh {agentId}",
       "acceptsArgs": ["--full"],
       "artifacts": [
@@ -51,12 +58,6 @@
           "description": "Optional harness logs"
         }
       ]
-    },
-    {
-      "id": "logs",
-      "kind": "inspect",
-      "description": "Read recent logs for an agent slot",
-      "command": "./.har/agent-cli.sh {agentId} logs"
     },
     {
       "id": "docs-drift",

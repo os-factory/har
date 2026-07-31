@@ -428,7 +428,7 @@ try {
 #   required: SLOT_AGENT_ID, SLOT_MODE (worktree|root), SLOT_WORK_DIR
 #   optional: SLOT_SUFFIX, SLOT_WORKTREE_PATH, SLOT_BRANCH, SLOT_BASE_BRANCH,
 #             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON,
-#             SLOT_STATUS, SLOT_LAST_ERROR
+#             SLOT_STATUS, SLOT_LAST_ERROR, SLOT_WORK_UNIT_ID, SLOT_ATTEMPT_ID
 write_slot_registry() {
   local file
   file="$(slot_registry_file "$SLOT_AGENT_ID")"
@@ -451,6 +451,8 @@ if (e.SLOT_BRANCH) entry.branch = e.SLOT_BRANCH;
 if (e.SLOT_BASE_BRANCH) entry.baseBranch = e.SLOT_BASE_BRANCH;
 if (e.SLOT_BASE_COMMIT) entry.baseCommit = e.SLOT_BASE_COMMIT;
 if (e.SLOT_LAST_ERROR) entry.lastError = e.SLOT_LAST_ERROR;
+if (e.SLOT_WORK_UNIT_ID) entry.workUnitId = e.SLOT_WORK_UNIT_ID;
+if (e.SLOT_ATTEMPT_ID) entry.attemptId = e.SLOT_ATTEMPT_ID;
 for (const [key, env] of [["ports", "SLOT_PORTS_JSON"], ["previewUrls", "SLOT_PREVIEW_URLS_JSON"]]) {
   if (e[env]) try { entry[key] = JSON.parse(e[env]); } catch {}
 }

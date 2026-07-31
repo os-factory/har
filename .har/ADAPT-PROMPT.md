@@ -6,6 +6,36 @@ The harness already exists. Inspect what changed in the repo since the harness w
 
 **Do NOT** create a YAML config or JSON mapping file for runtime behavior. Put behavior directly in the harness scripts and templates.
 
+## Step 0 — Read the maintenance bundle
+
+Open `.har/maintain/README.md` and `.har/maintain/drift-report.json`.
+All reference templates are under `.har/maintain/templates/`.
+Do **not** read files from the globally installed har package.
+
+### Drift actions
+
+| File | Status | Reference |
+|------|--------|-----------|
+| agent-cli.sh | drift | maintain/diffs/agent-cli.sh.diff |
+| agent-slot.sh | drift | maintain/diffs/agent-slot.sh.diff |
+| CLAUDE.agent.md | drift | maintain/diffs/CLAUDE.agent.md.diff |
+| harness.env | drift | maintain/diffs/harness.env.diff |
+| launch.sh | drift | maintain/diffs/launch.sh.diff |
+| provision-toolchain.sh | drift | maintain/diffs/provision-toolchain.sh.diff |
+| README.md | drift | maintain/diffs/README.md.diff |
+| stages.json | drift | maintain/diffs/stages.json.diff |
+| teardown.sh | drift | maintain/diffs/teardown.sh.diff |
+| verify.sh | drift | maintain/diffs/verify.sh.diff |
+
+### Stale files
+
+- **attach.sh** — Legacy harness script — merge behavior into current templates, then delete.
+
+### Missing port vars in harness.env
+
+- `HARNESS_PORT_STEP` — see `maintain/templates/harness.env`
+
+
 ## Step 1 — Inspect the repository
 
 Compare the current repo against the existing harness:
@@ -13,7 +43,7 @@ Compare the current repo against the existing harness:
 - Root manifests, CI, Docker, README
 - New or changed test, lint, build, migrate, or seed commands
 - New services, ports, or environment variables
-- Run `har env maintain` drift report (generator version, template checksum mismatches)
+- Review `.har/maintain/drift-report.json` (generator version, template drift, **missing port documentation vars**)
 
 ## Step 2 — Update `.har/` files
 
@@ -22,11 +52,41 @@ Prefer targeted edits over full rewrites. Key files to review:
 ### `.har/README.md` (required)
 Keep this accurate — it is the harness index. Update whenever scripts, stages, or workflow change.
 
-### `.har/harness.env`, `verify.sh`, `ecosystem.agent.template.cjs`, `CLAUDE.agent.md`
-Align commands and instructions with the current stack.
+### `.har/harness.env`, `verify.sh`, `provision-toolchain.sh`, `ecosystem.agent.template.cjs`, `CLAUDE.agent.md`
+Align commands and instructions with the current stack. Verify steps must use toolchain paths from `.env.agent.<id>` (`PYTHON_BIN`, `NPM_BIN`, `XCODEBUILD_BIN`, …) — never hardcoded venv or interpreter paths. Replace stock ecosystem conventions that do not match the repository; do not leave npm/pytest/go/cargo/maven/gradle examples in place by accident.
 
 ### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
 Update only if infra changed.
+
+### Readiness vs liveness regression check
+Do not treat a passing health check as proof that the harness is still usable.
+When maintaining an existing harness, re-check the layers that apply:
+
+1. **Infra ready** — shared services and template data stores still match the app.
+2. **Slot data ready** — every per-slot data store is created or cloned, not only
+   the primary database.
+3. **Process ready** — app processes are online and `HARNESS_HEALTH_CHECK_PATH`
+   passes.
+4. **Agent usable** — documented credentials/workflows still work, required
+   default data exists, UI/API smoke is not blocked by asset/dev-server issues,
+   and any skipped full-dev setup has a minimal substitute or clear limitation.
+
+Look specifically for drift introduced since the last adaptation:
+
+- A seed command was removed or made schema-only without a minimal bootstrap.
+- A new database, schema, queue, object store, search index, or other per-slot
+  dependency was added but launch only provisions the original primary store.
+- Config generation writes plausible top-level keys while the app reads nested
+  defaults from another file.
+- The dev server mode is fine for humans but blocks browser automation or agents
+  with overlays/noisy HMR.
+- `verify.sh` became health-only and no longer checks the key workflow that makes
+  the slot usable.
+- `launch.sh` writes the slot registry only after fragile late steps; partial
+  launches must remain discoverable by verify/status/teardown.
+
+Update `.har/CLAUDE.agent.md` with skipped setup steps, substitutes, credentials,
+and the repo-specific definition of "agent usable."
 
 ### HAR platform upgrades checklist
 
@@ -34,9 +94,10 @@ When upgrading `@osfactory/har` or adopting new harness standards:
 
 **Generator 0.4.0 — primary app & shared infra services:**
 
-- Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from the bundled template. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
+- Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from `.har/maintain/templates/harness.env`. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
 - Set `HARNESS_PRIMARY_APP` in `harness.env` to the ONE app agents modify. Ensure `ecosystem.agent.template.cjs` starts only that app's processes. Move any other in-repo services agents depend on but don't change to shared infra: compose services in `docker-compose.agent.yml` or an optional `.har/ecosystem.shared.config.cjs` (processes `har-shared-<name>`; `setup-infra.sh` starts it when present — resync `setup-infra.sh` from the template to get this hook).
 - Prune `docker-compose.agent.yml` to only the services this project uses; delete unused menu services and volumes.
+- **Port & shared services:** ensure `.har/README.md` documents the allocation table and shared vs per-slot model; `harness.env` has every `HARNESS_*_PORT_*` var required for services in `HARNESS_INFRA_SERVICES` (copy missing vars from `.har/maintain/templates/harness.env` when drift reports them). Remove hardcoded ports from app code, tests, and `CLAUDE.agent.md`.
 - Run the **cleanup checklist**: no TODO placeholders, no env blocks for removed services in `env.template`, no dead script branches, `.har/README.md` file table matches the actual files, `CLAUDE.agent.md` shows only real URLs/ports and commands, unused files deleted.
 
 **Earlier standards:**

@@ -20,6 +20,8 @@ USE_CLAUDE=false
 FORCE=false
 REPLACE=false
 RESUME=false
+WORK_UNIT_ID="${HAR_WORK_UNIT_ID:-}"
+ATTEMPT_ID="${HAR_ATTEMPT_ID:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -29,8 +31,16 @@ for arg in "$@"; do
     --replace)  REPLACE=true ;;
     --force)    FORCE=true ;;
     --resume)   RESUME=true ;;
+    --work-id=*) WORK_UNIT_ID="${arg#*=}" ;;
+    --attempt-id=*) ATTEMPT_ID="${arg#*=}" ;;
   esac
 done
+
+if [[ -n "$WORK_UNIT_ID" && -z "$ATTEMPT_ID" ]]; then
+  ATTEMPT_ID="$(node -e 'process.stdout.write(require("crypto").randomUUID())')"
+fi
+export SLOT_WORK_UNIT_ID="$WORK_UNIT_ID"
+export SLOT_ATTEMPT_ID="$ATTEMPT_ID"
 
 if [[ -z "$AGENT_ID" ]]; then
   har_load_agent_slot_limits
@@ -164,7 +174,7 @@ if [ "$RESUME" != true ]; then
 
   GIT_EXCLUDE="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)/info/exclude"
   if [ -n "$GIT_EXCLUDE" ] && [ -d "$(dirname "$GIT_EXCLUDE")" ]; then
-    for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs'; do
+    for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs' '.har/venv'; do
       grep -qxF "$pattern" "$GIT_EXCLUDE" 2>/dev/null || echo "$pattern" >> "$GIT_EXCLUDE"
     done
   fi
@@ -230,26 +240,16 @@ else
     write_slot_registry
 fi
 
-if [ "$RESUME" != true ] || ! har_toolchain_ready "$WORK_DIR"; then
-  if [ -f "$WORK_DIR/package.json" ] && [ ! -d "$WORK_DIR/node_modules" ]; then
-    log "Installing dependencies in $WORK_DIR..."
-    (cd "$WORK_DIR" && npm install --silent)
-  fi
-
-  if [ -n "${REL_PREFIX:-}" ] && [ -f "$WORKTREE_DIR/package.json" ] && [ ! -d "$WORKTREE_DIR/node_modules" ]; then
-    log "Installing monorepo root dependencies in $WORKTREE_DIR..."
-    (cd "$WORKTREE_DIR" && npm install --silent)
-  fi
-
-  if [ -d "$WORK_DIR/../packages/schemas" ]; then
-    SCHEMAS_DIR="$(cd "$WORK_DIR/../packages/schemas" && pwd)"
-    if [ -f "$SCHEMAS_DIR/package.json" ] && [ ! -d "$SCHEMAS_DIR/node_modules" ]; then
-      log "Installing @har/schemas dependencies in $SCHEMAS_DIR..."
-      (cd "$SCHEMAS_DIR" && npm install --silent)
-    fi
-  fi
+if [ "$RESUME" = true ] && har_toolchain_ready "$WORK_DIR"; then
+  log "Toolchain already provisioned — skipping install."
 else
-  log "Dependencies already installed — skipping npm install."
+  log "Provisioning toolchain (see harness.env: HARNESS_ECOSYSTEM, HARNESS_INSTALL_CMD)..."
+  HAR_WORK_DIR="$WORK_DIR" \
+  HAR_ENV_FILE="$ENV_FILE" \
+  HAR_WORKTREE_DIR="${WORKTREE_DIR:-}" \
+  HAR_REL_PREFIX="${REL_PREFIX:-}" \
+  HAR_AGENT_ID="$AGENT_ID" \
+    "$SCRIPT_DIR/provision-toolchain.sh"
 fi
 
 if [ -n "${HARNESS_DB_MINIMAL_BOOTSTRAP_CMD:-}" ]; then
