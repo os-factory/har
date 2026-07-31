@@ -4,6 +4,7 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/jest-setup.ts'],
   moduleNameMapper: {
     '^chalk$': '<rootDir>/tests/__mocks__/chalk.ts',
   },

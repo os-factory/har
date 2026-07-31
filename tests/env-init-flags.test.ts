@@ -35,7 +35,10 @@ function runInit(dir: string, extraArgs: string[]): { status: number | null; com
   const result = spawnSync(
     process.execPath,
     [cli, 'env', 'init', '--repo', dir, '--yes', '--profile', 'cli', ...extraArgs],
-    { encoding: 'utf8' },
+    {
+      encoding: 'utf8',
+      env: process.env,
+    },
   );
   return {
     status: result.status,
@@ -61,9 +64,17 @@ describe('har env init --no-agents / --no-cursor-rule (CLI)', () => {
   const cli = path.resolve(__dirname, '..', 'dist', 'index.js');
   const hasBuild = fs.existsSync(cli);
   const maybeIt = hasBuild ? it : it.skip;
+  const fixtureDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of fixtureDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   maybeIt('exits 0 and skips skills + cursor rule when both --no-* flags are set', () => {
     const dir = initFixtureRepo();
+    fixtureDirs.push(dir);
     // Seed dirs so auto-detect would otherwise want to scaffold
     fs.mkdirSync(path.join(dir, '.cursor'), { recursive: true });
     fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
@@ -82,6 +93,7 @@ describe('har env init --no-agents / --no-cursor-rule (CLI)', () => {
 
   maybeIt('still writes the cursor rule when --yes without --no-cursor-rule', () => {
     const dir = initFixtureRepo();
+    fixtureDirs.push(dir);
     fs.mkdirSync(path.join(dir, '.cursor'), { recursive: true });
 
     const { status, combined } = runInit(dir, ['--no-agents']);

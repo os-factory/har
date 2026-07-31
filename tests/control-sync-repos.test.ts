@@ -40,16 +40,48 @@ function clearPortalEnv(): void {
   delete process.env.HAR_PORTAL_TOKEN;
 }
 
-// Any repo whose path includes "fail" gets an HTTP 500 from the portal.
+// Portal failures are keyed off repo path; local Mission Control always succeeds.
 function mockFetchByRepo(): void {
-  (global as unknown as { fetch: unknown }).fetch = jest.fn(async (_url: string, init?: RequestInit) => {
+  (global as unknown as { fetch: unknown }).fetch = jest.fn(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET';
     const body = init?.body ? (JSON.parse(String(init.body)) as { path?: string }) : {};
     const failed = typeof body.path === 'string' && body.path.includes('fail');
+
+    if (String(url).includes('portal.example.com')) {
+      return {
+        ok: !failed,
+        status: failed ? 500 : 200,
+        statusText: failed ? 'Internal Server Error' : 'OK',
+        text: async () => (failed ? 'boom' : ''),
+        json: async () => ({}),
+      };
+    }
+
+    if (String(url).endsWith('/api/repos') && method === 'POST') {
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => '',
+        json: async () => ({ id: 'local-repo-1' }),
+      };
+    }
+
+    if (String(url).endsWith('/api/repos') && method === 'GET') {
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => '',
+        json: async () => [],
+      };
+    }
+
     return {
-      ok: !failed,
-      status: failed ? 500 : 200,
-      statusText: failed ? 'Internal Server Error' : 'OK',
-      text: async () => (failed ? 'boom' : ''),
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => '',
       json: async () => ({}),
     };
   });
