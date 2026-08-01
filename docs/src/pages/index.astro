@@ -221,6 +221,44 @@ import HeroFlow from '../components/HeroFlow.astro';
 </a>
 </div>
 </section>
+<section class="section section-dark blueprint-dark enterprise-section" id="teams">
+<div class="container enterprise-grid reveal">
+<div class="enterprise-copy">
+<div class="section-kicker section-kicker-dark">For teams</div>
+<h2>Need HAR for your organization?</h2>
+<p>HAR is open source and self-hostable. Register your interest in team features — hosted cloud, centralized observability, shared dashboards, and more.</p>
+<ul class="clean-list clean-list-dark">
+<li><span>✓</span> Hosted cloud</li>
+<li><span>✓</span> Centralized observability</li>
+<li><span>✓</span> Shared Mission Control for your org</li>
+</ul>
+</div>
+<div class="enterprise-actions">
+<form
+  class="enterprise-form"
+  data-web3form
+  data-success-message="Thanks — we'll reach out about team features."
+  action="https://api.web3forms.com/submit"
+  method="POST"
+>
+<input type="hidden" name="access_key" value="9650ee0d-81c2-4edb-9cab-69920938f8ab" />
+<input type="hidden" name="subject" value="HAR team features registration" />
+<input type="hidden" name="form_type" value="enterprise" />
+<input type="hidden" name="source" value="landing-page-teams" />
+<input type="hidden" name="interests" value="hosted cloud, centralized observability, shared mission control" />
+<input type="checkbox" name="botcheck" class="hidden" tabindex="-1" autocomplete="off" />
+<label class="sr-only" for="enterprise-email">Work email</label>
+<input id="enterprise-email" name="email" type="email" placeholder="Work email" autocomplete="email" required />
+<label class="sr-only" for="enterprise-company">Company</label>
+<input id="enterprise-company" name="company" type="text" placeholder="Company" autocomplete="organization" required />
+<label class="sr-only" for="enterprise-message">Message</label>
+<textarea id="enterprise-message" name="message" rows="3" placeholder="Team size, use case, or questions (optional)"></textarea>
+<button class="button button-primary" type="submit">Get in touch <span aria-hidden="true">→</span></button>
+<p class="enterprise-note" data-web3form-status aria-live="polite">We'll help you find the right setup for your team.</p>
+</form>
+</div>
+</div>
+</section>
 <section class="final-cta blueprint-surface">
 <div class="container final-cta-inner reveal">
 <div class="final-mark"><img alt="" src="/assets/har-logo.png"/></div>

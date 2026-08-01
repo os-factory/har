@@ -68,18 +68,21 @@ for (const copyButton of document.querySelectorAll<HTMLElement>('[data-copy]')) 
   });
 }
 
-for (const form of document.querySelectorAll<HTMLFormElement>('[data-newsletter-form]')) {
-  const status = form.parentElement?.querySelector<HTMLElement>('[data-newsletter-status]');
+for (const form of document.querySelectorAll<HTMLFormElement>('[data-newsletter-form], [data-web3form]')) {
+  const status = form.querySelector<HTMLElement>('[data-web3form-status]')
+    ?? form.parentElement?.querySelector<HTMLElement>('[data-newsletter-status], [data-web3form-status]');
   const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"]');
   const defaultStatus = status?.innerHTML ?? '';
+  const successMessage = form.dataset.successMessage ?? 'Subscribed — thanks for following along.';
+  const sendingLabel = form.dataset.sendingLabel ?? 'Sending…';
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!submitButton) return;
 
-    const originalLabel = submitButton.textContent ?? 'Subscribe';
+    const originalLabel = submitButton.textContent ?? 'Submit';
     submitButton.disabled = true;
-    submitButton.textContent = 'Sending…';
+    submitButton.textContent = sendingLabel;
 
     try {
       const payload = Object.fromEntries(new FormData(form).entries());
@@ -92,7 +95,7 @@ for (const form of document.querySelectorAll<HTMLFormElement>('[data-newsletter-
 
       if (response.ok && result.success) {
         form.reset();
-        if (status) status.textContent = 'Subscribed — thanks for following along.';
+        if (status) status.textContent = successMessage;
       } else if (status) {
         status.textContent = result.message ?? 'Something went wrong. Try again in a moment.';
       }
