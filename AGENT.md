@@ -28,7 +28,8 @@ After making changes, validate through the harness (not ad-hoc shell commands).
 - `har_launch_environment` with `agentId: 1` — once per session
 - `har_run_verification` with `agentId: 1` — typecheck + unit tests (fast)
 - `har_run_verification` with `agentId: 1, full: true` — + lint, docs check/build, docs-drift (before declaring done)
-- `har_teardown_environment` with `agentId: 1` — cleanup
+- `har_complete_environment` with `agentId: 1` — **recommended finish** (full verify + validation + teardown, branch kept); propose and wait for user approval
+- `har_teardown_environment` with `agentId: 1` — plain cleanup (prefer `complete` when the work succeeded)
 
 **CLI** (when `har` is installed):
 
@@ -36,7 +37,8 @@ After making changes, validate through the harness (not ad-hoc shell commands).
 har env launch 1
 har env verify 1
 har env verify 1 --full
-har env teardown 1
+har env complete 1      # done: verify + validate + teardown, branch kept for PR
+har env teardown 1      # plain cleanup (--delete-branch to drop the branch)
 ```
 
 **Shell fallback** (no CLI/MCP — scripts still work):
@@ -49,6 +51,10 @@ har env teardown 1
 ```
 
 Work happens in an isolated session worktree by default (`~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`) recorded in `.har/slots/agent-<id>.json`. Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
+
+### Session handoff
+
+After full verify and commit, present a handoff (summary, session branch, preview URLs, next-step options) and **wait for the user** before running `complete`, `teardown`, push, or opening a PR. Prefer `complete` over bare `teardown` when the work succeeded. Offer a PR only when `gh` or GitHub MCP is available. See [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) for the canonical template.
 
 See [`.har/README.md`](.har/README.md) for harness details.
 
@@ -216,8 +222,12 @@ For docs-only updates: branch `docs/<topic>`, title `docs: …`. For CI-only upd
 har env launch 1                # if not already launched this session
 har env verify 1                # typecheck + unit tests
 har env verify 1 --full         # + lint + build — required before declaring done
+# then: session handoff → wait for user → on approval:
+har env complete 1              # full verify + validation + teardown; branch kept
 ```
 
-Or use MCP `har_run_verification` (preferred in Cursor). Shell fallback: `./.har/verify.sh 1 --full`.
+Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cursor). Shell fallback: `./.har/verify.sh 1 --full` then `./.har/teardown.sh 1` (no validation record — prefer CLI/MCP `complete` when available).
+
+Do not end the session without a handoff prompt. Never autonomously run `complete`, push, or open a PR.
 
 If you changed `src/templates/`: `npm run build`, then `har env init --force --profile cli` on a fixture (or `--profile default` for web apps).

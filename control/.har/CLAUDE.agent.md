@@ -31,7 +31,17 @@ A task is complete only when:
 - [ ] New or changed UI behavior has coverage in `tests/` (unit and/or Playwright as appropriate)
 - [ ] Changes are committed **in the session worktree** with a clear message
 - [ ] The user got the app URL (http://localhost:${FE_PORT}) to test themselves
-- [ ] Finish with `har env complete ${AGENT_ID}` (or MCP `har_complete_environment`) — records the validation and tears down while **keeping the session branch** for the user to push / open a PR
+- [ ] Present session handoff (summary, branch, preview URLs) and **wait for user** before `complete`, push, or PR
+- [ ] On user approval: `har env complete ${AGENT_ID}` (or MCP `har_complete_environment`) — full verify + validation + teardown, branch kept
+
+### Session handoff
+
+After full verify and commit, stop and propose next steps. Never autonomously run
+`complete`, `teardown`, `git push`, or open a PR. Prefer `complete` over bare
+`teardown` when the work succeeded. Offer a PR only if `gh` or GitHub MCP is
+available (and only after explicit approval); otherwise report the session branch
+for a manual push. See `.cursor/rules/har-workflow.mdc` for the canonical handoff
+template.
 
 Quick check during development: `./.har/verify.sh ${AGENT_ID}` (stops before lint/e2e).
 

@@ -25,8 +25,13 @@ Run `har env init` or `har env maintain` to create or refresh it.
 
 ## Harness workflow
 
-Prefer **HAR MCP tools** (Cursor) or **`har env launch/verify/teardown`** — they persist run history under `.har/runs/`.
+Prefer **HAR MCP tools** (Cursor) or **`har env launch/verify/complete`** — they persist run history under `.har/runs/`.
 Use `./.har/*.sh` only when the CLI is not installed.
+
+When the work is done: full verify, commit in the session worktree, then present a
+**session handoff** and wait for the user before `har env complete <id>` /
+`har_complete_environment` (recommended finish: validation + teardown, branch kept),
+push, or opening a PR. See `.cursor/rules/har-workflow.mdc` for the handoff template.
 
 ## Commit gate
 

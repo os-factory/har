@@ -71,17 +71,37 @@ har env status --json
 2. Run full verification.
 3. Stage exactly the state that passed.
 4. Commit inside the session worktree.
-5. Complete the environment.
+5. Present a **session handoff** and wait for the user's next instruction.
+6. On user approval: complete the environment (and optionally open a PR).
 
 ```bash
 har env verify 2 --full
 git add -A
 git commit -m "feat: describe the change"
+# hand off → wait for user → on approval:
 har env complete 2
 ```
 
 Any edit after full verification changes the tree hash and requires another full
-verify. Completion keeps the branch, so the user can push it or open a pull request.
+verify.
+
+### What agents must propose
+
+After verify and commit, the agent should stop and offer numbered options — not
+silently finish the session:
+
+1. **Complete the slot** (recommended) — `har env complete <id>` / MCP
+   `har_complete_environment` runs full verification, records the validated tree
+   hash, tears down the worktree/runtime, and **keeps the session branch**. Prefer
+   this over bare `teardown` when the work succeeded.
+2. **Open a pull request** — only when `gh` or GitHub MCP is available, and only
+   after explicit user approval.
+3. **Keep the branch only** — if PR tooling is unavailable, report the session
+   branch name so the user can push manually.
+
+Never run `complete`, `teardown`, `git push`, or create a PR without user
+approval. The Cursor rule (`.cursor/rules/har-workflow.mdc`) includes the
+canonical handoff template.
 
 ## When to teardown
 
@@ -92,4 +112,5 @@ record a completion validation:
 har env teardown 2
 ```
 
-Branch deletion is a separate, explicit operation.
+Branch deletion is a separate, explicit operation. Prefer `complete` when the
+task succeeded and you want a validation record.
