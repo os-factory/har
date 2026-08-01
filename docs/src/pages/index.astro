@@ -29,10 +29,12 @@ import HeroFlow from '../components/HeroFlow.astro';
 </div>
 </div>
 </div>
-<div class="hero-visual reveal reveal-delay-1" aria-label="HAR workflow diagram">
-          <HeroFlow />
-          <div class="floating-note floating-note-top"><span>agentSlots</span><strong>4</strong></div>
-          <div class="floating-note floating-note-bottom"><span>last run</span><strong>passed in 31.2s</strong></div>
+<div class="hero-visual reveal reveal-delay-1" data-hero-terminal aria-label="HAR workflow diagram">
+          <div class="hero-terminal-stage" data-hero-terminal-stage>
+            <HeroFlow />
+            <div class="floating-note floating-note-top" data-hero-parallax><span>agentSlots</span><strong>3</strong></div>
+            <div class="floating-note floating-note-bottom" data-hero-parallax><span>last run</span><strong>passed in 31.2s</strong></div>
+          </div>
         </div>
 </div>
 <div class="hero-fade"></div>
@@ -91,8 +93,8 @@ import HeroFlow from '../components/HeroFlow.astro';
 <h3>Proof, not “looks good.”</h3>
 <p>Normalized stages surface exactly what ran, how long it took, and what passed.</p>
 <div class="proof-console">
-<div><span>factory-lint</span><b>5.3s</b><em>passed</em></div>
-<div><span>unit-tests</span><b>25.7s</b><em>passed</em></div>
+<div><span>typecheck</span><b>2.1s</b><em>passed</em></div>
+<div><span>unit-tests</span><b>8.4s</b><em>passed</em></div>
 <div><span>browser-e2e</span><b>41.2s</b><em>passed</em></div>
 </div>
 </article>
@@ -130,7 +132,7 @@ import HeroFlow from '../components/HeroFlow.astro';
 </div>
 <div class="json-card"><pre>&#123;
   <span>"profile"</span>: "default",
-  <span>"agentSlots"</span>: 4,
+  <span>"agentSlots"</span>: 3,
   <span>"stages"</span>: [
     "launch", "verify", "test"
   ]
