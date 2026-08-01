@@ -1,3 +1,10 @@
+# [0.36.0](https://github.com/os-factory/har/compare/v0.35.0...v0.36.0) (2026-08-01)
+
+
+### Features
+
+* **docs:** ReactFlow verification pipeline on landing hero ([#111](https://github.com/os-factory/har/issues/111)) ([2b1dd10](https://github.com/os-factory/har/commit/2b1dd10d6bc5c45988d3cb4dc0a51f6e3b13b925))
+
 # [0.35.0](https://github.com/os-factory/har/compare/v0.34.0...v0.35.0) (2026-08-01)
 
 
