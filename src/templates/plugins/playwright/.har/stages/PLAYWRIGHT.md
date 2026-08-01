@@ -19,3 +19,17 @@ After `./.har/launch.sh <id>`:
 ```
 
 Replace TODO selectors and paths in the scaffold specs during harness adaptation.
+
+## New UI features
+
+Add or update Playwright specs so `browser-e2e` covers the change. Prefer one file per feature under `tests/frontend/<feature>.spec.js`. Full verification (`verify --full`) must pass before done.
+
+See the header comment in `playwright.config.js` for harness env vars, artifact paths, and the quick vs full verify contract.
+
+## Plugin updates
+
+When HAR ships a new plugin template version, refresh installed files with:
+
+```bash
+har env add-plugin playwright --force
+```
