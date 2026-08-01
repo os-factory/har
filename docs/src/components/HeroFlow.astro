@@ -1,5 +1,14 @@
 ---
 import HeroVerificationFlow from './HeroVerificationFlow';
+import {
+  HERO_VERIFICATION_STAGES,
+  formatHeroRunTotal,
+  formatStageDuration,
+  heroStagesFrom,
+} from '../lib/hero-stage-meta';
+
+const headStages = HERO_VERIFICATION_STAGES.slice(0, 3);
+const tailDurationMs = heroStagesFrom(3).reduce((sum, stage) => sum + stage.durationMs, 0);
 ---
 
 <div class="flow-window">
@@ -14,29 +23,33 @@ import HeroVerificationFlow from './HeroVerificationFlow';
   </div>
 
   <div class="flow-mobile mobile-flow">
-    <div class="mobile-flow-step">
-      <span>01</span>
-      <div><strong>Typecheck</strong><small>Static analysis · 2.1s</small></div>
-    </div>
-    <i></i>
-    <div class="mobile-flow-step">
-      <span>02</span>
-      <div><strong>Unit tests</strong><small>Vitest suite · 8.4s</small></div>
-    </div>
-    <i></i>
-    <div class="mobile-flow-step">
-      <span>03</span>
-      <div><strong>API health</strong><small>Live endpoint · 1.2s</small></div>
-    </div>
+    {headStages.map((stage, index) => (
+      <div class="mobile-flow-group">
+        {index > 0 ? <i></i> : null}
+        <div class="mobile-flow-step">
+          <span>{String(index + 1).padStart(2, '0')}</span>
+          <div>
+            <strong>{stage.title}</strong>
+            <small>{stage.subtitle} · {formatStageDuration(stage.durationMs)}</small>
+          </div>
+        </div>
+      </div>
+    ))}
     <i></i>
     <div class="mobile-flow-step">
       <span>04</span>
-      <div><strong>Lint + E2E + Docker</strong><small>Full verify pipeline · 58.5s</small></div>
+      <div>
+        <strong>Lint + E2E + Docker</strong>
+        <small>Remaining stages · {formatStageDuration(tailDurationMs)}</small>
+      </div>
     </div>
     <i></i>
     <div class="mobile-flow-step mobile-flow-final">
       <span>✓</span>
-      <div><strong>All checks passed</strong><small>Tree hash recorded · ready to commit</small></div>
+      <div>
+        <strong>All checks passed</strong>
+        <small>Total · {formatHeroRunTotal()} · tree hash recorded</small>
+      </div>
     </div>
   </div>
 
@@ -45,3 +58,7 @@ import HeroVerificationFlow from './HeroVerificationFlow';
     <code>har env verify 3 --full</code>
   </div>
 </div>
+
+<style>
+  .mobile-flow-group { display: contents; }
+</style>

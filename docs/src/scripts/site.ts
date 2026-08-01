@@ -154,7 +154,7 @@ const workflowContent: Record<string, WorkflowContent> = {
     command: 'har env verify 2 --full',
     method: 'har_run_verification',
     detail: 'normalized results',
-    json: '{\n  "result": "passed",\n  "durationMs": 31200,\n  "stages": 3,\n  "artifacts": 5\n}',
+    json: '{\n  "result": "passed",\n  "durationMs": 31200,\n  "stages": 6,\n  "artifacts": 5\n}',
   },
   handoff: {
     label: '05 — Hand off',
