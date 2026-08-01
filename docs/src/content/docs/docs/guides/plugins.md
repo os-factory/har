@@ -36,6 +36,25 @@ This adds:
 Adapt selectors and URLs after installation. Full verification runs the stage when
 it is listed in `verificationStages` (the plugin updates that list for you).
 
+## Upgrading installed plugins
+
+`har env maintain` now compares **installed plugins** (detected via registered
+stage ids in `stages.json`) against the bundled plugin templates shipped with
+your HAR version.
+
+When plugin files drift:
+
+1. Run `har env maintain`
+2. Review `.har/maintain/plugins/<plugin-id>/` (templates, installed copies, diffs)
+3. Merge the diffs into your repo **or** refresh everything with:
+
+```bash
+har env add-plugin playwright --force
+```
+
+Use `--force` only when you are OK overwriting plugin-owned paths listed in the
+plugin manifest (config, stage scripts, scaffold specs, merged `package.json` keys).
+
 ## RocketSim
 
 ```bash

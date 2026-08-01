@@ -8,6 +8,14 @@ import type { HarnessDriftResult } from './drift';
 import { templateFileForHarness } from './gitignore-template';
 import { getHarnessDir, readManifest } from './manifest';
 import { resolveTemplatesDir } from '../utils/paths';
+import {
+  buildPluginDriftActions,
+  compareInstalledPluginsToTemplate,
+  readInstalledPluginFile,
+  readTemplatePluginFile,
+  type PluginDriftAction,
+  type PluginDriftResult,
+} from './plugin-drift';
 import type { ValidationIssue, ValidationResult } from './validator';
 
 export const MAINTAIN_DIR = 'maintain';
@@ -39,6 +47,8 @@ export interface MaintainBundleReport {
   generatorVersion: HarnessDriftResult['generatorVersion'];
   profile: HarnessProfile;
   actions: MaintainAction[];
+  pluginDrift: PluginDriftResult[];
+  pluginActions: PluginDriftAction[];
   stale: MaintainStaleFile[];
   missingPortVars: string[];
   agentSlotMismatch: HarnessDriftResult['agentSlotMismatch'];
@@ -197,7 +207,7 @@ function buildReadme(report: MaintainBundleReport): string {
   lines.push('', '## Drift actions', '');
 
   if (report.actions.length === 0) {
-    lines.push('No missing or drifted template files.');
+    lines.push('No missing or drifted harness template files.');
   } else {
     lines.push('| File | Status | Reference |');
     lines.push('|------|--------|-----------|');
@@ -208,6 +218,27 @@ function buildReadme(report: MaintainBundleReport): string {
           : `diffs/${action.file}.diff`;
       lines.push(`| ${action.file} | ${action.kind} | ${ref} |`);
     }
+  }
+
+  lines.push('', '## Plugin drift (installed verification plugins)', '');
+
+  if (report.pluginActions.length === 0) {
+    lines.push('No installed plugins detected, or all plugin files match bundled templates.');
+  } else {
+    lines.push('| Plugin | File | Status | Reference |');
+    lines.push('|--------|------|--------|-----------|');
+    for (const action of report.pluginActions) {
+      const ref =
+        action.kind === 'missing'
+          ? `plugins/${action.pluginId}/templates/${action.file}`
+          : `plugins/${action.pluginId}/diffs/${action.file}.diff`;
+      lines.push(`| ${action.pluginId} | ${action.file} | ${action.kind} | ${ref} |`);
+    }
+    lines.push(
+      '',
+      'To refresh all plugin files: `har env add-plugin <id> --force` (overwrites plugin-owned paths).',
+      '',
+    );
   }
 
   if (report.missingPortVars.length > 0) {
@@ -244,10 +275,11 @@ function buildReadme(report: MaintainBundleReport): string {
     '',
     '## Next steps',
     '',
-    '1. Resolve each drift action (merge diffs; keep repo-specific customizations).',
-    '2. Review stale files — delete or merge superseded scripts.',
-    '3. Re-run `har env maintain` until validation passes and drift is clear.',
-    '4. `har env maintain --finalize --summary "<what changed>"`',
+    '1. Resolve each harness drift action (merge diffs; keep repo-specific customizations).',
+    '2. Merge plugin drift under `maintain/plugins/` or run `har env add-plugin <id> --force`.',
+    '3. Review stale files — delete or merge superseded scripts.',
+    '4. Re-run `har env maintain` until validation passes and drift is clear.',
+    '5. `har env maintain --finalize --summary "<what changed>"`',
     '',
   );
 
@@ -321,6 +353,52 @@ function writeBundleArtifacts(
   return bundleDir;
 }
 
+function ensureParentDir(filePath: string): void {
+  const parent = path.dirname(filePath);
+  if (!fs.existsSync(parent)) {
+    fs.mkdirSync(parent, { recursive: true });
+  }
+}
+
+function writePluginBundleArtifacts(repoPath: string, bundleDir: string, report: MaintainBundleReport): void {
+  if (report.pluginActions.length === 0) return;
+
+  for (const action of report.pluginActions) {
+    const pluginRoot = path.join(bundleDir, 'plugins', action.pluginId);
+    const templatesDir = path.join(pluginRoot, 'templates');
+    const installedDir = path.join(pluginRoot, 'installed');
+    const diffsDir = path.join(pluginRoot, 'diffs');
+    for (const dir of [templatesDir, installedDir, diffsDir]) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const templateContent = readTemplatePluginFile(action.pluginId, action.file);
+    if (templateContent === null) continue;
+
+    const templatePath = path.join(templatesDir, action.file);
+    ensureParentDir(templatePath);
+    writeFileSafe(templatePath, templateContent);
+
+    const installedContent = readInstalledPluginFile(repoPath, action.pluginId, action.file);
+    if (installedContent !== null) {
+      const installedPath = path.join(installedDir, action.file);
+      ensureParentDir(installedPath);
+      writeFileSafe(installedPath, installedContent);
+      const diff = createUnifiedDiff(
+        installedContent,
+        templateContent,
+        `installed/${action.file}`,
+        `templates/${action.file}`,
+      );
+      if (diff) {
+        const diffPath = path.join(diffsDir, `${action.file}.diff`);
+        ensureParentDir(diffPath);
+        writeFileSafe(diffPath, diff);
+      }
+    }
+  }
+}
+
 export function buildMaintainBundle(
   repoPath: string,
   validation: ValidationResult,
@@ -330,12 +408,16 @@ export function buildMaintainBundle(
   const profile: HarnessProfile = manifest?.profile ?? 'default';
   const errors = validation.issues.filter((i) => i.severity === 'error');
   const warnings = validation.issues.filter((i) => i.severity === 'warning');
+  const pluginDrift = compareInstalledPluginsToTemplate(repoPath);
+  const pluginActions = buildPluginDriftActions(repoPath, pluginDrift);
 
   const report: MaintainBundleReport = {
     generatedAt: new Date().toISOString(),
     generatorVersion: drift.generatorVersion,
     profile,
     actions: buildActions(repoPath, profile, drift),
+    pluginDrift,
+    pluginActions,
     stale: buildStale(drift),
     missingPortVars: drift.missingPortVars,
     agentSlotMismatch: drift.agentSlotMismatch,
@@ -347,6 +429,7 @@ export function buildMaintainBundle(
   };
 
   const bundleDir = writeBundleArtifacts(repoPath, profile, drift, report);
+  writePluginBundleArtifacts(repoPath, bundleDir, report);
   return { bundleDir, report };
 }
 
@@ -362,7 +445,8 @@ export function formatMaintainBundlePromptSection(report: MaintainBundleReport):
     '## Step 0 — Read the maintenance bundle',
     '',
     'Open `.har/maintain/README.md` and `.har/maintain/drift-report.json`.',
-    'All reference templates are under `.har/maintain/templates/`.',
+    'Harness reference templates: `.har/maintain/templates/`.',
+    'Plugin reference templates: `.har/maintain/plugins/<plugin-id>/`.',
     'Do **not** read files from the globally installed har package.',
     '',
   ];
@@ -383,6 +467,23 @@ export function formatMaintainBundlePromptSection(report: MaintainBundleReport):
           ? `maintain/templates/${action.file}`
           : `maintain/diffs/${action.file}.diff`;
       lines.push(`| ${action.file} | ${action.kind} | ${ref} |`);
+    }
+    lines.push('');
+  }
+
+  if (report.pluginActions.length > 0) {
+    lines.push(
+      '### Plugin drift',
+      '',
+      '| Plugin | File | Status | Reference |',
+      '|--------|------|--------|-----------|',
+    );
+    for (const action of report.pluginActions) {
+      const ref =
+        action.kind === 'missing'
+          ? `maintain/plugins/${action.pluginId}/templates/${action.file}`
+          : `maintain/plugins/${action.pluginId}/diffs/${action.file}.diff`;
+      lines.push(`| ${action.pluginId} | ${action.file} | ${action.kind} | ${ref} |`);
     }
     lines.push('');
   }
@@ -417,6 +518,7 @@ export function formatMaintainBundlePromptSection(report: MaintainBundleReport):
 
   if (
     report.actions.length === 0 &&
+    report.pluginActions.length === 0 &&
     report.stale.length === 0 &&
     report.missingPortVars.length === 0 &&
     !report.agentSlotMismatch &&

@@ -1148,9 +1148,16 @@ function printDrift(drift: HarnessDriftResult): void {
 function printMaintainBundleSummary(report: MaintainBundleReport): void {
   const missing = report.actions.filter((a) => a.kind === 'missing').length;
   const drifted = report.actions.filter((a) => a.kind === 'drift').length;
+  const pluginMissing = report.pluginActions.filter((a) => a.kind === 'missing').length;
+  const pluginDrifted = report.pluginActions.filter((a) => a.kind === 'drift').length;
   const stale = report.stale.length;
   info(`Maintenance bundle: .har/maintain/`);
-  info(`  ${missing} missing, ${drifted} drifted, ${stale} stale`);
+  info(`  Harness: ${missing} missing, ${drifted} drifted, ${stale} stale`);
+  if (report.pluginDrift.length > 0) {
+    info(
+      `  Plugins (${report.pluginDrift.map((p) => p.pluginId).join(', ')}): ${pluginMissing} missing, ${pluginDrifted} drifted`,
+    );
+  }
   if (!report.validation.pass) {
     warn(`  Validation: ${report.validation.errors.length} error(s) — blocks --finalize`);
   }
