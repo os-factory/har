@@ -55,8 +55,8 @@ Validate through the harness — do not skip verification or substitute ad-hoc n
 
 - `har_run_verification` with `agentId: 1` — fast loop (typecheck + unit tests)
 - `har_run_verification` with `agentId: 1, full: true` — required before declaring work done
-- `har_complete_environment` with `agentId: 1` — when the work is done: full verify + validation record + teardown, **keeping the session branch** so the user can push it / open a PR
-- `har_teardown_environment` with `agentId: 1` — plain cleanup (also keeps the branch; `deleteBranch: true` to drop it)
+- `har_complete_environment` with `agentId: 1` — **recommended finish** (full verify + validation record + teardown, branch kept). **Propose and wait for user approval** before invoking — never run autonomously
+- `har_teardown_environment` with `agentId: 1` — plain cleanup only (also keeps the branch; `deleteBranch: true` to drop it). Prefer `complete` when the work succeeded
 
 ### 2. HAR CLI (when `har` is installed)
 
@@ -88,8 +88,53 @@ When the Playwright stage is installed (`.har/stages/browser-e2e.sh` exists), ad
 - Full verification returns pass (`har env verify 1 --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh 1 --full`)
 - All edits live in the session worktree (main checkout untouched: `git status` clean there)
 - New behavior has automated test coverage
+- Changes committed in the session worktree
 - Show the user the slot preview URLs so they can test the app themselves
 - Do not declare work complete without running full verify
+- **Present session handoff and wait for the user's next instruction** — do not end the session without the handoff prompt
+
+## Session handoff (required)
+
+After full verify passes and changes are committed, **stop and hand off**. Never
+autonomously run `complete`, `teardown`, `git push`, or create a pull request.
+
+Present a handoff that includes:
+
+1. **Summary** of what changed
+2. **Session branch** name (from launch / `.har/slots/agent-<id>.json`)
+3. **Preview URLs** when the slot has a running app
+4. **Numbered next-step options** — then wait for the user
+
+Options to offer:
+
+1. **Complete the slot** (recommended) — `har env complete <id>` / MCP
+   `har_complete_environment`: full verify + validation record + worktree/runtime
+   teardown; **branch kept**. Prefer this over bare `teardown` when the work
+   succeeded.
+2. **Open a PR** — only if `gh` CLI or GitHub MCP is available. Create the PR
+   **only after explicit user approval**.
+3. **Keep the branch only** — if PR tooling is unavailable, report the session
+   branch and how to push manually. The branch already exists from launch.
+
+Canonical handoff shape:
+
+```markdown
+## Session handoff
+
+**Summary:** …
+**Branch:** `<session-branch>` (session worktree)
+**Preview:** … (if applicable)
+
+Next steps — tell me which you want:
+1. **Complete the slot** — I'll run `har env complete <id>` (full verify + validation record + teardown; branch kept)
+2. **Open a PR** — I can create one with `gh`/GitHub MCP (requires your approval)
+3. **Something else** — e.g. keep the slot running, more changes, or push only
+
+I'll wait for your instruction before running complete, teardown, push, or PR.
+```
+
+Omit option 2 when neither `gh` nor GitHub MCP is available; replace it with push
+instructions for the session branch.
 
 ## Commit gate
 

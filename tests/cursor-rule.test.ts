@@ -39,6 +39,11 @@ describe('cursor-rule', () => {
     expect(content).toContain('har env verify 1 --full');
     expect(content).toContain('har_run_verification');
     expect(content).toContain('HAR Harness Workflow');
+    expect(content).toContain('Session handoff');
+    expect(content).toContain('har_complete_environment');
+    expect(content).toContain('wait for the user');
+    expect(content).toContain('GitHub MCP');
+    expect(content).toContain('`gh`');
   });
 
   it('skips when not a Cursor workspace and no existing rule', async () => {
