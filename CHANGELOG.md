@@ -1,3 +1,10 @@
+# [0.34.0](https://github.com/os-factory/har/compare/v0.33.1...v0.34.0) (2026-08-01)
+
+
+### Features
+
+* **docs:** add enterprise team CTA with Web3Forms registration ([#106](https://github.com/os-factory/har/issues/106)) ([58dfd4f](https://github.com/os-factory/har/commit/58dfd4fc634b9e2b7d50ab6d1410731263d89bc8))
+
 ## [0.33.1](https://github.com/os-factory/har/compare/v0.33.0...v0.33.1) (2026-07-31)
 
 
