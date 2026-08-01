@@ -1,3 +1,10 @@
+## [0.36.1](https://github.com/os-factory/har/compare/v0.36.0...v0.36.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **docs:** align hero pipeline durations and sharpness ([#112](https://github.com/os-factory/har/issues/112)) ([7e58962](https://github.com/os-factory/har/commit/7e58962b072c7f516a49f592a0b27c9a79ea367b))
+
 # [0.36.0](https://github.com/os-factory/har/compare/v0.35.0...v0.36.0) (2026-08-01)
 
 
