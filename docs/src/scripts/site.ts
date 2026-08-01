@@ -127,7 +127,7 @@ const workflowContent: Record<string, WorkflowContent> = {
     command: 'har env status --json',
     method: 'har_describe_project',
     detail: 'project description',
-    json: '{\n  "profile": "default",\n  "agentSlots": 4,\n  "stages": [\n    "launch", "verify", "test"\n  ]\n}',
+    json: '{\n  "profile": "default",\n  "agentSlots": 3,\n  "stages": [\n    "launch", "verify", "test"\n  ]\n}',
   },
   isolate: {
     label: '02 — Isolate',
@@ -188,3 +188,48 @@ for (const tab of tabs) {
     visualPanel.innerHTML = `<div class="visual-panel-header"><span>HAR MCP</span><small>${content.detail}</small></div><div class="mcp-call"><span class="mcp-method">tool</span><strong>${content.method}</strong><small>repo: /workspace/my-app</small></div><div class="json-card"><pre>${highlightedJson}</pre></div>`;
   });
 }
+
+function initHeroTerminalTilt() {
+  const root = document.querySelector<HTMLElement>('[data-hero-terminal]');
+  const stage = root?.querySelector<HTMLElement>('[data-hero-terminal-stage]');
+  if (!root || !stage) return;
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (reducedMotion || !finePointer) return;
+
+  const baseRotateX = 1;
+  const baseRotateY = -3;
+  const maxTilt = 8;
+  const parallaxNotes = [...root.querySelectorAll<HTMLElement>('[data-hero-parallax]')];
+
+  const setStage = (rotateX: number, rotateY: number, lift = 0) => {
+    stage.style.transform = `rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) translateZ(${lift}px)`;
+  };
+
+  setStage(baseRotateX, baseRotateY);
+
+  root.addEventListener('mousemove', (event) => {
+    const rect = root.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width - 0.5;
+    const y = (event.clientY - rect.top) / rect.height - 0.5;
+
+    setStage(baseRotateX - y * maxTilt * 2, baseRotateY + x * maxTilt * 2, 14);
+    root.classList.add('is-tilting');
+
+    parallaxNotes.forEach((note, index) => {
+      const depth = index === 0 ? 1.15 : 0.85;
+      note.style.transform = `translate3d(${(x * 16 * depth).toFixed(2)}px, ${(y * 12 * depth).toFixed(2)}px, ${24 + index * 10}px)`;
+    });
+  });
+
+  root.addEventListener('mouseleave', () => {
+    root.classList.remove('is-tilting');
+    setStage(baseRotateX, baseRotateY);
+    parallaxNotes.forEach((note) => {
+      note.style.transform = '';
+    });
+  });
+}
+
+initHeroTerminalTilt();
