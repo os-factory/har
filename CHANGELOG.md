@@ -1,3 +1,16 @@
+# [0.35.0](https://github.com/os-factory/har/compare/v0.34.0...v0.35.0) (2026-08-01)
+
+
+### Bug Fixes
+
+* **docs:** polish teams section form and blueprint grid ([#110](https://github.com/os-factory/har/issues/110)) ([5d8b35c](https://github.com/os-factory/har/commit/5d8b35c75524d798b1217ca8bc8355cee2234d17))
+
+
+### Features
+
+* **maintain:** detect drift for installed verification plugins ([#108](https://github.com/os-factory/har/issues/108)) ([fdfea2b](https://github.com/os-factory/har/commit/fdfea2b17b2b0501b0c836d29082ef6ea0689003))
+* **plugin:** document HAR harness contract in playwright plugin config  ([#107](https://github.com/os-factory/har/issues/107)) ([b1320ce](https://github.com/os-factory/har/commit/b1320ce49eef2e1837b20658e9a4fa13fa49bae4))
+
 # [0.34.0](https://github.com/os-factory/har/compare/v0.33.1...v0.34.0) (2026-08-01)
 
 
