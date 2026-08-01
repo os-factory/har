@@ -4,6 +4,11 @@
   display: none;
 }
 
+.reactflow-shell .react-flow__renderer {
+  /* Own compositor layer — stays sharper inside the 3D-tilted hero shell */
+  transform: translateZ(0);
+}
+
 .reactflow-shell .react-flow__edge-path {
   stroke-width: 1.65;
 }
@@ -19,7 +24,7 @@
   position: absolute;
   top: 9px;
   left: 11px;
-  font: 600 8px/1 var(--font-mono, ui-monospace, monospace);
+  font: 600 9px/1 var(--font-mono, ui-monospace, monospace);
   letter-spacing: 0.08em;
   color: rgba(255, 255, 255, 0.35);
 }
@@ -38,7 +43,7 @@
   margin-top: 8px;
   padding-top: 7px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  font: 8px/1 var(--font-mono, ui-monospace, monospace);
+  font: 9px/1 var(--font-mono, ui-monospace, monospace);
   color: rgba(255, 255, 255, 0.42);
 }
 
