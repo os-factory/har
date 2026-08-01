@@ -130,6 +130,8 @@ describe('adaptation prompts with maintain bundle', () => {
           hint: 'Add this file.',
         },
       ],
+      pluginDrift: [],
+      pluginActions: [],
       stale: [{ file: 'legacy.sh', hint: 'Delete after merge.' }],
       missingPortVars: ['HARNESS_DB_PORT_DEFAULT'],
       agentSlotMismatch: null,

@@ -18,7 +18,7 @@ After `./.har/launch.sh <id>`:
 ./.har/verify.sh <id> --full
 ```
 
-Replace TODO selectors and paths in the scaffold specs during harness adaptation.
+Adapt selectors and paths in the scaffold specs during harness adaptation.
 
 ## New UI features
 
@@ -28,7 +28,14 @@ See the header comment in `playwright.config.js` for harness env vars, artifact 
 
 ## Plugin updates
 
-When HAR ships a new plugin template version, refresh installed files with:
+When HAR ships a new plugin template version, merge drift from:
+
+```bash
+har env maintain
+# review .har/maintain/plugins/playwright/
+```
+
+Or refresh all plugin-owned files:
 
 ```bash
 har env add-plugin playwright --force
