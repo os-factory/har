@@ -3,6 +3,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import HeroFlow from '../components/HeroFlow.astro';
+import {
+  HERO_VERIFICATION_STAGES,
+  formatHeroRunTotal,
+  formatStageDuration,
+} from '../lib/hero-stage-meta';
+
+const heroRunTotal = formatHeroRunTotal();
+const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
+  ['typecheck', 'unit-tests', 'browser-e2e'].includes(stage.id),
+);
 ---
 <BaseLayout title="HAR — Harnesses for coding agents" bodyClass="home-page" canonicalPath="/">
   <Header active="home" />
@@ -33,7 +43,7 @@ import HeroFlow from '../components/HeroFlow.astro';
           <div class="hero-terminal-stage" data-hero-terminal-stage>
             <HeroFlow />
             <div class="floating-note floating-note-top" data-hero-parallax><span>agentSlots</span><strong>3</strong></div>
-            <div class="floating-note floating-note-bottom" data-hero-parallax><span>last run</span><strong>passed in 31.2s</strong></div>
+            <div class="floating-note floating-note-bottom" data-hero-parallax><span>last run</span><strong>passed in {heroRunTotal}</strong></div>
           </div>
         </div>
 </div>
@@ -93,9 +103,9 @@ import HeroFlow from '../components/HeroFlow.astro';
 <h3>Proof, not “looks good.”</h3>
 <p>Normalized stages surface exactly what ran, how long it took, and what passed.</p>
 <div class="proof-console">
-<div><span>typecheck</span><b>2.1s</b><em>passed</em></div>
-<div><span>unit-tests</span><b>8.4s</b><em>passed</em></div>
-<div><span>browser-e2e</span><b>41.2s</b><em>passed</em></div>
+{proofStages.map((stage) => (
+  <div><span>{stage.id}</span><b>{formatStageDuration(stage.durationMs)}</b><em>passed</em></div>
+))}
 </div>
 </article>
 </div>

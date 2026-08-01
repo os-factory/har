@@ -89,7 +89,7 @@ function FitViewOnMount() {
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      fitView({ padding: 0.2, maxZoom: 1, duration: 0 });
+      fitView({ padding: 0.12, minZoom: 1, maxZoom: 1, duration: 0 });
     });
     return () => cancelAnimationFrame(frame);
   }, [fitView]);
@@ -117,8 +117,9 @@ function HeroVerificationFlowCanvas() {
         zoomOnDoubleClick={false}
         preventScrolling={false}
         proOptions={{ hideAttribution: true }}
-        minZoom={0.5}
+        minZoom={1}
         maxZoom={1}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.12)" />
         <FitViewOnMount />
