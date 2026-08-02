@@ -1,3 +1,10 @@
+## [0.36.2](https://github.com/os-factory/har/compare/v0.36.1...v0.36.2) (2026-08-02)
+
+
+### Bug Fixes
+
+* **telemetry:** register repos, parse otel-hook prompts, improve slot attribution ([#117](https://github.com/os-factory/har/issues/117)) ([0a738d8](https://github.com/os-factory/har/commit/0a738d8da5f6269fe08fbe8f1ab66192ffdf5242))
+
 ## [0.36.1](https://github.com/os-factory/har/compare/v0.36.0...v0.36.1) (2026-08-01)
 
 
