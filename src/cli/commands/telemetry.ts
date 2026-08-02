@@ -1,7 +1,7 @@
 import * as path from 'path';
 import type { Argv } from 'yargs';
 import { getControlApiUrl } from '../../core/control-config';
-import { isControlApiReachable } from '../../core/control-sync';
+import { ensureRepoRegisteredWithControl, isControlApiReachable } from '../../core/control-sync';
 import { resolveHarnessRoot } from '../../harness/manifest';
 import {
   disableOtelHooksExport,
@@ -98,6 +98,7 @@ async function handleOn(argv: { prompts: boolean }): Promise<void> {
   if (hooks.message) success(hooks.message);
   if (hooks.warning) warn(hooks.warning);
   if (result.otelReady) {
+    await ensureRepoRegisteredWithControl(process.cwd(), result.apiUrl);
     info(`OTLP ingest: ${result.apiUrl.replace(/\/$/, '')}/api/otel`);
     info('Usage appears under Mission Control → Worktrees / Usage. Disable: har telemetry off');
   }
@@ -203,6 +204,9 @@ async function handleInstallHooks(): Promise<void> {
   const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
   if (result.message) success(result.message);
   if (result.warning) warn(result.warning);
+  if (result.otelReady) {
+    await ensureRepoRegisteredWithControl(process.cwd(), result.apiUrl);
+  }
   const hooks = ensureOtelHooks({ setupAgents: true });
   if (hooks.ok) {
     success(hooks.message ?? '@osfactory/otel-hook installed and agents registered');
