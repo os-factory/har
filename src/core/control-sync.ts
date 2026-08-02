@@ -19,7 +19,11 @@ import {
   isControlEnabled,
   PortalTarget,
 } from './control-config';
-import { listRegisteredRepos, removeRegisteredRepo } from './control-registry';
+import {
+  listRegisteredRepos,
+  recordRepoForControlSync,
+  removeRegisteredRepo,
+} from './control-registry';
 import { readPortalCredentials } from './portal-credentials';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
@@ -388,6 +392,27 @@ export async function registerRepoWithControl(
   }
 
   return (await response.json()) as { id: string };
+}
+
+/**
+ * Best-effort: record the repo in the local registry and register it with
+ * Mission Control immediately, so OTLP ingest (otel-hook) can resolve
+ * workspace → repo/slot without waiting for the next `har control sync` or
+ * `har env launch`. Never throws — callers run this alongside telemetry
+ * enablement, which must not fail just because registration did.
+ */
+export async function ensureRepoRegisteredWithControl(
+  repoPath: string,
+  apiUrl?: string,
+): Promise<void> {
+  const canonical = canonicalizeControlRepoPath(repoPath);
+  recordRepoForControlSync(canonical);
+  try {
+    await registerRepoWithControl({ repoPath: canonical, apiUrl });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[har control] repo registration skipped: ${message}\n`);
+  }
 }
 
 async function syncRepoWithLocalControl(

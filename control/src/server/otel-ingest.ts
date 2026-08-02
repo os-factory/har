@@ -69,7 +69,7 @@ function decodeOtlpProtobufJson(
   }
 }
 
-interface AttrMap {
+export interface AttrMap {
   [key: string]: string | number | boolean;
 }
 
@@ -281,7 +281,7 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
   };
 }
 
-interface ResolvedSessionContext {
+export interface ResolvedSessionContext {
   repositoryId: string;
   sessionKey: string;
   agentId: number;
@@ -353,7 +353,54 @@ async function defaultAgentIdForRepo(repositoryId: string): Promise<number> {
   return active?.slotId ?? 1;
 }
 
-async function resolveSessionContext(
+interface ActiveSlotAttribution {
+  agentId: number;
+  workDir?: string;
+  branch?: string;
+  suffix?: string;
+  workUnitId?: string;
+  attemptId?: string;
+}
+
+/**
+ * The repo's one active slot, when there is exactly one.
+ *
+ * Cursor's OTEL workspace is the main checkout, not a HAR session worktree —
+ * `resolveSlotByWorkspace` only matches a slot's own workDir/worktreePath, so
+ * activity from Cursor running against the main checkout never correlates to
+ * the worktree an agent is actually working in. When a repo has exactly one
+ * active slot, that correlation is unambiguous; two or more active slots make
+ * a guess as likely wrong as right, so this returns null and callers keep
+ * attributing to the raw workspace path instead.
+ */
+async function resolveUnambiguousActiveSlot(
+  repositoryId: string,
+): Promise<ActiveSlotAttribution | null> {
+  const active = await prisma.agentSlot.findMany({
+    where: { repositoryId, active: true },
+    select: {
+      slotId: true,
+      workDir: true,
+      worktreePath: true,
+      branch: true,
+      suffix: true,
+      workUnitId: true,
+      attemptId: true,
+    },
+  });
+  if (active.length !== 1) return null;
+  const slot = active[0];
+  return {
+    agentId: slot.slotId,
+    workDir: slot.workDir ?? slot.worktreePath ?? undefined,
+    branch: slot.branch ?? undefined,
+    suffix: slot.suffix ?? undefined,
+    workUnitId: slot.workUnitId ?? undefined,
+    attemptId: slot.attemptId ?? undefined,
+  };
+}
+
+export async function resolveSessionContext(
   resource: AttrMap,
   attributes: AttrMap = {},
 ): Promise<{ context: ResolvedSessionContext | null; reason?: string }> {
@@ -392,22 +439,30 @@ async function resolveSessionContext(
 
     const byRepo = await resolveRepositoryByWorkspacePath(workspace);
     if (byRepo) {
+      const activeSlot = await resolveUnambiguousActiveSlot(byRepo.repositoryId);
       return {
         context: {
           repositoryId: byRepo.repositoryId,
           sessionKey:
             harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`,
-          agentId: explicitAgentId ?? (await defaultAgentIdForRepo(byRepo.repositoryId)),
+          agentId:
+            explicitAgentId ??
+            activeSlot?.agentId ??
+            (await defaultAgentIdForRepo(byRepo.repositoryId)),
           agentTool: tool ?? 'cursor',
-          workDir: workspace,
-          branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
-          suffix: resource['har.suffix'] ? String(resource['har.suffix']) : undefined,
-          workUnitId: resource['har.work_unit_id']
-            ? String(resource['har.work_unit_id'])
-            : undefined,
-          attemptId: resource['har.attempt_id']
-            ? String(resource['har.attempt_id'])
-            : undefined,
+          workDir: activeSlot?.workDir ?? workspace,
+          branch:
+            activeSlot?.branch ??
+            (resource['har.branch'] ? String(resource['har.branch']) : undefined),
+          suffix:
+            activeSlot?.suffix ??
+            (resource['har.suffix'] ? String(resource['har.suffix']) : undefined),
+          workUnitId:
+            activeSlot?.workUnitId ??
+            (resource['har.work_unit_id'] ? String(resource['har.work_unit_id']) : undefined),
+          attemptId:
+            activeSlot?.attemptId ??
+            (resource['har.attempt_id'] ? String(resource['har.attempt_id']) : undefined),
         },
       };
     }
@@ -416,16 +471,26 @@ async function resolveSessionContext(
   if (workspaceId) {
     const byId = await resolveRepositoryByWorkspaceId(workspaceId);
     if (byId) {
+      const activeSlot = await resolveUnambiguousActiveSlot(byId.repositoryId);
       return {
         context: {
           repositoryId: byId.repositoryId,
           sessionKey:
             harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`,
-          agentId: explicitAgentId ?? (await defaultAgentIdForRepo(byId.repositoryId)),
+          agentId:
+            explicitAgentId ??
+            activeSlot?.agentId ??
+            (await defaultAgentIdForRepo(byId.repositoryId)),
           agentTool: tool ?? 'cursor',
-          workDir: byId.matchedPath,
-          branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
-          suffix: resource['har.suffix'] ? String(resource['har.suffix']) : undefined,
+          workDir: activeSlot?.workDir ?? byId.matchedPath,
+          branch:
+            activeSlot?.branch ??
+            (resource['har.branch'] ? String(resource['har.branch']) : undefined),
+          suffix:
+            activeSlot?.suffix ??
+            (resource['har.suffix'] ? String(resource['har.suffix']) : undefined),
+          workUnitId: activeSlot?.workUnitId,
+          attemptId: activeSlot?.attemptId,
         },
       };
     }
@@ -507,7 +572,7 @@ function textFromGenAiMessages(raw: string): string | null {
   }
 }
 
-function extractPromptText(attributes: AttrMap, eventName?: string, bodyText?: string | null): string | null {
+export function extractPromptText(attributes: AttrMap, eventName?: string, bodyText?: string | null): string | null {
   const keys = [
     'gen_ai.client.prompt.text',
     'gen_ai.prompt.0.content',
@@ -529,6 +594,22 @@ function extractPromptText(attributes: AttrMap, eventName?: string, bodyText?: s
     (hookEvent.includes('userprompt') ||
       hookEvent.includes('beforesubmitprompt') ||
       hookEvent.includes('user_prompt')) &&
+    bodyText?.trim()
+  ) {
+    return bodyText.trim();
+  }
+  // @osfactory/otel-hook canonical log mapping: one record per content fact,
+  // `otelhook.event.type` names the canonical event and `otelhook.content.kind`
+  // names the fact. A withheld body (`otelhook.content.withheld` set) carries no
+  // `body` — the record states *why* rather than leaving an ambiguous absence, so
+  // it must not be read as an empty prompt.
+  const otelHookEventType = String(attributes['otelhook.event.type'] ?? '').toLowerCase();
+  const otelHookContentKind = String(attributes['otelhook.content.kind'] ?? '').toLowerCase();
+  const otelHookWithheld = attributes['otelhook.content.withheld'];
+  if (
+    otelHookEventType === 'prompt.submitted' &&
+    otelHookContentKind === 'prompt' &&
+    !otelHookWithheld &&
     bodyText?.trim()
   ) {
     return bodyText.trim();

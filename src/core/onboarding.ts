@@ -2,7 +2,7 @@ import * as path from 'path';
 import { addPlugin, initHarness } from './harness';
 import { startControlAndSync } from './control-lifecycle';
 import { getControlApiUrl } from './control-config';
-import { isControlApiReachable } from './control-sync';
+import { ensureRepoRegisteredWithControl, isControlApiReachable } from './control-sync';
 import { recordRepoForControlSync } from './control-registry';
 import {
   disableOtelHooksExport,
@@ -180,7 +180,7 @@ export async function applyOnboardingTelemetry(
   }
 }
 
-async function defaultEnsureControl(options: {
+export async function defaultEnsureControl(options: {
   startControl: boolean;
   telemetry: TelemetryChoice;
   cwd: string;
@@ -200,6 +200,9 @@ async function defaultEnsureControl(options: {
             'Telemetry is on but Mission Control is not running. Start later with: har control up',
         };
       }
+      // MC is already reachable — register now so OTLP ingest from otel-hook
+      // doesn't drop events waiting for the next sync.
+      await ensureRepoRegisteredWithControl(options.cwd, apiUrl);
     }
     return { started: false, apiUrl };
   }
@@ -208,6 +211,9 @@ async function defaultEnsureControl(options: {
     const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
     if (ensured.message) success(ensured.message);
     if (ensured.warning) warn(ensured.warning);
+    if (ensured.reachable) {
+      await ensureRepoRegisteredWithControl(options.cwd, ensured.apiUrl);
+    }
     return {
       started: ensured.started || ensured.reachable,
       apiUrl: ensured.apiUrl,

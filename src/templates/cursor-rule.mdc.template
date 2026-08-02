@@ -16,7 +16,7 @@ work around it with ad-hoc commands.
 ## Before making changes
 
 1. **On the main checkout, switch to the intended base** (usually `main`) — every launch creates a worktree from that HEAD. `--replace` does not select the base.
-2. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1`. Launch always creates a **fresh session worktree** and returns its **work dir**.
+2. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1`. Launch always creates a **fresh session worktree** and returns its **work dir**. If the task binds to a durable external work item (a GitHub issue, a Linear ticket, a task from the user's tracker), pass `workUnitId` + `title` on launch (`har_launch_environment` `workUnitId`/`title`, or CLI `--work-id`/`--work-title`) so Mission Control attributes usage and events to that work item instead of leaving them session-only.
 3. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `har env restart <id>` or `./.har/agent-cli.sh <id> restart` if a change doesn't take.
 4. Read [AGENT.md](./AGENT.md) at the repo root
 5. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
