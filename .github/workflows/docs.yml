@@ -27,8 +27,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: pages-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -42,24 +42,36 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: docs/package-lock.json
-      - name: Check documentation
+      - name: Install and check documentation
         run: |
           npm ci --prefix docs
           npm run drift --prefix docs
           npm run check --prefix docs
           npm run build --prefix docs
+      - name: Cache lychee
+        id: lychee-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/lychee-bin
+          key: lychee-v0.24.2-x86_64-unknown-linux-gnu
       - name: Install lychee
+        if: steps.lychee-cache.outputs.cache-hit != 'true'
         run: |
+          mkdir -p /tmp/lychee-bin
           curl -fsSL -o /tmp/lychee.tgz https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
           tar xzf /tmp/lychee.tgz -C /tmp
-          echo "/tmp/lychee-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
+          cp /tmp/lychee-x86_64-unknown-linux-gnu/lychee /tmp/lychee-bin/lychee
+      - name: Add lychee to PATH
+        run: echo "/tmp/lychee-bin" >> "$GITHUB_PATH"
       - name: Check documentation links
         run: npm run links --prefix docs
-      - name: Build and upload Pages artifact
-        uses: withastro/action@v3
+      # Single build above — upload the artifact directly (avoids withastro/action
+      # re-installing deps and rebuilding the site a second time).
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
-          node-version: 22
+          path: docs/dist
 
   deploy:
     if: github.event_name != 'pull_request'
