@@ -73,7 +73,7 @@
   "homepage": "https://harproject.dev/",
   "bugs": "https://github.com/os-factory/har/issues",
   "author": "Antoine Frau",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

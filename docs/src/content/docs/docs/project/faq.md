@@ -63,5 +63,5 @@ and previews, team policy, approvals, integrations, and auditability.
 
 ## How is documentation licensed?
 
-Software uses AGPL-3.0-only, written documentation uses CC BY-SA 4.0, and HAR names,
-logos, and trademarks remain governed by the repository trademark policy.
+The entire project — software and documentation — is licensed under Apache-2.0.
+See the repository [LICENSE](https://github.com/os-factory/har/blob/main/LICENSE).

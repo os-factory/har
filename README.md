@@ -70,9 +70,9 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, the dogfood harness lo
 
 ## License
 
-Software is [AGPL-3.0-only](./LICENSE). Documentation is [CC BY-SA 4.0](./DOCUMENTATION-LICENSE.md). Trademarks are reserved — see [TRADEMARK.md](./TRADEMARK.md). Commercial use without AGPL obligations needs a separate agreement — see [LICENSE-COMMERCIAL.md](./LICENSE-COMMERCIAL.md).
+Licensed under the [Apache License 2.0](./LICENSE).
 
-Copyright © 2026 [Antoine Frau](https://github.com/antoineFrau). Contributors agree to the [CLA](./CLA.md).
+Copyright © 2026 [Antoine Frau](https://github.com/antoineFrau).
 
 ## Security
 
