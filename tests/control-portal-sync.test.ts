@@ -5,7 +5,10 @@ import { syncRepoWithControl } from '../src/core/control-sync';
 // collectors are exercised by their own suites — here we only care that the
 // portal push targets the right URL, sends the bearer token, and shapes the
 // omnibus body from whatever the collectors return.
-jest.mock('../src/core/portal-credentials', () => ({ readPortalCredentials: jest.fn(() => null) }));
+jest.mock('../src/core/portal-credentials', () => ({
+  readPortalCredentials: jest.fn(() => null),
+  writePortalCredentials: jest.fn(),
+}));
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
 }));
@@ -41,7 +44,10 @@ jest.mock('../src/harness/manifest', () => ({
 jest.mock('../src/harness/stages', () => ({ readStageRegistry: () => null }));
 
 import { collectEnvironmentStatus } from '../src/core/slot-status';
-import { readPortalCredentials } from '../src/core/portal-credentials';
+import {
+  readPortalCredentials,
+  writePortalCredentials,
+} from '../src/core/portal-credentials';
 import {
   listWorkUnits,
   listWorkAttempts,
@@ -53,6 +59,7 @@ import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-wa
 
 const collectEnvironmentStatusMock = collectEnvironmentStatus as jest.Mock;
 const readPortalCredentialsMock = readPortalCredentials as jest.Mock;
+const writePortalCredentialsMock = writePortalCredentials as jest.Mock;
 const listWorkUnitsMock = listWorkUnits as jest.Mock;
 const listWorkAttemptsMock = listWorkAttempts as jest.Mock;
 const listValidationBindingsMock = listValidationBindings as jest.Mock;
@@ -689,5 +696,128 @@ describe('syncRepoWithControl — portal watermark', () => {
     await syncRepoWithControl({ repoPath: '/repo/x', dryRun: true });
 
     expect(writePortalWatermarkMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('syncRepoWithControl — token refresh on 401', () => {
+  const realFetch = global.fetch;
+  beforeEach(() => {
+    resetPayloadMocks();
+    clearPortalEnv();
+    writePortalCredentialsMock.mockReset();
+  });
+  afterEach(() => {
+    (global as unknown as { fetch: unknown }).fetch = realFetch;
+  });
+  afterAll(clearPortalEnv);
+
+  function storedCreds(overrides: Record<string, unknown> = {}): void {
+    readPortalCredentialsMock.mockReturnValue({
+      portalUrl: 'https://portal.example.com',
+      token: 'har_ingest_old',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      refreshToken: 'har_refresh_ok',
+      ...overrides,
+    });
+  }
+
+  function refreshFetch(opts: {
+    syncStatuses: number[];
+    refreshStatus: number;
+    refreshBody?: Record<string, unknown>;
+  }): jest.Mock {
+    let syncCall = 0;
+    const fn = jest.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      const method = init?.method ?? 'GET';
+      if (u.endsWith('/api/cli/refresh')) {
+        const ok = opts.refreshStatus >= 200 && opts.refreshStatus < 300;
+        return {
+          ok,
+          status: opts.refreshStatus,
+          text: async () => '',
+          json: async () => opts.refreshBody ?? {},
+        };
+      }
+      if (u.includes('portal.example.com') && u.endsWith('/api/sync')) {
+        const status = opts.syncStatuses[Math.min(syncCall, opts.syncStatuses.length - 1)];
+        syncCall++;
+        return {
+          ok: status >= 200 && status < 300,
+          status,
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (u.endsWith('/api/repos') && method === 'POST') {
+        return { ok: true, status: 200, text: async () => '', json: async () => ({ id: 'local-repo-1' }) };
+      }
+      return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fn;
+    return fn;
+  }
+
+  function callsTo(fetchMock: jest.Mock, endpoint: string): [string, RequestInit][] {
+    return fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith(endpoint),
+    ) as [string, RequestInit][];
+  }
+
+  it('rotates the ingest token on 401 and retries the sync with it', async () => {
+    storedCreds();
+    const fetchMock = refreshFetch({
+      syncStatuses: [401, 200],
+      refreshStatus: 200,
+      refreshBody: { token: 'har_ingest_new', expiresAt: '2026-02-01T00:00:00.000Z' },
+    });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const refreshCalls = callsTo(fetchMock, '/api/cli/refresh');
+    expect(refreshCalls).toHaveLength(1);
+    expect((refreshCalls[0][1].headers as Record<string, string>).Authorization).toBe(
+      'Bearer har_refresh_ok',
+    );
+
+    const syncCalls = callsTo(fetchMock, '/api/sync');
+    expect(syncCalls).toHaveLength(2);
+    expect((syncCalls[0][1].headers as Record<string, string>).Authorization).toBe(
+      'Bearer har_ingest_old',
+    );
+    expect((syncCalls[1][1].headers as Record<string, string>).Authorization).toBe(
+      'Bearer har_ingest_new',
+    );
+
+    expect(writePortalCredentialsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: 'har_ingest_new',
+        expiresAt: '2026-02-01T00:00:00.000Z',
+        refreshToken: 'har_refresh_ok',
+      }),
+    );
+  });
+
+  it('surfaces the 401 without refreshing when there is no refresh token', async () => {
+    storedCreds({ refreshToken: undefined });
+    const fetchMock = refreshFetch({ syncStatuses: [401], refreshStatus: 200 });
+
+    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).rejects.toThrow(
+      /rejected the ingest token/,
+    );
+    expect(callsTo(fetchMock, '/api/cli/refresh')).toHaveLength(0);
+    expect(writePortalCredentialsMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the original 401 when the refresh itself is rejected', async () => {
+    storedCreds();
+    const fetchMock = refreshFetch({ syncStatuses: [401], refreshStatus: 401 });
+
+    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).rejects.toThrow(
+      /rejected the ingest token/,
+    );
+    expect(callsTo(fetchMock, '/api/cli/refresh')).toHaveLength(1);
+    expect(callsTo(fetchMock, '/api/sync')).toHaveLength(1);
+    expect(writePortalCredentialsMock).not.toHaveBeenCalled();
   });
 });

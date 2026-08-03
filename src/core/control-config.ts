@@ -14,6 +14,7 @@ export function isControlEnabled(): boolean {
 export interface PortalTarget {
   url: string;
   token: string;
+  refreshToken?: string;
 }
 
 function normalizeUrl(url: string): string {
@@ -30,7 +31,11 @@ export function getPortalTarget(): PortalTarget | null {
 
   const stored = readPortalCredentials();
   if (stored) {
-    return { url: normalizeUrl(stored.portalUrl), token: stored.token };
+    return {
+      url: normalizeUrl(stored.portalUrl),
+      token: stored.token,
+      refreshToken: stored.refreshToken,
+    };
   }
 
   if (process.env.HAR_CLOUD_API_URL && process.env.HAR_CLOUD_API_KEY) {
