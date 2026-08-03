@@ -25,7 +25,8 @@ test.describe('Repository validation stages', () => {
     const table = panel.getByRole('table');
     if (!(await table.isVisible().catch(() => false))) {
       // Repo without declared verificationStages shows the empty state instead.
-      await expect(panel.getByText(/no validation stages declared/i)).toBeVisible();
+      // The empty copy can appear more than once (stages list + pipeline).
+      await expect(panel.getByText(/no validation stages declared/i).first()).toBeVisible();
       return;
     }
 

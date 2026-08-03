@@ -20,9 +20,13 @@ test.describe('Validation pipeline visual', () => {
     const validationTab = page.getByRole('tab', { name: 'Validation' });
     await validationTab.click();
 
+    // Repos without declared verificationStages have no flow canvas.
+    if (await page.getByText(/no validation stages declared/i).first().isVisible().catch(() => false)) {
+      test.skip(true, 'No validation pipeline for this repository');
+    }
+
     await expect(page.getByText('Verification pipeline')).toBeVisible();
 
-    // Repos without declared verificationStages have no flow canvas.
     const firstNode = page.locator('.react-flow__node').first();
     if (!(await firstNode.isVisible().catch(() => false))) {
       test.skip(true, 'No validation pipeline nodes for this repository');
