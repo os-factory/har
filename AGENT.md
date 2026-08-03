@@ -21,42 +21,15 @@ Run harness commands from the directory that owns the harness (e.g. `cd control 
 
 ## Harness workflow (dogfooding)
 
-After making changes, validate through the harness (not ad-hoc shell commands).
+Follow [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) and the
+[Agent workflow guide](https://harproject.dev/docs/guides/agent-workflow/): launch
+first, edit only under the session work dir, full-verify before done, then present
+a session handoff and wait for approval before `complete`, push, or PR.
 
-**Preferred — HAR MCP** (Cursor — copy [`.cursor/mcp.json.example`](.cursor/mcp.json.example) to `.cursor/mcp.json` and set your checkout path; see [CONTRIBUTING.md](./CONTRIBUTING.md)):
-
-- `har_launch_environment` with `agentId: 1` — once per session
-- `har_run_verification` with `agentId: 1` — typecheck + unit tests (fast)
-- `har_run_verification` with `agentId: 1, full: true` — + lint, docs check/build, docs-drift (before declaring done)
-- `har_complete_environment` with `agentId: 1` — **recommended finish** (full verify + validation + teardown, branch kept); propose and wait for user approval
-- `har_teardown_environment` with `agentId: 1` — plain cleanup (prefer `complete` when the work succeeded)
-
-**CLI** (when `har` is installed):
-
-```bash
-har env launch 1
-har env verify 1
-har env verify 1 --full
-har env complete 1      # done: verify + validate + teardown, branch kept for PR
-har env teardown 1      # plain cleanup (--delete-branch to drop the branch)
-```
-
-**Shell fallback** (no CLI/MCP — scripts still work):
-
-```bash
-./.har/launch.sh 1
-./.har/verify.sh 1
-./.har/verify.sh 1 --full
-./.har/teardown.sh 1
-```
-
-Work happens in an isolated session worktree by default (`~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`) recorded in `.har/slots/agent-<id>.json`. Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when you must use the repo root checkout.
-
-### Session handoff
-
-After full verify and commit, present a handoff (summary, session branch, preview URLs, next-step options) and **wait for the user** before running `complete`, `teardown`, push, or opening a PR. Prefer `complete` over bare `teardown` when the work succeeded. Offer a PR only when `gh` or GitHub MCP is available. See [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) for the canonical template.
-
-See [`.har/README.md`](.har/README.md) for harness details.
+Configure Cursor MCP from [`.cursor/mcp.json.example`](.cursor/mcp.json.example)
+(see [CONTRIBUTING.md](./CONTRIBUTING.md)). Prefer MCP or `har env …` over
+`./.har/*.sh` so run history is persisted. Use
+`har env launch 1 --no-worktree` only when you must use the repo root checkout.
 
 ## Run history
 

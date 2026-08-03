@@ -126,6 +126,50 @@ if (!astroConfig.includes("site: 'https://harproject.dev'") || !astroConfig.incl
   failures.push('Astro site/base no longer match the documentation custom domain');
 }
 
+// Prose guards — prevent reintroducing removed launch UX or nonexistent commands.
+const quickStart = read(`${docsRoot}/getting-started/quick-start.md`);
+const agentWorkflow = read(`${docsRoot}/guides/agent-workflow.md`);
+const bannedPhrases = [
+  { phrase: 'har env restart', label: 'nonexistent CLI command' },
+  { phrase: 'confirmReplace', label: 'removed MCP launch flag (#121)' },
+  { phrase: 'launch --replace', label: 'removed launch flag (#121)' },
+  { phrase: '--replace', label: 'removed launch/preflight flag (#121)' },
+];
+const proseDocs = [
+  ['CLI reference', docs.cli],
+  ['MCP reference', docs.mcp],
+  ['Quick start', quickStart],
+  ['Agent workflow', agentWorkflow],
+];
+for (const { phrase, label } of bannedPhrases) {
+  for (const [name, document] of proseDocs) {
+    if (document.includes(phrase)) {
+      // Allow "replace" wording about init --force / harness recreation only when
+      // the banned token is specifically about launch --replace / confirmReplace.
+      failures.push(`${name} still mentions ${phrase} (${label})`);
+    }
+  }
+}
+if (/\brequires `--force`/.test(quickStart) || /requires --force/.test(quickStart)) {
+  failures.push(
+    'Quick start still describes occupied-slot launch with requires --force (removed in #121)',
+  );
+}
+requireTerms(docs.cli, ['--portal'], 'CLI reference (control login)');
+requireTerms(docs.mcp, ['ios'], 'MCP reference (har_init_harness profile)');
+requireTerms(docs.mcp, ['worktree'], 'MCP reference (har_launch_environment)');
+
+const cursorRuleTemplate = read('src/templates/cursor-rule.mdc.template');
+const cursorRuleLines = cursorRuleTemplate.split('\n').length;
+if (cursorRuleLines > 80) {
+  failures.push(
+    `cursor-rule.mdc.template is ${cursorRuleLines} lines (max 80) — keep the always-on rule slim`,
+  );
+}
+if (cursorRuleTemplate.includes('har env restart')) {
+  failures.push('cursor-rule.mdc.template mentions nonexistent har env restart');
+}
+
 if (failures.length > 0) {
   console.error('Documentation drift detected:');
   for (const failure of failures) console.error(`  - ${failure}`);

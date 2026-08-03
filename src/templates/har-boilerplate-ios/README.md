@@ -2,7 +2,7 @@
 
 This directory is the **agent harness** for this iOS mobile app repository. It lets AI coding agents build, test, and validate the app in isolated git worktrees against a running iOS Simulator.
 
-Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `har env maintain` when the repo stack changes.
+Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har env maintain` when the repo stack changes.
 
 **The harness is how you run this project.** Launch a slot to exercise the code in isolation; don't hand-roll Xcode/simulator setup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
 
@@ -111,16 +111,6 @@ When your app talks to a local backend, read the resolved host port from `.env.a
 - Hardcode backend ports in RocketSim flows or unit tests — read from agent env
 - Run raw `docker compose` for harness infrastructure — use `setup-infra.sh`
 
-## Session lifecycle
-
-Every `launch` starts a **fresh session**: a new git worktree from the **main
-checkout's current HEAD** at
-`~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
-Switch that checkout to your intended base before launch. The session is recorded in
-`.har/slots/agent-<id>.json`.
-
-- Occupied slots always block a new launch: `har env complete <id>` (or `teardown <id>`),
-  then `har env launch <id>`. A new launch never chooses `main` for you — switch the
-  main checkout to your intended base first.
-- `teardown` removes the worktree but **keeps the session branch** for push / PR.
-- `har env complete <id>` finishes a session: full verify + teardown, branch kept.
+Session lifecycle:
+[Agent workflow](https://harproject.dev/docs/guides/agent-workflow/) ·
+[Core concepts](https://harproject.dev/docs/getting-started/concepts/).

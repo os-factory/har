@@ -93,11 +93,26 @@ silently finish the session:
 2. **Open a pull request** — only when `gh` or GitHub MCP is available, and only
    after explicit user approval.
 3. **Keep the branch only** — if PR tooling is unavailable, report the session
-   branch name so the user can push manually.
+   branch name so the user can push manually. Omit option 2 and describe a manual
+   push instead when PR tooling is unavailable.
 
 Never run `complete`, `teardown`, `git push`, or create a PR without user
-approval. The Cursor rule (`.cursor/rules/har-workflow.mdc`) includes the
-canonical handoff template.
+approval. Canonical handoff shape:
+
+```markdown
+## Session handoff
+
+**Summary:** …
+**Branch:** `<session-branch>` (session worktree)
+**Preview:** … (if applicable)
+
+Next steps — tell me which you want:
+1. **Complete the slot** — I'll run `har env complete <id>` (full verify + validation record + teardown; branch kept)
+2. **Open a PR** — I can create one with `gh`/GitHub MCP (requires your approval)
+3. **Something else** — e.g. keep the slot running, more changes, or push only
+
+I'll wait for your instruction before running complete, teardown, push, or PR.
+```
 
 ## When to teardown
 

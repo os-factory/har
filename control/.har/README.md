@@ -69,14 +69,10 @@ Read **`stages.json`** for registered stages and **`verificationStages`** for th
 Install Playwright plugin: `har env add-plugin playwright` (optional). UI changes should add or update specs under `tests/`.
 The `docker-build` stage builds `control/Dockerfile` against the session worktree (no push; native platform), then smoke-boots the image and waits for `/api/health`. That catches first-boot failures (for example a broken Prisma CLI / missing wasm) that a build-only check would miss. PR CI runs this via `control` job `./.har/verify.sh 1 --full`.
 
-## Run history
-
-| Entry point | Writes `.har/runs/`? |
-|-------------|------------------------|
-| `./.har/*.sh` | No — same scripts, no run record |
-| `har env …` / MCP | Yes — under main checkout `control/.har/runs/YYYY-MM-DD/` |
-
-With git worktree slots, verification runs code in the worktree but run JSON stays in the main repo `.har/runs/`. Each record includes `workDir` when a slot is active.
+CLI/MCP persist run history under the main checkout `control/.har/runs/`; direct
+`./.har/*.sh` does not. Session lifecycle:
+[Agent workflow](https://harproject.dev/docs/guides/agent-workflow/) ·
+[Core concepts](https://harproject.dev/docs/getting-started/concepts/).
 
 ## For coding agents
 
@@ -180,22 +176,3 @@ cd control && har env maintain
 The authoring agent updates scripts and this README. Review changes before committing.
 
 **Do not** put runtime behavior in YAML — edit the scripts directly.
-
-## Session lifecycle
-
-Every `launch` starts a **fresh session**: a new git worktree from the **main
-checkout's current HEAD** at
-`~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
-Switch that checkout to your intended base before launch. The session is recorded in
-`.har/slots/agent-<id>.json` (the slot registry) — status, verify, and teardown resolve
-the work dir through it. Make ALL file edits under the work dir printed by launch,
-never in the main checkout.
-
-- Occupied slots always block a new launch: `har env complete <id>` (or `teardown <id>`),
-  then `har env launch <id>`. A new launch never chooses `main` for you — switch the
-  main checkout to your intended base first.
-- `teardown` removes the worktree but **keeps the session branch** so you can push it
-  or open a PR (`--delete-branch` to drop it).
-- `har env complete <id>` finishes a session: full verify (recorded as a validation),
-  then teardown — branch kept.
-- `--no-worktree` runs the slot from the repo root instead (single-agent mode).

@@ -69,7 +69,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
       force: { type: 'boolean' },
       auto: { type: 'boolean' },
       smoke: { type: 'boolean' },
-      profile: { type: 'string', enum: ['default', 'cli'] },
+      profile: { type: 'string', enum: ['default', 'cli', 'ios'] },
     }),
   },
   {

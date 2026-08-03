@@ -39,11 +39,13 @@ describe('cursor-rule', () => {
     expect(content).toContain('har env verify 1 --full');
     expect(content).toContain('har_run_verification');
     expect(content).toContain('HAR Harness Workflow');
-    expect(content).toContain('Session handoff');
+    expect(content).toContain('session handoff');
     expect(content).toContain('har_complete_environment');
-    expect(content).toContain('wait for the user');
-    expect(content).toContain('GitHub MCP');
-    expect(content).toContain('`gh`');
+    expect(content).toContain('Occupied slots always block');
+    expect(content).toContain('harproject.dev/docs/guides/agent-workflow');
+    expect(content).not.toContain('har env restart');
+    expect(content).not.toContain('confirmReplace');
+    expect(content).not.toContain('--replace');
   });
 
   it('skips when not a Cursor workspace and no existing rule', async () => {
