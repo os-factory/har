@@ -7,6 +7,7 @@ import { readHarnessEnv } from '../harness/env';
 import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
 import { RunRecord, RunRecordSchema, StageResult } from '../harness/schema';
 import { readSlotRegistry } from './slot-registry';
+import { markDirty } from './sync-context';
 import { ExecutionContext } from './types';
 
 const RUNS_DIR = 'runs';
@@ -180,6 +181,7 @@ export function createRun(ctx: ExecutionContext, meta: CreateRunMeta): RunRecord
   });
 
   fs.writeFileSync(runFilePath, JSON.stringify(run, null, 2) + '\n');
+  markDirty(run.repoPath);
   return run;
 }
 
@@ -206,6 +208,7 @@ export function finishRun(
 
   const runPath = resolveRunFilePath(harnessRoot, finished);
   fs.writeFileSync(runPath, JSON.stringify(finished, null, 2) + '\n');
+  markDirty(finished.repoPath);
   return finished;
 }
 

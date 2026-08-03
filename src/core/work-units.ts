@@ -13,6 +13,7 @@ import {
   WorkUnitRecord,
   WorkUnitRecordSchema,
 } from '../harness/schema';
+import { markDirty } from './sync-context';
 
 const WORK_UNITS_DIR = 'work-units';
 const WORK_ATTEMPTS_DIR = 'work-attempts';
@@ -122,6 +123,7 @@ export function upsertWorkUnit(
     hashedRecordPath(harnessRoot, WORK_UNITS_DIR, metadata.workUnitId),
     record,
   );
+  markDirty(harnessRoot);
   return record;
 }
 
@@ -211,5 +213,6 @@ export function decideWorkUnitOutcome(
     updatedAt: new Date().toISOString(),
   });
   writeRecord(hashedRecordPath(harnessRoot, WORK_UNITS_DIR, workUnitId), record);
+  markDirty(harnessRoot);
   return record;
 }

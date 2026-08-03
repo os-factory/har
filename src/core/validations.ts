@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ValidationRecord, ValidationRecordSchema } from '../harness/schema';
 import { computeWorktreeSnapshot, isCheckoutRoot } from './change-batch';
+import { markDirty } from './sync-context';
 
 export const VALIDATIONS_DIR = 'validations';
 
@@ -101,6 +102,7 @@ export function recordValidation(input: RecordValidationInput): ValidationRecord
   if (path.resolve(input.harnessRoot) !== path.resolve(input.checkoutDir)) {
     writeRecord(input.harnessRoot, record);
   }
+  markDirty(input.checkoutDir);
   return record;
 }
 

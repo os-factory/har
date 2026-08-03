@@ -2,6 +2,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { getHarPackageVersion } from '../core/package-version';
 import { ensureDefaultTelemetryPreference } from '../core/telemetry-config';
+import { syncDirtyRepos } from '../core/sync-context';
 import { agentsCommand } from './commands/agents';
 import { envCommand } from './commands/env';
 import { controlCommand } from './commands/control';
@@ -31,4 +32,6 @@ export async function runCli(): Promise<void> {
     .help()
     .version(getHarPackageVersion())
     .parse();
+
+  await syncDirtyRepos();
 }

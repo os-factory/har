@@ -1,7 +1,6 @@
 import { parseVerificationResult } from './results';
 import * as crypto from 'crypto';
 import { localScriptExecutor } from './local-executor';
-import { syncRepoWithControlAsync } from './control-sync';
 import { createRun, finishRun, resolveAgentWorkDir } from './runs';
 import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
 import { checkLaunchGuard } from './slot-launch-guard';
@@ -131,8 +130,6 @@ export class RunService {
         result,
         durationMs,
       });
-
-      await syncRepoWithControlAsync(options.repoPath);
 
       const data =
         typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
@@ -374,7 +371,6 @@ export class RunService {
             validation,
           });
         }
-        await syncRepoWithControlAsync(options.repoPath);
         return {
           code: shell.code,
           stdout: shell.stdout,
@@ -480,7 +476,6 @@ export class RunService {
         validationId: validation.validationId,
         treeHash: validation.treeHash,
       });
-      await syncRepoWithControlAsync(options.repoPath);
     }
 
     const teardown = await this.teardownEnvironment({

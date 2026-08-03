@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { markAllRegisteredDirty } from './sync-context';
 
 export interface PortalCredentials {
   portalUrl: string;
@@ -39,4 +40,5 @@ export function writePortalCredentials(creds: PortalCredentials): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(creds, null, 2), { mode: 0o600 });
   fs.chmodSync(file, 0o600);
+  markAllRegisteredDirty();
 }

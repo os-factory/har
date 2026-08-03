@@ -30,6 +30,7 @@ import {
 } from '../../core/control-reset';
 import { error, header, info, success, warn } from '../../utils/logging';
 import { listRegisteredRepos, recordRepoForControlSync } from '../../core/control-registry';
+import { finishCommand } from '../finish-command';
 
 export const controlCommand = {
   command: 'control <subcommand>',
@@ -118,16 +119,6 @@ export const controlCommand = {
         handleSync,
       )
       .command(
-        'watch',
-        'Continuously sync registered repos to Mission Control',
-        (y: Argv) =>
-          y
-            .option('repo', { type: 'string', describe: 'Path to one repository (default: all registered)' })
-            .option('interval', { type: 'number', default: 10, describe: 'Poll interval in seconds' })
-            .option('api-url', { type: 'string', describe: 'Control API URL' }),
-        handleWatch,
-      )
-      .command(
         'login',
         'Log in to a har-portal (browser SSO) and store an ingest token',
         (y: Argv) =>
@@ -167,7 +158,7 @@ export const controlCommand = {
       )
       .demandCommand(
         1,
-        'Please specify a subcommand: up, down, register, unregister, sync, watch, login, reset',
+        'Please specify a subcommand: up, down, register, unregister, sync, login, reset',
       ),
   handler: () => {},
 };
@@ -205,7 +196,7 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
         `Could not pull ${imageRef}. For local development use har control up --build, or publish the matching image.`,
       );
     }
-    process.exit(code);
+    return finishCommand(code);
   }
   success(`Mission Control running at ${apiUrl} (${imageRef})`);
 
@@ -228,7 +219,7 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
 async function handleDown(): Promise<void> {
   header('har control down');
   const code = stopMissionControl();
-  process.exit(code);
+  return finishCommand(code);
 }
 
 async function handleRegister(argv: {
@@ -259,7 +250,7 @@ async function handleRegister(argv: {
     }
   } catch (err: unknown) {
     error((err as Error).message);
-    process.exit(1);
+    return finishCommand(1);
   }
 }
 
@@ -277,7 +268,7 @@ async function handleReset(argv: {
       const proceed = await confirmControlReset({ yes: false, repoCount });
       if (!proceed) {
         error('Aborted — Mission Control left unchanged.');
-        process.exit(2);
+        return finishCommand(2);
       }
     }
 
@@ -343,10 +334,10 @@ async function handleReset(argv: {
       process.stdout.write(
         JSON.stringify({ ok: false, error: (err as Error).message }, null, 2) + '\n',
       );
-      process.exit(1);
+      return finishCommand(1);
     }
     error((err as Error).message);
-    process.exit(1);
+    return finishCommand(1);
   }
 }
 
@@ -367,7 +358,7 @@ async function handleUnregister(argv: {
       const confirmation = await confirmUnregister({ yes: false, worktrees });
       if (!confirmation.proceed) {
         error('Aborted — repository left registered.');
-        process.exit(2);
+        return finishCommand(2);
       }
       // Explicit flag wins; otherwise use the interactive answer.
       deleteWorktrees = argv.deleteWorktrees || confirmation.deleteWorktrees;
@@ -427,10 +418,10 @@ async function handleUnregister(argv: {
       process.stdout.write(
         JSON.stringify({ ok: false, error: (err as Error).message }, null, 2) + '\n',
       );
-      process.exit(1);
+      return finishCommand(1);
     }
     error((err as Error).message);
-    process.exit(1);
+    return finishCommand(1);
   }
 }
 
@@ -447,7 +438,7 @@ async function handleSync(argv: {
 
   if (argv.select && !isTTY) {
     error('--select needs an interactive terminal.');
-    process.exit(1);
+    return finishCommand(1);
   }
 
   if (discovered.length === 0) {
@@ -509,7 +500,7 @@ async function handleSync(argv: {
 
   if (argv.json) {
     process.stdout.write(JSON.stringify({ ok: failed === 0, synced, failed, results }, null, 2) + '\n');
-    if (failed > 0) process.exit(1);
+    if (failed > 0) return finishCommand(1);
     return;
   }
 
@@ -526,49 +517,8 @@ async function handleSync(argv: {
   }
   if (failed > 0) {
     warn(`${failed} ${failed === 1 ? 'repository' : 'repositories'} could not be synced`);
-    process.exit(1);
+    return finishCommand(1);
   }
-}
-
-async function handleWatch(argv: {
-  repo?: string;
-  interval: number;
-  apiUrl?: string;
-}): Promise<void> {
-  const apiUrl = argv.apiUrl ?? getControlApiUrl();
-  header('har control watch');
-  info(`Polling every ${argv.interval}s — Ctrl+C to stop`);
-
-  const syncOne = async (repoPath: string) => {
-    try {
-      await syncRepoWithControl({ repoPath, apiUrl });
-    } catch (err: unknown) {
-      warn(`Sync failed for ${repoPath}: ${(err as Error).message}`);
-    }
-  };
-
-  const tick = async () => {
-    if (argv.repo) {
-      await syncOne(path.resolve(argv.repo));
-      return;
-    }
-
-    try {
-      const response = await fetch(`${apiUrl}/api/repos`);
-      if (!response.ok) return;
-      const repos = (await response.json()) as { path: string }[];
-      for (const repo of repos) {
-        await syncOne(repo.path);
-      }
-    } catch {
-      warn('Control API unreachable');
-    }
-  };
-
-  await tick();
-  setInterval(() => {
-    void tick();
-  }, argv.interval * 1000);
 }
 
 async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<void> {
@@ -576,7 +526,7 @@ async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<
   const portalUrl = (argv.portal ?? process.env.HAR_PORTAL_URL ?? '').replace(/\/+$/, '');
   if (!portalUrl) {
     error('Provide --portal <url> (or set HAR_PORTAL_URL)');
-    process.exit(1);
+    return finishCommand(1);
   }
 
   if (argv.apiKey) {
@@ -599,6 +549,6 @@ async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<
     info('Sync: har control sync');
   } catch (err) {
     error(`Login failed: ${(err as Error).message}`);
-    process.exit(1);
+    return finishCommand(1);
   }
 }
