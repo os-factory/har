@@ -37,8 +37,6 @@ describe('env CLI delegation', () => {
         id: 2,
         worktree: false,
         claude: true,
-        replace: false,
-        force: false,
         resume: false,
       }),
     ).rejects.toThrow('exit:0');
@@ -48,8 +46,6 @@ describe('env CLI delegation', () => {
       agentId: 2,
       worktree: false,
       claude: true,
-      confirmReplace: false,
-      force: false,
       resume: false,
       capture: false,
     });

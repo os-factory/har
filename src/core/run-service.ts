@@ -155,10 +155,7 @@ export class RunService {
   }
 
   async preflightEnvironment(options: PreflightOptions): Promise<PreflightResult> {
-    const readiness = inspectSlotReadiness(options.repoPath, options.agentId, {
-      confirmReplace: options.confirmReplace,
-      force: options.force,
-    });
+    const readiness = inspectSlotReadiness(options.repoPath, options.agentId, {});
     const report = formatPreflightReport(options.agentId, readiness);
     return {
       code: readiness.canLaunch ? 0 : 1,
@@ -171,8 +168,6 @@ export class RunService {
 
   async launchEnvironment(options: LaunchOptions): Promise<EnvironmentRunResult> {
     const guard = checkLaunchGuard(options.repoPath, options.agentId, {
-      confirmReplace: options.confirmReplace,
-      force: options.force,
       resume: options.resume,
     });
     if (!guard.allowed) {
@@ -227,10 +222,7 @@ export class RunService {
       const conflictingSession = listSlotRegistryEntries(harnessRoot).find(
         (entry) =>
           entry.workUnitId === workUnitId &&
-          !(
-            entry.agentId === options.agentId &&
-            (options.resume || options.confirmReplace)
-          ),
+          !(entry.agentId === options.agentId && options.resume),
       );
       if (conflictingSession) {
         return {
@@ -264,8 +256,6 @@ export class RunService {
       launchFlags: {
         worktree: options.worktree,
         claude: options.claude,
-        confirmReplace: options.confirmReplace,
-        force: options.force,
         resume: options.resume,
         workUnitId,
         attemptId,

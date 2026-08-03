@@ -191,9 +191,9 @@ Switch that checkout to your intended base before launch. The session is recorde
 the work dir through it. Make ALL file edits under the work dir printed by launch,
 never in the main checkout.
 
-- Prefer `complete` / `teardown` when a task is finished, then launch.
-- `--replace` destroys the previous worktree (requires confirmation); it does **not**
-  choose `main`. Uncommitted changes also need `--force` after explicit user approval.
+- Occupied slots always block a new launch: `har env complete <id>` (or `teardown <id>`),
+  then `har env launch <id>`. A new launch never chooses `main` for you — switch the
+  main checkout to your intended base first.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - `har env complete <id>` finishes a session: full verify (recorded as a validation),

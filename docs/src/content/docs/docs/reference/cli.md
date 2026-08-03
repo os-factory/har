@@ -88,22 +88,22 @@ guide.
 ### Launch and recovery
 
 ```bash
-har env preflight 1 [--json] [--replace] [--force]
-har env launch 1 [--no-worktree] [--claude] [--replace] [--force] [--resume]
+har env preflight 1 [--json]
+har env launch 1 [--no-worktree] [--claude] [--resume]
   [--work-id <id>] [--work-source <name>] [--work-url <url>]
   [--work-title <title>] [--parent-work-id <id>]
 har env recover 1
 ```
 
 Every `launch` creates a **new** session from the current HEAD of `--repo` (the
-main checkout). Occupied-slot warnings print that upcoming base so you can
-confirm it before replacing.
+main checkout). Occupied slots always block a new launch — the error message
+prints the upcoming base so you can confirm it before freeing the slot.
 
-`--replace` only confirms destroying the previous session on that slot id — it
-does not choose `main`. Prefer `complete` / `teardown` when the prior task is
-finished, then launch. `--force` additionally permits discarding dirty
-uncommitted work and must only follow explicit approval. Use `--resume` /
-`recover` for failed launches, not `--replace`.
+An occupied slot must be freed before relaunching: `har env complete 1` (or
+`teardown 1`), then `har env launch 1`. Launch never chooses `main` for you.
+If the worktree has uncommitted changes, commit or discard them in the
+worktree first. Use `--resume` / `recover` only for a failed or starting
+launch — it is not a way to replace an active session.
 
 Work metadata is optional and backward compatible. A fresh bound launch creates an
 immutable attempt UUID; `--resume` preserves the failed session's attempt.

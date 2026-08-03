@@ -546,7 +546,7 @@ def read_har_slot_workdir(harness_root: Path, agent_id: int = 1) -> Path | None:
 
 def har_launch_slot(harness_root: Path, agent_id: int = 1, timeout_seconds: int = 3600) -> tuple[bool, Path | None, str]:
     result = run_command(
-        ["har", "env", "launch", str(agent_id), "--force"],
+        ["har", "env", "launch", str(agent_id)],
         cwd=harness_root,
         timeout=timeout_seconds,
     )

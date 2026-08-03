@@ -16,10 +16,11 @@ Slot lifecycle (do not confuse these):
   complete   finish successfully: full verify, then teardown (frees the slot)
   teardown   abandon / free the slot without a completion validation
 
-  --replace  only confirms destroying a previous session on that slot id
-             it does NOT choose main — new session still uses current HEAD
-  --force    additionally discard dirty uncommitted work (user approval only)
-  --resume   recover failed/starting; never use --replace for that
+Occupied slots always block a new launch:
+  har env complete <id>   # or: har env teardown <id>
+  har env launch <id>     # then start the new session
+
+  --resume   recover a failed/starting session; never needed for a fresh launch
 
 For a new unrelated task: checkout main (or your intended base) on the main
 repo checkout, free the slot (complete/teardown), then launch.`;
@@ -33,22 +34,19 @@ export const HAR_ENV_EPILOG = `Environment lifecycle:
   teardown <id>    free the slot without recording a completion validation
 
 Occupied slots:
-  Prefer complete/teardown when the previous task is finished, then launch.
-  Use --replace only to reuse the same slot id immediately (destroys old worktree).
-  --replace does not select the base branch — HEAD of --repo does.
-  Dirty previous worktree also needs --force after explicit user approval.`;
+  Always blocked for a fresh launch — free the slot first, then launch again:
+    har env complete <id>   # or: har env teardown <id>
+    har env launch <id>
+  A new launch uses the main checkout's current HEAD — switch that checkout to
+  your intended base first.
+  Failed/starting sessions can be resumed instead: har env launch <id> --resume
+  (or har env recover <id>).`;
 
 export const LAUNCH_COMMAND_DESCRIBE =
   'Start a fresh agent session (new worktree from the main checkout HEAD)';
 
-export const LAUNCH_REPLACE_DESCRIBE =
-  'Destroy the previous session on this slot and start another (does not choose main; still uses --repo HEAD)';
-
-export const LAUNCH_FORCE_DESCRIBE =
-  'With --replace: discard uncommitted changes in the old worktree (only after explicit user approval)';
-
 export const LAUNCH_RESUME_DESCRIBE =
-  'Continue a failed or starting launch without creating a new worktree (prefer over --replace)';
+  'Continue a failed or starting launch without creating a new worktree';
 
 export const LAUNCH_EPILOG = `Every launch creates a NEW session from the current HEAD of --repo (the main
 checkout). The worktree path encodes that base branch — switch --repo to main
@@ -56,7 +54,6 @@ before launch for a new unrelated task unless you intentionally stack on a
 feature branch.
 
   Free slot:     har env launch 1
-  Occupied:      har env complete 1   # or teardown — then launch
-                 har env launch 1 --replace          # reuse slot id now
-                 har env launch 1 --replace --force  # + discard dirty work
+  Occupied:      har env complete 1   # or teardown
+                 har env launch 1     # then start the new session
   Failed launch: har env recover 1    # or: har env launch 1 --resume`;

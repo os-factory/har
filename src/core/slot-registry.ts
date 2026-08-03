@@ -11,7 +11,7 @@ export function getSlotRegistryPath(repoPath: string, agentId: number): string {
   return path.join(getSlotRegistryDir(repoPath), `agent-${agentId}.json`);
 }
 
-/** Whether a partial launch can be resumed without --replace. */
+/** Whether a partial launch can be resumed via --resume instead of tearing down first. */
 export function isSlotResumable(session: SlotRegistryEntry | undefined): boolean {
   return session?.status === 'failed' || session?.status === 'starting';
 }

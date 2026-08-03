@@ -146,7 +146,7 @@ Task readiness receives the `problem_statement` and may add one lightweight task
 Adapted harness files are cached under `.har-cache/<repo>/` and reused across instances of the same repository (different `base_commit` values). Before the fix stage the runner always:
 
 1. tears down any occupied slot
-2. runs `har env launch 1 --replace --force` (with `HAR_CONFIRM_REPLACE=1`)
+2. runs `har env launch 1`
 3. runs quick `har env verify 1` (smoke only — no `--full`)
 
 If the gate fails after a cache hit, the cache is **invalidated** and repo bootstrap runs again. Retries continue until `setup_budget_minutes` (default 120) is exhausted or `setup_max_rounds` (default 6) is reached. Structured gate JSON is passed to setup retries.

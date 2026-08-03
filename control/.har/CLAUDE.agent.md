@@ -11,7 +11,7 @@
 | **Database** | SQLite `prisma/agent_${AGENT_ID}.db` in the session work dir (created by `prisma db push` at launch) |
 | **Work dir** | Fresh session worktree per launch — see the launch output or `control/.har/slots/agent-${AGENT_ID}.json` |
 
-**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. Edits there hot-reload in the running slot (`next dev`); use `./.har/agent-cli.sh ${AGENT_ID} restart web` if a change doesn't take. Relaunching replaces the session (branch kept); replacement requires `--replace` / `confirmReplace=true`; a dirty previous session also needs `--force` after explicit user approval.
+**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. Edits there hot-reload in the running slot (`next dev`); use `./.har/agent-cli.sh ${AGENT_ID} restart web` if a change doesn't take. An occupied slot always blocks a new launch — run `har env teardown <id>` (or `complete <id>`) first, then launch again.
 
 This slot runs **only the primary application** (`HARNESS_PRIMARY_APP=web`, the Next.js app). Mission Control uses **embedded SQLite** per slot — no shared Postgres (`HARNESS_INFRA_SERVICES` is empty).
 

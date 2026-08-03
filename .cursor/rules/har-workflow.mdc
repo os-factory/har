@@ -15,20 +15,19 @@ work around it with ad-hoc commands.
 
 ## Before making changes
 
-1. **On the main checkout, switch to the intended base** (usually `main`) — every launch creates a worktree from that HEAD. `--replace` does not select the base.
+1. **On the main checkout, switch to the intended base** (usually `main`) — every launch creates a worktree from that HEAD.
 2. **Launch your slot FIRST — before editing any file.** Use `har_launch_environment` with `agentId: 1` (MCP) or `har env launch 1`. Launch always creates a **fresh session worktree** and returns its **work dir**.
 3. **Make ALL file edits under the returned work dir — never in the main checkout.** The work dir looks like `~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>` (recorded in `.har/slots/agent-<id>.json`). Edits there hot-reload in the running slot; use `har env restart <id>` or `./.har/agent-cli.sh <id> restart` if a change doesn't take.
 4. Read [AGENT.md](./AGENT.md) at the repo root
 5. Read [.har/README.md](./.har/README.md) and [.har/stages.json](./.har/stages.json)
 6. After launch, read [.har/CLAUDE.agent.md](./.har/CLAUDE.agent.md) for slot URLs and definition of done
 
-When a slot is occupied: prefer `complete` / `teardown` if the previous task is finished, then launch. Use `--replace` / `confirmReplace=true` only to reuse the same slot id immediately (destroys the old worktree; the old branch is kept if committed). If the previous session has uncommitted changes, you must also pass `force`/`--force` after **explicit user approval** — never autonomously. Failed launches: `--resume` / `recover`, not `--replace`.
+When a slot is occupied: it always blocks a new launch. Run `complete` / `teardown` on that slot id first, then `launch` again. Occupied slots do not choose the base branch either way — switch the main checkout to your intended base before launching. Failed/starting launches can be resumed instead: `--resume` / `recover`.
 
 ### Slot safety (read before launch)
 
 - **One slot ≈ one task** — do not share slot 1 across unrelated chats; use slot 2+ for parallel work.
 - **Call `har_get_status` / `har env status`** before launch when a slot may be occupied.
-- **Never** set `force`/`confirmReplace` without the user explicitly approving replacement.
 - **Commit early and often** in the session worktree — teardown keeps the branch, not uncommitted work.
 - **Gitignored paths are ephemeral** (`state/`, `runs/`, local clones) — they are lost when the worktree is removed.
 - With telemetry on (default, including prompts), Mission Control derives session purpose from the first captured user prompt.

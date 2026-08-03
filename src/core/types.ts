@@ -26,10 +26,6 @@ export interface ExecutionContext {
 export interface LaunchFlags {
   worktree?: boolean;
   claude?: boolean;
-  /** Explicitly replace an occupied slot (required when a session is already active). */
-  confirmReplace?: boolean;
-  /** Discard a dirty previous session instead of refusing to replace it. Requires confirmReplace. */
-  force?: boolean;
   /** Resume a failed or partial launch without creating a new worktree. */
   resume?: boolean;
   workUnitId?: string;
@@ -53,8 +49,6 @@ export interface LaunchOptions {
   agentId: number;
   worktree?: boolean;
   claude?: boolean;
-  confirmReplace?: boolean;
-  force?: boolean;
   resume?: boolean;
   capture?: boolean;
   workUnitId?: string;
@@ -67,8 +61,6 @@ export interface LaunchOptions {
 export interface PreflightOptions {
   repoPath: string;
   agentId: number;
-  confirmReplace?: boolean;
-  force?: boolean;
 }
 
 export interface PreflightResult {
@@ -90,7 +82,7 @@ export interface EnvironmentRunResult {
   branch?: string;
   workUnitId?: string;
   attemptId?: string;
-  /** Launch refused because the slot is occupied and confirmReplace was not set. */
+  /** Launch refused because the slot is occupied — teardown/complete it first, then launch. */
   blocked?: boolean;
   occupiedSlot?: {
     agentId: number;

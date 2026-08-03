@@ -45,7 +45,12 @@ function makeHarness(
   return dir;
 }
 
-function writeOccupiedSlot(repo: string, agentId: number, dirty = false): void {
+function writeOccupiedSlot(
+  repo: string,
+  agentId: number,
+  dirty = false,
+  status: 'active' | 'failed' | 'starting' = 'active',
+): void {
   const worktree = path.join(repo, 'worktree');
   fs.mkdirSync(worktree, { recursive: true });
   fs.writeFileSync(path.join(worktree, '.env.agent.' + agentId), 'AGENT_ID=' + agentId + '\n');
@@ -63,7 +68,7 @@ function writeOccupiedSlot(repo: string, agentId: number, dirty = false): void {
       workDir: worktree,
       worktreePath: worktree,
       createdAt: new Date().toISOString(),
-      status: 'active',
+      status,
     }),
   );
 }
@@ -83,18 +88,21 @@ describe('inspectSlotReadiness', () => {
     expect(readiness.blockers).toHaveLength(0);
   });
 
-  it('blocks when slot is occupied without confirmReplace', () => {
+  it('always blocks when the slot is occupied', () => {
     const repo = makeHarness();
     writeOccupiedSlot(repo, 1);
     const readiness = inspectSlotReadiness(repo, 1);
     expect(readiness.canLaunch).toBe(false);
     expect(readiness.blockers.some((b) => b.code === 'slot_occupied')).toBe(true);
+    expect(readiness.blockers.some((b) => b.remediation?.includes('har env teardown 1'))).toBe(
+      true,
+    );
   });
 
-  it('allows occupied slot when confirmReplace is set', () => {
+  it('allows launch when resume is requested for a resumable slot', () => {
     const repo = makeHarness();
-    writeOccupiedSlot(repo, 1);
-    const readiness = inspectSlotReadiness(repo, 1, { confirmReplace: true });
+    writeOccupiedSlot(repo, 1, false, 'failed');
+    const readiness = inspectSlotReadiness(repo, 1, { resume: true });
     expect(readiness.canLaunch).toBe(true);
   });
 

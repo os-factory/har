@@ -11,7 +11,7 @@ har env status        # or ./.har/agent-cli.sh 1 status
 ```
 
 - One slot ≈ one task. If slot 1 is occupied by unrelated work, use slot 2+ (limit: `agentSlots` in `.har/stages.json`).
-- Never replace an occupied slot (`--replace`/`--force`) without the user explicitly approving it.
+- Occupied slots always block a new launch: run `har env teardown <id>` (or `complete <id>`) first, then launch again.
 
 ## 2. Launch — BEFORE editing any file
 
@@ -19,7 +19,7 @@ har env status        # or ./.har/agent-cli.sh 1 status
 har env launch <id>   # or ./.har/launch.sh <id>
 ```
 
-Launch creates a fresh session worktree from HEAD and prints its **work dir** (also recorded in `.har/slots/agent-<id>.json`, path like `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`). If a previous launch failed partway, retry with `--resume` instead of replacing.
+Launch creates a fresh session worktree from HEAD and prints its **work dir** (also recorded in `.har/slots/agent-<id>.json`, path like `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`). If a previous launch failed partway, retry with `--resume` instead of starting fresh.
 
 If the task already has a stable issue or ticket ID, bind it without changing the
 methodology that produced it:

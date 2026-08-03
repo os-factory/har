@@ -1,4 +1,4 @@
-# [0.37.0](https://github.com/os-factory/har/compare/v0.36.2...v0.37.0) (2026-08-03)
+## [0.37.0](https://github.com/os-factory/har/compare/v0.36.2...v0.37.0) (2026-08-03)
 
 
 ### Features

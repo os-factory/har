@@ -48,7 +48,8 @@ contains the project-specific harness pointers.
 ## What if launch fails halfway?
 
 Use `har env recover <id>` or launch with `--resume`. Recovery preserves the created
-worktree and environment. Do not replace the slot unless you intend to start over.
+worktree and environment. Only teardown/relaunch the slot if you intend to start over —
+occupied slots always block a fresh launch.
 
 ## Can I change the generated harness?
 

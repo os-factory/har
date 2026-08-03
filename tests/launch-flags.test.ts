@@ -2,12 +2,10 @@ import { buildLaunchFlagArgs, quoteShellArg } from '../src/core/local-executor';
 import { LaunchEnvironmentInputSchema } from '../src/mcp/schemas';
 
 describe('launch flag plumbing', () => {
-  it('forwards replace/force/resume flags to launch.sh argv', () => {
+  it('forwards resume flag to launch.sh argv', () => {
     expect(
       buildLaunchFlagArgs({
         worktree: false,
-        confirmReplace: true,
-        force: true,
         resume: true,
         claude: true,
         workUnitId: 'ISSUE-123',
@@ -16,8 +14,6 @@ describe('launch flag plumbing', () => {
     ).toEqual([
       '--no-worktree',
       '--claude',
-      '--replace',
-      '--force',
       '--resume',
       '--work-id=ISSUE-123',
       '--attempt-id=11111111-1111-4111-8111-111111111111',
@@ -28,7 +24,7 @@ describe('launch flag plumbing', () => {
     expect(quoteShellArg('--purpose=fix sqlite backend')).toBe(
       "'--purpose=fix sqlite backend'",
     );
-    expect(quoteShellArg('--replace')).toBe('--replace');
+    expect(quoteShellArg('--resume')).toBe('--resume');
   });
 
   it('accepts MCP launch input without purpose', () => {

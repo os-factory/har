@@ -119,8 +119,8 @@ checkout's current HEAD** at
 Switch that checkout to your intended base before launch. The session is recorded in
 `.har/slots/agent-<id>.json`.
 
-- Prefer `complete` / `teardown` when a task is finished, then launch.
-- `--replace` destroys the previous worktree; it does **not** choose `main`.
-  Uncommitted changes also require `--force` after explicit approval.
+- Occupied slots always block a new launch: `har env complete <id>` (or `teardown <id>`),
+  then `har env launch <id>`. A new launch never chooses `main` for you — switch the
+  main checkout to your intended base first.
 - `teardown` removes the worktree but **keeps the session branch** for push / PR.
 - `har env complete <id>` finishes a session: full verify + teardown, branch kept.

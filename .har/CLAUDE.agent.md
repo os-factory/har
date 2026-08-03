@@ -10,7 +10,7 @@
 | **Work dir** | Fresh session worktree per launch — see launch output or `.har/slots/agent-${AGENT_ID}.json` |
 | **Infra** | None for this repo (`HARNESS_INFRA_SERVICES` is empty) |
 
-**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. Relaunching replaces the session (branch kept) and requires explicit confirmation (`--replace` / `confirmReplace`); dirty worktrees also need `--force` after user approval — never autonomously.
+**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. An occupied slot always blocks a new launch — run `har env teardown <id>` (or `complete <id>`) first, then launch again.
 
 ```bash
 ./.har/agent-cli.sh ${AGENT_ID} status

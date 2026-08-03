@@ -17,8 +17,8 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 
 | Tool | Inputs | Result |
 | --- | --- | --- |
-| `har_preflight_environment` | `agentId`, `confirmReplace`, `force` | Readiness, blockers, and whether launch is safe |
-| `har_launch_environment` | `agentId`, lifecycle flags, optional `workUnitId`, `source`, `sourceUrl`, `title`, `parentWorkUnitId` | Work directory, branch, work/attempt IDs, URLs, and normalized stage result |
+| `har_preflight_environment` | `agentId` | Readiness, blockers, and whether launch is safe |
+| `har_launch_environment` | `agentId`, `resume`, optional `workUnitId`, `source`, `sourceUrl`, `title`, `parentWorkUnitId` | Work directory, branch, work/attempt IDs, URLs, and normalized stage result |
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
 | `har_get_status` | optional `agentId` | Slot, process, worktree, branch, and dirty state |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |
@@ -26,12 +26,12 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | `har_teardown_environment` | `agentId`, `deleteBranch` | Teardown result |
 
 Every launch creates a new session from the main checkout's current HEAD.
-`confirmReplace` only confirms destroying the previous worktree on that slot —
-it does not choose `main`. Prefer `har_complete_environment` /
-`har_teardown_environment` when the prior task is finished, then launch.
-Occupied-slot errors include the upcoming base. Dirty replacement additionally
-requires `force`; agents should never set either without review and explicit
-approval. Use recovery, not replacement, for a failed launch.
+Occupied slots always block a new launch: call `har_get_status`, then
+`har_complete_environment` or `har_teardown_environment` to free the slot,
+then launch again. Occupied-slot errors include the upcoming base — launch
+never chooses `main` for you. `resume=true` is only for a failed or starting
+session (or use `har_recover_environment`); it is not a way to replace an
+active session.
 
 ## Execution
 
