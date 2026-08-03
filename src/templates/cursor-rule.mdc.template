@@ -64,13 +64,15 @@ UI changes with Playwright: update specs under `tests/` (full verify includes br
 ## Session handoff (required)
 
 After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-<id>.json`), and preview URLs. Propose: (1) complete the slot
-(`har env complete` / `har_complete_environment` — branch kept), (2) open a PR if
-`gh`/GitHub MCP is available, or (3) something else. Wait for the user — never
-autonomously complete, teardown, push, or open a PR.
+(`.har/slots/agent-<id>.json`), and preview URLs. Wait — never autonomously
+complete, teardown, push, or open a PR. **Default (1 is the default):** when
+`gh`/GitHub MCP is available, recommend **Complete + open a PR** — push → open
+PR → `har env complete` / `har_complete_environment` (branch kept). Still needs
+approval. Alternatives: **Complete only**, or **Something else**. Without PR
+tooling, recommend **Complete only** and give the session branch for a manual push.
 
 ## Commit gate
 
 Full verify records a tree hash under `.har/validations/`. With `har hooks install`,
-commits must match a passing full verify. Re-verify after any edit; `git add -A` the
-verified tree. Do not bypass (`--no-verify`, `HAR_SKIP_GATE=1`).
+commits must match a passing full verify. Re-verify after any edit; `git add -A`.
+Do not bypass (`--no-verify`, `HAR_SKIP_GATE=1`).

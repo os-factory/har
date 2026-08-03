@@ -23,8 +23,9 @@ Run harness commands from the directory that owns the harness (e.g. `cd control 
 
 Follow [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) and
 [`.har/README.md`](.har/README.md): launch first, edit only under the session work
-dir, full-verify before done, then present a session handoff and wait for approval
-before `complete`, push, or PR.
+dir, full-verify before done, then present a session handoff and wait for approval.
+Default recommendation is complete + open a PR when tooling is available (still
+requires approval); never run `complete`, push, or PR autonomously.
 
 Configure Cursor MCP from [`.cursor/mcp.json.example`](.cursor/mcp.json.example)
 (see [CONTRIBUTING.md](./CONTRIBUTING.md)). Prefer MCP or `har env …` over
@@ -195,12 +196,13 @@ For docs-only updates: branch `docs/<topic>`, title `docs: …`. For CI-only upd
 har env launch 1                # if not already launched this session
 har env verify 1                # typecheck + unit tests
 har env verify 1 --full         # + lint + build — required before declaring done
-# then: session handoff → wait for user → on approval:
+# then: session handoff → wait for user → on approval of default (complete + PR):
+# push + open PR, then:
 har env complete 1              # full verify + validation + teardown; branch kept
 ```
 
 Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cursor). Shell fallback: `./.har/verify.sh 1 --full` then `./.har/teardown.sh 1` (no validation record — prefer CLI/MCP `complete` when available).
 
-Do not end the session without a handoff prompt. Never autonomously run `complete`, push, or open a PR.
+Do not end the session without a handoff prompt. Never autonomously run `complete`, push, or open a PR. The default handoff recommendation is complete + PR when tooling is available.
 
 If you changed `src/templates/`: `npm run build`, then `har env init --force --profile cli` on a fixture (or `--profile default` for web apps).
