@@ -29,9 +29,10 @@ Prefer **HAR MCP tools** (Cursor) or **`har env launch/verify/complete`** — th
 Use `./.har/*.sh` only when the CLI is not installed.
 
 When the work is done: full verify, commit in the session worktree, then present a
-**session handoff** and wait for the user before `har env complete <id>` /
-`har_complete_environment` (recommended finish: validation + teardown, branch kept),
-push, or opening a PR. See `.cursor/rules/har-workflow.mdc` for the handoff template.
+**session handoff** and wait for the user. The **default recommendation** is
+complete + open a PR when `gh`/GitHub MCP is available (still requires approval);
+alternatives are complete-only or something else. See
+`.cursor/rules/har-workflow.mdc` for the handoff template.
 
 ## Commit gate
 

@@ -68,13 +68,15 @@ har env status --json
 3. Stage exactly the state that passed.
 4. Commit inside the session worktree.
 5. Present a **session handoff** and wait for the user's next instruction.
-6. On user approval: complete the environment (and optionally open a PR).
+6. On user approval of the default: push + open a PR (when tooling is available),
+   then complete the environment.
 
 ```bash
 har env verify 2 --full
 git add -A
 git commit -m "feat: describe the change"
-# hand off → wait for user → on approval:
+# hand off → wait for user → on approval of default:
+# push + open PR, then:
 har env complete 2
 ```
 
@@ -84,17 +86,19 @@ verify.
 ### What agents must propose
 
 After verify and commit, the agent should stop and offer numbered options — not
-silently finish the session:
+silently finish the session. **Complete + open a PR** is the default recommendation
+when `gh` or GitHub MCP is available; it still requires explicit user approval
+(default behaviour, not automatic).
 
-1. **Complete the slot** (recommended) — `har env complete <id>` / MCP
-   `har_complete_environment` runs full verification, records the validated tree
-   hash, tears down the worktree/runtime, and **keeps the session branch**. Prefer
-   this over bare `teardown` when the work succeeded.
-2. **Open a pull request** — only when `gh` or GitHub MCP is available, and only
-   after explicit user approval.
-3. **Keep the branch only** — if PR tooling is unavailable, report the session
-   branch name so the user can push manually. Omit option 2 and describe a manual
-   push instead when PR tooling is unavailable.
+1. **Complete + open a PR** (recommended when PR tooling is available) — push the
+   session branch, open the PR, then `har env complete <id>` / MCP
+   `har_complete_environment` (full verify + validation + teardown; **branch kept**).
+2. **Complete only** — same finish without a PR. Prefer `complete` over bare
+   `teardown` when the work succeeded.
+3. **Something else** — keep the slot running, more changes, or push only.
+
+If neither `gh` nor GitHub MCP is available, omit option 1 and recommend
+**Complete only**, with the session branch name for a manual push.
 
 Never run `complete`, `teardown`, `git push`, or create a PR without user
 approval. Canonical handoff shape:
@@ -106,9 +110,9 @@ approval. Canonical handoff shape:
 **Branch:** `<session-branch>` (session worktree)
 **Preview:** … (if applicable)
 
-Next steps — tell me which you want:
-1. **Complete the slot** — I'll run `har env complete <id>` (full verify + validation record + teardown; branch kept)
-2. **Open a PR** — I can create one with `gh`/GitHub MCP (requires your approval)
+Next steps — reply with a number (1 is the default):
+1. **Complete + open a PR** (recommended) — push, open PR, then `har env complete <id>`
+2. **Complete only** — same finish, no PR
 3. **Something else** — e.g. keep the slot running, more changes, or push only
 
 I'll wait for your instruction before running complete, teardown, push, or PR.
