@@ -1,3 +1,10 @@
+# [0.39.0](https://github.com/os-factory/har/compare/v0.38.1...v0.39.0) (2026-08-03)
+
+
+### Features
+
+* **control:** auto-sync to portal on activity edges; retire the watch timer ([#125](https://github.com/os-factory/har/issues/125)) ([de2f32e](https://github.com/os-factory/har/commit/de2f32e4ac6d887791f25f0e69f40785c3d110e6))
+
 ## [0.38.1](https://github.com/os-factory/har/compare/v0.38.0...v0.38.1) (2026-08-03)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@osfactory/har",
-  "version": "0.38.1",
+  "version": "0.39.0",
   "description": "LLM-powered CLI for reproducible agent development environments",
   "keywords": [
     "har",
