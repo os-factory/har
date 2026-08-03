@@ -1,3 +1,16 @@
+# [0.43.0](https://github.com/os-factory/har/compare/v0.42.0...v0.43.0) (2026-08-03)
+
+
+### Bug Fixes
+
+* **control:** enrich factory work unit detail beyond evidence timeline ([#139](https://github.com/os-factory/har/issues/139)) ([6c510a5](https://github.com/os-factory/har/commit/6c510a5133d9ddcfad8b1825d40603c7e82b363e))
+
+
+### Features
+
+* **control:** paginate and search Usage sessions with DataTable ([#138](https://github.com/os-factory/har/issues/138)) ([2cd297d](https://github.com/os-factory/har/commit/2cd297d6dafee2012d9018cf595d57c05e2b7c61))
+* default session handoff to complete + open a PR ([#135](https://github.com/os-factory/har/issues/135)) ([dff3e11](https://github.com/os-factory/har/commit/dff3e11815bfdfdef46b7868f4ec9e06848da517))
+
 # [0.42.0](https://github.com/os-factory/har/compare/v0.41.0...v0.42.0) (2026-08-03)
 
 
