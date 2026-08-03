@@ -1,3 +1,10 @@
+## [0.38.1](https://github.com/os-factory/har/compare/v0.38.0...v0.38.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **telemetry:** stop parent cwd sessions matching child worktree slots ([#124](https://github.com/os-factory/har/issues/124)) ([2d6d069](https://github.com/os-factory/har/commit/2d6d06995e9de1c4881fca1c49bab5075b3b3418))
+
 # [0.38.0](https://github.com/os-factory/har/compare/v0.37.0...v0.38.0) (2026-08-03)
 
 
