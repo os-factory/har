@@ -1,3 +1,12 @@
+# [0.38.0](https://github.com/os-factory/har/compare/v0.37.0...v0.38.0) (2026-08-03)
+
+
+### Features
+
+* **control:** detect repos from the registry only and auto-register on any command ([#122](https://github.com/os-factory/har/issues/122)) ([1d040fd](https://github.com/os-factory/har/commit/1d040fd9b9baa9c9746f4b4558c150a33afaa8aa))
+* **onboard:** ask how many agents to run in parallel ([#123](https://github.com/os-factory/har/issues/123)) ([0ff1783](https://github.com/os-factory/har/commit/0ff17830c6e4ae8d2f0cb09bb72d64b9c86d694d))
+* remove launch --replace; require teardown then launch ([#121](https://github.com/os-factory/har/issues/121)) ([0410b16](https://github.com/os-factory/har/commit/0410b162bafba013f8537e8a45f78b2ef951c6df))
+
 ## [0.37.0](https://github.com/os-factory/har/compare/v0.36.2...v0.37.0) (2026-08-03)
 
 
