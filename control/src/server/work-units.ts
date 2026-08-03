@@ -140,14 +140,15 @@ export async function listFactoryWorkUnits(repositoryId?: string) {
 
   return Promise.all(
     units.map(async (unit) => {
-      const [slot, runs, usage, validations] = await Promise.all([
-        prisma.agentSlot.findFirst({
-          where: { repositoryId: unit.repositoryId, workUnitId: unit.workUnitId, active: true },
+      const [slots, runs, usage, validations] = await Promise.all([
+        prisma.agentSlot.findMany({
+          where: { repositoryId: unit.repositoryId, workUnitId: unit.workUnitId },
+          orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
         }),
         prisma.run.findMany({
           where: { repositoryId: unit.repositoryId, workUnitId: unit.workUnitId },
           orderBy: { startedAt: 'desc' },
-          take: 20,
+          take: 100,
         }),
         prisma.agentSessionUsage.aggregate({
           where: { repositoryId: unit.repositoryId, workUnitId: unit.workUnitId },
@@ -162,7 +163,8 @@ export async function listFactoryWorkUnits(repositoryId?: string) {
           },
         }),
       ]);
-      return { ...unit, slot, runs, usage: usage._sum, validations };
+      const slot = slots.find((candidate) => candidate.active) ?? null;
+      return { ...unit, slot, slots, runs, usage: usage._sum, validations };
     }),
   );
 }
