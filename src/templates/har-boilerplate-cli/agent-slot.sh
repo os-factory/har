@@ -53,12 +53,18 @@ validate_agent_id() {
   fi
 
   if [[ -z "$id" ]] || ! [[ "$id" =~ ^[0-9]+$ ]]; then
-    echo "Error: agent-id must be a positive integer between ${min} and ${max}" >&2
+    echo "Error: invalid agent slot id: ${id:-"(missing)"}" >&2
+    echo "  Must be an integer between ${min} and ${max} (see .har/stages.json → agentSlots)" >&2
     exit 1
   fi
 
   if (( id < min || id > max )); then
-    echo "Error: agent-id must be between ${min} and ${max}" >&2
+    echo "Error: invalid agent slot id: ${id}" >&2
+    echo "  Valid slots: ${min}–${max} (configured in .har/stages.json → agentSlots)" >&2
+    echo "  Run: har env status   # see which slots are in use" >&2
+    if (( id > max )); then
+      echo "  To allow slot ${id}, raise agentSlots.max in .har/stages.json." >&2
+    fi
     exit 1
   fi
 }
