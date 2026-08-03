@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { readManifest } from '../harness/manifest';
-import { canonicalizeControlRepoPath } from './control-repo-path';
+import { canonicalizeControlRepoPath, resolveMainWorkingTree } from './control-repo-path';
 
 interface ControlRegistry {
   repos: string[];
@@ -41,6 +41,7 @@ export function recordRepoForControlSync(repoPath: string): void {
   if (process.env.HAR_CONTROL_DISABLED === 'true') return;
 
   const resolved = canonicalizeControlRepoPath(repoPath);
+  if (!resolveMainWorkingTree(resolved)) return;
   if (!readManifest(resolved)) return;
 
   const registry = readRegistry();

@@ -3,7 +3,6 @@ import { addPlugin, initHarness } from './harness';
 import { startControlAndSync } from './control-lifecycle';
 import { getControlApiUrl } from './control-config';
 import { ensureRepoRegisteredWithControl, isControlApiReachable } from './control-sync';
-import { recordRepoForControlSync } from './control-registry';
 import {
   disableOtelHooksExport,
   ensureOtelHooks,
@@ -278,7 +277,6 @@ export async function runOnboarding(
       warn('Harness has validation errors — review .har/ after adaptation.');
     }
     harnessInitialized = true;
-    recordRepoForControlSync(repoPath);
     success('Harness scaffolded');
   }
 
