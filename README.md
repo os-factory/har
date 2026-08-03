@@ -72,8 +72,6 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, the dogfood harness lo
 
 Licensed under the [Apache License 2.0](./LICENSE).
 
-Copyright © 2026 [Antoine Frau](https://github.com/antoineFrau).
-
 ## Security
 
 Report vulnerabilities via [SECURITY.md](./SECURITY.md).
