@@ -9,6 +9,10 @@ import {
   runOnboarding,
 } from '../src/core/onboarding';
 import {
+  defaultAgentSlotMaxForProfile,
+  parseAgentSlotsFlag,
+} from '../src/cli/commands/onboard';
+import {
   isTelemetryEnabled,
   readTelemetryPreference,
 } from '../src/core/telemetry-config';
@@ -36,6 +40,23 @@ describe('onboarding guide', () => {
     expect(ids).toContain('playwright');
     expect(ids).toContain('rocketsim');
     expect(choices.every((c) => c.label.includes(c.id))).toBe(true);
+  });
+});
+
+describe('agent slot onboarding helpers', () => {
+  it('uses profile defaults for agentSlots.max', () => {
+    expect(defaultAgentSlotMaxForProfile('default')).toBe(5);
+    expect(defaultAgentSlotMaxForProfile('cli')).toBe(3);
+    expect(defaultAgentSlotMaxForProfile('ios')).toBe(3);
+  });
+
+  it('validates --agent-slots bounds', () => {
+    expect(parseAgentSlotsFlag(undefined)).toBeUndefined();
+    expect(parseAgentSlotsFlag(1)).toBe(1);
+    expect(parseAgentSlotsFlag(10)).toBe(10);
+    expect(() => parseAgentSlotsFlag(0)).toThrow(/1 to 10/);
+    expect(() => parseAgentSlotsFlag(11)).toThrow(/1 to 10/);
+    expect(() => parseAgentSlotsFlag(1.5)).toThrow(/1 to 10/);
   });
 });
 
@@ -115,6 +136,7 @@ describe('runOnboarding', () => {
 
     expect(result.harnessInitialized).toBe(true);
     expect(result.pluginsApplied).toEqual(['playwright']);
+    expect(result.agentSlots).toEqual({ min: 1, max: 3 });
     expect(fs.existsSync(path.join(tmpDir, '.har', 'verify.sh'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, '.har', 'stages', 'browser-e2e.sh'))).toBe(true);
     expect(result.adaptationPromptPath).toBe(
@@ -123,6 +145,36 @@ describe('runOnboarding', () => {
     expect(result.adaptationPromptCopied).toBe(true);
     expect(clipboardCalls).toHaveLength(1);
     expect(clipboardCalls[0]).toContain('AGENT.md');
+  });
+
+  it('applies agentSlotsMax to stages.json after scaffold', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ name: 'onboard-slots', version: '1.0.0' }, null, 2) + '\n',
+    );
+    const result = await runOnboarding(
+      {
+        repoPath: tmpDir,
+        profile: 'cli',
+        telemetry: 'off',
+        startControl: false,
+        plugins: [],
+        autoYes: true,
+        agentSlotsMax: 2,
+        deferAdaptationPrompt: true,
+      },
+      {
+        applyTelemetry: async () => {},
+        ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
+      },
+    );
+
+    expect(result.harnessInitialized).toBe(true);
+    expect(result.agentSlots).toEqual({ min: 1, max: 2 });
+    const stages = JSON.parse(fs.readFileSync(path.join(tmpDir, '.har', 'stages.json'), 'utf8'));
+    expect(stages.agentSlots).toEqual({ min: 1, max: 2 });
+    const env = fs.readFileSync(path.join(tmpDir, '.har', 'harness.env'), 'utf8');
+    expect(env).toContain('export HARNESS_AGENT_SLOT_MAX=2');
   });
 
   it('skips init when harness already exists and still offers a maintain prompt', async () => {
@@ -183,6 +235,7 @@ describe('runOnboarding', () => {
     expect(result.harnessInitialized).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, '.har'))).toBe(false);
     expect(result.adaptationPromptPath).toBeNull();
+    expect(result.agentSlots).toBeNull();
   });
 });
 

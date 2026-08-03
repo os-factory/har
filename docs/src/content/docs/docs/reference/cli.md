@@ -8,7 +8,8 @@ All repository commands accept `--repo <path>`; the default is the current direc
 ## `har onboard`
 
 Interactive first-run guide: how HAR works, telemetry, Mission Control, plugins,
-then the adaptation prompt (clipboard + `.har/ADAPT-PROMPT.md`).
+parallel agent slot capacity, then the adaptation prompt (clipboard +
+`.har/ADAPT-PROMPT.md`).
 
 ```bash
 har onboard [--repo .] [--yes] [--skip-guide] [--skip-init]
@@ -16,6 +17,7 @@ har onboard [--repo .] [--yes] [--skip-guide] [--skip-init]
             [--telemetry on|on-no-prompts|off]
             [--control|--no-control]
             [--plugins playwright,rocketsim|--no-plugins]
+            [--agent-slots <n>]
             [--force]
             [--agents claude,cursor,codex] [--no-agents]
             [--cursor-rule|--no-cursor-rule]
@@ -26,6 +28,11 @@ har onboard [--repo .] [--yes] [--skip-guide] [--skip-init]
 `--yes` accepts defaults (telemetry on, start Mission Control, no plugins) without
 prompts. Prefer this over hand-rolling `preferences` + `env init` + `telemetry`
 + `control up` for new repositories.
+
+`--agent-slots <n>` sets how many agents may run in parallel (`1`–`10`), written to
+`.har/stages.json` as `agentSlots.max`. Interactive onboarding asks this when the
+flag is omitted (practical limit depends on machine resources and stack cost).
+With `--yes` and no `--agent-slots`, the profile template default is kept.
 
 ## `har env`
 

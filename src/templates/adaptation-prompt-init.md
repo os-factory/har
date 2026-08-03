@@ -153,7 +153,7 @@ Document and configure ports in `.har/harness.env` and `.har/README.md`. Use the
 | Mailpit | `HARNESS_MAILPIT_*_PORT_DEFAULT` | Scan configured ranges |
 | Headless browser | `HARNESS_BROWSER_PORT_DEFAULT` | Scan configured ranges |
 
-Set slot limits in `.har/stages.json` (`agentSlots`) based on machine capacity. `har env maintain --finalize` syncs legacy `HARNESS_AGENT_SLOT_*` exports in `harness.env`.
+Onboarding may set an initial `agentSlots.max` in `.har/stages.json`. After you know the real stack cost, **re-tune** that limit for machine capacity (lighter stack → you can raise; heavy Docker/DB → lower). `har env maintain --finalize` syncs legacy `HARNESS_AGENT_SLOT_*` exports in `harness.env`.
 
 **Port / infra checklist:**
 
