@@ -1,3 +1,10 @@
+# [0.37.0](https://github.com/os-factory/har/compare/v0.36.2...v0.37.0) (2026-08-03)
+
+
+### Features
+
+* **harness:** improve invalid slot errors and raise max slots to 5 ([#119](https://github.com/os-factory/har/issues/119)) ([02455de](https://github.com/os-factory/har/commit/02455deda8eb9bf643bdad335f6175fba98831c8))
+
 ## [0.36.2](https://github.com/os-factory/har/compare/v0.36.1...v0.36.2) (2026-08-02)
 
 
