@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   HAR_AGENT_SLOT_MIN,
+  HarnessAgentSlotsSchema,
   HarnessStage,
   HarnessStageKind,
   HarnessStageRegistry,
@@ -11,7 +12,11 @@ import {
 import { parseHarnessEnvInt, readHarnessEnv } from './env';
 import { getHarnessDir } from './manifest';
 
+export { HAR_AGENT_SLOT_MIN };
 export const STAGE_REGISTRY_FILE = 'stages.json';
+
+/** Upper bound offered during `har onboard` for parallel agent slots. */
+export const HAR_AGENT_SLOT_ONBOARD_MAX = 10;
 
 const AGENT_REQUIRED_KINDS = new Set<HarnessStageKind>([
   'launch',
@@ -240,6 +245,17 @@ export function syncAgentSlotsToHarnessEnv(repoPath: string): boolean {
 
   fs.writeFileSync(envPath, content);
   return true;
+}
+
+/** Set `agentSlots.max` in stages.json and sync legacy harness.env exports. */
+export function applyAgentSlotMax(repoPath: string, max: number): void {
+  const slots = HarnessAgentSlotsSchema.parse({ min: HAR_AGENT_SLOT_MIN, max });
+  const registry = readStageRegistry(repoPath);
+  writeStageRegistry(repoPath, {
+    ...registry,
+    agentSlots: slots,
+  });
+  syncAgentSlotsToHarnessEnv(repoPath);
 }
 
 export function stageRequiresAgentId(stage: HarnessStage): boolean {

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  applyAgentSlotMax,
   detectAgentSlotEnvMismatch,
   getAgentSlotRange,
   syncAgentSlotsToHarnessEnv,
@@ -88,5 +89,27 @@ describe('agent slot limits', () => {
     expect(detectAgentSlotEnvMismatch(repoPath)).toBeNull();
     const env = fs.readFileSync(path.join(repoPath, '.har', 'harness.env'), 'utf8');
     expect(env).toContain('export HARNESS_AGENT_SLOT_MAX=10');
+  });
+
+  it('applyAgentSlotMax updates stages.json and syncs harness.env', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slots-apply-'));
+    fs.mkdirSync(path.join(repoPath, '.har'), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoPath, '.har', 'stages.json'),
+      JSON.stringify({ version: '1', agentSlots: { min: 1, max: 5 }, stages: [] }),
+    );
+    fs.writeFileSync(
+      path.join(repoPath, '.har', 'harness.env'),
+      ['export HARNESS_AGENT_SLOT_MIN=1', 'export HARNESS_AGENT_SLOT_MAX=5', ''].join('\n'),
+    );
+
+    applyAgentSlotMax(repoPath, 2);
+
+    expect(getAgentSlotRange(repoPath)).toEqual({ min: 1, max: 2 });
+    const stages = JSON.parse(fs.readFileSync(path.join(repoPath, '.har', 'stages.json'), 'utf8'));
+    expect(stages.agentSlots).toEqual({ min: 1, max: 2 });
+    expect(detectAgentSlotEnvMismatch(repoPath)).toBeNull();
+    const env = fs.readFileSync(path.join(repoPath, '.har', 'harness.env'), 'utf8');
+    expect(env).toContain('export HARNESS_AGENT_SLOT_MAX=2');
   });
 });

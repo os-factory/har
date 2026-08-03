@@ -6,6 +6,11 @@ import { handleCursorRule } from '../../harness/cursor-rule';
 import { harnessExists } from '../../harness/parser';
 import type { HarnessProfile } from '../../harness/generator';
 import { PluginId } from '../../harness/plugins';
+import {
+  HAR_AGENT_SLOT_MIN,
+  HAR_AGENT_SLOT_ONBOARD_MAX,
+  getAgentSlotRange,
+} from '../../harness/stages';
 import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
 import {
   finalizeOnboardingAdaptation,
@@ -33,6 +38,8 @@ interface OnboardArgs {
   commitGate?: 'prompt' | 'always' | 'never';
   gateMode?: 'block' | 'warn';
   gateScope?: 'worktrees' | 'all';
+  /** Parallel agent slot max (1–10). */
+  agentSlots?: number;
 }
 
 function parsePluginsFlag(raw: string | false | undefined): PluginId[] | undefined {
@@ -46,6 +53,36 @@ function parsePluginsFlag(raw: string | false | undefined): PluginId[] | undefin
     throw new Error(`Unknown plugin(s): ${invalid.join(', ')}. Available: ${available.join(', ')}`);
   }
   return selected as PluginId[];
+}
+
+/** Template defaults for `agentSlots.max` by harness profile. */
+export function defaultAgentSlotMaxForProfile(profile: HarnessProfile): number {
+  return profile === 'default' ? 5 : 3;
+}
+
+export function parseAgentSlotsFlag(raw: number | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  if (!Number.isInteger(raw) || raw < HAR_AGENT_SLOT_MIN || raw > HAR_AGENT_SLOT_ONBOARD_MAX) {
+    throw new Error(
+      `--agent-slots must be an integer from ${HAR_AGENT_SLOT_MIN} to ${HAR_AGENT_SLOT_ONBOARD_MAX}`,
+    );
+  }
+  return raw;
+}
+
+function resolveDefaultAgentSlotsMax(
+  repoPath: string,
+  profile: HarnessProfile,
+  alreadyPresent: boolean,
+): number {
+  if (alreadyPresent) {
+    try {
+      return getAgentSlotRange(repoPath).max;
+    } catch {
+      // fall through to profile default
+    }
+  }
+  return defaultAgentSlotMaxForProfile(profile);
 }
 
 async function pauseForGuide(autoYes: boolean): Promise<void> {
@@ -64,7 +101,11 @@ async function promptChoices(args: OnboardArgs): Promise<{
   telemetry: TelemetryChoice;
   startControl: boolean;
   plugins: PluginId[];
+  agentSlotsMax?: number;
 }> {
+  const flaggedSlots = parseAgentSlotsFlag(args.agentSlots);
+  const shouldConfigureSlots = !args.skipInit;
+
   if (args.yes) {
     const telemetry = args.telemetry ?? 'on';
     return {
@@ -72,6 +113,7 @@ async function promptChoices(args: OnboardArgs): Promise<{
       telemetry,
       startControl: args.control ?? telemetry !== 'off',
       plugins: parsePluginsFlag(args.plugins) ?? [],
+      agentSlotsMax: shouldConfigureSlots ? flaggedSlots : undefined,
     };
   }
 
@@ -81,10 +123,11 @@ async function promptChoices(args: OnboardArgs): Promise<{
       args.telemetry === undefined &&
       args.control === undefined &&
       args.plugins === undefined &&
-      args.profile === undefined
+      args.profile === undefined &&
+      args.agentSlots === undefined
     ) {
       throw new Error(
-        'Interactive onboarding requires a TTY. Pass --yes or flags (--profile, --telemetry, --control/--no-control, --plugins).',
+        'Interactive onboarding requires a TTY. Pass --yes or flags (--profile, --telemetry, --control/--no-control, --plugins, --agent-slots).',
       );
     }
     const telemetry = args.telemetry ?? 'on';
@@ -93,18 +136,28 @@ async function promptChoices(args: OnboardArgs): Promise<{
       telemetry,
       startControl: args.control ?? telemetry !== 'off',
       plugins: parsePluginsFlag(args.plugins) ?? [],
+      agentSlotsMax: shouldConfigureSlots ? flaggedSlots : undefined,
     };
   }
 
   const pluginChoices = listPluginChoices();
-  const alreadyPresent = harnessExists(path.resolve(args.repo));
+  const repoPath = path.resolve(args.repo);
+  const alreadyPresent = harnessExists(repoPath);
   const needProfile = !alreadyPresent && !args.skipInit && args.profile === undefined;
+  const needAgentSlots = shouldConfigureSlots && flaggedSlots === undefined;
+
+  if (needAgentSlots) {
+    info(
+      'Each parallel slot runs an isolated copy of the stack. The practical limit depends on your machine resources (RAM/CPU) and how expensive the stack is to run (Docker services, databases, frontends, etc.). You can change this later in .har/stages.json.',
+    );
+  }
 
   const answers = await inquirer.prompt<{
     profile?: HarnessProfile;
     telemetry?: TelemetryChoice;
     startControl?: boolean;
     plugins?: PluginId[];
+    agentSlotsMax?: number;
   }>([
     {
       type: 'list',
@@ -148,14 +201,44 @@ async function promptChoices(args: OnboardArgs): Promise<{
         value: plugin.id,
       })),
     },
+    {
+      type: 'number',
+      name: 'agentSlotsMax',
+      message: `How many agents do you want to run in parallel? (${HAR_AGENT_SLOT_MIN}–${HAR_AGENT_SLOT_ONBOARD_MAX})`,
+      when: () => needAgentSlots,
+      default: (current: { profile?: HarnessProfile }) =>
+        resolveDefaultAgentSlotsMax(
+          repoPath,
+          args.profile ?? current.profile ?? 'default',
+          alreadyPresent,
+        ),
+      validate: (value: number | undefined) => {
+        if (
+          value === undefined ||
+          !Number.isInteger(value) ||
+          value < HAR_AGENT_SLOT_MIN ||
+          value > HAR_AGENT_SLOT_ONBOARD_MAX
+        ) {
+          return `Enter an integer from ${HAR_AGENT_SLOT_MIN} to ${HAR_AGENT_SLOT_ONBOARD_MAX}`;
+        }
+        return true;
+      },
+    },
   ]);
 
   const telemetry = args.telemetry ?? answers.telemetry ?? 'on';
+  const profile = args.profile ?? answers.profile ?? 'default';
+  let agentSlotsMax: number | undefined;
+  if (shouldConfigureSlots) {
+    agentSlotsMax = flaggedSlots ?? answers.agentSlotsMax;
+  }
+
   return {
-    profile: args.profile ?? answers.profile ?? 'default',
+    profile,
     telemetry,
     startControl: args.control ?? answers.startControl ?? telemetry !== 'off',
     plugins: parsePluginsFlag(args.plugins) ?? answers.plugins ?? [],
+    agentSlotsMax,
   };
 }
 
@@ -169,6 +252,7 @@ function printSummary(result: {
   pluginsApplied: PluginId[];
   adaptationPromptPath: string | null;
   adaptationPromptCopied: boolean;
+  agentSlots: { min: number; max: number } | null;
 }): void {
   divider();
   success('Onboarding complete');
@@ -195,6 +279,11 @@ function printSummary(result: {
       result.pluginsApplied.length > 0 ? result.pluginsApplied.join(', ') : 'none'
     }`,
   );
+  if (result.agentSlots) {
+    info(
+      `Agent slots:    ${result.agentSlots.min}–${result.agentSlots.max} parallel (see .har/stages.json)`,
+    );
+  }
   if (result.adaptationPromptPath) {
     info(`Adapt prompt:   ${result.adaptationPromptPath}`);
     info(
@@ -238,6 +327,7 @@ export async function handleOnboard(argv: OnboardArgs): Promise<void> {
       deferAdaptationPrompt: true,
       autoYes: argv.yes,
       forcePlugins: argv.force,
+      agentSlotsMax: choices.agentSlotsMax,
     });
 
     if (result.harnessInitialized || harnessExists(repoPath)) {
@@ -315,6 +405,10 @@ export const onboardCommand = {
         type: 'string',
         describe:
           'Comma-separated plugins to install (e.g. playwright); --no-plugins to skip; interactive checkbox when omitted',
+      })
+      .option('agent-slots', {
+        type: 'number',
+        describe: `Max parallel agent slots to configure in .har/stages.json (${HAR_AGENT_SLOT_MIN}–${HAR_AGENT_SLOT_ONBOARD_MAX})`,
       })
       .option('skip-guide', {
         type: 'boolean',

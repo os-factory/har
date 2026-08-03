@@ -26,6 +26,7 @@ import {
   PluginId,
   readPluginManifest,
 } from '../harness/plugins';
+import { applyAgentSlotMax, getAgentSlotRange } from '../harness/stages';
 import { divider, info, success, warn } from '../utils/logging';
 
 export type TelemetryChoice = 'on' | 'on-no-prompts' | 'off';
@@ -87,6 +88,8 @@ export interface OnboardOptions {
   autoYes?: boolean;
   /** Force overwrite when applying plugins. */
   forcePlugins?: boolean;
+  /** Parallel agent slot max to write into `.har/stages.json` after the harness exists. */
+  agentSlotsMax?: number;
 }
 
 export interface OnboardResult {
@@ -101,6 +104,8 @@ export interface OnboardResult {
   pluginWarnings: string[];
   adaptationPromptPath: string | null;
   adaptationPromptCopied: boolean;
+  /** Slot range after onboarding when a harness is present. */
+  agentSlots: { min: number; max: number } | null;
 }
 
 export interface OnboardingDeps {
@@ -282,6 +287,19 @@ export async function runOnboarding(
     success('Harness scaffolded');
   }
 
+  let agentSlots: { min: number; max: number } | null = null;
+  if (harnessExists(repoPath)) {
+    if (options.agentSlotsMax !== undefined) {
+      applyAgentSlotMax(repoPath, options.agentSlotsMax);
+      info(`Agent slots: 1–${options.agentSlotsMax} parallel (written to .har/stages.json)`);
+    }
+    try {
+      agentSlots = getAgentSlotRange(repoPath);
+    } catch {
+      agentSlots = null;
+    }
+  }
+
   const pluginsApplied: PluginId[] = [];
   const pluginWarnings: string[] = [];
 
@@ -335,6 +353,7 @@ export async function runOnboarding(
     pluginWarnings,
     adaptationPromptPath,
     adaptationPromptCopied,
+    agentSlots,
   };
 }
 
