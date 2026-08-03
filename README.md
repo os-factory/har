@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="HAR logo" width="120">
+  <img src="assets/logo.png" alt="HAR logo" width="120">
 </p>
 
 # HAR — Harnesses for coding agents
@@ -67,6 +67,19 @@ Everything beyond install and first commands lives at **[https://harproject.dev/
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, the dogfood harness loop, and architecture. Coding agents working on this repo should start with [AGENT.md](./AGENT.md). Maintainer release process: [RELEASING.md](./RELEASING.md).
+
+## Sponsors
+
+HAR is sponsored by [Kerno](https://kerno.io) — runtime code and security review for coding agents.
+
+<p align="center">
+  <a href="https://kerno.io">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/kerno-logo.svg">
+      <img src="assets/kerno-logo-dark.svg" alt="Kerno" height="36">
+    </picture>
+  </a>
+</p>
 
 ## License
 
