@@ -1,4 +1,4 @@
-name: Test
+name: Verify
 
 on:
   pull_request:
@@ -6,11 +6,12 @@ on:
       - main
 
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   changes:
+    name: Detect changed paths
     runs-on: ubuntu-latest
     outputs:
       cli: ${{ steps.filter.outputs.cli }}
@@ -40,6 +41,7 @@ jobs:
               - '.github/workflows/test.yml'
 
   test:
+    name: CLI harness
     needs: changes
     if: needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-latest
@@ -55,6 +57,7 @@ jobs:
       - run: node dist/index.js env verify 1 --full
 
   control:
+    name: Mission Control
     needs: changes
     if: needs.changes.outputs.control == 'true'
     runs-on: ubuntu-latest
