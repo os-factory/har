@@ -1,10 +1,49 @@
-name: Test
+name: Verify
+
 on:
   pull_request:
     branches:
       - main
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      cli: ${{ steps.filter.outputs.cli }}
+      control: ${{ steps.filter.outputs.control }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cli:
+              - 'src/**'
+              - 'tests/**'
+              - 'packages/schemas/**'
+              - 'scripts/**'
+              - '.har/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig*.json'
+              - 'jest.config.*'
+              - '.eslintrc*'
+              - 'eslint.config.*'
+              - '.github/workflows/test.yml'
+            control:
+              - 'control/**'
+              - 'packages/schemas/**'
+              - '.github/workflows/test.yml'
+
   test:
+    name: CLI harness
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +57,9 @@ jobs:
       - run: node dist/index.js env verify 1 --full
 
   control:
+    name: Mission Control
+    needs: changes
+    if: needs.changes.outputs.control == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -27,7 +69,9 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: control/package-lock.json
+          cache-dependency-path: |
+            control/package-lock.json
+            packages/schemas/package-lock.json
 
       # @har/schemas path alias typechecks source files — zod must exist under packages/schemas/
       - name: Install dependencies
@@ -35,9 +79,27 @@ jobs:
           npm ci --prefix packages/schemas
           npm ci --prefix control
 
+      - name: Get Playwright version
+        id: playwright-version
+        working-directory: control
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
       - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: control
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright OS deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: control
+        run: npx playwright install-deps chromium
 
       # Dogfood control/.har (same path agents use locally). --no-worktree: the
       # Actions checkout is already the code under test.
