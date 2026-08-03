@@ -1,3 +1,10 @@
+# [0.42.0](https://github.com/os-factory/har/compare/v0.41.0...v0.42.0) (2026-08-03)
+
+
+### Features
+
+* simplify HAR docs and fix documentation duplications [#121](https://github.com/os-factory/har/issues/121) drift ([#131](https://github.com/os-factory/har/issues/131)) ([a781d4d](https://github.com/os-factory/har/commit/a781d4d59a652e3f38a8320d41351333271e8e27))
+
 # [0.41.0](https://github.com/os-factory/har/compare/v0.40.0...v0.41.0) (2026-08-03)
 
 
