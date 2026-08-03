@@ -52,8 +52,7 @@ After full verify and commit, stop and propose next steps. Never autonomously ru
 `complete`, `teardown`, `git push`, or open a PR. Prefer `complete` over bare
 `teardown` when the work succeeded. Offer a PR only if `gh` or GitHub MCP is
 available (and only after explicit approval); otherwise report the session branch
-for a manual push. See `.cursor/rules/har-workflow.mdc` for the canonical handoff
-template.
+for a manual push. See `.cursor/rules/har-workflow.mdc` for the handoff shape.
 
 Quick loop during development: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har/verify.sh ${AGENT_ID}` (smoke + health only; `--full` adds the registered verification stages).
 

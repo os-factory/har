@@ -16,6 +16,7 @@ The guided wizard walks through how HAR works, then lets you:
 - choose agent telemetry (`on` / `on-no-prompts` / `off`)
 - start Mission Control
 - pick optional plugins (for example Playwright)
+- set how many agents may run in parallel (`--agent-slots`, or an interactive prompt)
 - scaffold `.har/` for a profile (`default`, `cli`, or `ios`)
 
 It finishes by writing `.har/ADAPT-PROMPT.md` and offering to copy that prompt
@@ -69,9 +70,11 @@ har env launch 1
 Launch prints a `workDir`. **Make every application edit under that directory.**
 The main checkout is not the session workspace.
 
-Each launch creates a fresh branch and worktree by default. Replacing an occupied
-slot requires explicit confirmation; discarding a dirty session additionally
-requires `--force`.
+Each launch creates a fresh branch and worktree by default. An occupied slot
+always blocks a new launch — free it with `har env complete <id>` or
+`teardown <id>`, then launch again. Commit or discard uncommitted work in the
+worktree first. See [Agent workflow](/docs/guides/agent-workflow/) for occupied
+and failed slots.
 
 ## 4. Verify
 
@@ -86,7 +89,9 @@ project-defined validation stages.
 
 ## 5. Complete and hand off
 
-Commit the verified changes in the session worktree, then:
+Commit the verified changes in the session worktree. Agents should present a
+[session handoff](/docs/guides/agent-workflow/#what-agents-must-propose) and wait
+for approval before finishing. Then:
 
 ```bash
 har env complete 1

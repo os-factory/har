@@ -56,9 +56,11 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 
 ```bash
 har env init [--profile default|cli|ios] [--auto] [--yes]
-             [--smoke] [--force] [--model <claude-model>]
+             [--smoke] [--force] [--model <claude-model>] [--verbose]
              [--agents claude,cursor,codex] [--no-agents]
              [--cursor-rule|--no-cursor-rule]
+             [--commit-gate prompt|always|never]
+             [--gate-mode block|warn] [--gate-scope worktrees|all]
 ```
 
 `--auto` requires `ANTHROPIC_API_KEY`. `--force` replaces an existing harness and
@@ -68,8 +70,10 @@ is destructive.
 
 ```bash
 har env maintain [--auto] [--yes] [--finalize]
-                 [--summary <text>] [--agents <targets>]
+                 [--summary <text>] [--agents <targets>] [--verbose]
                  [--cursor-rule|--no-cursor-rule]
+                 [--commit-gate prompt|always|never]
+                 [--gate-mode block|warn] [--gate-scope worktrees|all]
 ```
 
 ### Plugins and stages
@@ -159,28 +163,35 @@ Repository policy remains visible and versioned in `.har/stages.json`.
 ## `har hooks`
 
 ```bash
-har hooks install [--force]
-har hooks uninstall
-har hooks status [--json]
+har hooks install [--repo .] [--force]
+har hooks uninstall [--repo .]
+har hooks status [--repo .] [--json]
 
 har hooks install --claude
 har hooks uninstall --claude
 ```
 
 The default installs the Git commit gate. `--claude` selects the Claude Code
-main-checkout edit guard instead. `check` and `record-commit` are hook workers.
+main-checkout edit guard instead. `har hooks check` and `har hooks record-commit`
+are internal hook workers invoked by Git, not day-to-day commands.
 
 ## `har control`
 
 ```bash
-har control up [--build] [--no-detach]
+har control up [--build] [-d|--detach|--no-detach]
 har control down
 har control register [--repo .] [--api-url <url>] [--dry-run] [--force]
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
-har control sync [--api-url <url>] [--dry-run] [--json] [--cloud]
-har control login --api-key <key>
+har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
+har control watch [--repo .] [--interval 10] [--api-url <url>]
+har control login --portal <url> [--api-key <key>]
 ```
+
+`login` requires `--portal` (or `HAR_PORTAL_URL`). With `--api-key` it stores that
+ingest token; without it, HAR opens browser SSO and saves the resulting token.
+`sync --select` interactively chooses repositories; `--full` ignores the portal
+watermark and resends the complete payload.
 
 `unregister` removes the repository from Mission Control and `~/.har/repos.json`.
 Interactively it lists session worktrees and asks whether to delete them; pass
@@ -202,7 +213,9 @@ har telemetry on [--prompts|--no-prompts]
 har telemetry off
 har telemetry install-hooks
 har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
-har telemetry print-env --agent-id <n>
+                       [--work-dir path] [--branch name] [--suffix id] [--session-key key]
+har telemetry print-env --agent-id <n> [--repo .]
+                       [--work-dir path] [--branch name] [--suffix id]
 ```
 
 Controls agent usage telemetry (Cursor / Claude / Codex via `@osfactory/otel-hook` → Mission Control).
