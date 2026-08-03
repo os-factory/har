@@ -39,15 +39,15 @@ Full walkthrough: [Quickstart](https://harproject.dev/docs/getting-started/quick
 
 Getting a single coding agent to work in a repo is easy. Scaling that into a real multi-agent workflow, where several agents run at once and humans still trust the output, is where it breaks down. HAR was built to close those gaps:
 
-**No standard way to run or verify a repo.** That knowledge is scattered across a README, a CLAUDE.md, Cursor rules, and CI yaml today, drifting out of sync with each other and the actual codebase. HAR replaces all of that with one machine-readable contract (.har/) that Claude Code, Cursor, Codex, or any MCP agent reads the same way.
+1. **No standard way to run or verify a repo.** That knowledge is scattered across a README, a CLAUDE.md, Cursor rules, and CI yaml today, drifting out of sync with each other and the actual codebase. HAR replaces all of that with one machine-readable contract (.har/) that Claude Code, Cursor, Codex, or any MCP agent reads the same way.
 
-**Multiple agents on one repo collide.** Shared dev server, shared database, shared ports, conflicting git state. HAR gives each agent its own worktree, ports, and database per slot, so a fleet can genuinely run concurrently.
+2. **Multiple agents on one repo collide.** Shared dev server, shared database, shared ports, conflicting git state. HAR gives each agent its own worktree, ports, and database per slot, so a fleet can genuinely run concurrently.
 
-**Trusting an agent's change means re-verifying it yourself.** Every task runs the same deterministic verify step and leaves an evidence trail, logs, artifacts, a validated tree hash, so a reviewer can check proof of what ran instead of relying on the agent's self-report.
+3. **Trusting an agent's change means re-verifying it yourself.** Every task runs the same deterministic verify step and leaves an evidence trail, logs, artifacts, a validated tree hash, so a reviewer can check proof of what ran instead of relying on the agent's self-report.
 
-**One platform's sandbox locks you in.** If the contract lives inside a vendor's hosted dashboard, switching coding agents later means rebuilding the whole verification setup. HAR's contract is an open standard living in the repo itself, portable across whichever agent or tool you adopt.
+4. **One platform's sandbox locks you in.** If the contract lives inside a vendor's hosted dashboard, switching coding agents later means rebuilding the whole verification setup. HAR's contract is an open standard living in the repo itself, portable across whichever agent or tool you adopt.
 
-**Hand-rolled scripts rot as the stack changes.** A new dependency, a new service, a new env var, and nobody updates the script until an agent's run fails for a confusing reason. `har env maintain` diffs your installed harness against current templates and flags drift before it causes a silent failure.
+5. **Hand-rolled scripts rot as the stack changes.** A new dependency, a new service, a new env var, and nobody updates the script until an agent's run fails for a confusing reason. `har env maintain` diffs your installed harness against current templates and flags drift before it causes a silent failure.
 
 HAR coordinates the work around the model, so agents can focus on the code and reviewers can trust the result.
 
