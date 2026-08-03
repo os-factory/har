@@ -44,6 +44,8 @@ export async function loginViaBrowser(
       const returnedState = requestUrl.searchParams.get('state');
       const workspace = requestUrl.searchParams.get('workspace') ?? undefined;
       const email = requestUrl.searchParams.get('email') ?? undefined;
+      const refreshToken = requestUrl.searchParams.get('refreshToken') ?? undefined;
+      const expiresAt = requestUrl.searchParams.get('expiresAt') ?? undefined;
 
       if (returnedState !== state || !token) {
         res.writeHead(400, { 'Content-Type': 'text/html' });
@@ -56,7 +58,15 @@ export async function loginViaBrowser(
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<h1>Logged in</h1><p>You can close this tab and return to the terminal.</p>');
       cleanup();
-      resolve({ portalUrl, token, workspace, email, createdAt: new Date().toISOString() });
+      resolve({
+        portalUrl,
+        token,
+        workspace,
+        email,
+        refreshToken,
+        expiresAt,
+        createdAt: new Date().toISOString(),
+      });
     });
 
     const cleanup = () => {

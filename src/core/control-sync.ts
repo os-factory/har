@@ -24,7 +24,7 @@ import {
   recordRepoForControlSync,
   removeRegisteredRepo,
 } from './control-registry';
-import { readPortalCredentials } from './portal-credentials';
+import { readPortalCredentials, writePortalCredentials } from './portal-credentials';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
@@ -76,6 +76,52 @@ async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promis
   return (await response.json()) as T;
 }
 
+function postPortalOnce(
+  target: PortalTarget,
+  endpoint: string,
+  body: unknown,
+): Promise<Response> {
+  return fetch(`${target.url}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${target.token}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+// Rotate an expired ingest token via the stored refresh token: on success
+// mutates target.token and persists the rotated credential, else returns false
+// so the caller surfaces the original 401.
+async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
+  if (!target.refreshToken) return false;
+
+  let response: Response;
+  try {
+    response = await fetch(`${target.url}/api/cli/refresh`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${target.refreshToken}` },
+    });
+  } catch {
+    return false;
+  }
+  if (!response.ok) return false;
+
+  const data = (await response.json().catch(() => null)) as {
+    token?: string;
+    expiresAt?: string;
+  } | null;
+  if (!data?.token) return false;
+
+  target.token = data.token;
+  const stored = readPortalCredentials();
+  if (stored) {
+    writePortalCredentials({ ...stored, token: data.token, expiresAt: data.expiresAt });
+  }
+  return true;
+}
+
 async function postPortal(
   target: PortalTarget,
   endpoint: string,
@@ -84,19 +130,19 @@ async function postPortal(
 ): Promise<void> {
   if (dryRun) return;
 
-  const response = await fetch(`${target.url}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${target.token}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let response = await postPortalOnce(target, endpoint, body);
+
+  if (
+    (response.status === 401 || response.status === 403) &&
+    (await refreshPortalToken(target))
+  ) {
+    response = await postPortalOnce(target, endpoint, body);
+  }
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       throw new Error(
-        `har-portal rejected the ingest token (HTTP ${response.status}) — check HAR_PORTAL_TOKEN.`,
+        `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har control login\` (or check HAR_PORTAL_TOKEN).`,
       );
     }
     const text = await response.text().catch(() => '');

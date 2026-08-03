@@ -9,6 +9,8 @@ export interface PortalCredentials {
   workspace?: string;
   email?: string;
   createdAt: string;
+  refreshToken?: string;
+  expiresAt?: string;
 }
 
 export function portalCredentialsPath(): string {
@@ -29,6 +31,8 @@ export function readPortalCredentials(): PortalCredentials | null {
       workspace: parsed.workspace,
       email: parsed.email,
       createdAt: parsed.createdAt ?? '',
+      refreshToken: parsed.refreshToken,
+      expiresAt: parsed.expiresAt,
     };
   } catch {
     return null;

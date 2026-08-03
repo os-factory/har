@@ -58,6 +58,19 @@ describe('portal credentials store', () => {
     expect(readPortalCredentials()?.email).toBe('login@haulieros.io');
   });
 
+  it('round-trips the refresh token and ingest-token expiry', () => {
+    writePortalCredentials({
+      portalUrl: 'https://portal.example.com',
+      token: 'har_ingest_x',
+      refreshToken: 'har_refresh_y',
+      expiresAt: '2026-02-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const creds = readPortalCredentials();
+    expect(creds?.refreshToken).toBe('har_refresh_y');
+    expect(creds?.expiresAt).toBe('2026-02-01T00:00:00.000Z');
+  });
+
   it('returns null when the file is missing or incomplete', () => {
     expect(readPortalCredentials()).toBeNull();
     fs.writeFileSync(tmpFile, JSON.stringify({ portalUrl: 'https://x' }));

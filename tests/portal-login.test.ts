@@ -4,7 +4,14 @@ import { loginViaBrowser } from '../src/core/portal-login';
 
 function hitCallback(
   loginUrl: string,
-  opts: { token?: string; state?: string; workspace?: string; email?: string },
+  opts: {
+    token?: string;
+    state?: string;
+    workspace?: string;
+    email?: string;
+    refreshToken?: string;
+    expiresAt?: string;
+  },
 ): void {
   const url = new URL(loginUrl);
   const callback = url.searchParams.get('callback') as string;
@@ -13,6 +20,8 @@ function hitCallback(
   params.set('state', opts.state ?? (url.searchParams.get('state') as string));
   if (opts.workspace) params.set('workspace', opts.workspace);
   if (opts.email) params.set('email', opts.email);
+  if (opts.refreshToken) params.set('refreshToken', opts.refreshToken);
+  if (opts.expiresAt) params.set('expiresAt', opts.expiresAt);
   http.get(`${callback}?${params.toString()}`, (res) => res.resume());
 }
 
@@ -33,6 +42,18 @@ describe('loginViaBrowser', () => {
       hitCallback(url, { token: 'har_ingest_abc', email: 'login@haulieros.io' }),
     );
     expect(creds.email).toBe('login@haulieros.io');
+  });
+
+  it('captures the refresh token and ingest-token expiry from the callback', async () => {
+    const creds = await loginViaBrowser('https://portal.example.com', (url) =>
+      hitCallback(url, {
+        token: 'har_ingest_abc',
+        refreshToken: 'har_refresh_xyz',
+        expiresAt: '2026-02-01T00:00:00.000Z',
+      }),
+    );
+    expect(creds.refreshToken).toBe('har_refresh_xyz');
+    expect(creds.expiresAt).toBe('2026-02-01T00:00:00.000Z');
   });
 
   it('rejects on state mismatch', async () => {
