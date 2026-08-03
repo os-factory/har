@@ -1,9 +1,3 @@
-## [Unreleased]
-
-### Changed
-
-* Relicense the project to **Apache-2.0** (replaces AGPL-3.0-only dual licensing). Removed `LICENSE-COMMERCIAL.md`, `DOCUMENTATION-LICENSE.md`, `CLA.md`, and `TRADEMARK.md`.
-
 ## [0.36.2](https://github.com/os-factory/har/compare/v0.36.1...v0.36.2) (2026-08-02)
 
 
