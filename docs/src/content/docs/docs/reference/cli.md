@@ -179,7 +179,6 @@ har control register [--repo .] [--api-url <url>] [--dry-run] [--force]
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
 har control sync [--api-url <url>] [--dry-run] [--json] [--cloud]
-har control watch [--interval 10] [--api-url <url>]
 har control login --api-key <key>
 ```
 

@@ -12,7 +12,7 @@ import {
   isMergeOrRebaseInProgress,
 } from './change-batch';
 import { attachCommit, ensureValidationsIgnored, findValidation } from './validations';
-import { syncRepoWithControlAsync } from './control-sync';
+import { markDirty } from './sync-context';
 
 const MARKER_START = '# >>> har commit gate (managed by `har hooks`) >>>';
 const MARKER_END = '# <<< har commit gate <<<';
@@ -340,7 +340,7 @@ export async function recordCommitAssociation(
 
     const updated = attachCommit(checkout, tree, commitSha);
     if (updated) {
-      await syncRepoWithControlAsync(updated.harnessRoot);
+      markDirty(updated.harnessRoot);
       return { attached: true, commitSha };
     }
     return { attached: false, commitSha };

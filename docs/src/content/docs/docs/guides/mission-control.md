@@ -30,12 +30,12 @@ one explicitly:
 ```bash
 har control register --repo /path/to/project
 har control sync --repo /path/to/project
-har control watch --interval 10
 ```
 
-`watch` can sync one repository or all registered repositories continuously.
-`--dry-run` previews registration or sync, and `sync --json` produces structured
-output.
+Sync also runs automatically at every activity edge — login, launch, verify,
+commit, complete — so registered repositories stay current without a manual
+`sync` or a background watcher. `--dry-run` previews registration or sync, and
+`sync --json` produces structured output.
 
 ## Unregister
 

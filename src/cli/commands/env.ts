@@ -1,5 +1,6 @@
 import * as path from 'path';
 import type { Argv } from 'yargs';
+import { finishCommand } from '../finish-command';
 import { initHarness, maintainHarness, addPlugin } from '../../core/harness';
 import {
   PLUGIN_IDS,
@@ -430,12 +431,12 @@ export async function handleInit(argv: {
 
     if (result.smoke) {
       printValidation(result.smoke);
-      if (!result.smoke.pass) process.exit(1);
+      if (!result.smoke.pass) return finishCommand(1);
     }
 
     if (!result.validation.pass) {
       warn('Harness has validation errors — review .har/ and fix manually.');
-      process.exit(1);
+      return finishCommand(1);
     }
 
     if (argv.auto) {
@@ -467,7 +468,7 @@ export async function handleInit(argv: {
     printNextSteps(argv.auto);
   } catch (err: unknown) {
     error((err as Error).message);
-    process.exit(1);
+    return finishCommand(1);
   }
 }
 
@@ -522,13 +523,13 @@ export async function handleMaintain(argv: {
     if (argv.finalize) {
       if (!result.validation.pass) {
         warn('Harness has validation errors — fix them before finalizing.');
-        process.exit(1);
+        return finishCommand(1);
       }
       info('Manifest updated — generator version and file checksums recorded.');
     } else if (argv.auto) {
       if (!result.validation.pass) {
         warn('Harness has validation errors after maintenance.');
-        process.exit(1);
+        return finishCommand(1);
       }
       await handleAgentMdProposal(repoPath, argv.yes);
     } else {
@@ -572,7 +573,7 @@ export async function handleMaintain(argv: {
     });
   } catch (err: unknown) {
     error((err as Error).message);
-    process.exit(1);
+    return finishCommand(1);
   }
 }
 
@@ -698,7 +699,7 @@ export async function handleAddPlugin(argv: {
     error(
       `Unknown plugin: ${argv.plugin ?? '(missing)'}. Available: ${available.join(', ')}. For a project-specific stage, use: har env add-stage <id> --custom`,
     );
-    process.exit(1);
+    return finishCommand(1);
   }
 
   header('har env add-plugin');
@@ -723,7 +724,7 @@ export async function handleAddPlugin(argv: {
     console.error('');
   } catch (err: unknown) {
     error((err as Error).message);
-    process.exit(1);
+    return finishCommand(1);
   }
 }
 
@@ -756,7 +757,7 @@ export async function handleAddStage(argv: {
       error(
         'Missing stage id. Usage: har env add-stage <id> --custom (--command "npm test" | --script) [--kind test] [--verification]',
       );
-      process.exit(1);
+      return finishCommand(1);
     }
 
     header('har env add-stage --custom');
@@ -789,7 +790,7 @@ export async function handleAddStage(argv: {
       console.error('');
     } catch (err: unknown) {
       error((err as Error).message);
-      process.exit(1);
+      return finishCommand(1);
     }
     return;
   }
@@ -798,7 +799,7 @@ export async function handleAddStage(argv: {
     error(
       `Unknown plugin: ${argv.template ?? '(missing)'}. Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-specific stage, use: har env add-stage <id> --custom`,
     );
-    process.exit(1);
+    return finishCommand(1);
   }
 
   warn(
@@ -828,12 +829,12 @@ export async function handlePreflight(argv: {
   if (argv.json) {
     const output = SlotReadinessSchema.parse(result.readiness);
     process.stdout.write(JSON.stringify(output, null, 2) + '\n');
-    process.exit(result.code);
+    return finishCommand(result.code);
     return;
   }
 
   if (result.stdout) process.stdout.write(result.stdout);
-  process.exit(result.code);
+  return finishCommand(result.code);
 }
 
 export async function handleLaunch(argv: {
@@ -855,7 +856,7 @@ export async function handleLaunch(argv: {
     const guard = checkLaunchGuard(repo, agentId, {});
     if (!guard.allowed && guard.blocked) {
       error(guard.reason ?? `Slot ${agentId} is occupied.`);
-      process.exit(2);
+      return finishCommand(2);
     }
   }
 
@@ -874,7 +875,7 @@ export async function handleLaunch(argv: {
   });
   if (result.blocked) {
     error(result.stderr || 'Launch blocked: slot is occupied.');
-    process.exit(result.code || 2);
+    return finishCommand(result.code || 2);
   }
   if (result.code === 0 && result.workDir) {
     if (result.stderr) {
@@ -888,7 +889,7 @@ export async function handleLaunch(argv: {
     success(`Session ready — make ALL file edits under: ${result.workDir}`);
     if (result.branch) info(`Branch: ${result.branch}`);
   }
-  process.exit(result.code);
+  return finishCommand(result.code);
 }
 
 export async function handleRecover(argv: { id?: number; repo: string }): Promise<void> {
@@ -916,7 +917,7 @@ export async function handleVerify(argv: { id?: number; repo: string; full: bool
     capture: false,
   });
   if (result.stdout) process.stdout.write(result.stdout);
-  process.exit(result.code);
+  return finishCommand(result.code);
 }
 
 export async function handleTeardown(argv: {
@@ -932,7 +933,7 @@ export async function handleTeardown(argv: {
     deleteBranch: argv.deleteBranch,
     capture: false,
   });
-  process.exit(result.code);
+  return finishCommand(result.code);
 }
 
 export async function handleComplete(argv: {
@@ -958,7 +959,7 @@ export async function handleComplete(argv: {
   } else if (result.stderr) {
     error(result.stderr.trim());
   }
-  process.exit(result.code);
+  return finishCommand(result.code);
 }
 
 export async function handleStatus(argv: { repo: string; json?: boolean }): Promise<void> {
@@ -1011,7 +1012,7 @@ export async function handleRunsGet(argv: {
   const run = getRun(path.resolve(argv.repo), argv.runId);
   if (!run) {
     error(`Run not found: ${argv.runId}`);
-    process.exit(1);
+    return finishCommand(1);
   }
 
   if (argv.json !== false) {
