@@ -30,9 +30,13 @@ jest.mock('../src/harness/manifest', () => ({
 }));
 jest.mock('../src/harness/stages', () => ({ readStageRegistry: () => null }));
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { syncReposWithControl } from '../src/core/control-sync';
 
 const realFetch = global.fetch;
+let stateDir: string;
 
 function setPortalEnv(): void {
   process.env.HAR_PORTAL_URL = 'https://portal.example.com';
@@ -93,10 +97,14 @@ function mockFetchByRepo(): void {
 
 describe('syncReposWithControl', () => {
   beforeEach(() => {
+    stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-sync-state-'));
+    process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(stateDir, 'state.json');
     setPortalEnv();
     mockFetchByRepo();
   });
   afterEach(() => {
+    delete process.env.HAR_PORTAL_SYNC_STATE_PATH;
+    fs.rmSync(stateDir, { recursive: true, force: true });
     clearPortalEnv();
     (global as unknown as { fetch: unknown }).fetch = realFetch;
   });

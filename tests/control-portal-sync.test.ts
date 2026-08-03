@@ -37,8 +37,11 @@ jest.mock('../src/core/control-persisted-usage', () => ({
   fetchPersistedPortalTelemetry: jest.fn(async () => ({ usage: [], events: [], maxSyncedAt: null })),
 }));
 jest.mock('../src/core/portal-watermark', () => ({
+  ...jest.requireActual('../src/core/portal-watermark'),
   readPortalWatermark: jest.fn(() => null),
   writePortalWatermark: jest.fn(),
+  readRunsWatermarkEntry: jest.fn(() => null),
+  writeRunsWatermark: jest.fn(),
 }));
 jest.mock('../src/core/telemetry-config', () => ({ isTelemetryEnabled: () => true }));
 jest.mock('../src/harness/manifest', () => ({

@@ -7,6 +7,13 @@ interface PortalSyncStateEntry {
   repoPath: string;
   portalUrl: string;
   lastSyncedAt: string;
+  /** Server repo id at last sync; a change means the repo was wiped/recreated. */
+  repoId?: string;
+}
+
+export interface RunsWatermark {
+  lastSyncedAt: string;
+  repoId?: string;
 }
 
 interface PortalSyncState {
@@ -66,6 +73,34 @@ export function writePortalWatermark(
 
 export function getPortalWatermarkPath(): string {
   return getStatePath();
+}
+
+export function readRunsWatermarkEntry(repoPath: string, target: string): RunsWatermark | null {
+  const canonical = canonicalizeControlRepoPath(repoPath);
+  const entry = readState().states.find(
+    (state) => state.repoPath === canonical && state.portalUrl === target,
+  );
+  return entry ? { lastSyncedAt: entry.lastSyncedAt, repoId: entry.repoId } : null;
+}
+
+export function writeRunsWatermark(
+  repoPath: string,
+  target: string,
+  repoId: string | undefined,
+  lastSyncedAt: string,
+): void {
+  const canonical = canonicalizeControlRepoPath(repoPath);
+  const state = readState();
+  const existing = state.states.find(
+    (entry) => entry.repoPath === canonical && entry.portalUrl === target,
+  );
+  if (existing) {
+    existing.lastSyncedAt = lastSyncedAt;
+    existing.repoId = repoId;
+  } else {
+    state.states.push({ repoPath: canonical, portalUrl: target, lastSyncedAt, repoId });
+  }
+  writeState(state);
 }
 
 /**
