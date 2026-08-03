@@ -41,7 +41,13 @@ import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
 import { enrichUsageWithPricing } from '../harness/schema';
-import { readPortalWatermark, writePortalWatermark } from './portal-watermark';
+import {
+  readPortalWatermark,
+  writePortalWatermark,
+  readRunsWatermarkEntry,
+  writeRunsWatermark,
+  selectSince,
+} from './portal-watermark';
 import type { AgentSessionEvent, AgentSessionUsage } from '../harness/schema';
 
 export interface ControlSyncOptions {
@@ -59,14 +65,117 @@ export interface ControlRegisterOptions extends ControlSyncOptions {
   gitRemote?: string;
 }
 
+/** Per-request byte cap: a single POST of a large run history gets the connection
+ * dropped (undici UND_ERR_SOCKET), so unbounded collections chunk under this. */
+const DEFAULT_MAX_BATCH_BYTES = 4 * 1024 * 1024;
+
+function maxSyncBatchBytes(): number {
+  const raw = Number(process.env.HAR_SYNC_MAX_BATCH_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_BATCH_BYTES;
+}
+
+export function chunkBySerializedSize<T>(items: T[], maxBytes: number): T[][] {
+  const batches: T[][] = [];
+  let current: T[] = [];
+  let currentBytes = 0;
+
+  for (const item of items) {
+    const itemBytes = Buffer.byteLength(JSON.stringify(item), 'utf8');
+    if (current.length > 0 && currentBytes + itemBytes > maxBytes) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(item);
+    currentBytes += itemBytes;
+  }
+  if (current.length > 0) batches.push(current);
+
+  return batches;
+}
+
+function runTimestamp(run: RunRecord): string {
+  return run.finishedAt ?? run.startedAt;
+}
+
+// Re-send a small window past the watermark so a same-ms sibling or a backward
+// clock step isn't dropped (the resend is an idempotent upsert).
+const DEFAULT_SYNC_OVERLAP_MS = 60_000;
+
+function rewindSince(since: string | null): string | null {
+  if (!since) return null;
+  const raw = Number(process.env.HAR_SYNC_OVERLAP_MS);
+  const overlap = Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_SYNC_OVERLAP_MS;
+  return new Date(new Date(since).getTime() - overlap).toISOString();
+}
+
+function runsWatermarkTarget(target: string): string {
+  return `runs:${target}`;
+}
+
+/** Send run batches oldest-first, advancing the watermark (with the server repo
+ * id) after each lands — so a sync killed mid-flight resumes, and a wiped repo
+ * invalidates it. */
+async function syncRunBatches(
+  newRuns: RunRecord[],
+  repoPath: string,
+  runsTarget: string,
+  getRepoId: () => string | undefined,
+  dryRun: boolean | undefined,
+  send: (batch: RunRecord[], index: number) => Promise<void>,
+): Promise<void> {
+  const ordered = [...newRuns].sort((a, b) => runTimestamp(a).localeCompare(runTimestamp(b)));
+  const batches = chunkBySerializedSize(ordered, maxSyncBatchBytes());
+  const toSend = batches.length > 0 ? batches : [[]];
+  for (let i = 0; i < toSend.length; i++) {
+    const batch = toSend[i];
+    await send(batch, i);
+    if (!dryRun && batch.length > 0) {
+      writeRunsWatermark(repoPath, runsTarget, getRepoId(), runTimestamp(batch[batch.length - 1]));
+    }
+  }
+}
+
+function describeFetchFailure(url: string, bodyBytes: number, err: unknown): string {
+  const base = err instanceof Error ? err.message : String(err);
+  const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+  const code = cause?.code ? ` [${cause.code}]` : '';
+  const detail = cause?.message && cause.message !== base ? `: ${cause.message}` : '';
+  const size = bodyBytes > 0 ? ` (request body ${(bodyBytes / 1024 / 1024).toFixed(2)} MB)` : '';
+  return `${base}${code}${detail}${size} — POST ${url}`;
+}
+
+const MAX_FETCH_ATTEMPTS = 3;
+
+async function postForResponse(
+  url: string,
+  headers: Record<string, string>,
+  payload: string,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
+    try {
+      return await fetch(url, { method: 'POST', headers, body: payload });
+    } catch (err) {
+      // Retry network throws (e.g. a keep-alive socket dropped after a big batch)
+      // — every sync POST is an idempotent upsert, so a fresh connection is safe.
+      lastErr = err;
+      if (attempt < MAX_FETCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+      }
+    }
+  }
+  throw new Error(describeFetchFailure(url, Buffer.byteLength(payload, 'utf8'), lastErr));
+}
+
 async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promise<T | null> {
   if (dryRun) return null;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const response = await postForResponse(
+    url,
+    { 'Content-Type': 'application/json' },
+    JSON.stringify(body),
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -81,14 +190,14 @@ function postPortalOnce(
   endpoint: string,
   body: unknown,
 ): Promise<Response> {
-  return fetch(`${target.url}${endpoint}`, {
-    method: 'POST',
-    headers: {
+  return postForResponse(
+    `${target.url}${endpoint}`,
+    {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${target.token}`,
     },
-    body: JSON.stringify(body),
-  });
+    JSON.stringify(body),
+  );
 }
 
 // Rotate an expired ingest token via the stored refresh token: on success
@@ -127,8 +236,8 @@ async function postPortal(
   endpoint: string,
   body: unknown,
   dryRun?: boolean,
-): Promise<void> {
-  if (dryRun) return;
+): Promise<Record<string, unknown> | null> {
+  if (dryRun) return null;
 
   let response = await postPortalOnce(target, endpoint, body);
 
@@ -148,6 +257,8 @@ async function postPortal(
     const text = await response.text().catch(() => '');
     throw new Error(`har-portal sync failed: HTTP ${response.status}${text ? ` — ${text}` : ''}`);
   }
+
+  return (await response.json().catch(() => null)) as Record<string, unknown> | null;
 }
 
 function resolvePortalUserEmail(): string | undefined {
@@ -254,6 +365,7 @@ async function buildPortalPayload(
   since: string | null,
 ): Promise<{
   syncBody: Record<string, unknown>;
+  runs: RunRecord[];
   events: Record<string, unknown>[];
   maxSyncedAt: string | null;
 }> {
@@ -277,7 +389,6 @@ async function buildPortalPayload(
     path: repoPath,
     ...(manifest ? { manifest } : {}),
     ...(stagesRegistry ? { stagesRegistry } : {}),
-    runs,
     slots: status.slots,
     generatedAt: status.generatedAt,
     ...(validations.length > 0 ? { validations } : {}),
@@ -287,7 +398,7 @@ async function buildPortalPayload(
     ...(usage.length > 0 ? { usage } : {}),
   };
 
-  return { syncBody, events, maxSyncedAt };
+  return { syncBody, runs, events, maxSyncedAt };
 }
 
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
@@ -362,7 +473,7 @@ export async function syncReposWithControl(options: {
     try {
       await withTimeout(
         syncRepoWithControl({ repoPath, apiUrl, dryRun: options.dryRun, cloud: options.cloud, full: options.full }),
-        SYNC_TIMEOUT_MS,
+        EXPLICIT_SYNC_TIMEOUT_MS,
         'control sync',
       );
       synced++;
@@ -455,7 +566,7 @@ async function syncRepoWithLocalControl(
   options: ControlSyncOptions & { repoPath: string },
 ): Promise<void> {
   const apiUrl = options.apiUrl ?? getControlApiUrl();
-  const { repoPath, dryRun } = options;
+  const { repoPath, dryRun, full } = options;
 
   const registerResult = await registerRepoWithControl({ ...options, repoPath });
   const repoId = registerResult?.id;
@@ -469,12 +580,12 @@ async function syncRepoWithLocalControl(
       // Unregistered / blocked — nothing to sync locally.
       return;
     }
-    await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, dryRun);
+    await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, dryRun, full);
     return;
   }
 
   if (repoId) {
-    await syncRepoRunsAndSlots(apiUrl, repoId, repoPath, dryRun);
+    await syncRepoRunsAndSlots(apiUrl, repoId, repoPath, dryRun, full);
   }
 }
 
@@ -487,10 +598,33 @@ async function syncRepoWithPortal(
 
   const { repoPath, dryRun, full } = options;
   const since = full ? null : readPortalWatermark(repoPath, portal.url);
-  const { syncBody, events, maxSyncedAt } = await buildPortalPayload(repoPath, controlApiUrl, since);
-  await postPortal(portal, '/api/sync', syncBody, dryRun);
-  if (events.length > 0) {
-    await postPortal(portal, '/api/otel', { path: repoPath, events, spans: [] }, dryRun);
+
+  const runsTarget = runsWatermarkTarget(portal.url);
+  const stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
+  const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
+  const { syncBody, runs, events, maxSyncedAt } = await buildPortalPayload(
+    repoPath,
+    controlApiUrl,
+    since,
+  );
+  const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
+
+  let repoId: string | undefined;
+  await syncRunBatches(newRuns, repoPath, runsTarget, () => repoId, dryRun, async (batch, i) => {
+    const body = i === 0 ? { ...syncBody, runs: batch } : { path: repoPath, runs: batch };
+    const res = await postPortal(portal, '/api/sync', body, dryRun);
+    if (i === 0 && typeof res?.repositoryId === 'string') repoId = res.repositoryId;
+  });
+
+  // Repo id changed → the portal repo was wiped; resend the whole history.
+  if (!full && !dryRun && stored?.repoId && repoId && stored.repoId !== repoId) {
+    await syncRunBatches(listRuns(repoPath), repoPath, runsTarget, () => repoId, dryRun, async (batch) => {
+      await postPortal(portal, '/api/sync', { path: repoPath, runs: batch }, dryRun);
+    });
+  }
+
+  for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes())) {
+    await postPortal(portal, '/api/otel', { path: repoPath, events: batch, spans: [] }, dryRun);
   }
   if (!dryRun && maxSyncedAt) {
     writePortalWatermark(repoPath, portal.url, maxSyncedAt);
@@ -540,10 +674,17 @@ async function syncRepoRunsAndSlots(
   repoId: string,
   repoPath: string,
   dryRun?: boolean,
+  full?: boolean,
 ): Promise<void> {
+  const runsTarget = runsWatermarkTarget(apiUrl);
+  const stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
+  const runsSince = rewindSince(stored?.repoId === repoId ? (stored?.lastSyncedAt ?? null) : null);
   const runs = listRuns(repoPath);
-  const runsBody = SyncRunsInputSchema.parse({ runs });
-  await postJson(`${apiUrl}/api/repos/${repoId}/runs`, runsBody, dryRun);
+  const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
+
+  await syncRunBatches(newRuns, repoPath, runsTarget, () => repoId, dryRun, async (batch) => {
+    await postJson(`${apiUrl}/api/repos/${repoId}/runs`, SyncRunsInputSchema.parse({ runs: batch }), dryRun);
+  });
 
   const status: EnvironmentStatus = collectEnvironmentStatus(repoPath);
   const slotsBody = SyncSlotsInputSchema.parse({
@@ -636,6 +777,7 @@ async function syncRepoRunsAndSlots(
 }
 
 const SYNC_TIMEOUT_MS = 15_000;
+const EXPLICIT_SYNC_TIMEOUT_MS = 120_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout;
