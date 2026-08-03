@@ -1,3 +1,10 @@
+# [0.41.0](https://github.com/os-factory/har/compare/v0.40.0...v0.41.0) (2026-08-03)
+
+
+### Features
+
+* **control:** batch + incrementally sync runs so large histories don't fail ([#129](https://github.com/os-factory/har/issues/129)) ([0f79155](https://github.com/os-factory/har/commit/0f79155c0c90a85b375eb5cd2e5e77e98a9f7d66))
+
 # [0.40.0](https://github.com/os-factory/har/compare/v0.39.0...v0.40.0) (2026-08-03)
 
 
