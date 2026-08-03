@@ -103,7 +103,7 @@ process.stdin.on('end', () => {
         exit 1
       fi
       if [ -z "$ENV_FILE" ]; then
-        echo "ERROR: .env.agent.${AGENT_ID} could not be resolved — relaunch with --replace when ready." >&2
+        echo "ERROR: .env.agent.${AGENT_ID} could not be resolved — teardown this slot, then relaunch." >&2
         exit 1
       fi
     elif [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then

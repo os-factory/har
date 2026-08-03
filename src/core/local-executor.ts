@@ -31,8 +31,6 @@ export function buildLaunchFlagArgs(flags: LaunchFlags): string[] {
   const args: string[] = [];
   if (flags.worktree === false) args.push('--no-worktree');
   if (flags.claude) args.push('--claude');
-  if (flags.confirmReplace) args.push('--replace');
-  if (flags.force) args.push('--force');
   if (flags.resume) args.push('--resume');
   if (flags.workUnitId) args.push(`--work-id=${flags.workUnitId}`);
   if (flags.attemptId) args.push(`--attempt-id=${flags.attemptId}`);

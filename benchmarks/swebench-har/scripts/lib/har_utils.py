@@ -12,10 +12,8 @@ from .common import har_cmd, load_benchmark_env, read_json, run_command
 
 
 def har_launch_env(env: dict[str, str] | None = None) -> dict[str, str]:
-    """Env vars for non-interactive HAR launch/replace from the benchmark runner."""
-    merged = dict(env or load_benchmark_env())
-    merged["HAR_CONFIRM_REPLACE"] = "1"
-    return merged
+    """Env vars for non-interactive HAR launch from the benchmark runner."""
+    return dict(env or load_benchmark_env())
 
 
 def har_init_scaffold(repo_path: Path, profile: str, env: dict[str, str] | None = None) -> None:
@@ -107,7 +105,7 @@ def har_launch_slot(
 ) -> tuple[bool, Path | None, str]:
     launch_env = har_launch_env(env)
     result = run_command(
-        [*har_cmd("launch", str(agent_id), "--replace", "--force", env=launch_env)],
+        [*har_cmd("launch", str(agent_id), env=launch_env)],
         cwd=harness_root,
         timeout=timeout_seconds,
     )

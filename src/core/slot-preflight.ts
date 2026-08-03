@@ -134,19 +134,11 @@ export function inspectSlotReadiness(
       ? options.occupied.active
         ? options.resume && isSlotResumable(session)
           ? { allowed: true }
-          : !options.confirmReplace
-          ? {
+          : {
               allowed: false,
               blocked: true,
               reason: `Slot ${agentId} is already in use.`,
             }
-          : options.occupied.dirty && !options.force
-            ? {
-                allowed: false,
-                blocked: true,
-                reason: `Slot ${agentId} worktree has uncommitted changes.`,
-              }
-            : { allowed: true }
         : { allowed: true }
       : checkOccupiedSlotGuard(repoPath, agentId, options);
   if (!guard.allowed) {
@@ -156,16 +148,12 @@ export function inspectSlotReadiness(
       message: guard.reason ?? `Slot ${agentId} is occupied.`,
       remediation: resumable
         ? `Resume the partial launch: har env launch ${agentId} --resume (or har env recover ${agentId})`
-        : guard.slot?.dirty
-        ? 'Commit changes in the worktree, or pass --force after explicit user approval.'
-        : 'Pass --replace (CLI), confirmReplace=true (MCP), or answer y at the launch prompt.',
+        : `Free the slot: har env teardown ${agentId} (or complete ${agentId}), then har env launch ${agentId}.`,
     });
     remediations.push(
       resumable
         ? `har env launch ${agentId} --resume`
-        : guard.slot?.dirty
-        ? 'har env preflight <id> --replace --force'
-        : 'har env preflight <id> --replace',
+        : `har env teardown ${agentId}`,
     );
   }
 
@@ -201,7 +189,7 @@ export function inspectSlotReadiness(
       blockers.push({
         code: 'project_mismatch',
         message: `Slot registry projectName=${session.projectName} does not match harness ${projectName}.`,
-        remediation: 'Teardown the stale session and relaunch with --replace.',
+        remediation: 'Teardown the stale session, then relaunch.',
       });
     }
   }

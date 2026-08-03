@@ -1,3 +1,8 @@
+## [Unreleased]
+
+### Changed
+* Remove `har env launch --replace` / `--force` and MCP `confirmReplace`/`force`; occupied slots require teardown/complete then launch
+
 ## [0.36.2](https://github.com/os-factory/har/compare/v0.36.1...v0.36.2) (2026-08-02)
 
 

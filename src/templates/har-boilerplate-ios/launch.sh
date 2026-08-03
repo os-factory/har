@@ -2,8 +2,9 @@
 # Launch an agent slot for iOS mobile app repos (git worktree by default).
 # Every launch starts a FRESH session: any previous session for the slot is torn
 # down (its branch is kept) and a new suffixed worktree is created from HEAD.
+# Occupied slots always block: run ./.har/teardown.sh (or complete it) first, then relaunch.
 #
-# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--replace] [--force]
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,8 +17,6 @@ source "$SCRIPT_DIR/agent-slot.sh"
 
 AGENT_ID="${1:-}"
 USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
-FORCE=false
-REPLACE=false
 WORK_UNIT_ID="${HAR_WORK_UNIT_ID:-}"
 ATTEMPT_ID="${HAR_ATTEMPT_ID:-}"
 
@@ -25,8 +24,6 @@ for arg in "$@"; do
   case "$arg" in
     --no-worktree) USE_WORKTREE=false ;;
     --worktree) USE_WORKTREE=true ;;
-    --replace)  REPLACE=true ;;
-    --force)    FORCE=true ;;
     --work-id=*) WORK_UNIT_ID="${arg#*=}" ;;
     --attempt-id=*) ATTEMPT_ID="${arg#*=}" ;;
   esac
@@ -40,7 +37,7 @@ export SLOT_ATTEMPT_ID="$ATTEMPT_ID"
 
 if [[ -z "$AGENT_ID" ]]; then
   har_load_agent_slot_limits
-  echo "Usage: $0 <agent-id> [--no-worktree] [--replace] [--force] " >&2
+  echo "Usage: $0 <agent-id> [--no-worktree]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -49,11 +46,12 @@ validate_agent_id "$AGENT_ID"
 
 log() { echo "==> [agent-$AGENT_ID] $*" >&2; }
 
-# Replace any previous session for this slot — requires explicit confirmation.
+# Occupied slots always block a new launch — teardown/complete first, then relaunch.
 if slot_is_occupied "$AGENT_ID"; then
-  require_slot_replace_confirm "$AGENT_ID" "$FORCE" "$REPLACE"
-  log "Replacing previous session for slot ${AGENT_ID}..."
-  "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
+  print_slot_occupied_warning "$AGENT_ID"
+  echo "ERROR: slot ${AGENT_ID} is occupied." >&2
+  echo "  Free it first: har env teardown ${AGENT_ID} (or complete ${AGENT_ID}), then har env launch ${AGENT_ID}." >&2
+  exit 2
 fi
 
 "$SCRIPT_DIR/setup-infra.sh"
@@ -122,7 +120,7 @@ mark_slot_failed() {
       write_slot_registry
     log "  Work dir:  ${WORK_DIR}"
     log "  Env file:  ${ENV_FILE}"
-    log "  Recovery:  fix the failure, then relaunch with --replace when ready."
+    log "  Recovery:  fix the failure, then: har env teardown ${AGENT_ID} (or complete), then har env launch ${AGENT_ID}."
   fi
 }
 trap mark_slot_failed EXIT

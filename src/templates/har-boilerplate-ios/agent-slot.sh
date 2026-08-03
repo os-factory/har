@@ -152,8 +152,8 @@ slot_dirty_summary() {
   echo "dirty (${count} changed)"
 }
 
-# Print a warning before replacing an occupied slot (stdout — visible to agents).
-print_slot_replace_warning() {
+# Print details about an occupied slot (stdout — visible to agents).
+print_slot_occupied_warning() {
   local agent_id="$1"
   local reg wt branch work_dir created status last_error dirty_summary head
   reg="$(slot_registry_file "$agent_id")"
@@ -169,7 +169,7 @@ print_slot_replace_warning() {
   fi
 
   echo "" >&2
-  echo "⚠ Slot ${agent_id} is already in use — replacing will REMOVE the worktree." >&2
+  echo "⚠ Slot ${agent_id} is already in use." >&2
   [ -n "$wt" ] && echo "  Worktree:  ${wt}" >&2
   [ -n "$work_dir" ] && echo "  Work dir:  ${work_dir}" >&2
   [ -n "$branch" ] && echo "  Branch:    ${branch}${head:+ @ ${head}}" >&2
@@ -185,54 +185,21 @@ print_slot_replace_warning() {
     base_sha="$(git -C "$base_root" rev-parse --short HEAD 2>/dev/null || true)"
     echo "  New session will be based on: ${base_branch}${base_sha:+ @ ${base_sha}}" >&2
     echo "  (HEAD of ${base_root})" >&2
-    echo "  --replace does not choose this base — switch that checkout first for a new unrelated task." >&2
+    echo "  Switch that checkout to your intended base before launching a new session." >&2
     echo "" >&2
   fi
-  echo "  Prefer complete/teardown when the previous task is finished, then launch." >&2
-  echo "  The session branch is kept only if you committed. Gitignored paths" >&2
-  echo "  (state/, runs/, local clones, .env.local) are NOT preserved." >&2
+  if [ "$dirty_summary" != "clean" ] && [ "$dirty_summary" != "unknown" ]; then
+    echo "  Commit or discard changes in the worktree, then teardown/complete the slot:" >&2
+  else
+    echo "  Free the slot, then launch again:" >&2
+  fi
+  echo "    har env complete ${agent_id}   # or: har env teardown ${agent_id}" >&2
+  echo "    har env launch ${agent_id}" >&2
   echo "" >&2
-}
-
-# Require explicit confirmation before replacing an occupied slot.
-#   $1 agent_id  $2 force(true/false)  $3 replace(true/false)
-# Exits 1 when replacement must not proceed.
-require_slot_replace_confirm() {
-  local agent_id="$1"
-  local force="$2"
-  local replace="$3"
-  local wt
-
-  slot_is_occupied "$agent_id" || return 0
-
-  print_slot_replace_warning "$agent_id"
-  wt="$(existing_slot_worktree "$agent_id")"
-
-  if [ -n "$wt" ] && slot_worktree_dirty "$wt" && [ "$force" != true ]; then
-    echo "ERROR: previous session for slot ${agent_id} has uncommitted changes." >&2
-    echo "  Commit them in the worktree (branch is kept on teardown), or pass --force to discard." >&2
-    echo "  --force destroys uncommitted work — only use after explicit user approval." >&2
-    exit 1
-  fi
-
-  if [ "$replace" = true ] || [ "${HAR_CONFIRM_REPLACE:-}" = "1" ]; then
-    return 0
-  fi
-
-  if [ -t 0 ] && [ -t 1 ]; then
-    local answer
-    read -r -p "Replace slot ${agent_id}? Uncommitted work is lost unless committed. [y/N] " answer
-    if [[ "$answer" =~ ^[Yy]$ ]]; then
-      return 0
-    fi
-    echo "Aborted — slot ${agent_id} left unchanged." >&2
-    exit 2
-  fi
-
-  echo "ERROR: slot ${agent_id} is occupied." >&2
-  echo "  Pass --replace (or set HAR_CONFIRM_REPLACE=1) after reviewing the warning above." >&2
-  echo "  If the worktree is dirty, also pass --force (only after explicit user approval)." >&2
-  exit 2
+  echo "  complete/teardown remove the worktree. The session branch is kept only if" >&2
+  echo "  you committed. Gitignored paths (state/, runs/, local clones, .env.local)" >&2
+  echo "  are NOT preserved." >&2
+  echo "" >&2
 }
 
 git_common_dir() {

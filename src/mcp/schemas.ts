@@ -68,22 +68,12 @@ export const LaunchEnvironmentInputSchema = z.object({
   agentId: agentIdSchema,
   worktree: z.boolean().default(true),
   claude: z.boolean().default(false),
-  confirmReplace: z
-    .boolean()
-    .default(false)
-    .describe(
-      'Destroy the previous session on this slot and start another from main-checkout HEAD. Does not choose main. Prefer complete/teardown when the prior task is finished. Call har_get_status first; get explicit user approval.',
-    ),
-  force: z
-    .boolean()
-    .default(false)
-    .describe(
-      'Discard uncommitted changes in a dirty occupied worktree. Requires confirmReplace=true and explicit user approval — never set autonomously.',
-    ),
   resume: z
     .boolean()
     .default(false)
-    .describe('Resume a failed or partial launch without creating a new worktree.'),
+    .describe(
+      'Resume a failed or partial launch without creating a new worktree. Only valid for failed/starting sessions — otherwise call har_get_status, then har_complete_environment or har_teardown_environment before launching again.',
+    ),
   workUnitId: z.string().min(1).max(128).optional(),
   source: z.string().min(1).max(64).optional(),
   sourceUrl: z.string().url().optional(),
@@ -117,14 +107,6 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
 export const PreflightEnvironmentInputSchema = z.object({
   repo: z.string().default('.'),
   agentId: agentIdSchema,
-  confirmReplace: z
-    .boolean()
-    .default(false)
-    .describe('Treat an occupied slot as replaceable (same as launch confirmReplace).'),
-  force: z
-    .boolean()
-    .default(false)
-    .describe('Allow replacing a dirty worktree (requires explicit user approval).'),
 });
 
 export const PreflightEnvironmentOutputSchema = ShellRunOutputSchema.extend({

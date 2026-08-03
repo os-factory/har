@@ -8,8 +8,6 @@ import type { AgentSlotStatus } from '../harness/schema';
 import { readSlotRegistry, isSlotResumable } from './slot-registry';
 
 export interface LaunchGuardOptions {
-  confirmReplace?: boolean;
-  force?: boolean;
   resume?: boolean;
 }
 
@@ -113,7 +111,7 @@ export function describeLaunchBase(repoPath: string): string[] {
   return [
     `New session will be based on: ${branch}${sha ? ` @ ${sha}` : ''}`,
     `  (HEAD of ${harnessRoot})`,
-    '  --replace does not choose this base — switch the main checkout first for a new unrelated task.',
+    '  Switch the main checkout to your intended base before launching a new session.',
   ];
 }
 
@@ -131,7 +129,7 @@ function formatOccupiedSlot(
     slot.lastError ? `  Error:    ${slot.lastError}` : undefined,
     slot.sessionCreatedAt ? `  Since:    ${slot.sessionCreatedAt}` : undefined,
     slot.dirty
-      ? '  Git:      dirty (uncommitted changes — commit or use force to discard)'
+      ? '  Git:      dirty (uncommitted changes — commit or discard them in the worktree)'
       : '  Git:      clean',
     '',
     ...describeLaunchBase(repoPath),
@@ -144,21 +142,26 @@ function formatOccupiedSlot(
     slot.sessionStatus === 'starting'
   ) {
     lines.push(
-      'This session failed partway through launch. Resume without replacing:',
+      'This session failed partway through launch. Resume without a new launch:',
       `  har env launch ${slot.agentId} --resume`,
       `  har env recover ${slot.agentId}`,
       `  ./.har/launch.sh ${slot.agentId} --resume`,
       '',
     );
+  } else {
+    lines.push(
+      'Free the slot before starting a new session:',
+      slot.dirty
+        ? `  Commit or discard changes in the worktree, then: har env teardown ${slot.agentId} (or complete ${slot.agentId})`
+        : `  har env complete ${slot.agentId}   # or: har env teardown ${slot.agentId}`,
+      `  har env launch ${slot.agentId}`,
+      '',
+    );
   }
 
   lines.push(
-    'Prefer complete/teardown when the previous task is finished, then launch.',
-    'Replacing removes the worktree. The session branch is kept only if you committed.',
+    'complete/teardown remove the worktree. The session branch is kept only if you committed.',
     'Gitignored paths (state/, runs/, local clones) are NOT preserved.',
-    '',
-    'To replace: pass confirmReplace=true (MCP), --replace (CLI), or answer y at the prompt.',
-    'If the worktree is dirty, also pass force=true / --force after explicit user approval.',
   );
   return lines.filter(Boolean).join('\n');
 }
@@ -185,44 +188,17 @@ export function checkLaunchGuard(
         reason: [
           `Slot ${agentId} is not resumable (status=${session?.status ?? 'none'}).`,
           'Only failed or starting sessions can be resumed.',
-          'Use a normal launch with --replace to start fresh.',
+          `Free the slot first: har env teardown ${agentId} (or complete ${agentId}), then har env launch ${agentId}.`,
         ].join('\n'),
       };
     }
     return { allowed: true, slot };
   }
 
-  if (isSlotResumable(session) && !options.confirmReplace) {
-    return {
-      allowed: false,
-      blocked: true,
-      slot,
-      reason: formatOccupiedSlot(slot, repoPath),
-    };
-  }
-
-  if (!options.confirmReplace) {
-    return {
-      allowed: false,
-      blocked: true,
-      slot,
-      reason: formatOccupiedSlot(slot, repoPath),
-    };
-  }
-
-  if (slot.dirty && !options.force) {
-    return {
-      allowed: false,
-      blocked: true,
-      slot,
-      reason: [
-        formatOccupiedSlot(slot, repoPath),
-        '',
-        'The occupied worktree has uncommitted changes.',
-        'Pass force=true / --force to discard them (only after explicit user approval).',
-      ].join('\n'),
-    };
-  }
-
-  return { allowed: true, slot };
+  return {
+    allowed: false,
+    blocked: true,
+    slot,
+    reason: formatOccupiedSlot(slot, repoPath),
+  };
 }

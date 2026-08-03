@@ -25,25 +25,21 @@ session purpose from the first captured user prompt.
 
 ## Occupied and failed slots
 
-A normal launch never silently replaces an active session. Prefer finishing the
-previous task first:
+An occupied slot always blocks a new launch. Free it first, then launch again:
 
 ```bash
 har env complete 2   # or: har env teardown 2
 har env launch 2
 ```
 
-To reuse the same slot id immediately, pass `--replace` after reviewing the
-occupied warning (it shows the **new** session base — HEAD of `--repo` — not
-only the old worktree). `--replace` destroys the previous worktree; it does
-**not** select `main`.
+The occupied error shows the **new** session base — HEAD of `--repo` — so you
+can confirm it before freeing the slot. `complete`/`teardown` remove the
+previous worktree; the session branch is kept only if you committed. Launch
+never chooses `main` for you — switch the main checkout to your intended base
+first.
 
-```bash
-har env launch 2 --replace
-```
-
-If that worktree has uncommitted changes, replacement remains blocked until the
-owner explicitly approves `--force`.
+If that worktree has uncommitted changes, commit or discard them in the
+worktree before running `complete`/`teardown`.
 
 A launch that failed partway is different. Preserve and resume its existing state:
 

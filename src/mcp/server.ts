@@ -76,27 +76,17 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_launch_environment',
     description:
-      'Start a FRESH agent session from the main checkout HEAD (switch that checkout to main first for a new unrelated task). Run BEFORE editing any file: returns workDir — ALL edits go there, never the main checkout. Prefer har_complete_environment / har_teardown_environment when a prior task is done. Occupied slots block until confirmReplace=true (does NOT choose main). force=true discards dirty work — never set without user approval. Failed launches: resume=true / har_recover_environment.',
+      'Start a FRESH agent session from the main checkout HEAD (switch that checkout to main first for a new unrelated task). Run BEFORE editing any file: returns workDir — ALL edits go there, never the main checkout. Occupied slots always block: call har_get_status, then har_complete_environment or har_teardown_environment, then relaunch — unless the session is failed/starting, in which case pass resume=true (or use har_recover_environment).',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
         worktree: { type: 'boolean' },
         claude: { type: 'boolean' },
-        confirmReplace: {
-          type: 'boolean',
-          description:
-            'Destroy the previous session on this slot and start another from main-checkout HEAD. Does not choose main. Prefer complete/teardown when the prior task is finished. Call har_get_status first; get explicit user approval.',
-        },
-        force: {
-          type: 'boolean',
-          description:
-            'Discard uncommitted changes when replacing a dirty worktree. Requires confirmReplace=true and explicit user approval.',
-        },
         resume: {
           type: 'boolean',
           description:
-            'Resume a failed or partial launch (status failed/starting) without confirmReplace. Preserves worktree and env.',
+            'Resume a failed or partial launch (status failed/starting) without creating a new worktree. Preserves worktree and env. Not usable to replace an active/completed slot — free it with har_complete_environment or har_teardown_environment first.',
         },
         workUnitId: {
           type: 'string',
@@ -133,14 +123,6 @@ export const HAR_MCP_TOOLS: Tool[] = [
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
-        confirmReplace: {
-          type: 'boolean',
-          description: 'Treat an occupied slot as replaceable (same as launch confirmReplace).',
-        },
-        force: {
-          type: 'boolean',
-          description: 'Allow replacing a dirty worktree (only after explicit user approval).',
-        },
       },
       ['agentId'],
     ),
@@ -302,8 +284,6 @@ export async function handleMcpToolCall(
         agentId,
         worktree: input.worktree,
         claude: input.claude,
-        confirmReplace: input.confirmReplace,
-        force: input.force,
         resume: input.resume,
         workUnitId: input.workUnitId,
         source: input.source,
@@ -327,8 +307,6 @@ export async function handleMcpToolCall(
         agentId,
         worktree: input.worktree,
         claude: input.claude,
-        confirmReplace: false,
-        force: false,
         resume: true,
         workUnitId: input.workUnitId,
         source: input.source,
@@ -350,8 +328,6 @@ export async function handleMcpToolCall(
       const result = await preflightEnvironment({
         repoPath: repo,
         agentId,
-        confirmReplace: input.confirmReplace,
-        force: input.force,
       });
       const parsed = PreflightEnvironmentOutputSchema.parse(result);
       return {

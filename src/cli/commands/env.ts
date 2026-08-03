@@ -42,8 +42,6 @@ import {
   HAR_ENV_EPILOG,
   LAUNCH_COMMAND_DESCRIBE,
   LAUNCH_EPILOG,
-  LAUNCH_FORCE_DESCRIBE,
-  LAUNCH_REPLACE_DESCRIBE,
   LAUNCH_RESUME_DESCRIBE,
 } from '../help-text';
 
@@ -256,16 +254,6 @@ export const envCommand = {
               describe: 'Use an isolated git worktree (default)',
             })
             .option('claude', { type: 'boolean', default: false })
-            .option('replace', {
-              type: 'boolean',
-              default: false,
-              describe: LAUNCH_REPLACE_DESCRIBE,
-            })
-            .option('force', {
-              type: 'boolean',
-              default: false,
-              describe: LAUNCH_FORCE_DESCRIBE,
-            })
             .option('resume', {
               type: 'boolean',
               default: false,
@@ -304,17 +292,7 @@ export const envCommand = {
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
             .option('repo', { type: 'string', default: '.' })
-            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' })
-            .option('replace', {
-              type: 'boolean',
-              default: false,
-              describe: 'Treat an occupied slot as replaceable (same as launch --replace)',
-            })
-            .option('force', {
-              type: 'boolean',
-              default: false,
-              describe: 'Allow replacing a dirty worktree (only after explicit approval)',
-            }),
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
         handlePreflight,
       )
       .command(
@@ -841,16 +819,12 @@ export async function handlePreflight(argv: {
   id?: number;
   repo: string;
   json?: boolean;
-  replace: boolean;
-  force: boolean;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
   const result = await preflightEnvironment({
     repoPath: repo,
     agentId,
-    confirmReplace: argv.replace,
-    force: argv.force,
   });
 
   if (argv.json) {
@@ -869,8 +843,6 @@ export async function handleLaunch(argv: {
   repo: string;
   worktree: boolean;
   claude: boolean;
-  replace: boolean;
-  force: boolean;
   resume: boolean;
   workId?: string;
   workSource?: string;
@@ -881,48 +853,11 @@ export async function handleLaunch(argv: {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
 
-  let confirmReplace = argv.replace;
-  let force = argv.force;
-
   if (!argv.resume) {
-    const guard = checkLaunchGuard(repo, agentId, { confirmReplace, force });
+    const guard = checkLaunchGuard(repo, agentId, {});
     if (!guard.allowed && guard.blocked) {
-      if (!confirmReplace && process.stdin.isTTY && process.stdout.isTTY) {
-        warn('Occupied slot — review before replacing:');
-        console.error(guard.reason ?? '');
-        const readline = await import('readline');
-        const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-        const answer = await new Promise<string>((resolve) => {
-          rl.question('Replace this slot? [y/N] ', resolve);
-        });
-        rl.close();
-        if (!/^[Yy]$/.test(answer.trim())) {
-          error('Aborted — slot left unchanged.');
-          process.exit(2);
-        }
-        confirmReplace = true;
-      }
-    }
-
-    const guardAfterConfirm = checkLaunchGuard(repo, agentId, { confirmReplace, force });
-    if (!guardAfterConfirm.allowed && guardAfterConfirm.blocked && guardAfterConfirm.slot?.dirty) {
-      if (!force && process.stdin.isTTY && process.stdout.isTTY) {
-        warn('Worktree has uncommitted changes.');
-        const readline = await import('readline');
-        const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-        const answer = await new Promise<string>((resolve) => {
-          rl.question('Discard uncommitted changes? [y/N] ', resolve);
-        });
-        rl.close();
-        if (!/^[Yy]$/.test(answer.trim())) {
-          error('Aborted — uncommitted work preserved.');
-          process.exit(2);
-        }
-        force = true;
-      } else if (!force) {
-        error(guardAfterConfirm.reason ?? 'Dirty worktree requires --force.');
-        process.exit(2);
-      }
+      error(guard.reason ?? `Slot ${agentId} is occupied.`);
+      process.exit(2);
     }
   }
 
@@ -931,8 +866,6 @@ export async function handleLaunch(argv: {
     agentId,
     worktree: argv.worktree,
     claude: argv.claude,
-    confirmReplace,
-    force,
     resume: argv.resume,
     workUnitId: argv.workId,
     source: argv.workSource,
@@ -966,8 +899,6 @@ export async function handleRecover(argv: { id?: number; repo: string }): Promis
     repo: argv.repo,
     worktree: true,
     claude: false,
-    replace: false,
-    force: false,
     resume: true,
     workId: undefined,
     workSource: undefined,

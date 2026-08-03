@@ -2,8 +2,9 @@
 # Launches a single agent instance with isolated ports, database, and PM2 processes.
 # Every launch starts a FRESH session: any previous session for the slot is torn
 # down (its branch is kept) and a new suffixed worktree is created from HEAD.
+# Occupied slots always block: run ./.har/teardown.sh (or complete it) first, then relaunch.
 #
-# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--claude] [--replace] [--force] [--resume]
+# Usage: ./.har/launch.sh <agent-id> [--no-worktree] [--claude] [--resume]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,8 +18,6 @@ source "$SCRIPT_DIR/agent-slot.sh"
 AGENT_ID="${1:-}"
 USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
 USE_CLAUDE=false
-FORCE=false
-REPLACE=false
 RESUME=false
 WORK_UNIT_ID="${HAR_WORK_UNIT_ID:-}"
 ATTEMPT_ID="${HAR_ATTEMPT_ID:-}"
@@ -28,8 +27,6 @@ for arg in "$@"; do
     --no-worktree) USE_WORKTREE=false ;;
     --worktree) USE_WORKTREE=true ;;
     --claude)   USE_CLAUDE=true ;;
-    --replace)  REPLACE=true ;;
-    --force)    FORCE=true ;;
     --resume)   RESUME=true ;;
     --work-id=*) WORK_UNIT_ID="${arg#*=}" ;;
     --attempt-id=*) ATTEMPT_ID="${arg#*=}" ;;
@@ -44,7 +41,7 @@ export SLOT_ATTEMPT_ID="$ATTEMPT_ID"
 
 if [[ -z "$AGENT_ID" ]]; then
   har_load_agent_slot_limits
-  echo "Usage: $0 <agent-id> [--no-worktree] [--claude] [--replace] [--force] [--resume] " >&2
+  echo "Usage: $0 <agent-id> [--no-worktree] [--claude] [--resume]" >&2
   echo "  agent-id must be between ${HARNESS_AGENT_SLOT_MIN} and ${HARNESS_AGENT_SLOT_MAX}" >&2
   exit 1
 fi
@@ -63,7 +60,7 @@ ENV_FILE=""
 REGISTRY_WRITTEN=false
 
 if [ "$RESUME" = true ]; then
-  har_launch_preflight "$AGENT_ID" "$FORCE" "$REPLACE" true || exit $?
+  har_launch_preflight "$AGENT_ID" true || exit $?
   eval "$(har_resume_session_assignments "$AGENT_ID")"
   REGISTRY_WRITTEN=true
   mark_slot_failed() {
@@ -92,14 +89,8 @@ if [ "$RESUME" = true ]; then
   trap mark_slot_failed EXIT
 else
   # Preflight before worktree/install — ports, foreign PM2, Docker, occupied slot.
-  har_launch_preflight "$AGENT_ID" "$FORCE" "$REPLACE" || exit $?
-
-  # Replace any previous session for this slot — requires explicit confirmation.
-  if slot_is_occupied "$AGENT_ID"; then
-    require_slot_replace_confirm "$AGENT_ID" "$FORCE" "$REPLACE"
-    log "Replacing previous session for slot ${AGENT_ID}..."
-    "$SCRIPT_DIR/teardown.sh" "$AGENT_ID" >&2
-  fi
+  # Occupied slots always block here: teardown/complete first, then relaunch.
+  har_launch_preflight "$AGENT_ID" || exit $?
 fi
 
 if har_harness_uses_pm2; then
