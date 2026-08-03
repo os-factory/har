@@ -1,3 +1,15 @@
+# [0.40.0](https://github.com/os-factory/har/compare/v0.39.0...v0.40.0) (2026-08-03)
+
+
+### Bug Fixes
+
+* **telemetry:** prevent cross-slot harvest and unsafe OTEL attribution ([#84](https://github.com/os-factory/har/issues/84)) ([#126](https://github.com/os-factory/har/issues/126)) ([c282045](https://github.com/os-factory/har/commit/c282045877c2b7b984e93690b3bd92ff3f97f8a6))
+
+
+### Features
+
+* **control:** refresh expired portal ingest token on 401 instead of failing sync ([#128](https://github.com/os-factory/har/issues/128)) ([b5af037](https://github.com/os-factory/har/commit/b5af0376e09a4d3167d7162370d8be50ffaa555f))
+
 # [0.39.0](https://github.com/os-factory/har/compare/v0.38.1...v0.39.0) (2026-08-03)
 
 
