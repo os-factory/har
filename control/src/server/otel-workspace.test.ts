@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isWorkspaceUnderPath,
   otelWorkspaceIdForPath,
   pickBestRepoPathMatch,
   pickPathForWorkspaceId,
@@ -34,6 +35,15 @@ describe('pickBestRepoPathMatch', () => {
 
   it('returns null when nothing matches', () => {
     expect(pickBestRepoPathMatch('/tmp/x', ['/home/me/proj'])).toBeNull();
+  });
+});
+
+describe('isWorkspaceUnderPath', () => {
+  it('matches equal paths and child workspaces only', () => {
+    const worktree = '/home/antoine/worktrees/main-abcd-har-agent-2-xy12';
+    expect(isWorkspaceUnderPath(worktree, worktree)).toBe(true);
+    expect(isWorkspaceUnderPath(`${worktree}/src`, worktree)).toBe(true);
+    expect(isWorkspaceUnderPath('/home/antoine', worktree)).toBe(false);
   });
 });
 

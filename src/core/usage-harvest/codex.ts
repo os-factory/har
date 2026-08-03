@@ -4,14 +4,7 @@ import * as path from 'path';
 import type { AgentSessionUsage } from '../../harness/schema';
 import { buildSessionKey } from '../telemetry-env';
 import type { HarvestSlotContext } from './claude';
-
-function pathsMatch(candidate: string, targets: string[]): boolean {
-  const norm = path.resolve(candidate);
-  return targets.some((t) => {
-    const target = path.resolve(t);
-    return norm === target || norm.startsWith(target + path.sep) || target.startsWith(norm + path.sep);
-  });
-}
+import { workspaceMatchesTarget } from '../workspace-path-match';
 
 function codexSessionsRoot(): string {
   return process.env.HAR_CODEX_SESSIONS_DIR
@@ -116,7 +109,7 @@ export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage |
   for (const file of files) {
     const records = readJsonl(file);
     const extracted = extractCodexTokens(records);
-    if (!extracted.cwd || !pathsMatch(extracted.cwd, targets)) continue;
+    if (!extracted.cwd || !workspaceMatchesTarget(extracted.cwd, targets)) continue;
     if (extracted.tokensInput + extracted.tokensOutput + extracted.tokensCacheRead === 0) continue;
     const mtime = fs.statSync(file).mtimeMs;
     if (mtime >= bestMtime) {

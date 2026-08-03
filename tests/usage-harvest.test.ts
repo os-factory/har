@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { harvestClaudeUsage, encodeClaudeProjectDir } from '../src/core/usage-harvest/claude';
 import { harvestCodexUsage } from '../src/core/usage-harvest/codex';
+import { isWorkspaceUnderPath } from '../src/core/workspace-path-match';
 
 describe('usage harvest claude', () => {
   let tmp: string;
@@ -100,6 +101,43 @@ describe('usage harvest claude', () => {
         tokensTotal: 44,
       },
     });
+  });
+
+  it('does not harvest a parent cwd session into a child worktree slot', () => {
+    const homeDir = '/home/antoine';
+    const workDir = '/home/antoine/worktrees/main-abcd-har-agent-2-xy12';
+    const homeProject = path.join(tmp, encodeClaudeProjectDir(homeDir));
+    fs.mkdirSync(homeProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(homeProject, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: homeDir, message: { role: 'user', content: 'hi' } }),
+        JSON.stringify({
+          type: 'result',
+          usage: { input_tokens: 10, output_tokens: 5 },
+          total_cost_usd: 0.01,
+        }),
+      ].join('\n') + '\n',
+    );
+
+    expect(
+      harvestClaudeUsage({
+        agentId: 2,
+        workDir,
+        branch: 'main-abcd-har-agent-2-xy12',
+        suffix: 'xy12',
+        repoPath: '/home/antoine/Documents/osfactory/har-project',
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('workspace path match', () => {
+  it('matches equal paths and child workspaces only', () => {
+    const worktree = '/home/antoine/worktrees/main-abcd-har-agent-2-xy12';
+    expect(isWorkspaceUnderPath(worktree, worktree)).toBe(true);
+    expect(isWorkspaceUnderPath(`${worktree}/src`, worktree)).toBe(true);
+    expect(isWorkspaceUnderPath('/home/antoine', worktree)).toBe(false);
   });
 });
 

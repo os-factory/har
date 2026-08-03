@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import * as path from 'node:path';
 
 /**
  * Match @osfactory/otel-hook's default privacy hash (empty salt):
@@ -21,6 +22,14 @@ export function otelWorkspaceIdForPath(absolutePath: string, hashSalt = ''): str
 
 export function normalizeOtelPath(value: string): string {
   return value.replace(/[/\\]+$/, '');
+}
+
+/** True when `workspace` equals `basePath` or is a subdirectory of it (not the reverse). */
+export function isWorkspaceUnderPath(workspace: string, basePath: string): boolean {
+  const workspaceNorm = normalizeOtelPath(path.resolve(workspace));
+  const baseNorm = normalizeOtelPath(path.resolve(basePath));
+  if (!workspaceNorm || !baseNorm) return false;
+  return workspaceNorm === baseNorm || workspaceNorm.startsWith(`${baseNorm}${path.sep}`);
 }
 
 /** Longest registered path that equals or is a parent of `workspace`. */

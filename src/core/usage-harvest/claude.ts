@@ -4,6 +4,7 @@ import * as path from 'path';
 import type { AgentSessionEvent, AgentSessionUsage } from '../../harness/schema';
 import { getTelemetrySignals } from '../telemetry-config';
 import { buildSessionKey } from '../telemetry-env';
+import { workspaceMatchesTarget } from '../workspace-path-match';
 
 export interface HarvestSlotContext {
   agentId: number;
@@ -13,14 +14,6 @@ export interface HarvestSlotContext {
   suffix?: string;
   sessionCreatedAt?: string;
   repoPath: string;
-}
-
-function pathsMatch(candidate: string, targets: string[]): boolean {
-  const norm = path.resolve(candidate);
-  return targets.some((t) => {
-    const target = path.resolve(t);
-    return norm === target || norm.startsWith(target + path.sep) || target.startsWith(norm + path.sep);
-  });
 }
 
 function claudeProjectsRoot(): string {
@@ -134,7 +127,7 @@ function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePa
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const projectDir = path.join(root, entry.name);
-    const encodedHit = targets.some((t) => entry.name.includes(encodeClaudeProjectDir(t).slice(0, 40)));
+    const encodedHit = targets.some((t) => entry.name === encodeClaudeProjectDir(t));
 
     for (const file of fs.readdirSync(projectDir)) {
       if (!file.endsWith('.jsonl')) continue;
@@ -145,7 +138,7 @@ function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePa
       for (const record of records) {
         if (!record || typeof record !== 'object') continue;
         const cwd = String((record as { cwd?: string }).cwd ?? '');
-        if (cwd && pathsMatch(cwd, targets)) {
+        if (cwd && workspaceMatchesTarget(cwd, targets)) {
           cwdHit = true;
           break;
         }

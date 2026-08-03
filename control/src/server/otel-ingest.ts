@@ -4,6 +4,7 @@ import type { AgentSessionUsage, AgentTool } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { upsertSessionUsage } from '@/server/usage';
 import {
+  isWorkspaceUnderPath,
   normalizeOtelPath,
   pickBestRepoPathMatch,
   pickPathForWorkspaceId,
@@ -260,12 +261,7 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
     const candidates = [slot.workDir, slot.worktreePath]
       .filter((p): p is string => Boolean(p))
       .map(normalizePath);
-    return candidates.some(
-      (path) =>
-        path === normalized ||
-        normalized.startsWith(`${path}/`) ||
-        path.startsWith(`${normalized}/`),
-    );
+    return candidates.some((slotPath) => isWorkspaceUnderPath(normalized, slotPath));
   });
   if (!match) return null;
 
