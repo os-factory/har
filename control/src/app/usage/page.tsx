@@ -1,23 +1,29 @@
-import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { formatAgentToolLabel } from '@/lib/agent-tool';
+import { UsageTable, type UsageRow } from '@/components/usage-table';
+import { formatCostUsd, formatTokens } from '@/lib/usage-models';
 import { listAllSessionUsage, summarizeUsageRows } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
 export default async function UsagePage() {
-  const rows = await listAllSessionUsage();
-  const summary = summarizeUsageRows(rows);
+  const records = await listAllSessionUsage();
+  const summary = summarizeUsageRows(records);
+
+  const rows: UsageRow[] = records.map((row) => ({
+    id: row.id,
+    repositoryId: row.repositoryId,
+    repositoryPath: row.repository.path,
+    agentId: row.agentId,
+    sessionKey: row.sessionKey,
+    agentTool: row.agentTool,
+    tokensTotal: Number(row.tokensTotal),
+    costUsd: row.costUsd == null ? null : Number(row.costUsd),
+    sources: row.sources,
+    lastSeenAt: row.lastSeenAt,
+  }));
 
   return (
-    <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
+    <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
       <div>
         <h2 className="text-2xl font-semibold">Usage</h2>
         <p className="text-sm text-muted-foreground">
@@ -58,9 +64,7 @@ export default async function UsagePage() {
             <CardTitle className="text-base">Estimated cost</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold tabular-nums">
-              {summary.costUsd == null ? '—' : `$${summary.costUsd.toFixed(4)}`}
-            </p>
+            <p className="text-2xl font-bold tabular-nums">{formatCostUsd(summary.costUsd)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -75,85 +79,15 @@ export default async function UsagePage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Sessions</CardTitle>
-          <CardDescription>Click through to the slot leaf for verify + timeline</CardDescription>
+          <CardDescription>
+            Paginated usage sessions — search or filter, then open a slot for verify + timeline
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No usage recorded yet. Enable telemetry and sync, or run an agent with OTEL pointed at
-              Mission Control.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="py-2 pr-4 font-medium">Repository</th>
-                    <th className="py-2 pr-4 font-medium">Slot</th>
-                    <th className="py-2 pr-4 font-medium">Session</th>
-                    <th className="py-2 pr-4 font-medium">Agent</th>
-                    <th className="py-2 pr-4 font-medium">Tokens</th>
-                    <th className="py-2 pr-4 font-medium">Cost</th>
-                    <th className="py-2 pr-4 font-medium">Sources</th>
-                    <th className="py-2 font-medium">Last seen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id} className="border-b border-border/60">
-                      <td className="py-2 pr-4">
-                        <Link
-                          href={`/repos/${row.repositoryId}`}
-                          className="text-primary underline-offset-2 hover:underline"
-                          title={row.repository.path}
-                        >
-                          {row.repository.path.split('/').pop() ?? row.repository.path}
-                        </Link>
-                      </td>
-                      <td className="py-2 pr-4">
-                        <Link
-                          href={`/repos/${row.repositoryId}/slots/${row.agentId}`}
-                          className="font-medium text-primary underline-offset-2 hover:underline"
-                        >
-                          {row.agentId}
-                        </Link>
-                      </td>
-                      <td
-                        className="max-w-xs truncate py-2 pr-4 font-mono text-xs"
-                        title={row.sessionKey}
-                      >
-                        {row.sessionKey}
-                      </td>
-                      <td className="py-2 pr-4">
-                        <Badge variant="outline">{formatAgentToolLabel(row.agentTool)}</Badge>
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums">
-                        {formatTokens(Number(row.tokensTotal))}
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums">
-                        {row.costUsd == null ? '—' : `$${Number(row.costUsd).toFixed(4)}`}
-                      </td>
-                      <td className="py-2 pr-4">
-                        <div className="flex flex-wrap gap-1">
-                          {row.sources.map((s) => (
-                            <Badge key={s} variant="secondary">
-                              {s}
-                            </Badge>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-2 text-muted-foreground" suppressHydrationWarning>
-                        {row.lastSeenAt.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <CardContent className="min-w-0">
+          <UsageTable rows={rows} />
         </CardContent>
       </Card>
     </div>
