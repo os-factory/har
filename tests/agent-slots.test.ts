@@ -6,10 +6,19 @@ import {
   getAgentSlotRange,
   syncAgentSlotsToHarnessEnv,
 } from '../src/harness/stages';
-import { validateAgentId } from '../src/utils/validation';
+import { formatInvalidAgentIdError, validateAgentId } from '../src/utils/validation';
 import { compareHarnessToTemplate } from '../src/harness/drift';
 
 describe('agent slot limits', () => {
+  it('formatInvalidAgentIdError explains out-of-range slots', () => {
+    const msg = formatInvalidAgentIdError(4, { min: 1, max: 3 });
+    expect(msg).toContain('Invalid agent slot id: 4');
+    expect(msg).toContain('Valid slots: 1–3');
+    expect(msg).toContain('agentSlots');
+    expect(msg).toContain('har env status');
+    expect(msg).toContain('raise agentSlots.max');
+  });
+
   it('uses agentSlots from stages.json', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slots-'));
     fs.mkdirSync(path.join(repoPath, '.har'), { recursive: true });
@@ -20,7 +29,9 @@ describe('agent slot limits', () => {
 
     expect(getAgentSlotRange(repoPath)).toEqual({ min: 1, max: 12 });
     expect(validateAgentId(12, repoPath)).toBe(12);
-    expect(() => validateAgentId(13, repoPath)).toThrow('agent-id must be a number between 1 and 12');
+    expect(() => validateAgentId(13, repoPath)).toThrow(
+      formatInvalidAgentIdError(13, { min: 1, max: 12 }),
+    );
   });
 
   it('falls back to harness.env when stages.json has no agentSlots', () => {
@@ -34,7 +45,9 @@ describe('agent slot limits', () => {
 
     expect(getAgentSlotRange(repoPath)).toEqual({ min: 2, max: 8 });
     expect(validateAgentId(2, repoPath)).toBe(2);
-    expect(() => validateAgentId(1, repoPath)).toThrow('agent-id must be a number between 2 and 8');
+    expect(() => validateAgentId(1, repoPath)).toThrow(
+      formatInvalidAgentIdError(1, { min: 2, max: 8 }),
+    );
   });
 
   it('detects mismatch between stages.json and harness.env', () => {
