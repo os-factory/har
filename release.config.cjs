@@ -8,6 +8,7 @@ module.exports = {
         releaseRules: [
           { scope: 'benchmark', release: false },
           { scope: 'ci', release: false },
+          { scope: 'docs', release: false },
           { type: 'ci', release: false },
           { type: 'docs', release: false },
         ],
