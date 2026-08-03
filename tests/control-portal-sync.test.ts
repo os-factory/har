@@ -22,10 +22,14 @@ jest.mock('../src/core/work-units', () => ({
   listWorkAttempts: jest.fn(() => []),
   listValidationBindings: jest.fn(() => []),
 }));
-jest.mock('../src/core/usage-harvest', () => ({
-  harvestUsageForSlot: jest.fn(() => []),
-  harvestEventsForSlot: jest.fn(() => []),
-}));
+jest.mock('../src/core/usage-harvest', () => {
+  const actual = jest.requireActual('../src/core/usage-harvest') as typeof import('../src/core/usage-harvest');
+  return {
+    ...actual,
+    harvestUsageForSlot: jest.fn(() => []),
+    harvestEventsForSlot: jest.fn(() => []),
+  };
+});
 jest.mock('../src/core/control-persisted-usage', () => ({
   fetchPersistedPortalTelemetry: jest.fn(async () => ({ usage: [], events: [], maxSyncedAt: null })),
 }));
@@ -538,7 +542,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(body.usage[0].costUsd).toBe(0.065);
   });
 
-  it('dedupes an overlapping live + persisted session into one max-merged row', async () => {
+  it('prefers persisted otel usage over live harvest for the same session/tool', async () => {
     collectEnvironmentStatusMock.mockReturnValue({
       slots: [portalSlot({ branch: 'feat/x' })],
       generatedAt: '2026-01-01T00:00:00.000Z',
@@ -576,7 +580,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     const body = JSON.parse(init.body as string);
     expect(body.usage).toHaveLength(1);
     expect(body.usage[0].tokensTotal).toBe(250);
-    expect(body.usage[0].sources.sort()).toEqual(['harvest', 'otel']);
+    expect(body.usage[0].sources).toEqual(['otel']);
     expect(body.usage[0].lastSeenAt).toBe('2026-01-03T00:00:00.000Z');
   });
 

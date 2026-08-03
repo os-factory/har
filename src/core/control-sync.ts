@@ -36,7 +36,7 @@ import {
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
 import { isTelemetryEnabled } from './telemetry-config';
-import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
+import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
@@ -177,7 +177,10 @@ async function collectPortalTelemetry(
 
     const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl, { since });
 
-    const usage = mergePortalUsage(liveUsage, persisted.usage).map((row) => {
+    const harvestedUsage = omitHarvestWhenOtelPresent(liveUsage, persisted.usage);
+    const harvestedEvents = omitHarvestEventsWhenOtelPresent(liveEvents, persisted.events);
+
+    const usage = mergePortalUsage(harvestedUsage, persisted.usage).map((row) => {
       const priced = enrichUsageWithPricing(row);
       const models = modelsFromBreakdown(
         priced.modelBreakdown as Record<string, unknown> | undefined,
@@ -189,7 +192,7 @@ async function collectPortalTelemetry(
       };
     });
 
-    const events = dedupePortalEvents(liveEvents, persisted.events).map((event) =>
+    const events = dedupePortalEvents(harvestedEvents, persisted.events).map((event) =>
       dropNullFields({ ...event }),
     );
 
