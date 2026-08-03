@@ -39,4 +39,4 @@ If the commit gate is installed, commits must match a tree that passed full veri
 
 Public CLI, MCP, schema, and template changes must keep the docs contract green (`npm run drift --prefix docs`, also run as `docs-drift` during full verify).
 
-Read the repository's Code of Conduct, CLA, security policy, and license files before submitting changes.
+Read the repository's Code of Conduct, security policy, and [LICENSE](https://github.com/os-factory/har/blob/main/LICENSE) before submitting changes.

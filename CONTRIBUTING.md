@@ -8,7 +8,7 @@ Guide for developing the CLI locally and testing it against real (or sample) rep
 
 By participating in this project, you agree to abide by our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
-By submitting a pull request or other contribution, you agree to the [Contributor License Agreement](./CLA.md), which grants the maintainer rights needed for dual licensing (public AGPL and separate commercial licenses).
+By submitting a pull request or other contribution, you license your contribution under the [Apache License 2.0](./LICENSE).
 
 ## Prerequisites
 

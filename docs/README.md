@@ -41,8 +41,8 @@ deployment → Source** to **GitHub Actions** once.
 The Astro `site` and `base` values target the custom domain `harproject.dev`.
 Update both if the domain or Pages path changes.
 
-Documentation content is licensed under
-[CC BY-SA 4.0](../DOCUMENTATION-LICENSE.md).
+Documentation content is licensed under the
+[Apache License 2.0](../LICENSE), the same as the rest of the project.
 
 ## Source layout
 

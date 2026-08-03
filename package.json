@@ -1,6 +1,6 @@
 {
   "name": "@osfactory/har",
-  "version": "0.36.2",
+  "version": "0.37.0",
   "description": "LLM-powered CLI for reproducible agent development environments",
   "keywords": [
     "har",
@@ -73,7 +73,7 @@
   "homepage": "https://harproject.dev/",
   "bugs": "https://github.com/os-factory/har/issues",
   "author": "Antoine Frau",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
