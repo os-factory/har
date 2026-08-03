@@ -21,10 +21,10 @@ Run harness commands from the directory that owns the harness (e.g. `cd control 
 
 ## Harness workflow (dogfooding)
 
-Follow [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) and the
-[Agent workflow guide](https://harproject.dev/docs/guides/agent-workflow/): launch
-first, edit only under the session work dir, full-verify before done, then present
-a session handoff and wait for approval before `complete`, push, or PR.
+Follow [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) and
+[`.har/README.md`](.har/README.md): launch first, edit only under the session work
+dir, full-verify before done, then present a session handoff and wait for approval
+before `complete`, push, or PR.
 
 Configure Cursor MCP from [`.cursor/mcp.json.example`](.cursor/mcp.json.example)
 (see [CONTRIBUTING.md](./CONTRIBUTING.md)). Prefer MCP or `har env …` over

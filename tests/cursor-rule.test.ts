@@ -42,7 +42,8 @@ describe('cursor-rule', () => {
     expect(content).toContain('session handoff');
     expect(content).toContain('har_complete_environment');
     expect(content).toContain('Occupied slots always block');
-    expect(content).toContain('harproject.dev/docs/guides/agent-workflow');
+    expect(content).toContain('Session handoff (required)');
+    expect(content).not.toContain('harproject.dev');
     expect(content).not.toContain('har env restart');
     expect(content).not.toContain('confirmReplace');
     expect(content).not.toContain('--replace');

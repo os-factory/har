@@ -68,10 +68,14 @@ This CLI harness has no runtime server — full verify is static analysis and te
 
 Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when working in the repo root.
 
-CLI/MCP persist run history under the main checkout `.har/runs/`; direct `./.har/*.sh`
-does not. Session lifecycle (occupied slots, resume, complete vs teardown):
-[Agent workflow](https://harproject.dev/docs/guides/agent-workflow/) ·
-[Core concepts](https://harproject.dev/docs/getting-started/concepts/).
+## Run history
+
+| Entry point | Writes `.har/runs/`? |
+|-------------|------------------------|
+| `./.har/*.sh` | No |
+| `har env …` / MCP | Yes — main checkout `.har/runs/YYYY-MM-DD/` |
+
+With worktree slots, tests run in the worktree; run JSON lives in the main repo. See `workDir` in each record.
 
 ## For coding agents
 
@@ -117,3 +121,24 @@ har env maintain
 The authoring agent updates scripts and this README. Review changes before committing.
 
 **Do not** put runtime behavior in YAML — edit the scripts directly.
+
+## Session lifecycle
+
+Every `launch` starts a **fresh session**: a new git worktree from the **main
+checkout's current HEAD** at
+`~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
+Switch that checkout to your intended base before launch. The session is recorded in
+`.har/slots/agent-<id>.json` (the slot registry) — status, verify, and teardown resolve
+the work dir through it. Make ALL file edits under the work dir printed by launch,
+never in the main checkout.
+
+- Occupied slots always block a new launch: `har env complete <id>` (or `teardown <id>`),
+  then `har env launch <id>`. A new launch never chooses `main` for you — switch the
+  main checkout to your intended base first.
+- `teardown` removes the worktree but **keeps the session branch** so you can push it
+  or open a PR (`--delete-branch` to drop it).
+- If launch fails after creating a worktree/env file, resume with
+  `har env launch <id> --resume` or `har env recover <id>`.
+- `har env complete <id>` finishes a session: full verify (recorded as a validation),
+  then teardown — branch kept.
+- `--no-worktree` runs the slot from the repo root instead (single-agent mode).

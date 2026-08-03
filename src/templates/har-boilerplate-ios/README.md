@@ -111,6 +111,16 @@ When your app talks to a local backend, read the resolved host port from `.env.a
 - Hardcode backend ports in RocketSim flows or unit tests — read from agent env
 - Run raw `docker compose` for harness infrastructure — use `setup-infra.sh`
 
-Session lifecycle:
-[Agent workflow](https://harproject.dev/docs/guides/agent-workflow/) ·
-[Core concepts](https://harproject.dev/docs/getting-started/concepts/).
+## Session lifecycle
+
+Every `launch` starts a **fresh session**: a new git worktree from the **main
+checkout's current HEAD** at
+`~/worktrees/<base-branch>-<sha4>-har-agent-<id>-<rand4>`, on a branch of the same name.
+Switch that checkout to your intended base before launch. The session is recorded in
+`.har/slots/agent-<id>.json`.
+
+- Occupied slots always block a new launch: `har env complete <id>` (or `teardown <id>`),
+  then `har env launch <id>`. A new launch never chooses `main` for you — switch the
+  main checkout to your intended base first.
+- `teardown` removes the worktree but **keeps the session branch** for push / PR.
+- `har env complete <id>` finishes a session: full verify + teardown, branch kept.
