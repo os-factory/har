@@ -4,9 +4,10 @@ test.describe('Usage page', () => {
   test('shows summary cards and empty or table state', async ({ page }) => {
     await page.goto('/usage');
     await expect(page.getByRole('heading', { name: 'Usage' })).toBeVisible();
+    // Summary card titles can also appear as column headers when rows exist.
     await expect(page.getByText('Sessions', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('Tokens', { exact: true })).toBeVisible();
-    await expect(page.getByText('Estimated cost', { exact: true })).toBeVisible();
+    await expect(page.getByText('Tokens', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Estimated cost', { exact: true }).first()).toBeVisible();
 
     const empty = page.getByText(/no usage recorded yet/i);
     const table = page.getByRole('table');
