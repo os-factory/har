@@ -7,7 +7,6 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { describeProject, initHarness } from '../core/harness';
-import { recordRepoForControlSync } from '../core/control-registry';
 import { startControlAndSync } from '../core/control-lifecycle';
 import { getHarPackageVersion } from '../core/package-version';
 import { ensureDefaultTelemetryPreference } from '../core/telemetry-config';
@@ -285,7 +284,6 @@ export async function handleMcpToolCall(
         smoke: input.smoke,
         profile: input.profile,
       });
-      recordRepoForControlSync(repo);
       return jsonContent({
         harnessDir: result.harnessDir,
         validation: result.validation,

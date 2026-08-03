@@ -273,34 +273,21 @@ export interface SyncRepoResult {
 }
 
 /**
- * Every har repo Mission Control knows about: the local registry, an optional
- * cwd, and whatever the portal/control API already tracks — all manifest-gated
- * and canonicalized. Shared by the all-repos auto-sync and the interactive
- * `har control sync` selection.
+ * Every har repo known locally: the control registry (`~/.har/repos.json`) plus
+ * an optional cwd — both manifest-gated and canonicalized. Detection is registry
+ * only; it neither scans the filesystem nor depends on portal/control API state.
+ * Shared by the all-repos auto-sync and the interactive `har control sync`
+ * selection.
  */
 export async function discoverHarRepos(options?: {
   apiUrl?: string;
   cwd?: string;
 }): Promise<string[]> {
-  const apiUrl = options?.apiUrl ?? getControlApiUrl();
   const repoPaths = new Set<string>(listRegisteredRepos());
 
   if (options?.cwd) {
     const cwd = canonicalizeControlRepoPath(options.cwd);
     if (readManifest(cwd)) repoPaths.add(cwd);
-  }
-
-  try {
-    const listResponse = await fetch(`${apiUrl}/api/repos`);
-    if (listResponse.ok) {
-      const repos = (await listResponse.json()) as { path: string }[];
-      for (const repo of repos) {
-        const resolved = canonicalizeControlRepoPath(repo.path);
-        if (readManifest(resolved)) repoPaths.add(resolved);
-      }
-    }
-  } catch {
-    // Best-effort — registry + cwd repos are enough for first sync.
   }
 
   return [...repoPaths];
@@ -621,6 +608,8 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
 
   const verbose = process.env.HAR_CONTROL_VERBOSE === 'true';
   try {
+    recordRepoForControlSync(repoPath);
+
     const apiUrl = getControlApiUrl();
     if (!(await isControlApiReachable(apiUrl))) {
       if (verbose) {

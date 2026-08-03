@@ -34,7 +34,6 @@ import { collectEnvironmentStatus } from '../../core/slot-status';
 import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
 import { readOnboardingPreferences } from '../../core/onboarding-preferences';
 import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
-import { recordRepoForControlSync } from '../../core/control-registry';
 import { writeFileSafe } from '../../utils/file-ops';
 import { requireApiKey, validateAgentId } from '../../utils/validation';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
@@ -469,7 +468,6 @@ export async function handleInit(argv: {
 
     divider();
     success('Harness initialized!');
-    recordRepoForControlSync(repoPath);
     await handleCommitGateOnboarding({
       repoPath,
       ...onboarding.commitGate,

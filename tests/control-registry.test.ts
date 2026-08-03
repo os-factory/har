@@ -46,6 +46,21 @@ describe('control registry', () => {
     expect(listRegisteredRepos()).toEqual([]);
   });
 
+  it('ignores a manifest that is not inside a git repo', () => {
+    const nonGit = fs.mkdtempSync(path.join(os.tmpdir(), 'har-non-git-'));
+    fs.mkdirSync(path.join(nonGit, '.har'), { recursive: true });
+    fs.copyFileSync(
+      path.join(FIXTURE, '.har', 'manifest.json'),
+      path.join(nonGit, '.har', 'manifest.json'),
+    );
+    try {
+      recordRepoForControlSync(nonGit);
+      expect(listRegisteredRepos()).toEqual([]);
+    } finally {
+      fs.rmSync(nonGit, { recursive: true, force: true });
+    }
+  });
+
   it('does not write when HAR_CONTROL_DISABLED is set', () => {
     process.env.HAR_CONTROL_DISABLED = 'true';
     recordRepoForControlSync(FIXTURE);
