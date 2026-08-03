@@ -74,7 +74,10 @@ HAR is sponsored by [Kerno](https://kerno.io) — runtime code and security revi
 
 <p align="center">
   <a href="https://kerno.io">
-    <img src="assets/kerno-logo-dark.svg" alt="Kerno" height="36">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/kerno-logo.svg">
+      <img src="assets/kerno-logo-dark.svg" alt="Kerno" height="36">
+    </picture>
   </a>
 </p>
 
