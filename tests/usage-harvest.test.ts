@@ -3,6 +3,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { harvestClaudeUsage, encodeClaudeProjectDir } from '../src/core/usage-harvest/claude';
 import { harvestCodexUsage } from '../src/core/usage-harvest/codex';
+import {
+  omitHarvestEventsWhenOtelPresent,
+  omitHarvestWhenOtelPresent,
+} from '../src/core/usage-harvest';
 import { isWorkspaceUnderPath } from '../src/core/workspace-path-match';
 
 describe('usage harvest claude', () => {
@@ -130,6 +134,57 @@ describe('usage harvest claude', () => {
       }),
     ).toBeNull();
   });
+
+  it('harvests only the slot whose worktree matches among parallel slots', () => {
+    const homeDir = '/home/alice';
+    const slot1Dir = '/home/alice/worktrees/main-abcd-har-agent-1-aa11';
+    const slot2Dir = '/home/alice/worktrees/main-abcd-har-agent-2-bb22';
+    const slot3Dir = '/home/alice/worktrees/main-abcd-har-agent-3-cc33';
+    const repoPath = '/home/alice/project';
+
+    const homeProject = path.join(tmp, encodeClaudeProjectDir(homeDir));
+    fs.mkdirSync(homeProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(homeProject, 'parent-session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: homeDir }),
+        JSON.stringify({
+          type: 'result',
+          usage: { input_tokens: 99, output_tokens: 99 },
+          total_cost_usd: 9.99,
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const slot2Project = path.join(tmp, encodeClaudeProjectDir(slot2Dir));
+    fs.mkdirSync(slot2Project, { recursive: true });
+    fs.writeFileSync(
+      path.join(slot2Project, 'slot2-session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: slot2Dir }),
+        JSON.stringify({
+          type: 'result',
+          usage: { input_tokens: 20, output_tokens: 10 },
+          total_cost_usd: 0.2,
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const slots = [
+      { agentId: 1, workDir: slot1Dir, branch: 'main-abcd-har-agent-1-aa11', suffix: 'aa11' },
+      { agentId: 2, workDir: slot2Dir, branch: 'main-abcd-har-agent-2-bb22', suffix: 'bb22' },
+      { agentId: 3, workDir: slot3Dir, branch: 'main-abcd-har-agent-3-cc33', suffix: 'cc33' },
+    ];
+
+    const harvested = slots.map((slot) =>
+      harvestClaudeUsage({ ...slot, repoPath }),
+    );
+
+    expect(harvested[0]).toBeNull();
+    expect(harvested[1]?.tokensOutput).toBe(10);
+    expect(harvested[1]?.costUsd).toBe(0.2);
+    expect(harvested[2]).toBeNull();
+  });
 });
 
 describe('workspace path match', () => {
@@ -183,5 +238,81 @@ describe('usage harvest codex', () => {
     expect(usage!.tokensInput).toBe(10);
     expect(usage!.tokensOutput).toBe(5);
     expect(usage!.costUsd).toBeNull();
+  });
+
+  it('does not harvest a parent cwd session into a child worktree slot', () => {
+    const homeDir = '/home/alice';
+    const workDir = '/home/alice/worktrees/main-abcd-har-agent-2-bb22';
+    const sessionDir = path.join(tmp, '2026');
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionDir, 'parent.jsonl'),
+      [
+        JSON.stringify({ cwd: homeDir }),
+        JSON.stringify({
+          usage: { input_tokens: 50, output_tokens: 25 },
+        }),
+      ].join('\n') + '\n',
+    );
+
+    expect(
+      harvestCodexUsage({
+        agentId: 2,
+        workDir,
+        branch: 'main-abcd-har-agent-2-bb22',
+        suffix: 'bb22',
+        repoPath: '/home/alice/project',
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('omit harvest when otel present', () => {
+  it('drops harvested usage when otel already attributed the session/tool', () => {
+    const harvested = [
+      {
+        sessionKey: 'main-abcd-har-agent-2-bb22',
+        agentId: 2,
+        agentTool: 'claude_code' as const,
+        tokensInput: 10,
+        tokensOutput: 5,
+        tokensCacheRead: 0,
+        tokensCacheCreation: 0,
+        tokensTotal: 15,
+        sources: ['harvest' as const],
+        firstSeenAt: '2026-01-01T00:00:00.000Z',
+        lastSeenAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    const existing = [
+      {
+        ...harvested[0],
+        sources: ['otel' as const],
+      },
+    ];
+
+    expect(omitHarvestWhenOtelPresent(harvested, existing)).toEqual([]);
+  });
+
+  it('drops harvested events when otel events already exist for the session/tool', () => {
+    const harvested = [
+      {
+        sessionKey: 'main-abcd-har-agent-2-bb22',
+        agentId: 2,
+        agentTool: 'claude_code' as const,
+        eventName: 'claude_code.user_prompt',
+        sequence: 1,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        source: 'harvest' as const,
+      },
+    ];
+    const existing = [
+      {
+        ...harvested[0],
+        source: 'otel' as const,
+      },
+    ];
+
+    expect(omitHarvestEventsWhenOtelPresent(harvested, existing)).toEqual([]);
   });
 });

@@ -164,4 +164,17 @@ describe('resolveSessionContext — Cursor on the main checkout', () => {
       workUnitId: 'WU-2',
     });
   });
+
+  it('refuses harSessionKey-only attribution when agent tool is unknown', async () => {
+    const { context, reason } = await resolveSessionContext(
+      {
+        'har.session_key': 'main-abcd-har-agent-1-xy12',
+        'har.repo_path': '/home/user/project',
+      },
+      { 'gen_ai.client.workspace': '/tmp/unrelated-workspace' },
+    );
+
+    expect(context).toBeNull();
+    expect(reason).toMatch(/unknown agent tool/i);
+  });
 });

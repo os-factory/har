@@ -504,12 +504,18 @@ export async function resolveSessionContext(
         reason: `unknown repository for ${repoPath || workspace || workspaceId || '(empty)'}`,
       };
     }
+    if (!tool) {
+      return {
+        context: null,
+        reason: `unknown agent tool for session key ${harSessionKey}`,
+      };
+    }
     return {
       context: {
         repositoryId,
         sessionKey: harSessionKey,
         agentId: explicitAgentId ?? 1,
-        agentTool: tool ?? 'claude_code',
+        agentTool: tool,
         workDir: resource['har.work_dir']
           ? String(resource['har.work_dir'])
           : workspace || undefined,
