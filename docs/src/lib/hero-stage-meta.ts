@@ -23,7 +23,7 @@ export const HERO_VERIFICATION_STAGES: HeroStage[] = [
   { id: 'typecheck', title: 'Typecheck', subtitle: 'Static analysis', icon: FileCode2, durationMs: 2100, status: 'pass' },
   { id: 'unit-tests', title: 'Unit tests', subtitle: 'Vitest suite', icon: CircleCheckBig, durationMs: 8400, status: 'pass' },
   { id: 'api-health', title: 'API health', subtitle: 'Live endpoint', icon: Activity, durationMs: 1200, status: 'pass' },
-  { id: 'lint', title: 'Lint', subtitle: 'ESLint rules', icon: ScanSearch, durationMs: 4800, status: 'pass' },
+  { id: 'lint', title: 'Lint', subtitle: 'ESLint rules', icon: ScanSearch, durationMs: 4800, status: 'fail' },
   { id: 'browser-e2e', title: 'Browser E2E', subtitle: 'Playwright specs', icon: Globe, durationMs: 10200, status: 'pass' },
   { id: 'docker-build', title: 'Docker build', subtitle: 'Image smoke-boot', icon: Box, durationMs: 4500, status: 'pass' },
 ];
