@@ -11,39 +11,38 @@ HAR profile: {{har_profile}}
 
 ## Your role
 
-Confirm the cached repo harness works at **this** `base_commit` for fixing the issue above.
+Confirm the cached repo harness works at **this** `base_commit` for fixing the issue.
 You run **after** repo bootstrap (or on a cache hit) — do **not** re-bootstrap the whole repo.
 
-The benchmark runner validates readiness **after** your edits — do not launch or verify slots yourself.
+The runner validates readiness **after** your edits — do not launch/verify yourself.
 
-Also ensure the fix agent will be able to **functionally** validate a solution through HAR
-(`verify --full` / `verificationStages`) — not only compile smoke.
+HAR is a **sandbox for verifying code changes**. Prepare a **task-scoped** way for the
+fix agent to prove a solution works via `verify --full`.
 
 ## Allowed actions
 
-- Confirm generic quick verify will pass at this commit (adjust `harness.env` or quick-mode steps in `verify.sh` only if needed)
-- Confirm a repo-level functional verification stage exists for `--full`; if not, add a small one under `.har/` (stages) appropriate to this stack
-- Optionally add **one** task-scoped functional check derived from the issue (exercise the module/API named in the problem — not the full suite):
-  - prefer a verification stage, or
-  - write ephemeral overlay files under `{{task_overlay_dir}}` (`task-verify.sh`, `task.env`)
-- Update `.har/CLAUDE.agent.md` if needed so definition of done requires `verify --full` and adding a stage when none fits
+- Confirm quick verify will pass (adjust `harness.env` / quick-mode `verify.sh` only if needed)
+- Add **one** task-scoped functional verification stage for *this* issue, e.g.:
+
+  ```bash
+  har env add-stage <short-id> --custom --kind test --command "<focused check>" --verification
+  # or --script
+  ```
+
+  Prefer a check that would **fail before** a correct fix and **pass after**.
+  You may add a tiny focused regression script/test and wire it as that stage.
+  Keep it narrow — not the full suite, not gold evaluator tests.
+- Write overlay notes under `{{task_overlay_dir}}` (`task.env`, `task-verify.sh` optional)
+- Update `.har/CLAUDE.agent.md` so done = `verify --full`, and agents may add stages / small tests on the fly
 
 ## Forbidden
 
-- Do **not** edit `launch.sh` or `agent-slot.sh` (repo bootstrap only)
-- Do **not** run the entire repository test suite or replicate SWE-bench grading
+- Do **not** edit `launch.sh` or `agent-slot.sh`
+- Do **not** dump the entire test suite into verification
 - Do **not** use evaluator-only fields (`FAIL_TO_PASS`, `PASS_TO_PASS`, gold patch)
-- Do **not** run `har env init`, `har env launch`, `./.har/launch.sh`, `./.har/teardown.sh`, or `./.har/verify.sh`
-- Do **not** overwrite repo-generic defaults in `.har-cache/` with task-only hacks — prefer overlays for per-run checks; keep reusable stages in `.har/` when they help every instance of this repo
-
-## Task overlay
-
-If you add a task-scoped check, put it in `{{task_overlay_dir}}/task-verify.sh` (executable) or
-`{{task_overlay_dir}}/task.env` (key=value lines). Keep it minimal — one command or short script
-that would fail before the fix and pass after a correct fix when possible.
+- Do **not** run launch/teardown/verify yourself
+- Issue-specific stages are **per-run** — the runner strips them from the per-repo cache after the gate so they do not leak into other instances
 
 {{readiness_failure_context}}
 
-When finished, summarize:
-1. whether quick verify should pass at this commit
-2. how the fix agent should functionally prove a solution (`verify --full` stage id and/or overlay)
+When finished, summarize quick-verify readiness and the task-scoped stage (id + what it checks).

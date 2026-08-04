@@ -41,13 +41,14 @@ Quick verify is **smoke only** (compile/import/build/health). Do **not** treat i
 
 - [ ] **Functional proof:** `har env verify ${AGENT_ID} --full` (or MCP `har_run_verification` with `full: true`) returns `"status": "pass"` — runs `stages.json` `verificationStages`
 - [ ] Those stages exercise real behavior for this change (API/UI/workflow/focused check) — not health/compile alone
-- [ ] If no registered stage can confirm the change is functional, **add one** before stopping:
+- [ ] If no registered stage can confirm the change is functional, **add one** before stopping (stages can be added on the fly):
 
   ```bash
   har env add-stage <id> --custom --kind test --command "<functional check>" --verification
   # or: har env add-stage <id> --custom --script --verification
   ```
 
+  You may also add a **small focused test/regression check** and wire it as that stage.
   See `.har/STAGES.md`. Then re-run `har env verify ${AGENT_ID} --full`.
 - [ ] The slot is agent-usable for this repo's documented smoke workflow, not only health-check green
 - [ ] When `stages/browser-e2e.sh` exists, adapt specs under `tests/` for UI changes

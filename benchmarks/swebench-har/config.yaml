@@ -10,6 +10,8 @@ readiness_timeout_minutes: 20
 setup_max_rounds: 6
 # Post-fix: run verify --full so registered functional verificationStages are enforced
 har_verify_full: true
+# Fix agent retries when post-fix verify --full fails
+fix_max_rounds: 3
 har_cache_dir: .har-cache
 runs_dir: runs
 results_dir: results

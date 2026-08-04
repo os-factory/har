@@ -28,13 +28,14 @@ Quick verify is **smoke only** (compile/import/build). Do **not** treat it as pr
 
 - [ ] **Functional proof:** `har env verify ${AGENT_ID} --full` (or MCP `har_run_verification` with `full: true`) returns `"status": "pass"` — this runs `stages.json` `verificationStages`
 - [ ] Those stages exercise real behavior for this change (CLI/API/workflow/focused check) — not compile-only
-- [ ] If no registered stage can confirm the change is functional, **add one** before stopping:
+- [ ] If no registered stage can confirm the change is functional, **add one** before stopping (stages can be added on the fly):
 
   ```bash
   har env add-stage <id> --custom --kind test --command "<functional check>" --verification
   # or: har env add-stage <id> --custom --script --verification
   ```
 
+  You may also add a **small focused test/regression check** and wire it as that stage.
   See `.har/STAGES.md`. Then re-run `har env verify ${AGENT_ID} --full`.
 - [ ] The slot is agent-usable for this repo's documented smoke workflow when runtime services are involved
 - [ ] Changes committed **in the session worktree** with a clear message
