@@ -20,6 +20,9 @@ COPY --from=deps /app/packages/schemas/node_modules ./packages/schemas/node_modu
 COPY control ./control
 WORKDIR /app/control
 COPY --from=deps /app/control/node_modules ./node_modules
+# Public PostHog client token, inlined into the client bundle at build time by Next.js.
+ENV NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=phc_Btprma6YFgCEh22DcBWUJTf7YLWMrEymWmCWxeRGUsJG
+ENV NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
 RUN npx prisma generate
 RUN npm run build
 
