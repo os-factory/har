@@ -401,6 +401,7 @@ async function buildPortalPayload(
 
   const syncBody: Record<string, unknown> = {
     path: repoPath,
+    ...(status.gitRemote ? { gitRemote: status.gitRemote } : {}),
     ...(manifest ? { manifest } : {}),
     ...(stagesRegistry ? { stagesRegistry } : {}),
     slots: status.slots,
