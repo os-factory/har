@@ -2,7 +2,7 @@
 
 Guide for developing the CLI locally and testing it against real (or sample) repositories.
 
-**Coding agents:** read [AGENT.md](./AGENT.md) first for architecture rules, where to put changes, and extension points. This file covers setup, the dogfood harness loop, workflow, and PR details.
+**Coding agents:** read [AGENTS.md](./AGENTS.md) first for architecture rules, where to put changes, and extension points. This file covers setup, the dogfood harness loop, workflow, and PR details.
 
 **Maintainers:** release pipeline, npm/Docker secrets, and version coupling live in [RELEASING.md](./RELEASING.md).
 
@@ -226,7 +226,7 @@ har env init --auto
 | `--repo <path>` | Target a project without changing directory |
 | `--auto` | Run built-in Claude adaptation (requires API key) |
 | `--force` | Overwrite an existing `.har/` |
-| `--yes` | Auto-apply the `AGENT.md` proposal (with `--auto`) |
+| `--yes` | Auto-apply the `AGENTS.md` proposal (with `--auto`) |
 | `--smoke` | Run `setup-infra.sh` after init |
 | `--verbose` | Extra logging |
 | `--profile <default\|cli\|ios>` | Choose harness boilerplate |
@@ -246,7 +246,7 @@ cd control && npm run dev   # dashboard development without Docker app image
 - **Agent dev** (hot reload, worktrees): `cd control && har env launch 1`
 - **Packaged dashboard** (Docker image): `har control up` / `har control down`
 
-See [`control/AGENT.md`](./control/AGENT.md).
+See [`control/AGENTS.md`](./control/AGENTS.md).
 
 ### Sample fixtures
 
@@ -344,7 +344,7 @@ release/                     # semantic-release helpers
 | Optional verification plugins | `src/templates/plugins/` (via `har env add-plugin`) |
 | Generic shell/path/logging helper | `src/utils/` |
 
-When unsure: put domain logic in `harness/` or `core/`, never in an adapter. See [AGENT.md](./AGENT.md) for anti-patterns and extension points.
+When unsure: put domain logic in `harness/` or `core/`, never in an adapter. See [AGENTS.md](./AGENTS.md) for anti-patterns and extension points.
 
 ## TypeScript conventions
 

@@ -49,7 +49,7 @@ export ANTHROPIC_API_KEY=...
 har env init --auto --yes
 ```
 
-Review and commit `.har/`, `AGENT.md`, and any generated agent workflows.
+Review and commit `.har/`, `AGENTS.md`, and any generated agent workflows.
 
 ## 2. Check readiness
 

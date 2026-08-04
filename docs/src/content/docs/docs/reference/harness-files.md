@@ -27,6 +27,18 @@ contains:
 | `.har/CLAUDE.agent.md` | Detailed coding-agent workflow and definition of done |
 | `.har/justfile` | Optional `just` shortcuts |
 
+## Repo-root agent instruction files
+
+Installed during `har onboard` / `har env init` (and refreshed on maintain):
+
+| Path | Purpose |
+| --- | --- |
+| `AGENTS.md` | Canonical shared HAR workflow (Codex auto-loads this; cross-tool standard) |
+| `CLAUDE.md` | Thin Claude Code pointer → `AGENTS.md` (only when Claude is a confirmed target) |
+| `.cursor/rules/har-workflow.mdc` | Always-on Cursor injection (when Cursor is confirmed) |
+
+Legacy `AGENT.md` (singular) is migrated into `AGENTS.md` and removed. Do not create it.
+
 ## Generated local state
 
 These paths are normally gitignored:

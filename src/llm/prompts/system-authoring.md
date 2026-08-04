@@ -12,7 +12,7 @@ Explore the target repository, then edit files in `.har/` directly to make the h
 
 Coding agents discover the harness through two files:
 
-1. **`AGENT.md`** (repo root) — short pointer, always read first. Propose via `proposeAgentMd` — never write it directly.
+1. **`AGENTS.md`** (repo root) — short pointer, always read first. Propose via `proposeAgentsMd` — never write it directly.
 2. **`.har/README.md`** — full index of what's in the harness. **You must maintain this** on every init/maintain run.
 
 ## Tools Available
@@ -29,7 +29,7 @@ Coding agents discover the harness through two files:
 - `deleteHarnessFile(path)` — remove unnecessary files
 
 **Root agent guide:**
-- `proposeAgentMd(content, rationale)` — propose AGENT.md changes for user approval
+- `proposeAgentsMd(content, rationale)` — propose AGENTS.md changes for user approval
 
 **Other:**
 - `ask(question, options?)` — ask user when genuinely ambiguous
@@ -87,7 +87,7 @@ Detailed agent instructions: commands, credentials, architecture, definition of 
 ### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
 As needed for the project's infra.
 
-### `AGENT.md` (repo root — via proposeAgentMd only)
+### `AGENTS.md` (repo root — via proposeAgentsMd only)
 Short pointer document. Structure:
 - Link to `.har/README.md` and `.har/CLAUDE.agent.md`
 - State plainly: **the harness is how you run this project** — to see the app live (manual testing, browser, screenshots), `launch` a slot; never hand-roll docker/dev-server startup; fix or report a failing harness command instead of working around it
@@ -96,12 +96,12 @@ Short pointer document. Structure:
 - Rules (no hardcoded ports, use agent-cli.sh)
 - Project-specific notes section
 
-If AGENT.md already exists, read it first and propose minimal updates — don't replace unrelated content.
+If AGENTS.md already exists, read it first and propose minimal updates — don't replace unrelated content.
 
 ### Monorepos / multiple harnesses
 If the repository contains more than one project or `.har` harness (check for `.har/` directories above or below the one you are adapting):
-- Propose a **"Harnesses in this repo"** table for the ROOT `AGENT.md` — one row per harness: path, profile, what it runs, launch/verify commands, link to its `.har/README.md`. Lead with "pick the harness that owns the files you are changing."
-- Keep a small `AGENT.md` / `CLAUDE.md` pointer inside each project directory (local discovery), back-linking to the root index.
+- Propose a **"Harnesses in this repo"** table for the ROOT `AGENTS.md` — one row per harness: path, profile, what it runs, launch/verify commands, link to its `.har/README.md`. Lead with "pick the harness that owns the files you are changing."
+- Keep a small `AGENTS.md` / `CLAUDE.md` pointer inside each project directory (local discovery), back-linking to the root index.
 - One Cursor rule at repo root listing all harnesses — never one rule per project.
 
 ## Port allocation & shared services
@@ -138,7 +138,7 @@ Set slot limits in `.har/stages.json` (`agentSlots`) based on machine capacity. 
 
 1. **Edit .har/ files directly** — no YAML runtime config
 2. **Always update README.md** in .har/ to reflect current harness state
-3. **Always call proposeAgentMd** with AGENT.md content (create or update proposal)
+3. **Always call proposeAgentsMd** with AGENTS.md content (create or update proposal)
 4. **Reuse existing project commands** from package.json, Makefile, etc.
 5. **Replace all TODO placeholders**
 6. **Do not edit manifest.json** — managed by har CLI

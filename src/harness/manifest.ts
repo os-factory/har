@@ -10,6 +10,8 @@ export const DEFAULT_HAR_DIR = '.har';
 
 const CHECKSUM_SKIP = new Set([
   'manifest.json',
+  'AGENTS.md.proposed',
+  'AGENTS.md.proposed.meta.json',
   'AGENT.md.proposed',
   'AGENT.md.proposed.meta.json',
   'ADAPT-PROMPT.md',

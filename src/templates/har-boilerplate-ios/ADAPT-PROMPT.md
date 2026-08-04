@@ -5,7 +5,7 @@ structure, then make the changes listed below. Commit when done.
 
 ## 1 — Read before editing
 
-- `AGENT.md` at the repo root (overview and do-nots)
+- `AGENTS.md` at the repo root (overview and do-nots)
 - `.har/README.md` (harness index)
 - `.har/harness.env` (all config vars)
 - `.har/stages.json` (stage registry)
@@ -41,7 +41,7 @@ har env add-plugin rocketsim
 Then adapt `flows/example-smoke.sh` to navigate to your app's main screen and verify it loads.
 Read `.har/stages/ROCKETSIM.md` for the full authoring guide.
 
-## 5 — Update `AGENT.md` (repo root)
+## 5 — Update `AGENTS.md` (repo root)
 
 Replace the TODO section with:
 - Which Xcode scheme and simulator are used

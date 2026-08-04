@@ -4,8 +4,14 @@ import * as readline from 'readline';
 import { writeFileSafe } from '../utils/file-ops';
 import { info, warn } from '../utils/logging';
 import { getHarnessDir } from './manifest';
+import { AGENTS_MD } from './instruction-files';
 
+export const AGENTS_MD_PROPOSAL = 'AGENTS.md.proposed';
+export const AGENTS_MD_PROPOSAL_META = 'AGENTS.md.proposed.meta.json';
+
+/** @deprecated Legacy proposal filenames — still read for backward compatibility. */
 export const AGENT_MD_PROPOSAL = 'AGENT.md.proposed';
+/** @deprecated */
 export const AGENT_MD_PROPOSAL_META = 'AGENT.md.proposed.meta.json';
 
 export interface AgentMdProposal {
@@ -20,42 +26,57 @@ export function writeAgentMdProposal(
   rationale: string,
 ): void {
   const harnessDir = getHarnessDir(repoPath);
-  writeFileSafe(path.join(harnessDir, AGENT_MD_PROPOSAL), content);
+  writeFileSafe(path.join(harnessDir, AGENTS_MD_PROPOSAL), content);
   writeFileSafe(
-    path.join(harnessDir, AGENT_MD_PROPOSAL_META),
+    path.join(harnessDir, AGENTS_MD_PROPOSAL_META),
     JSON.stringify({ rationale, createdAt: new Date().toISOString() }, null, 2) + '\n',
   );
+  // Clear legacy proposal names if present
+  for (const file of [AGENT_MD_PROPOSAL, AGENT_MD_PROPOSAL_META]) {
+    const p = path.join(harnessDir, file);
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  }
 }
 
 export function readAgentMdProposal(repoPath: string): AgentMdProposal | null {
   const harnessDir = getHarnessDir(repoPath);
-  const proposalPath = path.join(harnessDir, AGENT_MD_PROPOSAL);
-  const metaPath = path.join(harnessDir, AGENT_MD_PROPOSAL_META);
+  const proposalPath = path.join(harnessDir, AGENTS_MD_PROPOSAL);
+  const metaPath = path.join(harnessDir, AGENTS_MD_PROPOSAL_META);
+  const legacyProposalPath = path.join(harnessDir, AGENT_MD_PROPOSAL);
+  const legacyMetaPath = path.join(harnessDir, AGENT_MD_PROPOSAL_META);
 
-  if (!fs.existsSync(proposalPath)) return null;
+  const resolvedProposal = fs.existsSync(proposalPath)
+    ? proposalPath
+    : fs.existsSync(legacyProposalPath)
+      ? legacyProposalPath
+      : null;
+  if (!resolvedProposal) return null;
 
-  const content = fs.readFileSync(proposalPath, 'utf8');
+  const resolvedMeta = resolvedProposal === proposalPath ? metaPath : legacyMetaPath;
+  const content = fs.readFileSync(resolvedProposal, 'utf8');
   let rationale = '';
-  if (fs.existsSync(metaPath)) {
+  let createdAt = new Date().toISOString();
+  if (fs.existsSync(resolvedMeta)) {
     try {
-      rationale = JSON.parse(fs.readFileSync(metaPath, 'utf8')).rationale ?? '';
+      const meta = JSON.parse(fs.readFileSync(resolvedMeta, 'utf8'));
+      rationale = meta.rationale ?? '';
+      createdAt = meta.createdAt ?? createdAt;
     } catch {
       rationale = '';
     }
   }
 
-  return {
-    content,
-    rationale,
-    createdAt: fs.existsSync(metaPath)
-      ? JSON.parse(fs.readFileSync(metaPath, 'utf8')).createdAt
-      : new Date().toISOString(),
-  };
+  return { content, rationale, createdAt };
 }
 
 export function clearAgentMdProposal(repoPath: string): void {
   const harnessDir = getHarnessDir(repoPath);
-  for (const file of [AGENT_MD_PROPOSAL, AGENT_MD_PROPOSAL_META]) {
+  for (const file of [
+    AGENTS_MD_PROPOSAL,
+    AGENTS_MD_PROPOSAL_META,
+    AGENT_MD_PROPOSAL,
+    AGENT_MD_PROPOSAL_META,
+  ]) {
     const p = path.join(harnessDir, file);
     if (fs.existsSync(p)) fs.unlinkSync(p);
   }
@@ -65,12 +86,12 @@ export async function promptApplyAgentMdProposal(repoPath: string): Promise<bool
   const proposal = readAgentMdProposal(repoPath);
   if (!proposal) return false;
 
-  const agentMdPath = path.join(repoPath, 'AGENT.md');
-  const exists = fs.existsSync(agentMdPath);
+  const agentsMdPath = path.join(repoPath, AGENTS_MD);
+  const exists = fs.existsSync(agentsMdPath);
 
   process.stderr.write('\n');
   process.stderr.write('────────────────────────────────────────────────────────────\n');
-  process.stderr.write('Proposed AGENT.md (repo root)\n');
+  process.stderr.write(`Proposed ${AGENTS_MD} (repo root)\n`);
   process.stderr.write('────────────────────────────────────────────────────────────\n');
   if (proposal.rationale) {
     process.stderr.write(`Why: ${proposal.rationale}\n\n`);
@@ -84,26 +105,26 @@ export async function promptApplyAgentMdProposal(repoPath: string): Promise<bool
     process.stderr.write('  ...\n');
   }
   process.stderr.write('\n');
-  process.stderr.write(`Full proposal: .har/${AGENT_MD_PROPOSAL}\n`);
+  process.stderr.write(`Full proposal: .har/${AGENTS_MD_PROPOSAL}\n`);
 
   if (exists) {
-    warn('AGENT.md already exists at repo root.');
-    const answer = await askYesNo('Replace AGENT.md with this proposal? (y/n)');
+    warn(`${AGENTS_MD} already exists at repo root.`);
+    const answer = await askYesNo(`Replace ${AGENTS_MD} with this proposal? (y/n)`);
     if (!answer) {
-      info('Skipped — proposal kept at .har/AGENT.md.proposed');
+      info(`Skipped — proposal kept at .har/${AGENTS_MD_PROPOSAL}`);
       return false;
     }
   } else {
-    const answer = await askYesNo('Create AGENT.md at repo root? (y/n)');
+    const answer = await askYesNo(`Create ${AGENTS_MD} at repo root? (y/n)`);
     if (!answer) {
-      info('Skipped — proposal kept at .har/AGENT.md.proposed');
+      info(`Skipped — proposal kept at .har/${AGENTS_MD_PROPOSAL}`);
       return false;
     }
   }
 
-  writeFileSafe(agentMdPath, proposal.content);
+  writeFileSafe(agentsMdPath, proposal.content);
   clearAgentMdProposal(repoPath);
-  info('Wrote AGENT.md');
+  info(`Wrote ${AGENTS_MD}`);
   return true;
 }
 

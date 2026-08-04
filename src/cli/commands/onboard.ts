@@ -1,8 +1,6 @@
 import * as path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
-import { handleAgentSkills } from '../../harness/agent-skills';
-import { handleCursorRule } from '../../harness/cursor-rule';
 import { harnessExists } from '../../harness/parser';
 import type { HarnessProfile } from '../../harness/generator';
 import { PluginId } from '../../harness/plugins';
@@ -21,7 +19,7 @@ import {
   TelemetryChoice,
 } from '../../core/onboarding';
 import { divider, error, header, info, success, warn } from '../../utils/logging';
-import { resolveOnboardingOptions } from './env';
+import { applyAgentIntegrations, resolveOnboardingOptions } from './env';
 
 interface OnboardArgs {
   repo: string;
@@ -336,18 +334,13 @@ export async function handleOnboard(argv: OnboardArgs): Promise<void> {
         ...onboarding.commitGate,
         autoYes: argv.yes,
       });
-      await handleCursorRule({
+      await applyAgentIntegrations({
         repoPath,
-        cursorRule: onboarding.cursorRule,
-        autoYes: argv.yes,
         mode: result.harnessInitialized ? 'init' : 'maintain',
-      });
-      await handleAgentSkills({
-        repoPath,
-        ...onboarding.agentSkills,
         autoYes: argv.yes,
         force: argv.force,
-        mode: result.harnessInitialized ? 'init' : 'maintain',
+        cursorRule: onboarding.cursorRule,
+        ...onboarding.agentSkills,
       });
     }
 

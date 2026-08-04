@@ -84,9 +84,9 @@ def prepare_repo(source_repo: dict, issue: dict, arm: str, dest: Path) -> Path:
     harness_src = BENCHMARK_ROOT / "repos" / source_repo["id"] / ".har"
     if harness_src.exists():
         shutil.copytree(harness_src, dest / ".har")
-    agent_md = BENCHMARK_ROOT / "repos" / source_repo["id"] / "AGENT.md"
+    agent_md = BENCHMARK_ROOT / "repos" / source_repo["id"] / "AGENTS.md"
     if agent_md.exists():
-        shutil.copy2(agent_md, dest / "AGENT.md")
+        shutil.copy2(agent_md, dest / "AGENTS.md")
     cursor_rule = BENCHMARK_ROOT / "repos" / source_repo["id"] / ".cursor" / "rules" / "har-workflow.mdc"
     if cursor_rule.exists():
         ensure_dir(dest / ".cursor" / "rules")

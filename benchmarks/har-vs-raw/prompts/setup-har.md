@@ -20,7 +20,7 @@ Adapt:
 - .har/ecosystem.agent.template.cjs or launch scripts: start the primary app per slot.
 - .har/verify.sh: real checks, with quick vs --full behavior.
 - .har/stages/browser-e2e.sh and tests/: make smoke/API/a11y tests meaningful for this app.
-- AGENT.md and .har/README.md: explain that HAR is the canonical run/verify path, including **first-time infra setup** (Docker services + template DB migrate/seed) so the app is fully testable without manual steps.
+- AGENTS.md and .har/README.md: explain that HAR is the canonical run/verify path, including **first-time infra setup** (Docker services + template DB migrate/seed) so the app is fully testable without manual steps.
 
 Definition of done:
 - har env launch 1 succeeds.

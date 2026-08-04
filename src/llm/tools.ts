@@ -96,13 +96,13 @@ export function buildAuthoringTools(): Anthropic.Tool[] {
       },
     },
     {
-      name: 'proposeAgentMd',
+      name: 'proposeAgentsMd',
       description:
-        'Propose content for AGENT.md at the repo root. Does NOT write the file — the user approves after init/maintain. Include project-specific notes and pointer to .har/.',
+        'Propose content for AGENTS.md at the repo root. Does NOT write the file — the user approves after init/maintain. Include project-specific notes and pointer to .har/.',
       input_schema: {
         type: 'object' as const,
         properties: {
-          content: { type: 'string', description: 'Full proposed AGENT.md content' },
+          content: { type: 'string', description: 'Full proposed AGENTS.md content' },
           rationale: { type: 'string', description: 'Why these changes (shown to user)' },
         },
         required: ['content', 'rationale'],
@@ -234,10 +234,10 @@ async function executeAuthoringToolCall(
       return `Deleted ${input.path}`;
     }
 
-    case 'proposeAgentMd': {
+    case 'proposeAgentsMd': {
       writeAgentMdProposal(repoPath, input.content as string, input.rationale as string);
-      info('Proposed AGENT.md (awaiting user approval)');
-      return 'AGENT.md proposal saved to .har/AGENT.md.proposed — user will be prompted to apply.';
+      info('Proposed AGENTS.md (awaiting user approval)');
+      return 'AGENTS.md proposal saved to .har/AGENTS.md.proposed — user will be prompted to apply.';
     }
 
     case 'ask': {
