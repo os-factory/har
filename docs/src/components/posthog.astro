@@ -1,0 +1,34 @@
+---
+const projectToken = import.meta.env.PUBLIC_POSTHOG_PROJECT_TOKEN;
+const apiHost = import.meta.env.PUBLIC_POSTHOG_HOST;
+const missingToken = !projectToken;
+const missingHost = !apiHost;
+const isDev = import.meta.env.DEV;
+---
+<script is:inline define:vars={{ projectToken, apiHost, missingToken, missingHost, isDev }}>
+  if (missingToken || missingHost) {
+    if (isDev) {
+      if (missingToken) {
+        throw new Error('PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once PUBLIC_POSTHOG_PROJECT_TOKEN is configured');
+      }
+      throw new Error('PUBLIC_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once PUBLIC_POSTHOG_HOST is configured');
+    }
+  } else {
+    const script = document.createElement('script');
+    script.src = `${apiHost}/static/array.js`;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.onload = () => {
+      window.posthog.init(projectToken, {
+        api_host: apiHost,
+        tracing_headers: [window.location.hostname],
+      });
+      window.posthog.startExceptionAutocapture({
+        capture_unhandled_errors: true,
+        capture_unhandled_rejections: true,
+        capture_console_errors: false,
+      });
+    };
+    document.head.appendChild(script);
+  }
+</script>
