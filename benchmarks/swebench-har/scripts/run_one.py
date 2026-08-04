@@ -23,6 +23,7 @@ from lib.common import (  # noqa: E402
     load_benchmark_env,
     new_run_id,
     now_iso,
+    read_json,
     render_template,
     sanitize_instance_row,
     write_json,
@@ -40,6 +41,7 @@ from lib.har_utils import (  # noqa: E402
 from lib.har_cache import (  # noqa: E402
     har_cache_exists,
     invalidate_har_cache,
+    list_verification_stage_ids,
     load_har_cache,
     save_har_cache,
 )
@@ -161,6 +163,7 @@ def run_har_arm(
     post_fix_verify_full: bool,
     setup_budget_minutes: int,
     setup_max_rounds: int,
+    fix_max_rounds: int = 3,
 ) -> dict[str, Any]:
     cfg = benchmark_config()
     harness_root = run_dir / "har" / "repo"
@@ -193,12 +196,17 @@ def run_har_arm(
         cache_hit = load_har_cache(instance["repo"], harness_root)
         record["har_cache_hit"] = cache_hit
 
+    # Repo-generic verification stages only — task-scoped stages must not enter .har-cache.
+    baseline_verification_ids = set(list_verification_stage_ids(harness_root))
+    record["har_baseline_verification_stages"] = sorted(baseline_verification_ids)
+
     need_bootstrap = not cache_hit
     bootstrap_attempts: list[dict[str, Any]] = []
     readiness_attempts: list[dict[str, Any]] = []
     gate_rounds: list[dict[str, Any]] = []
     cache_invalidated = False
     gate: dict[str, Any] = {"ready": False}
+    oracle_ready = False
     failure_context = ""
     readiness_failure_context = ""
 
@@ -238,6 +246,9 @@ def run_har_arm(
             )
             har_teardown_slot(harness_root, env=env)
             need_bootstrap = False
+            # After bootstrap, treat current verificationStages as the new repo baseline.
+            baseline_verification_ids = set(list_verification_stage_ids(harness_root))
+            record["har_baseline_verification_stages"] = sorted(baseline_verification_ids)
 
         readiness_prompt = render_template(
             PROMPTS / "har-task-readiness.md",
@@ -277,8 +288,61 @@ def run_har_arm(
         record[f"har_gate_round_{round_index}"] = gate
 
         if gate["ready"]:
-            save_har_cache(instance["repo"], harness_root, profile)
+            # Persist only repo-generic stages; keep task-scoped ones live for this run.
+            task_stage_ids = sorted(
+                set(list_verification_stage_ids(harness_root)) - baseline_verification_ids
+            )
+            record["har_task_verification_stages"] = task_stage_ids
+
+            if not task_stage_ids:
+                readiness_failure_context = (
+                    f"\n## Previous readiness round {round_index}: missing task-scoped stage\n"
+                    "You must register at least one **issue-specific** verification stage "
+                    "(`har env add-stage <id> --custom … --verification`) that encodes the "
+                    "bug from the problem statement.\n"
+                    "Repo-generic compile/import/smoke stages alone are **not** enough.\n"
+                    "The stage must be written to **fail on this buggy tree** (fail-before).\n"
+                )
+                har_teardown_slot(harness_root, env=env)
+                continue
+
+            # Fail-before gate: task stages must fail on the buggy tree for a behavioral reason.
+            fail_before_verify = har_verify(
+                harness_root,
+                full=True,
+                env=_merge_task_overlay_env(env, task_overlay_dir),
+            )
+            fb_ok, fb_reason, fb_detail = _assess_fail_before(
+                fail_before_verify, task_stage_ids
+            )
+            record["har_fail_before"] = {
+                "ok": fb_ok,
+                "reason": fb_reason,
+                "detail": fb_detail,
+                "verified": fail_before_verify.get("verified"),
+                "exit_code": fail_before_verify.get("exit_code"),
+            }
+            if not fb_ok:
+                readiness_failure_context = _format_fail_before_failure(
+                    round_index,
+                    fb_reason,
+                    fail_before_verify,
+                    task_stage_ids,
+                )
+                har_teardown_slot(harness_root, env=env)
+                continue
+
+            _snapshot_task_stages(harness_root, task_overlay_dir, task_stage_ids)
+            save_har_cache(
+                instance["repo"],
+                harness_root,
+                profile,
+                keep_verification_stage_ids=baseline_verification_ids,
+            )
+            # Re-apply task stages after cache strip so fix/verify still see them.
+            _restore_task_stages(harness_root, task_overlay_dir)
             record["har_cache_saved"] = True
+            oracle_ready = True
             break
 
         if cache_hit or har_cache_exists(instance["repo"], profile):
@@ -302,30 +366,47 @@ def run_har_arm(
         "skipped_bootstrap": bool(record.get("har_cache_hit")) and not bootstrap_attempts,
         "overlay_dir": str(task_overlay_dir),
         "overlay_files": _list_task_overlay_files(task_overlay_dir),
-        "status": "passed" if gate.get("ready") else "failed",
+        "status": "passed" if oracle_ready else "failed",
+        "task_stages": record.get("har_task_verification_stages") or [],
+        "fail_before": record.get("har_fail_before"),
     }
     if bootstrap_attempts:
         record["codex_bootstrap"] = bootstrap_attempts[-1]["codex"]
-    elif record.get("har_cache_hit") and gate.get("ready"):
+    elif record.get("har_cache_hit") and oracle_ready:
         record["codex_bootstrap"] = {"status": "skipped", "reason": "har_cache_valid"}
     if readiness_attempts:
         record["codex_readiness"] = readiness_attempts[-1]["codex"]
     record["har_setup_attempts"] = bootstrap_attempts
     if bootstrap_attempts:
         record["codex_setup"] = bootstrap_attempts[-1]["codex"]
-    elif record.get("har_cache_hit") and gate.get("ready"):
+    elif record.get("har_cache_hit") and oracle_ready:
         record["codex_setup"] = {"status": "skipped", "reason": "har_cache_valid"}
     record["har_gate_initial"] = gate_rounds[0]["gate"] if gate_rounds else gate
 
-    if not gate["ready"] or not gate.get("workdir"):
+    if not oracle_ready or not gate.get("workdir"):
+        record["har_ready_for_fix"] = False
         record["har_launch"] = {
             "ok": gate.get("launch_ok", False),
             "log": gate.get("launch_log", ""),
             "workdir": gate.get("workdir"),
         }
         record["har_verify"] = gate.get("verify")
+        reasons: list[str] = []
+        if not gate.get("ready"):
+            reasons.append("launch_or_smoke_gate_failed")
+        if not (record.get("har_task_verification_stages") or []):
+            reasons.append("missing_task_stage")
+        fb = record.get("har_fail_before") or {}
+        if fb and not fb.get("ok"):
+            reasons.append(f"fail_before:{fb.get('reason')}")
+        if not reasons:
+            reasons.append("oracle_gate_failed")
+        record["har_invalid_reasons"] = reasons
         record["status"] = "failed"
-        record["error"] = "HAR pre-fix gate failed (launch or smoke verify) before fix stage"
+        record["error"] = (
+            "HAR pre-fix oracle gate failed "
+            f"({', '.join(reasons)}) before fix stage"
+        )
         record["finished_at"] = now_iso()
         return record
 
@@ -340,25 +421,61 @@ def run_har_arm(
     record["har_ready_for_fix"] = True
 
     solve_started = time.time()
-    fix_prompt = render_template(
-        PROMPTS / "har-fix.md",
-        prompt_values(instance, work_dir=str(workdir)),
-    )
-    fix_codex = run_codex_turn(
-        cwd=workdir,
-        prompt=fix_prompt,
-        model=model,
-        api_key=env.get("OPENAI_API_KEY"),
-        timeout_seconds=solve_timeout_minutes * 60,
-        artifacts_dir=run_dir / "har" / "codex-fix",
-    )
-    record["codex_fix"] = fix_codex.result
-    record["solve_seconds"] = round(time.time() - solve_started, 2)
+    fix_attempts: list[dict[str, Any]] = []
+    verify_result: dict[str, Any] = {"verified": False, "full": post_fix_verify_full}
+    fix_failure_context = ""
 
-    verify_result = har_verify(harness_root, full=post_fix_verify_full, env=env)
+    for fix_round in range(1, max(1, fix_max_rounds) + 1):
+        remaining_solve = max(
+            60,
+            solve_timeout_minutes * 60 - int(time.time() - solve_started),
+        )
+        fix_prompt = render_template(
+            PROMPTS / "har-fix.md",
+            prompt_values(
+                instance,
+                work_dir=str(workdir),
+                fix_failure_context=fix_failure_context,
+                fix_round=str(fix_round),
+                fix_max_rounds=str(fix_max_rounds),
+            ),
+        )
+        fix_codex = run_codex_turn(
+            cwd=workdir,
+            prompt=fix_prompt,
+            model=model,
+            api_key=env.get("OPENAI_API_KEY"),
+            timeout_seconds=remaining_solve,
+            artifacts_dir=run_dir / "har" / f"codex-fix-r{fix_round}",
+        )
+        verify_result = har_verify(
+            harness_root,
+            full=post_fix_verify_full,
+            env=_merge_task_overlay_env(env, task_overlay_dir),
+        )
+        fix_attempts.append(
+            {
+                "round": fix_round,
+                "codex": fix_codex.result,
+                "wall_clock_seconds": fix_codex.wall_clock_seconds,
+                "verify": {
+                    "verified": verify_result.get("verified"),
+                    "full": verify_result.get("full"),
+                    "exit_code": verify_result.get("exit_code"),
+                },
+            }
+        )
+        if verify_result.get("verified"):
+            break
+        fix_failure_context = _format_post_fix_verify_failure(verify_result, fix_round)
+
+    record["codex_fix"] = fix_attempts[-1]["codex"] if fix_attempts else {}
+    record["har_fix_attempts"] = fix_attempts
+    record["har_fix_rounds"] = len(fix_attempts)
+    record["solve_seconds"] = round(time.time() - solve_started, 2)
     record["har_verify"] = verify_result
     record["har_verify_attempted"] = True
-    record["har_verify_passed"] = verify_result["verified"]
+    record["har_verify_passed"] = bool(verify_result.get("verified"))
     record["har_runs_recorded"] = har_runs_exist(harness_root)
 
     patch = extract_model_patch(workdir, instance["base_commit"])
@@ -375,6 +492,13 @@ def run_har_arm(
         invalid_reasons.append("launch_gate_failed")
     if not record["har_verify_attempted"]:
         invalid_reasons.append("no_verify_attempt")
+    if post_fix_verify_full and not record["har_verify_passed"]:
+        invalid_reasons.append("post_fix_verify_failed")
+    if not (record.get("har_task_verification_stages") or []):
+        invalid_reasons.append("missing_task_stage")
+    fb = record.get("har_fail_before") or {}
+    if fb and not fb.get("ok"):
+        invalid_reasons.append("fail_before_not_established")
     if not record["har_runs_recorded"]:
         invalid_reasons.append("no_har_run_records")
 
@@ -402,6 +526,104 @@ def _list_task_overlay_files(task_overlay_dir: Path) -> list[str]:
     )
 
 
+def _snapshot_task_stages(
+    harness_root: Path,
+    task_overlay_dir: Path,
+    task_stage_ids: list[str],
+) -> None:
+    """Copy task-scoped stage definitions/scripts into the per-run overlay."""
+    if not task_stage_ids:
+        return
+    stages_path = harness_root / ".har" / "stages.json"
+    if not stages_path.exists():
+        return
+    data = read_json(stages_path)
+    stages = data.get("stages") or []
+    if isinstance(stages, dict):
+        entries = []
+        for key, value in stages.items():
+            if isinstance(value, dict):
+                entry = dict(value)
+                entry.setdefault("id", key)
+                entries.append(entry)
+    else:
+        entries = [s for s in stages if isinstance(s, dict)]
+
+    wanted = set(task_stage_ids)
+    snap_entries: list[dict[str, Any]] = []
+    overlay_stages = task_overlay_dir / "stages"
+    overlay_stages.mkdir(parents=True, exist_ok=True)
+    for entry in entries:
+        sid = str(entry.get("id") or "")
+        if sid not in wanted:
+            continue
+        copied = dict(entry)
+        script = copied.get("script")
+        if isinstance(script, str) and script:
+            src = harness_root / ".har" / script
+            if src.exists():
+                dest = overlay_stages / Path(script).name
+                dest.write_bytes(src.read_bytes())
+                copied["script"] = f"stages/{dest.name}"
+        snap_entries.append(copied)
+    write_json(
+        task_overlay_dir / "task-stages.json",
+        {"verificationStages": task_stage_ids, "stages": snap_entries},
+    )
+
+
+def _restore_task_stages(harness_root: Path, task_overlay_dir: Path) -> None:
+    """Merge task-scoped stages from overlay back into the live harness."""
+    snap_path = task_overlay_dir / "task-stages.json"
+    if not snap_path.exists():
+        return
+    snap = read_json(snap_path)
+    stages_path = harness_root / ".har" / "stages.json"
+    if stages_path.exists():
+        data = read_json(stages_path)
+    else:
+        data = {"verificationStages": [], "stages": []}
+
+    existing_ids = {str(x) for x in (data.get("verificationStages") or [])}
+    for sid in snap.get("verificationStages") or []:
+        sid = str(sid)
+        if sid not in existing_ids:
+            data.setdefault("verificationStages", []).append(sid)
+            existing_ids.add(sid)
+
+    live_entries = data.get("stages") or []
+    if isinstance(live_entries, dict):
+        live_list = []
+        for key, value in live_entries.items():
+            if isinstance(value, dict):
+                entry = dict(value)
+                entry.setdefault("id", key)
+                live_list.append(entry)
+        live_entries = live_list
+    live_by_id = {str(e.get("id") or ""): e for e in live_entries if isinstance(e, dict)}
+
+    stages_dir = harness_root / ".har" / "stages"
+    stages_dir.mkdir(parents=True, exist_ok=True)
+    for entry in snap.get("stages") or []:
+        if not isinstance(entry, dict):
+            continue
+        entry = dict(entry)
+        sid = str(entry.get("id") or "")
+        script = entry.get("script")
+        if isinstance(script, str) and script:
+            overlay_script = task_overlay_dir / script
+            if not overlay_script.exists():
+                overlay_script = task_overlay_dir / "stages" / Path(script).name
+            if overlay_script.exists():
+                dest = stages_dir / Path(script).name
+                dest.write_bytes(overlay_script.read_bytes())
+                entry["script"] = f"stages/{dest.name}"
+        live_by_id[sid] = entry
+
+    data["stages"] = list(live_by_id.values())
+    write_json(stages_path, data)
+
+
 def _merge_task_overlay_env(env: dict[str, str], task_overlay_dir: Path) -> dict[str, str]:
     merged = dict(env)
     task_env = task_overlay_dir / "task.env"
@@ -414,6 +636,129 @@ def _merge_task_overlay_env(env: dict[str, str], task_overlay_dir: Path) -> dict
         key, value = line.split("=", 1)
         merged[key.strip()] = value.strip().strip('"').strip("'")
     return merged
+
+
+def _format_post_fix_verify_failure(verify: dict[str, Any], fix_round: int) -> str:
+    return (
+        f"\n## Previous fix round {fix_round}: HAR verify --full failed\n"
+        "HAR is a sandbox for verifying that your change works. Do not stop until "
+        "`har env verify 1 --full` passes with a **behavioral** task stage.\n"
+        "- Keep (or add) an issue-specific stage that encodes the bug from the problem "
+        "statement — smoke/compile alone is not done.\n"
+        "- Fail-before/pass-after: the stage must have failed on the buggy tree and "
+        "must pass after your fix.\n"
+        "- If the stage fails with ImportError/ModuleNotFoundError, fix the slot "
+        "install/build so the oracle can run, then re-check behavior.\n"
+        "- You may add `har env add-stage … --custom --verification` or a small "
+        "focused regression script wired as that stage.\n\n"
+        f"exit_code: {verify.get('exit_code')}\n"
+        f"stderr (tail):\n```\n{(verify.get('stderr') or '')[-3000:]}\n```\n"
+        f"stdout (tail):\n```\n{(verify.get('stdout') or '')[-2000:]}\n```\n"
+    )
+
+
+_ENV_FAILURE_MARKERS = (
+    "ModuleNotFoundError",
+    "ImportError",
+    "No module named",
+    "DLL load failed",
+    "cannot import name",
+    "error: Microsoft Visual C++",
+    "pkg_resources.DistributionNotFound",
+)
+
+
+def _parse_verify_stages(verify: dict[str, Any]) -> list[dict[str, Any]]:
+    stdout = verify.get("stdout") or ""
+    if not stdout.strip():
+        return []
+    try:
+        decoder = json.JSONDecoder()
+        idx = stdout.find("{")
+        if idx < 0:
+            return []
+        payload, _ = decoder.raw_decode(stdout[idx:])
+        stages = payload.get("stages") or []
+        return stages if isinstance(stages, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _assess_fail_before(
+    verify: dict[str, Any],
+    task_stage_ids: list[str],
+) -> tuple[bool, str, dict[str, Any]]:
+    """Return whether task stages fail on the buggy tree for a non-env reason."""
+    stages = _parse_verify_stages(verify)
+    by_name = {
+        str(stage.get("name") or stage.get("id") or ""): stage
+        for stage in stages
+        if isinstance(stage, dict)
+    }
+    task_results = []
+    for stage_id in task_stage_ids:
+        stage = by_name.get(stage_id)
+        if stage is None:
+            continue
+        output = str(stage.get("output") or "")
+        passed = bool(stage.get("pass"))
+        env_only = (not passed) and any(marker in output for marker in _ENV_FAILURE_MARKERS)
+        task_results.append(
+            {
+                "id": stage_id,
+                "pass": passed,
+                "env_failure": env_only,
+                "output_tail": output[-500:],
+            }
+        )
+
+    detail = {"task_results": task_results, "all_stages": list(by_name.keys())}
+    if not task_results:
+        return False, "task_stages_not_executed", detail
+    if all(item["pass"] for item in task_results):
+        return False, "stages_pass_on_buggy_tree", detail
+    if all(item["env_failure"] or item["pass"] for item in task_results) and any(
+        item["env_failure"] for item in task_results
+    ):
+        return False, "env_blocks_oracle", detail
+    # At least one behavioral failure among task stages.
+    return True, "task_stage_failed_as_expected", detail
+
+
+def _format_fail_before_failure(
+    round_index: int,
+    reason: str,
+    verify: dict[str, Any],
+    task_stage_ids: list[str],
+) -> str:
+    guidance = {
+        "stages_pass_on_buggy_tree": (
+            "Your task stage(s) already **pass** on the buggy tree — they do not prove "
+            "the bug. Tighten the assertion so it fails before a correct fix "
+            "(fail-before), using only the problem statement."
+        ),
+        "env_blocks_oracle": (
+            "Your task stage failed only because the package/deps/extensions are not "
+            "importable in the slot. Fix install/build in harness.env / quick verify "
+            "so the behavioral check can run, then ensure it fails for the ticket reason."
+        ),
+        "task_stages_not_executed": (
+            "Task stage ids were registered but did not appear in verify --full output. "
+            "Ensure they are listed in verificationStages and the command/script path is valid."
+        ),
+    }.get(
+        reason,
+        "Establish a task-scoped behavioral stage that fails on this buggy tree "
+        "for the problem-statement reason (fail-before).",
+    )
+    return (
+        f"\n## Previous readiness round {round_index}: fail-before gate failed ({reason})\n"
+        f"{guidance}\n"
+        f"Task stage ids: {task_stage_ids}\n"
+        f"verify exit_code: {verify.get('exit_code')}\n"
+        f"stdout (tail):\n```\n{(verify.get('stdout') or '')[-2500:]}\n```\n"
+        f"stderr (tail):\n```\n{(verify.get('stderr') or '')[-1500:]}\n```\n"
+    )
 
 
 def _format_readiness_failure(gate: dict[str, Any], round_index: int) -> str:
@@ -524,6 +869,7 @@ def main() -> int:
             post_fix_verify_full=bool(cfg.get("har_verify_full", False)),
             setup_budget_minutes=setup_budget,
             setup_max_rounds=setup_max_rounds,
+            fix_max_rounds=int(cfg.get("fix_max_rounds", 3)),
         )
 
     run_record["finished_at"] = now_iso()

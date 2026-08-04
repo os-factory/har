@@ -26,7 +26,12 @@ uv sync
 
 ```bash
 uv run scripts/run_batch.py --count 10 --seed 42 --arm both
+# Diversified sample (caps from config.yaml by default):
+uv run scripts/run_batch.py --count 50 --seed 42 --arm both \
+  --max-per-repo 5 --max-repos-per-language 10
 ```
+
+Paper iteration log: [`BENCHMARK-ITERATIONS.md`](./BENCHMARK-ITERATIONS.md). EC2 campaign: [`EC2.md`](./EC2.md).
 
 See [BENCHMARK-RUN-REPORT.md](./BENCHMARK-RUN-REPORT.md) for findings from the first 10-instance batch and recommended follow-up issues.
 
@@ -168,6 +173,20 @@ If the gate fails after a cache hit, the cache is **invalidated** and repo boots
 
 ```bash
 uv run scripts/test_swebench_har.py
+```
+
+## Running on EC2 (`sshbench`)
+
+Full re-run instructions for the shared benchmark host (connect, sync code, bootstrap, tmux, artifacts, pitfalls): see **[EC2.md](./EC2.md)**.
+
+Quick start:
+
+```bash
+alias sshbench="ssh -i ${BENCHMARK_SSH_KEY} ec2-user@${BENCHMARK_HOST}"
+sshbench
+cd ~/har && bash benchmarks/swebench-har/scripts/ec2_bootstrap.sh
+tmux new -s swebench
+cd ~/har/benchmarks/swebench-har && bash scripts/ec2_run.sh
 ```
 
 ## Caveats

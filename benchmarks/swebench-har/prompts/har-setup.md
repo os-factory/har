@@ -14,34 +14,33 @@ Do **not** run `har env init --auto`. Edit harness files directly.
 The benchmark runner validates readiness **after** your edits — do not launch or
 verify slots yourself.
 
-**SWE-bench grading is external.** Harness quick verify is smoke-only (compile /
-import / build); it does not need to pass the repo's full test suite.
+**HAR purpose:** a sandbox where agents verify that code changes work. Quick verify
+is smoke for the pre-fix gate. Functional proof is `verify --full` via
+`verificationStages`. The fix agent may add stages and small tests on the fly.
+
+**SWE-bench grading is external** — do not replicate the official evaluator.
 
 ## Benchmark constraints (override the generic prompt where they conflict)
 
 | Topic | Benchmark rule |
 |-------|----------------|
 | `launch.sh` / `agent-slot.sh` | **Do not edit** — runner owns worktrees and slot registry |
-| Allowed edits | `harness.env`, `verify.sh` (especially quick-mode smoke steps), `CLAUDE.agent.md`, `README.md` |
+| Allowed edits | `harness.env`, `verify.sh` (quick smoke), `stages.json`, `.har/stages/*`, `CLAUDE.agent.md`, `README.md`, `AGENT.md` |
 | During setup | Do **not** run `har env launch`, `./.har/launch.sh`, `./.har/teardown.sh`, or `./.har/verify.sh` |
-| Quick verify | Language-agnostic smoke only — not full pytest/Django runtests/Sphinx graphs |
-| Full verify | Optional stricter checks (`--full`); not required for the pre-fix gate |
+| Quick verify | Smoke only — compile/import/build (smoke-only pre-fix gate) |
+| Full verify | Register functional `verificationStages` (CLI/API/module exercise, focused check). Not the whole suite unless that is truly the repo's lightweight check |
 | Profile | Stay on `{{har_profile}}` — do not re-init with a different profile |
 
-Pre-fix gate the runner enforces: `har env launch 1` + quick `har env verify 1`.
+`launch.sh` / `agent-slot.sh`: **Do not edit** — runner owns worktrees and slot replace/force.
 
-Quick-mode examples (pick what fits this stack):
-
-- Python: `python -m compileall`, `pip install -e .`, import smoke
-- Node: `npm run build`, `npm run typecheck`
-- Java: `mvn -q compile`, `./gradlew compileJava`
-- Go: `go build ./...`
-- Rust: `cargo check`
+Document in `.har/CLAUDE.agent.md` / `AGENT.md`:
+- quick verify = smoke
+- done = `verify --full` with a **change-specific behavioral** stage (smoke alone ≠ done)
+- agents **must** use fail-before / pass-after when adding stages for a bug
+- agents **may add stages on the fly** and may add a small focused test/check when needed
+- HAR is the verification sandbox for changes; keep issue stages out of the long-lived cache
 
 ## Generic HAR adaptation prompt (from `har env init`)
-
-The following is the same prompt saved to `.har/ADAPT-PROMPT.md` — follow it except
-where the benchmark constraints above take precedence.
 
 ---
 
@@ -51,4 +50,5 @@ where the benchmark constraints above take precedence.
 
 {{setup_failure_context}}
 
-When finished, summarize what you changed and which **smoke** commands quick verify will run.
+When finished, summarize smoke commands for quick verify and any **repo-generic**
+`--full` stage (not issue-specific).

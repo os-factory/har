@@ -21,7 +21,12 @@ from lib.common import (  # noqa: E402
     now_iso,
     write_json,
 )
-from lib.dataset import load_split, sample_rows
+from lib.dataset import (  # noqa: E402
+    infer_language,
+    load_split,
+    sample_rows,
+    sample_rows_diverse,
+)
 from run_one import run_har_arm, run_raw_arm  # noqa: E402
 
 
@@ -64,6 +69,7 @@ def run_one_instance(
     post_fix_verify_full: bool,
     setup_budget_minutes: int,
     setup_max_rounds: int,
+    fix_max_rounds: int = 3,
 ) -> dict[str, Any]:
     instance, run_dir = prepare_instance_row(row, seed)
     record: dict[str, Any] = {
@@ -102,6 +108,7 @@ def run_one_instance(
             post_fix_verify_full=post_fix_verify_full,
             setup_budget_minutes=setup_budget_minutes,
             setup_max_rounds=setup_max_rounds,
+            fix_max_rounds=fix_max_rounds,
         )
 
     record["finished_at"] = now_iso()
@@ -113,6 +120,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", type=int, default=10, help="Number of instances to run")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling instances")
+    parser.add_argument(
+        "--max-per-repo",
+        type=int,
+        default=None,
+        help="Cap instances per repository (diversity). Overrides config when set.",
+    )
+    parser.add_argument(
+        "--max-repos-per-language",
+        type=int,
+        default=None,
+        help="Cap distinct repos per language (diversity). Overrides config when set.",
+    )
     parser.add_argument("--model", help="Codex model for raw/fix arms")
     parser.add_argument("--setup-model", help="Codex model for HAR setup")
     parser.add_argument("--arm", choices=["raw", "har", "both"], default="both")
@@ -130,15 +149,31 @@ def main() -> int:
     readiness_timeout = int(cfg.get("readiness_timeout_minutes", 20))
     setup_budget = int(cfg.get("setup_budget_minutes", 120))
     setup_max_rounds = int(cfg.get("setup_max_rounds", 6))
+    fix_max_rounds = int(cfg.get("fix_max_rounds", 3))
     post_fix_verify_full = bool(cfg.get("har_verify_full", False))
+    max_per_repo = args.max_per_repo
+    if max_per_repo is None and cfg.get("sample_max_per_repo") is not None:
+        max_per_repo = int(cfg["sample_max_per_repo"])
+    max_repos_per_language = args.max_repos_per_language
+    if max_repos_per_language is None and cfg.get("sample_max_repos_per_language") is not None:
+        max_repos_per_language = int(cfg["sample_max_repos_per_language"])
 
     rows = load_split(cfg["dataset_name"], cfg["split"])
-    selected = sample_rows(rows, args.count, args.seed)
+    selected = sample_rows(
+        rows,
+        args.count,
+        args.seed,
+        max_per_repo=max_per_repo,
+        max_repos_per_language=max_repos_per_language,
+    )
 
     batch_id = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     batch_dir = BENCHMARK_ROOT / "batches" / batch_id
     batch_dir.mkdir(parents=True, exist_ok=True)
 
+    from collections import Counter
+
+    sample_meta = getattr(sample_rows_diverse, "last_meta", None)
     batch_record: dict[str, Any] = {
         "batch_id": batch_id,
         "count": args.count,
@@ -146,11 +181,25 @@ def main() -> int:
         "arm": args.arm,
         "model": model,
         "setup_model": setup_model,
+        "sample_max_per_repo": max_per_repo,
+        "sample_max_repos_per_language": max_repos_per_language,
+        "sample_repo_counts": dict(Counter(str(r["repo"]) for r in selected)),
+        "sample_language_counts": dict(Counter(infer_language(r) for r in selected)),
+        "sample_meta": sample_meta,
         "started_at": now_iso(),
         "instances": [],
     }
 
-    print(f"Batch {batch_id}: running {args.count} instances (seed={args.seed}, arm={args.arm})")
+    print(
+        f"Batch {batch_id}: running {args.count} instances "
+        f"(seed={args.seed}, arm={args.arm}, "
+        f"max_per_repo={max_per_repo}, max_repos_per_language={max_repos_per_language})"
+    )
+    print(
+        f"  sample repos={batch_record['sample_repo_counts']} "
+        f"languages={batch_record['sample_language_counts']}",
+        flush=True,
+    )
     for index, row in enumerate(selected, start=1):
         instance_id = row["instance_id"]
         print(f"[{index}/{args.count}] {instance_id} ...", flush=True)
@@ -158,6 +207,7 @@ def main() -> int:
             "index": index,
             "instance_id": instance_id,
             "repo": row["repo"],
+            "language": infer_language(row),
             "started_at": now_iso(),
         }
         try:
@@ -175,6 +225,7 @@ def main() -> int:
                 post_fix_verify_full=post_fix_verify_full,
                 setup_budget_minutes=setup_budget,
                 setup_max_rounds=setup_max_rounds,
+                fix_max_rounds=fix_max_rounds,
             )
             entry["run_id"] = result["run_id"]
             entry["status"] = "completed"

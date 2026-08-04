@@ -214,6 +214,9 @@ export function detectAgentTargets(repoPath: string): AgentSkillTarget[] {
 }
 
 export function parseAgentTargets(raw: string): AgentSkillTarget[] {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return [];
+  }
   const parts = raw
     .split(',')
     .map((part) => part.trim().toLowerCase())
@@ -244,8 +247,11 @@ export async function handleAgentSkills(options: AgentSkillsScaffoldOptions): Pr
   if (options.enabled === false) return false;
 
   let targets: AgentSkillTarget[];
+  // yargs can set `agents: false` when `--no-agents` is also a flag name collision
   if (typeof options.agents === 'string') {
     targets = parseAgentTargets(options.agents);
+  } else if (options.agents !== undefined) {
+    return false;
   } else {
     targets = detectAgentTargets(repoPath);
     if (targets.length === 0) return false;

@@ -80,6 +80,28 @@ are inline steps owned by `.har/verify.sh`. Lifecycle kinds
 (`setup`/`launch`/`reset`/`teardown`/`inspect`) and `verify` itself never run
 as part of verification, even if listed.
 
+## Authoring a good verification stage (PR quality)
+
+Agents open better PRs when `--full` proves the **change**, not only that the
+repo still builds. When you add a stage for a bugfix or feature:
+
+1. **Behavioral** — assert the user-visible or API behavior from the ticket
+   (repro steps, expected output/error). Do not stop at compile/import/health.
+2. **Fail-before / pass-after** — on the broken tree the stage must **fail**;
+   after the fix it must **pass**. If it already passes before you change code,
+   it is not an oracle for this bug — tighten or rewrite it.
+3. **Runnable in the slot** — use toolchain vars from `.env.agent.<id>`
+   (`PYTHON_BIN`, editable installs, built extensions). A stage that only fails
+   with `ModuleNotFoundError` because deps were never built is a harness gap,
+   not proof the product is wrong.
+4. **Narrow** — one focused check beats dumping the entire CI suite into
+   `verificationStages`. Keep issue-specific stages out of any long-lived
+   shared harness defaults when they would pollute other tasks.
+
+Smoke stages (syntax, import, render hello-world) may stay in
+`verificationStages` for health, but **definition of done requires a
+change-specific behavioral stage** as well.
+
 ## Commit gate
 
 The registry also holds the optional `commitGate` config (installed via

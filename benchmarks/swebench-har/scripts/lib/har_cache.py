@@ -67,7 +67,70 @@ def invalidate_har_cache(repo_slug: str) -> bool:
     return True
 
 
-def save_har_cache(repo_slug: str, harness_root: Path, profile: str) -> Path:
+def list_verification_stage_ids(harness_root: Path) -> list[str]:
+    stages_path = harness_root / ".har" / "stages.json"
+    if not stages_path.exists():
+        return []
+    data = read_json(stages_path)
+    return [str(x) for x in (data.get("verificationStages") or [])]
+
+
+def _stage_entries(data: dict[str, Any]) -> list[dict[str, Any]]:
+    stages = data.get("stages")
+    if isinstance(stages, dict):
+        out: list[dict[str, Any]] = []
+        for key, value in stages.items():
+            if isinstance(value, dict):
+                entry = dict(value)
+                entry.setdefault("id", key)
+                out.append(entry)
+        return out
+    if isinstance(stages, list):
+        return [s for s in stages if isinstance(s, dict)]
+    return []
+
+
+def strip_verification_stages(harness_root: Path, keep_ids: set[str] | frozenset[str]) -> list[str]:
+    """Remove verification stages (and scripts) not in keep_ids. Returns removed ids."""
+    stages_path = harness_root / ".har" / "stages.json"
+    if not stages_path.exists():
+        return []
+    data = read_json(stages_path)
+    current = [str(x) for x in (data.get("verificationStages") or [])]
+    removed = [sid for sid in current if sid not in keep_ids]
+    if not removed:
+        return []
+
+    data["verificationStages"] = [sid for sid in current if sid in keep_ids]
+    kept_entries: list[dict[str, Any]] = []
+    har_root = (harness_root / ".har").resolve()
+    for entry in _stage_entries(data):
+        sid = str(entry.get("id") or "")
+        if sid in removed:
+            script = entry.get("script")
+            if isinstance(script, str) and script:
+                script_path = (harness_root / ".har" / script).resolve()
+                if str(script_path).startswith(str(har_root)) and script_path.exists():
+                    script_path.unlink()
+            continue
+        kept_entries.append(entry)
+    data["stages"] = kept_entries
+    write_json(stages_path, data)
+    return removed
+
+
+def save_har_cache(
+    repo_slug: str,
+    harness_root: Path,
+    profile: str,
+    *,
+    keep_verification_stage_ids: set[str] | frozenset[str] | None = None,
+) -> Path:
+    """Persist repo-generic `.har/`. Optionally strip task-scoped verification stages first."""
+    removed: list[str] = []
+    if keep_verification_stage_ids is not None:
+        removed = strip_verification_stages(harness_root, keep_verification_stage_ids)
+
     dest_root = cache_dir_for_repo(repo_slug)
     har_src = harness_root / ".har"
     har_dest = dest_root / ".har"
@@ -85,6 +148,8 @@ def save_har_cache(repo_slug: str, harness_root: Path, profile: str) -> Path:
             "repo": repo_slug,
             "profile": profile,
             "adapted_at": now_iso(),
+            "verification_stage_ids": list_verification_stage_ids(harness_root),
+            "stripped_task_stages": removed,
         },
     )
     return dest_root

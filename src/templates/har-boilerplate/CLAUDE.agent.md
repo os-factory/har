@@ -37,10 +37,30 @@ is alive; it does not automatically mean an agent can use the app.
 
 ## Definition of done
 
-- [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+HAR exists so agents **prove a change works before opening a PR** — not only that the
+tree compiles. Quick verify is **smoke only** (compile/import/build/health). Smoke
+alone is **never** done, even if it is listed under `verificationStages`.
+
+- [ ] **Change-specific oracle:** at least one verification stage exercises the *behavior
+  this change is supposed to fix/add* (API/UI/workflow/focused regression) — not
+  health/compile/import alone
+- [ ] **Fail-before / pass-after:** that oracle **fails** on the broken tree (or before
+  your change) and **passes** after. If a new stage already passes before you fix
+  anything, it is not proving the bug — rewrite it
+- [ ] **Functional proof:** `har env verify ${AGENT_ID} --full` (or MCP
+  `har_run_verification` with `full: true`) returns `"status": "pass"`
+- [ ] If no registered stage can confirm this change, **add one on the fly** before stopping:
+
+  ```bash
+  har env add-stage <id> --custom --kind test --command "<behavioral check>" --verification
+  # or: har env add-stage <id> --custom --script --verification
+  ```
+
+  Prefer a small focused regression script wired as that stage. See `.har/STAGES.md`.
+  Ensure the check can actually run in this slot (deps installed, correct
+  `${PYTHON_BIN}` / toolchain from `.env.agent.${AGENT_ID}`).
 - [ ] The slot is agent-usable for this repo's documented smoke workflow, not only health-check green
-- [ ] Full verify runs every registered stage in `stages.json` `verificationStages` (Playwright, custom checks, …) — when `stages/browser-e2e.sh` exists, adapt specs under `tests/` for UI changes
-- [ ] New behavior has automated test coverage (unit and/or browser as appropriate)
+- [ ] When `stages/browser-e2e.sh` exists, adapt specs under `tests/` for UI changes
 - [ ] Changes committed **in the session worktree** with a clear message
 - [ ] The user got the preview URLs to test the app themselves
 - [ ] Present session handoff (summary, branch, preview URLs) and **wait for user** before `complete`, push, or PR
@@ -56,7 +76,7 @@ else as alternatives. If PR tooling is unavailable, recommend complete and repor
 the session branch for a manual push. Prefer `complete` over bare `teardown` when
 the work succeeded. See `.cursor/rules/har-workflow.mdc` for the handoff shape.
 
-Quick loop during development: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har/verify.sh ${AGENT_ID}` (smoke + health only; `--full` adds the registered verification stages).
+Quick loop while iterating: `har env verify ${AGENT_ID}` (smoke). Before you stop: `--full` with a real behavioral stage green.
 
 Stages are the harness's single vocabulary for checks: templates and custom stages compile to generic kinds in `.har/stages.json`, and you interact with them only through the registry (`har_run_stage`, `verify`), never stack-specific tooling. Authoring guide: `.har/STAGES.md`.
 

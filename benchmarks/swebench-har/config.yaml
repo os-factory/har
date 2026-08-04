@@ -8,7 +8,13 @@ setup_budget_minutes: 120
 setup_timeout_minutes: 45
 readiness_timeout_minutes: 20
 setup_max_rounds: 6
-har_verify_full: false
+# Post-fix: run verify --full so registered functional verificationStages are enforced
+har_verify_full: true
+# Fix agent retries when post-fix verify --full fails
+fix_max_rounds: 3
+# Diversity sampling (null = uniform random.sample)
+sample_max_per_repo: 5
+sample_max_repos_per_language: 10
 har_cache_dir: .har-cache
 runs_dir: runs
 results_dir: results
