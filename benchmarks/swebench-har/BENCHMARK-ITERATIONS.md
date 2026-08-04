@@ -90,26 +90,40 @@ Resolve did **not** improve for HAR. New failure modes:
 
 ---
 
-## Iteration 4 — Diversified n=50 (in progress)
+## Iteration 4 — Diversified n=50 (complete)
 
 **Batch:** `20260723-113828` · seed `42` · n=`50`  
-**Host:** EC2 `sshbench` · tmux `swebench` · log `logs/ec2-batch-20260723-113826.log`  
-**Hypothesis:** With Iter 3 harness semantics, a larger **repo- and language-diverse** sample yields a stable raw-vs-HAR comparison for the paper.  
-**Sampling constraints (new):**
-- `max_per_repo = 5` — avoid Django/SymPy dominance  
-- `max_repos_per_language = 10` — cap language fan-out when multi-lang splits are used  
-- On SWE-bench Lite (12 Python repos): selects 10 repos × ≤5 instances → 50
+**Host:** EC2 `sshbench` · orch ~10h · eval completed 2026-07-24  
+**Hypothesis:** With Iter 3 harness semantics, a larger **repo-diverse** sample yields a stable raw-vs-HAR comparison.  
+**Sampling:** `max_per_repo=5`, `max_repos_per_language=10` → 10 Python repos × 5.
 
-**Selected repos (5 each):** matplotlib, xarray, sphinx, astropy, pytest, requests, django, scikit-learn, pylint, sympy.
+| Arm | Patches | Resolve | Notes |
+|-----|---------|---------|-------|
+| Raw | 50/50 | **23/50 (46%)** | 2 unique wins |
+| HAR | 50/50 | **24/50 (48%)** | 3 unique wins; net **+1** |
 
-**HAR stack under test:** Iter 3 semantics (`har_verify_full`, task-scoped cache, `fix_max_rounds=3`, sandbox prompts).
+**HAR verify:** `--full` pass 22/50; `post_fix_verify_failed` 28/50. `--full` vs official resolve: TP10 / FP12 / FN14 / TN14 (weak predictor).
+
+**Full write-up:** `BENCHMARK-50-REPORT.md`
+
+---
+
+## Iteration 5 — Fail-before + behavioral oracles (in progress)
+
+**Batch:** _TBD_ · seed `42` · n=`50` (same diversity caps)  
+**Hypothesis:** Stronger product prompts + runner **fail-before / task-stage** gates make stages real oracles (from the problem statement only), improving independent verification quality and possibly resolve.
+
+**Product changes:**
+- `CLAUDE.agent.md` / `STAGES.md` / setup-har / adaptation: smoke ≠ done; require change-specific stage; fail-before/pass-after; runnable oracles
+
+**Benchmark changes:**
+- Readiness must register a task stage that **fails on the buggy tree** (not env ImportError)
+- Fix prompts require fail-before then pass-after without gold tests
 
 | Arm | Patches | Resolve | Notes |
 |-----|---------|---------|-------|
 | Raw | _TBD_ | _TBD_ | |
 | HAR | _TBD_ | _TBD_ | |
-
-Fill this section when the EC2 batch + official eval complete.
 
 ---
 
@@ -133,4 +147,4 @@ Branch: `feat/functional-verify-agent-guidance` (`b817956`, `a63b10b`, + Iter 4 
 | 1 | `20260718-185954` | 4/10 | 5/10 | 10/10 |
 | 2 | `20260718-230801` | 6/10 | 5/10 | 10/10 |
 | 3 | `20260720-195658` | 4/10 | 4/10 | 10/10 |
-| 4 | diversified n=50 | _TBD_ | _TBD_ | _TBD_ |
+| 4 | `20260723-113828` (n=50) | **23/50** | **24/50** | 50/50 |

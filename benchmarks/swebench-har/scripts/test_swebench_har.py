@@ -74,6 +74,52 @@ def test_diverse_sampling_caps() -> None:
         assert "diversity constraints" in str(exc)
 
 
+def test_assess_fail_before_helpers() -> None:
+    from run_one import _assess_fail_before
+
+    ok_verify = {
+        "stdout": json.dumps(
+            {
+                "status": "fail",
+                "stages": [
+                    {"name": "python-compile", "pass": True, "output": ""},
+                    {"name": "bug-repro", "pass": False, "output": "AssertionError: expected label"},
+                ],
+            }
+        )
+    }
+    ok, reason, _ = _assess_fail_before(ok_verify, ["bug-repro"])
+    assert ok and reason == "task_stage_failed_as_expected"
+
+    pass_verify = {
+        "stdout": json.dumps(
+            {
+                "status": "pass",
+                "stages": [{"name": "bug-repro", "pass": True, "output": "OK"}],
+            }
+        )
+    }
+    ok, reason, _ = _assess_fail_before(pass_verify, ["bug-repro"])
+    assert not ok and reason == "stages_pass_on_buggy_tree"
+
+    env_verify = {
+        "stdout": json.dumps(
+            {
+                "status": "fail",
+                "stages": [
+                    {
+                        "name": "bug-repro",
+                        "pass": False,
+                        "output": "ModuleNotFoundError: No module named 'sklearn.utils.murmurhash'",
+                    }
+                ],
+            }
+        )
+    }
+    ok, reason, _ = _assess_fail_before(env_verify, ["bug-repro"])
+    assert not ok and reason == "env_blocks_oracle"
+
+
 def test_har_cache_roundtrip() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -285,6 +331,7 @@ def main() -> int:
     tests = [
         test_config_loads,
         test_diverse_sampling_caps,
+        test_assess_fail_before_helpers,
         test_har_cache_roundtrip,
         test_har_cache_invalidate,
         test_task_readiness_prompt_render,

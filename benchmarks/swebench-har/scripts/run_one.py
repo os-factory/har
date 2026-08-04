@@ -206,6 +206,7 @@ def run_har_arm(
     gate_rounds: list[dict[str, Any]] = []
     cache_invalidated = False
     gate: dict[str, Any] = {"ready": False}
+    oracle_ready = False
     failure_context = ""
     readiness_failure_context = ""
 
@@ -292,6 +293,45 @@ def run_har_arm(
                 set(list_verification_stage_ids(harness_root)) - baseline_verification_ids
             )
             record["har_task_verification_stages"] = task_stage_ids
+
+            if not task_stage_ids:
+                readiness_failure_context = (
+                    f"\n## Previous readiness round {round_index}: missing task-scoped stage\n"
+                    "You must register at least one **issue-specific** verification stage "
+                    "(`har env add-stage <id> --custom … --verification`) that encodes the "
+                    "bug from the problem statement.\n"
+                    "Repo-generic compile/import/smoke stages alone are **not** enough.\n"
+                    "The stage must be written to **fail on this buggy tree** (fail-before).\n"
+                )
+                har_teardown_slot(harness_root, env=env)
+                continue
+
+            # Fail-before gate: task stages must fail on the buggy tree for a behavioral reason.
+            fail_before_verify = har_verify(
+                harness_root,
+                full=True,
+                env=_merge_task_overlay_env(env, task_overlay_dir),
+            )
+            fb_ok, fb_reason, fb_detail = _assess_fail_before(
+                fail_before_verify, task_stage_ids
+            )
+            record["har_fail_before"] = {
+                "ok": fb_ok,
+                "reason": fb_reason,
+                "detail": fb_detail,
+                "verified": fail_before_verify.get("verified"),
+                "exit_code": fail_before_verify.get("exit_code"),
+            }
+            if not fb_ok:
+                readiness_failure_context = _format_fail_before_failure(
+                    round_index,
+                    fb_reason,
+                    fail_before_verify,
+                    task_stage_ids,
+                )
+                har_teardown_slot(harness_root, env=env)
+                continue
+
             _snapshot_task_stages(harness_root, task_overlay_dir, task_stage_ids)
             save_har_cache(
                 instance["repo"],
@@ -302,6 +342,7 @@ def run_har_arm(
             # Re-apply task stages after cache strip so fix/verify still see them.
             _restore_task_stages(harness_root, task_overlay_dir)
             record["har_cache_saved"] = True
+            oracle_ready = True
             break
 
         if cache_hit or har_cache_exists(instance["repo"], profile):
@@ -325,30 +366,47 @@ def run_har_arm(
         "skipped_bootstrap": bool(record.get("har_cache_hit")) and not bootstrap_attempts,
         "overlay_dir": str(task_overlay_dir),
         "overlay_files": _list_task_overlay_files(task_overlay_dir),
-        "status": "passed" if gate.get("ready") else "failed",
+        "status": "passed" if oracle_ready else "failed",
+        "task_stages": record.get("har_task_verification_stages") or [],
+        "fail_before": record.get("har_fail_before"),
     }
     if bootstrap_attempts:
         record["codex_bootstrap"] = bootstrap_attempts[-1]["codex"]
-    elif record.get("har_cache_hit") and gate.get("ready"):
+    elif record.get("har_cache_hit") and oracle_ready:
         record["codex_bootstrap"] = {"status": "skipped", "reason": "har_cache_valid"}
     if readiness_attempts:
         record["codex_readiness"] = readiness_attempts[-1]["codex"]
     record["har_setup_attempts"] = bootstrap_attempts
     if bootstrap_attempts:
         record["codex_setup"] = bootstrap_attempts[-1]["codex"]
-    elif record.get("har_cache_hit") and gate.get("ready"):
+    elif record.get("har_cache_hit") and oracle_ready:
         record["codex_setup"] = {"status": "skipped", "reason": "har_cache_valid"}
     record["har_gate_initial"] = gate_rounds[0]["gate"] if gate_rounds else gate
 
-    if not gate["ready"] or not gate.get("workdir"):
+    if not oracle_ready or not gate.get("workdir"):
+        record["har_ready_for_fix"] = False
         record["har_launch"] = {
             "ok": gate.get("launch_ok", False),
             "log": gate.get("launch_log", ""),
             "workdir": gate.get("workdir"),
         }
         record["har_verify"] = gate.get("verify")
+        reasons: list[str] = []
+        if not gate.get("ready"):
+            reasons.append("launch_or_smoke_gate_failed")
+        if not (record.get("har_task_verification_stages") or []):
+            reasons.append("missing_task_stage")
+        fb = record.get("har_fail_before") or {}
+        if fb and not fb.get("ok"):
+            reasons.append(f"fail_before:{fb.get('reason')}")
+        if not reasons:
+            reasons.append("oracle_gate_failed")
+        record["har_invalid_reasons"] = reasons
         record["status"] = "failed"
-        record["error"] = "HAR pre-fix gate failed (launch or smoke verify) before fix stage"
+        record["error"] = (
+            "HAR pre-fix oracle gate failed "
+            f"({', '.join(reasons)}) before fix stage"
+        )
         record["finished_at"] = now_iso()
         return record
 
@@ -436,6 +494,11 @@ def run_har_arm(
         invalid_reasons.append("no_verify_attempt")
     if post_fix_verify_full and not record["har_verify_passed"]:
         invalid_reasons.append("post_fix_verify_failed")
+    if not (record.get("har_task_verification_stages") or []):
+        invalid_reasons.append("missing_task_stage")
+    fb = record.get("har_fail_before") or {}
+    if fb and not fb.get("ok"):
+        invalid_reasons.append("fail_before_not_established")
     if not record["har_runs_recorded"]:
         invalid_reasons.append("no_har_run_records")
 
@@ -579,16 +642,122 @@ def _format_post_fix_verify_failure(verify: dict[str, Any], fix_round: int) -> s
     return (
         f"\n## Previous fix round {fix_round}: HAR verify --full failed\n"
         "HAR is a sandbox for verifying that your change works. Do not stop until "
-        "`har env verify 1 --full` passes.\n"
-        "- You may add or update a verification stage on the fly "
-        "(`har env add-stage … --custom --verification`).\n"
-        "- You may add a small focused regression check / test that proves the fix "
-        "(prefer a stage; keep it narrow — not the full suite).\n"
-        "- Prefer fail-before/pass-after: the check should fail on the broken tree and "
-        "pass after your fix.\n\n"
+        "`har env verify 1 --full` passes with a **behavioral** task stage.\n"
+        "- Keep (or add) an issue-specific stage that encodes the bug from the problem "
+        "statement — smoke/compile alone is not done.\n"
+        "- Fail-before/pass-after: the stage must have failed on the buggy tree and "
+        "must pass after your fix.\n"
+        "- If the stage fails with ImportError/ModuleNotFoundError, fix the slot "
+        "install/build so the oracle can run, then re-check behavior.\n"
+        "- You may add `har env add-stage … --custom --verification` or a small "
+        "focused regression script wired as that stage.\n\n"
         f"exit_code: {verify.get('exit_code')}\n"
         f"stderr (tail):\n```\n{(verify.get('stderr') or '')[-3000:]}\n```\n"
         f"stdout (tail):\n```\n{(verify.get('stdout') or '')[-2000:]}\n```\n"
+    )
+
+
+_ENV_FAILURE_MARKERS = (
+    "ModuleNotFoundError",
+    "ImportError",
+    "No module named",
+    "DLL load failed",
+    "cannot import name",
+    "error: Microsoft Visual C++",
+    "pkg_resources.DistributionNotFound",
+)
+
+
+def _parse_verify_stages(verify: dict[str, Any]) -> list[dict[str, Any]]:
+    stdout = verify.get("stdout") or ""
+    if not stdout.strip():
+        return []
+    try:
+        decoder = json.JSONDecoder()
+        idx = stdout.find("{")
+        if idx < 0:
+            return []
+        payload, _ = decoder.raw_decode(stdout[idx:])
+        stages = payload.get("stages") or []
+        return stages if isinstance(stages, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _assess_fail_before(
+    verify: dict[str, Any],
+    task_stage_ids: list[str],
+) -> tuple[bool, str, dict[str, Any]]:
+    """Return whether task stages fail on the buggy tree for a non-env reason."""
+    stages = _parse_verify_stages(verify)
+    by_name = {
+        str(stage.get("name") or stage.get("id") or ""): stage
+        for stage in stages
+        if isinstance(stage, dict)
+    }
+    task_results = []
+    for stage_id in task_stage_ids:
+        stage = by_name.get(stage_id)
+        if stage is None:
+            continue
+        output = str(stage.get("output") or "")
+        passed = bool(stage.get("pass"))
+        env_only = (not passed) and any(marker in output for marker in _ENV_FAILURE_MARKERS)
+        task_results.append(
+            {
+                "id": stage_id,
+                "pass": passed,
+                "env_failure": env_only,
+                "output_tail": output[-500:],
+            }
+        )
+
+    detail = {"task_results": task_results, "all_stages": list(by_name.keys())}
+    if not task_results:
+        return False, "task_stages_not_executed", detail
+    if all(item["pass"] for item in task_results):
+        return False, "stages_pass_on_buggy_tree", detail
+    if all(item["env_failure"] or item["pass"] for item in task_results) and any(
+        item["env_failure"] for item in task_results
+    ):
+        return False, "env_blocks_oracle", detail
+    # At least one behavioral failure among task stages.
+    return True, "task_stage_failed_as_expected", detail
+
+
+def _format_fail_before_failure(
+    round_index: int,
+    reason: str,
+    verify: dict[str, Any],
+    task_stage_ids: list[str],
+) -> str:
+    guidance = {
+        "stages_pass_on_buggy_tree": (
+            "Your task stage(s) already **pass** on the buggy tree — they do not prove "
+            "the bug. Tighten the assertion so it fails before a correct fix "
+            "(fail-before), using only the problem statement."
+        ),
+        "env_blocks_oracle": (
+            "Your task stage failed only because the package/deps/extensions are not "
+            "importable in the slot. Fix install/build in harness.env / quick verify "
+            "so the behavioral check can run, then ensure it fails for the ticket reason."
+        ),
+        "task_stages_not_executed": (
+            "Task stage ids were registered but did not appear in verify --full output. "
+            "Ensure they are listed in verificationStages and the command/script path is valid."
+        ),
+    }.get(
+        reason,
+        "Establish a task-scoped behavioral stage that fails on this buggy tree "
+        "for the problem-statement reason (fail-before).",
+    )
+    return (
+        f"\n## Previous readiness round {round_index}: fail-before gate failed ({reason})\n"
+        f"{guidance}\n"
+        f"Task stage ids: {task_stage_ids}\n"
+        f"verify exit_code: {verify.get('exit_code')}\n"
+        f"stdout (tail):\n```\n{(verify.get('stdout') or '')[-2500:]}\n```\n"
+        f"stderr (tail):\n```\n{(verify.get('stderr') or '')[-1500:]}\n```\n"
     )
 
 

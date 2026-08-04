@@ -84,6 +84,13 @@ not the repo's final contract. Replace conventions that do not match this projec
   har env add-stage feature-smoke --custom --kind test --command "<project-appropriate functional check>" --verification
   ```
 
+- Document in `.har/CLAUDE.agent.md` that for a **specific bug/feature**, agents must
+  add or reuse a **change-specific** stage with **fail-before / pass-after** (fails
+  on the broken behavior, passes after the fix). Smoke-only `--full` is not done.
+- Ensure verification stages can **run in the slot** (editable installs, built
+  native extensions, `${PYTHON_BIN}` / toolchain from `.env.agent.<id>`). Stages
+  that only fail with missing modules because launch never built the package are
+  harness bugs — fix `launch` / install, do not treat them as product proof.
 - Reuse real commands from `package.json`, `Makefile`, CI, `pyproject.toml`, etc.
 - Remove stock npm/pytest/go/cargo/maven/gradle examples that do not apply.
 - Replace all TODO placeholders in both tiers.

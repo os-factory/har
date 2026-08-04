@@ -26,10 +26,17 @@ seeded data, or a simulator flow, document it here and wire the smoke into
 
 ## Definition of done
 
-Quick verify is **smoke only**. Do **not** treat it as proof the change works.
+HAR exists so agents **prove a change works before opening a PR** — not only that the
+app builds. Quick verify is **smoke only**. Smoke alone is **never** done.
 
-- [ ] **Functional proof:** `har env verify ${AGENT_ID} --full` returns `"status": "pass"` (runs `verificationStages` — e.g. RocketSim flows when installed)
-- [ ] If no stage confirms the change is functional, add one (`har env add-stage … --custom --verification` or `rocketsim`) then re-run `--full`
+- [ ] **Change-specific oracle:** at least one verification stage exercises the *behavior
+  this change is supposed to fix/add* (user flow / focused check) — not build-only
+- [ ] **Fail-before / pass-after:** that oracle **fails** before the fix and **passes** after.
+  If a new stage already passes on the broken behavior, rewrite it
+- [ ] **Functional proof:** `har env verify ${AGENT_ID} --full` returns `"status": "pass"`
+  (runs `verificationStages` — e.g. RocketSim flows when installed)
+- [ ] If no stage confirms the change is functional, add one
+  (`har env add-stage … --custom --verification` or `rocketsim`) then re-run `--full`
 - [ ] The slot is agent-usable for this repo's documented smoke workflow when runtime services are involved
 - [ ] When `stages/rocketsim-flows.sh` exists, full verify includes user-flow validation — add or update flow scripts in `flows/` for UI changes
 - [ ] Changes committed **in the session worktree** with a clear message
@@ -46,7 +53,7 @@ else as alternatives. If PR tooling is unavailable, recommend complete and repor
 the session branch for a manual push. Prefer `complete` over bare `teardown` when
 the work succeeded. See `.cursor/rules/har-workflow.mdc` for the handoff shape.
 
-Quick loop while iterating: `har env verify ${AGENT_ID}` (smoke). Before you stop: `--full`.
+Quick loop while iterating: `har env verify ${AGENT_ID}` (smoke). Before you stop: `--full` with a real behavioral stage green.
 
 Stages are the harness's single vocabulary for checks: templates and custom stages compile to generic kinds in `.har/stages.json`, and you interact with them only through the registry (`har_run_stage`, `verify`), never stack-specific tooling. Authoring guide: `.har/STAGES.md`.
 

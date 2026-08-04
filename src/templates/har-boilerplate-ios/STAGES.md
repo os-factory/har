@@ -80,6 +80,24 @@ are inline steps owned by `.har/verify.sh`. Lifecycle kinds
 (`setup`/`launch`/`reset`/`teardown`/`inspect`) and `verify` itself never run
 as part of verification, even if listed.
 
+## Authoring a good verification stage (PR quality)
+
+Agents open better PRs when `--full` proves the **change**, not only that the
+app still builds. When you add a stage for a bugfix or feature:
+
+1. **Behavioral** — assert the user-visible flow from the ticket (repro steps,
+   expected UI/state). Do not stop at compile/build alone.
+2. **Fail-before / pass-after** — on the broken tree the stage must **fail**;
+   after the fix it must **pass**. If it already passes before you change code,
+   rewrite it.
+3. **Runnable in the slot** — use the simulator / scheme / toolchain from
+   `.env.agent.<id>` and `harness.env`.
+4. **Narrow** — one focused flow beats dumping the entire test plan into
+   `verificationStages`.
+
+Smoke/build stages may stay in `verificationStages` for health, but
+**definition of done requires a change-specific behavioral stage** as well.
+
 ## Commit gate
 
 The registry also holds the optional `commitGate` config (installed via
