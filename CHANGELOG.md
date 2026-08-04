@@ -1,3 +1,15 @@
+## [0.43.1](https://github.com/os-factory/har/compare/v0.43.0...v0.43.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **control:** attribute agent work done in the main checkout ([#142](https://github.com/os-factory/har/issues/142)) ([1eb8ffe](https://github.com/os-factory/har/commit/1eb8ffe0c1e9023de216154c36a1def2952bede6))
+
+
+### Features
+
+* **docs:** add PostHog analytics via wizard ([#141](https://github.com/os-factory/har/issues/141)) ([3fb27db](https://github.com/os-factory/har/commit/3fb27db98684b8e3a22c61d2c80d817c90dfe015))
+
 # [0.43.0](https://github.com/os-factory/har/compare/v0.42.0...v0.43.0) (2026-08-03)
 
 
