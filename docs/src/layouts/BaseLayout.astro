@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import PostHog from '../components/posthog.astro';
 
 interface Props {
   title: string;
@@ -27,6 +28,7 @@ const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/png" href="/assets/har-logo.png" />
     <title>{title}</title>
+    <PostHog />
     <script is:inline>
       (() => {
         const stored = localStorage.getItem('har-theme');
