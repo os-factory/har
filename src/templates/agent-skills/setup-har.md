@@ -38,25 +38,33 @@ If `.har/` already exists, stop and suggest `/har-maintain` instead.
 
 `har env init` prints an adaptation prompt and writes it to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor `.har/` scripts (`launch.sh`, `verify.sh`, `setup-infra.sh`, `harness.env`, `stages.json`) and `AGENT.md` to this repository's real stack, ports, and commands. Do not use `--auto` and do not ask the user to paste anything.
 
-## 5. Register the project's checks as stages
+## 5. Register functional verification stages
 
-Convert the repository's real check commands (test, lint, typecheck, whatever CI runs) into registered stages so they run in `verify --full` and are visible to every agent. Read `.har/STAGES.md` for the contract, then:
+HAR's job is to let coding agents **prove their changes work**, not only that the project compiles. Convert the repository's real checks into registered stages so they run in `verify --full`. Read `.har/STAGES.md`, then:
 
 ```bash
+# Prefer a small functional / workflow check for definition of done:
+har env add-stage feature-smoke --custom --kind test --command "<cli dry-run | api smoke | focused check>" --verification
+
+# Add CI-style checks when they are how this repo actually validates work:
 har env add-stage unit-tests --custom --kind test --command "npm test" --verification
 ```
 
+- **Quick verify** (`har env verify 1`) stays smoke (compile/import/build/health).
+- **Full verify** (`har env verify 1 --full`) must include at least one stage that exercises real behavior agents can use as done criteria.
 - Use `--command` for one-liner checks; use `--script` when a check needs the slot's env, ports, or artifacts (then implement the scaffolded `.har/stages/<id>.sh`).
 - Rich integrations ship as **plugins**: `har env add-plugin --list`, then e.g. `har env add-plugin playwright` (web) or `har env add-plugin rocketsim` (iOS). Plugins install stages; agents only talk to the stage registry.
+- Update `AGENT.md` / `.har/CLAUDE.agent.md` so definition of done requires `--full` (and adding a stage if none covers the change).
 
 ## 6. Prove the harness works
 
 ```bash
 har env launch 1
 har env verify 1
+har env verify 1 --full
 ```
 
-Fix the harness scripts until both pass. Then tear down or keep the slot as the user prefers (`har env teardown 1` keeps the branch).
+Fix the harness until quick verify passes and full verify runs the functional stage(s) you registered. Then tear down or keep the slot as the user prefers (`har env teardown 1` keeps the branch).
 
 ## 7. Commit
 

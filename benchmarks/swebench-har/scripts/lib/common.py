@@ -91,6 +91,7 @@ def run_command(
         cmd,
         cwd=cwd,
         env=env,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -108,6 +109,10 @@ def resolve_har_base_cmd(env: dict[str, str] | None = None) -> list[str]:
     env = env or load_benchmark_env()
     har_bin = env.get("HAR_BIN")
     if har_bin:
+        path = Path(har_bin)
+        # HAR_BIN may point at the bundled JS entry; always invoke via node.
+        if path.suffix == ".js" or path.name == "index.js":
+            return ["node", str(path)]
         return [har_bin]
     which = shutil.which("har")
     if which:
