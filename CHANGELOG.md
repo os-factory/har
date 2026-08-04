@@ -1,3 +1,10 @@
+## [0.43.2](https://github.com/os-factory/har/compare/v0.43.1...v0.43.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* send git remote in control sync payload ([#143](https://github.com/os-factory/har/issues/143)) ([c4efe77](https://github.com/os-factory/har/commit/c4efe773e179ae9ff735e0b439fb2e9e1311f753))
+
 ## [0.43.1](https://github.com/os-factory/har/compare/v0.43.0...v0.43.1) (2026-08-04)
 
 
