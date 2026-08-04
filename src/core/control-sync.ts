@@ -36,6 +36,7 @@ import {
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
 import { isTelemetryEnabled } from './telemetry-config';
+import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
@@ -292,6 +293,8 @@ async function collectPortalTelemetry(
   if (!isTelemetryEnabled()) return { usage: [], events: [], maxSyncedAt: null };
   try {
     const userEmail = resolvePortalUserEmail();
+    const fallbackAgentId =
+      slots.length > 0 ? Math.min(...slots.map((slot) => slot.agentId)) : null;
     const liveUsage: AgentSessionUsage[] = slots.flatMap((slot) =>
       harvestUsageForSlot({
         agentId: slot.agentId,
@@ -301,6 +304,7 @@ async function collectPortalTelemetry(
         suffix: slot.suffix,
         sessionCreatedAt: slot.sessionCreatedAt,
         repoPath,
+        includeRepoPathFallback: slot.agentId === fallbackAgentId,
       }).map((row) => ({
         ...row,
         workUnitId: slot.workUnitId ?? row.workUnitId,
@@ -325,6 +329,7 @@ async function collectPortalTelemetry(
         suffix: slot.suffix,
         sessionCreatedAt: slot.sessionCreatedAt,
         repoPath,
+        includeRepoPathFallback: slot.agentId === fallbackAgentId,
       }).map((event) => ({
         ...event,
         workUnitId: slot.workUnitId ?? event.workUnitId,
@@ -363,6 +368,7 @@ async function buildPortalPayload(
   repoPath: string,
   controlApiUrl: string,
   since: string | null,
+  full = false,
 ): Promise<{
   syncBody: Record<string, unknown>;
   runs: RunRecord[];
@@ -384,6 +390,14 @@ async function buildPortalPayload(
     controlApiUrl,
     since,
   );
+
+  if (full && isTelemetryEnabled() && usage.length === 0 && runs.some((r) => r.agentId != null)) {
+    warn(
+      `${path.basename(repoPath)}: agent runs found but no usage harvested — attribution will be missing. ` +
+        'This happens when agent sessions ran outside the har worktree slot (e.g. in the main checkout). ' +
+        'Run agents inside `har env launch`.',
+    );
+  }
 
   const syncBody: Record<string, unknown> = {
     path: repoPath,
@@ -606,6 +620,7 @@ async function syncRepoWithPortal(
     repoPath,
     controlApiUrl,
     since,
+    full,
   );
   const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
 
