@@ -247,10 +247,7 @@ export async function handleAgentSkills(options: AgentSkillsScaffoldOptions): Pr
   if (options.enabled === false) return false;
 
   let targets: AgentSkillTarget[];
-<<<<<<< HEAD
-=======
   // yargs can set `agents: false` when `--no-agents` is also a flag name collision
->>>>>>> b817956 (feat(har): guide agents to prove changes via functional verify stages)
   if (typeof options.agents === 'string') {
     targets = parseAgentTargets(options.agents);
   } else if (options.agents !== undefined) {
