@@ -9,6 +9,8 @@ REPO_ROOT="$(cd "${BENCHMARK_ROOT}/../.." && pwd)"
 COUNT="${COUNT:-10}"
 SEED="${SEED:-42}"
 ARM="${ARM:-both}"
+MAX_PER_REPO="${MAX_PER_REPO:-}"
+MAX_REPOS_PER_LANGUAGE="${MAX_REPOS_PER_LANGUAGE:-}"
 SKIP_BOOTSTRAP=0
 SKIP_EVAL=0
 DRY_RUN=0
@@ -24,6 +26,8 @@ Options:
   --count N           Instances to sample (default: ${COUNT})
   --seed N            Sample seed (default: ${SEED})
   --arm raw|har|both  Arms to run (default: ${ARM})
+  --max-per-repo N    Cap instances per repository (diversity)
+  --max-repos-per-language N  Cap repos per language (diversity)
   --bootstrap         Run ec2_bootstrap.sh first
   --skip-bootstrap    Do not bootstrap (default)
   --skip-eval         Skip official Docker evaluation
@@ -32,7 +36,7 @@ Options:
   -h, --help          Show help
 
 Env:
-  COUNT SEED ARM OPENAI_API_KEY HF_TOKEN ARTIFACT_S3_URI
+  COUNT SEED ARM MAX_PER_REPO MAX_REPOS_PER_LANGUAGE OPENAI_API_KEY HF_TOKEN ARTIFACT_S3_URI
 EOF
 }
 
@@ -41,6 +45,8 @@ while [[ $# -gt 0 ]]; do
     --count) COUNT="$2"; shift 2 ;;
     --seed) SEED="$2"; shift 2 ;;
     --arm) ARM="$2"; shift 2 ;;
+    --max-per-repo) MAX_PER_REPO="$2"; shift 2 ;;
+    --max-repos-per-language) MAX_REPOS_PER_LANGUAGE="$2"; shift 2 ;;
     --bootstrap) SKIP_BOOTSTRAP=0; DO_BOOTSTRAP=1; shift ;;
     --skip-bootstrap) SKIP_BOOTSTRAP=1; shift ;;
     --skip-eval) SKIP_EVAL=1; shift ;;
@@ -115,11 +121,17 @@ if [[ "${CLEAR_CACHE}" -eq 1 ]]; then
 fi
 
 BATCH_ARGS=(scripts/run_batch.py --count "${COUNT}" --seed "${SEED}" --arm "${ARM}")
+if [[ -n "${MAX_PER_REPO}" ]]; then
+  BATCH_ARGS+=(--max-per-repo "${MAX_PER_REPO}")
+fi
+if [[ -n "${MAX_REPOS_PER_LANGUAGE}" ]]; then
+  BATCH_ARGS+=(--max-repos-per-language "${MAX_REPOS_PER_LANGUAGE}")
+fi
 if [[ "${DRY_RUN}" -eq 1 ]]; then
   BATCH_ARGS+=(--dry-run)
 fi
 
-log "Starting batch: count=${COUNT} seed=${SEED} arm=${ARM} (log=${BATCH_LOG})"
+log "Starting batch: count=${COUNT} seed=${SEED} arm=${ARM} max_per_repo=${MAX_PER_REPO:-config} max_repos_per_language=${MAX_REPOS_PER_LANGUAGE:-config} (log=${BATCH_LOG})"
 set -o pipefail
 uv run "${BATCH_ARGS[@]}" 2>&1 | tee "${BATCH_LOG}"
 set +o pipefail
