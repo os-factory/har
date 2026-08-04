@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import posthog from 'posthog-js';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -71,6 +72,10 @@ export function UnregisterRepoButton({
         toast.success('Repository unregistered from Mission Control');
       }
 
+      posthog.capture('repository_unregistered', {
+        delete_worktrees: deleteWorktrees,
+        worktree_count: existing.length,
+      });
       setOpen(false);
       router.push('/repos');
       router.refresh();

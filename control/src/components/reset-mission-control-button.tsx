@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import posthog from 'posthog-js';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -63,6 +64,11 @@ export function ResetMissionControlButton({ repositoryCount }: ResetMissionContr
         );
       }
 
+      posthog.capture('mission_control_reset_completed', {
+        repositories_deleted: deletedRepos,
+        scrub_local_harness: scrubLocalHarness,
+        local_scrub_failures: failed.length,
+      });
       setOpen(false);
       setConfirmText('');
       router.push('/repos');

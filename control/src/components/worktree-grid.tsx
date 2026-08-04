@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import type { RowSelectionState } from '@tanstack/react-table';
+import posthog from 'posthog-js';
 import { toast } from 'sonner';
 
 import { DataTable } from '@/components/data-table/data-table';
@@ -114,6 +115,12 @@ export function WorktreeGrid({ worktrees }: { worktrees: WorktreeRow[] }) {
         toast.success(`Deleted ${deleted} worktree${deleted === 1 ? '' : 's'}`);
       }
 
+      posthog.capture('session_worktrees_deleted', {
+        selected_worktree_count: selectedRows.length,
+        deleted_worktree_count: deleted,
+        failed_worktree_count: failed.length,
+        clear_missing: clearMissing,
+      });
       setConfirmOpen(false);
       setRowSelection({});
       router.refresh();

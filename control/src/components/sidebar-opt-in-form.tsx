@@ -1,6 +1,7 @@
 'use client';
 
 import { type FormEvent, useState } from 'react';
+import posthog from 'posthog-js';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +30,7 @@ export function SidebarOptInForm() {
         subject: 'HAR Mission Control newsletter signup',
         message: 'Newsletter subscription from Mission Control',
       });
+      posthog.capture('newsletter_subscription_completed');
       setEmail('');
       setStatus('success');
     } catch (error) {
