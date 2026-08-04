@@ -624,6 +624,35 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(otelBody.events[0].promptText).toBe('persisted');
     expect('responseText' in otelBody.events[0]).toBe(false);
   });
+
+  it('forwards the git remote to /api/sync so the portal can group repos', async () => {
+    collectEnvironmentStatusMock.mockReturnValue({
+      slots: [],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      gitRemote: 'https://github.com/os-factory/har.git',
+    });
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const [, init] = portalSyncCall(fetchMock);
+    const body = JSON.parse(init.body as string);
+    expect(body.gitRemote).toBe('https://github.com/os-factory/har.git');
+  });
+
+  it('omits gitRemote when the repo has no origin remote', async () => {
+    collectEnvironmentStatusMock.mockReturnValue({
+      slots: [],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const [, init] = portalSyncCall(fetchMock);
+    const body = JSON.parse(init.body as string);
+    expect('gitRemote' in body).toBe(false);
+  });
 });
 
 describe('syncRepoWithControl — portal watermark', () => {
