@@ -12,14 +12,14 @@ jest.mock('../src/core/portal-credentials', () => ({
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
 }));
-jest.mock('../src/core/runs', () => ({ listRuns: () => [] }));
+jest.mock('../src/core/runs', () => ({ listRuns: jest.fn(() => []) }));
 jest.mock('../src/core/slot-status', () => ({
   collectEnvironmentStatus: jest.fn(() => ({
     slots: [],
     generatedAt: '2026-01-01T00:00:00.000Z',
   })),
 }));
-jest.mock('../src/core/validations', () => ({ listValidations: () => [] }));
+jest.mock('../src/core/validations', () => ({ listValidations: jest.fn(() => []) }));
 jest.mock('../src/core/work-units', () => ({
   listWorkUnits: jest.fn(() => []),
   listWorkAttempts: jest.fn(() => []),
@@ -51,6 +51,8 @@ jest.mock('../src/harness/manifest', () => ({
 jest.mock('../src/harness/stages', () => ({ readStageRegistry: () => null }));
 
 import { collectEnvironmentStatus } from '../src/core/slot-status';
+import { listRuns } from '../src/core/runs';
+import { listValidations } from '../src/core/validations';
 import {
   readPortalCredentials,
   writePortalCredentials,
@@ -65,6 +67,8 @@ import { fetchPersistedPortalTelemetry } from '../src/core/control-persisted-usa
 import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
 
 const collectEnvironmentStatusMock = collectEnvironmentStatus as jest.Mock;
+const listRunsMock = listRuns as jest.Mock;
+const listValidationsMock = listValidations as jest.Mock;
 const readPortalCredentialsMock = readPortalCredentials as jest.Mock;
 const writePortalCredentialsMock = writePortalCredentials as jest.Mock;
 const listWorkUnitsMock = listWorkUnits as jest.Mock;
@@ -82,6 +86,8 @@ function resetPayloadMocks(): void {
     generatedAt: '2026-01-01T00:00:00.000Z',
   });
   readPortalCredentialsMock.mockReturnValue(null);
+  listRunsMock.mockReturnValue([]);
+  listValidationsMock.mockReturnValue([]);
   listWorkUnitsMock.mockReturnValue([]);
   listWorkAttemptsMock.mockReturnValue([]);
   listValidationBindingsMock.mockReturnValue([]);
@@ -509,6 +515,85 @@ describe('syncRepoWithControl — portal full payload', () => {
     const [, init] = portalSyncCall(fetchMock);
     const body = JSON.parse(init.body as string);
     expect('userEmail' in body.usage[0]).toBe(false);
+  });
+
+  it('attributes runs and validations to the authenticated login email', async () => {
+    readPortalCredentialsMock.mockReturnValue({
+      portalUrl: 'https://portal.example.com',
+      token: 'har_ingest_secret',
+      email: 'login@haulieros.io',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    listRunsMock.mockReturnValue([
+      {
+        runId: '11111111-1111-1111-1111-111111111111',
+        repoPath: '/repo/x',
+        stageId: 'verify',
+        status: 'pass',
+        trigger: 'cli',
+        startedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    listValidationsMock.mockReturnValue([
+      {
+        validationId: '22222222-2222-2222-2222-222222222222',
+        treeHash: 'a'.repeat(40),
+        workDir: '/repo/x',
+        harnessRoot: '/repo/x',
+        status: 'pass',
+        full: false,
+        changedFiles: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const [, init] = portalSyncCall(fetchMock);
+    const body = JSON.parse(init.body as string);
+    expect(body.runs[0].userEmail).toBe('login@haulieros.io');
+    expect(body.validations[0].userEmail).toBe('login@haulieros.io');
+  });
+
+  it('leaves runs and validations unattributed when credentials carry no email', async () => {
+    readPortalCredentialsMock.mockReturnValue({
+      portalUrl: 'https://portal.example.com',
+      token: 'har_ingest_secret',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    listRunsMock.mockReturnValue([
+      {
+        runId: '11111111-1111-1111-1111-111111111111',
+        repoPath: '/repo/x',
+        stageId: 'verify',
+        status: 'pass',
+        trigger: 'cli',
+        startedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    listValidationsMock.mockReturnValue([
+      {
+        validationId: '22222222-2222-2222-2222-222222222222',
+        treeHash: 'a'.repeat(40),
+        workDir: '/repo/x',
+        harnessRoot: '/repo/x',
+        status: 'pass',
+        full: false,
+        changedFiles: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const [, init] = portalSyncCall(fetchMock);
+    const body = JSON.parse(init.body as string);
+    expect('userEmail' in body.runs[0]).toBe(false);
+    expect('userEmail' in body.validations[0]).toBe(false);
   });
 
   it('forwards Mission Control persisted usage when the slot is torn down', async () => {
