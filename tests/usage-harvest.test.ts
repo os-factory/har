@@ -185,6 +185,80 @@ describe('usage harvest claude', () => {
     expect(harvested[1]?.costUsd).toBe(0.2);
     expect(harvested[2]).toBeNull();
   });
+
+  it('attributes a main-checkout transcript when the worktree has none and fallback is enabled', () => {
+    const repoPath = '/home/user/Documents/Kerno/fecore';
+    const worktree = '/home/user/worktrees/main-2b19-har-agent-1-5wrz';
+    const checkoutProject = path.join(tmp, encodeClaudeProjectDir(repoPath));
+    fs.mkdirSync(checkoutProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(checkoutProject, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: repoPath }),
+        JSON.stringify({
+          type: 'result',
+          usage: { input_tokens: 30, output_tokens: 15 },
+          total_cost_usd: 0.3,
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const slot = {
+      agentId: 1,
+      workDir: worktree,
+      worktreePath: worktree,
+      branch: 'main-2b19-har-agent-1-5wrz',
+      suffix: '5wrz',
+      repoPath,
+    };
+
+    expect(harvestClaudeUsage(slot)).toBeNull();
+
+    const withFallback = harvestClaudeUsage({ ...slot, includeRepoPathFallback: true });
+    expect(withFallback).not.toBeNull();
+    expect(withFallback!.tokensOutput).toBe(15);
+    expect(withFallback!.costUsd).toBe(0.3);
+  });
+
+  it('prefers the worktree transcript over the main checkout when both exist', () => {
+    const repoPath = '/home/user/Documents/Kerno/fecore';
+    const worktree = '/home/user/worktrees/main-2b19-har-agent-1-5wrz';
+
+    const checkoutProject = path.join(tmp, encodeClaudeProjectDir(repoPath));
+    fs.mkdirSync(checkoutProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(checkoutProject, 'checkout.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: repoPath }),
+        JSON.stringify({ type: 'result', usage: { input_tokens: 99, output_tokens: 99 } }),
+      ].join('\n') + '\n',
+    );
+
+    const worktreeProject = path.join(tmp, encodeClaudeProjectDir(worktree));
+    fs.mkdirSync(worktreeProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(worktreeProject, 'worktree.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: worktree }),
+        JSON.stringify({ type: 'result', usage: { input_tokens: 5, output_tokens: 7 } }),
+      ].join('\n') + '\n',
+    );
+
+    fs.utimesSync(path.join(worktreeProject, 'worktree.jsonl'), 1000, 1000);
+    fs.utimesSync(path.join(checkoutProject, 'checkout.jsonl'), 2000, 2000);
+
+    const usage = harvestClaudeUsage({
+      agentId: 1,
+      workDir: worktree,
+      worktreePath: worktree,
+      branch: 'main-2b19-har-agent-1-5wrz',
+      suffix: '5wrz',
+      repoPath,
+      includeRepoPathFallback: true,
+    });
+
+    expect(usage!.tokensOutput).toBe(7);
+  });
 });
 
 describe('workspace path match', () => {

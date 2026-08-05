@@ -1,3 +1,22 @@
+## [0.43.2](https://github.com/os-factory/har/compare/v0.43.1...v0.43.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* send git remote in control sync payload ([#143](https://github.com/os-factory/har/issues/143)) ([c4efe77](https://github.com/os-factory/har/commit/c4efe773e179ae9ff735e0b439fb2e9e1311f753))
+
+## [0.43.1](https://github.com/os-factory/har/compare/v0.43.0...v0.43.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **control:** attribute agent work done in the main checkout ([#142](https://github.com/os-factory/har/issues/142)) ([1eb8ffe](https://github.com/os-factory/har/commit/1eb8ffe0c1e9023de216154c36a1def2952bede6))
+
+
+### Features
+
+* **docs:** add PostHog analytics via wizard ([#141](https://github.com/os-factory/har/issues/141)) ([3fb27db](https://github.com/os-factory/har/commit/3fb27db98684b8e3a22c61d2c80d817c90dfe015))
+
 # [0.43.0](https://github.com/os-factory/har/compare/v0.42.0...v0.43.0) (2026-08-03)
 
 

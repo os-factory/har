@@ -14,6 +14,7 @@ export interface HarvestSlotContext {
   suffix?: string;
   sessionCreatedAt?: string;
   repoPath: string;
+  includeRepoPathFallback?: boolean;
 }
 
 function claudeProjectsRoot(): string {
@@ -116,39 +117,54 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
 }
 
 function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePath: string; records: unknown[]; mtimeMs: number }> {
-  const targets = [slot.workDir, slot.worktreePath].filter(Boolean) as string[];
-  if (targets.length === 0) return [];
+  const primaryTargets = [slot.workDir, slot.worktreePath].filter(Boolean) as string[];
+  const fallbackTargets =
+    slot.includeRepoPathFallback && slot.repoPath && !primaryTargets.includes(slot.repoPath)
+      ? [slot.repoPath]
+      : [];
+  if (primaryTargets.length === 0 && fallbackTargets.length === 0) return [];
 
   const root = claudeProjectsRoot();
   if (!fs.existsSync(root)) return [];
 
-  const matches: Array<{ filePath: string; records: unknown[]; mtimeMs: number }> = [];
+  const primary: Array<{ filePath: string; records: unknown[]; mtimeMs: number }> = [];
+  const fallback: Array<{ filePath: string; records: unknown[]; mtimeMs: number }> = [];
 
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const projectDir = path.join(root, entry.name);
-    const encodedHit = targets.some((t) => entry.name === encodeClaudeProjectDir(t));
+    const primaryEncoded = primaryTargets.some((t) => entry.name === encodeClaudeProjectDir(t));
+    const fallbackEncoded = fallbackTargets.some((t) => entry.name === encodeClaudeProjectDir(t));
 
     for (const file of fs.readdirSync(projectDir)) {
       if (!file.endsWith('.jsonl')) continue;
       const filePath = path.join(projectDir, file);
       const stat = fs.statSync(filePath);
       const records = readJsonlRecords(filePath);
-      let cwdHit = encodedHit;
-      for (const record of records) {
-        if (!record || typeof record !== 'object') continue;
-        const cwd = String((record as { cwd?: string }).cwd ?? '');
-        if (cwd && workspaceMatchesTarget(cwd, targets)) {
-          cwdHit = true;
-          break;
+      let primaryHit = primaryEncoded;
+      let fallbackHit = fallbackEncoded;
+      if (!primaryHit) {
+        for (const record of records) {
+          if (!record || typeof record !== 'object') continue;
+          const cwd = String((record as { cwd?: string }).cwd ?? '');
+          if (!cwd) continue;
+          if (workspaceMatchesTarget(cwd, primaryTargets)) {
+            primaryHit = true;
+            break;
+          }
+          if (!fallbackHit && workspaceMatchesTarget(cwd, fallbackTargets)) {
+            fallbackHit = true;
+          }
         }
       }
-      if (!cwdHit) continue;
-      matches.push({ filePath, records, mtimeMs: stat.mtimeMs });
+      if (primaryHit) primary.push({ filePath, records, mtimeMs: stat.mtimeMs });
+      else if (fallbackHit) fallback.push({ filePath, records, mtimeMs: stat.mtimeMs });
     }
   }
 
-  return matches.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  primary.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  fallback.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return [...primary, ...fallback];
 }
 
 function extractPromptEvents(

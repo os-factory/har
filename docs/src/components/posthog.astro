@@ -1,0 +1,27 @@
+---
+// Public PostHog project token — safe to ship in client JS (same as control Dockerfile).
+// Hardcoded so GitHub Pages static builds work without CI env wiring.
+const projectToken =
+  import.meta.env.PUBLIC_POSTHOG_PROJECT_TOKEN ||
+  'phc_Btprma6YFgCEh22DcBWUJTf7YLWMrEymWmCWxeRGUsJG';
+const apiHost =
+  import.meta.env.PUBLIC_POSTHOG_HOST || 'https://eu.i.posthog.com';
+---
+<script is:inline define:vars={{ projectToken, apiHost }}>
+  const script = document.createElement('script');
+  script.src = `${apiHost}/static/array.js`;
+  script.async = true;
+  script.crossOrigin = 'anonymous';
+  script.onload = () => {
+    window.posthog.init(projectToken, {
+      api_host: apiHost,
+      tracing_headers: [window.location.hostname],
+    });
+    window.posthog.startExceptionAutocapture({
+      capture_unhandled_errors: true,
+      capture_unhandled_rejections: true,
+      capture_console_errors: false,
+    });
+  };
+  document.head.appendChild(script);
+</script>

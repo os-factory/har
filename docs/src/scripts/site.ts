@@ -1,3 +1,11 @@
+import type { PostHog } from 'posthog-js';
+
+declare global {
+  interface Window {
+    posthog?: PostHog;
+  }
+}
+
 const html = document.documentElement;
 
 function setTheme(theme: 'light' | 'dark', persist = true) {
@@ -60,6 +68,7 @@ for (const copyButton of document.querySelectorAll<HTMLElement>('[data-copy]')) 
     const label = copyButton.querySelector<HTMLElement>('[data-copy-label]');
     try {
       await navigator.clipboard.writeText(copyButton.dataset.copy ?? '');
+      window.posthog?.capture('install_command_copied');
       if (label) label.textContent = 'Copied';
       window.setTimeout(() => { if (label) label.textContent = 'Copy'; }, 1500);
     } catch {
@@ -94,6 +103,11 @@ for (const form of document.querySelectorAll<HTMLFormElement>('[data-newsletter-
       const result = await response.json() as { success?: boolean; message?: string };
 
       if (response.ok && result.success) {
+        window.posthog?.capture(
+          form.matches('[data-newsletter-form]')
+            ? 'newsletter_subscription_completed'
+            : 'enterprise_interest_submitted',
+        );
         form.reset();
         if (status) status.textContent = successMessage;
       } else if (status) {
@@ -189,6 +203,7 @@ for (const tab of tabs) {
     const content = key ? workflowContent[key] : undefined;
     if (!content || !copyRoot || !visualPanel) return;
 
+    window.posthog?.capture('workflow_stage_selected', { workflow_stage: key });
     copyRoot.innerHTML = `<span class="workflow-label">${content.label}</span><h3>${content.title}</h3><p>${content.body}</p><a class="workflow-doc-link" href="${content.docHref}">${content.docLabel} <span aria-hidden="true">→</span></a>`;
     const highlightedJson = escapeHtml(content.json).replaceAll('\"', '<span>\"</span>');
     visualPanel.innerHTML = `<div class="visual-panel-header"><span>HAR MCP</span><small>${content.detail}</small></div><div class="mcp-call"><span class="mcp-method">tool</span><strong>${content.method}</strong><small>repo: /workspace/my-app</small></div><div class="json-card"><pre>${highlightedJson}</pre></div>`;

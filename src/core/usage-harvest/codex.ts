@@ -89,8 +89,12 @@ function extractCodexTokens(records: unknown[]): {
 }
 
 export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage | null {
-  const targets = [slot.workDir, slot.worktreePath].filter(Boolean) as string[];
-  if (targets.length === 0) return null;
+  const primaryTargets = [slot.workDir, slot.worktreePath].filter(Boolean) as string[];
+  const fallbackTargets =
+    slot.includeRepoPathFallback && slot.repoPath && !primaryTargets.includes(slot.repoPath)
+      ? [slot.repoPath]
+      : [];
+  if (primaryTargets.length === 0 && fallbackTargets.length === 0) return null;
 
   const root = codexSessionsRoot();
   const files = walkJsonlFiles(root);
@@ -103,21 +107,32 @@ export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage |
     createdAt: slot.sessionCreatedAt,
   });
 
-  let best: { tokensInput: number; tokensOutput: number; tokensCacheRead: number } | null = null;
-  let bestMtime = 0;
+  type CodexTokens = { tokensInput: number; tokensOutput: number; tokensCacheRead: number };
+  let bestPrimary: CodexTokens | null = null;
+  let bestPrimaryMtime = 0;
+  let bestFallback: CodexTokens | null = null;
+  let bestFallbackMtime = 0;
 
   for (const file of files) {
     const records = readJsonl(file);
     const extracted = extractCodexTokens(records);
-    if (!extracted.cwd || !workspaceMatchesTarget(extracted.cwd, targets)) continue;
+    if (!extracted.cwd) continue;
     if (extracted.tokensInput + extracted.tokensOutput + extracted.tokensCacheRead === 0) continue;
     const mtime = fs.statSync(file).mtimeMs;
-    if (mtime >= bestMtime) {
-      bestMtime = mtime;
-      best = extracted;
+    if (workspaceMatchesTarget(extracted.cwd, primaryTargets)) {
+      if (mtime >= bestPrimaryMtime) {
+        bestPrimaryMtime = mtime;
+        bestPrimary = extracted;
+      }
+    } else if (workspaceMatchesTarget(extracted.cwd, fallbackTargets)) {
+      if (mtime >= bestFallbackMtime) {
+        bestFallbackMtime = mtime;
+        bestFallback = extracted;
+      }
     }
   }
 
+  const best = bestPrimary ?? bestFallback;
   if (!best) return null;
   const now = new Date().toISOString();
   const tokensTotal = best.tokensInput + best.tokensOutput + best.tokensCacheRead;
