@@ -1,3 +1,11 @@
+# [0.45.0](https://github.com/os-factory/har/compare/v0.44.0...v0.45.0) (2026-08-05)
+
+
+### Features
+
+* remove built-in --auto LLM adaptation (bring your own coding agent) ([#150](https://github.com/os-factory/har/issues/150)) ([87fdaaf](https://github.com/os-factory/har/commit/87fdaafe9c73139b31254fb675b9cfa57e925dae))
+* streamline work unit binding guidance ([#140](https://github.com/os-factory/har/issues/140), [#148](https://github.com/os-factory/har/issues/148)) ([#152](https://github.com/os-factory/har/issues/152)) ([a3cadc5](https://github.com/os-factory/har/commit/a3cadc531ccaade5ef2551031aa6751403fb055d))
+
 # [0.44.0](https://github.com/os-factory/har/compare/v0.43.2...v0.44.0) (2026-08-05)
 
 
