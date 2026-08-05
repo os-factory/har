@@ -1,3 +1,10 @@
+# [0.46.0](https://github.com/os-factory/har/compare/v0.45.0...v0.46.0) (2026-08-05)
+
+
+### Features
+
+* attribute runs and validations to the syncing member ([#151](https://github.com/os-factory/har/issues/151)) ([a0691d2](https://github.com/os-factory/har/commit/a0691d2c89f66471075754b9f80eb68fbdea2e47))
+
 # [0.45.0](https://github.com/os-factory/har/compare/v0.44.0...v0.45.0) (2026-08-05)
 
 
