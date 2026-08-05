@@ -174,6 +174,23 @@ header.header {
 	color: var(--sl-color-gray-3);
 }
 
+/* Mobile menu footer — keep the site link, GitHub, and theme toggle grouped
+   together at the start (Starlight strands the toggle far right by default),
+   mirroring the desktop header cluster with a divider before the toggle. */
+.mobile-preferences {
+	justify-content: flex-start;
+}
+.mobile-preferences .social-icons {
+	margin-inline-end: 0;
+}
+.mobile-preferences .social-icons::after {
+	content: '';
+	align-self: center;
+	width: 1px;
+	height: 1.75rem;
+	background: var(--sl-color-gray-5);
+}
+
 /* ---------------------------------------------------------------------------
    Right sidebar / table of contents — micro-label header + left rail with a
    green active-position marker. Depth indentation + scroll-spy are unchanged.
