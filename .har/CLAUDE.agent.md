@@ -1,6 +1,6 @@
 # Agent ${AGENT_ID} — @osfactory/har Development
 
-> [`AGENT.md`](../AGENT.md) · [`.har/README.md`](./README.md) · [`stages.json`](./stages.json)
+> [`AGENTS.md`](../AGENTS.md) · [`.har/README.md`](./README.md) · [`stages.json`](./stages.json)
 
 ## Environment
 
@@ -71,4 +71,4 @@ After changing `src/templates/`: `npm run build`, then test with a linked `har` 
 
 ## Architecture notes
 
-See `AGENT.md` for layer boundaries (`cli/` → `core/` → `harness/`). Put template changes in `src/templates/` and run `npm run build` before testing a linked `har` install.
+See `AGENTS.md` for layer boundaries (`cli/` → `core/` → `harness/`). Put template changes in `src/templates/` and run `npm run build` before testing a linked `har` install.

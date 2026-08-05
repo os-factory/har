@@ -114,6 +114,8 @@ describe('adaptation prompts with maintain bundle', () => {
     expect(maintainPrompt).toContain('.har/maintain/');
     expect(maintainPrompt).toContain('Do **not** read files from the globally installed har package');
     expect(maintainPrompt).not.toContain('{{MAINTAIN_BUNDLE_SECTION}}');
+    expect(maintainPrompt).toContain('Generator 0.5.0');
+    expect(maintainPrompt).toContain('AGENTS.md');
   });
 
   it('maintain prompt includes dynamic drift actions from bundle report', () => {
@@ -135,6 +137,13 @@ describe('adaptation prompts with maintain bundle', () => {
       stale: [{ file: 'legacy.sh', hint: 'Delete after merge.' }],
       missingPortVars: ['HARNESS_DB_PORT_DEFAULT'],
       agentSlotMismatch: null,
+      instructionFiles: [
+        {
+          kind: 'migrate_legacy_agent_md',
+          path: 'AGENT.md',
+          message: 'Legacy AGENT.md found — migrate into AGENTS.md.',
+        },
+      ],
       validation: {
         pass: false,
         errors: [{ file: 'provision-toolchain.sh', message: 'Required file missing', severity: 'error' }],
@@ -147,5 +156,8 @@ describe('adaptation prompts with maintain bundle', () => {
     expect(maintainPrompt).toContain('legacy.sh');
     expect(maintainPrompt).toContain('HARNESS_DB_PORT_DEFAULT');
     expect(maintainPrompt).toContain('Validation blockers');
+    expect(maintainPrompt).toContain('Agent instruction files');
+    expect(maintainPrompt).toContain('AGENT.md');
+    expect(maintainPrompt).toContain('Generator 0.5.0');
   });
 });

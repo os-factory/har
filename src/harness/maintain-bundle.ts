@@ -17,6 +17,7 @@ import {
   type PluginDriftResult,
 } from './plugin-drift';
 import type { ValidationIssue, ValidationResult } from './validator';
+import { detectInstructionFiles } from './instruction-files';
 
 export const MAINTAIN_DIR = 'maintain';
 
@@ -42,6 +43,17 @@ export interface MaintainStaleFile {
   hint: string;
 }
 
+/** Repo-root agent instruction migrations (outside `.har/` checksum drift). */
+export interface InstructionFileMaintainNote {
+  kind:
+    | 'migrate_legacy_agent_md'
+    | 'create_agents_md'
+    | 'refresh_agents_md_har_section'
+    | 'claude_md_pointer';
+  path: string;
+  message: string;
+}
+
 export interface MaintainBundleReport {
   generatedAt: string;
   generatorVersion: HarnessDriftResult['generatorVersion'];
@@ -52,6 +64,8 @@ export interface MaintainBundleReport {
   stale: MaintainStaleFile[];
   missingPortVars: string[];
   agentSlotMismatch: HarnessDriftResult['agentSlotMismatch'];
+  /** Generator 0.5.0+ — AGENTS.md / CLAUDE.md guidance for the adapt prompt. */
+  instructionFiles: InstructionFileMaintainNote[];
   validation: {
     pass: boolean;
     errors: ValidationIssue[];
@@ -180,6 +194,54 @@ function buildStale(drift: HarnessDriftResult): MaintainStaleFile[] {
     .sort((a, b) => a.file.localeCompare(b.file));
 }
 
+export function buildInstructionFileNotes(repoPath: string): InstructionFileMaintainNote[] {
+  const detection = detectInstructionFiles(repoPath);
+  const notes: InstructionFileMaintainNote[] = [];
+
+  if (detection.agentMd) {
+    notes.push({
+      kind: 'migrate_legacy_agent_md',
+      path: 'AGENT.md',
+      message:
+        'Legacy AGENT.md (singular) found — merge unique notes into AGENTS.md, then delete AGENT.md. Codex auto-loads AGENTS.md only.',
+    });
+  }
+
+  if (!detection.agentsMd) {
+    notes.push({
+      kind: 'create_agents_md',
+      path: 'AGENTS.md',
+      message:
+        'AGENTS.md missing — create it with a HAR / agent environment section (or let maintain’s instruction-files step scaffold it, then fill project-specific notes).',
+    });
+  } else {
+    notes.push({
+      kind: 'refresh_agents_md_har_section',
+      path: 'AGENTS.md',
+      message:
+        'Refresh the managed HAR / agent environment section in AGENTS.md if workflow/commands changed — do not wipe unrelated project guidance.',
+    });
+  }
+
+  if (detection.claudeMd) {
+    notes.push({
+      kind: 'claude_md_pointer',
+      path: 'CLAUDE.md',
+      message:
+        'Keep CLAUDE.md as a thin pointer to AGENTS.md (do not duplicate the full HAR workflow).',
+    });
+  } else {
+    notes.push({
+      kind: 'claude_md_pointer',
+      path: 'CLAUDE.md',
+      message:
+        'Optional: add a thin CLAUDE.md pointer → AGENTS.md when Claude Code is used on this repo.',
+    });
+  }
+
+  return notes;
+}
+
 function buildReadme(report: MaintainBundleReport): string {
   const lines: string[] = [
     '# Harness maintenance bundle',
@@ -259,6 +321,17 @@ function buildReadme(report: MaintainBundleReport): string {
       'Canonical source is `.har/stages.json`. Run `har env maintain` to sync legacy exports in `harness.env`, or edit `agentSlots` there.',
       '',
     );
+  }
+
+  if (report.instructionFiles.length > 0) {
+    lines.push('', '## Agent instruction files (generator 0.5.0)', '');
+    lines.push(
+      'Repo-root agent docs are **outside** `.har/` checksum drift. Apply while adapting:',
+      '',
+    );
+    for (const note of report.instructionFiles) {
+      lines.push(`- **\`${note.path}\`** (${note.kind}): ${note.message}`);
+    }
   }
 
   lines.push('', '## Stale files (review)', '');
@@ -421,6 +494,7 @@ export function buildMaintainBundle(
     stale: buildStale(drift),
     missingPortVars: drift.missingPortVars,
     agentSlotMismatch: drift.agentSlotMismatch,
+    instructionFiles: buildInstructionFileNotes(repoPath),
     validation: {
       pass: validation.pass,
       errors,
@@ -516,13 +590,27 @@ export function formatMaintainBundlePromptSection(report: MaintainBundleReport):
     );
   }
 
+  if (report.instructionFiles.length > 0) {
+    lines.push(
+      '### Agent instruction files (generator 0.5.0 — outside `.har/` drift)',
+      '',
+      'These are **not** checksum drift rows. Apply them while adapting (HAR also migrates/scaffolds on maintain):',
+      '',
+    );
+    for (const note of report.instructionFiles) {
+      lines.push(`- **\`${note.path}\`** (${note.kind}): ${note.message}`);
+    }
+    lines.push('');
+  }
+
   if (
     report.actions.length === 0 &&
     report.pluginActions.length === 0 &&
     report.stale.length === 0 &&
     report.missingPortVars.length === 0 &&
     !report.agentSlotMismatch &&
-    report.validation.errors.length === 0
+    report.validation.errors.length === 0 &&
+    report.instructionFiles.length === 0
   ) {
     lines.push('No template drift detected. Review repo stack changes manually if needed.', '');
   }

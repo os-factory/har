@@ -1,6 +1,6 @@
 # Agent ${AGENT_ID} — Mission Control
 
-> [`AGENT.md`](../AGENT.md) · [`.har/README.md`](./README.md) · [`stages.json`](./stages.json)
+> [`AGENTS.md`](../AGENTS.md) · [`.har/README.md`](./README.md) · [`stages.json`](./stages.json)
 
 ## Environment
 

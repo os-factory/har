@@ -41,17 +41,17 @@ When upgrading `@osfactory/har` or adopting new harness standards:
 
 **Earlier standards:**
 
-- Add **Run history** section to repo-root `AGENT.md` if missing (shell vs `har env`, worktree vs runs location)
-- Ensure `AGENT.md` / `CLAUDE.agent.md` frame the harness as **how you run the project** (launch for manual testing/browser/screenshots; fix — don't work around — failing harness commands)
+- Add **Run history** section to repo-root `AGENTS.md` if missing (shell vs `har env`, worktree vs runs location)
+- Ensure `AGENTS.md` / `CLAUDE.agent.md` frame the harness as **how you run the project** (launch for manual testing/browser/screenshots; fix — don't work around — failing harness commands)
 - Ensure `launch.sh` installs dependencies in fresh worktrees and resolves the project subdirectory inside the worktree (`git rev-parse --show-prefix`) for monorepos
-- If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENT.md`, per-project pointer docs, and a single root Cursor rule
+- If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENTS.md`, per-project pointer docs, and a single root Cursor rule
 - Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)
 - Align `launch.sh` / `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
 - Do **not** blindly overwrite customized `verify.sh`
 
-## Step 3 — Refresh repo-root `AGENT.md`
+## Step 3 — Refresh repo-root `AGENTS.md`
 
-If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENT.md`:
+If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENTS.md`:
 
 - Links to `.har/README.md` and `.har/CLAUDE.agent.md`
 - Preferred: HAR MCP tools or `har env …` (persists run history)
@@ -60,7 +60,7 @@ If harness commands, rules, or workflow changed, update the **HAR / agent enviro
 - Agent rules (ports, agent-cli.sh, isolation)
 - Project-specific notes
 
-If `AGENT.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
+If `AGENTS.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
 
 ## Rules
 

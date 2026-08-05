@@ -89,7 +89,7 @@ Everything beyond install and first commands lives at [harproject.dev](https://h
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, the dogfood harness loop, and architecture. Coding agents working on this repo should start with [AGENT.md](./AGENT.md). Maintainer release process: [RELEASING.md](./RELEASING.md).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, the dogfood harness loop, and architecture. Coding agents working on this repo should start with [AGENTS.md](./AGENTS.md). Maintainer release process: [RELEASING.md](./RELEASING.md).
 
 ## Sponsors
 

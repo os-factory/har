@@ -7,7 +7,7 @@ The full contributor guide lives in the repository:
 
 **[CONTRIBUTING.md on GitHub](https://github.com/os-factory/har/blob/main/CONTRIBUTING.md)**
 
-That document covers setup, architecture layers, the dogfood harness loop, commit conventions, and where to put changes. Coding agents should also read [AGENT.md](https://github.com/os-factory/har/blob/main/AGENT.md). Maintainer release mechanics are in [RELEASING.md](https://github.com/os-factory/har/blob/main/RELEASING.md).
+That document covers setup, architecture layers, the dogfood harness loop, commit conventions, and where to put changes. Coding agents should also read [AGENTS.md](https://github.com/os-factory/har/blob/main/AGENTS.md). Maintainer release mechanics are in [RELEASING.md](https://github.com/os-factory/har/blob/main/RELEASING.md).
 
 ## Short version
 

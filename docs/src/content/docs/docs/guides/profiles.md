@@ -32,7 +32,7 @@ The scaffold intentionally contains project-specific placeholders. Adapt:
 - project-specific environment values.
 
 Without `--auto`, HAR writes `.har/ADAPT-PROMPT.md` for a coding agent. With
-`--auto`, HAR calls Claude and can propose `AGENT.md`.
+`--auto`, HAR calls Claude and can propose `AGENTS.md`.
 
 ## Toolchains
 

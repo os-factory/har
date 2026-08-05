@@ -44,7 +44,11 @@ export interface ScaffoldResult {
   projectName: string;
 }
 
-function scaffoldClaudeMd(repoPath: string, projectName: string, force: boolean): void {
+/**
+ * @deprecated CLAUDE.md is created by handleInstructionFiles when Claude is selected.
+ * Kept for tests that assert the template still resolves.
+ */
+export function scaffoldClaudeMd(repoPath: string, projectName: string, force: boolean): void {
   const templatePath = resolveTemplateFile('CLAUDE.md.template');
   if (!templatePath) return;
 
@@ -111,7 +115,8 @@ export function scaffoldHarnessBoilerplate(
   );
   writeManifest(repoPath, manifest);
 
-  scaffoldClaudeMd(repoPath, projectName, options.force ?? false);
+  // CLAUDE.md / AGENTS.md are installed by handleInstructionFiles during init/onboard
+  // (AGENTS.md always; CLAUDE.md only when Claude is a confirmed target).
   ensureRootGitignorePatterns(repoPath);
 
   success(`Copied harness boilerplate to .har/ (profile: ${profile})`);

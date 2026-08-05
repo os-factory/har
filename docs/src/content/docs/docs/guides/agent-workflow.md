@@ -5,7 +5,7 @@ description: The safe lifecycle for parallel coding tasks.
 
 ## Before editing
 
-1. Read the repository's `AGENT.md`, `.har/README.md`, and `.har/stages.json`.
+1. Read the repository's `AGENTS.md`, `.har/README.md`, and `.har/stages.json`.
 2. Check status before choosing a slot.
 3. On the **main checkout**, switch to the branch you want as the session base
    (usually `main`) — every launch creates a worktree from that HEAD.

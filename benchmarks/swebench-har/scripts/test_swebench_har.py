@@ -139,7 +139,7 @@ def test_profile_inference() -> None:
 
 
 def test_patch_filtering() -> None:
-    files = [".har/verify.sh", "src/fix.py", "AGENT.md", "lib/a.py"]
+    files = [".har/verify.sh", "src/fix.py", "AGENTS.md", "lib/a.py"]
     kept = filter_changed_files(files)
     assert set(kept) == {"src/fix.py", "lib/a.py"}
 

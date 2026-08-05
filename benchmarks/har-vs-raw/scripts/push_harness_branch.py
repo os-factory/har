@@ -30,7 +30,7 @@ def repo_path(repo: dict, workspaces_dir: Path) -> Path:
 def has_har_changes(repo_path: Path) -> bool:
     if not (repo_path / ".har").exists():
         return False
-    result = run_command(["git", "status", "--porcelain", ".har", "AGENT.md"], cwd=repo_path)
+    result = run_command(["git", "status", "--porcelain", ".har", "AGENTS.md"], cwd=repo_path)
     return bool(result.stdout.strip())
 
 
@@ -48,7 +48,7 @@ def push_harness_branch(repo: dict, workspaces_dir: Path, branch: str, force: bo
     # Stash or commit harness files on a dedicated branch
     status = run_command(["git", "status", "--porcelain"], cwd=path)
     if status.stdout.strip():
-        run_command(["git", "add", ".har", "AGENT.md", "playwright.config.js", "tests"], cwd=path, check=False)
+        run_command(["git", "add", ".har", "AGENTS.md", "playwright.config.js", "tests"], cwd=path, check=False)
         run_command(
             ["git", "commit", "-m", "chore(.har): benchmark harness setup"],
             cwd=path,

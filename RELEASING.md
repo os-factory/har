@@ -1,6 +1,6 @@
 # Releasing HAR
 
-Maintainer guide for cutting `@osfactory/har` releases. Contributors should use [CONTRIBUTING.md](./CONTRIBUTING.md) for day-to-day development; coding agents should read [AGENT.md](./AGENT.md) first.
+Maintainer guide for cutting `@osfactory/har` releases. Contributors should use [CONTRIBUTING.md](./CONTRIBUTING.md) for day-to-day development; coding agents should read [AGENTS.md](./AGENTS.md) first.
 
 Releases are driven by [Conventional Commits](https://www.conventionalcommits.org/) on `main`. See [Commit messages](./CONTRIBUTING.md#commit-messages-required-for-releases) for the prefixes that bump semver.
 

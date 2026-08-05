@@ -167,14 +167,18 @@ Onboarding may set an initial `agentSlots.max` in `.har/stages.json`. After you 
 ### Git worktree
 `launch.sh` creates an isolated session worktree at `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` by default (`HARNESS_USE_WORKTREE=true`) and records it in `.har/slots/agent-<id>.json`. Agents should commit from that worktree, not the main checkout.
 
-## Step 3 — Update repo-root `AGENT.md`
+## Step 3 — Update repo-root `AGENTS.md`
 
 Coding agents discover the harness through two files:
 
-1. **`AGENT.md`** (repo root) — short pointer, always read first
+1. **`AGENTS.md`** (repo root) — shared agent instructions (Codex auto-loads this; Claude via `CLAUDE.md` pointer)
 2. **`.har/README.md`** — full index of what's in the harness
 
-If **no `AGENT.md` exists**, create one at the repo root using this structure:
+Do **not** create `AGENT.md` (singular) — that legacy name is obsolete. If `AGENT.md` exists, merge any unique notes into `AGENTS.md` and delete `AGENT.md`.
+
+If **`har env init` already created `AGENTS.md`**, refresh the **HAR / agent environment** section and fill in **Project-specific notes** — do not wipe unrelated content.
+
+If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 
 - Link to `.har/README.md` and `.har/CLAUDE.agent.md`
 - State plainly: **the harness is how you run this project** — to see the app live (manual testing, browser, screenshots), `launch` a slot; never hand-roll docker/dev-server startup, and never work around a failing harness command with ad-hoc setup (fix or report it instead)
@@ -183,14 +187,16 @@ If **no `AGENT.md` exists**, create one at the repo root using this structure:
 - Rules (no hardcoded ports, use `./.har/agent-cli.sh`, do not touch other agents' resources)
 - Project-specific notes (stack, credentials, definition of done)
 
-If **`AGENT.md` already exists**, add or update a concise **HAR / agent environment** section — do not replace unrelated content.
+If **`AGENTS.md` already exists** (project-owned), add or update a concise **HAR / agent environment** section — do not replace unrelated content.
+
+Keep **`CLAUDE.md`** as a thin pointer to `AGENTS.md` (Claude Code auto-loads `CLAUDE.md`). Do not paste the full harness workflow into `CLAUDE.md`.
 
 ### Monorepos / multiple harnesses
 
 If this repository contains **more than one project or `.har` harness** (check for `.har/` directories above or below this one):
 
-- Maintain a **"Harnesses in this repo"** table in the ROOT `AGENT.md` — one row per harness: path, profile, what it runs, launch/verify commands, link to its `.har/README.md`. Lead with "pick the harness that owns the files you are changing."
-- Keep a small `AGENT.md` (and `CLAUDE.md` pointer) **inside each project directory** for local discovery, with a back-link to the root index.
+- Maintain a **"Harnesses in this repo"** table in the ROOT `AGENTS.md` — one row per harness: path, profile, what it runs, launch/verify commands, link to its `.har/README.md`. Lead with "pick the harness that owns the files you are changing."
+- Keep a small `AGENTS.md` (and `CLAUDE.md` pointer) **inside each project directory** for local discovery, with a back-link to the root index.
 - Keep ONE Cursor rule at the repo root (`.cursor/rules/har-workflow.mdc`) listing all harnesses — not one rule per project.
 
 Include a **Run history** subsection:

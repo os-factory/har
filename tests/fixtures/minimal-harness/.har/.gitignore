@@ -3,5 +3,5 @@ logs/
 runs/
 validations/
 artifacts/
-AGENT.md.proposed
-AGENT.md.proposed.meta.json
+AGENTS.md.proposed
+AGENTS.md.proposed.meta.json

@@ -32,13 +32,13 @@ export async function authorHarness(
   const mode = options.mode ?? 'init';
 
   const systemPromptPath = resolvePromptPath('system-authoring.md');
-  const agentMdTemplatePath = resolveTemplateFile('AGENT.md.template');
+  const agentMdTemplatePath = resolveTemplateFile('AGENTS.md.template');
   let systemPrompt = fs.existsSync(systemPromptPath)
     ? fs.readFileSync(systemPromptPath, 'utf8')
     : 'Adapt the .har/ boilerplate to match the repository. Edit files directly. Call finishAuthoring when done.';
 
   if (agentMdTemplatePath) {
-    systemPrompt += `\n\n## AGENT.md template (starting point for proposeAgentMd)\n\n${fs.readFileSync(agentMdTemplatePath, 'utf8')}`;
+    systemPrompt += `\n\n## AGENTS.md template (starting point for proposeAgentsMd)\n\n${fs.readFileSync(agentMdTemplatePath, 'utf8')}`;
   }
 
   const tools = buildAuthoringTools();
@@ -58,9 +58,9 @@ export async function authorHarness(
     throw new Error(`Cannot read harness dir at: ${harnessDir}`);
   }
 
-  const existingAgentMd = fs.existsSync(path.join(repoPath, 'AGENT.md'))
-    ? 'AGENT.md exists at repo root — read it before proposing changes via proposeAgentMd.'
-    : 'No AGENT.md at repo root yet — propose one via proposeAgentMd.';
+  const existingAgentMd = fs.existsSync(path.join(repoPath, 'AGENTS.md'))
+    ? 'AGENTS.md exists at repo root — read it before proposing changes via proposeAgentsMd.'
+    : 'No AGENTS.md at repo root yet — propose one via proposeAgentsMd.';
 
   const modeInstructions =
     mode === 'maintain'
