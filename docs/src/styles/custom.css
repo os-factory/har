@@ -174,6 +174,42 @@ header.header {
 	color: var(--sl-color-gray-3);
 }
 
+/* Mobile menu bar — keep the site link, GitHub, and theme toggle grouped
+   together at the start (Starlight strands the toggle far right by default),
+   mirroring the desktop header cluster with a divider before the toggle. */
+/* Move the bar to the top of the mobile menu (it ships at the bottom). */
+.sidebar-content > *:has(.mobile-preferences) {
+	order: -1;
+}
+.mobile-preferences {
+	justify-content: flex-start;
+	column-gap: 0.75rem;
+	border-top: 0;
+	border-bottom: 1px solid var(--sl-color-gray-6);
+	margin-bottom: 0.5rem;
+}
+.mobile-preferences .social-icons {
+	margin-inline-end: 0;
+	gap: 0.75rem;
+}
+.mobile-preferences .social-icons::after {
+	content: '';
+	align-self: center;
+	width: 1px;
+	height: 1.5rem;
+	background: var(--sl-color-gray-5);
+}
+/* The toggle centers an 18px icon in a fixed 36px box, leaving ~9px of dead
+   space that makes the moon/sun drift from the divider. Collapse its layout
+   box to the icon (keeping a padded tap target) exactly as the GitHub link
+   does, so both icons hug their dividers identically. */
+.mobile-preferences .har-theme-toggle {
+	width: auto;
+	height: auto;
+	padding: 0.5em;
+	margin: -0.5em;
+}
+
 /* ---------------------------------------------------------------------------
    Right sidebar / table of contents — micro-label header + left rail with a
    green active-position marker. Depth indentation + scroll-spy are unchanged.
@@ -208,16 +244,120 @@ starlight-toc a[aria-current='true'] {
 	font-weight: 500;
 }
 
+/* Mobile "On this page" dropdown — Starlight paints it in the page background,
+   so it blends in. Raise it onto a distinct surface with a visible hairline. */
+mobile-starlight-toc .dropdown {
+	background: var(--sl-color-bg-sidebar);
+	border-color: var(--sl-color-hairline);
+	border-top-color: var(--sl-color-hairline);
+	box-shadow: 0 16px 32px -16px rgba(0, 0, 0, 0.75);
+}
+/* Current section: highlight the whole row, drop the trailing check mark. */
+mobile-starlight-toc .dropdown a[aria-current='true'] {
+	background: var(--har-accent-soft);
+	color: var(--sl-color-text-accent);
+	font-weight: 500;
+}
+mobile-starlight-toc .dropdown a[aria-current='true']::after {
+	display: none;
+}
+
 /* ---------------------------------------------------------------------------
    Search button — hairline pill
    --------------------------------------------------------------------------- */
-site-search button {
+site-search button[data-open-modal] {
 	border: 1px solid var(--sl-color-hairline);
 	border-radius: var(--har-radius);
 	background: var(--sl-color-bg-sidebar);
 }
-site-search button:hover {
+site-search button[data-open-modal]:hover {
 	border-color: var(--sl-color-text-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Mobile header — subtler icon-only controls, and bring the site link /
+   GitHub / theme toggle up into the header next to search.
+   --------------------------------------------------------------------------- */
+@media (max-width: 49.9375rem) {
+	/* Search: drop the pill chrome and shrink the icon to a plain glyph. */
+	site-search button[data-open-modal] {
+		height: 2rem;
+		padding: 0.25rem;
+		border: 0;
+		background: transparent;
+		font-size: 1.1rem;
+		color: var(--sl-color-gray-2);
+	}
+	/* Menu (hamburger / close): icon-only with a divider on its left so it
+	   lines up with the rest of the cluster. */
+	starlight-menu-button button {
+		width: auto;
+		height: 2rem;
+		align-items: center;
+		justify-content: center;
+		padding-block: 0.3rem;
+		padding-inline: 0.85rem 0.35rem;
+		background: transparent;
+		color: var(--sl-color-white);
+		box-shadow: none;
+		border: 0;
+		border-inline-start: 1px solid var(--sl-color-gray-5);
+		border-radius: 0;
+		inset-inline-end: 1rem;
+	}
+	/* Logo stays left and never collapses; controls group on the right. */
+	.header .title-wrapper {
+		margin-inline-end: auto;
+		flex-shrink: 0;
+	}
+	/* The domain text plus the logo overflow a phone header, so on mobile the
+	   header keeps just the icons (search / GitHub / toggle / menu). */
+	.header .right-group .har-site-link,
+	.header .right-group .har-nav-divider {
+		display: none;
+	}
+	.header .right-group {
+		display: flex;
+		align-items: center;
+		gap: 0.85rem;
+		/* Sit just left of the fixed menu button so the row reads as one group. */
+		margin-inline-end: 0;
+	}
+	/* Vertical separator between the search icon and the icon cluster. */
+	.header .right-group::before {
+		content: '';
+		align-self: center;
+		width: 1px;
+		height: 1.4rem;
+		background: var(--sl-color-gray-5);
+	}
+	/* Remove the now-duplicate bar from inside the menu. */
+	.sidebar-content > *:has(.mobile-preferences) {
+		display: none;
+	}
+	/* Starlight enlarges the menu links to 16px on mobile; bring them back in
+	   proportion with the rest of the type. */
+	.sidebar-content a {
+		font-size: 0.875rem;
+	}
+	/* Open search dialog: subtler, smaller Cancel button (Starlight ships a big
+	   64px accent-green control). */
+	button[data-close-modal] {
+		height: 2.25rem;
+		padding: 0.25rem 0.5rem;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--sl-color-gray-2);
+	}
+	button[data-close-modal]:hover {
+		color: var(--sl-color-white);
+	}
+	#starlight__search {
+		--sl-search-cancel-space: 4rem;
+	}
 }
 
 /* ---------------------------------------------------------------------------
