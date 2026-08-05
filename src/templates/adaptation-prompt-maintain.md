@@ -64,6 +64,16 @@ and the repo-specific definition of "agent usable."
 
 When upgrading `@osfactory/har` or adopting new harness standards:
 
+**Generator 0.5.0 — `AGENTS.md` (canonical agent guide):**
+
+- Repo-root **`AGENTS.md`** is now the shared HAR workflow contract (Codex auto-loads it). Do **not** create or keep **`AGENT.md`** (singular).
+- If **`AGENT.md` exists**: merge any unique project notes into `AGENTS.md`, ensure a **HAR / agent environment** section is present, then **delete `AGENT.md`**.
+- If **`AGENTS.md` is missing**: create it (HAR may already have scaffolded a managed section during `maintain` — fill **Project-specific notes** and keep the marked HAR section).
+- If **`AGENTS.md` already exists**: add or refresh the managed **HAR / agent environment** section only — do not wipe unrelated project guidance.
+- Keep **`CLAUDE.md`** as a **thin pointer** to `AGENTS.md` (Claude Code auto-loads `CLAUDE.md`). Never paste the full Cursor-rule / HAR workflow into `CLAUDE.md`.
+- Update links in `.har/CLAUDE.agent.md` and `.har/README.md` from `AGENT.md` → `AGENTS.md` if they still point at the legacy name.
+- Cursor still uses `.cursor/rules/har-workflow.mdc` (always-on); that rule should also say `AGENTS.md`.
+
 **Generator 0.4.0 — primary app & shared infra services:**
 
 - Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from `.har/maintain/templates/harness.env`. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
