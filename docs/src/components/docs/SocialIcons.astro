@@ -1,0 +1,54 @@
+---
+/**
+ * Overrides Starlight's SocialIcons to add a "Website" link to the header's
+ * right-hand cluster (replacing the sidebar's Website entry). The configured
+ * social icons render unchanged after it.
+ */
+import config from 'virtual:starlight/user-config';
+import { Icon } from '@astrojs/starlight/components';
+
+const links = config.social || [];
+---
+
+<a href="/" class="har-site-link">harproject.dev</a>
+{links.length > 0 && <span class="har-nav-divider" aria-hidden="true" />}
+{
+	links.length > 0 &&
+		links.map(({ label, href, icon }) => (
+			<a href={href} rel="me" class="sl-flex social-link">
+				<span class="sr-only">{label}</span>
+				<Icon name={icon} />
+			</a>
+		))
+}
+
+<style>
+	@layer starlight.core {
+		.social-link {
+			color: var(--sl-color-text-accent);
+			padding: 0.5em;
+			margin: -0.5em;
+		}
+		.social-link:hover {
+			color: var(--sl-color-white);
+		}
+		/* Text nav link — muted, distinct from the accent social icons. */
+		.har-site-link {
+			color: var(--sl-color-gray-2);
+			font-size: var(--sl-text-sm);
+			font-weight: 500;
+			text-decoration: none;
+			white-space: nowrap;
+		}
+		.har-site-link:hover {
+			color: var(--sl-color-white);
+		}
+		/* Vertical separator between the site link and the social icons. */
+		.har-nav-divider {
+			align-self: center;
+			width: 1px;
+			height: 2rem;
+			background: var(--sl-color-gray-5);
+		}
+	}
+</style>

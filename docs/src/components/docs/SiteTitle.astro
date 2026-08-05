@@ -1,0 +1,41 @@
+---
+/**
+ * Overrides Starlight's SiteTitle so the logo links to the docs home (the
+ * Introduction) instead of the marketing site root, rendering the mark only.
+ * The logo is referenced by its public asset path (as the favicon is) to avoid
+ * Starlight's internal `virtual:starlight/user-images` module, whose types are
+ * not exposed to `astro check` in project-level component overrides.
+ */
+const siteTitleHref = '/docs/getting-started/introduction/';
+const { siteTitle } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="site-title sl-flex">
+	<img alt="HAR" src="/assets/har-logo.png" width="512" height="512" />
+	<span class="sr-only" translate="no">{siteTitle}</span>
+</a>
+
+<style>
+	@layer starlight.core {
+		.site-title {
+			align-items: center;
+			gap: var(--sl-nav-gap);
+			font-size: var(--sl-text-h4);
+			font-weight: 600;
+			color: var(--sl-color-text-accent);
+			text-decoration: none;
+			white-space: nowrap;
+			min-width: 0;
+		}
+		span {
+			overflow: hidden;
+		}
+		img {
+			height: calc(var(--sl-nav-height) - 2 * var(--sl-nav-pad-y));
+			width: auto;
+			max-width: 100%;
+			object-fit: contain;
+			object-position: 0 50%;
+		}
+	}
+</style>

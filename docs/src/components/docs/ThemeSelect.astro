@@ -1,0 +1,94 @@
+---
+/**
+ * Overrides Starlight's ThemeSelect with a 2-state sun/moon toggle that matches
+ * the marketing site's ThemeToggle and persists to the shared `har-theme` key.
+ *
+ * Starlight renders this in both the desktop header and the mobile menu, so it
+ * is a self-wiring custom element (one handler per instance). It carries its own
+ * scoped styles because the marketing global.css is not loaded on docs pages.
+ */
+---
+
+<har-theme-toggle>
+	<button type="button" class="har-theme-toggle" aria-label="Switch color theme" title="Switch color theme">
+		<svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+			<circle cx="12" cy="12" r="3.4"></circle>
+			<path
+				d="M12 2.25v2.2M12 19.55v2.2M2.25 12h2.2M19.55 12h2.2M5.1 5.1l1.55 1.55M17.35 17.35l1.55 1.55M18.9 5.1l-1.55 1.55M6.65 17.35 5.1 18.9"
+			></path>
+		</svg>
+		<svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+			<path d="M20.1 15.1A8.3 8.3 0 0 1 8.9 3.9a8.3 8.3 0 1 0 11.2 11.2Z"></path>
+		</svg>
+		<span class="sr-only">Switch theme</span>
+	</button>
+</har-theme-toggle>
+
+<style>
+	har-theme-toggle {
+		display: inline-flex;
+	}
+	.har-theme-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--sl-color-gray-1);
+		cursor: pointer;
+		transition: color 0.2s ease;
+	}
+	.har-theme-toggle:hover {
+		color: var(--sl-color-white);
+	}
+	.theme-icon {
+		width: 18px;
+		height: 18px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.7;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.theme-icon-moon {
+		display: none;
+	}
+	:global(:root[data-theme='dark']) .theme-icon-sun {
+		display: none;
+	}
+	:global(:root[data-theme='dark']) .theme-icon-moon {
+		display: block;
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+</style>
+
+<script>
+	class HarThemeToggle extends HTMLElement {
+		constructor() {
+			super();
+			this.querySelector('button')?.addEventListener('click', () => {
+				const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+				document.documentElement.dataset.theme = next;
+				document.documentElement.style.colorScheme = next;
+				try {
+					localStorage.setItem('har-theme', next);
+				} catch {}
+			});
+		}
+	}
+	customElements.define('har-theme-toggle', HarThemeToggle);
+</script>

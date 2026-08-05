@@ -1,0 +1,33 @@
+---
+/**
+ * Overrides Starlight's ThemeProvider.
+ *
+ * Shares the marketing site's `har-theme` localStorage key (default dark) so a
+ * visitor's light/dark choice carries across `/` and `/docs`. Mirrors the
+ * pre-paint script in src/layouts/BaseLayout.astro so there's no theme flash.
+ */
+---
+
+{/* Inlined to run before paint (avoids FOUC). */}
+<script is:inline>
+	(() => {
+		const KEY = 'har-theme';
+		let stored = null;
+		try {
+			stored = localStorage.getItem(KEY);
+			// One-time migration from Starlight's own key.
+			if (stored !== 'light' && stored !== 'dark') {
+				const legacy = localStorage.getItem('starlight-theme');
+				if (legacy === 'light' || legacy === 'dark') {
+					stored = legacy;
+					localStorage.setItem(KEY, legacy);
+				}
+			}
+		} catch {}
+		const theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+		document.documentElement.dataset.theme = theme;
+		document.documentElement.style.colorScheme = theme;
+		// Defensive no-op so any residual reference to Starlight's global is safe.
+		window.StarlightThemeProvider = { updatePickers() {} };
+	})();
+</script>
