@@ -1,3 +1,11 @@
+## [0.46.2](https://github.com/os-factory/har/compare/v0.46.1...v0.46.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **docs:** polish the mobile header, menu, and search ([#158](https://github.com/os-factory/har/issues/158)) ([0dc5396](https://github.com/os-factory/har/commit/0dc53967453654e0b036e47ec81d3e11961bd214))
+* **schemas:** add temporary Cursor model pricing overlay ([#159](https://github.com/os-factory/har/issues/159)) ([2d7444b](https://github.com/os-factory/har/commit/2d7444bc60203fe911a53d2eafe9e866910f7c8e))
+
 ## [0.46.1](https://github.com/os-factory/har/compare/v0.46.0...v0.46.1) (2026-08-05)
 
 
