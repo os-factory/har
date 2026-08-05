@@ -468,7 +468,8 @@ body { transition: background-color .25s ease, color .25s ease; }
 .footer-sponsor .sponsor-link { display: inline-flex; opacity: .92; transition: opacity .2s ease; }
 .footer-sponsor .sponsor-link:hover { opacity: 1; }
 .footer-sponsor .sponsor-link img { height: 24px; width: auto; }
-.sponsor-logo--dark { display: none; }
-:root[data-theme="dark"] .sponsor-logo--light { display: none; }
-:root[data-theme="dark"] .sponsor-logo--dark { display: block; }
+.footer-sponsor .sponsor-link .sponsor-logo--light { display: block; }
+.footer-sponsor .sponsor-link .sponsor-logo--dark { display: none; }
+:root[data-theme="dark"] .footer-sponsor .sponsor-link .sponsor-logo--light { display: none; }
+:root[data-theme="dark"] .footer-sponsor .sponsor-link .sponsor-logo--dark { display: block; }
 
