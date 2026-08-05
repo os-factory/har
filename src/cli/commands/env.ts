@@ -523,6 +523,8 @@ export async function handleMaintain(argv: {
       mode: 'maintain',
       autoYes: argv.yes,
       cursorRule: onboarding.cursorRule,
+      writeAgentsMd: !argv.finalize,
+      finalize: argv.finalize,
       ...onboarding.agentSkills,
     });
   } catch (err: unknown) {
@@ -632,6 +634,9 @@ export async function applyAgentIntegrations(options: {
   cursorRule?: boolean;
   agents?: string;
   enabled?: boolean;
+  /** Skip AGENTS.md writes (e.g. already handled during maintain --finalize). */
+  writeAgentsMd?: boolean;
+  finalize?: boolean;
 }): Promise<void> {
   const instruction = await handleInstructionFiles({
     repoPath: options.repoPath,
@@ -640,6 +645,8 @@ export async function applyAgentIntegrations(options: {
     cursorRule: options.cursorRule,
     autoYes: options.autoYes,
     mode: options.mode,
+    writeAgentsMd: options.writeAgentsMd,
+    finalize: options.finalize,
   });
 
   const cursorRuleFlag =

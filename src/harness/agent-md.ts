@@ -4,7 +4,13 @@ import * as readline from 'readline';
 import { writeFileSafe } from '../utils/file-ops';
 import { info, warn } from '../utils/logging';
 import { getHarnessDir } from './manifest';
-import { AGENTS_MD } from './instruction-files';
+import {
+  AGENTS_MD,
+  AgentsMdShrinkError,
+  extractOutsideHarSection,
+  mergeAgentsMdContent,
+  upsertAgentsMdHarSection,
+} from './instruction-files';
 
 export const AGENTS_MD_PROPOSAL = 'AGENTS.md.proposed';
 export const AGENTS_MD_PROPOSAL_META = 'AGENTS.md.proposed.meta.json';
@@ -82,6 +88,56 @@ export function clearAgentMdProposal(repoPath: string): void {
   }
 }
 
+function wouldProposalShrinkExisting(existing: string, proposal: string): boolean {
+  const outsideExisting = extractOutsideHarSection(existing);
+  const outsideMerged = extractOutsideHarSection(mergeAgentsMdContent(existing, proposal));
+  const existingLines = outsideExisting.split('\n').filter((l) => l.trim()).length;
+  const mergedLines = outsideMerged.split('\n').filter((l) => l.trim()).length;
+  return existingLines >= 5 && mergedLines < existingLines * 0.9;
+}
+
+/**
+ * Merge a pending AGENTS.md.proposed into the live file (managed section only).
+ * Returns true when a proposal was applied.
+ */
+export function applyAgentMdProposalMerge(
+  repoPath: string,
+  options: { rejectSignificantShrink?: boolean } = {},
+): boolean {
+  const proposal = readAgentMdProposal(repoPath);
+  if (!proposal) return false;
+
+  const agentsMdPath = path.join(repoPath, AGENTS_MD);
+  if (fs.existsSync(agentsMdPath)) {
+    const existing = fs.readFileSync(agentsMdPath, 'utf8');
+    if (wouldProposalShrinkExisting(existing, proposal.content)) {
+      const message =
+        `${AGENTS_MD} proposal would drop project-specific content outside har:agent-environment markers — ` +
+        `merge custom sections from .har/${AGENTS_MD_PROPOSAL} manually, then delete the proposal.`;
+      if (options.rejectSignificantShrink) {
+        throw new AgentsMdShrinkError(message);
+      }
+      warn(message);
+      return false;
+    }
+    writeFileSafe(agentsMdPath, mergeAgentsMdContent(existing, proposal.content));
+  } else {
+    writeFileSafe(agentsMdPath, proposal.content);
+  }
+
+  clearAgentMdProposal(repoPath);
+  info(`Merged ${AGENTS_MD} proposal into repo root (preserved content outside managed markers)`);
+  return true;
+}
+
+/**
+ * On finalize: merge any pending proposal, then refresh the managed HAR section.
+ */
+export function finalizeAgentsMdInstructionFiles(repoPath: string): void {
+  applyAgentMdProposalMerge(repoPath, { rejectSignificantShrink: true });
+  upsertAgentsMdHarSection(repoPath, { rejectSignificantShrink: true });
+}
+
 export async function promptApplyAgentMdProposal(repoPath: string): Promise<boolean> {
   const proposal = readAgentMdProposal(repoPath);
   if (!proposal) return false;
@@ -109,7 +165,15 @@ export async function promptApplyAgentMdProposal(repoPath: string): Promise<bool
 
   if (exists) {
     warn(`${AGENTS_MD} already exists at repo root.`);
-    const answer = await askYesNo(`Replace ${AGENTS_MD} with this proposal? (y/n)`);
+    if (wouldProposalShrinkExisting(fs.readFileSync(agentsMdPath, 'utf8'), proposal.content)) {
+      warn(
+        'Proposal would drop project-specific content outside har:agent-environment markers — merge manually from the proposal file.',
+      );
+      return false;
+    }
+    const answer = await askYesNo(
+      `Merge managed HAR section from this proposal into ${AGENTS_MD}? (y/n)`,
+    );
     if (!answer) {
       info(`Skipped — proposal kept at .har/${AGENTS_MD_PROPOSAL}`);
       return false;
@@ -122,9 +186,7 @@ export async function promptApplyAgentMdProposal(repoPath: string): Promise<bool
     }
   }
 
-  writeFileSafe(agentsMdPath, proposal.content);
-  clearAgentMdProposal(repoPath);
-  info(`Wrote ${AGENTS_MD}`);
+  applyAgentMdProposalMerge(repoPath);
   return true;
 }
 

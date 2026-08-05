@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { scaffoldHarnessBoilerplate, finalizeHarness, ScaffoldOptions } from '../harness/generator';
+import { finalizeAgentsMdInstructionFiles } from '../harness/agent-md';
 import { validateHarness, smokeTestHarness, ValidationResult } from '../harness/validator';
 import { compareHarnessToTemplate, HarnessDriftResult } from '../harness/drift';
 import {
@@ -134,6 +135,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
       throw new Error('Cannot finalize: harness validation has errors. Fix them first.');
     }
     syncAgentSlotsToHarnessEnv(repoPath);
+    finalizeAgentsMdInstructionFiles(repoPath);
     const existing = readManifest(repoPath);
     finalizeHarness(
       repoPath,

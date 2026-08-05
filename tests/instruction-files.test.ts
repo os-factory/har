@@ -4,16 +4,25 @@ import * as path from 'path';
 import {
   AGENTS_MD,
   CLAUDE_MD,
+  CLAUDE_HAR_SECTION_END,
+  CLAUDE_HAR_SECTION_START,
+  HAR_SECTION_END,
   HAR_SECTION_START,
   LEGACY_AGENT_MD,
   buildInstallPlan,
   detectInstructionFiles,
   ensureClaudeMdPointer,
+  extractOutsideHarSection,
   formatDetectionReport,
   formatInstallPlan,
+  mergeAgentsMdContent,
   migrateLegacyAgentMd,
+  stripClaudePointerFromAgentsMd,
   upsertAgentsMdHarSection,
 } from '../src/harness/instruction-files';
+import { writeAgentMdProposal } from '../src/harness/agent-md';
+import { maintainHarness } from '../src/core/harness';
+import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 
 function makeTempRepo(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));
@@ -112,5 +121,87 @@ describe('instruction-files', () => {
     expect(plan.claudeMd).toBe(true);
     expect(plan.cursorRule).toBe(true);
     expect(formatInstallPlan(plan, detection)).toContain('[x] Create AGENTS.md');
+  });
+
+  it('strips misplaced claude-pointer markers from AGENTS.md', () => {
+    const repoPath = makeTempRepo('har-strip-claude');
+    const content = `# Project\n\n${CLAUDE_HAR_SECTION_START}\nclaude only\n${CLAUDE_HAR_SECTION_END}\n\nKeep me.\n`;
+    fs.writeFileSync(path.join(repoPath, AGENTS_MD), content);
+    upsertAgentsMdHarSection(repoPath);
+    const updated = fs.readFileSync(path.join(repoPath, AGENTS_MD), 'utf8');
+    expect(updated).toContain('Keep me.');
+    expect(updated).not.toContain('har:claude-pointer');
+    expect(updated).toContain(HAR_SECTION_START);
+  });
+
+  it('appends HAR section when start marker exists without end marker', () => {
+    const repoPath = makeTempRepo('har-orphan-start');
+    fs.writeFileSync(
+      path.join(repoPath, AGENTS_MD),
+      `# Project\n\n${HAR_SECTION_START}\norphaned\n\n## Build\nnpm test\n`,
+    );
+    const action = upsertAgentsMdHarSection(repoPath);
+    expect(action).toBe('appended');
+    const content = fs.readFileSync(path.join(repoPath, AGENTS_MD), 'utf8');
+    expect(content).toContain('npm test');
+    expect(content.match(/har:agent-environment:start/g)?.length).toBe(2);
+  });
+
+  it('rejects finalize refresh that would shrink outside-marker content', () => {
+    const repoPath = makeTempRepo('har-shrink');
+    const outside = Array.from({ length: 20 }, (_, i) => `- item ${i}`).join('\n');
+    fs.writeFileSync(
+      path.join(repoPath, AGENTS_MD),
+      `${outside}\n\n${HAR_SECTION_START}\n${outside}\n${HAR_SECTION_END}\n`,
+    );
+    expect(() =>
+      upsertAgentsMdHarSection(repoPath, { rejectSignificantShrink: true }),
+    ).not.toThrow();
+    const content = fs.readFileSync(path.join(repoPath, AGENTS_MD), 'utf8');
+    expect(content).toContain('- item 0');
+    expect(content).toContain('Launch first');
+  });
+
+  it('mergeAgentsMdContent preserves project guidance outside managed markers', () => {
+    const existing = '# Project\n\n## Build\nnpm run build\n\n';
+    const proposal = `# Scaffold\n\n${HAR_SECTION_START}\nnew har\n${HAR_SECTION_END}\n\n## Project\nlost\n`;
+    const merged = mergeAgentsMdContent(existing, proposal);
+    expect(merged).toContain('npm run build');
+    expect(merged).toContain('new har');
+    expect(merged).not.toContain('lost');
+    expect(extractOutsideHarSection(merged)).toContain('npm run build');
+  });
+
+  it('migrateLegacyAgentMd merges legacy notes when AGENTS.md already exists', () => {
+    const repoPath = makeTempRepo('har-migrate-both');
+    fs.writeFileSync(path.join(repoPath, AGENTS_MD), '# Existing\n\n## Project\nKeep.\n');
+    fs.writeFileSync(path.join(repoPath, LEGACY_AGENT_MD), '# Legacy\n\nUnique legacy note.\n');
+    expect(migrateLegacyAgentMd(repoPath)).toBe(true);
+    const content = fs.readFileSync(path.join(repoPath, AGENTS_MD), 'utf8');
+    expect(content).toContain('Keep.');
+    expect(content).toContain('Unique legacy note.');
+    expect(fs.existsSync(path.join(repoPath, LEGACY_AGENT_MD))).toBe(false);
+  });
+
+  it('finalize merges AGENTS.md.proposed without dropping outside-marker content', async () => {
+    const repoPath = makeTempRepo('har-finalize-merge');
+    fs.writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({ name: 'app' }) + '\n');
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+    const projectSection = Array.from({ length: 15 }, (_, i) => `## Section ${i}\nDetail ${i}.`).join(
+      '\n\n',
+    );
+    fs.writeFileSync(path.join(repoPath, AGENTS_MD), `# App\n\n${projectSection}\n`);
+    writeAgentMdProposal(
+      repoPath,
+      `# Proposed\n\n${HAR_SECTION_START}\nshould not replace project\n${HAR_SECTION_END}\n`,
+      'test proposal',
+    );
+
+    await maintainHarness({ repoPath, finalize: true, summary: 'test finalize merge' });
+
+    const content = fs.readFileSync(path.join(repoPath, AGENTS_MD), 'utf8');
+    expect(content).toContain('## Section 0');
+    expect(content).toContain('Launch first');
+    expect(stripClaudePointerFromAgentsMd(content)).toBe(content);
   });
 });
