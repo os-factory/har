@@ -24,21 +24,21 @@ describe('durable work identity', () => {
 
   it('persists metadata and immutable attempt identity', () => {
     upsertWorkUnit(repo, {
-      workUnitId: 'github:os-factory/har#123',
+      workUnitId: 'har-123',
       source: 'github',
       sourceUrl: 'https://github.com/os-factory/har/issues/123',
       title: 'Factory control plane',
     });
     createWorkAttempt(repo, {
       attemptId: '11111111-1111-4111-8111-111111111111',
-      workUnitId: 'github:os-factory/har#123',
+      workUnitId: 'har-123',
       agentId: 2,
       branch: 'factory-attempt',
     });
 
     expect(listWorkUnits(repo)).toEqual([
       expect.objectContaining({
-        workUnitId: 'github:os-factory/har#123',
+        workUnitId: 'har-123',
         source: 'github',
       }),
     ]);

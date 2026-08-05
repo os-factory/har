@@ -88,11 +88,18 @@ export const HAR_MCP_TOOLS: Tool[] = [
         },
         workUnitId: {
           type: 'string',
-          description: 'Durable external work identifier to bind to this session.',
+          description:
+            'Short repo-scoped work id (e.g. widget-123). Pass when the task names a tracker issue or ticket so Factory records work → attempt → evidence. Omit for ad-hoc work.',
         },
-        source: { type: 'string', description: 'Optional provider/source name.' },
-        sourceUrl: { type: 'string', description: 'Optional source URL.' },
-        title: { type: 'string', description: 'Optional human-readable work title.' },
+        source: {
+          type: 'string',
+          description: 'Tracker provider when binding work (e.g. github, linear).',
+        },
+        sourceUrl: {
+          type: 'string',
+          description: 'Canonical URL for the work item (e.g. GitHub issue URL).',
+        },
+        title: { type: 'string', description: 'Human-readable work title when known.' },
         parentWorkUnitId: {
           type: 'string',
           description: 'Optional parent work unit identifier.',

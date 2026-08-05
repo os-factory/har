@@ -20,6 +20,11 @@ fall back to ad-hoc commands.
    creates a worktree from that HEAD.
 2. **Launch first** — MCP `har_launch_environment` / `har env launch 1`. Use the
    returned **work dir** for ALL edits (never the main checkout).
+   **Bind tracker work** when the task names a durable issue or ticket (GitHub,
+   Linear, etc.): pass a short repo-scoped `--work-id` / `workUnitId` (e.g.
+   `widget-123`), `--work-source` / `source`, `--work-url` / `sourceUrl`, and
+   `--work-title` / `title` when known. Skip binding for ad-hoc work with no
+   tracker identity.
 3. Read [`.har/README.md`](.har/README.md), [`.har/stages.json`](.har/stages.json), then
    [`.har/CLAUDE.agent.md`](.har/CLAUDE.agent.md) (slot URLs / definition of done).
 4. Hot-reload usually applies; if not, `./.har/agent-cli.sh <id> restart` (no-op on

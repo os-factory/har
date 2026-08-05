@@ -24,7 +24,7 @@ Give every implementation ticket a stable identifier:
 
 ```bash
 har env launch 1 \
-  --work-id "github:acme/widget#123" \
+  --work-id "widget-123" \
   --work-source github \
   --work-url "https://github.com/acme/widget/issues/123" \
   --work-title "Add saved filters"
@@ -46,7 +46,8 @@ A compatible flow is:
 
 1. Use the pack's grilling and requirements flow.
 2. Produce or select one implementation issue.
-3. Use that issue's provider-neutral key as `--work-id`.
+3. Use that issue's short repo-scoped key as `--work-id` (with `--work-source` and
+   `--work-url` when available).
 4. Launch HAR before editing and work only in the returned directory.
 5. Continue using the pack's implementation and review skills.
 6. Run `har env verify <slot> --full`, then `har env complete <slot>`.

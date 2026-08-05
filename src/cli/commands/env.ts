@@ -250,14 +250,21 @@ export const envCommand = {
             })
             .option('work-id', {
               type: 'string',
-              describe: 'Bind this session to a durable external work identifier',
+              describe:
+                'Short repo-scoped work id (e.g. widget-123). Bind when the task names a tracker issue or ticket',
             })
             .option('work-source', {
               type: 'string',
-              describe: 'Optional provider/source name (for example github or linear)',
+              describe: 'Tracker provider when binding work (for example github or linear)',
             })
-            .option('work-url', { type: 'string', describe: 'Optional source URL for the work' })
-            .option('work-title', { type: 'string', describe: 'Optional human-readable title' })
+            .option('work-url', {
+              type: 'string',
+              describe: 'Canonical URL for the work item (for example a GitHub issue URL)',
+            })
+            .option('work-title', {
+              type: 'string',
+              describe: 'Human-readable work title when known',
+            })
             .option('parent-work-id', {
               type: 'string',
               describe: 'Optional parent work unit identifier',

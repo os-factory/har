@@ -318,7 +318,7 @@ describe('syncRepoWithControl — portal full payload', () => {
           branch: 'feat/x',
           suffix: 'a',
           sessionCreatedAt: '2026-01-01T00:00:00.000Z',
-          workUnitId: 'github:acme/widget#123',
+          workUnitId: 'widget-123',
           attemptId: '00000000-0000-4000-8000-000000000002',
         }),
       ],
@@ -326,7 +326,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     });
     listWorkUnitsMock.mockReturnValue([
       {
-        workUnitId: 'github:acme/widget#123',
+        workUnitId: 'widget-123',
         source: 'github',
         title: 't',
         createdAt: '2026-01-01T00:00:00.000Z',
@@ -336,7 +336,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     listWorkAttemptsMock.mockReturnValue([
       {
         attemptId: '00000000-0000-4000-8000-000000000002',
-        workUnitId: 'github:acme/widget#123',
+        workUnitId: 'widget-123',
         agentId: 1,
         createdAt: '2026-01-01T00:00:00.000Z',
       },
@@ -344,7 +344,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     listValidationBindingsMock.mockReturnValue([
       {
         bindingId: '00000000-0000-4000-8000-000000000004',
-        workUnitId: 'github:acme/widget#123',
+        workUnitId: 'widget-123',
         attemptId: '00000000-0000-4000-8000-000000000002',
         validationId: '00000000-0000-4000-8000-000000000003',
         treeHash: 'a'.repeat(40),
@@ -379,7 +379,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(body.validationBindings).toHaveLength(1);
     expect(body.usage).toHaveLength(1);
     expect('userEmail' in body.usage[0]).toBe(false);
-    expect(body.usage[0].workUnitId).toBe('github:acme/widget#123');
+    expect(body.usage[0].workUnitId).toBe('widget-123');
     expect(body.usage[0].attemptId).toBe('00000000-0000-4000-8000-000000000002');
     expect(body.usage[0].sessionKey).toBe('feat/x');
     expect(body.usage[0].models).toEqual([
@@ -401,7 +401,7 @@ describe('syncRepoWithControl — portal full payload', () => {
           workDir: '/repo/x/wt-1',
           worktreePath: '/repo/x/wt-1',
           branch: 'feat/x',
-          workUnitId: 'github:acme/widget#123',
+          workUnitId: 'widget-123',
           attemptId: '00000000-0000-4000-8000-000000000002',
         }),
       ],
@@ -436,7 +436,7 @@ describe('syncRepoWithControl — portal full payload', () => {
     const otelBody = JSON.parse(otelInit.body as string);
     expect(otelBody.path).toBe('/repo/x');
     expect(otelBody.events).toHaveLength(1);
-    expect(otelBody.events[0].workUnitId).toBe('github:acme/widget#123');
+    expect(otelBody.events[0].workUnitId).toBe('widget-123');
     expect(otelBody.events[0].promptText).toBe('hi');
     expect('responseText' in otelBody.events[0]).toBe(false);
     expect('rawTruncated' in otelBody.events[0]).toBe(false);

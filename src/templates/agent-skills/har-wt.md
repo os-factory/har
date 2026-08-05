@@ -21,11 +21,16 @@ har env launch <id>   # or ./.har/launch.sh <id>
 
 Launch creates a fresh session worktree from HEAD and prints its **work dir** (also recorded in `.har/slots/agent-<id>.json`, path like `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`). If a previous launch failed partway, retry with `--resume` instead of starting fresh.
 
-If the task already has a stable issue or ticket ID, bind it without changing the
-methodology that produced it:
+If the task already has a stable issue or ticket, bind it without changing the
+methodology that produced it. Use a short repo-scoped id; put the provider and
+canonical URL in separate fields:
 
 ```bash
-har env launch <id> --work-id "<provider-neutral-id>" --work-title "<title>"
+har env launch <id> \
+  --work-id "widget-123" \
+  --work-source github \
+  --work-url "https://github.com/acme/widget/issues/123" \
+  --work-title "<title>"
 ```
 
 External planning/TDD/review skills remain in control of implementation strategy.
