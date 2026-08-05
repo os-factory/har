@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -17,20 +17,97 @@ import { HeroFlowNode, type HeroFlowNodeData } from './HeroFlowNode';
 
 const nodeTypes: NodeTypes = { stage: HeroFlowNode };
 
-const NODE_WIDTH = 168;
-const NODE_HEIGHT = 92;
+/** Must match `.reactflow-shell .rf-node { height }` in hero-flow.css */
+const NODE_HEIGHT = 112;
 const COL_GAP = 36;
 const ROW_GAP = 40;
-const MAX_COLS = 3;
+const FLOW_PADDING = 32;
+const DESKTOP_NODE_WIDTH = 168;
+const MOBILE_BREAKPOINT = 760;
 
 const EDGE_COLOR = {
   fail: 'rgba(239, 108, 108, 0.72)',
 };
 
-function buildFlow(): { nodes: Node[]; edges: Edge[]; rows: number } {
+interface FlowLayout {
+  columns: number;
+  nodeWidth: number;
+  minZoom: number;
+  maxZoom: number;
+  shellHeight: number;
+  contentWidth: number;
+  fitToView: boolean;
+  autoHeight: boolean;
+}
+
+function rowCount(stageCount: number, columns: number): number {
+  return Math.max(1, Math.ceil(stageCount / columns));
+}
+
+function contentHeightFor(rows: number): number {
+  if (rows <= 1) return NODE_HEIGHT + FLOW_PADDING * 2;
+  return (rows - 1) * (NODE_HEIGHT + ROW_GAP) + NODE_HEIGHT + FLOW_PADDING * 2;
+}
+
+function contentWidthFor(columns: number, nodeWidth: number): number {
+  if (columns <= 1) return nodeWidth + FLOW_PADDING * 2;
+  return (columns - 1) * (nodeWidth + COL_GAP) + nodeWidth + FLOW_PADDING * 2;
+}
+
+function flowLayoutForWidth(width: number): FlowLayout {
+  const stageCount = HERO_VERIFICATION_STAGES.length;
+
+  if (width <= MOBILE_BREAKPOINT) {
+    const columns = 1;
+    const rows = rowCount(stageCount, columns);
+    const nodeWidth = DESKTOP_NODE_WIDTH;
+
+    return {
+      columns,
+      nodeWidth,
+      minZoom: 1,
+      maxZoom: 1,
+      shellHeight: contentHeightFor(rows),
+      contentWidth: contentWidthFor(columns, nodeWidth),
+      fitToView: false,
+      autoHeight: true,
+    };
+  }
+
+  if (width <= 1080) {
+    const columns = 2;
+    const rows = rowCount(stageCount, columns);
+    const nodeWidth = 148;
+    return {
+      columns,
+      nodeWidth,
+      minZoom: 0.55,
+      maxZoom: 1,
+      shellHeight: 480,
+      contentWidth: contentWidthFor(columns, nodeWidth),
+      fitToView: true,
+      autoHeight: false,
+    };
+  }
+
+  const columns = 3;
+  const nodeWidth = DESKTOP_NODE_WIDTH;
+  return {
+    columns,
+    nodeWidth,
+    minZoom: 0.85,
+    maxZoom: 1,
+    shellHeight: 450,
+    contentWidth: contentWidthFor(columns, nodeWidth),
+    fitToView: true,
+    autoHeight: false,
+  };
+}
+
+function buildFlow(layout: FlowLayout): { nodes: Node[]; edges: Edge[] } {
   const stages = HERO_VERIFICATION_STAGES;
-  const columns = Math.max(1, Math.min(stages.length, MAX_COLS));
-  const rows = Math.max(1, Math.ceil(stages.length / columns));
+  const columns = Math.max(1, Math.min(stages.length, layout.columns));
+  const nodeSpan = layout.nodeWidth + COL_GAP;
 
   const nodes: Node[] = stages.map((stage, index) => {
     const row = Math.floor(index / columns);
@@ -58,7 +135,10 @@ function buildFlow(): { nodes: Node[]; edges: Edge[]; rows: number } {
     return {
       id: stage.id,
       type: 'stage',
-      position: { x: col * (NODE_WIDTH + COL_GAP), y: row * (NODE_HEIGHT + ROW_GAP) },
+      position: {
+        x: FLOW_PADDING + col * nodeSpan,
+        y: FLOW_PADDING + row * (NODE_HEIGHT + ROW_GAP),
+      },
       data,
       draggable: false,
       selectable: false,
@@ -80,28 +160,57 @@ function buildFlow(): { nodes: Node[]; edges: Edge[]; rows: number } {
     };
   });
 
-  return { nodes, edges, rows };
+  return { nodes, edges };
 }
 
-function FitViewOnMount() {
+function useFlowLayout(): FlowLayout {
+  const [layout, setLayout] = useState<FlowLayout>(() =>
+    typeof window === 'undefined' ? flowLayoutForWidth(1200) : flowLayoutForWidth(window.innerWidth),
+  );
+
+  useEffect(() => {
+    const update = () => setLayout(flowLayoutForWidth(window.innerWidth));
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return layout;
+}
+
+function FitViewOnLayout({ layout }: { layout: FlowLayout }) {
   const { fitView } = useReactFlow();
 
   useEffect(() => {
+    if (!layout.fitToView) return;
+
     const frame = requestAnimationFrame(() => {
-      fitView({ padding: 0.12, minZoom: 1, maxZoom: 1, duration: 0 });
+      fitView({
+        padding: layout.columns === 1 ? 0.06 : 0.1,
+        minZoom: layout.minZoom,
+        maxZoom: layout.maxZoom,
+        duration: 0,
+      });
     });
     return () => cancelAnimationFrame(frame);
-  }, [fitView]);
+  }, [fitView, layout]);
 
   return null;
 }
 
 function HeroVerificationFlowCanvas() {
-  const { nodes, edges, rows } = useMemo(() => buildFlow(), []);
-  const height = Math.min(450, Math.max(320, rows * (NODE_HEIGHT + ROW_GAP) + 80));
+  const layout = useFlowLayout();
+  const { nodes, edges } = useMemo(() => buildFlow(layout), [layout]);
 
   return (
-    <div className="reactflow-shell" style={{ height }}>
+    <div
+      className={`reactflow-shell${layout.autoHeight ? ' reactflow-shell--auto' : ''}`}
+      style={{
+        height: layout.shellHeight,
+        ['--rf-node-width' as string]: `${layout.nodeWidth}px`,
+        ['--rf-content-width' as string]: `${layout.contentWidth}px`,
+      }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -116,12 +225,12 @@ function HeroVerificationFlowCanvas() {
         zoomOnDoubleClick={false}
         preventScrolling={false}
         proOptions={{ hideAttribution: true }}
-        minZoom={1}
-        maxZoom={1}
+        minZoom={layout.minZoom}
+        maxZoom={layout.maxZoom}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.12)" />
-        <FitViewOnMount />
+        {layout.fitToView ? <FitViewOnLayout layout={layout} /> : null}
       </ReactFlow>
     </div>
   );
