@@ -384,6 +384,9 @@ async function buildPortalPayload(
   const workUnits = listWorkUnits(harnessRoot);
   const attempts = listWorkAttempts(harnessRoot);
   const validationBindings = listValidationBindings(harnessRoot);
+  // Attribute runs/validations to the syncing member so the portal can resolve
+  // a real user FK instead of the lossy (repo, agentId) derivation.
+  const userEmail = resolvePortalUserEmail();
   const { usage, events, maxSyncedAt } = await collectPortalTelemetry(
     repoPath,
     status.slots,
@@ -406,14 +409,24 @@ async function buildPortalPayload(
     ...(stagesRegistry ? { stagesRegistry } : {}),
     slots: status.slots,
     generatedAt: status.generatedAt,
-    ...(validations.length > 0 ? { validations } : {}),
+    ...(validations.length > 0
+      ? {
+          validations: userEmail
+            ? validations.map((v) => ({ ...v, userEmail }))
+            : validations,
+        }
+      : {}),
     ...(workUnits.length > 0 ? { workUnits } : {}),
     ...(attempts.length > 0 ? { attempts } : {}),
     ...(validationBindings.length > 0 ? { validationBindings } : {}),
     ...(usage.length > 0 ? { usage } : {}),
   };
 
-  return { syncBody, runs, events, maxSyncedAt };
+  const runsPayload = userEmail
+    ? runs.map((run) => ({ ...run, userEmail }))
+    : runs;
+
+  return { syncBody, runs: runsPayload, events, maxSyncedAt };
 }
 
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
