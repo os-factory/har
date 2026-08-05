@@ -1,4 +1,5 @@
 import { calcPrice } from '@pydantic/genai-prices';
+import { estimateCursorNativeCostUsd } from './cursor-pricing-overlay';
 import type { AgentSessionUsage, AgentTool } from './schema';
 
 /** Per-model token and cost fields stored on AgentSessionUsage.modelBreakdown. */
@@ -78,6 +79,11 @@ export function estimateModelCostUsd(
     } catch {
       continue;
     }
+  }
+
+  for (const candidate of pricingModelCandidates(modelId)) {
+    const overlay = estimateCursorNativeCostUsd(usage, candidate);
+    if (overlay != null) return overlay;
   }
   return null;
 }

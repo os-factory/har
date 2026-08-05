@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import inquirer from 'inquirer';
 import { writeFileSafe } from '../utils/file-ops';
-import { divider, info, success } from '../utils/logging';
+import { divider, info, success, warn } from '../utils/logging';
 import { resolveTemplateFile } from '../utils/paths';
 import { AGENT_SKILL_TARGETS, detectAgentTargets, parseAgentTargets } from './agent-skills';
 import { readManifest } from './manifest';
@@ -54,6 +54,25 @@ export interface InstructionFilesOptions {
    * AGENTS.md is the shared project contract even when skills are skipped.
    */
   writeAgentsMd?: boolean;
+  /**
+   * When true (har env maintain --finalize), refuse updates that would drop
+   * project-specific content outside har:agent-environment markers.
+   */
+  finalize?: boolean;
+}
+
+export interface UpsertAgentsMdOptions {
+  /** Throw when outside-marker content would shrink significantly. */
+  rejectSignificantShrink?: boolean;
+  /** Minimum fraction of non-empty outside-marker lines to preserve (default 0.9). */
+  minOutsidePreservationRatio?: number;
+}
+
+export class AgentsMdShrinkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AgentsMdShrinkError';
+  }
 }
 
 export interface InstructionFilesResult {
@@ -67,6 +86,86 @@ export interface InstructionFilesResult {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function countNonEmptyLines(text: string): number {
+  return text.split('\n').filter((line) => line.trim().length > 0).length;
+}
+
+/** Remove CLAUDE-only pointer markers if they were copied into AGENTS.md by mistake. */
+export function stripClaudePointerFromAgentsMd(content: string): string {
+  if (!content.includes(CLAUDE_HAR_SECTION_START)) return content;
+  const pattern = new RegExp(
+    `${escapeRegExp(CLAUDE_HAR_SECTION_START)}[\\s\\S]*?${escapeRegExp(CLAUDE_HAR_SECTION_END)}\\n?`,
+    'g',
+  );
+  return content.replace(pattern, '').replace(/\n{3,}/g, '\n\n');
+}
+
+/** Content outside the managed har:agent-environment block (project-specific guidance). */
+export function extractOutsideHarSection(content: string): string {
+  const sanitized = stripClaudePointerFromAgentsMd(content);
+  return removeCompleteMarkedBlocks(sanitized, HAR_SECTION_START, HAR_SECTION_END).trim();
+}
+
+function findLastCompleteMarkedBlock(
+  content: string,
+  startMarker: string,
+  endMarker: string,
+): { start: number; end: number } | null {
+  let last: { start: number; end: number } | null = null;
+  let searchFrom = 0;
+
+  while (searchFrom < content.length) {
+    const start = content.indexOf(startMarker, searchFrom);
+    if (start === -1) break;
+    const end = content.indexOf(endMarker, start + startMarker.length);
+    if (end === -1) break;
+    const nestedStart = content.indexOf(startMarker, start + startMarker.length);
+    if (nestedStart !== -1 && nestedStart < end) {
+      searchFrom = start + startMarker.length;
+      continue;
+    }
+    last = { start, end: end + endMarker.length };
+    searchFrom = end + endMarker.length;
+  }
+
+  return last;
+}
+
+function removeCompleteMarkedBlocks(content: string, startMarker: string, endMarker: string): string {
+  let result = content;
+  let block = findLastCompleteMarkedBlock(result, startMarker, endMarker);
+  while (block) {
+    result = result.slice(0, block.start) + result.slice(block.end);
+    block = findLastCompleteMarkedBlock(result, startMarker, endMarker);
+  }
+  return result;
+}
+
+function checkOutsideContentPreserved(
+  before: string,
+  after: string,
+  options: UpsertAgentsMdOptions,
+): 'ok' | 'shrink' {
+  const outsideBefore = extractOutsideHarSection(before);
+  const outsideAfter = extractOutsideHarSection(after);
+  const beforeLines = countNonEmptyLines(outsideBefore);
+  const afterLines = countNonEmptyLines(outsideAfter);
+  const minRatio = options.minOutsidePreservationRatio ?? 0.9;
+
+  if (beforeLines >= 5 && afterLines < beforeLines * minRatio) {
+    return 'shrink';
+  }
+  return 'ok';
+}
+
+function outsideContentShrinkMessage(beforeLines: number, afterLines: number): string {
+  return (
+    `Refusing to update ${AGENTS_MD}: refresh would drop project-specific content outside ` +
+    `har:agent-environment markers (${beforeLines} → ${afterLines} non-empty lines). ` +
+    `Keep custom sections outside those markers, or merge manually before --finalize.`
+  );
 }
 
 export function detectInstructionFiles(repoPath: string): InstructionFileDetection {
@@ -180,20 +279,49 @@ function upsertMarkedBlock(
   startMarker: string,
   endMarker: string,
 ): { content: string; action: 'updated' | 'appended' } {
-  if (content.includes(startMarker)) {
-    const pattern = new RegExp(
-      `${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}`,
-    );
-    return { content: content.replace(pattern, block), action: 'updated' };
+  const existingBlock = findLastCompleteMarkedBlock(content, startMarker, endMarker);
+  if (existingBlock) {
+    const newContent =
+      content.slice(0, existingBlock.start) + block + content.slice(existingBlock.end);
+    return { content: newContent, action: 'updated' };
   }
   const suffix = content.endsWith('\n') ? '' : '\n';
   return { content: `${content}${suffix}\n${block}\n`, action: 'appended' };
 }
 
 /**
+ * Merge incoming AGENTS.md content into an existing file — refresh only the managed
+ * HAR section; preserve all other project-specific guidance.
+ */
+export function mergeAgentsMdContent(existing: string, incoming: string): string {
+  const sanitizedExisting = stripClaudePointerFromAgentsMd(existing);
+  const sanitizedIncoming = stripClaudePointerFromAgentsMd(incoming);
+
+  let harSection = loadHarAgentsSectionFromTemplate();
+  if (sanitizedIncoming.includes(HAR_SECTION_START)) {
+    const start = sanitizedIncoming.indexOf(HAR_SECTION_START);
+    const end = sanitizedIncoming.indexOf(HAR_SECTION_END, start + HAR_SECTION_START.length);
+    if (end !== -1) {
+      harSection = sanitizedIncoming.slice(start, end + HAR_SECTION_END.length);
+    }
+  }
+
+  const { content } = upsertMarkedBlock(
+    sanitizedExisting,
+    harSection,
+    HAR_SECTION_START,
+    HAR_SECTION_END,
+  );
+  return content;
+}
+
+/**
  * Create AGENTS.md from template, or upsert the managed HAR section into an existing file.
  */
-export function upsertAgentsMdHarSection(repoPath: string): 'created' | 'updated' | 'appended' {
+export function upsertAgentsMdHarSection(
+  repoPath: string,
+  options: UpsertAgentsMdOptions = {},
+): 'created' | 'updated' | 'appended' | 'skipped' {
   const dest = path.join(repoPath, AGENTS_MD);
   const section = loadHarAgentsSectionFromTemplate();
 
@@ -203,12 +331,29 @@ export function upsertAgentsMdHarSection(repoPath: string): 'created' | 'updated
   }
 
   const existing = fs.readFileSync(dest, 'utf8');
+  const sanitized = stripClaudePointerFromAgentsMd(existing);
   const { content, action } = upsertMarkedBlock(
-    existing,
+    sanitized,
     section,
     HAR_SECTION_START,
     HAR_SECTION_END,
   );
+
+  if (checkOutsideContentPreserved(existing, content, options) === 'shrink') {
+    const beforeLines = countNonEmptyLines(extractOutsideHarSection(existing));
+    const afterLines = countNonEmptyLines(extractOutsideHarSection(content));
+    const message = outsideContentShrinkMessage(beforeLines, afterLines);
+    if (options.rejectSignificantShrink) {
+      throw new AgentsMdShrinkError(message);
+    }
+    warn(message);
+    return 'skipped';
+  }
+
+  if (content === existing) {
+    return 'skipped';
+  }
+
   writeFileSafe(dest, content);
   return action;
 }
@@ -228,6 +373,12 @@ export function migrateLegacyAgentMd(repoPath: string): boolean {
     writeFileSafe(agentsPath, legacy);
     upsertAgentsMdHarSection(repoPath);
   } else {
+    const agents = fs.readFileSync(agentsPath, 'utf8');
+    const legacyTrimmed = legacy.trim();
+    if (legacyTrimmed.length > 0 && !agents.includes(legacyTrimmed)) {
+      const suffix = agents.endsWith('\n') ? '' : '\n';
+      writeFileSafe(agentsPath, `${agents}${suffix}\n${legacyTrimmed}\n`);
+    }
     upsertAgentsMdHarSection(repoPath);
   }
 
@@ -405,13 +556,19 @@ export async function handleInstructionFiles(
     if (detection.agentMd) {
       migratedLegacy = migrateLegacyAgentMd(repoPath);
     }
-    agentsMdAction = upsertAgentsMdHarSection(repoPath);
+    agentsMdAction = upsertAgentsMdHarSection(repoPath, {
+      rejectSignificantShrink: options.finalize === true,
+    });
 
     if (agentsMdAction === 'created') {
       success(`Wrote ${AGENTS_MD}`);
     } else if (agentsMdAction === 'updated' || agentsMdAction === 'appended') {
       info(
         `${agentsMdAction === 'updated' ? 'Refreshed' : 'Appended'} HAR section in ${AGENTS_MD}`,
+      );
+    } else if (agentsMdAction === 'skipped' && options.finalize) {
+      warn(
+        `${AGENTS_MD} left unchanged — project-specific content outside har:agent-environment markers was preserved.`,
       );
     }
   } else {

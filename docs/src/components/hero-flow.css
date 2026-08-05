@@ -13,7 +13,7 @@
 }
 
 .reactflow-shell .rf-node {
-  width: 168px;
+  width: var(--rf-node-width, 168px);
   height: 112px;
   box-sizing: border-box;
   flex-wrap: wrap;

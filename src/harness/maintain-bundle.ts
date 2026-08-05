@@ -328,6 +328,10 @@ function buildReadme(report: MaintainBundleReport): string {
     lines.push(
       'Repo-root agent docs are **outside** `.har/` checksum drift. Apply while adapting:',
       '',
+      '**Merge contract:** `har env maintain --finalize` refreshes only the content between',
+      '`<!-- har:agent-environment:start/end -->` in `AGENTS.md`. Custom `## Project` sections and',
+      'other guidance **outside** those markers must survive finalize — relocate them if needed.',
+      '',
     );
     for (const note of report.instructionFiles) {
       lines.push(`- **\`${note.path}\`** (${note.kind}): ${note.message}`);

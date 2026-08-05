@@ -1,3 +1,10 @@
+## [0.46.1](https://github.com/os-factory/har/compare/v0.46.0...v0.46.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* preserve AGENTS.md project content on maintain --finalize ([#156](https://github.com/os-factory/har/issues/156)) ([872f2ac](https://github.com/os-factory/har/commit/872f2ac075ba927f2a7b04750a5c2b1426621fad))
+
 # [0.46.0](https://github.com/os-factory/har/compare/v0.45.0...v0.46.0) (2026-08-05)
 
 

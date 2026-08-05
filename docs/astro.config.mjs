@@ -1,7 +1,11 @@
 // @ts-check
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const legacyDocPaths = [
 	'getting-started/introduction',
@@ -120,6 +124,11 @@ export default defineConfig({
 		}),
 	],
 	vite: {
+		resolve: {
+			alias: {
+				'@assets': path.join(repoRoot, 'assets'),
+			},
+		},
 		optimizeDeps: {
 			include: [
 				'react',
