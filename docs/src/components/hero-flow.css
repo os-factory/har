@@ -1,4 +1,4 @@
-/* Landing-page React Flow overrides — dark hero window theme */
+/* Landing-page React Flow overrides — theme-aware hero window (matches page tokens) */
 .reactflow-shell .react-flow__controls,
 .reactflow-shell .react-flow__minimap {
   display: none;
@@ -14,7 +14,8 @@
 
 .reactflow-shell .rf-node {
   width: 168px;
-  min-height: 86px;
+  height: 112px;
+  box-sizing: border-box;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -23,9 +24,9 @@
   position: absolute;
   top: 9px;
   left: 11px;
-  font: 600 9px/1 var(--font-mono, ui-monospace, monospace);
+  font: 600 9px/1 var(--mono);
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--muted);
 }
 
 .reactflow-shell .rf-node-icon {
@@ -41,13 +42,13 @@
   width: 100%;
   margin-top: 8px;
   padding-top: 7px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  font: 9px/1 var(--font-mono, ui-monospace, monospace);
-  color: rgba(255, 255, 255, 0.42);
+  border-top: 1px solid var(--theme-border-soft);
+  font: 9px/1 var(--mono);
+  color: var(--muted);
 }
 
 .reactflow-shell .rf-node-pass {
-  border-color: rgba(125, 202, 162, 0.38);
+  border-color: color-mix(in srgb, var(--flow-accent) 42%, var(--theme-border));
 }
 
 .reactflow-shell .rf-node-fail {

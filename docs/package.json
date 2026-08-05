@@ -19,6 +19,9 @@
   "dependencies": {
     "@astrojs/react": "^4.2.0",
     "@astrojs/starlight": "^0.41.3",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
     "@xyflow/react": "^12.11.1",
     "astro": "^7.0.2",
     "lucide-react": "^0.511.0",

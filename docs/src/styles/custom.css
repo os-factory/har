@@ -3,15 +3,16 @@
 	--sl-color-accent-low: #1b231e;
 	--sl-color-accent: #7dcaa2;
 	--sl-color-accent-high: #b9f4ce;
-	--sl-color-white: #edf1f7;
-	--sl-color-gray-1: #d9e0ea;
-	--sl-color-gray-2: #9aa6b4;
-	--sl-color-gray-3: #78818b;
-	--sl-color-gray-4: #4e5661;
-	--sl-color-gray-5: #27313d;
-	--sl-color-gray-6: #151c25;
-	--sl-color-black: #0c1016;
-	--sl-font: Inter, ui-sans-serif, system-ui, sans-serif;
+	--sl-color-white: #fafafa;
+	--sl-color-gray-1: #e5e5e5;
+	--sl-color-gray-2: #a3a3a3;
+	--sl-color-gray-3: #7a7a7a;
+	--sl-color-gray-4: #525252;
+	--sl-color-gray-5: #262626;
+	--sl-color-gray-6: #141414;
+	--sl-color-black: #0a0a0a;
+	--sl-font: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+	--sl-font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", monospace;
 	--sl-text-xs: 0.8125rem;
 }
 
@@ -36,12 +37,24 @@
 
 .sl-markdown-content img {
 	border: 1px solid var(--sl-color-gray-5);
-	border-radius: 0.75rem;
-	box-shadow: 0 18px 50px rgb(0 0 0 / 18%);
+	border-radius: 0.5rem;
+	box-shadow: none;
 }
 
 .sl-markdown-content table {
 	font-size: 0.9rem;
+	border-collapse: collapse;
+}
+
+.sl-markdown-content th,
+.sl-markdown-content td {
+	border: 1px solid var(--sl-color-gray-5);
+}
+
+/* Hairline cards, no heavy shadow */
+.card {
+	border-color: var(--sl-color-gray-5);
+	box-shadow: none;
 }
 
 .sl-markdown-content code:not(pre code) {

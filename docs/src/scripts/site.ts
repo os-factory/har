@@ -113,7 +113,8 @@ type WorkflowContent = {
   label: string;
   title: string;
   body: string;
-  command: string;
+  docLabel: string;
+  docHref: string;
   method: string;
   detail: string;
   json: string;
@@ -123,8 +124,9 @@ const workflowContent: Record<string, WorkflowContent> = {
   discover: {
     label: '01 — Discover',
     title: 'The agent reads one stable interface.',
-    body: 'Instead of guessing project-specific shell commands, the agent asks HAR what the repository can launch, verify, inspect, reset, and tear down.',
-    command: 'har env status --json',
+    body: 'The agent asks HAR what the repository can launch, verify, inspect, reset, and tear down, all through one interface.',
+    docLabel: 'MCP tools',
+    docHref: '/docs/reference/mcp/',
     method: 'har_describe_project',
     detail: 'project description',
     json: '{\n  "profile": "default",\n  "agentSlots": 3,\n  "stages": [\n    "launch", "verify", "test"\n  ]\n}',
@@ -132,17 +134,19 @@ const workflowContent: Record<string, WorkflowContent> = {
   isolate: {
     label: '02 — Isolate',
     title: 'Every task gets a clean slot.',
-    body: 'HAR creates a dedicated session worktree and allocates the environment the project needs, from ports to local services.',
-    command: 'har env launch 2',
+    body: 'HAR gives the task its own worktree, branch, ports, and, where the project needs it, a database, so nothing is shared with the main checkout.',
+    docLabel: 'How slots work',
+    docHref: '/docs/guides/agent-workflow/#before-editing',
     method: 'har_launch_environment',
     detail: 'slot allocation',
-    json: '{\n  "slot": 2,\n  "worktree": ".../slot-02",\n  "previewUrl": "localhost:4102",\n  "status": "ready"\n}',
+    json: '{\n  "slot": 2,\n  "worktree": "~/worktrees/my-app-agent-2",\n  "previewUrl": "localhost:4102",\n  "status": "ready"\n}',
   },
   build: {
     label: '03 — Build',
     title: 'The agent edits inside the harness.',
-    body: 'The agent works in the printed worktree, uses the project’s existing tools, and can inspect logs or status without touching the main checkout.',
-    command: 'cd .har/worktrees/slot-02',
+    body: 'The agent edits and tests inside that isolated worktree using the project’s own tools, while the main checkout stays untouched.',
+    docLabel: 'Editing in the harness',
+    docHref: '/docs/guides/agent-workflow/#during-implementation',
     method: 'har_get_status',
     detail: 'live environment',
     json: '{\n  "processes": 3,\n  "healthy": true,\n  "dirtyFiles": 4,\n  "mainCheckout": "clean"\n}',
@@ -150,8 +154,9 @@ const workflowContent: Record<string, WorkflowContent> = {
   verify: {
     label: '04 — Verify',
     title: 'Project checks become a deterministic pipeline.',
-    body: 'Generic stages run the real checks your team trusts and return normalized status, duration, logs, and artifacts.',
-    command: 'har env verify 2 --full',
+    body: 'The project’s own checks run through the same pipeline every time and return a consistent status with duration, logs, and artifacts.',
+    docLabel: 'How verification works',
+    docHref: '/docs/guides/verification/',
     method: 'har_run_verification',
     detail: 'normalized results',
     json: '{\n  "result": "passed",\n  "durationMs": 31200,\n  "stages": 6,\n  "artifacts": 5\n}',
@@ -159,8 +164,9 @@ const workflowContent: Record<string, WorkflowContent> = {
   handoff: {
     label: '05 — Hand off',
     title: 'The result arrives with evidence.',
-    body: 'HAR records what ran and the exact validated tree, giving reviewers a branch, logs, artifacts, and a trustworthy next action.',
-    command: 'har env complete 2',
+    body: 'Once verification passes, the session is torn down and the branch is kept with the proof of what ran, so a reviewer gets the code plus the evidence.',
+    docLabel: 'Session handoff',
+    docHref: '/docs/guides/agent-workflow/#session-handoff',
     method: 'har_get_run',
     detail: 'reviewable handoff',
     json: '{\n  "branch": "agent/slot-02",\n  "treeHash": "7a1c9d4",\n  "verification": "passed",\n  "readyForReview": true\n}',
@@ -183,7 +189,7 @@ for (const tab of tabs) {
     const content = key ? workflowContent[key] : undefined;
     if (!content || !copyRoot || !visualPanel) return;
 
-    copyRoot.innerHTML = `<span class="workflow-label">${content.label}</span><h3>${content.title}</h3><p>${content.body}</p><div class="workflow-command"><span>$</span><code>${content.command}</code></div>`;
+    copyRoot.innerHTML = `<span class="workflow-label">${content.label}</span><h3>${content.title}</h3><p>${content.body}</p><a class="workflow-doc-link" href="${content.docHref}">${content.docLabel} <span aria-hidden="true">→</span></a>`;
     const highlightedJson = escapeHtml(content.json).replaceAll('\"', '<span>\"</span>');
     visualPanel.innerHTML = `<div class="visual-panel-header"><span>HAR MCP</span><small>${content.detail}</small></div><div class="mcp-call"><span class="mcp-method">tool</span><strong>${content.method}</strong><small>repo: /workspace/my-app</small></div><div class="json-card"><pre>${highlightedJson}</pre></div>`;
   });

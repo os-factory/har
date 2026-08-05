@@ -47,7 +47,11 @@ export default defineConfig({
 				alt: '.har',
 			},
 			favicon: '/assets/har-logo.png',
-			customCss: ['./src/styles/custom.css'],
+			customCss: [
+				'@fontsource-variable/geist/index.css',
+				'@fontsource-variable/geist-mono/index.css',
+				'./src/styles/custom.css',
+			],
 			disable404Route: true,
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/os-factory/har' },
@@ -58,7 +62,6 @@ export default defineConfig({
 			lastUpdated: true,
 			sidebar: [
 				{ label: 'Website', link: '/' },
-				{ label: 'Blog', link: '/blog' },
 				{
 					label: 'Start here',
 					items: [
