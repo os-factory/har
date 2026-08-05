@@ -70,9 +70,8 @@ describe('MCP tool schemas', () => {
     });
   });
 
-  it('defaults init harness input to manual scaffold (auto false)', () => {
+  it('defaults init harness input profile to default', () => {
     const parsed = InitHarnessInputSchema.parse({ repo: '.' });
-    expect(parsed.auto).toBe(false);
     expect(parsed.profile).toBe('default');
   });
 });

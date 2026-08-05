@@ -1,14 +1,13 @@
 {
   "name": "@osfactory/har",
   "version": "0.44.0",
-  "description": "LLM-powered CLI for reproducible agent development environments",
+  "description": "Open harness for reproducible multi-agent coding workflows",
   "keywords": [
     "har",
     "cli",
     "mcp",
     "agent",
     "harness",
-    "llm",
     "devops"
   ],
   "bin": {
@@ -21,7 +20,7 @@
     "control/docker-compose.build.yml"
   ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --banner:js='#!/usr/bin/env node' && rm -rf dist/templates dist/prompts && cp -r src/templates dist/templates && mkdir -p dist/prompts && cp src/llm/prompts/*.md dist/prompts/",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --banner:js='#!/usr/bin/env node' && rm -rf dist/templates && cp -r src/templates dist/templates",
     "dev": "tsx src/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -32,7 +31,6 @@
     "release": "semantic-release"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@pydantic/genai-prices": "^0.0.73",
     "chalk": "^5.3.0",

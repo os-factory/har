@@ -276,7 +276,6 @@ export async function runOnboarding(
       repoPath,
       profile: options.profile,
       force: alreadyPresent,
-      auto: false,
     });
     if (!result.validation.pass) {
       warn('Harness has validation errors — review .har/ after adaptation.');

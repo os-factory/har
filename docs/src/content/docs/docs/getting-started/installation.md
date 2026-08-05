@@ -9,7 +9,6 @@ description: Install HAR, verify the CLI, and connect an MCP client.
 - npm
 - Git
 - Docker only when your harness uses containerized infrastructure
-- `ANTHROPIC_API_KEY` only for built-in `--auto` adaptation
 
 ## Install from npm
 

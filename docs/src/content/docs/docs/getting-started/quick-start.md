@@ -42,14 +42,9 @@ init/maintain should install the commit gate. Explicit command flags still win.
 The default profile targets web applications. Use `--profile cli` for libraries
 and command-line tools or `--profile ios` for an Xcode project.
 
-To let HAR perform the Claude-based adaptation:
-
-```bash
-export ANTHROPIC_API_KEY=...
-har env init --auto --yes
-```
-
-Review and commit `.har/`, `AGENTS.md`, and any generated agent workflows.
+Adapt the scaffold with your coding agent using the printed prompt (also saved to
+`.har/ADAPT-PROMPT.md`). Review and commit `.har/`, `AGENTS.md`, and any generated
+agent workflows.
 
 ## 2. Check readiness
 

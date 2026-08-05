@@ -18,11 +18,9 @@ import {
   printAdaptationPrompt,
   writeAdaptationPrompt,
 } from '../../harness/adaptation-prompt';
-import { promptApplyAgentMdProposal, readAgentMdProposal, clearAgentMdProposal } from '../../harness/agent-md';
 import { handleCursorRule } from '../../harness/cursor-rule';
 import { handleAgentSkills } from '../../harness/agent-skills';
 import {
-  AGENTS_MD,
   handleInstructionFiles,
 } from '../../harness/instruction-files';
 import {
@@ -39,8 +37,7 @@ import { collectEnvironmentStatus } from '../../core/slot-status';
 import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
 import { readOnboardingPreferences } from '../../core/onboarding-preferences';
 import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
-import { writeFileSafe } from '../../utils/file-ops';
-import { requireApiKey, validateAgentId } from '../../utils/validation';
+import { validateAgentId } from '../../utils/validation';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
 import {
   HAR_ENV_EPILOG,
@@ -56,19 +53,13 @@ export const envCommand = {
     yargs
       .command(
         'init',
-        'Copy harness boilerplate into .har/ (use --auto for built-in Claude adaptation)',
+        'Copy harness boilerplate into .har/',
         (y: Argv) =>
           y
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
             .option('verbose', { alias: 'v', type: 'boolean', default: false })
-            .option('model', { type: 'string', describe: 'Claude model for authoring (--auto only)' })
             .option('force', { type: 'boolean', default: false, describe: 'Overwrite existing .har/' })
             .option('smoke', { type: 'boolean', default: false, describe: 'Run setup-infra.sh after adaptation' })
-            .option('auto', {
-              type: 'boolean',
-              default: false,
-              describe: 'Run built-in Claude adaptation (requires ANTHROPIC_API_KEY)',
-            })
             .option('profile', {
               type: 'string',
               choices: ['default', 'cli', 'ios'] as const,
@@ -110,17 +101,11 @@ export const envCommand = {
       )
       .command(
         'maintain',
-        'Validate .har/ and print a maintenance prompt (use --auto for built-in Claude adaptation)',
+        'Validate .har/ and print a maintenance prompt',
         (y: Argv) =>
           y
             .option('repo', { type: 'string', default: '.' })
             .option('verbose', { alias: 'v', type: 'boolean', default: false })
-            .option('model', { type: 'string', describe: 'Claude model for authoring (--auto only)' })
-            .option('auto', {
-              type: 'boolean',
-              default: false,
-              describe: 'Run built-in Claude adaptation (requires ANTHROPIC_API_KEY)',
-            })
             .option('yes', {
               type: 'boolean',
               default: false,
@@ -391,10 +376,8 @@ export const envCommand = {
 export async function handleInit(argv: {
   repo: string;
   verbose: boolean;
-  model?: string;
   force: boolean;
   smoke: boolean;
-  auto: boolean;
   yes: boolean;
   profile: 'default' | 'cli' | 'ios';
   /** Tri-state from yargs: unset | --cursor-rule | --no-cursor-rule */
@@ -412,19 +395,10 @@ export async function handleInit(argv: {
   info(`Repository: ${repoPath}`);
 
   try {
-    if (argv.auto) {
-      requireApiKey();
-      divider();
-      info('Adapting .har/ with Claude. This takes 1-3 minutes...');
-      divider();
-    }
-
     const result = await initHarness({
       repoPath,
       force: argv.force,
-      auto: argv.auto,
       verbose: argv.verbose,
-      model: argv.model,
       smoke: argv.smoke,
       profile: argv.profile,
     });
@@ -443,11 +417,7 @@ export async function handleInit(argv: {
       return finishCommand(1);
     }
 
-    if (argv.auto) {
-      await handleAgentMdProposal(repoPath, argv.yes);
-    } else {
-      await emitManualAdaptationPrompt(repoPath, 'init', argv.profile, undefined, argv.yes);
-    }
+    await emitManualAdaptationPrompt(repoPath, 'init', argv.profile, undefined, argv.yes);
 
     divider();
     success('Harness initialized!');
@@ -464,7 +434,7 @@ export async function handleInit(argv: {
       cursorRule: onboarding.cursorRule,
       ...onboarding.agentSkills,
     });
-    printNextSteps(argv.auto);
+    printNextSteps();
   } catch (err: unknown) {
     error((err as Error).message);
     return finishCommand(1);
@@ -474,8 +444,6 @@ export async function handleInit(argv: {
 export async function handleMaintain(argv: {
   repo: string;
   verbose: boolean;
-  model?: string;
-  auto: boolean;
   yes: boolean;
   finalize: boolean;
   summary?: string;
@@ -494,18 +462,9 @@ export async function handleMaintain(argv: {
   info(`Repository: ${repoPath}`);
 
   try {
-    if (argv.auto) {
-      requireApiKey();
-      divider();
-      info('Inspecting repo and updating harness files + README...');
-      divider();
-    }
-
     const result = await maintainHarness({
       repoPath,
-      auto: argv.auto,
       verbose: argv.verbose,
-      model: argv.model,
       finalize: argv.finalize,
       summary: argv.summary,
     });
@@ -525,12 +484,6 @@ export async function handleMaintain(argv: {
         return finishCommand(1);
       }
       info('Manifest updated — generator version and file checksums recorded.');
-    } else if (argv.auto) {
-      if (!result.validation.pass) {
-        warn('Harness has validation errors after maintenance.');
-        return finishCommand(1);
-      }
-      await handleAgentMdProposal(repoPath, argv.yes);
     } else {
       if (!result.validation.pass) {
         warn('Harness has validation errors — fix them before running --finalize.');
@@ -659,21 +612,9 @@ async function emitManualAdaptationPrompt(
   await offerAdaptationPromptClipboard(prompt, { autoYes });
 }
 
-async function handleAgentMdProposal(repoPath: string, autoYes: boolean): Promise<void> {
-  if (autoYes) {
-    const proposal = readAgentMdProposal(repoPath);
-    if (proposal) {
-      writeFileSafe(path.join(repoPath, AGENTS_MD), proposal.content);
-      clearAgentMdProposal(repoPath);
-      info(`Applied ${AGENTS_MD} proposal (--yes)`);
-    }
-    return;
-  }
-  await promptApplyAgentMdProposal(repoPath);
-}
 
 /**
- * Detect instruction files, write AGENTS.md, migrate AGENT.md, then install
+ * Detect instruction files, write AGENTS.md, migrate legacy instruction files, then install
  * Cursor rule + skills for confirmed targets (no double prompts).
  */
 export async function applyAgentIntegrations(options: {
@@ -1136,15 +1077,11 @@ function printMaintainBundleSummary(report: MaintainBundleReport): void {
   }
 }
 
-function printNextSteps(auto: boolean): void {
+function printNextSteps(): void {
   console.error('');
   console.error('  Read:         .har/README.md');
-  if (!auto) {
-    console.error('  Adapt:        paste clipboard / prompt above into your coding agent');
-    console.error('  Prompt file:  .har/ADAPT-PROMPT.md');
-  } else {
-    console.error('  Agent guide:  AGENTS.md (repo root, if applied)');
-  }
+  console.error('  Adapt:        paste clipboard / prompt above into your coding agent');
+  console.error('  Prompt file:  .har/ADAPT-PROMPT.md');
   console.error('  Setup infra:  ./.har/setup-infra.sh   # when Docker infra is enabled');
   console.error('  Launch:       har env launch 1        # preferred; or ./.har/launch.sh 1');
   console.error('  Verify:       har env verify 1         # preferred; or ./.har/verify.sh 1');

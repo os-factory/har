@@ -49,20 +49,16 @@ describe('adaptation prompts', () => {
   });
 });
 
-describe('initHarness manual default', () => {
-  it('scaffolds without ANTHROPIC_API_KEY when auto is false', async () => {
+describe('initHarness scaffold', () => {
+  it('scaffolds without external API keys', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-init-'));
-
-    delete process.env.ANTHROPIC_API_KEY;
 
     const result = await initHarness({
       repoPath: tmpDir,
       profile: 'cli',
-      auto: false,
     });
 
     expect(fs.existsSync(path.join(tmpDir, '.har', 'verify.sh'))).toBe(true);
     expect(result.validation.pass).toBe(true);
-    expect(result.adaptationSummary).toBeUndefined();
   });
 });

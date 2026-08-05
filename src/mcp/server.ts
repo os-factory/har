@@ -63,11 +63,10 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_init_harness',
-    description: 'Scaffold .har/ boilerplate. Use auto=true for built-in Claude adaptation.',
+    description: 'Scaffold .har/ boilerplate for a coding agent to adapt.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       force: { type: 'boolean' },
-      auto: { type: 'boolean' },
       smoke: { type: 'boolean' },
       profile: { type: 'string', enum: ['default', 'cli', 'ios'] },
     }),
@@ -262,7 +261,6 @@ export async function handleMcpToolCall(
       const result = await initHarness({
         repoPath: repo,
         force: input.force,
-        auto: input.auto,
         smoke: input.smoke,
         profile: input.profile,
       });
@@ -270,7 +268,6 @@ export async function handleMcpToolCall(
         harnessDir: result.harnessDir,
         validation: result.validation,
         smoke: result.smoke,
-        adaptationSummary: result.adaptationSummary,
       });
     }
 

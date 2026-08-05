@@ -73,7 +73,7 @@ describe('maintain bundle', () => {
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
     fs.unlinkSync(path.join(repoPath, '.har', 'provision-toolchain.sh'));
 
-    const result = await maintainHarness({ repoPath, auto: false, finalize: false });
+    const result = await maintainHarness({ repoPath, finalize: false });
 
     expect(result.validation.pass).toBe(false);
     expect(result.bundle).toBeDefined();
@@ -86,12 +86,11 @@ describe('maintain bundle', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-finalize-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
 
-    await maintainHarness({ repoPath, auto: false, finalize: false });
+    await maintainHarness({ repoPath, finalize: false });
     expect(fs.existsSync(path.join(repoPath, '.har', MAINTAIN_DIR))).toBe(true);
 
     await maintainHarness({
       repoPath,
-      auto: false,
       finalize: true,
       summary: 'test finalize',
     });
