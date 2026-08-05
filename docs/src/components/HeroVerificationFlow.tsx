@@ -17,9 +17,11 @@ import { HeroFlowNode, type HeroFlowNodeData } from './HeroFlowNode';
 
 const nodeTypes: NodeTypes = { stage: HeroFlowNode };
 
-const NODE_HEIGHT = 92;
+/** Must match `.reactflow-shell .rf-node { height }` in hero-flow.css */
+const NODE_HEIGHT = 112;
 const COL_GAP = 36;
 const ROW_GAP = 40;
+const FLOW_PADDING = 32;
 const DESKTOP_NODE_WIDTH = 168;
 const MOBILE_BREAKPOINT = 760;
 
@@ -33,10 +35,23 @@ interface FlowLayout {
   minZoom: number;
   maxZoom: number;
   shellHeight: number;
-  contentHeight: number;
   contentWidth: number;
   fitToView: boolean;
-  scrollable: boolean;
+  autoHeight: boolean;
+}
+
+function rowCount(stageCount: number, columns: number): number {
+  return Math.max(1, Math.ceil(stageCount / columns));
+}
+
+function contentHeightFor(rows: number): number {
+  if (rows <= 1) return NODE_HEIGHT + FLOW_PADDING * 2;
+  return (rows - 1) * (NODE_HEIGHT + ROW_GAP) + NODE_HEIGHT + FLOW_PADDING * 2;
+}
+
+function contentWidthFor(columns: number, nodeWidth: number): number {
+  if (columns <= 1) return nodeWidth + FLOW_PADDING * 2;
+  return (columns - 1) * (nodeWidth + COL_GAP) + nodeWidth + FLOW_PADDING * 2;
 }
 
 function flowLayoutForWidth(width: number): FlowLayout {
@@ -44,27 +59,24 @@ function flowLayoutForWidth(width: number): FlowLayout {
 
   if (width <= MOBILE_BREAKPOINT) {
     const columns = 1;
-    const rows = stageCount;
+    const rows = rowCount(stageCount, columns);
     const nodeWidth = DESKTOP_NODE_WIDTH;
-    const contentHeight = rows * (NODE_HEIGHT + ROW_GAP) + 56;
-    const contentWidth = nodeWidth + 56;
 
     return {
       columns,
       nodeWidth,
       minZoom: 1,
       maxZoom: 1,
-      shellHeight: 560,
-      contentHeight,
-      contentWidth,
+      shellHeight: contentHeightFor(rows),
+      contentWidth: contentWidthFor(columns, nodeWidth),
       fitToView: false,
-      scrollable: true,
+      autoHeight: true,
     };
   }
 
   if (width <= 1080) {
     const columns = 2;
-    const rows = Math.ceil(stageCount / columns);
+    const rows = rowCount(stageCount, columns);
     const nodeWidth = 148;
     return {
       columns,
@@ -72,15 +84,13 @@ function flowLayoutForWidth(width: number): FlowLayout {
       minZoom: 0.55,
       maxZoom: 1,
       shellHeight: 480,
-      contentHeight: rows * (NODE_HEIGHT + ROW_GAP) + 80,
-      contentWidth: columns * (nodeWidth + COL_GAP),
+      contentWidth: contentWidthFor(columns, nodeWidth),
       fitToView: true,
-      scrollable: false,
+      autoHeight: false,
     };
   }
 
   const columns = 3;
-  const rows = Math.ceil(stageCount / columns);
   const nodeWidth = DESKTOP_NODE_WIDTH;
   return {
     columns,
@@ -88,10 +98,9 @@ function flowLayoutForWidth(width: number): FlowLayout {
     minZoom: 0.85,
     maxZoom: 1,
     shellHeight: 450,
-    contentHeight: rows * (NODE_HEIGHT + ROW_GAP) + 80,
-    contentWidth: columns * (nodeWidth + COL_GAP),
+    contentWidth: contentWidthFor(columns, nodeWidth),
     fitToView: true,
-    scrollable: false,
+    autoHeight: false,
   };
 }
 
@@ -126,7 +135,10 @@ function buildFlow(layout: FlowLayout): { nodes: Node[]; edges: Edge[] } {
     return {
       id: stage.id,
       type: 'stage',
-      position: { x: col * nodeSpan, y: row * (NODE_HEIGHT + ROW_GAP) },
+      position: {
+        x: FLOW_PADDING + col * nodeSpan,
+        y: FLOW_PADDING + row * (NODE_HEIGHT + ROW_GAP),
+      },
       data,
       draggable: false,
       selectable: false,
@@ -192,11 +204,10 @@ function HeroVerificationFlowCanvas() {
 
   return (
     <div
-      className={`reactflow-shell${layout.scrollable ? ' reactflow-shell--scroll' : ''}`}
+      className={`reactflow-shell${layout.autoHeight ? ' reactflow-shell--auto' : ''}`}
       style={{
         height: layout.shellHeight,
         ['--rf-node-width' as string]: `${layout.nodeWidth}px`,
-        ['--rf-content-height' as string]: `${layout.contentHeight}px`,
         ['--rf-content-width' as string]: `${layout.contentWidth}px`,
       }}
     >
@@ -216,7 +227,7 @@ function HeroVerificationFlowCanvas() {
         proOptions={{ hideAttribution: true }}
         minZoom={layout.minZoom}
         maxZoom={layout.maxZoom}
-        defaultViewport={{ x: 20, y: 16, zoom: 1 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.12)" />
         {layout.fitToView ? <FitViewOnLayout layout={layout} /> : null}

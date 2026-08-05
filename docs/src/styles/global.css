@@ -217,17 +217,13 @@ code, pre { font-family: var(--mono); }
   .compatibility { flex-direction: column; align-items: flex-start; gap: 12px; }
   .chip-row { width: 100%; }
   .hero-flow-canvas { min-width: 0; }
-  .reactflow-shell--scroll {
-    height: 560px;
-    overflow: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+  .reactflow-shell--auto {
+    overflow: visible;
   }
-  .reactflow-shell--scroll .react-flow {
-    height: var(--rf-content-height, 900px);
-    min-width: min(100%, var(--rf-content-width, 220px));
+  .reactflow-shell--auto .react-flow {
+    height: 100%;
   }
-  .reactflow-shell--scroll::after { display: none; }
+  .reactflow-shell--auto::after { display: none; }
   .flow-footer { padding: 12px 14px; flex-wrap: wrap; }
   .flow-footer code { width: 100%; }
   .floating-note { display: none; }.window-label { text-align: left; }.window-status { display: none; }
