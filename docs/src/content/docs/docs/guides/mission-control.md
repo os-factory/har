@@ -88,14 +88,20 @@ Factory is the default Mission Control experience. It answers four questions:
 
 ![Mission Control Factory overview showing completed and active work units](/assets/factory-overview.png)
 
-Launch with a provider-neutral work identifier to create that evidence chain:
+Launch with a short work identifier plus source metadata to create that evidence chain:
 
 ```bash
 har env launch 1 \
-  --work-id "github:acme/widget#123" \
+  --work-id "widget-123" \
   --work-source github \
+  --work-url "https://github.com/acme/widget/issues/123" \
   --work-title "Add saved filters"
 ```
+
+Bind on launch when the task names a tracker issue or ticket. Use a repo-scoped
+`--work-id` (not a provider-prefixed composite such as `github:owner/repo#123`);
+pass the provider in `--work-source` and the canonical link in `--work-url`. Skip
+binding for ad-hoc work with no tracker identity.
 
 Every fresh launch creates an immutable attempt ID. Runs and telemetry inherit the
 work and attempt correlation. Full verification produces exact-tree proof, and

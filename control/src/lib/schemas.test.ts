@@ -17,17 +17,18 @@ describe('RegisterRepoInputSchema', () => {
 });
 
 describe('SyncWorkUnitsInputSchema', () => {
-  it('parses provider-neutral work and attempt identity', () => {
+  it('parses short work unit ids with source metadata', () => {
     const result = SyncWorkUnitsInputSchema.parse({
       workUnits: [{
-        workUnitId: 'github:acme/widget#123',
+        workUnitId: 'widget-123',
         source: 'github',
+        sourceUrl: 'https://github.com/acme/widget/issues/123',
         createdAt: '2026-07-23T20:00:00.000Z',
         updatedAt: '2026-07-23T20:00:00.000Z',
       }],
       attempts: [{
         attemptId: '11111111-1111-4111-8111-111111111111',
-        workUnitId: 'github:acme/widget#123',
+        workUnitId: 'widget-123',
         agentId: 1,
         createdAt: '2026-07-23T20:00:00.000Z',
       }],

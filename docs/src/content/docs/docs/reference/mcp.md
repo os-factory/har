@@ -19,6 +19,10 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | --- | --- | --- |
 | `har_preflight_environment` | `agentId` | Readiness, blockers, and whether launch is safe |
 | `har_launch_environment` | `agentId`, optional `worktree`, `claude`, `resume`, `workUnitId`, `source`, `sourceUrl`, `title`, `parentWorkUnitId` | Work directory, branch, work/attempt IDs, URLs, and normalized stage result |
+
+Pass `workUnitId`, `source`, and `sourceUrl` when the task names a tracker issue or
+ticket (short repo-scoped id such as `widget-123`, not a provider-prefixed composite).
+Omit them for ad-hoc work with no tracker identity.
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
 | `har_get_status` | optional `agentId` | Slot, process, worktree, branch, and dirty state |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |

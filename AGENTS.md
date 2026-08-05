@@ -25,6 +25,8 @@ Run harness commands from the directory that owns the harness (e.g. `cd control 
 Follow [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) and
 [`.har/README.md`](.har/README.md): launch first, edit only under the session work
 dir, full-verify before done, then present a session handoff and wait for approval.
+When the task names a tracker issue or ticket, bind at launch with a short
+`--work-id`, plus `--work-source`, `--work-url`, and `--work-title` when known.
 Default recommendation is complete + open a PR when tooling is available (still
 requires approval); never run `complete`, push, or PR autonomously.
 

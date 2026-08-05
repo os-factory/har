@@ -27,8 +27,12 @@ WorkUnit -> WorkAttempt -> slot session/worktree -> runs -> validation binding
 ### Work unit
 
 `workUnitId` is a stable, caller-provided identifier scoped to one registered
-repository. A durable work-unit record stores only immutable correlation metadata:
-optional source, source URL, title, and parent work-unit ID.
+repository. Prefer a short repo-scoped id (for example `widget-123` or `har-115`);
+put the tracker provider in `source` and the canonical URL in `sourceUrl`. Legacy
+composite ids such as `github:owner/repo#123` remain valid but are deprecated.
+
+A durable work-unit record stores only immutable correlation metadata: optional
+source, source URL, title, and parent work-unit ID.
 
 Mutable tracker fields such as assignee, labels, priority, and tracker workflow
 state are not copied into HAR.

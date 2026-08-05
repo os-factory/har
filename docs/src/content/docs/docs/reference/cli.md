@@ -116,7 +116,9 @@ If the worktree has uncommitted changes, commit or discard them in the
 worktree first. Use `--resume` / `recover` only for a failed or starting
 launch — it is not a way to replace an active session.
 
-Work metadata is optional and backward compatible. A fresh bound launch creates an
+Work metadata is optional and backward compatible. Bind when the task names a
+tracker issue or ticket: pass a short repo-scoped `--work-id`, plus `--work-source`,
+`--work-url`, and `--work-title` when known. A fresh bound launch creates an
 immutable attempt UUID; `--resume` preserves the failed session's attempt.
 
 ### Verify and finish
