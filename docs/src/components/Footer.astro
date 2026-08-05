@@ -1,4 +1,7 @@
 ---
+import kernoLogoLight from '@assets/kerno-logo-dark.svg';
+import kernoLogoDark from '@assets/kerno-logo.svg';
+
 interface Props {
   minimal?: boolean;
 }
@@ -21,7 +24,8 @@ const { minimal = false } = Astro.props;
         <div class="footer-sponsor">
           <span class="sponsor-label">Sponsored by</span>
           <a class="sponsor-link" href="https://kerno.io" rel="noopener noreferrer" target="_blank">
-            <img alt="Kerno" height="26" src="/assets/kerno-logo.svg" width="120" />
+            <img class="sponsor-logo sponsor-logo--light" alt="Kerno" height="26" src={kernoLogoLight.src} width="120" />
+            <img class="sponsor-logo sponsor-logo--dark" alt="Kerno" height="26" src={kernoLogoDark.src} width="120" />
           </a>
         </div>
       </div>

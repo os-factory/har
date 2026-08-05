@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -17,20 +17,36 @@ import { HeroFlowNode, type HeroFlowNodeData } from './HeroFlowNode';
 
 const nodeTypes: NodeTypes = { stage: HeroFlowNode };
 
-const NODE_WIDTH = 168;
 const NODE_HEIGHT = 92;
 const COL_GAP = 36;
 const ROW_GAP = 40;
-const MAX_COLS = 3;
 
 const EDGE_COLOR = {
   fail: 'rgba(239, 108, 108, 0.72)',
 };
 
-function buildFlow(): { nodes: Node[]; edges: Edge[]; rows: number } {
+interface FlowLayout {
+  columns: number;
+  nodeWidth: number;
+  minZoom: number;
+  shellHeight: number;
+}
+
+function flowLayoutForWidth(width: number): FlowLayout {
+  if (width <= 480) {
+    return { columns: 1, nodeWidth: 136, minZoom: 0.42, shellHeight: 520 };
+  }
+  if (width <= 760) {
+    return { columns: 2, nodeWidth: 148, minZoom: 0.55, shellHeight: 480 };
+  }
+  return { columns: 3, nodeWidth: 168, minZoom: 0.85, shellHeight: 450 };
+}
+
+function buildFlow(layout: FlowLayout): { nodes: Node[]; edges: Edge[]; rows: number } {
   const stages = HERO_VERIFICATION_STAGES;
-  const columns = Math.max(1, Math.min(stages.length, MAX_COLS));
+  const columns = Math.max(1, Math.min(stages.length, layout.columns));
   const rows = Math.max(1, Math.ceil(stages.length / columns));
+  const nodeSpan = layout.nodeWidth + COL_GAP;
 
   const nodes: Node[] = stages.map((stage, index) => {
     const row = Math.floor(index / columns);
@@ -58,7 +74,7 @@ function buildFlow(): { nodes: Node[]; edges: Edge[]; rows: number } {
     return {
       id: stage.id,
       type: 'stage',
-      position: { x: col * (NODE_WIDTH + COL_GAP), y: row * (NODE_HEIGHT + ROW_GAP) },
+      position: { x: col * nodeSpan, y: row * (NODE_HEIGHT + ROW_GAP) },
       data,
       draggable: false,
       selectable: false,
@@ -83,25 +99,48 @@ function buildFlow(): { nodes: Node[]; edges: Edge[]; rows: number } {
   return { nodes, edges, rows };
 }
 
-function FitViewOnMount() {
+function useFlowLayout(): FlowLayout {
+  const [layout, setLayout] = useState<FlowLayout>(() =>
+    typeof window === 'undefined' ? flowLayoutForWidth(1200) : flowLayoutForWidth(window.innerWidth),
+  );
+
+  useEffect(() => {
+    const update = () => setLayout(flowLayoutForWidth(window.innerWidth));
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return layout;
+}
+
+function FitViewOnLayout({ layout }: { layout: FlowLayout }) {
   const { fitView } = useReactFlow();
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      fitView({ padding: 0.12, minZoom: 1, maxZoom: 1, duration: 0 });
+      fitView({
+        padding: layout.columns === 1 ? 0.06 : 0.1,
+        minZoom: layout.minZoom,
+        maxZoom: 1,
+        duration: 0,
+      });
     });
     return () => cancelAnimationFrame(frame);
-  }, [fitView]);
+  }, [fitView, layout]);
 
   return null;
 }
 
 function HeroVerificationFlowCanvas() {
-  const { nodes, edges, rows } = useMemo(() => buildFlow(), []);
-  const height = Math.min(450, Math.max(320, rows * (NODE_HEIGHT + ROW_GAP) + 80));
+  const layout = useFlowLayout();
+  const { nodes, edges } = useMemo(() => buildFlow(layout), [layout]);
 
   return (
-    <div className="reactflow-shell" style={{ height }}>
+    <div
+      className="reactflow-shell"
+      style={{ height: layout.shellHeight, ['--rf-node-width' as string]: `${layout.nodeWidth}px` }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -116,12 +155,12 @@ function HeroVerificationFlowCanvas() {
         zoomOnDoubleClick={false}
         preventScrolling={false}
         proOptions={{ hideAttribution: true }}
-        minZoom={1}
+        minZoom={layout.minZoom}
         maxZoom={1}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.12)" />
-        <FitViewOnMount />
+        <FitViewOnLayout layout={layout} />
       </ReactFlow>
     </div>
   );
