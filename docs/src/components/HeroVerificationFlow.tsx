@@ -20,6 +20,8 @@ const nodeTypes: NodeTypes = { stage: HeroFlowNode };
 const NODE_HEIGHT = 92;
 const COL_GAP = 36;
 const ROW_GAP = 40;
+const DESKTOP_NODE_WIDTH = 168;
+const MOBILE_BREAKPOINT = 760;
 
 const EDGE_COLOR = {
   fail: 'rgba(239, 108, 108, 0.72)',
@@ -29,23 +31,73 @@ interface FlowLayout {
   columns: number;
   nodeWidth: number;
   minZoom: number;
+  maxZoom: number;
   shellHeight: number;
+  contentHeight: number;
+  contentWidth: number;
+  fitToView: boolean;
+  scrollable: boolean;
 }
 
 function flowLayoutForWidth(width: number): FlowLayout {
-  if (width <= 480) {
-    return { columns: 1, nodeWidth: 136, minZoom: 0.42, shellHeight: 520 };
+  const stageCount = HERO_VERIFICATION_STAGES.length;
+
+  if (width <= MOBILE_BREAKPOINT) {
+    const columns = 1;
+    const rows = stageCount;
+    const nodeWidth = DESKTOP_NODE_WIDTH;
+    const contentHeight = rows * (NODE_HEIGHT + ROW_GAP) + 56;
+    const contentWidth = nodeWidth + 56;
+
+    return {
+      columns,
+      nodeWidth,
+      minZoom: 1,
+      maxZoom: 1,
+      shellHeight: 560,
+      contentHeight,
+      contentWidth,
+      fitToView: false,
+      scrollable: true,
+    };
   }
-  if (width <= 760) {
-    return { columns: 2, nodeWidth: 148, minZoom: 0.55, shellHeight: 480 };
+
+  if (width <= 1080) {
+    const columns = 2;
+    const rows = Math.ceil(stageCount / columns);
+    const nodeWidth = 148;
+    return {
+      columns,
+      nodeWidth,
+      minZoom: 0.55,
+      maxZoom: 1,
+      shellHeight: 480,
+      contentHeight: rows * (NODE_HEIGHT + ROW_GAP) + 80,
+      contentWidth: columns * (nodeWidth + COL_GAP),
+      fitToView: true,
+      scrollable: false,
+    };
   }
-  return { columns: 3, nodeWidth: 168, minZoom: 0.85, shellHeight: 450 };
+
+  const columns = 3;
+  const rows = Math.ceil(stageCount / columns);
+  const nodeWidth = DESKTOP_NODE_WIDTH;
+  return {
+    columns,
+    nodeWidth,
+    minZoom: 0.85,
+    maxZoom: 1,
+    shellHeight: 450,
+    contentHeight: rows * (NODE_HEIGHT + ROW_GAP) + 80,
+    contentWidth: columns * (nodeWidth + COL_GAP),
+    fitToView: true,
+    scrollable: false,
+  };
 }
 
-function buildFlow(layout: FlowLayout): { nodes: Node[]; edges: Edge[]; rows: number } {
+function buildFlow(layout: FlowLayout): { nodes: Node[]; edges: Edge[] } {
   const stages = HERO_VERIFICATION_STAGES;
   const columns = Math.max(1, Math.min(stages.length, layout.columns));
-  const rows = Math.max(1, Math.ceil(stages.length / columns));
   const nodeSpan = layout.nodeWidth + COL_GAP;
 
   const nodes: Node[] = stages.map((stage, index) => {
@@ -96,7 +148,7 @@ function buildFlow(layout: FlowLayout): { nodes: Node[]; edges: Edge[]; rows: nu
     };
   });
 
-  return { nodes, edges, rows };
+  return { nodes, edges };
 }
 
 function useFlowLayout(): FlowLayout {
@@ -118,11 +170,13 @@ function FitViewOnLayout({ layout }: { layout: FlowLayout }) {
   const { fitView } = useReactFlow();
 
   useEffect(() => {
+    if (!layout.fitToView) return;
+
     const frame = requestAnimationFrame(() => {
       fitView({
         padding: layout.columns === 1 ? 0.06 : 0.1,
         minZoom: layout.minZoom,
-        maxZoom: 1,
+        maxZoom: layout.maxZoom,
         duration: 0,
       });
     });
@@ -138,8 +192,13 @@ function HeroVerificationFlowCanvas() {
 
   return (
     <div
-      className="reactflow-shell"
-      style={{ height: layout.shellHeight, ['--rf-node-width' as string]: `${layout.nodeWidth}px` }}
+      className={`reactflow-shell${layout.scrollable ? ' reactflow-shell--scroll' : ''}`}
+      style={{
+        height: layout.shellHeight,
+        ['--rf-node-width' as string]: `${layout.nodeWidth}px`,
+        ['--rf-content-height' as string]: `${layout.contentHeight}px`,
+        ['--rf-content-width' as string]: `${layout.contentWidth}px`,
+      }}
     >
       <ReactFlow
         nodes={nodes}
@@ -156,11 +215,11 @@ function HeroVerificationFlowCanvas() {
         preventScrolling={false}
         proOptions={{ hideAttribution: true }}
         minZoom={layout.minZoom}
-        maxZoom={1}
-        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        maxZoom={layout.maxZoom}
+        defaultViewport={{ x: 20, y: 16, zoom: 1 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.12)" />
-        <FitViewOnLayout layout={layout} />
+        {layout.fitToView ? <FitViewOnLayout layout={layout} /> : null}
       </ReactFlow>
     </div>
   );
