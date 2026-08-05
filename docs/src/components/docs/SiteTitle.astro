@@ -1,43 +1,18 @@
 ---
 /**
- * Overrides Starlight's SiteTitle so the logo links to the docs home
- * (the Introduction) instead of the marketing site root. Markup and styles
- * mirror the built-in component; only the href target changes.
+ * Overrides Starlight's SiteTitle so the logo links to the docs home (the
+ * Introduction) instead of the marketing site root, rendering the mark only.
+ * The logo is referenced by its public asset path (as the favicon is) to avoid
+ * Starlight's internal `virtual:starlight/user-images` module, whose types are
+ * not exposed to `astro check` in project-level component overrides.
  */
-import { logos } from 'virtual:starlight/user-images';
-import config from 'virtual:starlight/user-config';
-
 const siteTitleHref = '/docs/getting-started/introduction/';
 const { siteTitle } = Astro.locals.starlightRoute;
 ---
 
 <a href={siteTitleHref} class="site-title sl-flex">
-	{
-		config.logo && logos.dark && (
-			<>
-				<img
-					class:list={{ 'light:sl-hidden print:hidden': !('src' in config.logo) }}
-					alt={config.logo.alt}
-					src={logos.dark.src}
-					width={logos.dark.width}
-					height={logos.dark.height}
-				/>
-				{/* Show light alternate if a user configure both light and dark logos. */}
-				{!('src' in config.logo) && (
-					<img
-						class="dark:sl-hidden print:block"
-						alt={config.logo.alt}
-						src={logos.light?.src}
-						width={logos.light?.width}
-						height={logos.light?.height}
-					/>
-				)}
-			</>
-		)
-	}
-	<span class:list={{ 'sr-only': config.logo?.replacesTitle }} translate="no">
-		{siteTitle}
-	</span>
+	<img alt="HAR" src="/assets/har-logo.png" width="512" height="512" />
+	<span class="sr-only" translate="no">{siteTitle}</span>
 </a>
 
 <style>
