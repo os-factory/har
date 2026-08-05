@@ -1,69 +1,444 @@
-/* Starlight theme aligned with the HAR logo green */
+/* ============================================================================
+   HAR docs theme — matches the marketing site (src/styles/global.css).
+   Restyles Starlight's native chrome via --sl-* tokens + a hairline treatment.
+   Structure (header / sidebar / footer) is left as Starlight ships it.
+   Body + headings stay Geist sans (no mono headings); code stays Geist Mono.
+   ============================================================================ */
+
+/* ---------------------------------------------------------------------------
+   Tokens — dark (default)
+   Neutral near-black palette + green accent, mirroring the landing page:
+   page #0a0a0a · raised surface #141414 · code surface #1c1c1c.
+   --------------------------------------------------------------------------- */
 :root {
-	--sl-color-accent-low: #1b231e;
-	--sl-color-accent: #7dcaa2;
-	--sl-color-accent-high: #b9f4ce;
+	/* neutral ramp */
 	--sl-color-white: #fafafa;
-	--sl-color-gray-1: #e5e5e5;
-	--sl-color-gray-2: #a3a3a3;
-	--sl-color-gray-3: #7a7a7a;
-	--sl-color-gray-4: #525252;
-	--sl-color-gray-5: #262626;
+	--sl-color-gray-1: #e6e6e6;
+	--sl-color-gray-2: #c6c6c6; /* body text */
+	--sl-color-gray-3: #a3a3a3; /* muted */
+	--sl-color-gray-4: #6f6f6f;
+	--sl-color-gray-5: #2a2a2a;
 	--sl-color-gray-6: #141414;
 	--sl-color-black: #0a0a0a;
-	--sl-font: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-	--sl-font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+
+	/* green accent ramp */
+	--sl-color-accent-low: #0e1a13;
+	--sl-color-accent: #7dcaa2;
+	--sl-color-accent-high: #b9f4ce;
+
+	/* semantic surfaces (override the derived defaults explicitly) */
+	--sl-color-bg: #0a0a0a; /* page */
+	--sl-color-bg-nav: #0a0a0a; /* header = page bg, separated by a hairline */
+	--sl-color-bg-sidebar: #141414; /* raised surface */
+	--sl-color-bg-inline-code: rgba(125, 202, 162, 0.13);
+	--sl-color-text-accent: var(--sl-color-accent);
+
+	/* hairlines — the crisp 1px look (Starlight's default derives from gray-6) */
+	--sl-color-hairline-light: rgba(255, 255, 255, 0.14);
+	--sl-color-hairline: rgba(255, 255, 255, 0.11);
+	--sl-color-hairline-shade: rgba(255, 255, 255, 0.06);
+
+	/* fonts (self-hosted via customCss) */
+	--sl-font: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+	--sl-font-mono: 'Geist Mono Variable', ui-monospace, 'SFMono-Regular', Consolas, monospace;
 	--sl-text-xs: 0.8125rem;
+
+	/* local helpers used by the component rules below */
+	--har-radius: 5px;
+	--har-surface: #1c1c1c; /* opaque raised surface (cards, code) */
+	--har-code-inline: #b9f4ce;
+	--har-accent-soft: rgba(125, 202, 162, 0.12);
 }
 
+/* ---------------------------------------------------------------------------
+   Tokens — light (warm paper)
+   page #f6f4ee · raised surface #ffffff · text #11161d · accent #445445.
+   --------------------------------------------------------------------------- */
 :root[data-theme='light'] {
-	--sl-color-accent-low: #e8efe9;
-	--sl-color-accent: #445445;
-	--sl-color-accent-high: #2d3730;
-	--sl-color-white: #11161d;
+	--sl-color-white: #11161d; /* high-contrast text */
 	--sl-color-gray-1: #283229;
-	--sl-color-gray-2: #505965;
-	--sl-color-gray-3: #68717d;
-	--sl-color-gray-4: #a5aeb8;
+	--sl-color-gray-2: #3b434d; /* body text */
+	--sl-color-gray-3: #68717d; /* muted */
+	--sl-color-gray-4: #97a0ab;
 	--sl-color-gray-5: #d9dde4;
 	--sl-color-gray-6: #eeece5;
 	--sl-color-gray-7: #f6f4ee;
-	--sl-color-black: #ffffff;
+	--sl-color-black: #f6f4ee; /* doubles as the page background */
+
+	--sl-color-accent-low: #e8efe9;
+	--sl-color-accent: #445445;
+	--sl-color-accent-high: #2d3730;
+
+	--sl-color-bg: #f6f4ee; /* page */
+	--sl-color-bg-nav: #f6f4ee; /* header = paper, separated by a hairline */
+	--sl-color-bg-sidebar: #ffffff; /* raised white surface */
+	--sl-color-bg-inline-code: rgba(68, 84, 69, 0.1);
+	--sl-color-text-accent: var(--sl-color-accent);
+
+	--sl-color-hairline-light: rgba(20, 26, 20, 0.16);
+	--sl-color-hairline: rgba(20, 26, 20, 0.12);
+	--sl-color-hairline-shade: rgba(20, 26, 20, 0.06);
+
+	--har-surface: #ffffff;
+	--har-code-inline: #3a523c;
+	--har-accent-soft: rgba(68, 84, 69, 0.1);
 }
 
+/* ---------------------------------------------------------------------------
+   Heading scale — tighter, more proportional hierarchy against the 16px body
+   (Starlight's defaults run large: h1 42 / h2 35 / h3 29). These win over the
+   built-in >=50em reassignments because custom.css is unlayered.
+   --------------------------------------------------------------------------- */
+:root {
+	--sl-text-h1: 2.1rem; /* ~34px */
+	--sl-text-h2: 1.6rem; /* ~26px */
+	--sl-text-h3: 1.3rem; /* ~21px */
+	--sl-text-h4: 1.1rem; /* ~18px */
+	--sl-text-h5: 1rem; /* 16px */
+}
+
+/* ---------------------------------------------------------------------------
+   Smooth in-page scrolling — TOC / anchor clicks glide to the section instead
+   of jumping. Starlight already sets scroll-padding-top for the fixed header.
+   Disabled for users who prefer reduced motion.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+	html {
+		scroll-behavior: smooth;
+	}
+}
+
+/* Scroll room so lower sections can reach the top when jumped to from the TOC.
+   Short pages on tall viewports otherwise bottom out before the target section
+   reaches the header offset, so TOC clicks appear to do nothing. */
+.main-pane main {
+	padding-block-end: calc(100vh - 16rem);
+}
+
+/* ---------------------------------------------------------------------------
+   Selection + focus (match the marketing green)
+   --------------------------------------------------------------------------- */
 ::selection {
 	background: rgba(68, 84, 69, 0.28);
 }
-
-.sl-markdown-content img {
-	border: 1px solid var(--sl-color-gray-5);
-	border-radius: 0.5rem;
-	box-shadow: none;
+:root[data-theme='dark'] ::selection {
+	background: rgba(125, 202, 162, 0.3);
+	color: #06120c;
+}
+:focus-visible {
+	outline: 2px solid rgba(68, 84, 69, 0.55);
+	outline-offset: 2px;
+}
+:root[data-theme='dark'] :focus-visible {
+	outline-color: rgba(125, 202, 162, 0.6);
 }
 
+/* ---------------------------------------------------------------------------
+   Header — page-bg surface with a hairline underline (echoes the site header).
+   Scope to the outer <header>: Starlight also gives the inner content its own
+   `.header` div, and an unscoped rule draws a stray second line inside the bar.
+   --------------------------------------------------------------------------- */
+header.header {
+	border-bottom: 1px solid var(--sl-color-hairline);
+	background: color-mix(in srgb, var(--sl-color-bg-nav) 92%, transparent);
+	backdrop-filter: blur(18px);
+}
+
+/* logo mark — subtle rounded lockup like the marketing brand mark */
+.site-title img {
+	border-radius: var(--har-radius);
+}
+
+/* ---------------------------------------------------------------------------
+   Sidebar — raised surface, hairline divider, green current item
+   --------------------------------------------------------------------------- */
+.sidebar-pane {
+	border-inline-end: 1px solid var(--sl-color-hairline);
+	background: var(--sl-color-bg-sidebar);
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+	color: var(--sl-color-text-accent);
+	background: var(--har-accent-soft);
+	border-radius: var(--har-radius);
+	font-weight: 600;
+}
+/* Group headers as small uppercase eyebrows, subordinate to the nav links
+   and consistent with the right-hand TOC label. */
+.sidebar-content .group-label .large {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.07em;
+	text-transform: uppercase;
+	color: var(--sl-color-gray-3);
+}
+
+/* ---------------------------------------------------------------------------
+   Right sidebar / table of contents — micro-label header + left rail with a
+   green active-position marker. Depth indentation + scroll-spy are unchanged.
+   --------------------------------------------------------------------------- */
+.right-sidebar {
+	border-inline-start: 1px solid var(--sl-color-hairline);
+}
+/* "On this page" as a small uppercase label (sans, not mono) */
+.right-sidebar-panel h2 {
+	font-size: 0.6875rem; /* 11px */
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.09em;
+	color: var(--sl-color-gray-3);
+	margin-bottom: 0.85rem;
+}
+/* the rail (spine) down the whole list */
+starlight-toc nav > ul {
+	border-inline-start: 1px solid var(--sl-color-hairline);
+}
+/* each entry carries a transparent marker that turns green when active */
+starlight-toc a {
+	border-inline-start: 2px solid transparent;
+	border-radius: 0;
+	margin-inline-start: -1px;
+	padding-block: 0.32rem;
+	transition: color 0.15s ease, border-color 0.15s ease;
+}
+starlight-toc a[aria-current='true'] {
+	color: var(--sl-color-text-accent);
+	border-inline-start-color: var(--sl-color-text-accent);
+	font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------------
+   Search button — hairline pill
+   --------------------------------------------------------------------------- */
+site-search button {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	background: var(--sl-color-bg-sidebar);
+}
+site-search button:hover {
+	border-color: var(--sl-color-text-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Markdown content — hairline cards, tables, code, asides, images
+   --------------------------------------------------------------------------- */
+
+/* Cards (Card / CardGrid) — hairline surface + green icon box (Starlight cycles
+   the icon box through orange/purple/green/red by nth-child; keep it on-brand). */
+.sl-markdown-content .card,
+.card {
+	--sl-card-border: color-mix(in srgb, var(--sl-color-text-accent) 42%, transparent);
+	--sl-card-bg: var(--har-accent-soft);
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	background: var(--har-surface);
+	box-shadow: none;
+}
+.card .icon {
+	color: var(--sl-color-text-accent);
+}
+
+/* Feature cells (Introduction) — mirrors the marketing site's .what-grid:
+   shared-hairline grid, muted stroked icon, green label, muted copy. */
+.sl-markdown-content .what-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1px;
+	margin: 1.75rem 0;
+	background: var(--sl-color-hairline);
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	overflow: hidden;
+}
+.sl-markdown-content .what-cell {
+	margin: 0; /* cancel Starlight's content top-margin leaking onto grid items */
+	background: var(--har-surface);
+	padding: 1.6rem 1.6rem 1.9rem;
+	min-width: 0;
+}
+.sl-markdown-content .what-icon {
+	display: block;
+	width: 22px;
+	height: 22px;
+	margin-bottom: 1.15rem;
+	color: var(--sl-color-gray-3);
+}
+.sl-markdown-content .what-title {
+	display: block;
+	margin: 0;
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.07em;
+	text-transform: uppercase;
+	color: var(--sl-color-text-accent);
+}
+.sl-markdown-content .what-cell p {
+	margin: 0.7rem 0 0;
+	color: var(--sl-color-gray-3);
+	font-size: 0.875rem;
+	line-height: 1.6;
+}
+/* Clickable cells link to the section that covers each capability. */
+.sl-markdown-content a.what-cell {
+	text-decoration: none;
+	color: inherit;
+	transition: background 0.15s ease;
+}
+.sl-markdown-content a.what-cell:hover {
+	background: var(--har-accent-soft);
+}
+.sl-markdown-content a.what-cell:hover .what-title {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.sl-markdown-content a.what-cell:focus-visible {
+	outline: 2px solid var(--sl-color-text-accent);
+	outline-offset: -2px;
+}
+@media (max-width: 640px) {
+	.sl-markdown-content .what-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Next steps — stacked hairline link cards that hand off to the next page */
+.sl-markdown-content .next-steps {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 0.6rem;
+	margin: 1.5rem 0;
+}
+.sl-markdown-content .next-card {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 1.1rem 1.15rem 1.25rem;
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	background: transparent;
+	text-decoration: none;
+	color: inherit;
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+.sl-markdown-content .next-card:hover {
+	background: var(--har-accent-soft);
+	border-color: color-mix(in srgb, var(--sl-color-text-accent) 42%, transparent);
+}
+.sl-markdown-content .next-card:focus-visible {
+	outline: 2px solid var(--sl-color-text-accent);
+	outline-offset: 2px;
+}
+.sl-markdown-content .next-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	font-weight: 600;
+	font-size: 0.95rem;
+	color: var(--sl-color-white);
+}
+.sl-markdown-content .next-arrow {
+	color: var(--sl-color-text-accent);
+	transition: transform 0.15s ease;
+}
+.sl-markdown-content .next-card:hover .next-arrow {
+	transform: translateX(3px);
+}
+.sl-markdown-content .next-desc {
+	color: var(--sl-color-gray-3);
+	font-size: 0.85rem;
+	line-height: 1.55;
+}
+@media (max-width: 640px) {
+	.sl-markdown-content .next-steps {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Tables — shared hairline grid with a 5px rounded frame */
 .sl-markdown-content table {
 	font-size: 0.9rem;
-	border-collapse: collapse;
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	border-collapse: separate;
+	border-spacing: 0;
+	overflow: hidden;
 }
-
 .sl-markdown-content th,
 .sl-markdown-content td {
-	border: 1px solid var(--sl-color-gray-5);
+	padding: 0.6rem 0.9rem; /* symmetric — Starlight defaults left padding to 0 */
+	border-bottom: 1px solid var(--sl-color-hairline);
+	border-right: 1px solid var(--sl-color-hairline);
+	vertical-align: top;
+}
+.sl-markdown-content tr > *:last-child {
+	border-right: 0;
+}
+.sl-markdown-content tbody tr:last-child > *,
+.sl-markdown-content tr:last-child > * {
+	border-bottom: 0;
+}
+.sl-markdown-content thead th {
+	background: var(--har-accent-soft);
 }
 
-/* Hairline cards, no heavy shadow */
-.card {
-	border-color: var(--sl-color-gray-5);
-	box-shadow: none;
-}
-
+/* Inline code — soft green chip */
 .sl-markdown-content code:not(pre code) {
 	padding: 0.12em 0.35em;
 	border-radius: 0.35rem;
-	background: rgba(68, 84, 69, 0.12);
-	color: #3a523c;
+	background: var(--har-accent-soft);
+	color: var(--har-code-inline);
 }
 
-:root[data-theme='dark'] .sl-markdown-content code:not(pre code) {
-	color: #b9f4ce;
+/* Asides / callouts — rounded, keep the per-variant accent hue */
+.sl-markdown-content .starlight-aside {
+	border-radius: var(--har-radius);
+}
+
+/* Images + blockquotes */
+.sl-markdown-content img {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	box-shadow: none;
+}
+.sl-markdown-content blockquote {
+	border-inline-start: 3px solid var(--sl-color-text-accent);
+}
+
+/* Code blocks (Expressive Code) keep Starlight's native frame; they pick up the
+   surface + hairline colors from the --sl-color-* tokens set above. */
+
+/* Mermaid diagrams (rendered client-side by the Head override) */
+.sl-markdown-content pre.mermaid {
+	background: none;
+	border: 0;
+	padding: 0.5rem 0;
+	text-align: center;
+	line-height: normal;
+}
+.sl-markdown-content pre.mermaid:not([data-processed]) {
+	visibility: hidden; /* hide the raw source until the SVG is rendered */
+}
+.sl-markdown-content pre.mermaid svg {
+	max-width: 100%;
+	height: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Pagination + content footer — hairline cards / dividers
+   --------------------------------------------------------------------------- */
+.pagination-links a {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	box-shadow: none;
+}
+.pagination-links a:hover {
+	border-color: var(--sl-color-text-accent);
+}
+/* Prev/Next page titles default to 24px (--sl-text-2xl) — too large; bring them
+   in line with the body text. */
+.pagination-links .link-title {
+	font-size: 1.0625rem; /* ~17px */
+	font-weight: 500;
 }

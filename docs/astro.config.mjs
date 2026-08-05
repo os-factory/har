@@ -30,6 +30,8 @@ const legacyDocPaths = [
 const redirects = Object.fromEntries(
 	legacyDocPaths.map((slug) => [`/${slug}`, `/docs/${slug}/`]),
 );
+// The docs landing was consolidated into the Introduction; send /docs there.
+redirects['/docs'] = '/docs/getting-started/introduction/';
 
 export default defineConfig({
 	site: 'https://harproject.dev',
@@ -44,7 +46,8 @@ export default defineConfig({
 				'An open-source, agent-agnostic standard for multi-agent coding workflows — parallel agents, deterministic validation, verifiable proof, and observability.',
 			logo: {
 				src: './public/assets/har-logo.png',
-				alt: '.har',
+				alt: 'HAR',
+				replacesTitle: true,
 			},
 			favicon: '/assets/har-logo.png',
 			customCss: [
@@ -52,6 +55,18 @@ export default defineConfig({
 				'@fontsource-variable/geist-mono/index.css',
 				'./src/styles/custom.css',
 			],
+			components: {
+				// Unify the light/dark toggle with the marketing site (shared
+				// `har-theme` key, default dark) — theme mechanism only.
+				ThemeProvider: './src/components/docs/ThemeProvider.astro',
+				ThemeSelect: './src/components/docs/ThemeSelect.astro',
+				// Adds theme-aware Mermaid rendering (lazy-loaded per page).
+				Head: './src/components/docs/Head.astro',
+				// Point the logo at the docs home instead of the marketing root.
+				SiteTitle: './src/components/docs/SiteTitle.astro',
+				// Add a "Website" link to the header right cluster.
+				SocialIcons: './src/components/docs/SocialIcons.astro',
+			},
 			disable404Route: true,
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/os-factory/har' },
@@ -61,7 +76,6 @@ export default defineConfig({
 			},
 			lastUpdated: true,
 			sidebar: [
-				{ label: 'Website', link: '/' },
 				{
 					label: 'Start here',
 					items: [

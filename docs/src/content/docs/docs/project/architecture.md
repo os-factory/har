@@ -5,15 +5,13 @@ description: HAR's layers, contracts, and extension points.
 
 HAR is a layered CLI and MCP control plane:
 
-```text
-CLI adapters       MCP adapters
-       \             /
-        core orchestration
-               |
-      harness contract and I/O
-               |
-        generic utilities
-```
+<pre class="mermaid">
+flowchart TD
+  cli["CLI adapters"] --> core["core orchestration"]
+  mcp["MCP adapters"] --> core
+  core --> harness["harness contract and I/O"]
+  harness --> utils["generic utilities"]
+</pre>
 
 ## Layers
 

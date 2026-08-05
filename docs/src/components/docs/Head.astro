@@ -1,0 +1,71 @@
+---
+/**
+ * Overrides Starlight's Head to add on-brand, theme-aware Mermaid rendering.
+ * Mermaid is dynamically imported only on pages that contain a `pre.mermaid`
+ * block, and diagrams re-render when the light/dark theme changes.
+ */
+import Default from '@astrojs/starlight/components/Head.astro';
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<script>
+	const blocks = () => [...document.querySelectorAll<HTMLElement>('pre.mermaid')];
+
+	if (blocks().length) {
+		const { default: mermaid } = await import('mermaid');
+
+		// Keep each diagram's original source so we can re-render on theme change.
+		const source = new WeakMap<HTMLElement, string>();
+		blocks().forEach((el) => source.set(el, el.textContent ?? ''));
+
+		const font = "'Geist Variable', ui-sans-serif, system-ui, sans-serif";
+		const themeVariables = (dark: boolean) =>
+			dark
+				? {
+						background: 'transparent',
+						primaryColor: '#141414',
+						primaryBorderColor: '#7dcaa2',
+						primaryTextColor: '#fafafa',
+						lineColor: '#7dcaa2',
+						fontFamily: font,
+					}
+				: {
+						background: 'transparent',
+						primaryColor: '#ffffff',
+						primaryBorderColor: '#445445',
+						primaryTextColor: '#11161d',
+						lineColor: '#445445',
+						fontFamily: font,
+					};
+
+		async function render() {
+			const dark = document.documentElement.dataset.theme === 'dark';
+			mermaid.initialize({
+				startOnLoad: false,
+				securityLevel: 'strict',
+				theme: 'base',
+				themeVariables: themeVariables(dark),
+				flowchart: { curve: 'linear', htmlLabels: false, padding: 14 },
+			});
+			const els = blocks();
+			els.forEach((el) => {
+				el.textContent = source.get(el) ?? '';
+				el.removeAttribute('data-processed');
+			});
+			await mermaid.run({ nodes: els });
+		}
+
+		await render();
+
+		// Re-render when the shared theme toggles.
+		let last = document.documentElement.dataset.theme;
+		new MutationObserver(() => {
+			const now = document.documentElement.dataset.theme;
+			if (now !== last) {
+				last = now;
+				render();
+			}
+		}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+	}
+</script>
