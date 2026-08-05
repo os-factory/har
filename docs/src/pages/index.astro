@@ -3,16 +3,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import HeroFlow from '../components/HeroFlow.astro';
-import {
-  HERO_VERIFICATION_STAGES,
-  formatHeroRunTotal,
-  formatStageDuration,
-} from '../lib/hero-stage-meta';
+import { formatHeroRunTotal } from '../lib/hero-stage-meta';
 
 const heroRunTotal = formatHeroRunTotal();
-const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
-  ['typecheck', 'unit-tests', 'browser-e2e'].includes(stage.id),
-);
 ---
 <BaseLayout title="HAR — Harnesses for coding agents" bodyClass="home-page" canonicalPath="/">
   <Header active="home" />
@@ -20,22 +13,21 @@ const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
 <section class="hero blueprint-surface">
 <div class="container hero-grid">
 <div class="hero-copy reveal">
-<div class="eyebrow"><span class="eyebrow-dot"></span> Open-source agent infrastructure</div>
-<h1>Give coding agents a <span class="ink-underline">real place</span> to work.</h1>
-<p class="hero-lede">HAR is an open-source, agent-agnostic standard for building multi-agent coding workflows. It makes your repository agent-ready, so you can run a whole fleet of coding agents in parallel, with deterministic validation gates, verifiable proof, and full observability across every agent.</p>
-<div class="hero-actions">
-<a class="button button-primary" href="/docs/getting-started/quick-start/">Get started <span aria-hidden="true">→</span></a>
-<a class="button button-ghost" href="https://github.com/os-factory/har">View on GitHub <span aria-hidden="true">↗</span></a>
-</div>
-<button aria-label="Copy install command" class="install-command" data-copy="npm install -g @osfactory/har" type="button">
+<div class="eyebrow"><span class="eyebrow-dot"></span> Open-source · Agent-agnostic</div>
+<h1>The open harness for multi-agent coding workflows.</h1>
+<p class="hero-lede">Run fleets of coding agents with deterministic validation gates, verifiable proof, and full observability. Extensible and customizable to your workflow and tooling.</p>
+<div class="hero-install">
+<button aria-label="Copy install command" class="install-command" data-copy="npm install -g @osfactory/har@latest" type="button">
 <span class="terminal-prompt">$</span>
-<code>npm install -g @osfactory/har</code>
+<code>npm install -g @osfactory/har@latest</code>
 <span class="copy-label" data-copy-label="">Copy</span>
 </button>
+<a class="hero-docs-link" href="/docs">Read the docs <span aria-hidden="true">→</span></a>
+</div>
 <div class="compatibility">
 <span>Works with</span>
-<div class="compatibility-list">
-<span>Claude Code</span><i></i><span>Cursor</span><i></i><span>Codex</span><i></i><span>Any MCP agent</span>
+<div class="chip-row">
+<span class="chip">Claude Code</span><span class="chip">Cursor</span><span class="chip">Codex</span><span class="chip">Any MCP agent</span>
 </div>
 </div>
 </div>
@@ -49,82 +41,71 @@ const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
 </div>
 <div class="hero-fade"></div>
 </section>
+  <div class="page-frame">
 <section class="signal-strip">
-<div class="container signal-grid">
-<div><span class="signal-number">01</span><h3>Project-owned</h3><p>The workflow lives with the code, not inside a vendor dashboard.</p></div>
-<div><span class="signal-number">02</span><h3>Agent-agnostic</h3><p>One stable contract for CLI users, MCP agents, and future tools.</p></div>
-<div><span class="signal-number">03</span><h3>Evidence-first</h3><p>Every run can leave logs, artifacts, status, and a validated tree hash.</p></div>
+<div class="container what-grid reveal">
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>
+<h3>Run a whole fleet of agents</h3>
+<p>Every agent gets its own worktree, ports, and environment, so many can work the same repo at once without colliding.</p>
 </div>
-</section>
-<section class="sponsor-strip" aria-label="Sponsors">
-<div class="container sponsor-inner reveal">
-<span class="sponsor-label">Sponsored by</span>
-<a class="sponsor-link" href="https://kerno.io" rel="noopener noreferrer" target="_blank">
-<img alt="Kerno" height="31" src="/assets/kerno-logo.svg" width="144" />
-</a>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+<h3>Trust every result</h3>
+<p>Each task runs the same deterministic checks and leaves logs, artifacts, and a validated tree hash your reviewers can inspect.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+<h3>Zero vendor lock-in</h3>
+<p>The harness lives in your own repo and reads the same for any coding agent, so you can switch tools freely and adapt it to your workflow.</p>
+</div>
 </div>
 </section>
 <section class="section section-light" id="why">
 <div class="container split-intro reveal">
 <div>
-<div class="section-kicker">The missing operating layer</div>
-<h2>Your agent should not have to rediscover how your repository works.</h2>
+<div class="section-kicker">What HAR gives you</div>
+<h2>Everything a fleet of agents needs to run, verify, and hand off work you can trust.</h2>
 </div>
-<p>Most coding agents are good at editing files. The hard part is everything around the edit: launching the stack, isolating parallel work, running the right checks, and producing a trustworthy handoff.</p>
 </div>
-<div class="container feature-bento">
-<article class="feature-card feature-card-large reveal">
-<div class="feature-copy">
-<span class="feature-index">01 / Contract</span>
-<h3>The repository explains itself.</h3>
-<p>HAR scaffolds a human-readable, machine-readable <code>.har/</code> folder. Your team owns it, reviews it, and evolves it with the project.</p>
-<a href="/docs/">Explore the harness contract <span>→</span></a>
+<div class="container what-grid reveal">
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+<h3>Isolated slots</h3>
+<p>Each agent works in its own worktree with dedicated ports and a database, so the main checkout stays clean.</p>
 </div>
-<div aria-label="HAR file tree example" class="file-tree-panel">
-<div class="code-topbar"><span>.har/</span><span>project-owned</span></div>
-<pre><span class="tree-dim">my-app/</span>
-├── <span class="tree-accent">AGENTS.md</span>
-└── <span class="tree-accent">.har/</span>
-    ├── README.md
-    ├── stages.json
-    ├── launch.sh
-    ├── verify.sh
-    ├── harness.env
-    ├── logs/
-    └── artifacts/</pre>
-<div class="code-caption"><span class="status-dot"></span> editable like any other code</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+<h3>Deterministic checks</h3>
+<p>The project's real checks run through the same pipeline every time and return a consistent result.</p>
 </div>
-</article>
-<article class="feature-card feature-card-worktrees reveal reveal-delay-1">
-<span class="feature-index">02 / Isolation</span>
-<h3>Parallel work without collisions.</h3>
-<p>Each agent gets a dedicated worktree and environment slot.</p>
-<div class="mini-worktrees">
-<div><span>main</span><i></i></div>
-<div><span>slot-01</span><i></i><b>agent A</b></div>
-<div><span>slot-02</span><i></i><b>agent B</b></div>
-<div><span>slot-03</span><i></i><b>agent C</b></div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+<h3>Evidence trail</h3>
+<p>Every run can leave logs, artifacts, and a validated tree hash tied to the exact code that was checked.</p>
 </div>
-</article>
-<article class="feature-card feature-card-proof reveal reveal-delay-2">
-<span class="feature-index">03 / Verification</span>
-<h3>Proof, not “looks good.”</h3>
-<p>Normalized stages surface exactly what ran, how long it took, and what passed.</p>
-<div class="proof-console">
-{proofStages.map((stage) => (
-  <div><span>{stage.id}</span><b>{formatStageDuration(stage.durationMs)}</b><em>passed</em></div>
-))}
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 12.5-2 2.5 2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+<h3>One contract</h3>
+<p>A machine-readable .har/ folder that Claude Code, Cursor, Codex, and any MCP agent read the same way.</p>
 </div>
-</article>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+<h3>Mission Control</h3>
+<p>A local dashboard for every repository, worktree, run, validation, and artifact across your projects.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="14" y="3" rx="1"/><path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3"/></svg>
+<h3>Plugins</h3>
+<p>Extend the harness with framework-specific stages like Playwright, or build your own.</p>
+</div>
 </div>
 </section>
-<section class="section section-dark blueprint-dark" id="workflow">
+<section class="section" id="workflow">
 <div class="container workflow-heading reveal">
-<div>
-<div class="section-kicker section-kicker-dark">One workflow, every agent</div>
-<h2>From “take this task” to a validated branch.</h2>
-</div>
-<p>HAR normalizes the infrastructure around coding so the agent can focus on the code—and the reviewer can trust the result.</p>
+<div class="section-kicker">How HAR works</div>
+<h2>From an assigned task to a validated branch.</h2>
+<p>HAR gives every agent its own clean slot, runs the project's real checks on the result, and keeps the evidence, so agents stay focused on the code and reviewers can trust what comes back.</p>
 </div>
 <div class="container workflow-stage reveal">
 <div aria-label="Workflow stages" class="workflow-tabs" role="tablist">
@@ -138,8 +119,8 @@ const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
 <div class="workflow-copy" data-workflow-copy="">
 <span class="workflow-label">01 — Discover</span>
 <h3>The agent reads one stable interface.</h3>
-<p>Instead of guessing project-specific shell commands, the agent asks HAR what the repository can launch, verify, inspect, reset, and tear down.</p>
-<div class="workflow-command"><span>$</span><code>har env status --json</code></div>
+<p>The agent asks HAR what the repository can launch, verify, inspect, reset, and tear down, all through one interface.</p>
+<a class="workflow-doc-link" href="/docs/reference/mcp/">MCP tools <span aria-hidden="true">→</span></a>
 </div>
 <div class="workflow-visual-panel">
 <div class="visual-panel-header"><span>HAR MCP</span><small>project description</small></div>
@@ -162,15 +143,31 @@ const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
 <section class="section control-section" id="control">
 <div class="container control-grid">
 <div class="control-copy reveal">
+<div class="control-copy-top">
 <div class="section-kicker">Mission Control</div>
-<h2>See the factory, not just the final diff.</h2>
-<p>A local dashboard for repositories, active slots, run history, verification stages, logs, and artifacts. The open-source control plane stays close to your machine and your code.</p>
-<ul class="clean-list">
-<li><span>✓</span> Observe every agent slot in one place</li>
-<li><span>✓</span> Inspect deterministic verification stages</li>
-<li><span>✓</span> Keep local and self-hosted workflows portable</li>
-</ul>
 <a class="text-link" href="/docs/guides/mission-control/">Read about Mission Control <span>→</span></a>
+</div>
+<div class="control-copy-head">
+<h2>See what every agent is doing.</h2>
+<p>Mission Control is a local dashboard that puts every repository, agent slot, run, verification, log, and artifact in one view. Watch the whole fleet as it works, and open any run to see exactly what happened.</p>
+</div>
+<div class="what-grid control-boxes">
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+<h3>Live slots</h3>
+<p>Watch every active slot with its worktree, branch, and preview URL, and spot a dirty tree or drift as soon as it appears.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+<h3>Run history</h3>
+<p>Open a timeline of every run with its stage, trigger, duration, and status, alongside the logs, artifacts, and cost behind each one.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+<h3>Traceable results</h3>
+<p>Every result links back to the validation stages that ran and the exact Git tree they checked.</p>
+</div>
+</div>
 </div>
 <div class="dashboard-frame reveal reveal-delay-1">
 <div class="dashboard-chrome">
@@ -184,73 +181,71 @@ const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
 </div>
 </div>
 </section>
-<section class="section not-section">
-<div class="container not-grid reveal">
-<div>
-<div class="section-kicker">A deliberately narrow layer</div>
-<h2>HAR coordinates the work around the model.</h2>
+<section class="section stack-section" id="stack">
+<div class="container">
+<div class="control-copy-top">
+<div class="section-kicker">Works with your stack</div>
 </div>
-<div class="not-columns">
-<div class="not-card is-card">
-<span>HAR is</span>
-<ul>
-<li>A project-owned runtime contract</li>
-<li>An agent-agnostic CLI + MCP surface</li>
-<li>A reproducible launch and verification layer</li>
-<li>A record of runs, artifacts, and evidence</li>
-</ul>
+<div class="stack-group reveal">
+<span class="stack-label">Profiles · adapt the harness to your project</span>
+<div class="what-grid stack-boxes">
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+<h3>Web app</h3>
+<p>For web applications and services. HAR runs your app with per-slot ports and optional shared Docker infrastructure.</p>
 </div>
-<div class="not-card isnt-card">
-<span>HAR is not</span>
-<ul>
-<li>A coding model</li>
-<li>A replacement for CI/CD</li>
-<li>A new test runner</li>
-<li>A hosted platform lock-in</li>
-</ul>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+<h3>CLI / library</h3>
+<p>For CLIs, libraries, and packages. HAR sets up the worktree and toolchain it needs to build and test.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+<h3>iOS app</h3>
+<p>For Xcode and Swift apps. HAR drives xcodebuild and the iOS Simulator, with optional RocketSim flows.</p>
+</div>
+<div class="stack-group-link-bar">
+<a class="stack-group-link" href="/docs/guides/profiles/">Learn about profiles <span aria-hidden="true">→</span></a>
 </div>
 </div>
 </div>
-</section>
-<section class="section journal-section">
-<div class="container section-heading-row reveal">
-<div><div class="section-kicker">From the HAR journal</div><h2>Building the operating layer for agentic software.</h2></div>
-<a class="text-link" href="/blog">View all writing <span>→</span></a>
+<div class="stack-group reveal">
+<span class="stack-label">Plugins · framework checks you can add</span>
+<div class="what-grid stack-boxes">
+<div class="what-cell">
+<img class="what-icon what-logo" src="/assets/logo-playwright.svg" alt="Playwright" width="28" height="28" loading="lazy" />
+<h3>Playwright</h3>
+<p>Adds a browser-e2e stage with frontend, API health, and accessibility smoke specs.</p>
 </div>
-<div class="container article-grid">
-<a class="article-card article-featured reveal" href="/blog/why-coding-agents-need-a-harness">
-<div class="article-art blueprint-card-art">
-<div class="art-node n1">agent</div><div class="art-node n2">worktree</div><div class="art-node n3">verify</div>
-<svg viewBox="0 0 600 240"><path d="M96 114H250M344 114H498"></path></svg>
+<div class="what-cell">
+<img class="what-icon what-logo" src="/assets/logo-rocketsim.png" alt="RocketSim" width="28" height="28" loading="lazy" />
+<h3>RocketSim</h3>
+<p>Installs a rocketsim-flows runner and an example iOS flow for simulator testing.</p>
 </div>
-<div class="article-meta"><span>Architecture</span><time>8 min read</time></div>
-<h3>Why coding agents need a harness, not another prompt.</h3>
-<p>The gap between generating code and safely operating inside a real repository.</p>
-</a>
-<a class="article-card reveal reveal-delay-1" href="/blog/why-coding-agents-need-a-harness">
-<div class="article-number-art">.har/</div>
-<div class="article-meta"><span>Design notes</span><time>5 min read</time></div>
-<h3>The repository should own the agent contract.</h3>
-<p>Why launch, verification, and teardown belong beside the source code.</p>
-</a>
-<a class="article-card reveal reveal-delay-2" href="/blog/why-coding-agents-need-a-harness">
-<div class="article-number-art article-number-art-dark">03</div>
-<div class="article-meta"><span>Workflow</span><time>6 min read</time></div>
-<h3>Evidence-first development for autonomous agents.</h3>
-<p>Move from confidence theater to deterministic, reviewable handoffs.</p>
-</a>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+<h3>Your own stages</h3>
+<p>Register project-specific checks as custom stages, or build a plugin of your own.</p>
+</div>
+<div class="stack-group-link-bar">
+<a class="stack-group-link" href="/docs/guides/plugins/">Browse all plugins <span aria-hidden="true">→</span></a>
+</div>
+</div>
+</div>
 </div>
 </section>
-<section class="section section-dark blueprint-dark enterprise-section" id="teams">
+<section class="section enterprise-section" id="teams">
 <div class="container enterprise-grid reveal">
 <div class="enterprise-copy">
-<div class="section-kicker section-kicker-dark">For teams</div>
-<h2>Need HAR for your organization?</h2>
-<p>HAR is open source and self-hostable. Register your interest in team features — hosted cloud, centralized observability, shared dashboards, and more.</p>
-<ul class="clean-list clean-list-dark">
-<li><span>✓</span> Hosted cloud</li>
-<li><span>✓</span> Centralized observability</li>
-<li><span>✓</span> Shared Mission Control for your org</li>
+<div class="enterprise-kicker-row">
+<div class="section-kicker">For teams</div>
+<span class="soon-tag">Coming soon</span>
+</div>
+<h2>Bring HAR to your whole team.</h2>
+<ul class="hair-list">
+<li><svg class="hair-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg> Hosted cloud</li>
+<li><svg class="hair-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg> Centralized observability</li>
+<li><svg class="hair-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Shared Mission Control for your org</li>
 </ul>
 </div>
 <div class="enterprise-actions">
@@ -279,22 +274,7 @@ const proofStages = HERO_VERIFICATION_STAGES.filter((stage) =>
 </div>
 </div>
 </section>
-<section class="final-cta blueprint-surface">
-<div class="container final-cta-inner reveal">
-<div class="final-mark"><img alt="" src="/assets/har-logo.png"/></div>
-<div>
-<span class="section-kicker">Start with one repository</span>
-<h2>Make your project agent-ready in minutes.</h2>
-<p>Install HAR, scaffold the contract, and let your coding agent work inside a reproducible environment.</p>
-</div>
-<div class="final-actions">
-<a class="button button-primary" href="/docs/getting-started/quick-start/">Read the quick start <span>→</span></a>
-<button aria-label="Copy install command" class="install-command" data-copy="npm install -g @osfactory/har" type="button">
-<span class="terminal-prompt">$</span><code>npm i -g @osfactory/har</code><span class="copy-label" data-copy-label="">Copy</span>
-</button>
-</div>
-</div>
-</section>
-  </main>
   <Footer />
+  </div>
+  </main>
 </BaseLayout>

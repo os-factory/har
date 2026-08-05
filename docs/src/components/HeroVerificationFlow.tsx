@@ -24,7 +24,6 @@ const ROW_GAP = 40;
 const MAX_COLS = 3;
 
 const EDGE_COLOR = {
-  pass: 'rgba(125, 202, 162, 0.62)',
   fail: 'rgba(239, 108, 108, 0.72)',
 };
 
@@ -70,12 +69,12 @@ function buildFlow(): { nodes: Node[]; edges: Edge[]; rows: number } {
 
   const edges: Edge[] = stages.slice(0, -1).map((stage, index) => {
     const next = stages[index + 1];
-    const color = stage.status === 'pass' ? EDGE_COLOR.pass : EDGE_COLOR.fail;
+    const color = stage.status === 'pass' ? 'var(--flow-edge)' : EDGE_COLOR.fail;
     return {
       id: `${stage.id}->${next.id}`,
       source: stage.id,
       target: next.id,
-      type: 'smoothstep',
+      type: 'straight',
       animated: stage.status === 'pass',
       style: { stroke: color },
     };

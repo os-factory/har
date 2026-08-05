@@ -1,4 +1,6 @@
 ---
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import '../styles/global.css';
 import PostHog from '../components/posthog.astro';
 
@@ -24,7 +26,7 @@ const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
     <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0c1016" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/png" href="/assets/har-logo.png" />
     <title>{title}</title>
@@ -32,8 +34,7 @@ const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
     <script is:inline>
       (() => {
         const stored = localStorage.getItem('har-theme');
-        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const theme = stored === 'light' || stored === 'dark' ? stored : (systemDark ? 'dark' : 'light');
+        const theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
       })();
