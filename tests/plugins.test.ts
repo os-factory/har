@@ -107,15 +107,14 @@ describe('plugins', () => {
     expect(() => applyPlugin(repoPath, 'playwright')).toThrow(/already/);
   });
 
-  it('scaffolds CLAUDE.md on init when missing', () => {
+  it('does not scaffold CLAUDE.md during boilerplate copy (installed via instruction-files)', () => {
     const repoPath = makeTempRepo('har-claude-md');
     fs.writeFileSync(
       path.join(repoPath, 'package.json'),
       JSON.stringify({ name: 'my-app', version: '1.0.0' }, null, 2) + '\n',
     );
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
-    expect(fs.existsSync(path.join(repoPath, 'CLAUDE.md'))).toBe(true);
-    expect(fs.readFileSync(path.join(repoPath, 'CLAUDE.md'), 'utf8')).toContain('.har/README.md');
+    expect(fs.existsSync(path.join(repoPath, 'CLAUDE.md'))).toBe(false);
   });
 
   it('requires an existing harness', () => {

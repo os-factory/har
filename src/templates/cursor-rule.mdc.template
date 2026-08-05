@@ -19,7 +19,7 @@ startup. If a harness command fails, fix the harness or surface the failure.
    returned **work dir** for ALL edits (never the main checkout). Path looks like
    `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` (see `.har/slots/agent-<id>.json`).
    Bind tracker work with `workUnitId`/`title` or `--work-id`/`--work-title` when needed.
-3. Read `AGENT.md`, `.har/README.md`, `.har/stages.json`, then
+3. Read `AGENTS.md`, `.har/README.md`, `.har/stages.json`, then
    `.har/CLAUDE.agent.md` (slot URLs / definition of done).
 4. Hot-reload usually applies; if not, `./.har/agent-cli.sh <id> restart` (no-op on
    cli/ios profiles without managed processes).

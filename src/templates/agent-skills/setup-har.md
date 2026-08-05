@@ -36,7 +36,7 @@ If `.har/` already exists, stop and suggest `/har-maintain` instead.
 
 ## 4. Perform the adaptation yourself
 
-`har env init` prints an adaptation prompt and writes it to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor `.har/` scripts (`launch.sh`, `verify.sh`, `setup-infra.sh`, `harness.env`, `stages.json`) and `AGENT.md` to this repository's real stack, ports, and commands.
+`har env init` prints an adaptation prompt and writes it to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor `.har/` scripts (`launch.sh`, `verify.sh`, `setup-infra.sh`, `harness.env`, `stages.json`) and `AGENTS.md` to this repository's real stack, ports, and commands.
 
 ## 5. Register the project's checks as stages
 
@@ -63,7 +63,7 @@ Fix the harness scripts until both pass. Then tear down or keep the slot as the 
 After the user confirms, commit the harness:
 
 ```bash
-git add .har/ AGENT.md CLAUDE.md .claude/ .cursor/ 2>/dev/null || git add .har/ AGENT.md
+git add .har/ AGENTS.md CLAUDE.md .claude/ .cursor/ 2>/dev/null || git add .har/ AGENTS.md
 git commit -m "chore: add har agent harness"
 ```
 

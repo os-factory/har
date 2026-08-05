@@ -64,6 +64,16 @@ and the repo-specific definition of "agent usable."
 
 When upgrading `@osfactory/har` or adopting new harness standards:
 
+**Generator 0.5.0 — `AGENTS.md` (canonical agent guide):**
+
+- Repo-root **`AGENTS.md`** is now the shared HAR workflow contract (Codex auto-loads it). Do **not** create or keep **`AGENT.md`** (singular).
+- If **`AGENT.md` exists**: merge any unique project notes into `AGENTS.md`, ensure a **HAR / agent environment** section is present, then **delete `AGENT.md`**.
+- If **`AGENTS.md` is missing**: create it (HAR may already have scaffolded a managed section during `maintain` — fill **Project-specific notes** and keep the marked HAR section).
+- If **`AGENTS.md` already exists**: add or refresh the managed **HAR / agent environment** section only — do not wipe unrelated project guidance.
+- Keep **`CLAUDE.md`** as a **thin pointer** to `AGENTS.md` (Claude Code auto-loads `CLAUDE.md`). Never paste the full Cursor-rule / HAR workflow into `CLAUDE.md`.
+- Update links in `.har/CLAUDE.agent.md` and `.har/README.md` from `AGENT.md` → `AGENTS.md` if they still point at the legacy name.
+- Cursor still uses `.cursor/rules/har-workflow.mdc` (always-on); that rule should also say `AGENTS.md`.
+
 **Generator 0.4.0 — primary app & shared infra services:**
 
 - Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from `.har/maintain/templates/harness.env`. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
@@ -74,17 +84,17 @@ When upgrading `@osfactory/har` or adopting new harness standards:
 
 **Earlier standards:**
 
-- Add **Run history** section to repo-root `AGENT.md` if missing (shell vs `har env`, worktree vs runs location)
-- Ensure `AGENT.md` / `CLAUDE.agent.md` frame the harness as **how you run the project** (launch for manual testing/browser/screenshots; fix — don't work around — failing harness commands)
+- Add **Run history** section to repo-root `AGENTS.md` if missing (shell vs `har env`, worktree vs runs location)
+- Ensure `AGENTS.md` / `CLAUDE.agent.md` frame the harness as **how you run the project** (launch for manual testing/browser/screenshots; fix — don't work around — failing harness commands)
 - Ensure `launch.sh` installs dependencies in fresh worktrees and resolves the project subdirectory inside the worktree (`git rev-parse --show-prefix`) for monorepos
-- If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENT.md`, per-project pointer docs, and a single root Cursor rule
+- If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENTS.md`, per-project pointer docs, and a single root Cursor rule
 - Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)
 - Align `launch.sh` / `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
 - Do **not** blindly overwrite customized `verify.sh`
 
-## Step 3 — Refresh repo-root `AGENT.md`
+## Step 3 — Refresh repo-root `AGENTS.md`
 
-If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENT.md`:
+If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENTS.md`:
 
 - Links to `.har/README.md` and `.har/CLAUDE.agent.md`
 - Preferred: HAR MCP tools or `har env …` (persists run history)
@@ -93,7 +103,9 @@ If harness commands, rules, or workflow changed, update the **HAR / agent enviro
 - Agent rules (ports, agent-cli.sh, isolation)
 - Project-specific notes
 
-If `AGENT.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
+If `AGENTS.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
+
+Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Keep `CLAUDE.md` as a thin pointer to `AGENTS.md`.
 
 ## Rules
 

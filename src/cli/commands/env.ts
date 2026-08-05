@@ -21,6 +21,9 @@ import {
 import { handleCursorRule } from '../../harness/cursor-rule';
 import { handleAgentSkills } from '../../harness/agent-skills';
 import {
+  handleInstructionFiles,
+} from '../../harness/instruction-files';
+import {
   completeEnvironment,
   getEnvironmentStatus,
   launchEnvironment,
@@ -423,18 +426,13 @@ export async function handleInit(argv: {
       ...onboarding.commitGate,
       autoYes: argv.yes,
     });
-    await handleCursorRule({
+    await applyAgentIntegrations({
       repoPath,
-      cursorRule: onboarding.cursorRule,
-      autoYes: argv.yes,
       mode: 'init',
-    });
-    await handleAgentSkills({
-      repoPath,
-      ...onboarding.agentSkills,
       autoYes: argv.yes,
       force: argv.force,
-      mode: 'init',
+      cursorRule: onboarding.cursorRule,
+      ...onboarding.agentSkills,
     });
     printNextSteps();
   } catch (err: unknown) {
@@ -513,17 +511,12 @@ export async function handleMaintain(argv: {
       ...onboarding.commitGate,
       autoYes: argv.yes,
     });
-    await handleCursorRule({
+    await applyAgentIntegrations({
       repoPath,
+      mode: 'maintain',
+      autoYes: argv.yes,
       cursorRule: onboarding.cursorRule,
-      autoYes: argv.yes,
-      mode: 'maintain',
-    });
-    await handleAgentSkills({
-      repoPath,
       ...onboarding.agentSkills,
-      autoYes: argv.yes,
-      mode: 'maintain',
     });
   } catch (err: unknown) {
     error((err as Error).message);
@@ -617,6 +610,56 @@ async function emitManualAdaptationPrompt(
   }
   printAdaptationPrompt(prompt);
   await offerAdaptationPromptClipboard(prompt, { autoYes });
+}
+
+
+/**
+ * Detect instruction files, write AGENTS.md, migrate legacy instruction files, then install
+ * Cursor rule + skills for confirmed targets (no double prompts).
+ */
+export async function applyAgentIntegrations(options: {
+  repoPath: string;
+  mode: 'init' | 'maintain';
+  autoYes?: boolean;
+  force?: boolean;
+  cursorRule?: boolean;
+  agents?: string;
+  enabled?: boolean;
+}): Promise<void> {
+  const instruction = await handleInstructionFiles({
+    repoPath: options.repoPath,
+    agents: options.agents,
+    enabled: options.enabled,
+    cursorRule: options.cursorRule,
+    autoYes: options.autoYes,
+    mode: options.mode,
+  });
+
+  const cursorRuleFlag =
+    options.cursorRule === false
+      ? false
+      : options.cursorRule === true || instruction.plan.cursorRule
+        ? true
+        : false;
+
+  await handleCursorRule({
+    repoPath: options.repoPath,
+    cursorRule: cursorRuleFlag,
+    autoYes: options.autoYes,
+    mode: options.mode,
+  });
+
+  if (instruction.plan.skills.length > 0) {
+    await handleAgentSkills({
+      repoPath: options.repoPath,
+      agents: instruction.plan.skills.join(','),
+      autoYes: options.autoYes,
+      force: options.force,
+      mode: options.mode,
+    });
+  } else if (options.enabled === false) {
+    // explicit --no-agents: nothing to scaffold
+  }
 }
 
 export async function handleAddPlugin(argv: {

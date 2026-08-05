@@ -80,7 +80,7 @@ With git worktree slots, verification runs code in the worktree but run JSON sta
 
 ## For coding agents
 
-1. Read repo [`AGENT.md`](../AGENT.md)
+1. Read repo [`AGENTS.md`](../AGENTS.md)
 2. Read this file and `stages.json`
 3. After `launch`, read `.har/CLAUDE.agent.md` for slot URLs and definition of done
 

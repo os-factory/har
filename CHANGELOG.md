@@ -1,3 +1,15 @@
+# [0.44.0](https://github.com/os-factory/har/compare/v0.43.2...v0.44.0) (2026-08-05)
+
+
+### Bug Fixes
+
+* **docs:** hardcode PostHog public token for Pages builds ([#145](https://github.com/os-factory/har/issues/145)) ([e78cfb2](https://github.com/os-factory/har/commit/e78cfb21cf840bdb6568e347a26ad80a7ed63a49))
+
+
+### Features
+
+* make AGENTS.md the canonical agent instruction file ([#147](https://github.com/os-factory/har/issues/147)) ([334ec8e](https://github.com/os-factory/har/commit/334ec8e56927091d0988a79d9554de2db81561fe))
+
 ## [0.43.2](https://github.com/os-factory/har/compare/v0.43.1...v0.43.2) (2026-08-04)
 
 

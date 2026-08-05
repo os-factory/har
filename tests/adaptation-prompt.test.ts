@@ -10,9 +10,9 @@ import {
 import { initHarness } from '../src/core/harness';
 
 describe('adaptation prompts', () => {
-  it('init prompt includes AGENT.md guidance and profile-specific hints', () => {
+  it('init prompt includes AGENTS.md guidance and profile-specific hints', () => {
     const defaultPrompt = buildInitAdaptationPrompt('/tmp/app', 'default');
-    expect(defaultPrompt).toContain('AGENT.md');
+    expect(defaultPrompt).toContain('AGENTS.md');
     expect(defaultPrompt).toContain('Profile: default');
     expect(defaultPrompt).toContain('Docker');
     expect(defaultPrompt).toContain('HAR profiles');

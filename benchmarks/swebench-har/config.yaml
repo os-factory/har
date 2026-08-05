@@ -19,6 +19,7 @@ repo_cache_dir: .repo-cache
 patch_exclude_prefixes:
   - .har/
   - .cursor/
+  - AGENTS.md
   - AGENT.md
   - CLAUDE.md
   - .har-mcp-setup.json

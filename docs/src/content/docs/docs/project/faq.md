@@ -64,9 +64,11 @@ and are normally gitignored. Active worktree locations are recorded, not inferre
 ## Why are Codex prompts global?
 
 Codex CLI does not support repository-local custom prompt files. HAR writes them to
-`~/.codex/prompts/`; each developer installs them once. Repository `AGENT.md` still
-contains the project-specific harness pointers. Claude and Cursor skills stay in the
-repo (`.claude/skills/`, `.cursor/commands/`).
+`~/.codex/prompts/`; each developer installs them once. Repository `AGENTS.md` is the
+project-specific harness contract Codex auto-loads (HAR creates or updates a managed
+HAR section during init/onboard). Claude and Cursor skills stay in the
+repo (`.claude/skills/`, `.cursor/commands/`). Keep `CLAUDE.md` as a thin pointer to
+`AGENTS.md` — do not duplicate the full workflow there.
 
 ## What if launch fails halfway?
 

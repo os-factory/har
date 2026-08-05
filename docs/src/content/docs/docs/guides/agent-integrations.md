@@ -6,6 +6,22 @@ description: Install HAR workflows for Cursor, Claude Code, Codex, and MCP clien
 HAR's runtime is agent-agnostic. Integrations teach an agent when and how to use the
 same repository-owned harness.
 
+## Project instruction files
+
+During `har onboard` / `har env init`, HAR detects existing entrypoints (`AGENTS.md`,
+legacy `AGENT.md`, `CLAUDE.md`, `.cursor/`, `.claude/`, `~/.codex`), prints what it
+found, and shows where HAR instructions will be installed after you confirm targets:
+
+| File | Role |
+| --- | --- |
+| `AGENTS.md` | Canonical shared HAR workflow section (always created/updated — Codex auto-loads this) |
+| `CLAUDE.md` | Thin Claude Code pointer → `AGENTS.md` (when Claude is confirmed) |
+| `.cursor/rules/har-workflow.mdc` | Always-on Cursor injection (when Cursor is confirmed) |
+| Skills / prompts | `/setup-har`, `/har-wt`, `/har-maintain` for confirmed agents |
+
+Legacy `AGENT.md` is migrated into `AGENTS.md` and removed. Existing project-owned
+`AGENTS.md` content is preserved; HAR only upserts a marked HAR section.
+
 ## Managed workflows
 
 HAR provides three workflows:

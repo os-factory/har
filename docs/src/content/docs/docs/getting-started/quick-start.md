@@ -43,7 +43,7 @@ The default profile targets web applications. Use `--profile cli` for libraries
 and command-line tools or `--profile ios` for an Xcode project.
 
 Adapt the scaffold with your coding agent using the printed prompt (also saved to
-`.har/ADAPT-PROMPT.md`). Review and commit `.har/`, `AGENT.md`, and any generated
+`.har/ADAPT-PROMPT.md`). Review and commit `.har/`, `AGENTS.md`, and any generated
 agent workflows.
 
 ## 2. Check readiness

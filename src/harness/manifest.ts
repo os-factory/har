@@ -4,12 +4,14 @@ import * as path from 'path';
 import { HarnessManifest, HarnessManifestSchema } from './schema';
 import { writeFileSafe } from '../utils/file-ops';
 
-const GENERATOR_VERSION = '0.4.0';
+const GENERATOR_VERSION = '0.5.0';
 const MANIFEST_VERSION = '1';
 export const DEFAULT_HAR_DIR = '.har';
 
 const CHECKSUM_SKIP = new Set([
   'manifest.json',
+  'AGENTS.md.proposed',
+  'AGENTS.md.proposed.meta.json',
   'AGENT.md.proposed',
   'AGENT.md.proposed.meta.json',
   'ADAPT-PROMPT.md',

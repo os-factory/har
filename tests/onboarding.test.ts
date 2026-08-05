@@ -144,7 +144,7 @@ describe('runOnboarding', () => {
     );
     expect(result.adaptationPromptCopied).toBe(true);
     expect(clipboardCalls).toHaveLength(1);
-    expect(clipboardCalls[0]).toContain('AGENT.md');
+    expect(clipboardCalls[0]).toContain('AGENTS.md');
   });
 
   it('applies agentSlotsMax to stages.json after scaffold', async () => {

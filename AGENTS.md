@@ -6,6 +6,7 @@ For setup, testing fixtures, and PR workflow, see [CONTRIBUTING.md](./CONTRIBUTI
 
 This repo **dogfoods HAR** — `.har/` at the repo root defines how coding agents validate changes here.
 
+<!-- har:agent-environment:start -->
 ## Harnesses in this repo
 
 This is a monorepo with **two harnesses** — pick the one that owns the files you are changing:
@@ -15,7 +16,7 @@ This is a monorepo with **two harnesses** — pick the one that owns the files y
 | `.har/` | cli | `@osfactory/har` (typecheck, build, docs, unit tests, lint) | `src/`, `packages/`, `tests/`, `docs/` | [.har/README.md](.har/README.md) |
 | `control/.har/` | default | Mission Control (Next.js + Postgres, browser-e2e) | `control/` | [control/.har/README.md](control/.har/README.md) |
 
-Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`). See [control/AGENT.md](control/AGENT.md) for the webapp guide.
+Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`). See [control/AGENTS.md](control/AGENTS.md) for the webapp guide.
 
 **The harness is how you run each project** — to see Mission Control live (manual testing, browser, screenshots), launch a control slot; never hand-roll docker/dev-server startup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
 
@@ -205,3 +206,5 @@ Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cur
 Do not end the session without a handoff prompt. Never autonomously run `complete`, push, or open a PR. The default handoff recommendation is complete + PR when tooling is available.
 
 If you changed `src/templates/`: `npm run build`, then `har env init --force --profile cli` on a fixture (or `--profile default` for web apps).
+
+<!-- har:agent-environment:end -->

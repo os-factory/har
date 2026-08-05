@@ -12,10 +12,11 @@ HAR work directory: {{work_dir}}
 
 You are running inside the HAR session worktree. All file edits must stay in this work directory.
 
-1. Use `har env status 1` or `./.har/agent-cli.sh 1 status` if you need slot details.
-2. Fix the issue with the smallest correct production-quality change.
-3. Before finishing, run `har env verify 1` (quick verify). If it fails, fix harness or code issues and retry.
-4. Do not hand-roll setup that HAR already provides.
+1. Prefer reading `AGENTS.md` and `.har/CLAUDE.agent.md` if present for slot URLs and definition of done.
+2. Use `har env status 1` or `./.har/agent-cli.sh 1 status` if you need slot details.
+3. Fix the issue with the smallest correct production-quality change.
+4. Before finishing, run `har env verify 1` (quick verify). If it fails, fix harness or code issues and retry.
+5. Do not hand-roll setup that HAR already provides.
 
 You may also use normal repository commands (`pytest`, etc.) to debug, but HAR verify must be attempted before you stop.
 

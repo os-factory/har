@@ -79,7 +79,7 @@ With worktree slots, tests run in the worktree; run JSON lives in the main repo.
 
 ## For coding agents
 
-**Start here:** read [`AGENT.md`](../AGENT.md) at the repo root for a short pointer, then [`.har/CLAUDE.agent.md`](./CLAUDE.agent.md) for full instructions.
+**Start here:** read [`AGENTS.md`](../AGENTS.md) at the repo root for a short pointer, then [`.har/CLAUDE.agent.md`](./CLAUDE.agent.md) for full instructions.
 
 Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.har/*.sh` only when the CLI is not installed.
 

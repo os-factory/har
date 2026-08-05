@@ -32,7 +32,7 @@ The scaffold intentionally contains project-specific placeholders. Adapt:
 - project-specific environment values.
 
 HAR writes `.har/ADAPT-PROMPT.md` for your coding agent to adapt the scaffold.
-Your agent tailors scripts, ports, verification, and `AGENT.md` to the repository.
+Your agent tailors scripts, ports, verification, and `AGENTS.md` to the repository.
 
 ## Toolchains
 
