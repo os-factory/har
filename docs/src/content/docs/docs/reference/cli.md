@@ -55,21 +55,20 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 ### Initialization
 
 ```bash
-har env init [--profile default|cli|ios] [--auto] [--yes]
-             [--smoke] [--force] [--model <claude-model>] [--verbose]
+har env init [--profile default|cli|ios] [--yes]
+             [--smoke] [--force] [--verbose]
              [--agents claude,cursor,codex] [--no-agents]
              [--cursor-rule|--no-cursor-rule]
              [--commit-gate prompt|always|never]
              [--gate-mode block|warn] [--gate-scope worktrees|all]
 ```
 
-`--auto` requires `ANTHROPIC_API_KEY`. `--force` replaces an existing harness and
-is destructive.
+`--force` replaces an existing harness and is destructive.
 
 ### Maintenance
 
 ```bash
-har env maintain [--auto] [--yes] [--finalize]
+har env maintain [--yes] [--finalize]
                  [--summary <text>] [--agents <targets>] [--verbose]
                  [--cursor-rule|--no-cursor-rule]
                  [--commit-gate prompt|always|never]

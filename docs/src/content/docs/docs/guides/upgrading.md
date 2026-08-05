@@ -24,11 +24,7 @@ har env maintain
 - validation errors.
 
 It writes a maintenance bundle and adaptation prompt where changes need review.
-Apply the prompt with a coding agent, or use built-in adaptation:
-
-```bash
-har env maintain --auto
-```
+Apply the prompt with your coding agent.
 
 After a manual adaptation, record the new generator version and checksums:
 

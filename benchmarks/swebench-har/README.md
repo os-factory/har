@@ -3,7 +3,7 @@
 Paired one-instance benchmark comparing **raw Codex (GPT-5 Mini)** against **HAR-assisted Codex** on a SWE-bench Lite task.
 
 - **Raw arm:** Codex solves the issue directly in a checkout at `base_commit` (default: `gpt-5-mini`).
-- **HAR arm:** scaffold-only `har env init` (no `--auto`), **GPT-5.5** adapts `.har/` using the init `ADAPT-PROMPT.md` plus benchmark constraints, runner enforces launch + smoke gates, **GPT-5 Mini** fixes inside the slot.
+- **HAR arm:** scaffold-only `har env init`, **GPT-5.5** adapts `.har/` using the init `ADAPT-PROMPT.md` plus benchmark constraints, runner enforces launch + smoke gates, **GPT-5 Mini** fixes inside the slot.
 - **Scoring:** official SWE-bench Docker harness via `swebench.harness.run_evaluation`.
 
 ## Prerequisites

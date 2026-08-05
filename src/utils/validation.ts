@@ -3,18 +3,6 @@ import * as path from 'path';
 import { getAgentSlotRange } from '../harness/stages';
 import { getHarnessDir } from '../harness/manifest';
 
-export function requireApiKey(): string {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    throw new Error(
-      'ANTHROPIC_API_KEY is not set.\n' +
-        'Get your key at https://console.anthropic.com and run:\n' +
-        '  export ANTHROPIC_API_KEY=your_key_here',
-    );
-  }
-  return key;
-}
-
 export function requireHarnessDir(repoPath: string): string {
   const harnessDir = getHarnessDir(repoPath);
 

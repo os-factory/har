@@ -14,7 +14,6 @@ By submitting a pull request or other contribution, you license your contributio
 
 - **Node.js ≥ 20**
 - **npm**
-- **`ANTHROPIC_API_KEY`** — required only for `--auto` on `har env init` / `har env maintain`
 - **Docker** — optional; needed when running harness scripts on projects that use containers, and for `har control up`
 
 ## Setup
@@ -52,7 +51,7 @@ harness/            ← .har/ contract, schemas, manifest/stages I/O
 utils/              ← generic helpers (shell, paths, logging)
 ```
 
-`llm/` is the optional authoring agent for `har env init --auto` and `har env maintain --auto`. `templates/` holds scaffold assets copied into target repos — not runtime logic.
+`templates/` holds scaffold assets copied into target repos — not runtime logic.
 
 Canonical schemas live in [`packages/schemas/src/schema.ts`](packages/schemas/src/schema.ts) and are re-exported by [`src/harness/schema.ts`](src/harness/schema.ts).
 
@@ -61,10 +60,9 @@ Canonical schemas live in [`packages/schemas/src/schema.ts`](packages/schemas/sr
 | Layer | May import | Must not import |
 |-------|------------|-----------------|
 | `cli/`, `mcp/` | `core/`, `harness/`, `utils/` | each other |
-| `core/` | `harness/`, `utils/`, `llm/` | `cli/`, `mcp/` |
-| `harness/` | `utils/` | `core/`, `cli/`, `mcp/`, `llm/` |
+| `core/` | `harness/`, `utils/` | `cli/`, `mcp/` |
+| `harness/` | `utils/` | `core/`, `cli/`, `mcp/` |
 | `utils/` | other `utils/` | anything with HAR domain concepts |
-| `llm/` | `harness/`, `utils/` | `core/`, `cli/`, `mcp/` |
 
 ### Concepts you will hit often
 
@@ -172,9 +170,7 @@ npm unlink -g @osfactory/har
 The build step bundles TypeScript with esbuild and copies:
 
 - `src/templates/` → `dist/templates/`
-- `src/llm/prompts/*.md` → `dist/prompts/`
-
-If you change templates or prompts, rebuild before testing a linked install.
+If you change templates, rebuild before testing a linked install.
 
 ### Docs drift
 
@@ -197,7 +193,7 @@ Top-level command groups (see `har <cmd> --help`):
 
 ## Testing on a project
 
-### Quick test (no API key)
+### Quick test
 
 ```bash
 cd /path/to/your-project
@@ -211,22 +207,15 @@ For CLI/library repos:
 har env init --profile cli
 ```
 
-### Full test (with built-in Claude adaptation)
-
-```bash
-export ANTHROPIC_API_KEY=your_key
-cd /path/to/your-project
-har env init --auto
-```
+Paste `.har/ADAPT-PROMPT.md` into your coding agent to adapt the scaffold.
 
 ### Useful flags
 
 | Flag | Purpose |
 |------|---------|
 | `--repo <path>` | Target a project without changing directory |
-| `--auto` | Run built-in Claude adaptation (requires API key) |
 | `--force` | Overwrite an existing `.har/` |
-| `--yes` | Auto-apply the `AGENT.md` proposal (with `--auto`) |
+| `--yes` | Accept recommended onboarding actions without prompting |
 | `--smoke` | Run `setup-infra.sh` after init |
 | `--verbose` | Extra logging |
 | `--profile <default\|cli\|ios>` | Choose harness boilerplate |
@@ -281,7 +270,7 @@ When a new `@osfactory/har` release changes harness templates or run storage:
 ```bash
 npm install -g @osfactory/har@latest    # updates CLI/MCP/run storage — does not touch project .har/
 har env maintain                  # validation + drift report + adaptation prompt
-# apply updates with your coding agent (paste .har/ADAPT-PROMPT.md) or: har env maintain --auto
+# apply updates with your coding agent (paste .har/ADAPT-PROMPT.md)
 har env verify 1 --full
 ```
 
@@ -317,7 +306,6 @@ src/
 │   ├── plugins.ts           # har env add-plugin playwright|rocketsim
 │   └── …
 ├── mcp/                     # MCP stdio adapter
-├── llm/                     # Optional --auto authoring agent
 ├── templates/               # Files copied into target .har/ on init
 └── utils/                   # File ops, shell, logging, validation
 
@@ -366,10 +354,6 @@ These files are copied verbatim into a target repo's `.har/` on `har env init`. 
 2. Test with `har env init --force --profile cli` on a fixture (or `--profile default` / `ios`)
 
 Placeholders like `__PROJECT_NAME__` in `harness.env` are substituted during scaffold.
-
-### LLM prompts (`src/llm/prompts/`)
-
-System prompts for the optional `--auto` authoring agent. Rebuild to copy them into `dist/prompts/`. Test with `har env init --auto` (requires API key).
 
 ### CLI commands
 

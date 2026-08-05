@@ -22,7 +22,6 @@ CLI adapters       MCP adapters
 | `src/cli`, `src/mcp` | Parse and validate boundaries, call core, format results |
 | `src/core` | Init/maintain orchestration, execution service, slots, runs, validation, Mission Control sync |
 | `src/harness` | Canonical `.har/` contract, manifests, stages, templates, drift, generator |
-| `src/llm` | Optional Claude authoring agent for `--auto` |
 | `src/utils` | Generic filesystem, shell, logging, path, and validation helpers |
 | `packages/schemas` | Shared Zod schemas used by CLI and Mission Control |
 | `src/templates` | Generated harness profiles, agent workflows, and verification plugins |

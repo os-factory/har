@@ -11,7 +11,7 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_describe_project` | `repo` | Manifest, stack hints, scripts, stages, and slot limits |
-| `har_init_harness` | `repo`, `force`, `auto`, `smoke`, `profile` (`default` \| `cli` \| `ios`) | Scaffold and validation result |
+| `har_init_harness` | `repo`, `force`, `smoke`, `profile` (`default` \| `cli` \| `ios`) | Scaffold and validation result |
 
 ## Session lifecycle
 

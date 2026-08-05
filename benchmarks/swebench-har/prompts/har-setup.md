@@ -9,7 +9,7 @@ HAR profile: {{har_profile}}
 `har env init --profile {{har_profile}}` has already been run. The generic harness
 adaptation prompt from that init is included below.
 
-Do **not** run `har env init --auto`. Edit harness files directly.
+Do **not** run `har env init` again. Edit harness files directly.
 
 The benchmark runner validates readiness **after** your edits — do not launch or
 verify slots yourself.

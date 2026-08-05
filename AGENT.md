@@ -51,7 +51,7 @@ If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `ha
 ```bash
 npm install -g @osfactory/har@latest    # updates CLI/MCP/run storage only
 har env maintain                  # drift report + adaptation prompt
-# apply updates via coding agent or: har env maintain --auto
+# apply updates via your coding agent (paste .har/ADAPT-PROMPT.md)
 har env verify 1 --full
 ```
 
@@ -66,7 +66,7 @@ har env maintain --cursor-rule     # force-write without prompting
 har env maintain --no-cursor-rule  # skip Cursor rule scaffolding
 ```
 
-When the workspace has a `.cursor/` directory and no rule yet, the CLI prompts. In CI / `--auto` mode it writes silently. The rule is refreshed automatically on every `maintain` run when it already exists.
+When the workspace has a `.cursor/` directory and no rule yet, the CLI prompts. In CI or with `--yes`, it writes silently. The rule is refreshed automatically on every `maintain` run when it already exists.
 
 ## Architecture
 
@@ -82,7 +82,7 @@ harness/            ← .har/ contract, schemas, manifest/stages I/O
 utils/              ← generic helpers (shell, paths, logging)
 ```
 
-`llm/` is the optional authoring agent for `har env init --auto` and `har env maintain --auto`. `templates/` holds scaffold assets copied into target repos — not runtime logic.
+`templates/` holds scaffold assets copied into target repos — not runtime logic.
 
 ## Dependency rules
 
@@ -91,10 +91,9 @@ These are non-negotiable. Do not introduce imports that violate them.
 | Layer | May import | Must not import |
 |-------|------------|-----------------|
 | `cli/`, `mcp/` | `core/`, `harness/`, `utils/` | each other |
-| `core/` | `harness/`, `utils/`, `llm/` | `cli/`, `mcp/` |
-| `harness/` | `utils/` | `core/`, `cli/`, `mcp/`, `llm/` |
+| `core/` | `harness/`, `utils/` | `cli/`, `mcp/` |
+| `harness/` | `utils/` | `core/`, `cli/`, `mcp/` |
 | `utils/` | other `utils/` | anything with HAR domain concepts |
-| `llm/` | `harness/`, `utils/` | `core/`, `cli/`, `mcp/` |
 
 ## Where to put changes
 

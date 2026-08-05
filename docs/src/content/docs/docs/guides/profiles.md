@@ -31,8 +31,8 @@ The scaffold intentionally contains project-specific placeholders. Adapt:
 - quick and full verification;
 - project-specific environment values.
 
-Without `--auto`, HAR writes `.har/ADAPT-PROMPT.md` for a coding agent. With
-`--auto`, HAR calls Claude and can propose `AGENT.md`.
+HAR writes `.har/ADAPT-PROMPT.md` for your coding agent to adapt the scaffold.
+Your agent tailors scripts, ports, verification, and `AGENT.md` to the repository.
 
 ## Toolchains
 
