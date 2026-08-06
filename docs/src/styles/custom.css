@@ -499,12 +499,9 @@ site-search button[data-open-modal]:hover {
 /* Introduction demo video */
 .sl-markdown-content .intro-video {
 	margin: 1.75rem 0 0.5rem;
-}
-.sl-markdown-content .intro-video video {
-	display: block;
-	width: 100%;
 	max-width: 720px;
-	margin: 0 auto;
+}
+.sl-markdown-content .intro-video .video-embed {
 	border: 1px solid var(--sl-color-hairline);
 	border-radius: var(--har-radius);
 	background: var(--har-surface);
