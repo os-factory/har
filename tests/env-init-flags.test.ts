@@ -102,4 +102,18 @@ describe('har env init --no-agents / --no-cursor-rule (CLI)', () => {
     expect(combined).not.toMatch(/raw\.split is not a function/);
     expect(fs.existsSync(path.join(dir, '.cursor', 'rules', 'har-workflow.mdc'))).toBe(true);
   });
+
+  maybeIt('does not install auto-detected skills by default with --yes', () => {
+    const dir = initFixtureRepo();
+    fixtureDirs.push(dir);
+    fs.mkdirSync(path.join(dir, '.cursor'), { recursive: true });
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+
+    const { status } = runInit(dir, []);
+
+    expect(status).toBe(0);
+    expect(fs.existsSync(path.join(dir, '.cursor', 'rules', 'har-workflow.mdc'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, '.claude', 'skills', 'setup-har', 'SKILL.md'))).toBe(false);
+    expect(fs.existsSync(path.join(dir, '.cursor', 'commands', 'setup-har.md'))).toBe(false);
+  });
 });

@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as readline from 'readline';
+import inquirer from 'inquirer';
 import { writeFileSafe } from '../utils/file-ops';
 import { divider, info, success, warn } from '../utils/logging';
 import { resolveTemplateFile } from '../utils/paths';
 import { AGENT_SKILL_TARGETS, detectAgentTargets, parseAgentTargets } from './agent-skills';
+import { readManifest } from './manifest';
 import type { AgentSkillTarget } from './schema';
 
 export const AGENTS_MD = 'AGENTS.md';
@@ -32,6 +33,7 @@ export interface InstructionInstallPlan {
   /** Always true when installing project instructions. */
   agentsMd: boolean;
   migrateLegacyAgentMd: boolean;
+  providers: AgentSkillTarget[];
   claudeMd: boolean;
   cursorRule: boolean;
   skills: AgentSkillTarget[];
@@ -193,21 +195,28 @@ export function formatDetectionReport(detection: InstructionFileDetection): stri
 export function buildInstallPlan(
   detection: InstructionFileDetection,
   targets: AgentSkillTarget[],
-  options: { writeAgentsMd?: boolean; cursorRule?: boolean; skillsEnabled?: boolean } = {},
+  options: {
+    writeAgentsMd?: boolean;
+    cursorRule?: boolean;
+    skills?: AgentSkillTarget[];
+    respectProviderSelection?: boolean;
+  } = {},
 ): InstructionInstallPlan {
   const writeAgentsMd = options.writeAgentsMd !== false;
-  const skillsEnabled = options.skillsEnabled !== false;
   const cursorExplicit = options.cursorRule;
   const wantsCursor =
     cursorExplicit === true ||
-    (cursorExplicit !== false && (targets.includes('cursor') || detection.cursorDir));
+    (cursorExplicit !== false &&
+      (targets.includes('cursor') ||
+        (!options.respectProviderSelection && detection.cursorDir)));
 
   return {
     agentsMd: writeAgentsMd,
     migrateLegacyAgentMd: writeAgentsMd && detection.agentMd,
-    claudeMd: skillsEnabled && targets.includes('claude'),
+    providers: targets,
+    claudeMd: targets.includes('claude'),
     cursorRule: wantsCursor,
-    skills: skillsEnabled ? targets : [],
+    skills: options.skills ?? [],
   };
 }
 
@@ -216,7 +225,7 @@ export function formatInstallPlan(
   detection: InstructionFileDetection,
 ): string {
   const mark = (on: boolean) => (on ? '[x]' : '[ ]');
-  const lines: string[] = ['After you confirm, HAR will:'];
+  const lines: string[] = ['HAR will:'];
   const agentsAction = detection.agentsMd
     ? `Update ${AGENTS_MD} — refresh HAR / agent environment section`
     : `Create ${AGENTS_MD} — shared HAR workflow (Codex + cross-tool)`;
@@ -225,13 +234,18 @@ export function formatInstallPlan(
     lines.push(`  ${mark(true)} Migrate ${LEGACY_AGENT_MD} → ${AGENTS_MD}, then remove legacy file`);
   }
   lines.push(
-    `  ${mark(plan.claudeMd)} Claude — ensure ${CLAUDE_MD} points at ${AGENTS_MD}; install .claude/skills if confirmed`,
+    `  ${mark(plan.claudeMd)} Claude — ensure ${CLAUDE_MD} points at ${AGENTS_MD}`,
   );
   lines.push(
-    `  ${mark(plan.cursorRule)} Cursor — install/refresh .cursor/rules/har-workflow.mdc + commands if confirmed`,
+    `  ${mark(plan.cursorRule)} Cursor — install/refresh .cursor/rules/har-workflow.mdc`,
   );
   lines.push(
-    `  ${mark(plan.skills.includes('codex'))} Codex — global ~/.codex/prompts (skills); project contract is ${AGENTS_MD}`,
+    `  ${mark(plan.providers.includes('codex'))} Codex — use ${AGENTS_MD} as the project contract`,
+  );
+  lines.push(
+    `  ${mark(plan.skills.length > 0)} Skills — ${
+      plan.skills.length > 0 ? `install for ${plan.skills.join(', ')}` : 'do not install'
+    }`,
   );
   return lines.join('\n');
 }
@@ -448,24 +462,38 @@ export function ensureClaudeMdPointer(
   return action;
 }
 
-async function askYesNo(question: string, defaultYes = true): Promise<boolean> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-  return new Promise((resolve) => {
-    process.stderr.write(`${question} `);
-    rl.once('line', (answer) => {
-      rl.close();
-      const trimmed = answer.trim();
-      if (trimmed === '') {
-        resolve(defaultYes);
-        return;
-      }
-      resolve(/^y(es)?$/i.test(trimmed));
-    });
-  });
+async function selectAgentProviders(
+  detectedTargets: AgentSkillTarget[],
+): Promise<AgentSkillTarget[]> {
+  const answers = await inquirer.prompt<{ targets: AgentSkillTarget[] }>([
+    {
+      type: 'checkbox',
+      name: 'targets',
+      message: 'Agent providers to configure (space to toggle, enter to confirm)',
+      choices: AGENT_SKILL_TARGETS.map((target) => ({
+        name: target,
+        value: target,
+        checked: detectedTargets.includes(target),
+      })),
+    },
+  ]);
+  return AGENT_SKILL_TARGETS.filter((target) => answers.targets.includes(target));
+}
+
+async function confirmSkillInstallation(targets: AgentSkillTarget[]): Promise<boolean> {
+  const answers = await inquirer.prompt<{ installSkills: boolean }>([
+    {
+      type: 'confirm',
+      name: 'installSkills',
+      message: `Install HAR skills for ${targets.join(', ')}?`,
+      default: false,
+    },
+  ]);
+  return answers.installSkills;
 }
 
 /**
- * Detect instruction files, print findings + install plan, optionally confirm targets,
+ * Detect instruction files, let the user select providers, optionally install skills,
  * then write AGENTS.md (always), migrate AGENT.md, and ensure CLAUDE.md when Claude is selected.
  *
  * Cursor rule and skill scaffolding remain in their dedicated handlers — this function
@@ -476,61 +504,49 @@ export async function handleInstructionFiles(
 ): Promise<InstructionFilesResult> {
   const { repoPath, mode } = options;
   const writeAgentsMd = options.writeAgentsMd !== false;
-  const skillsEnabled = options.enabled !== false;
+  const integrationsEnabled = options.enabled !== false;
   const detection = detectInstructionFiles(repoPath);
-
-  let targets: AgentSkillTarget[];
-  if (!skillsEnabled) {
-    targets = [];
-  } else if (typeof options.agents === 'string') {
-    targets = parseAgentTargets(options.agents);
-  } else {
-    targets = detectAgentTargets(repoPath);
-  }
-
-  // Interactive init with no signals: offer all targets in the confirm prompt.
-  // --yes with nothing detected skips skills (still writes AGENTS.md).
-  if (
-    skillsEnabled &&
-    targets.length === 0 &&
-    mode === 'init' &&
-    typeof options.agents !== 'string' &&
-    !options.autoYes
-  ) {
-    targets = [...AGENT_SKILL_TARGETS];
-  }
-
-  let plan = buildInstallPlan(detection, targets, {
-    writeAgentsMd,
-    cursorRule: options.cursorRule,
-    skillsEnabled,
-  });
+  const detectedTargets = detectAgentTargets(repoPath);
+  const explicitTargets = typeof options.agents === 'string';
 
   divider();
   process.stderr.write(`${formatDetectionReport(detection)}\n\n`);
+
+  let targets: AgentSkillTarget[];
+  if (!integrationsEnabled) {
+    targets = [];
+  } else if (explicitTargets) {
+    targets = parseAgentTargets(options.agents!);
+  } else if (mode === 'init' && !options.autoYes) {
+    targets = await selectAgentProviders(detectedTargets);
+  } else {
+    targets = detectedTargets;
+  }
+
+  let skillTargets: AgentSkillTarget[] = [];
+  if (explicitTargets) {
+    skillTargets = targets;
+  } else if (targets.length > 0 && mode === 'init' && !options.autoYes) {
+    if (await confirmSkillInstallation(targets)) {
+      skillTargets = targets;
+    }
+  } else if (mode === 'maintain') {
+    const scaffoldedTargets = new Set(
+      (readManifest(repoPath)?.scaffoldedAgentFiles ?? []).map((entry) => entry.agent),
+    );
+    skillTargets = targets.filter((target) => scaffoldedTargets.has(target));
+  }
+
+  const plan = buildInstallPlan(detection, targets, {
+    writeAgentsMd,
+    cursorRule: options.cursorRule,
+    skills: skillTargets,
+    respectProviderSelection:
+      integrationsEnabled && (explicitTargets || (mode === 'init' && !options.autoYes)),
+  });
+
   process.stderr.write(`${formatInstallPlan(plan, detection)}\n`);
   divider();
-
-  const shouldPrompt =
-    !options.autoYes &&
-    skillsEnabled &&
-    typeof options.agents !== 'string' &&
-    !(mode === 'maintain' && targets.length > 0 && !detection.agentMd);
-
-  if (shouldPrompt && targets.length > 0) {
-    const accepted = await askYesNo(
-      `Install HAR agent instructions for: ${targets.join(', ')}? [Y/n]`,
-    );
-    if (!accepted) {
-      info('Skipped agent instruction adapters (AGENTS.md will still be updated)');
-      targets = [];
-      plan = buildInstallPlan(detection, targets, {
-        writeAgentsMd,
-        cursorRule: options.cursorRule === true ? true : false,
-        skillsEnabled: false,
-      });
-    }
-  }
 
   let migratedLegacy = false;
   let agentsMdAction: InstructionFilesResult['agentsMdAction'] = null;

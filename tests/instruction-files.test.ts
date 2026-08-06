@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import inquirer from 'inquirer';
 import {
   AGENTS_MD,
   CLAUDE_MD,
@@ -15,6 +16,7 @@ import {
   extractOutsideHarSection,
   formatDetectionReport,
   formatInstallPlan,
+  handleInstructionFiles,
   mergeAgentsMdContent,
   migrateLegacyAgentMd,
   stripClaudePointerFromAgentsMd,
@@ -23,6 +25,11 @@ import {
 import { writeAgentMdProposal } from '../src/harness/agent-md';
 import { maintainHarness } from '../src/core/harness';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
+
+jest.mock('inquirer', () => ({
+  __esModule: true,
+  default: { prompt: jest.fn() },
+}));
 
 function makeTempRepo(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));
@@ -115,12 +122,44 @@ describe('instruction-files', () => {
       claudeDir: false,
       codexHome: false,
     };
-    const plan = buildInstallPlan(detection, ['claude'], { skillsEnabled: true });
+    const plan = buildInstallPlan(detection, ['claude'], {
+      skills: ['claude'],
+      respectProviderSelection: true,
+    });
     expect(plan.agentsMd).toBe(true);
     expect(plan.migrateLegacyAgentMd).toBe(true);
     expect(plan.claudeMd).toBe(true);
-    expect(plan.cursorRule).toBe(true);
+    expect(plan.cursorRule).toBe(false);
+    expect(plan.skills).toEqual(['claude']);
     expect(formatInstallPlan(plan, detection)).toContain('[x] Create AGENTS.md');
+  });
+
+  it('preselects detected providers and leaves skill installation off by default', async () => {
+    const repoPath = makeTempRepo('har-provider-selection');
+    fs.mkdirSync(path.join(repoPath, '.claude'));
+    fs.mkdirSync(path.join(repoPath, '.cursor'));
+    const prompt = inquirer.prompt as unknown as jest.Mock;
+    prompt
+      .mockResolvedValueOnce({ targets: ['claude', 'cursor'] })
+      .mockResolvedValueOnce({ installSkills: false });
+
+    const result = await handleInstructionFiles({ repoPath, mode: 'init' });
+
+    const providerQuestion = prompt.mock.calls[0][0][0];
+    expect(providerQuestion.type).toBe('checkbox');
+    expect(providerQuestion.choices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: 'claude', checked: true }),
+        expect.objectContaining({ value: 'cursor', checked: true }),
+        expect.objectContaining({ value: 'codex' }),
+      ]),
+    );
+    const skillsQuestion = prompt.mock.calls[1][0][0];
+    expect(skillsQuestion).toEqual(expect.objectContaining({ type: 'confirm', default: false }));
+    expect(result.targets).toEqual(['claude', 'cursor']);
+    expect(result.plan.skills).toEqual([]);
+    expect(result.plan.claudeMd).toBe(true);
+    expect(result.plan.cursorRule).toBe(true);
   });
 
   it('strips misplaced claude-pointer markers from AGENTS.md', () => {
