@@ -8,6 +8,12 @@ workflows. Run a fleet of coding agents in parallel on any repository, with
 deterministic validation gates, verifiable proof, and full observability across
 every agent, all extensible and customizable to your own workflow and tooling.
 
+<div class="intro-video">
+<video src="/assets/introduction-har.mp4" controls preload="metadata" playsinline title="HAR introduction demo">
+Sorry, your browser does not support embedded video. <a href="/assets/introduction-har.mp4">Download the demo</a>.
+</video>
+</div>
+
 <div class="next-steps">
 <a class="next-card" href="/docs/getting-started/installation/">
 <span class="next-title"><span>Install HAR</span><span class="next-arrow" aria-hidden="true">&rarr;</span></span>

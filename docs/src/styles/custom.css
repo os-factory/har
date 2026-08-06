@@ -496,6 +496,20 @@ site-search button[data-open-modal]:hover {
 	}
 }
 
+/* Introduction demo video */
+.sl-markdown-content .intro-video {
+	margin: 1.75rem 0 0.5rem;
+}
+.sl-markdown-content .intro-video video {
+	display: block;
+	width: 100%;
+	max-width: 720px;
+	margin: 0 auto;
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--har-radius);
+	background: var(--har-surface);
+}
+
 /* Tables — shared hairline grid with a 5px rounded frame */
 .sl-markdown-content table {
 	font-size: 0.9rem;
