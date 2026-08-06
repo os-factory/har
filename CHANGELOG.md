@@ -1,3 +1,10 @@
+# [0.47.0](https://github.com/os-factory/har/compare/v0.46.2...v0.47.0) (2026-08-06)
+
+
+### Features
+
+* make onboarding skill installation opt-in ([#157](https://github.com/os-factory/har/issues/157)) ([c738f9c](https://github.com/os-factory/har/commit/c738f9c1625549ff05e06d69b9eb16827f0a18e4))
+
 ## [0.46.2](https://github.com/os-factory/har/compare/v0.46.1...v0.46.2) (2026-08-05)
 
 
