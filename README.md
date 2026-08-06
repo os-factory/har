@@ -10,6 +10,11 @@
 
 HAR is an open-source, agent-agnostic framework for building multi-agent coding workflows. Run a fleet of coding agents in parallel on any repository, with deterministic validation gates, verifiable proof, and full observability across every agent, all extensible and customizable to your own workflow and tooling.
 
+<p align="center">
+  <video src="docs/public/assets/introduction-har.mp4" controls width="540" style="display: block; margin: 0 auto;" poster="docs/public/assets/thumbnail-introduction-har.png"></video>
+  <br>
+</p>
+
 Works with **Claude Code** · **Cursor** · **Codex** · any MCP agent.
 
 ## What's included out of the box
