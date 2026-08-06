@@ -9,9 +9,9 @@ deterministic validation gates, verifiable proof, and full observability across
 every agent, all extensible and customizable to your own workflow and tooling.
 
 <div class="intro-video">
-<video src="/assets/introduction-har.mp4" controls preload="metadata" playsinline title="HAR introduction demo">
-Sorry, your browser does not support embedded video. <a href="/assets/introduction-har.mp4">Download the demo</a>.
-</video>
+<div class="video-embed">
+<iframe src="https://www.youtube.com/embed/XKl4ZzWy7mQ" title="HAR introduction demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
+</div>
 </div>
 
 <div class="next-steps">
