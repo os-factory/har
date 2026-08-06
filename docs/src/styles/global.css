@@ -317,9 +317,9 @@ body { transition: background-color .25s ease, color .25s ease; }
 :root[data-theme="dark"] .theme-icon-moon { display: block; }
 
 /* React Flow hero island */
-.reactflow-shell { position: relative; height: 450px; overflow: hidden; }
-.reactflow-shell .react-flow { width: 100%; height: 100%; background: var(--paper); }
-.reactflow-shell .react-flow__pane { cursor: default; }
+.reactflow-shell { position: relative; height: 450px; overflow: hidden; touch-action: pan-y; }
+.reactflow-shell .react-flow { width: 100%; height: 100%; background: var(--paper); pointer-events: none; }
+.reactflow-shell .react-flow__pane { cursor: default; touch-action: pan-y; }
 .reactflow-shell .react-flow__node { width: auto; border: 0; padding: 0; background: transparent; color: var(--text); }
 .reactflow-shell .react-flow__edge-path {
   stroke: rgba(125, 202, 162, .48);
