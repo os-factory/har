@@ -6,7 +6,11 @@ import {
   readPortalCredentials,
   writePortalCredentials,
 } from '../src/core/portal-credentials';
-import { getPortalTarget } from '../src/core/control-config';
+import {
+  DEFAULT_PORTAL_URL,
+  getPortalTarget,
+  resolvePortalUrl,
+} from '../src/core/control-config';
 
 const PORTAL_ENV = [
   'HAR_PORTAL_URL',
@@ -102,6 +106,62 @@ describe('getPortalTarget source precedence', () => {
     expect(getPortalTarget()).toEqual({
       url: 'https://env.example.com',
       token: 'har_ingest_env',
+    });
+  });
+});
+
+describe('resolvePortalUrl', () => {
+  function storePortal(portalUrl: string): void {
+    writePortalCredentials({
+      portalUrl,
+      token: 'har_ingest_stored',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+  }
+
+  it('falls back to the default portal when nothing is set', () => {
+    expect(resolvePortalUrl()).toEqual({
+      url: DEFAULT_PORTAL_URL,
+      source: 'default',
+    });
+  });
+
+  it('reuses the portal from a previous login', () => {
+    storePortal('https://stored.example.com');
+    expect(resolvePortalUrl()).toEqual({
+      url: 'https://stored.example.com',
+      source: 'saved',
+    });
+  });
+
+  it('prefers HAR_PORTAL_URL over a previous login', () => {
+    storePortal('https://stored.example.com');
+    process.env.HAR_PORTAL_URL = 'https://env.example.com';
+    expect(resolvePortalUrl()).toEqual({
+      url: 'https://env.example.com',
+      source: 'env',
+    });
+  });
+
+  it('prefers the explicit portal over env and a previous login', () => {
+    storePortal('https://stored.example.com');
+    process.env.HAR_PORTAL_URL = 'https://env.example.com';
+    expect(resolvePortalUrl('https://flag.example.com')).toEqual({
+      url: 'https://flag.example.com',
+      source: 'flag',
+    });
+  });
+
+  it('normalizes trailing slashes and blank values on every source', () => {
+    storePortal('https://stored.example.com//');
+    expect(resolvePortalUrl('  ')).toEqual({
+      url: 'https://stored.example.com',
+      source: 'saved',
+    });
+    process.env.HAR_PORTAL_URL = 'https://env.example.com/';
+    expect(resolvePortalUrl('')).toEqual({
+      url: 'https://env.example.com',
+      source: 'env',
     });
   });
 });
