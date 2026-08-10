@@ -189,7 +189,7 @@ elif [ -f "$SCRIPT_DIR/provision-toolchain.sh" ]; then
 elif [ -f "$WORK_DIR/package.json" ] && [ ! -d "$WORK_DIR/node_modules" ]; then
   PKG_MANAGER="$(har_node_package_manager "$WORK_DIR")"
   log "Installing dependencies in $WORK_DIR with ${PKG_MANAGER}..."
-  (cd "$WORK_DIR" && "$PKG_MANAGER" install --silent)
+  har_node_install "$WORK_DIR" "$PKG_MANAGER" "$(har_node_declared_package_manager "$WORK_DIR")"
 fi
 
 SLOT_AGENT_ID="$AGENT_ID" \

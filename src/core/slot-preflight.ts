@@ -23,6 +23,7 @@ import {
 } from './slot-ports';
 import { readSlotRegistry, isSlotResumable } from './slot-registry';
 import { execSync } from 'child_process';
+import { packageRunner } from '../utils/package-runner';
 
 export interface PreflightOptions extends LaunchGuardOptions {
   allocatePorts?: boolean;
@@ -44,7 +45,7 @@ interface Pm2Process {
 
 function listPm2Processes(): Pm2Process[] | undefined {
   try {
-    const raw = execSync('npx --yes pm2 jlist', {
+    const raw = execSync(`${packageRunner()} pm2 jlist`, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 3000,
@@ -172,7 +173,7 @@ export function inspectSlotReadiness(
         'Stop the other harness session (./.har/teardown.sh in that repo) or use a different agent slot.',
       details: { processes: foreign.processes },
     });
-    remediations.push('Inspect with: npx pm2 jlist | grep agent-' + agentId);
+    remediations.push(`Inspect with: ${packageRunner()} pm2 jlist | grep agent-${agentId}`);
   }
 
   if (usesPm2 && pm2Procs) {

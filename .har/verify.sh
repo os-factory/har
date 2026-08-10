@@ -97,11 +97,11 @@ process.stdout.write(JSON.stringify(arr));
 run_step "typecheck" '${NPM_BIN:-npm} run typecheck' || { [ -z "$FULL" ] && true; }
 # Some unit tests exec dist/index.js (e.g. plugins CLI add-plugin).
 run_step "build" '${NPM_BIN:-npm} run build' || { [ -z "$FULL" ] && true; }
-run_step "docs-check" '${NPM_BIN:-npm} run check --prefix docs' || { [ -z "$FULL" ] && true; }
-run_step "docs-build" '${NPM_BIN:-npm} run build --prefix docs' || { [ -z "$FULL" ] && true; }
+run_step "docs-check" '(cd docs && ${NPM_BIN:-npm} run check)' || { [ -z "$FULL" ] && true; }
+run_step "docs-build" '(cd docs && ${NPM_BIN:-npm} run build)' || { [ -z "$FULL" ] && true; }
 
 if [ -n "$FULL" ]; then
-  run_step "unit-tests" '${NPM_BIN:-npm} test' || true
+  run_step "unit-tests" '${NPM_BIN:-npm} run test' || true
   run_step "lint" '${NPM_BIN:-npm} run lint' || true
   run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
   # Registered verification stages from .har/stages.json (see .har/STAGES.md).

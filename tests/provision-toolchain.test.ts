@@ -117,6 +117,110 @@ describe('provision-toolchain.sh template contract', () => {
     });
   }
 
+  it('resolves the package manager from lockfile, packageManager field, and override', () => {
+    const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-pm-'));
+
+    const declared = (files: Record<string, string>, env = ''): string => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.mkdirSync(tmpDir, { recursive: true });
+      for (const [name, body] of Object.entries(files)) {
+        fs.writeFileSync(path.join(tmpDir, name), body);
+      }
+      // A sourced slot env exports HARNESS_NODE_PACKAGE_MANAGER; drop it so the
+      // detection order is what is under test, not the ambient pin.
+      const result = run(
+        `env -u HARNESS_NODE_PACKAGE_MANAGER ${env} ` +
+          `bash -c '. "${harnessEnv}" && har_node_declared_package_manager "${tmpDir}"'`,
+      );
+      expect(result.code).toBe(0);
+      return result.stdout.trim();
+    };
+
+    const pkg = JSON.stringify({ name: 'fixture' });
+    expect(declared({ 'package.json': pkg, 'bun.lock': '' })).toBe('bun');
+    expect(declared({ 'package.json': pkg, 'bun.lockb': '' })).toBe('bun');
+    expect(declared({ 'package.json': pkg, 'pnpm-lock.yaml': '' })).toBe('pnpm');
+    expect(declared({ 'package.json': pkg, 'yarn.lock': '' })).toBe('yarn');
+    expect(declared({ 'package.json': pkg, 'package-lock.json': '{}' })).toBe('npm');
+    expect(declared({ 'package.json': pkg })).toBe('');
+
+    // The packageManager field outranks the lockfile.
+    expect(
+      declared({
+        'package.json': JSON.stringify({ name: 'fixture', packageManager: 'bun@1.3.14' }),
+        'package-lock.json': '{}',
+      }),
+    ).toBe('bun');
+
+    // An explicit override outranks everything.
+    expect(
+      declared({ 'package.json': pkg, 'bun.lock': '' }, 'HARNESS_NODE_PACKAGE_MANAGER=pnpm'),
+    ).toBe('pnpm');
+  });
+
+  it('maps each package manager to its runner and lockfile', () => {
+    const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
+    const result = run(
+      `bash -c '. "${harnessEnv}" && for m in npm bun pnpm yarn; do ` +
+        `echo "$m|$(har_pkg_exec "$m")|$(har_node_lockfile "$m")"; done'`,
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim().split('\n')).toEqual([
+      'npm|npx --yes|package-lock.json',
+      'bun|bunx|bun.lock',
+      'pnpm|pnpm dlx|pnpm-lock.yaml',
+      'yarn|yarn dlx|yarn.lock',
+    ]);
+  });
+
+  it('falls back to an installed manager and leaves the declared lockfile alone', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-fallback-'));
+    const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
+
+    // A repo that declares pnpm, installed by npm because pnpm is missing: the
+    // substitute writes package-lock.json, which must not survive the install.
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'fixture' }));
+    fs.writeFileSync(path.join(tmpDir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
+
+    const substitute = run(
+      `bash -c '. "${harnessEnv}" && npm() { : > package-lock.json; } && ` +
+        `har_node_install "${tmpDir}" npm pnpm'`,
+    );
+
+    expect(substitute.code).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, 'pnpm-lock.yaml'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'package-lock.json'))).toBe(false);
+
+    // The declared manager keeps its own lockfile.
+    const declaredRun = run(
+      `bash -c '. "${harnessEnv}" && npm() { : > package-lock.json; } && ` +
+        `har_node_install "${tmpDir}" npm npm'`,
+    );
+
+    expect(declaredRun.code).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, 'package-lock.json'))).toBe(true);
+  });
+
+  it('ships the package manager helpers identically in harness.env and provision-toolchain.sh', () => {
+    const extract = (file: string): string => {
+      const content = fs.readFileSync(file, 'utf8');
+      const start = content.indexOf('# ── Node package manager helpers');
+      const end = content.indexOf('  echo "npx --yes"\n}', start);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      return content.slice(start, end);
+    };
+
+    for (const profile of PROFILES) {
+      const dir = path.join(resolveTemplatesDir(), profile);
+      expect(extract(path.join(dir, 'harness.env'))).toBe(
+        extract(path.join(dir, 'provision-toolchain.sh')),
+      );
+    }
+  });
+
   it('verify.sh dispatches stock smoke by ecosystem', () => {
     for (const profile of ['har-boilerplate', 'har-boilerplate-cli'] as const) {
       const verifyPath = path.join(resolveTemplatesDir(), profile, 'verify.sh');

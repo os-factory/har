@@ -204,25 +204,45 @@ function resolveOtelHookCommand(hooksHome: string): string | null {
   return null;
 }
 
+/**
+ * Installer for the private hooks prefix, in preference order. Each writes into
+ * `hooksHome/node_modules/.bin`, so a machine with any one of them can run the
+ * hook — npm is not a hard requirement.
+ */
+function resolveHooksInstaller(
+  hooksHome: string,
+): { command: string; args: string[] } | null {
+  const candidates: Array<{ command: string; args: string[] }> = [
+    {
+      command: 'npm',
+      args: ['install', '--prefix', hooksHome, '--no-fund', '--no-audit', OTEL_HOOKS_PACKAGE],
+    },
+    { command: 'bun', args: ['add', '--cwd', hooksHome, OTEL_HOOKS_PACKAGE] },
+    { command: 'pnpm', args: ['add', '--dir', hooksHome, OTEL_HOOKS_PACKAGE] },
+  ];
+  return candidates.find((candidate) => commandExists(candidate.command)) ?? null;
+}
+
 function tryInstallPackage(hooksHome: string): { ok: boolean; detail: string } {
   fs.mkdirSync(hooksHome, { recursive: true });
-  if (!commandExists('npm')) {
+  const installer = resolveHooksInstaller(hooksHome);
+  if (!installer) {
     return {
       ok: false,
-      detail: 'npm not found; install Node.js to use @osfactory/otel-hook',
+      detail: 'no package manager found; install Node.js or bun to use @osfactory/otel-hook',
     };
   }
-  const result = spawnSync(
-    'npm',
-    ['install', '--prefix', hooksHome, '--no-fund', '--no-audit', OTEL_HOOKS_PACKAGE],
-    { encoding: 'utf8', timeout: 180_000 },
-  );
+  const described = `${installer.command} ${installer.args.join(' ')}`;
+  const result = spawnSync(installer.command, installer.args, {
+    encoding: 'utf8',
+    timeout: 180_000,
+  });
   if (result.status === 0 && fs.existsSync(localOtelHookBin(hooksHome))) {
-    return { ok: true, detail: `npm install --prefix ${hooksHome} ${OTEL_HOOKS_PACKAGE}` };
+    return { ok: true, detail: described };
   }
   return {
     ok: false,
-    detail: `npm install ${OTEL_HOOKS_PACKAGE} failed: ${(result.stderr || result.stdout || '').trim().slice(0, 400)}`,
+    detail: `${described} failed: ${(result.stderr || result.stdout || '').trim().slice(0, 400)}`,
   };
 }
 

@@ -69,6 +69,11 @@ how this project is built and tested. Use toolchain variables from `.env.agent.<
 The stock verify section is keyed by `HARNESS_ECOSYSTEM`; it is a starting point,
 not the repo's final contract. Replace conventions that do not match this project.
 
+`${NPM_BIN}` may resolve to bun, pnpm, or yarn as well as npm, so keep Node steps
+package-manager agnostic: always `${NPM_BIN:-npm} run <script>` (never bare
+`${NPM_BIN} test`, which runs bun's own test runner), and never npm-only flags
+such as `--prefix` — use a subshell like `(cd docs && ${NPM_BIN:-npm} run build)`.
+
 **Tier contract:**
 
 | Mode | Command | Intent |

@@ -83,22 +83,45 @@ har_node_package_manager() {
   echo "${declared:-npm}"
 }
 
-# Install arguments for a manager. A substitute manager installs without writing
-# a lockfile — provisioning must not migrate the repo to a different one.
-har_node_install_args() {
-  local manager="$1"
-  local declared="${2:-}"
-
-  if [ -z "$declared" ] || [ "$declared" = "$manager" ]; then
-    echo "install --silent"
-    return
-  fi
-  case "$manager" in
-    bun) echo "install --silent --no-save" ;;
-    npm) echo "install --silent --no-package-lock" ;;
-    pnpm|yarn) echo "install --silent --no-lockfile" ;;
-    *) echo "install --silent" ;;
+# Lockfile a manager writes, so a substitute install can clean up after itself.
+har_node_lockfile() {
+  case "$1" in
+    bun) echo "bun.lock" ;;
+    npm) echo "package-lock.json" ;;
+    pnpm) echo "pnpm-lock.yaml" ;;
+    yarn) echo "yarn.lock" ;;
+    *) echo "" ;;
   esac
+}
+
+# Install dependencies in a directory. When a substitute manager stands in for
+# the one the repo declares, any lockfile it creates is removed afterwards:
+# provisioning must not migrate the repo to a different package manager.
+# (bun writes bun.lock even under --no-save, so the flags alone are not enough.)
+har_node_install() {
+  local dir="$1"
+  local manager="$2"
+  local declared="${3:-}"
+  local substituting=false
+  local lockfile=""
+  local had_lockfile=false
+
+  if [ -n "$declared" ] && [ "$declared" != "$manager" ]; then
+    substituting=true
+    lockfile="$(har_node_lockfile "$manager")"
+    if [ -n "$lockfile" ] && [ -e "$dir/$lockfile" ]; then
+      had_lockfile=true
+    fi
+  fi
+
+  local code=0
+  (cd "$dir" && "$manager" install --silent) || code=$?
+
+  if [ "$substituting" = true ] && [ "$had_lockfile" = false ] && [ -n "$lockfile" ]; then
+    rm -f "$dir/$lockfile"
+    [ "$manager" = "bun" ] && rm -f "$dir/bun.lockb"
+  fi
+  return $code
 }
 
 # Package runner (npx equivalent) for one-off CLIs such as pm2, including the
@@ -120,8 +143,9 @@ har_pkg_exec() {
 append_env() {
   local key="$1"
   local value="$2"
-  # %q, not a raw value: an unquoted value with spaces (a PATH entry under
-  # Application Support, a repo path) breaks `source .env.agent.<id>`.
+  # %q, not a raw value: an unquoted value with spaces or parentheses (a repo
+  # path, a PATH carrying Windows entries under WSL) breaks
+  # `source .env.agent.<id>`.
   printf '%s=%q\n' "$key" "$value" >> "$HAR_ENV_FILE"
 }
 
@@ -182,15 +206,13 @@ provision_node() {
 
   if ! run_install_cmd "$dir"; then
     pt_log "Installing Node dependencies with ${pkg_manager}..."
-    # Unquoted on purpose: install args are a word list, not one argument.
-    (cd "$dir" && "$pkg_manager" $(har_node_install_args "$pkg_manager" "$declared_manager"))
+    har_node_install "$dir" "$pkg_manager" "$declared_manager"
   fi
 
   if [ -f "$dir/docs/package.json" ]; then
     pt_log "Installing documentation dependencies with ${pkg_manager}..."
-    # Unquoted on purpose: install args are a word list, not one argument.
-    (cd "$dir/docs" && "$pkg_manager" \
-      $(har_node_install_args "$pkg_manager" "$(har_node_declared_package_manager "$dir/docs")"))
+    har_node_install "$dir/docs" "$pkg_manager" \
+      "$(har_node_declared_package_manager "$dir/docs")"
   fi
 
   if command -v node >/dev/null 2>&1; then
@@ -359,9 +381,8 @@ provision_monorepo_root() {
   pt_log "Installing monorepo root dependencies in $HAR_WORKTREE_DIR..."
   local pkg_manager
   pkg_manager="$(har_node_package_manager "$HAR_WORKTREE_DIR")"
-  # Unquoted on purpose: install args are a word list, not one argument.
-  (cd "$HAR_WORKTREE_DIR" && "$pkg_manager" \
-    $(har_node_install_args "$pkg_manager" "$(har_node_declared_package_manager "$HAR_WORKTREE_DIR")"))
+  har_node_install "$HAR_WORKTREE_DIR" "$pkg_manager" \
+    "$(har_node_declared_package_manager "$HAR_WORKTREE_DIR")"
 }
 
 provision_ecosystem() {
