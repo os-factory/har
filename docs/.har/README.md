@@ -75,8 +75,10 @@ cd docs
 | **before** | End of `launch` (baseline) | `.har/artifacts/browser-e2e/screenshots/before/` |
 | **after** | Full verify / `browser-e2e` | `.har/artifacts/browser-e2e/screenshots/after/` |
 
-UI change tasks must add or update specs under `tests/frontend/` and include
-these artifact paths in the session handoff. See `stages/PLAYWRIGHT.md`.
+UI change tasks must add or update specs under `tests/frontend/`, **display**
+before/after PNGs inline in the session handoff, and attach them to the PR with
+`./.har/stages/pr-visual-proof.sh` (`prepare` → force-add → re-verify → commit;
+`comment <pr>` after the PR exists). See `stages/PLAYWRIGHT.md`.
 
 ## Readiness layers
 

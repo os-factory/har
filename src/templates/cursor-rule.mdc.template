@@ -32,17 +32,11 @@ first. Commit early — teardown keeps the branch, not uncommitted work. Gitigno
 paths are ephemeral. With telemetry on, Mission Control derives session purpose from
 the first captured user prompt.
 
-<!-- Monorepo: if this repository contains multiple .har harnesses, list them here
-     and pick by the files you are changing. Example:
-
-## Harnesses in this repo
-
+<!-- Monorepo: list multiple .har harnesses here and pick by changed files.
 | Path | Runs | Use when changing |
-|------|------|-------------------|
-| `.har/` | backend + frontend | `src/`, `packages/` |
-| `apps/admin/.har/` | admin dashboard | `apps/admin/` |
-
-Run harness commands from the directory that owns the harness (e.g. `cd apps/admin`).
+| `.har/` | app | `src/` |
+| `apps/admin/.har/` | admin | `apps/admin/` |
+Run harness commands from the directory that owns the harness.
 -->
 
 ## After making changes
@@ -71,6 +65,8 @@ complete, teardown, push, or open a PR. **Default (1 is the default):** when
 PR → `har env complete` / `har_complete_environment` (branch kept). Still needs
 approval. Alternatives: **Complete only**, or **Something else**. Without PR
 tooling, recommend **Complete only** and give the session branch for a manual push.
+If screenshots exist, display before/after PNGs inline and attach them to the PR
+(see `.har/CLAUDE.agent.md`).
 
 ## Commit gate
 

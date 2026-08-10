@@ -82,6 +82,11 @@ recommend **Complete + open a PR** (still needs approval). Alternatives: **Compl
 or **Something else**. Without PR tooling, recommend **Complete only** and give the
 session branch for a manual push.
 
+When screenshot artifacts exist, **display** each relevant before/after PNG inline
+in the handoff (not path-only). After opening a PR, run
+`./.har/stages/pr-visual-proof.sh comment <pr>` (after `prepare` + force-add +
+re-verify in the commit that lands on the PR).
+
 ### Commit gate
 
 Full verify records a tree hash under `.har/validations/`. With `har hooks install`,

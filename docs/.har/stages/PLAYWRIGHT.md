@@ -26,8 +26,16 @@ Manual recapture:
 ```
 
 **UI tasks:** update or add Playwright specs so assertions match the new UI, run
-full verify, and include the after (and before) screenshot paths in the session
-handoff so the user can see the completed work.
+full verify, **display** the before/after PNGs inline in the session handoff
+(Read tool — not path-only), and attach them to the PR:
+
+```bash
+./.har/stages/pr-visual-proof.sh prepare
+git add -f .har/visual-proof
+har env verify <id> --full    # commit gate after staging proof
+# commit + push + open PR (on approval), then:
+./.har/stages/pr-visual-proof.sh comment <pr>
+```
 
 ## Run
 

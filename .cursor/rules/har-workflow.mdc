@@ -70,6 +70,9 @@ complete, teardown, push, or open a PR. **Default (1 is the default):** when
 PR → `har env complete` / `har_complete_environment` (branch kept). Still needs
 approval. Alternatives: **Complete only**, or **Something else**. Without PR
 tooling, recommend **Complete only** and give the session branch for a manual push.
+If screenshot artifacts exist, **display** before/after PNGs inline (not path-only)
+and attach them to the PR (`docs/.har/stages/pr-visual-proof.sh` — see
+`docs/.har/CLAUDE.agent.md`).
 
 ## Commit gate
 

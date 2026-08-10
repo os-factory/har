@@ -28,6 +28,8 @@ Docs UI work: use `docs/.har/` so full verify produces before/after screenshots 
 Follow [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) and
 [`.har/README.md`](.har/README.md): launch first, edit only under the session work
 dir, full-verify before done, then present a session handoff and wait for approval.
+When screenshot artifacts exist (docs / Playwright UI work), **display** before/after
+PNGs inline in the handoff and attach them to the PR (`docs/.har/stages/pr-visual-proof.sh`).
 When the task names a tracker issue or ticket, bind at launch with a short
 `--work-id`, plus `--work-source`, `--work-url`, and `--work-title` when known.
 Default recommendation is complete + open a PR when tooling is available (still

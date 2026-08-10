@@ -40,7 +40,7 @@ After full verify and commit, stop and propose next steps. Never autonomously ru
 `har env complete` / `har_complete_environment`). Offer complete-only or something
 else as alternatives. If PR tooling is unavailable, recommend complete and report
 the session branch for a manual push. Prefer `complete` over bare `teardown` when
-the work succeeded. See `.cursor/rules/har-workflow.mdc` for the handoff shape.
+the work succeeded. When screenshot artifacts exist, display before/after PNGs inline and attach them to the PR (see `.cursor/rules/har-workflow.mdc`). See `.cursor/rules/har-workflow.mdc` for the handoff shape.
 
 Quick loop: MCP `har_run_verification`, `har env verify ${AGENT_ID}`, or `./.har/verify.sh ${AGENT_ID}`
 

@@ -44,7 +44,11 @@ When you change the landing page or another route:
 1. Add or update a Playwright spec under `tests/frontend/`
 2. Update `tests/frontend/visual-proof.spec.cjs` if the route/assertion changed
 3. Run `har env verify ${AGENT_ID} --full`
-4. In the session handoff, link the **after** screenshots (and **before** when present)
+4. **Display** each relevant before/after PNG in the session handoff (Read tool /
+   inline images — not path-only links)
+5. Before the final commit: `./.har/stages/pr-visual-proof.sh prepare`, then
+   `git add -f .har/visual-proof`, re-run full verify, commit
+6. After opening a PR (on approval): `./.har/stages/pr-visual-proof.sh comment <pr>`
 
 ## Definition of done
 
@@ -53,14 +57,17 @@ When you change the landing page or another route:
 - [ ] UI changes have Playwright coverage; screenshot artifacts prove the result
 - [ ] Changes committed **in the session worktree**
 - [ ] User got the preview URL http://localhost:${FE_PORT}
+- [ ] Handoff **shows** before/after screenshots inline when they exist
 - [ ] Present session handoff and **wait** before `complete`, push, or PR
 
 ### Session handoff
 
 After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-${AGENT_ID}.json`), preview URL, and screenshot artifact paths.
-Never autonomously run `complete`, push, or open a PR. Prefer **Complete + open a PR**
-when `gh`/GitHub MCP is available.
+(`.har/slots/agent-${AGENT_ID}.json`), preview URL, and **inline before/after
+screenshots** (display the PNGs). Never autonomously run `complete`, push, or
+open a PR. Prefer **Complete + open a PR** when `gh`/GitHub MCP is available;
+after the PR exists, post visual proof with
+`./.har/stages/pr-visual-proof.sh comment <pr>`.
 
 Quick loop: `./.har/verify.sh ${AGENT_ID}` (check + health only).
 
