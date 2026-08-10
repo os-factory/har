@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { inspectSlotReadiness } from '../src/core/slot-preflight';
+import { formatPreflightReport, inspectSlotReadiness } from '../src/core/slot-preflight';
+import type { SlotReadiness } from '../src/harness/schema';
 import { allocateAppPorts, isPortInUse } from '../src/core/slot-ports';
 
 const tmpDirs: string[] = [];
@@ -15,6 +16,8 @@ function makeHarness(
     infraDb?: boolean;
     feBase?: number;
     apiBase?: number;
+    useWorktree?: boolean;
+    contextCheck?: boolean;
   } = {},
 ): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-preflight-'));
@@ -34,6 +37,12 @@ function makeHarness(
   if (options.infraDb) {
     lines.push('export HARNESS_INFRA_SERVICES="db"');
     lines.push('export HARNESS_DB_PORT_DEFAULT=15432');
+  }
+  if (options.useWorktree !== undefined) {
+    lines.push(`export HARNESS_USE_WORKTREE=${options.useWorktree}`);
+  }
+  if (options.contextCheck !== undefined) {
+    lines.push(`export HARNESS_WORKTREE_CONTEXT_CHECK=${options.contextCheck}`);
   }
   fs.writeFileSync(path.join(harDir, 'harness.env'), lines.join('\n') + '\n');
   if (options.pm2) {
@@ -106,12 +115,85 @@ describe('inspectSlotReadiness', () => {
     expect(readiness.canLaunch).toBe(true);
   });
 
+  it('warns about context that will be missing from the session worktree', () => {
+    const repo = makeHarness();
+    const readiness = inspectSlotReadiness(repo, 1, {
+      worktreeContext: [{ category: 'agent-context', paths: ['CLAUDE.md'], omitted: 0 }],
+    });
+    expect(readiness.canLaunch).toBe(true);
+    expect(readiness.warnings?.[0]).toContain('CLAUDE.md');
+  });
+
+  it('reports the warning even when the slot is blocked', () => {
+    const repo = makeHarness();
+    writeOccupiedSlot(repo, 1);
+    const readiness = inspectSlotReadiness(repo, 1, {
+      worktreeContext: [{ category: 'agent-context', paths: ['CLAUDE.md'], omitted: 0 }],
+    });
+    expect(readiness.canLaunch).toBe(false);
+    expect(formatPreflightReport(1, readiness)).toContain('WARN: 1 agent-context path');
+  });
+
+  it('skips the check when slots run in the repo root', () => {
+    const repo = makeHarness({ useWorktree: false });
+    const readiness = inspectSlotReadiness(repo, 1, {
+      worktreeContext: [{ category: 'agent-context', paths: ['CLAUDE.md'], omitted: 0 }],
+    });
+    expect(readiness.warnings).toBeUndefined();
+  });
+
+  it('skips the check for a --no-worktree launch', () => {
+    const repo = makeHarness();
+    const readiness = inspectSlotReadiness(repo, 1, {
+      worktree: false,
+      worktreeContext: [{ category: 'agent-context', paths: ['CLAUDE.md'], omitted: 0 }],
+    });
+    expect(readiness.warnings).toBeUndefined();
+  });
+
+  it('skips the check when the harness opts out', () => {
+    const repo = makeHarness({ contextCheck: false });
+    const readiness = inspectSlotReadiness(repo, 1, {
+      worktreeContext: [{ category: 'agent-context', paths: ['CLAUDE.md'], omitted: 0 }],
+    });
+    expect(readiness.warnings).toBeUndefined();
+  });
+
   it('allocates app ports for PM2 harnesses', () => {
     const repo = makeHarness({ pm2: true });
     const readiness = inspectSlotReadiness(repo, 2, { pm2Processes: [] });
     expect(readiness.canLaunch).toBe(true);
     expect(readiness.ports?.frontend).toBe(TEST_FE_BASE + 20);
     expect(readiness.ports?.api).toBe(TEST_API_BASE + 20);
+  });
+});
+
+describe('formatPreflightReport', () => {
+  const ready = (extra: Partial<SlotReadiness>): SlotReadiness => ({
+    canLaunch: true,
+    verdict: 'ready',
+    blockers: [],
+    remediations: [],
+    ports: { frontend: 3010 },
+    allocatedPorts: true,
+    ...extra,
+  });
+
+  it('drops the generic port note when a warning already explains the choice', () => {
+    const report = formatPreflightReport(
+      1,
+      ready({ portChoiceExplained: true, warnings: ['har control up holds port 3000.'] }),
+    );
+    expect(report).not.toContain('alternate ports selected');
+    expect(report).toContain('WARN: har control up holds port 3000.');
+  });
+
+  it('keeps the generic port note when only unrelated warnings are present', () => {
+    const report = formatPreflightReport(
+      1,
+      ready({ warnings: ['1 agent-context path untracked — port 3010 is irrelevant here.'] }),
+    );
+    expect(report).toContain('alternate ports selected');
   });
 });
 

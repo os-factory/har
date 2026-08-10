@@ -1,4 +1,4 @@
-import { inspectSlotReadiness, formatPreflightReport } from './slot-preflight';
+import { inspectSlotReadiness, formatPreflightReport, type PreflightOptions } from './slot-preflight';
 import { checkLaunchGuard as checkOccupiedSlotGuard, type LaunchGuardOptions } from './slot-launch-guard-occupied';
 import type { AgentSlotStatus, SlotReadiness } from '../harness/schema';
 
@@ -16,7 +16,7 @@ export interface LaunchGuardResult {
 export function checkLaunchGuard(
   repoPath: string,
   agentId: number,
-  options: LaunchGuardOptions = {},
+  options: PreflightOptions = {},
 ): LaunchGuardResult {
   const readiness = inspectSlotReadiness(repoPath, agentId, options);
 

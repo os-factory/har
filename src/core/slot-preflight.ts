@@ -22,6 +22,11 @@ import {
   slotPortLaneEnd,
 } from './slot-ports';
 import { readSlotRegistry, isSlotResumable } from './slot-registry';
+import {
+  detectMissingWorktreeContext,
+  formatWorktreeContextWarnings,
+  type WorktreeContextFinding,
+} from './worktree-context';
 import { execSync } from 'child_process';
 
 export interface PreflightOptions extends LaunchGuardOptions {
@@ -35,6 +40,10 @@ export interface PreflightOptions extends LaunchGuardOptions {
   dockerContainers?: DockerRow[];
   /** Test hook: override PM2 process list (pass [] to skip live pm2 jlist). */
   pm2Processes?: Pm2Process[];
+  /** Test hook: override the untracked-context scan (pass [] to skip the git call). */
+  worktreeContext?: WorktreeContextFinding[];
+  /** False for a `--no-worktree` launch — the slot runs in the repo root. */
+  worktree?: boolean;
 }
 
 interface Pm2Process {
@@ -87,6 +96,32 @@ function infraEnabled(env: Record<string, string>, service: string): boolean {
   return ` ${env.HARNESS_INFRA_SERVICES ?? ''} `.includes(` ${service} `);
 }
 
+/**
+ * Comma- or newline-separated so a path may contain spaces; surrounding quotes are
+ * stripped because `readHarnessEnv` only removes the outermost double quotes.
+ */
+function splitEnvList(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(/[,\n]/)
+    .map((entry) => entry.trim().replace(/^["']|["']$/g, '').trim())
+    .filter(Boolean);
+}
+
+/**
+ * The untracked-context scan only says something useful when the slot actually runs
+ * in a worktree — `options.worktree === false` is `--no-worktree` for this launch,
+ * `HARNESS_USE_WORKTREE=false` is the harness default, and
+ * `HARNESS_WORKTREE_CONTEXT_CHECK=false` opts out entirely.
+ */
+function worktreeContextCheckEnabled(
+  env: Record<string, string>,
+  worktree: boolean | undefined,
+): boolean {
+  if (worktree === false) return false;
+  if ((env.HARNESS_WORKTREE_CONTEXT_CHECK ?? '').toLowerCase() === 'false') return false;
+  return (env.HARNESS_USE_WORKTREE ?? 'true').toLowerCase() !== 'false';
+}
+
 function checkInfraPort(
   env: Record<string, string>,
   varName: string,
@@ -108,6 +143,22 @@ function checkInfraPort(
     return { error: `No free ${varName} port in range ${scanStart}-${scanEnd}` };
   }
   return { port };
+}
+
+/**
+ * The repo-wide untracked-context scan. Its result is identical for every slot, so
+ * callers inspecting several slots should call this once and pass the findings back
+ * through `PreflightOptions.worktreeContext` instead of paying for a git scan per slot.
+ */
+export function scanWorktreeContext(
+  repoPath: string,
+  env: Record<string, string>,
+): WorktreeContextFinding[] {
+  if (!worktreeContextCheckEnabled(env, undefined)) return [];
+  return detectMissingWorktreeContext(repoPath, {
+    ignore: splitEnvList(env.HARNESS_WORKTREE_CONTEXT_IGNORE),
+    extraContext: splitEnvList(env.HARNESS_WORKTREE_CONTEXT_PATHS),
+  });
 }
 
 /**
@@ -195,6 +246,7 @@ export function inspectSlotReadiness(
   }
 
   let allocatedPorts = false;
+  let portChoiceExplained = false;
   if (usesPm2 && (options.allocatePorts ?? true)) {
     const alloc = allocateAppPorts(repoPath, agentId);
     if ('error' in alloc) {
@@ -215,7 +267,9 @@ export function inspectSlotReadiness(
         agentId,
         portStep(env),
       );
-      warnings.push(...controlDefaultPortWarnings(containers, feDefault, alloc.frontend));
+      const portWarnings = controlDefaultPortWarnings(containers, feDefault, alloc.frontend);
+      portChoiceExplained = portWarnings.length > 0;
+      warnings.push(...portWarnings);
 
       for (const [label, port] of Object.entries({ frontend: alloc.frontend, api: alloc.api })) {
         const control = controlContainerOnPort(containers, port);
@@ -274,6 +328,12 @@ export function inspectSlotReadiness(
     }
   }
 
+  if (worktreeContextCheckEnabled(env, options.worktree)) {
+    warnings.push(
+      ...formatWorktreeContextWarnings(options.worktreeContext ?? scanWorktreeContext(repoPath, env)),
+    );
+  }
+
   const canLaunch = blockers.length === 0;
   return {
     canLaunch,
@@ -282,6 +342,7 @@ export function inspectSlotReadiness(
     remediations: [...new Set(remediations)],
     ports: Object.keys(ports).length > 0 ? ports : undefined,
     allocatedPorts: allocatedPorts || undefined,
+    portChoiceExplained: portChoiceExplained || undefined,
     warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
@@ -299,7 +360,8 @@ export function formatPreflightReport(agentId: number, readiness: SlotReadiness)
         p.db !== undefined ? `db=${p.db}` : undefined,
       ].filter(Boolean);
       if (parts.length) lines.push(`  Ports: ${parts.join(' ')}`);
-      if (readiness.allocatedPorts && !readiness.warnings?.length) {
+      // Skip the generic note only when a warning already explains the chosen port.
+      if (readiness.allocatedPorts && !readiness.portChoiceExplained) {
         lines.push('  (alternate ports selected — defaults were busy)');
       }
     }
@@ -315,6 +377,10 @@ export function formatPreflightReport(agentId: number, readiness: SlotReadiness)
   for (const b of readiness.blockers) {
     lines.push(`  [${b.code}] ${b.message}`);
     if (b.remediation) lines.push(`    → ${b.remediation}`);
+  }
+  // Warnings are independent of the verdict — a blocked slot must not hide them.
+  for (const w of readiness.warnings ?? []) {
+    lines.push(`  WARN: ${w}`);
   }
   return lines.join('\n');
 }

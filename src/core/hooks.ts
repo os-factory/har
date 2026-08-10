@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { run } from '../utils/shell';
+import { resolveCheckoutRoot } from '../utils/git';
 import { CommitGateConfig, CommitGateConfigSchema } from '../harness/schema';
 import { readStageRegistry } from '../harness/stages';
 import {
@@ -36,9 +37,7 @@ function tryGit(cwd: string, args: string): string | undefined {
   return result.code === 0 ? result.stdout.trim() : undefined;
 }
 
-export function resolveCheckoutRoot(cwd: string): string | undefined {
-  return tryGit(cwd, 'rev-parse --show-toplevel');
-}
+export { resolveCheckoutRoot };
 
 export function resolveHooksDir(checkoutDir: string): string {
   const hooksPath = tryGit(checkoutDir, 'rev-parse --git-path hooks');

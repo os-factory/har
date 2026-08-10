@@ -39,6 +39,11 @@ Installed during `har onboard` / `har env init` (and refreshed on maintain):
 
 Legacy `AGENT.md` (singular) is migrated into `AGENTS.md` and removed. Do not create it.
 
+Keep these files **tracked**. A session worktree only materializes what is in
+`HEAD`, so an ignored `CLAUDE.md` or an untracked `.claude/` leaves every agent
+slot blind to the rules — silently, with no error. `har env preflight` warns when
+it finds such paths; see [Launch and recovery](/docs/reference/cli/#launch-and-recovery).
+
 ## Generated local state
 
 These paths are normally gitignored:

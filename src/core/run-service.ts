@@ -166,6 +166,7 @@ export class RunService {
   async launchEnvironment(options: LaunchOptions): Promise<EnvironmentRunResult> {
     const guard = checkLaunchGuard(options.repoPath, options.agentId, {
       resume: options.resume,
+      worktree: options.worktree,
     });
     if (!guard.allowed) {
       const slot = guard.slot;
@@ -187,22 +188,26 @@ export class RunService {
       };
     }
 
-    let telemetryBanner = '';
+    // Readiness warnings are advisory, but a launch that passes the guard is the
+    // moment they matter most — they must not be dropped with the guard result.
+    let launchBanner = (guard.readiness?.warnings ?? [])
+      .map((warning) => `WARN: ${warning}\n`)
+      .join('');
     if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
       const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
       if (ensured.message) {
-        telemetryBanner += `${ensured.message}\nUsage from Cursor / Claude / Codex (@osfactory/otel-hook) will appear under Worktrees. Disable: har telemetry off\n`;
+        launchBanner += `${ensured.message}\nUsage from Cursor / Claude / Codex (@osfactory/otel-hook) will appear under Worktrees. Disable: har telemetry off\n`;
       }
       if (ensured.warning) {
-        telemetryBanner += `${ensured.warning}\n`;
+        launchBanner += `${ensured.warning}\n`;
       }
       try {
         const { ensureOtelHooks } = await import('./otel-hooks');
         const hooks = ensureOtelHooks({ setupAgents: true });
-        if (hooks.message) telemetryBanner += `${hooks.message}\n`;
-        if (hooks.warning) telemetryBanner += `${hooks.warning}\n`;
+        if (hooks.message) launchBanner += `${hooks.message}\n`;
+        if (hooks.warning) launchBanner += `${hooks.warning}\n`;
       } catch (err) {
-        telemetryBanner += `@osfactory/otel-hook setup skipped: ${err instanceof Error ? err.message : String(err)}\n`;
+        launchBanner += `@osfactory/otel-hook setup skipped: ${err instanceof Error ? err.message : String(err)}\n`;
       }
     }
 
@@ -307,8 +312,8 @@ export class RunService {
           });
         }
       }
-      if (telemetryBanner) {
-        envResult.stderr = `${telemetryBanner}${envResult.stderr ?? ''}`;
+      if (launchBanner) {
+        envResult.stderr = `${launchBanner}${envResult.stderr ?? ''}`;
       }
     }
     return envResult;

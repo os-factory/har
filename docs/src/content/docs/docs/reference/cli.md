@@ -42,7 +42,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-plugin [plugin]` | Install a shipped plugin (registers stages) |
 | `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
-| `preflight <id>` | Check ports, processes, Docker, and slot occupation |
+| `preflight <id>` | Check ports, processes, Docker, slot occupation, and context missing from worktrees |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
@@ -119,6 +119,29 @@ Work metadata is optional and backward compatible. Bind when the task names a
 tracker issue or ticket: pass a short repo-scoped `--work-id`, plus `--work-source`,
 `--work-url`, and `--work-title` when known. A fresh bound launch creates an
 immutable attempt UUID; `--resume` preserves the failed session's attempt.
+
+#### Context missing from session worktrees
+
+A worktree only materializes what is in `HEAD`. Preflight reports, as a
+non-blocking warning, untracked or ignored paths whose absence is a defect —
+agent instructions (`CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, root and
+`docs/` markdown) and local build config (`.env`, `*.xcconfig`,
+`GoogleService-Info.plist`). Dependencies, build output, and harness-generated
+state are never reported. The warning also appears in `har env status --json`
+and in the MCP readiness block.
+
+Track the reported paths in git, or launch with `--no-worktree`. Two `harness.env`
+knobs tune the check:
+
+| Variable | Effect |
+| --- | --- |
+| `HARNESS_WORKTREE_CONTEXT_CHECK=false` | Disable the check |
+| `HARNESS_WORKTREE_CONTEXT_IGNORE` | Paths that are expected to be absent |
+| `HARNESS_WORKTREE_CONTEXT_PATHS` | Extra paths this project treats as agent context |
+
+Both lists are comma- or newline-separated, so a path may contain spaces. The
+check is skipped automatically when `HARNESS_USE_WORKTREE=false` and for a
+`--no-worktree` launch.
 
 ### Verify and finish
 

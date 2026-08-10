@@ -400,6 +400,8 @@ export const SlotReadinessSchema = z.object({
   remediations: z.array(z.string()),
   ports: z.record(z.number()).optional(),
   allocatedPorts: z.boolean().optional(),
+  /** A warning already states why this port was chosen — suppresses the generic note. */
+  portChoiceExplained: z.boolean().optional(),
   /** Non-blocking notices (e.g. har control up holds the default port but an alternate was picked). */
   warnings: z.array(z.string()).optional(),
 });
