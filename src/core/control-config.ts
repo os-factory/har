@@ -3,6 +3,8 @@ import { readPortalCredentials } from './portal-credentials';
 /** Default Mission Control API base URL (local Docker Compose). */
 export const DEFAULT_CONTROL_API_URL = 'http://localhost:3847';
 
+export const DEFAULT_PORTAL_URL = 'https://har.kerno.io';
+
 export function getControlApiUrl(): string {
   return process.env.HAR_CONTROL_API_URL ?? DEFAULT_CONTROL_API_URL;
 }
@@ -19,6 +21,26 @@ export interface PortalTarget {
 
 function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+export type PortalUrlSource = 'flag' | 'env' | 'saved' | 'default';
+
+export function resolvePortalUrl(explicit?: string): {
+  url: string;
+  source: PortalUrlSource;
+} {
+  const candidates: Array<[string | undefined, PortalUrlSource]> = [
+    [explicit, 'flag'],
+    [process.env.HAR_PORTAL_URL, 'env'],
+    [readPortalCredentials()?.portalUrl, 'saved'],
+  ];
+
+  for (const [value, source] of candidates) {
+    const url = normalizeUrl((value ?? '').trim());
+    if (url) return { url, source };
+  }
+
+  return { url: DEFAULT_PORTAL_URL, source: 'default' };
 }
 
 export function getPortalTarget(): PortalTarget | null {

@@ -186,11 +186,13 @@ har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
 har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
-har control login --portal <url> [--api-key <key>]
+har control login [--portal <url>] [--api-key <key>]
 ```
 
-`login` requires `--portal` (or `HAR_PORTAL_URL`). With `--api-key` it stores that
-ingest token; without it, HAR opens browser SSO and saves the resulting token.
+`login` resolves the portal from `--portal`, then `HAR_PORTAL_URL`, then the
+portal of your last login, and finally `https://har.kerno.io`; it prints which
+one it picked. With `--api-key` it stores that ingest token; without it, HAR
+opens browser SSO and saves the resulting token.
 `sync --select` interactively chooses repositories; `--full` ignores the portal
 watermark and resends the complete payload.
 

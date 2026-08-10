@@ -2,8 +2,11 @@ import * as path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import {
+  DEFAULT_PORTAL_URL,
   getControlApiUrl,
   isControlEnabled,
+  resolvePortalUrl,
+  type PortalUrlSource,
 } from '../../core/control-config';
 import { inspectControlUpReadiness } from '../../core/control-port';
 import {
@@ -123,7 +126,10 @@ export const controlCommand = {
         'Log in to a har-portal (browser SSO) and store an ingest token',
         (y: Argv) =>
           y
-            .option('portal', { type: 'string', describe: 'Portal base URL (or set HAR_PORTAL_URL)' })
+            .option('portal', {
+              type: 'string',
+              describe: `Portal base URL (or HAR_PORTAL_URL; defaults to the last login, else ${DEFAULT_PORTAL_URL})`,
+            })
             .option('api-key', {
               type: 'string',
               describe: 'Store this ingest token directly instead of browser login',
@@ -521,13 +527,17 @@ async function handleSync(argv: {
   }
 }
 
+const PORTAL_SOURCE_LABEL: Record<PortalUrlSource, string> = {
+  flag: '--portal',
+  env: 'HAR_PORTAL_URL',
+  saved: 'saved login',
+  default: 'default',
+};
+
 async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<void> {
   header('har control login');
-  const portalUrl = (argv.portal ?? process.env.HAR_PORTAL_URL ?? '').replace(/\/+$/, '');
-  if (!portalUrl) {
-    error('Provide --portal <url> (or set HAR_PORTAL_URL)');
-    return finishCommand(1);
-  }
+  const { url: portalUrl, source } = resolvePortalUrl(argv.portal);
+  info(`Portal: ${portalUrl} (${PORTAL_SOURCE_LABEL[source]})`);
 
   if (argv.apiKey) {
     writePortalCredentials({
