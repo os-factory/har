@@ -1,3 +1,10 @@
+# [0.48.0](https://github.com/os-factory/har/compare/v0.47.0...v0.48.0) (2026-08-10)
+
+
+### Features
+
+* **control:** default the login portal instead of erroring ([#164](https://github.com/os-factory/har/issues/164)) ([b328b17](https://github.com/os-factory/har/commit/b328b17166a2d6e22b8d9438fd402789be4f09fe))
+
 # [0.47.0](https://github.com/os-factory/har/compare/v0.46.2...v0.47.0) (2026-08-06)
 
 
