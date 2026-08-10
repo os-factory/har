@@ -249,13 +249,13 @@ DEBUG_PORT="$DEBUG_PORT" \
 
 PM2_REGEX="$(har_pm2_delete_regex "$AGENT_ID")"
 # Stop existing processes for this agent (project-scoped — never touch other harnesses).
-npx --yes pm2 delete "$PM2_REGEX" 2>/dev/null || true
+$(har_pkg_exec) pm2 delete "$PM2_REGEX" 2>/dev/null || true
 
 # Start PM2 processes
 log "Starting PM2 processes..."
 cd "$WORK_DIR"
-npx pm2 start "$ECOSYSTEM_FILE"
-npx pm2 save --force >/dev/null 2>&1 || true
+$(har_pkg_exec) pm2 start "$ECOSYSTEM_FILE"
+$(har_pkg_exec) pm2 save --force >/dev/null 2>&1 || true
 
 # Health check
 if [ -n "${HARNESS_HEALTH_CHECK_PATH:-}" ]; then
