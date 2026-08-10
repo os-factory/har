@@ -1,3 +1,10 @@
+# [0.49.0](https://github.com/os-factory/har/compare/v0.48.0...v0.49.0) (2026-08-10)
+
+
+### Features
+
+* **ios:** give every agent slot its own simulator ([#168](https://github.com/os-factory/har/issues/168)) ([7d319b6](https://github.com/os-factory/har/commit/7d319b60363c046fb13c336c4f8845b55ca39d92))
+
 # [0.48.0](https://github.com/os-factory/har/compare/v0.47.0...v0.48.0) (2026-08-10)
 
 
