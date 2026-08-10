@@ -47,7 +47,7 @@ When you change the landing page or another route:
 4. **Display** each relevant before/after PNG in the session handoff (Read tool /
    inline images — not path-only links)
 5. Before the final commit: `./.har/stages/pr-visual-proof.sh prepare`, then
-   `git add -f .har/visual-proof`, re-run full verify, commit
+   `git add .har/visual-proof`, re-run full verify, commit
 6. After opening a PR (on approval): `./.har/stages/pr-visual-proof.sh comment <pr>`
 
 ## Definition of done

@@ -63,7 +63,7 @@ session branch for a manual push.
 When `.har/artifacts/**/screenshots/{before,after}/` has PNGs: **display** each
 relevant image inline in the handoff (Read tool / equivalent — not path-only).
 After opening a PR, attach them via `./.har/stages/pr-visual-proof.sh <pr>` when
-present, or force-add under `.har/visual-proof/` and `gh pr comment` with raw
+present, or add under `.har/visual-proof/` and `gh pr comment` with raw
 blob image URLs.
 
 ### Commit gate

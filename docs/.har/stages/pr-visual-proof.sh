@@ -4,7 +4,7 @@
 # Usage:
 #   ./.har/stages/pr-visual-proof.sh prepare [agent-id]
 #       Copy PNGs from artifacts → .har/visual-proof/{before,after}/
-#       Then: git add -f .har/visual-proof && re-run full verify && commit.
+#       Then: git add .har/visual-proof && re-run full verify && commit.
 #
 #   ./.har/stages/pr-visual-proof.sh comment <pr-number>
 #       Post a PR comment with markdown images (branch must already contain
@@ -12,6 +12,7 @@
 #
 # Screenshot artifacts usually live on the main checkout under
 # docs/.har/artifacts/ (worktree slots still write there).
+# visual-proof/ is tracked (not gitignored) so the commit gate can hash it.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,7 +88,7 @@ cmd_prepare() {
 
   echo "Prepared $copied after screenshot(s) under docs/.har/visual-proof/"
   echo "Next:"
-  echo "  git add -f docs/.har/visual-proof"
+  echo "  git add docs/.har/visual-proof"
   echo "  har env verify <id> --full   # commit gate: re-verify after staging"
   echo "  git commit … && git push"
   echo "  ./.har/stages/pr-visual-proof.sh comment <pr>"

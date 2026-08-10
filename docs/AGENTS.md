@@ -84,7 +84,7 @@ session branch for a manual push.
 
 When screenshot artifacts exist, **display** each relevant before/after PNG inline
 in the handoff (not path-only). After opening a PR, run
-`./.har/stages/pr-visual-proof.sh comment <pr>` (after `prepare` + force-add +
+`./.har/stages/pr-visual-proof.sh comment <pr>` (after `prepare` + `git add` +
 re-verify in the commit that lands on the PR).
 
 ### Commit gate

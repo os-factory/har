@@ -31,7 +31,7 @@ full verify, **display** the before/after PNGs inline in the session handoff
 
 ```bash
 ./.har/stages/pr-visual-proof.sh prepare
-git add -f .har/visual-proof
+git add .har/visual-proof
 har env verify <id> --full    # commit gate after staging proof
 # commit + push + open PR (on approval), then:
 ./.har/stages/pr-visual-proof.sh comment <pr>

@@ -27,7 +27,7 @@ Add or update Playwright specs so `browser-e2e` covers the change. Prefer one fi
 When the harness captures before/after screenshots under `.har/artifacts/`:
 
 1. **Display** the PNGs inline in the session handoff (do not only paste paths).
-2. Attach them to the PR when opening one — force-add under `.har/visual-proof/`
+2. Attach them to the PR when opening one — add under `.har/visual-proof/`
    (or your harness helper), commit after re-verify, then `gh pr comment` with
    raw blob image URLs.
 
