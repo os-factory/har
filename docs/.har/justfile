@@ -1,0 +1,39 @@
+# Agent harness shortcuts — requires `just` (https://github.com/casey/just)
+
+set shell := ["bash", "-cu"]
+
+setup:
+    ./setup-infra.sh
+
+launch id:
+    ./launch.sh {{id}}
+
+teardown id:
+    ./teardown.sh {{id}}
+
+verify id:
+    ./verify.sh {{id}}
+
+verify-full id:
+    ./verify.sh {{id}} --full
+
+status:
+    #!/usr/bin/env bash
+    for id in 1 2 3 4 5; do
+        ./agent-cli.sh "$id" status 2>/dev/null || true
+    done
+
+launch-all count:
+    #!/usr/bin/env bash
+    for id in $(seq 1 {{count}}); do
+        ./launch.sh "$id"
+    done
+
+teardown-all:
+    #!/usr/bin/env bash
+    for id in 1 2 3 4 5; do
+        ./teardown.sh "$id" 2>/dev/null || true
+    done
+
+cli id cmd *args:
+    ./agent-cli.sh {{id}} {{cmd}} {{args}}

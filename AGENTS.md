@@ -9,16 +9,19 @@ This repo **dogfoods HAR** — `.har/` at the repo root defines how coding agent
 <!-- har:agent-environment:start -->
 ## Harnesses in this repo
 
-This is a monorepo with **two harnesses** — pick the one that owns the files you are changing:
+This is a monorepo with **three harnesses** — pick the one that owns the files you are changing:
 
 | Path | Profile | Runs | Use when changing | Docs |
 |------|---------|------|-------------------|------|
-| `.har/` | cli | `@osfactory/har` (typecheck, build, docs, unit tests, lint) | `src/`, `packages/`, `tests/`, `docs/` | [.har/README.md](.har/README.md) |
-| `control/.har/` | default | Mission Control (Next.js + Postgres, browser-e2e) | `control/` | [control/.har/README.md](control/.har/README.md) |
+| `.har/` | cli | `@osfactory/har` (typecheck, build, unit tests, lint) | `src/`, `packages/`, `tests/` | [.har/README.md](.har/README.md) |
+| `control/.har/` | default | Mission Control (Next.js + SQLite, browser-e2e) | `control/` | [control/.har/README.md](control/.har/README.md) |
+| `docs/.har/` | default | Docs / marketing site (Astro + Playwright screenshots) | `docs/` | [docs/.har/README.md](docs/.har/README.md) |
 
-Run harness commands from the directory that owns the harness (e.g. `cd control && ./.har/launch.sh 1`). See [control/AGENTS.md](control/AGENTS.md) for the webapp guide.
+Run harness commands from the directory that owns the harness (e.g. `cd docs && har env launch 1`). See [control/AGENTS.md](control/AGENTS.md) and [docs/AGENTS.md](docs/AGENTS.md) for project guides.
 
-**The harness is how you run each project** — to see Mission Control live (manual testing, browser, screenshots), launch a control slot; never hand-roll docker/dev-server startup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
+**The harness is how you run each project** — to see Mission Control or the docs site live (manual testing, browser, screenshots), launch the matching slot; never hand-roll docker/dev-server startup. If a harness command fails, fix the harness or report it — don't silently fall back to ad-hoc commands.
+
+Docs UI work: use `docs/.har/` so full verify produces before/after screenshots under `docs/.har/artifacts/browser-e2e/screenshots/`. The root CLI harness may still run docs contract checks (`drift` / build) when changing product surfaces that the docs describe — that does not replace launching the docs harness for landing-page or Starlight UI changes.
 
 ## Harness workflow (dogfooding)
 
