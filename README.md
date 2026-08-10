@@ -108,7 +108,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, the dogfood harness lo
 
 ## Sponsors
 
-HAR is sponsored by [Kerno](https://kerno.io), runtime code and security review for coding agents.
+HAR is sponsored by [Kerno](https://kerno.io), runtime code and security tester for coding agents.
 
 <p align="left">
   <a href="https://kerno.io">
