@@ -1,0 +1,9 @@
+# Shared infrastructure menu — unused by the docs site.
+#
+# The Astro docs/marketing site needs no Postgres, object storage, mail, or
+# headless-browser container. HARNESS_INFRA_SERVICES is empty in harness.env,
+# so setup-infra.sh skips compose entirely.
+#
+# If a future docs feature needs shared infra, add the service here and list it
+# in HARNESS_INFRA_SERVICES.
+services: {}

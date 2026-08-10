@@ -1,0 +1,30 @@
+{
+  "version": "1",
+  "generatorVersion": "0.5.0",
+  "outputDir": ".har",
+  "createdAt": "2026-08-10T16:43:14.108Z",
+  "updatedAt": "2026-08-10T16:43:14.108Z",
+  "adaptationSummary": "Adapt docs/.har for Astro site: no Docker infra, PM2 astro dev on slot ports (4321+), verify check/drift/build/links+Playwright; before/after screenshots via visual-proof; monorepo index updated for three harnesses.",
+  "profile": "default",
+  "fileChecksums": {
+    ".gitignore": "be76f72c473122ba",
+    "CLAUDE.agent.md": "20cbfe2b7f9307a2",
+    "README.md": "883a31ee9250b4bc",
+    "STAGES.md": "a4ac0935e883beab",
+    "agent-cli.sh": "20d5742ece791655",
+    "agent-slot.sh": "9bdfc739116fb951",
+    "attach.sh": "4755c9cfaf9abb45",
+    "docker-compose.agent.yml": "383c6474797449f5",
+    "ecosystem.agent.template.cjs": "265f52756dacc0f8",
+    "env.template": "de9dc395c93973df",
+    "harness.env": "8f74e90e1fc5def8",
+    "justfile": "e7c1048680a7a28c",
+    "launch.sh": "5c16954f74f6527c",
+    "preflight.sh": "24912d74e170a685",
+    "provision-toolchain.sh": "4874f39c070b4328",
+    "setup-infra.sh": "68e44766e7aeee10",
+    "stages.json": "30a2999c9fc4cc27",
+    "teardown.sh": "4feb7f487f9dca2e",
+    "verify.sh": "d78a3f837507a5b8"
+  }
+}

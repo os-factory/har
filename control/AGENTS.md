@@ -2,7 +2,7 @@
 
 Next.js App Router dashboard for harness runs, repositories, and agent slots.
 
-Part of the har monorepo — this app has its own harness (`control/.har/`). For work on the CLI itself, or the index of all harnesses in this repo, see the root [AGENTS.md](../AGENTS.md).
+Part of the har monorepo — this app has its own harness (`control/.har/`). For work on the CLI, the docs site, or the index of all harnesses in this repo, see the root [AGENTS.md](../AGENTS.md).
 
 ## Stack
 
