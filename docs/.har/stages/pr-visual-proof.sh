@@ -116,7 +116,6 @@ cmd_comment() {
   )"
 
   body_file="$(mktemp)"
-  trap 'rm -f "$body_file"' EXIT
   {
     echo "## Visual proof"
     echo
@@ -143,6 +142,7 @@ cmd_comment() {
   } >"$body_file"
 
   gh pr comment "$pr" --body-file "$body_file"
+  rm -f "$body_file"
   echo "Posted visual proof comment on PR #${pr}."
 }
 
