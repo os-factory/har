@@ -14,7 +14,7 @@ HAR is an open-source, agent-agnostic framework for building multi-agent coding 
   <tr>
     <td align="center">
       <a href="https://youtu.be/XKl4ZzWy7mQ">
-        <img src="http://img.youtube.com/vi/XKl4ZzWy7mQ/maxresdefault.jpg" width="600"/>
+        <img src="https://img.youtube.com/vi/XKl4ZzWy7mQ/maxresdefault.jpg" alt="HAR introduction demo" width="600"/>
       </a>
     </td>
   </tr>
