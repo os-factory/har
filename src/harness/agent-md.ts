@@ -88,7 +88,7 @@ export function clearAgentMdProposal(repoPath: string): void {
   }
 }
 
-function wouldProposalShrinkExisting(existing: string, proposal: string): boolean {
+export function wouldProposalShrinkExisting(existing: string, proposal: string): boolean {
   const outsideExisting = extractOutsideHarSection(existing);
   const outsideMerged = extractOutsideHarSection(mergeAgentsMdContent(existing, proposal));
   const existingLines = outsideExisting.split('\n').filter((l) => l.trim()).length;

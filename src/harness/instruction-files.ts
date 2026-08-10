@@ -143,7 +143,7 @@ function removeCompleteMarkedBlocks(content: string, startMarker: string, endMar
   return result;
 }
 
-function checkOutsideContentPreserved(
+export function checkOutsideContentPreserved(
   before: string,
   after: string,
   options: UpsertAgentsMdOptions,
