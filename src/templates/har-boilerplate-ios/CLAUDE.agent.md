@@ -8,7 +8,7 @@
 |--|--|
 | **Agent ID** | ${AGENT_ID} |
 | **Work dir** | Fresh session worktree per launch — see the launch output or `.har/slots/agent-${AGENT_ID}.json` |
-| **Simulator** | Configured in `.har/harness.env` — `HARNESS_SIMULATOR_NAME` |
+| **Simulator** | Created for this slot at launch — `HARNESS_SIMULATOR_UDID` in `.env.agent.${AGENT_ID}` |
 | **Scheme** | Configured in `.har/harness.env` — `HARNESS_XCODE_SCHEME` |
 
 **Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. An occupied slot always blocks a new launch — run `har env teardown <id>` (or `complete <id>`) first, then launch again.
@@ -50,21 +50,25 @@ Stages are the harness's single vocabulary for checks: templates and custom stag
 
 ## Project commands
 
+Target **this slot's** simulator, never `booted` — another agent's device may also
+be booted. `HARNESS_IOS_DESTINATION` and `HARNESS_SIMULATOR_UDID` come from
+`.env.agent.${AGENT_ID}`.
+
 ```bash
+source .env.agent.${AGENT_ID}
+
 # Build
-xcodebuild build -scheme MyApp -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
+xcodebuild build -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" CODE_SIGNING_ALLOWED=NO
 
 # Run unit tests
-xcodebuild test -scheme MyApp -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
+xcodebuild test -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" CODE_SIGNING_ALLOWED=NO
 
-# Install app on booted simulator
-xcrun simctl install booted path/to/MyApp.app
-
-# Launch app
-xcrun simctl launch booted com.example.myapp
+# Install and launch on this slot's device
+./.har/agent-cli.sh ${AGENT_ID} install path/to/MyApp.app
+./.har/agent-cli.sh ${AGENT_ID} launch-app
 ```
 
-Adapt for your scheme and simulator — see `.har/harness.env`.
+Adapt for your scheme — see `.har/harness.env`.
 
 ## User-flow validation (RocketSim)
 

@@ -30,7 +30,9 @@ pt_log() {
 append_env() {
   local key="$1"
   local value="$2"
-  printf '%s=%s\n' "$key" "$value" >> "$HAR_ENV_FILE"
+  # %q, not a raw value: an unquoted value with spaces (an Xcode scheme, a
+  # simulator name, a path under /Applications) breaks `source .env.agent.<id>`.
+  printf '%s=%q\n' "$key" "$value" >> "$HAR_ENV_FILE"
 }
 
 append_path_prefix() {
@@ -235,9 +237,8 @@ provision_ios() {
   if [ -n "${HARNESS_XCODE_SCHEME:-}" ]; then
     append_env "HARNESS_XCODE_SCHEME" "$HARNESS_XCODE_SCHEME"
   fi
-  if [ -n "${HARNESS_SIMULATOR_NAME:-}" ]; then
-    append_env "HARNESS_SIMULATOR_NAME" "$HARNESS_SIMULATOR_NAME"
-  fi
+  # The simulator is not recorded here: launch.sh writes the device reserved for
+  # this slot, and harness.env already carries the shared one.
   if [ -n "${HARNESS_BUNDLE_ID:-}" ]; then
     append_env "HARNESS_BUNDLE_ID" "$HARNESS_BUNDLE_ID"
   fi

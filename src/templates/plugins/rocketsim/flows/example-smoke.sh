@@ -12,10 +12,10 @@ set -euo pipefail
 log() { echo "==> [example-smoke] $*" >&2; }
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
-# The app must be running on the simulator. Install and launch it before running
-# this flow. Example:
-#   xcrun simctl install booted path/to/MyApp.app
-#   xcrun simctl launch booted "${HARNESS_BUNDLE_ID}"
+# The app must be running on THIS slot's simulator. Install and launch it before
+# running this flow — target the reserved device, not `booted`. Example:
+#   xcrun simctl install "${HARNESS_SIMULATOR_UDID:-booted}" path/to/MyApp.app
+#   xcrun simctl launch "${HARNESS_SIMULATOR_UDID:-booted}" "${HARNESS_BUNDLE_ID}"
 
 log "Checking simulator focus..."
 FOCUSED=$(rocketsim simulator focused 2>/dev/null || echo "")

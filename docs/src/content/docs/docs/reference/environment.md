@@ -25,12 +25,27 @@ Edit shared configuration in `.har/harness.env`. Launch expands resolved values 
 | `DEVELOPER_DIR` | Optional Xcode developer directory |
 | `HARNESS_XCODE_SCHEME` | iOS scheme |
 | `HARNESS_XCODE_PROJECT` / `WORKSPACE` | Xcode project source |
-| `HARNESS_SIMULATOR_NAME` | Target simulator |
+| `HARNESS_SIMULATOR_NAME` | Simulator model each slot runs on; empty means the newest of the family |
 | `HARNESS_BUNDLE_ID` | Application bundle identifier |
 
 Provisioning records resolved values such as `NODE_BIN`, `NPM_BIN`, `PYTHON_BIN`,
 `GO_BIN`, `CARGO_BIN`, `RUSTC_BIN`, `JAVA_HOME`, `RUBY_BIN`, and
 `XCODEBUILD_BIN` in the slot environment.
+
+## iOS simulator allocation
+
+Each iOS slot creates `har-<project>-agent-<id>-<model>` at launch and deletes it at
+teardown, on the newest installed runtime that supports the model.
+
+| Variable | Meaning |
+| --- | --- |
+| `HARNESS_SIMULATOR_FAMILY` | `auto` (from the configured model), `iPhone`, or `iPad` |
+| `HARNESS_SIMULATOR_UDID` | Runs every slot on one existing device instead of creating any |
+| `HARNESS_SIMULATOR_SHARED` | Set `true` for one shared simulator, the pre-allocation behavior |
+
+Launch writes `HARNESS_SIMULATOR_UDID`, `HARNESS_SIMULATOR_DEVICE_NAME` and
+`HARNESS_IOS_DESTINATION=platform=iOS Simulator,id=<udid>` into the slot
+environment, leaving `HARNESS_SIMULATOR_NAME` to mean the model everywhere; what a slot holds is tracked in `.har/simulators/agent-<id>.json`.
 
 ## Web ports and health
 
