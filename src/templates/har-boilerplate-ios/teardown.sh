@@ -13,6 +13,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/harness.env"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/agent-slot.sh"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/simulator.sh"
 
 AGENT_ID="${1:?Usage: teardown.sh <agent-id> [--delete-branch]}"
 DELETE_BRANCH=false
@@ -58,6 +60,8 @@ if [ -n "$BRANCH" ]; then
     echo "✓ Kept branch: $BRANCH (push it or delete with: git branch -D $BRANCH)"
   fi
 fi
+
+har_sim_release "$AGENT_ID"
 
 remove_slot_registry "$AGENT_ID"
 

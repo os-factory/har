@@ -17,7 +17,9 @@ The runner sets these environment variables for each flow:
 | `FLOW_ARTIFACT_DIR` | Directory for screenshots and output of this flow |
 | `WORK_DIR` | Path to the agent's session worktree |
 | `HARNESS_BUNDLE_ID` | App bundle identifier (from `harness.env`) |
-| `HARNESS_SIMULATOR_NAME` | Target simulator name (from `harness.env`) |
+| `HARNESS_SIMULATOR_NAME` | Simulator model configured in `harness.env` |
+| `HARNESS_SIMULATOR_DEVICE_NAME` | Name of the device created for this slot |
+| `HARNESS_SIMULATOR_UDID` | UDID of that device — target it rather than `booted` |
 | `AGENT_ID` | Active agent slot id |
 
 ## Key RocketSim CLI commands

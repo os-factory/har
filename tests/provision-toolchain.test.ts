@@ -58,6 +58,25 @@ describe('provision-toolchain.sh template contract', () => {
     }
   });
 
+  it('writes values with spaces so the agent env file can be sourced', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-quoting-'));
+    const scriptPath = path.join(resolveTemplatesDir(), 'har-boilerplate-ios', 'provision-toolchain.sh');
+    const envFile = path.join(tmpDir, '.env.agent.1');
+    fs.writeFileSync(envFile, `AGENT_ID=1\nREPO_ROOT=${tmpDir}\n`);
+
+    const provision = run(
+      `HARNESS_ECOSYSTEM=ios HARNESS_XCODE_SCHEME="My App" ` +
+        `HAR_WORK_DIR="${tmpDir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
+        `bash "${scriptPath}"`,
+    );
+    expect(provision.code).toBe(0);
+
+    // An unquoted `HARNESS_XCODE_SCHEME=My App` would run `App` as a command.
+    const sourced = run(`set -a && . "${envFile}" && set +a && printf '%s' "$HARNESS_XCODE_SCHEME"`);
+    expect(sourced.code).toBe(0);
+    expect(sourced.stdout).toBe('My App');
+  });
+
   it('auto-detects node and writes NPM_BIN to agent env', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-node-'));
     const scriptPath = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');

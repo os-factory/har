@@ -52,6 +52,39 @@ The web profile distinguishes:
 Launch prepares shared infrastructure first, then clones or migrates isolated slot
 state before starting the primary application.
 
+## Simulators are the iOS profile's ports
+
+Slots on the iOS profile each get their own iOS Simulator, the way web slots each
+get their own ports. Without it, concurrent agents would share one `xcodebuild`
+destination, one installed bundle id, and one UI session.
+
+`har env launch` **creates** `har-<project>-agent-<id>-<model>` and teardown deletes
+it — `har-storefront-agent-2-iPhone-17`, say.
+Creating rather than borrowing keeps the rule short: the device is unique by
+construction, it starts pristine on every launch, and a simulator the developer is
+using by hand is never taken over.
+
+The model comes from `HARNESS_SIMULATOR_NAME` — a device model such as `iPhone 16`
+or `iPad Air 11-inch (M2)`, as listed by `xcrun simctl list devicetypes`. Leave it
+empty for the newest model of the family. `HARNESS_SIMULATOR_FAMILY` (`auto`,
+`iPhone`, `iPad`) decides that family; `auto` reads it from the configured model,
+so an iPad is only created for a harness configured on iPad.
+
+The runtime is the newest installed iOS that supports the model, so a model
+retired from recent runtimes still resolves against an older one. When nothing
+matches, launch fails and lists the models the machine can create.
+
+The device is written to the slot's `.env.agent.<id>` as
+`HARNESS_IOS_DESTINATION=platform=iOS Simulator,id=<udid>` and
+`HARNESS_SIMULATOR_DEVICE_NAME`; `HARNESS_SIMULATOR_NAME` keeps meaning the model.
+What a slot holds is tracked in `.har/simulators/agent-<id>.json`.
+
+Two escape hatches: `HARNESS_SIMULATOR_UDID` runs every slot on one existing
+device, and `HARNESS_SIMULATOR_SHARED=true` goes back to a single shared simulator
+resolved by exact name. A `HARNESS_SIMULATOR_NAME` that is not a model but matches
+an existing device also selects that device, which is how a hand-renamed simulator
+is targeted; devices HAR did not create are never deleted.
+
 ## Slot limits
 
 Keep the slot range in `.har/stages.json` and `harness.env` aligned:

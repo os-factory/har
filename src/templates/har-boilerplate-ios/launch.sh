@@ -14,6 +14,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/harness.env"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/agent-slot.sh"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/simulator.sh"
 
 AGENT_ID="${1:-}"
 USE_WORKTREE="${HARNESS_USE_WORKTREE:-true}"
@@ -86,7 +88,9 @@ fi
 # whose .gitignore doesn't know about har (applies to all worktrees too).
 GIT_EXCLUDE="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)/info/exclude"
 if [ -n "$GIT_EXCLUDE" ] && [ -d "$(dirname "$GIT_EXCLUDE")" ]; then
-  for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs' '.har/venv'; do
+  # .har/simulators covers harnesses scaffolded before it reached
+  # gitignore.template, which only lands on init or maintain.
+  for pattern in '.env.agent.*' 'ecosystem.agent.*.config.cjs' '.har/venv' '.har/simulators'; do
     grep -qxF "$pattern" "$GIT_EXCLUDE" 2>/dev/null || echo "$pattern" >> "$GIT_EXCLUDE"
   done
 fi
@@ -107,6 +111,7 @@ mark_slot_failed() {
   if [ "$exit_code" != "0" ] && [ "$REGISTRY_WRITTEN" = true ]; then
     log "Launch failed after creating the session. Recording failed slot state..."
     set +e
+    har_sim_release "$AGENT_ID"
     SLOT_AGENT_ID="$AGENT_ID" \
     SLOT_MODE="$([ "$USE_WORKTREE" = true ] && echo worktree || echo root)" \
     SLOT_WORK_DIR="$WORK_DIR" \
@@ -147,6 +152,30 @@ HAR_REL_PREFIX="${REL_PREFIX:-}" \
 HAR_AGENT_ID="$AGENT_ID" \
   "$SCRIPT_DIR/provision-toolchain.sh"
 
+# Give this slot its own simulator. Written after provision-toolchain.sh so the
+# per-slot device wins over the shared default when verify.sh sources the file.
+if har_sim_per_slot_enabled; then
+  log "Preparing this slot's simulator..."
+  SIM_RESULT=""
+  SIM_RESULT="$(har_sim_acquire "$AGENT_ID")" || {
+    log "Could not prepare a simulator — see the messages above."
+    exit 1
+  }
+  SIM_UDID="${SIM_RESULT%%$'\t'*}"
+  SIM_NAME="${SIM_RESULT#*$'\t'}"
+  # The device name goes under its own key: HARNESS_SIMULATOR_NAME means "model
+  # to create" in harness.env, and overwriting it here would make its meaning
+  # depend on which file was sourced last.
+  {
+    printf 'HARNESS_SIMULATOR_UDID=%q\n' "$SIM_UDID"
+    printf 'HARNESS_SIMULATOR_DEVICE_NAME=%q\n' "$SIM_NAME"
+    printf 'HARNESS_IOS_DESTINATION=%q\n' "platform=iOS Simulator,id=${SIM_UDID}"
+  } >> "$ENV_FILE"
+  log "Simulator: ${SIM_NAME} (${SIM_UDID})"
+else
+  log "Shared simulator mode (HARNESS_SIMULATOR_SHARED=true) — slots share ${HARNESS_SIMULATOR_NAME:-the configured device}."
+fi
+
 # Record the session in the slot registry — the source of truth for where
 # this slot's code lives (status/verify/teardown resolve through it).
 SLOT_AGENT_ID="$AGENT_ID" \
@@ -166,6 +195,9 @@ log "  WORK DIR (make ALL file edits under this path — never the main checkout
 log "    ${WORK_DIR}"
 if [ "$USE_WORKTREE" = true ]; then
   log "  Branch:    ${BRANCH} (based on ${BASE_BRANCH} @ ${BASE_COMMIT})"
+fi
+if [ -n "${SIM_NAME:-}" ]; then
+  log "  Simulator: ${SIM_NAME} (${SIM_UDID})"
 fi
 log ""
 log "  Verify:    ./.har/verify.sh $AGENT_ID"

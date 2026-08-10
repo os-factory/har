@@ -18,8 +18,9 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `runs/` | Run history from `har env` / MCP — gitignored |
 | `artifacts/` | Stage outputs: test results, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation and slot registry helpers |
-| `setup-infra.sh` | Boot the iOS Simulator; start optional Docker services |
-| `launch.sh` | Launch one agent slot (git worktree, toolchain provisioning, env file) |
+| `setup-infra.sh` | Check the toolchain; start optional Docker services |
+| `simulator.sh` | Create, boot and delete one iOS Simulator per agent slot |
+| `launch.sh` | Launch one agent slot (git worktree, toolchain provisioning, simulator, env file) |
 | `provision-toolchain.sh` | Write Xcode/simulator paths (`XCODEBUILD_BIN`, …) to `.env.agent.<id>` |
 | `verify.sh` | Verification pipeline (build smoke by default; --full adds tests, lint, flows) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
@@ -82,8 +83,36 @@ dev setup and add a readiness command when agents need a real workflow to pass.
 Edit **`harness.env`** to set:
 - `HARNESS_XCODE_SCHEME` — your app's shared Xcode scheme
 - `HARNESS_XCODE_WORKSPACE` or `HARNESS_XCODE_PROJECT` — path to the project file
-- `HARNESS_SIMULATOR_NAME` — target simulator (must be listed in `xcrun simctl list devices`)
+- `HARNESS_SIMULATOR_NAME` — preferred simulator, matched by exact name
 - `HARNESS_BUNDLE_ID` — app bundle identifier
+
+## Simulators
+
+Slots do not share a simulator. Each launch **creates**
+`har-<project>-agent-<id>-<model>` — `har-storefront-agent-2-iPhone-17`, say — and
+teardown deletes it, so two agents never collide on a destination, on an installed
+bundle id, or on a UI session, and the simulators you use by hand are never touched.
+Every launch also starts from a pristine device: no app installed, no leftover
+store, nothing carried over from the previous session.
+
+| Setting | Effect |
+|---------|--------|
+| `HARNESS_SIMULATOR_NAME` | The model to create — `iPhone 16`, `iPhone 17 Pro`, `iPad Air 11-inch (M2)`. Empty means the newest model of the family. See `xcrun simctl list devicetypes`. |
+| `HARNESS_SIMULATOR_FAMILY` | `auto` (read from the name) \| `iPhone` \| `iPad`. An iPad is only created when this resolves to iPad. |
+| `HARNESS_SIMULATOR_UDID` | Run every slot on one existing device instead. Slots then share it — for one-off debugging. |
+| `HARNESS_SIMULATOR_SHARED` | `true` restores one shared simulator for all slots, booted by `setup-infra.sh`. |
+
+The runtime is the newest installed iOS that supports the model — a model retired
+from recent runtimes still resolves against an older one. When nothing matches,
+launch fails and lists the models this machine can create.
+
+If `HARNESS_SIMULATOR_NAME` is not a model but names an existing device, that
+device is used as-is and never deleted — how a hand-renamed simulator is targeted.
+
+The device lands in `.env.agent.<id>` as `HARNESS_SIMULATOR_UDID`,
+`HARNESS_SIMULATOR_DEVICE_NAME` and `HARNESS_IOS_DESTINATION` — the model stays in
+`HARNESS_SIMULATOR_NAME`, so the two never mean the same thing in one place; what a slot holds is tracked in `.har/simulators/`.
+Use `./.har/agent-cli.sh <id> simulator` to see it.
 
 ## Port & shared services (iOS profile)
 
@@ -94,7 +123,7 @@ Pure iOS apps have **no per-slot TCP ports** — agents build and run on a share
 | Layer | Scope | Rule | On conflict |
 |-------|-------|------|-------------|
 | Optional backend (compose) | Per machine | `HARNESS_*_PORT_DEFAULT` for that service | Scan configured ranges in `harness.env` |
-| iOS Simulator | Shared | No harness port — one booted simulator for all slots | N/A |
+| iOS Simulator | Per slot | One device created per agent — no harness port | None: `har-<project>-agent-<id>-<model>` is unique per slot |
 
 When your app talks to a local backend, read the resolved host port from `.env.agent.<id>` (set by `setup-infra.sh`) — never hardcode `15432` or similar in tests or flow scripts.
 
@@ -102,7 +131,7 @@ When your app talks to a local backend, read the resolved host port from `.env.a
 
 | Resource | Model | Configuration |
 |----------|-------|---------------|
-| iOS Simulator | One booted simulator shared by all slots | `HARNESS_SIMULATOR_NAME`, `setup-infra.sh` |
+| iOS Simulator | One device created per slot, deleted at teardown | `HARNESS_SIMULATOR_*`, `launch.sh` |
 | Optional backend | One shared compose service | `HARNESS_INFRA_SERVICES` (e.g. `"mock-server"`) |
 | Application code | Isolated git worktree per slot | `HARNESS_USE_WORKTREE=true` |
 
