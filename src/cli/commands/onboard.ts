@@ -4,6 +4,7 @@ import type { Argv } from 'yargs';
 import { harnessExists } from '../../harness/parser';
 import type { HarnessProfile } from '../../harness/generator';
 import { PluginId } from '../../harness/plugins';
+import { suggestsIosProfile } from '../../harness/xcode-introspect';
 import {
   HAR_AGENT_SLOT_MIN,
   HAR_AGENT_SLOT_ONBOARD_MAX,
@@ -142,6 +143,9 @@ async function promptChoices(args: OnboardArgs): Promise<{
   const repoPath = path.resolve(args.repo);
   const alreadyPresent = harnessExists(repoPath);
   const needProfile = !alreadyPresent && !args.skipInit && args.profile === undefined;
+  // Only pre-selects the entry in the interactive list. `har env init --profile`
+  // keeps its explicit default so scripted invocations do not change behavior.
+  const iosDetected = needProfile && suggestsIosProfile(repoPath);
   const needAgentSlots = shouldConfigureSlots && flaggedSlots === undefined;
 
   if (needAgentSlots) {
@@ -165,9 +169,14 @@ async function promptChoices(args: OnboardArgs): Promise<{
       choices: [
         { name: 'default — web / full-stack apps', value: 'default' },
         { name: 'cli — libraries and CLI tools (no PM2)', value: 'cli' },
-        { name: 'ios — Xcode / iOS Simulator', value: 'ios' },
+        {
+          name: iosDetected
+            ? 'ios — Xcode / iOS Simulator (detected)'
+            : 'ios — Xcode / iOS Simulator',
+          value: 'ios',
+        },
       ],
-      default: 'default',
+      default: iosDetected ? 'ios' : 'default',
     },
     {
       type: 'list',

@@ -7,6 +7,12 @@ import { ensureRootGitignorePatterns } from '../core/gitignore';
 import { writeHarnessGitignore } from './gitignore-template';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 import { syncAgentSlotsToHarnessEnv } from './stages';
+import { applyHarnessEnvValues } from './env';
+import {
+  introspectXcodeProject,
+  xcodeHarnessEnvValues,
+  type XcodeProjectInfo,
+} from './xcode-introspect';
 
 export type HarnessProfile = 'default' | 'cli' | 'ios';
 
@@ -37,11 +43,17 @@ export { DEFAULT_HAR_DIR };
 export interface ScaffoldOptions {
   force?: boolean;
   profile?: HarnessProfile;
+  /** Skip project introspection on the iOS profile (CI, or a deliberately blank harness). */
+  introspect?: boolean;
 }
 
 export interface ScaffoldResult {
   harnessDir: string;
   projectName: string;
+  /** Everything init could not resolve on its own, phrased for the user to act on. */
+  warnings: string[];
+  /** Present on the iOS profile whenever introspection ran. */
+  introspection?: XcodeProjectInfo;
 }
 
 /**
@@ -94,12 +106,25 @@ export function scaffoldHarnessBoilerplate(
 
   syncAgentSlotsToHarnessEnv(repoPath);
 
+  // Introspection runs before the manifest is written: createManifest seals the
+  // checksums, so every edit to harness.env has to land first.
+  let introspection: XcodeProjectInfo | undefined;
+  let initEnvOverrides: Record<string, string> = {};
+  const warnings: string[] = [];
+
+  if (profile === 'ios' && options.introspect !== false) {
+    introspection = introspectXcodeProject(repoPath);
+    initEnvOverrides = xcodeHarnessEnvValues(introspection);
+    warnings.push(...introspection.warnings);
+  }
+
   const harnessEnvPath = path.join(harnessDir, 'harness.env');
   if (fs.existsSync(harnessEnvPath)) {
     let content = fs.readFileSync(harnessEnvPath, 'utf8');
     content = content
       .replace(/__PROJECT_NAME__/g, projectName)
       .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
+    content = applyHarnessEnvValues(content, initEnvOverrides);
     fs.writeFileSync(harnessEnvPath, content);
   }
 
@@ -112,6 +137,7 @@ export function scaffoldHarnessBoilerplate(
         : 'Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).',
     undefined,
     profile,
+    initEnvOverrides,
   );
   writeManifest(repoPath, manifest);
 
@@ -121,8 +147,11 @@ export function scaffoldHarnessBoilerplate(
 
   success(`Copied harness boilerplate to .har/ (profile: ${profile})`);
   info(`Project name: ${projectName}`);
+  if (introspection?.scheme) {
+    info(`Xcode scheme: ${introspection.scheme}`);
+  }
 
-  return { harnessDir, projectName };
+  return { harnessDir, projectName, warnings, introspection };
 }
 
 export function finalizeHarness(
@@ -131,7 +160,16 @@ export function finalizeHarness(
   stack?: { language?: string; packageManager?: string; database?: string },
 ): void {
   const existing = readManifest(repoPath);
-  const manifest = createManifest(repoPath, adaptationSummary, stack, existing?.profile);
+  // initEnvOverrides is carried over: it records what init generated, which
+  // finalizing an adaptation does not change. Dropping it here would make every
+  // later `maintain` report the generated harness.env as drifted.
+  const manifest = createManifest(
+    repoPath,
+    adaptationSummary,
+    stack,
+    existing?.profile,
+    existing?.initEnvOverrides,
+  );
   writeManifest(repoPath, manifest);
   success('Harness adaptation complete.');
 }

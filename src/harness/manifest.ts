@@ -59,6 +59,7 @@ export function createManifest(
   adaptationSummary?: string,
   stack?: HarnessManifest['stack'],
   profile?: HarnessManifest['profile'],
+  initEnvOverrides?: HarnessManifest['initEnvOverrides'],
 ): HarnessManifest {
   const now = new Date().toISOString();
   const harnessDir = getHarnessDir(repoPath);
@@ -71,6 +72,9 @@ export function createManifest(
     stack,
     adaptationSummary,
     profile,
+    ...(initEnvOverrides && Object.keys(initEnvOverrides).length > 0
+      ? { initEnvOverrides }
+      : {}),
     fileChecksums: computeHarnessChecksums(harnessDir),
   };
 }

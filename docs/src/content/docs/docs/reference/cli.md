@@ -57,6 +57,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 ```bash
 har env init [--profile default|cli|ios] [--yes]
              [--smoke] [--force] [--verbose]
+             [--introspect|--no-introspect]
              [--agents claude,cursor,codex] [--no-agents]
              [--cursor-rule|--no-cursor-rule]
              [--commit-gate prompt|always|never]
@@ -64,6 +65,10 @@ har env init [--profile default|cli|ios] [--yes]
 ```
 
 `--force` replaces an existing harness and is destructive.
+
+`--no-introspect` skips reading the Xcode project on the `ios` profile and leaves the
+scaffold placeholders in place. Introspection is on by default and never fails init —
+whatever it cannot resolve is printed as a warning to act on.
 
 ### Maintenance
 

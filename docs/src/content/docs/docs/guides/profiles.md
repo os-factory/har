@@ -34,6 +34,36 @@ The scaffold intentionally contains project-specific placeholders. Adapt:
 HAR writes `.har/ADAPT-PROMPT.md` for your coding agent to adapt the scaffold.
 Your agent tailors scripts, ports, verification, and `AGENTS.md` to the repository.
 
+## The iOS profile reads your Xcode project
+
+`har env init --profile ios` does the mechanical part of the adaptation for you. It
+locates the `.xcworkspace` or `.xcodeproj`, asks `xcodebuild` for the shared schemes
+and the bundle id, and writes `HARNESS_XCODE_WORKSPACE` / `HARNESS_XCODE_PROJECT`,
+`HARNESS_XCODE_SCHEME`, and `HARNESS_BUNDLE_ID` into `harness.env`.
+
+Two rules govern it:
+
+- **it never guesses.** When several schemes match and none carries the project name,
+  `HARNESS_XCODE_SCHEME` is left unset and the candidates are printed. A wrong scheme
+  costs more to discover than a missing one;
+- **it never fails init.** No Xcode, a project that does not exist yet, a stalled
+  `xcodebuild` — each case degrades to a partial result with a warning explaining what
+  is left to do.
+
+Values written this way are recorded in `.har/manifest.json` as `initEnvOverrides`, so
+`har env maintain` compares against what HAR generated rather than reporting its own
+output as drift. Your own later edits to `harness.env` still show up as drift.
+
+Use `--no-introspect` to scaffold placeholders only.
+
+### Projects that are generated rather than tracked
+
+With Tuist, XcodeGen, or CocoaPods, the `.xcodeproj` and `.xcworkspace` are build
+products: a fresh worktree has none. `launch` runs the right generator
+(`tuist generate`, `xcodegen generate`, `pod install`) before building, and fails with
+a message naming the missing tool rather than letting the build report a scheme it
+cannot find. Set `HARNESS_INSTALL_CMD` in `harness.env` to take that over yourself.
+
 ## Toolchains
 
 Generated harnesses can detect or explicitly configure Node.js, Python, Go, Rust,

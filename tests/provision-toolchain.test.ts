@@ -104,6 +104,234 @@ describe('provision-toolchain.sh template contract', () => {
     expect(envContent).toContain('HARNESS_TOOLCHAIN_PROVISIONED=true');
   });
 
+  it('ships the same provision-toolchain.sh in every profile', () => {
+    const contents = PROFILES.map((profile) =>
+      fs.readFileSync(path.join(resolveTemplatesDir(), profile, 'provision-toolchain.sh'), 'utf8'),
+    );
+    // The three copies are edited together on purpose — a divergence here means one
+    // profile silently lost a toolchain fix.
+    expect(contents[1]).toBe(contents[0]);
+    expect(contents[2]).toBe(contents[0]);
+  });
+
+  describe('iOS generated-project provisioning', () => {
+    const IOS_SCRIPT = path.join(
+      resolveTemplatesDir(),
+      'har-boilerplate-ios',
+      'provision-toolchain.sh',
+    );
+    // Stock PATH only: a real pod/tuist installed on the developer's machine must not
+    // decide the outcome of the "tool is missing" cases.
+    const BARE_PATH = '/usr/bin:/bin';
+
+    function makeWorkDir(prefix: string): { dir: string; envFile: string } {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+      const envFile = path.join(dir, '.env.agent.1');
+      fs.writeFileSync(envFile, `AGENT_ID=1\nREPO_ROOT=${dir}\n`);
+      return { dir, envFile };
+    }
+
+    function fakeBin(dir: string, name: string, marker: string): string {
+      const binDir = path.join(dir, 'fakebin');
+      fs.mkdirSync(binDir, { recursive: true });
+      const bin = path.join(binDir, name);
+      fs.writeFileSync(bin, `#!/usr/bin/env bash\necho "$@" > "${marker}"\n`);
+      fs.chmodSync(bin, 0o755);
+      return binDir;
+    }
+
+    function provision(dir: string, envFile: string, pathValue: string, extraEnv = '') {
+      return run(
+        `PATH="${pathValue}" HARNESS_ECOSYSTEM=ios ${extraEnv} ` +
+          `HAR_WORK_DIR="${dir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
+          `bash "${IOS_SCRIPT}"`,
+      );
+    }
+
+    it('fails with a named cause when a Podfile has no CocoaPods available', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-pods-missing-');
+      fs.writeFileSync(path.join(dir, 'Podfile'), "platform :ios, '17.0'\n");
+
+      const result = provision(dir, envFile, BARE_PATH);
+
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain('CocoaPods');
+      expect(result.stderr).toContain('HARNESS_INSTALL_CMD');
+    });
+
+    it('runs pod install when a Podfile has no Pods directory', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-pods-run-');
+      fs.writeFileSync(path.join(dir, 'Podfile'), "platform :ios, '17.0'\n");
+      const marker = path.join(dir, 'pod-ran');
+      const binDir = fakeBin(dir, 'pod', marker);
+
+      const result = provision(dir, envFile, `${binDir}:${BARE_PATH}`);
+
+      expect(result.code).toBe(0);
+      expect(fs.existsSync(marker)).toBe(true);
+      expect(fs.readFileSync(marker, 'utf8').trim()).toBe('install');
+    });
+
+    it('skips pod install when Pods are already checked out', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-pods-present-');
+      fs.writeFileSync(path.join(dir, 'Podfile'), "platform :ios, '17.0'\n");
+      fs.mkdirSync(path.join(dir, 'Pods'));
+      const marker = path.join(dir, 'pod-ran');
+      const binDir = fakeBin(dir, 'pod', marker);
+
+      const result = provision(dir, envFile, `${binDir}:${BARE_PATH}`);
+
+      expect(result.code).toBe(0);
+      expect(fs.existsSync(marker)).toBe(false);
+    });
+
+    it('generates the project with Tuist when only Project.swift is tracked', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-tuist-');
+      fs.writeFileSync(path.join(dir, 'Project.swift'), 'let project = Project()\n');
+      const marker = path.join(dir, 'tuist-ran');
+      const binDir = fakeBin(dir, 'tuist', marker);
+
+      const result = provision(dir, envFile, `${binDir}:${BARE_PATH}`);
+
+      expect(result.code).toBe(0);
+      expect(fs.readFileSync(marker, 'utf8').trim()).toBe('generate --no-open');
+    });
+
+    it('fails with a named cause when project.yml has no XcodeGen available', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-xcodegen-missing-');
+      fs.writeFileSync(path.join(dir, 'project.yml'), 'name: MyApp\n');
+
+      const result = provision(dir, envFile, BARE_PATH);
+
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain('XcodeGen');
+    });
+
+    it('leaves generation alone when HARNESS_INSTALL_CMD owns provisioning', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-installcmd-');
+      fs.writeFileSync(path.join(dir, 'Podfile'), "platform :ios, '17.0'\n");
+      const marker = path.join(dir, 'pod-ran');
+      const binDir = fakeBin(dir, 'pod', marker);
+
+      const result = provision(
+        dir,
+        envFile,
+        `${binDir}:${BARE_PATH}`,
+        `HARNESS_INSTALL_CMD="true"`,
+      );
+
+      expect(result.code).toBe(0);
+      expect(fs.existsSync(marker)).toBe(false);
+    });
+
+    it('fails loudly instead of falling back when HARNESS_INSTALL_CMD fails', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-installcmd-fail-');
+      fs.writeFileSync(path.join(dir, 'Podfile'), "platform :ios, '17.0'\n");
+      const marker = path.join(dir, 'pod-ran');
+      const binDir = fakeBin(dir, 'pod', marker);
+
+      const result = provision(
+        dir,
+        envFile,
+        `${binDir}:${BARE_PATH}`,
+        `HARNESS_INSTALL_CMD="false"`,
+      );
+
+      // run_install_cmd returns 1 both for "not configured" and "configured but
+      // failed"; dispatching on that status would silently run the generators the
+      // user overrode and hide the failure behind them.
+      expect(result.code).not.toBe(0);
+      expect(fs.existsSync(marker)).toBe(false);
+    });
+
+    it('finds an existing project under a path containing a space', () => {
+      const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-space-'));
+      const dir = path.join(parent, 'My Proj');
+      fs.mkdirSync(path.join(dir, 'App.xcodeproj'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'Project.swift'), 'let project = Project()\n');
+      const envFile = path.join(dir, '.env.agent.1');
+      fs.writeFileSync(envFile, `AGENT_ID=1\nREPO_ROOT=${dir}\n`);
+      const marker = path.join(dir, 'tuist-ran');
+      const binDir = fakeBin(dir, 'tuist', marker);
+
+      const result = provision(dir, envFile, `${binDir}:${BARE_PATH}`);
+
+      // The glob must survive the space: regenerating over an existing project
+      // would overwrite local project state on every launch.
+      expect(result.code).toBe(0);
+      expect(fs.existsSync(marker)).toBe(false);
+    });
+
+    it('skips generation when the project is already present', () => {
+      const { dir, envFile } = makeWorkDir('har-pt-generated-');
+      fs.writeFileSync(path.join(dir, 'Project.swift'), 'let project = Project()\n');
+      fs.mkdirSync(path.join(dir, 'MyApp.xcodeproj'), { recursive: true });
+      const marker = path.join(dir, 'tuist-ran');
+      const binDir = fakeBin(dir, 'tuist', marker);
+
+      const result = provision(dir, envFile, `${binDir}:${BARE_PATH}`);
+
+      expect(result.code).toBe(0);
+      expect(fs.existsSync(marker)).toBe(false);
+    });
+  });
+
+  describe('iOS verify.sh target resolution', () => {
+    /** Lift one bash function out of a script so it can be exercised on its own. */
+    function extractShellFunction(scriptPath: string, name: string): string {
+      const content = fs.readFileSync(scriptPath, 'utf8');
+      const start = content.indexOf(`${name}() {`);
+      if (start < 0) throw new Error(`function ${name} not found in ${scriptPath}`);
+      let depth = 0;
+      let i = content.indexOf('{', start);
+      for (; i < content.length; i++) {
+        if (content[i] === '{') depth++;
+        else if (content[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            i++;
+            break;
+          }
+        }
+      }
+      return content.slice(start, i);
+    }
+
+    function resolveTargets(workDir: string): string {
+      const verifyPath = path.join(resolveTemplatesDir(), 'har-boilerplate-ios', 'verify.sh');
+      const fn = extractShellFunction(verifyPath, 'xc_target_flags');
+      const script = path.join(workDir, 'probe.sh');
+      fs.writeFileSync(script, `set -uo pipefail\nWORK_DIR="${workDir}"\n${fn}\nxc_target_flags\n`);
+      const result = run(`bash "${script}"`);
+      expect(result.code).toBe(0);
+      return result.stdout.trim();
+    }
+
+    it('ignores the project.xcworkspace nested inside every .xcodeproj', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-xc-inner-'));
+      // Xcode puts this inside every project bundle; picking it shadows the real target.
+      fs.mkdirSync(path.join(dir, 'MyApp.xcodeproj', 'project.xcworkspace'), { recursive: true });
+
+      expect(resolveTargets(dir)).toBe(`-project ${dir}/MyApp.xcodeproj`);
+    });
+
+    it('still prefers a real workspace sitting next to the project', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-xc-real-'));
+      fs.mkdirSync(path.join(dir, 'MyApp.xcodeproj', 'project.xcworkspace'), { recursive: true });
+      fs.mkdirSync(path.join(dir, 'MyApp.xcworkspace'), { recursive: true });
+
+      expect(resolveTargets(dir)).toBe(`-workspace ${dir}/MyApp.xcworkspace`);
+    });
+
+    it('ignores Pods.xcodeproj generated by CocoaPods', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-xc-pods-'));
+      fs.mkdirSync(path.join(dir, 'Pods', 'Pods.xcodeproj'), { recursive: true });
+      fs.mkdirSync(path.join(dir, 'MyApp.xcodeproj'), { recursive: true });
+
+      expect(resolveTargets(dir)).toBe(`-project ${dir}/MyApp.xcodeproj`);
+    });
+  });
+
   it('verify.sh dispatches stock smoke by ecosystem', () => {
     for (const profile of ['har-boilerplate', 'har-boilerplate-cli'] as const) {
       const verifyPath = path.join(resolveTemplatesDir(), profile, 'verify.sh');

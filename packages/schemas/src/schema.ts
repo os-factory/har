@@ -47,6 +47,13 @@ export const HarnessManifestSchema = z.object({
     .optional(),
   adaptationSummary: z.string().optional(),
   profile: z.enum(['default', 'cli', 'ios']).optional(),
+  /**
+   * harness.env exports written by `init` itself, from project introspection.
+   * Drift replays them onto the template before comparing, so values HAR generated
+   * are not reported back to the user as their own local edits — and, worse, are not
+   * handed to a coding agent as a diff to revert.
+   */
+  initEnvOverrides: z.record(z.string()).optional(),
   fileChecksums: z.record(z.string()).optional(),
   scaffoldedAgentFiles: z.array(ScaffoldedAgentFileSchema).optional(),
 });

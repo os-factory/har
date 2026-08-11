@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { HarnessProfile } from './generator';
-import { readHarnessEnv } from './env';
+import { applyHarnessEnvValues, readHarnessEnv } from './env';
 import {
   harnessFileForTemplate,
   isExpectedHarnessOnlyFile,
@@ -147,6 +147,11 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
     let templateContent = fs.readFileSync(templatePath, 'utf8');
     if (file === 'harness.env') {
       templateContent = substituteProjectName(templateContent, projectName);
+      // Replay what init generated, so a harness HAR just wrote compares equal.
+      // Without this, `maintain` hands a coding agent a diff whose direction
+      // restores the MyApp / com.example.myapp placeholders — the feature would
+      // silently undo itself on the first maintain.
+      templateContent = applyHarnessEnvValues(templateContent, manifest?.initEnvOverrides ?? {});
     }
 
     if (!fs.existsSync(harnessPath)) {

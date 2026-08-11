@@ -57,10 +57,15 @@ xc_target_flags() {
   elif [ -n "${HARNESS_XCODE_PROJECT:-}" ] && [ -e "$WORK_DIR/${HARNESS_XCODE_PROJECT}" ]; then
     echo "-project $WORK_DIR/${HARNESS_XCODE_PROJECT}"
   else
-    # Auto-detect: prefer workspace (CocoaPods), then project
+    # Auto-detect: prefer workspace (CocoaPods), then project.
+    # Every *.xcodeproj holds an inner project.xcworkspace at depth 2 — matching it
+    # would shadow the real project, so *.xcodeproj/* is excluded. Pods/ likewise
+    # ships Pods.xcodeproj, which is never the target.
     local ws prj
-    ws="$(find "$WORK_DIR" -maxdepth 2 -name "*.xcworkspace" ! -path "*/\.*" 2>/dev/null | head -1 || true)"
-    prj="$(find "$WORK_DIR" -maxdepth 2 -name "*.xcodeproj" ! -path "*/\.*" 2>/dev/null | head -1 || true)"
+    ws="$(find "$WORK_DIR" -maxdepth 2 -name "*.xcworkspace" \
+      ! -path "*/\.*" ! -path "*.xcodeproj/*" ! -path "*/Pods/*" 2>/dev/null | head -1 || true)"
+    prj="$(find "$WORK_DIR" -maxdepth 2 -name "*.xcodeproj" \
+      ! -path "*/\.*" ! -path "*/Pods/*" 2>/dev/null | head -1 || true)"
     if [ -n "$ws" ]; then echo "-workspace $ws"
     elif [ -n "$prj" ]; then echo "-project $prj"
     fi

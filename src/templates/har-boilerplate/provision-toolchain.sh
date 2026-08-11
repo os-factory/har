@@ -229,9 +229,71 @@ provision_ruby() {
   append_path_prefix "$dir/vendor/bundle/bin"
 }
 
+# Echo the first path in <dir> matching <pattern>, or return 1. Bash 3.2 on stock
+# macOS has no nullglob, so an unmatched glob comes back as the pattern itself —
+# hence the -e test. Directory and pattern stay separate arguments so the directory
+# can be quoted: a single pre-joined string would word-split on a path with a space
+# before the glob ever ran.
+first_glob_match() {
+  local dir="$1"
+  local pattern="$2"
+  local match
+  for match in "$dir"/$pattern; do
+    [ -e "$match" ] && { printf '%s' "$match"; return 0; }
+  done
+  return 1
+}
+
+# Generated-project workflows (Tuist, XcodeGen) and CocoaPods leave nothing to build
+# in a fresh worktree: the .xcodeproj / .xcworkspace is a build product, not a tracked
+# file. Without this, xcodebuild fails with an opaque "scheme not found" and the cause
+# is invisible. Called only when no HARNESS_INSTALL_CMD is configured — see provision_ios.
+provision_ios_generate_project() {
+  local dir="$1"
+
+  if [ -f "$dir/Project.swift" ] && ! first_glob_match "$dir" '*.xcodeproj' >/dev/null; then
+    if ! command -v tuist >/dev/null 2>&1; then
+      echo "Error: $dir/Project.swift needs Tuist, but 'tuist' is not on PATH." >&2
+      echo "  Install Tuist, or set HARNESS_INSTALL_CMD in .har/harness.env." >&2
+      return 1
+    fi
+    pt_log "Generating Xcode project with Tuist..."
+    (cd "$dir" && tuist generate --no-open)
+  elif [ -f "$dir/project.yml" ] && ! first_glob_match "$dir" '*.xcodeproj' >/dev/null; then
+    if ! command -v xcodegen >/dev/null 2>&1; then
+      echo "Error: $dir/project.yml needs XcodeGen, but 'xcodegen' is not on PATH." >&2
+      echo "  Install XcodeGen, or set HARNESS_INSTALL_CMD in .har/harness.env." >&2
+      return 1
+    fi
+    pt_log "Generating Xcode project with XcodeGen..."
+    (cd "$dir" && xcodegen generate)
+  fi
+
+  # Pods come after generation: CocoaPods needs the .xcodeproj to build its workspace.
+  if [ -f "$dir/Podfile" ] && [ ! -d "$dir/Pods" ]; then
+    if ! command -v pod >/dev/null 2>&1; then
+      echo "Error: $dir/Podfile needs CocoaPods, but 'pod' is not on PATH." >&2
+      echo "  Install CocoaPods, or set HARNESS_INSTALL_CMD in .har/harness.env." >&2
+      return 1
+    fi
+    pt_log "Installing CocoaPods dependencies..."
+    (cd "$dir" && pod install)
+  fi
+
+  return 0
+}
+
 provision_ios() {
   local dir="$1"
-  run_install_cmd "$dir" || true
+  # An explicit HARNESS_INSTALL_CMD owns provisioning outright. Dispatching on the
+  # variable rather than on run_install_cmd's exit status matters: that status is 1
+  # both when no command is configured and when a configured one failed, so a `||`
+  # would run the generators the user overrode — and hide the failure behind them.
+  if [ -n "${HARNESS_INSTALL_CMD:-}" ]; then
+    run_install_cmd "$dir"
+  else
+    provision_ios_generate_project "$dir"
+  fi
   append_env "HARNESS_ECOSYSTEM" "ios"
   append_env "XCODEBUILD_BIN" "$(command -v xcodebuild 2>/dev/null || echo xcodebuild)"
   if [ -n "${HARNESS_XCODE_SCHEME:-}" ]; then

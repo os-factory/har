@@ -66,6 +66,12 @@ export const envCommand = {
               default: 'default' as const,
               describe: 'Boilerplate profile: default (web app), cli (library/CLI, no PM2), ios (iOS mobile app)',
             })
+            .option('introspect', {
+              type: 'boolean',
+              default: true,
+              describe:
+                'Read the Xcode project to fill in harness.env (ios profile); --no-introspect to scaffold placeholders only',
+            })
             .option('yes', {
               type: 'boolean',
               default: false,
@@ -380,6 +386,19 @@ export const envCommand = {
   handler: () => {},
 };
 
+/**
+ * Everything init could not resolve on its own. Printed before validation so an
+ * unresolved scheme is read as "finish the config", not as a broken harness.
+ */
+function printInitWarnings(warnings: string[]): void {
+  if (warnings.length === 0) return;
+  divider();
+  warn('Harness config needs a hand:');
+  for (const message of warnings) {
+    warn(`  • ${message}`);
+  }
+}
+
 export async function handleInit(argv: {
   repo: string;
   verbose: boolean;
@@ -387,6 +406,8 @@ export async function handleInit(argv: {
   smoke: boolean;
   yes: boolean;
   profile: 'default' | 'cli' | 'ios';
+  /** --no-introspect skips reading the Xcode project on the iOS profile. */
+  introspect?: boolean;
   /** Tri-state from yargs: unset | --cursor-rule | --no-cursor-rule */
   cursorRule?: boolean;
   /** String from --agents=…, or `false` when --no-agents (yargs negation). */
@@ -408,7 +429,10 @@ export async function handleInit(argv: {
       verbose: argv.verbose,
       smoke: argv.smoke,
       profile: argv.profile,
+      introspect: argv.introspect,
     });
+
+    printInitWarnings(result.warnings);
 
     divider();
     info('Validating harness...');

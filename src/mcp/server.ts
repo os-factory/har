@@ -53,6 +53,7 @@ import {
   RunVerificationInputSchema,
   RunVerificationOutputSchema,
   StageResultSchema,
+  XcodeIntrospectionOutputSchema,
 } from './schemas';
 
 export const HAR_MCP_TOOLS: Tool[] = [
@@ -63,12 +64,14 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_init_harness',
-    description: 'Scaffold .har/ boilerplate for a coding agent to adapt.',
+    description:
+      'Scaffold .har/ boilerplate for a coding agent to adapt. On the ios profile it also reads the Xcode project to fill in scheme, project/workspace and bundle id; read the returned warnings for anything left unresolved.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       force: { type: 'boolean' },
       smoke: { type: 'boolean' },
       profile: { type: 'string', enum: ['default', 'cli', 'ios'] },
+      introspect: { type: 'boolean' },
     }),
   },
   {
@@ -270,11 +273,18 @@ export async function handleMcpToolCall(
         force: input.force,
         smoke: input.smoke,
         profile: input.profile,
+        introspect: input.introspect,
       });
       return jsonContent({
         harnessDir: result.harnessDir,
         validation: result.validation,
         smoke: result.smoke,
+        // An agent initializing over MCP gets the same signal as a CLI user:
+        // without this, an unresolved scheme stays invisible until the first build.
+        warnings: result.warnings,
+        ...(result.introspection
+          ? { introspection: XcodeIntrospectionOutputSchema.parse(result.introspection) }
+          : {}),
       });
     }
 

@@ -19,6 +19,7 @@ import {
 } from '../harness/plugins';
 import { harnessExists } from '../harness/parser';
 import { HarnessManifest, HarnessStage } from '../harness/schema';
+import type { XcodeProjectInfo } from '../harness/xcode-introspect';
 
 export interface InitHarnessOptions extends ScaffoldOptions {
   repoPath: string;
@@ -30,6 +31,10 @@ export interface InitHarnessResult {
   harnessDir: string;
   validation: ValidationResult;
   smoke?: ValidationResult;
+  /** What init could not resolve on its own — surfaced by every adapter (CLI, MCP). */
+  warnings: string[];
+  /** iOS profile only: what reading the Xcode project produced. */
+  introspection?: XcodeProjectInfo;
 }
 
 export interface MaintainHarnessOptions {
@@ -103,6 +108,7 @@ export async function initHarness(options: InitHarnessOptions): Promise<InitHarn
   const scaffold = scaffoldHarnessBoilerplate(repoPath, {
     force: options.force,
     profile: options.profile,
+    introspect: options.introspect,
   });
   syncAgentSlotsToHarnessEnv(repoPath);
 
@@ -116,6 +122,8 @@ export async function initHarness(options: InitHarnessOptions): Promise<InitHarn
     harnessDir: scaffold.harnessDir,
     validation,
     smoke,
+    warnings: scaffold.warnings,
+    introspection: scaffold.introspection,
   };
 }
 

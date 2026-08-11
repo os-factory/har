@@ -11,7 +11,12 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_describe_project` | `repo` | Manifest, stack hints, scripts, stages, and slot limits |
-| `har_init_harness` | `repo`, `force`, `smoke`, `profile` (`default` \| `cli` \| `ios`) | Scaffold and validation result |
+| `har_init_harness` | `repo`, `force`, `smoke`, `profile` (`default` \| `cli` \| `ios`), `introspect` | Scaffold and validation result, plus `warnings` and — on the `ios` profile — `introspection` |
+
+On the `ios` profile, `har_init_harness` reads the Xcode project and fills in scheme,
+project/workspace, and bundle id. Read `warnings` before launching a slot: an
+ambiguous scheme is left unset on purpose, and the candidates are listed there.
+Pass `introspect: false` to scaffold placeholders only.
 
 ## Session lifecycle
 

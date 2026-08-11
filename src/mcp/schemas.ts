@@ -60,6 +60,20 @@ export const InitHarnessInputSchema = z.object({
   force: z.boolean().default(false),
   smoke: z.boolean().default(false),
   profile: z.enum(['default', 'cli', 'ios']).default('default'),
+  introspect: z.boolean().default(true),
+});
+
+/** iOS profile: what reading the Xcode project resolved, and what it did not. */
+export const XcodeIntrospectionOutputSchema = z.object({
+  workspace: z.string().optional(),
+  project: z.string().optional(),
+  generator: z.enum(['tuist', 'xcodegen', 'cocoapods']).nullable(),
+  scheme: z.string().optional(),
+  schemes: z.array(z.string()),
+  bundleId: z.string().optional(),
+  candidates: z.array(z.string()),
+  confidence: z.enum(['high', 'partial', 'none']),
+  warnings: z.array(z.string()),
 });
 
 export const LaunchEnvironmentInputSchema = z.object({

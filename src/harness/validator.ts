@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { run } from '../utils/shell';
+import { parseHarnessEnvContent } from './env';
 import { getHarnessDir, readManifest } from './manifest';
 import { readStageRegistry } from './stages';
+import { resolveTemplatesDir } from '../utils/paths';
 
 export interface ValidationIssue {
   file: string;
@@ -68,6 +70,67 @@ const SHELL_SCRIPTS = [
   'attach.sh',
 ];
 
+/** Keys whose scaffold placeholder means the harness was never adapted. */
+const IOS_PLACEHOLDER_KEYS = ['HARNESS_XCODE_SCHEME', 'HARNESS_BUNDLE_ID'] as const;
+
+/**
+ * The placeholder values the iOS scaffold actually ships, read from the template
+ * rather than restated here — otherwise changing the template silently disables
+ * this check.
+ */
+function iosPlaceholders(): Record<string, string> {
+  const templateEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-ios', 'harness.env');
+  if (!fs.existsSync(templateEnv)) return {};
+  const template = parseHarnessEnvContent(fs.readFileSync(templateEnv, 'utf8'));
+
+  const placeholders: Record<string, string> = {};
+  for (const key of IOS_PLACEHOLDER_KEYS) {
+    if (template[key]) placeholders[key] = template[key];
+  }
+  return placeholders;
+}
+
+/**
+ * Filesystem-only checks on the iOS harness config.
+ *
+ * Deliberately does not shell out to `xcodebuild` to confirm the scheme still
+ * exists in the project: validation runs on every init and maintain, and must stay
+ * fast and work on machines without Xcode. What is checked here — placeholders left
+ * in place, and a project path that no longer resolves — covers the cases that
+ * actually break a build, at no cost.
+ *
+ * Takes the already-read harness.env content: the caller has it in hand, and
+ * validation runs on every init and maintain.
+ */
+function validateIosHarnessEnv(repoPath: string, harnessEnvContent: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const env = parseHarnessEnvContent(harnessEnvContent);
+
+  for (const [key, placeholder] of Object.entries(iosPlaceholders())) {
+    if (env[key] === placeholder) {
+      issues.push({
+        file: 'harness.env',
+        message: `${key} is still the scaffold placeholder "${placeholder}" — the build will not find it`,
+        severity: 'warning',
+      });
+    }
+  }
+
+  for (const key of ['HARNESS_XCODE_WORKSPACE', 'HARNESS_XCODE_PROJECT']) {
+    const configured = env[key];
+    if (!configured) continue;
+    if (!fs.existsSync(path.join(repoPath, configured))) {
+      issues.push({
+        file: 'harness.env',
+        message: `${key} points at "${configured}", which does not exist — it was renamed, moved, or is generated at launch`,
+        severity: 'warning',
+      });
+    }
+  }
+
+  return issues;
+}
+
 export function validateHarness(repoPath: string): ValidationResult {
   const harnessDir = getHarnessDir(repoPath);
   const issues: ValidationIssue[] = [];
@@ -128,6 +191,9 @@ export function validateHarness(repoPath: string): ValidationResult {
     }
     if (content.includes('TODO: set seed command')) {
       issues.push({ file: 'harness.env', message: 'Seed command still has TODO', severity: 'warning' });
+    }
+    if (profile === 'ios') {
+      issues.push(...validateIosHarnessEnv(repoPath, content));
     }
   }
 
