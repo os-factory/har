@@ -6,6 +6,12 @@ export interface ShellResult {
   code: number;
 }
 
+/** Quote a single token so it stays intact when a shell reads it (e.g. `source`d env files or `bash -lc`). */
+export function quoteShellArg(arg: string): string {
+  if (/^[A-Za-z0-9_./:=+-]+$/.test(arg)) return arg;
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
 export interface RunScriptOptions extends SpawnOptions {
   stream?: boolean;
 }
