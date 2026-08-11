@@ -50,6 +50,16 @@ function makeRuns(count: number, bytesEach: number): RunRecord[] {
   }));
 }
 
+const newerRun: RunRecord = {
+  runId: '00000000-0000-4000-8000-000000000099',
+  repoPath: '/repos/big',
+  stageId: 'verify',
+  status: 'pass',
+  startedAt: '2026-02-01T00:00:00.000Z',
+  finishedAt: '2026-02-01T00:00:05.000Z',
+  trigger: 'cli',
+};
+
 describe('chunkBySerializedSize', () => {
   it('returns [] for empty input', () => {
     expect(chunkBySerializedSize([], 1000)).toEqual([]);
@@ -273,20 +283,11 @@ describe('incremental runs sync', () => {
     mockedListRuns.mockReturnValue(runs);
     await syncReposWithControl({ repoPaths: ['/repos/big'] });
 
-    const newer: RunRecord = {
-      runId: '00000000-0000-4000-8000-000000000099',
-      repoPath: '/repos/big',
-      stageId: 'verify',
-      status: 'pass',
-      startedAt: '2026-02-01T00:00:00.000Z',
-      finishedAt: '2026-02-01T00:00:05.000Z',
-      trigger: 'cli',
-    };
-    mockedListRuns.mockReturnValue([...runs, newer]);
+    mockedListRuns.mockReturnValue([...runs, newerRun]);
 
     const mark = calls.length;
     await syncReposWithControl({ repoPaths: ['/repos/big'] });
-    expect(localRunIdsSince(mark)).toEqual([newer.runId]); // only the new run
+    expect(localRunIdsSince(mark)).toEqual([newerRun.runId]); // only the new run
   });
 
   it('--full resends the whole history despite the watermark', async () => {
@@ -327,6 +328,8 @@ describe('self-heals on a server wipe (repo id change)', () => {
   let stateDir: string;
   let localRepoId: string;
   let portalRepoId: string;
+  let failPortalResend: boolean;
+  let omitPortalRepoId: boolean;
 
   const runIdsSince = (from: number, urlSuffix: string): string[] =>
     calls
@@ -338,6 +341,8 @@ describe('self-heals on a server wipe (repo id change)', () => {
     calls.length = 0;
     localRepoId = 'repo-A';
     portalRepoId = 'p-A';
+    failPortalResend = false;
+    omitPortalRepoId = false;
     stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-sync-state-'));
     process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(stateDir, 'state.json');
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
@@ -349,7 +354,13 @@ describe('self-heals on a server wipe (repo id change)', () => {
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         if (method === 'POST') calls.push({ url: String(url), body });
         if (String(url).includes('portal.example.com')) {
-          return jsonResponse({ repositoryId: portalRepoId });
+          const isResend = String(url).endsWith('/api/sync') && body.slots === undefined;
+          if (failPortalResend && isResend) {
+            throw Object.assign(new TypeError('fetch failed'), {
+              cause: { code: 'UND_ERR_SOCKET', message: 'other side closed' },
+            });
+          }
+          return jsonResponse(omitPortalRepoId ? {} : { repositoryId: portalRepoId });
         }
         if (String(url).endsWith('/api/repos') && method === 'POST') {
           return jsonResponse({ id: localRepoId });
@@ -398,6 +409,43 @@ describe('self-heals on a server wipe (repo id change)', () => {
     const mark = calls.length;
     await syncReposWithControl({ repoPaths: ['/repos/big'] });
     expect(new Set(runIdsSince(mark, '/api/sync'))).toEqual(new Set(runs.map((r) => r.runId)));
+  });
+
+  it('portal: a failed resend leaves the wipe detectable on the next sync', async () => {
+    const runs = makeRuns(4, 100);
+    mockedListRuns.mockReturnValue(runs);
+    await syncReposWithControl({ repoPaths: ['/repos/big'] }); // portal p-A → all
+
+    mockedListRuns.mockReturnValue([...runs, newerRun]); // delta pass advances the watermark
+    portalRepoId = 'p-B';
+    failPortalResend = true;
+    const wiped = await syncReposWithControl({ repoPaths: ['/repos/big'] });
+    expect(wiped.failed).toBe(1);
+
+    failPortalResend = false;
+    const mark = calls.length;
+    await syncReposWithControl({ repoPaths: ['/repos/big'] });
+    expect(new Set(runIdsSince(mark, '/api/sync'))).toEqual(
+      new Set([...runs, newerRun].map((r) => r.runId)),
+    );
+  });
+
+  it('portal: a response without a repo id does not erase the stored one', async () => {
+    const runs = makeRuns(4, 100);
+    mockedListRuns.mockReturnValue(runs);
+    await syncReposWithControl({ repoPaths: ['/repos/big'] }); // portal p-A → all
+
+    mockedListRuns.mockReturnValue([...runs, newerRun]);
+    omitPortalRepoId = true;
+    await syncReposWithControl({ repoPaths: ['/repos/big'] });
+
+    omitPortalRepoId = false;
+    portalRepoId = 'p-B'; // the wipe must still be detected against p-A
+    const mark = calls.length;
+    await syncReposWithControl({ repoPaths: ['/repos/big'] });
+    expect(new Set(runIdsSince(mark, '/api/sync'))).toEqual(
+      new Set([...runs, newerRun].map((r) => r.runId)),
+    );
   });
 });
 
