@@ -1,4 +1,5 @@
-import { buildLaunchFlagArgs, quoteShellArg } from '../src/core/local-executor';
+import { buildLaunchFlagArgs } from '../src/core/local-executor';
+import { quoteShellArg } from '../src/utils/shell';
 import { LaunchEnvironmentInputSchema } from '../src/mcp/schemas';
 
 describe('launch flag plumbing', () => {
