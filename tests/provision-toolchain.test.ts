@@ -104,6 +104,19 @@ describe('provision-toolchain.sh template contract', () => {
     expect(envContent).toContain('HARNESS_TOOLCHAIN_PROVISIONED=true');
   });
 
+  // This repo dogfoods HAR: its own harnesses are scaffolded copies that only move
+  // when someone runs `har env maintain`, so a template fix does not reach them.
+  // Env-file quoting is not cosmetic drift — an unquoted value breaks `source` for
+  // every contributor whose PATH or repo path contains a space.
+  for (const harness of ['.har', 'control/.har'] as const) {
+    it(`${harness}/provision-toolchain.sh quotes values it appends to the agent env`, () => {
+      const scriptPath = path.join(process.cwd(), harness, 'provision-toolchain.sh');
+      const content = fs.readFileSync(scriptPath, 'utf8');
+      expect(content).toContain("printf '%s=%q\\n'");
+      expect(content).not.toContain("printf '%s=%s\\n'");
+    });
+  }
+
   it('verify.sh dispatches stock smoke by ecosystem', () => {
     for (const profile of ['har-boilerplate', 'har-boilerplate-cli'] as const) {
       const verifyPath = path.join(resolveTemplatesDir(), profile, 'verify.sh');
