@@ -123,6 +123,8 @@ process.stdout.write(JSON.stringify(arr));
 }
 
 # Quick (default): compile-only — use XCODEBUILD_BIN from .env.agent.<id> (written by launch)
+# Nothing is installed or run, so CODE_SIGNING_ALLOWED=NO keeps the smoke build
+# from needing a signing identity.
 run_step "build" '${XCODEBUILD_BIN:-xcodebuild} build \
   ${XC_FLAGS} \
   -scheme "${XC_SCHEME}" \
@@ -138,18 +140,20 @@ run_step "build" '${XCODEBUILD_BIN:-xcodebuild} build \
 
 if [ -n "$FULL" ]; then
   # Full: project-specific checks — add/remove/reorder steps for this repo.
+  # No CODE_SIGNING_ALLOWED=NO here, unlike the build step: tests install and run
+  # the host app on the simulator, and an unsigned app gets no entitlements. Apps
+  # using CloudKit, NSUbiquitousKeyValueStore, or push then trap at launch, before
+  # the test harness connects — the whole bundle is lost, not one test.
   run_step "unit-tests" '${XCODEBUILD_BIN:-xcodebuild} test \
     ${XC_FLAGS} \
     -scheme "${XC_SCHEME}" \
     -destination "${XC_DESTINATION}" \
     -derivedDataPath "${XC_DERIVED}" \
-    CODE_SIGNING_ALLOWED=NO \
     | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} test \
       ${XC_FLAGS} \
       -scheme "${XC_SCHEME}" \
       -destination "${XC_DESTINATION}" \
-      -derivedDataPath "${XC_DERIVED}" \
-      CODE_SIGNING_ALLOWED=NO' || true
+      -derivedDataPath "${XC_DERIVED}"' || true
 
   # SwiftLint — optional, skip gracefully when not installed
   run_step "lint" "command -v \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" >/dev/null 2>&1 && \

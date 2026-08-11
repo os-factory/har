@@ -60,8 +60,8 @@ source .env.agent.${AGENT_ID}
 # Build
 xcodebuild build -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" CODE_SIGNING_ALLOWED=NO
 
-# Run unit tests
-xcodebuild test -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" CODE_SIGNING_ALLOWED=NO
+# Run unit tests — signed, or an app with entitlements traps at launch
+xcodebuild test -scheme MyApp -destination "$HARNESS_IOS_DESTINATION"
 
 # Install and launch on this slot's device
 ./.har/agent-cli.sh ${AGENT_ID} install path/to/MyApp.app

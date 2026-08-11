@@ -30,7 +30,9 @@ pt_log() {
 append_env() {
   local key="$1"
   local value="$2"
-  printf '%s=%s\n' "$key" "$value" >> "$HAR_ENV_FILE"
+  # %q, not a raw value: an unquoted value with spaces (a PATH entry under
+  # Application Support, a repo path) breaks `source .env.agent.<id>`.
+  printf '%s=%q\n' "$key" "$value" >> "$HAR_ENV_FILE"
 }
 
 append_path_prefix() {
