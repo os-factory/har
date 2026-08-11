@@ -1,4 +1,9 @@
 node_modules/
+# package-lock.json is this repo's committed lockfile; harness provisioning may
+# install with bun on machines without npm, so keep its artifacts out of git.
+bun.lock
+bun.lockb
+.bun-cache/
 dist/
 .astro/
 *.tsbuildinfo
