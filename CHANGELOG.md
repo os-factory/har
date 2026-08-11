@@ -1,3 +1,11 @@
+## [0.49.1](https://github.com/os-factory/har/compare/v0.49.0...v0.49.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **harness:** quote agent env values in the dogfooded harnesses ([#179](https://github.com/os-factory/har/issues/179)) ([30abefd](https://github.com/os-factory/har/commit/30abefdf2fb11fea7a1da601354ca71652329d84))
+* **ios:** keep code signing on the verify test step ([#178](https://github.com/os-factory/har/issues/178)) ([8177284](https://github.com/os-factory/har/commit/81772840ac5615b9015d360d17481dde887a7dad))
+
 # [0.49.0](https://github.com/os-factory/har/compare/v0.48.0...v0.49.0) (2026-08-10)
 
 
