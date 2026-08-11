@@ -64,6 +64,26 @@ har env add-plugin rocketsim
 This installs a `rocketsim-flows` runner, authoring guidance, and an example iOS
 flow. RocketSim itself and a booted simulator are external requirements.
 
+## Kerno
+
+```bash
+har env add-plugin kerno
+```
+
+This adds a `backend-validation` test stage that re-runs your committed
+[Kerno](https://kerno.io) scenario suite (`.kerno/scenarios/`) against the app
+running in a slot, deterministically and with no LLM in the loop. It uses the slot's
+own database for greybox checks and reports a pass/fail with a full evidence trail.
+
+Prerequisites: the Kerno CLI (`npm install -g @kerno/cli`), Docker, a Kerno agent
+bound to the slot's worktree (`kerno init`), and a committed suite (validate re-runs
+an existing suite, it does not generate one).
+
+Kerno runs one agent per machine, so this stage never starts or rebinds the agent and
+serializes across slots with a fail-fast lock. Backend validation runs one slot at a
+time while frontend stages still run concurrently. See `.har/stages/KERNO.md` for the
+full setup and adaptation guide.
+
 ## Custom stages (not plugins)
 
 Project-specific checks (`npm test`, domain scripts) are **custom stages**, not

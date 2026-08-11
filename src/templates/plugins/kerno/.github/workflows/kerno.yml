@@ -1,0 +1,43 @@
+# Kerno backend validation (CI template).
+#
+# This is a starting scaffold, not a drop-in. The backend-validation stage needs three
+# things that are repo-specific, so wire them up before enabling this workflow:
+#   1. Docker available on the runner (Kerno runs scenarios in a sandbox container).
+#   2. Your app running and reachable at the SUT URL, with its database migrated/seeded.
+#   3. A Kerno agent bound to this checkout (`kerno init`) with a committed suite in .kerno/.
+#
+# The stage sources the HAR slot machinery (.har/harness.env, agent-slot.sh, .env.agent.<id>),
+# so the supported path is to run it inside a launched HAR slot. Adapt the "start app" and
+# "kerno init" steps for your stack. Remove `if: false` once wired up.
+name: Kerno backend validation
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend-validation:
+    if: false # ← remove after wiring up app startup + `kerno init` below
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        run: npm ci
+      - name: Install Kerno CLI
+        run: npm install -g @kerno/cli
+      # - name: Start the app (adapt for your stack) and migrate/seed its database
+      #   run: ./.har/launch.sh 1 && <start your app in the slot>
+      # - name: Bind a Kerno agent to this checkout
+      #   run: kerno init
+      # - name: Run backend validation
+      #   run: ./.har/stages/backend-validation.sh 1
+      - name: Upload Kerno artifacts
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-validation
+          path: .har/artifacts/backend-validation
