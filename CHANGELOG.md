@@ -1,3 +1,10 @@
+## [0.49.2](https://github.com/os-factory/har/compare/v0.49.1...v0.49.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* **telemetry:** quote generated env values so spaced repo paths stay source-safe ([#177](https://github.com/os-factory/har/issues/177)) ([631687b](https://github.com/os-factory/har/commit/631687b137ea293fbcf6cd0782a3baf17f08fe9d))
+
 ## [0.49.1](https://github.com/os-factory/har/compare/v0.49.0...v0.49.1) (2026-08-11)
 
 
