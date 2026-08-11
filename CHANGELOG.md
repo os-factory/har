@@ -1,3 +1,10 @@
+# [0.50.0](https://github.com/os-factory/har/compare/v0.49.2...v0.50.0) (2026-08-11)
+
+
+### Features
+
+* **harness:** support bun, pnpm, and yarn for node provisioning ([#174](https://github.com/os-factory/har/issues/174)) ([787f87d](https://github.com/os-factory/har/commit/787f87de9df1d5bdddcc758b0eded6306c126219))
+
 ## [0.49.2](https://github.com/os-factory/har/compare/v0.49.1...v0.49.2) (2026-08-11)
 
 

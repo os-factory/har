@@ -1,6 +1,6 @@
 {
   "name": "@har/control",
-  "version": "0.49.2",
+  "version": "0.50.0",
   "private": true,
   "scripts": {
     "postinstall": "npm install --prefix ../packages/schemas --omit=dev --silent",
