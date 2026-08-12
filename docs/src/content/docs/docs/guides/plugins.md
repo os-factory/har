@@ -109,6 +109,32 @@ workflow is what produces org-level scanning evidence that compliance platforms
 (Vanta, Drata, …) ingest via GitHub. See `.har/stages/GITLEAKS.md` after install
 for allowlist and baseline tuning.
 
+## Trivy
+
+```bash
+har env add-plugin trivy
+```
+
+This adds:
+
+- a `vuln-scan` test stage — [Trivy](https://trivy.dev) scans the agent's
+  worktree for known CVEs in dependency lockfiles and misconfigurations in
+  Terraform, Dockerfiles, Kubernetes manifests, and other IaC (Trivy absorbed
+  tfsec, so Terraform checks are included);
+- a `.trivyignore` scaffold for documented suppressions;
+- a CI workflow that uploads SARIF to GitHub code scanning unless `--skip-ci`
+  is used.
+
+The `trivy` binary is an external requirement (`brew install trivy`); the stage
+fails fast with an install hint when missing. The fail threshold defaults to
+`HIGH,CRITICAL` — tune `HARNESS_TRIVY_SEVERITY` and `HARNESS_TRIVY_SCANNERS` in
+`.har/harness.env`, and see `.har/stages/TRIVY.md` for adaptations (container
+images, monorepo scoping).
+
+The local stage is pre-merge shift-left; the CI workflow feeds GitHub code
+scanning, the org-level evidence layer that compliance platforms such as Vanta
+ingest. Keep both.
+
 ## Custom stages (not plugins)
 
 Project-specific checks (`npm test`, domain scripts) are **custom stages**, not
