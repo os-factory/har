@@ -1,3 +1,10 @@
+# [0.51.0](https://github.com/os-factory/har/compare/v0.50.1...v0.51.0) (2026-08-12)
+
+
+### Features
+
+* add Kerno plugin ([#183](https://github.com/os-factory/har/issues/183)) ([f41072e](https://github.com/os-factory/har/commit/f41072e009699cec76c77a07ce4dd67b318d779b))
+
 ## [0.50.1](https://github.com/os-factory/har/compare/v0.50.0...v0.50.1) (2026-08-12)
 
 
