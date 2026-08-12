@@ -1,3 +1,15 @@
+## [0.50.1](https://github.com/os-factory/har/compare/v0.50.0...v0.50.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **control:** keep the portal repo id until a wipe resend lands ([#182](https://github.com/os-factory/har/issues/182)) ([c219ede](https://github.com/os-factory/har/commit/c219edea152750fb176834ecf217899f4c6a4d68))
+
+
+### Features
+
+* **docs:** add Enterprise page, move demo video into hero lightbox ([#184](https://github.com/os-factory/har/issues/184)) ([adcf25e](https://github.com/os-factory/har/commit/adcf25ecdc1144e29e89149a843b208c6f78b57e))
+
 # [0.50.0](https://github.com/os-factory/har/compare/v0.49.2...v0.50.0) (2026-08-11)
 
 
