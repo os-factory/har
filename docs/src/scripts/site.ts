@@ -254,3 +254,32 @@ function initHeroTerminalTilt() {
 }
 
 initHeroTerminalTilt();
+
+function initVideoModal() {
+  const modal = document.querySelector<HTMLElement>('[data-video-modal]');
+  const slot = modal?.querySelector<HTMLElement>('[data-video-slot]');
+  if (!modal || !slot) return;
+
+  const src = 'https://www.youtube.com/embed/XKl4ZzWy7mQ?autoplay=1&rel=0';
+
+  const open = () => {
+    slot.innerHTML = `<iframe src="${src}" title="HAR introduction demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    window.posthog?.capture('demo_video_opened');
+  };
+
+  const close = () => {
+    modal.hidden = true;
+    slot.innerHTML = '';
+    document.body.style.overflow = '';
+  };
+
+  document.querySelectorAll('[data-video-open]').forEach((button) => button.addEventListener('click', open));
+  modal.querySelectorAll('[data-video-close]').forEach((button) => button.addEventListener('click', close));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
+initVideoModal();
