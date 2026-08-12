@@ -1,0 +1,9 @@
+# .trivyignore — suppress specific Trivy findings (one ID per line, no trailing
+# comments). Prefer fixing over ignoring. Document every entry with a comment
+# line above it saying why and when it can go.
+#
+# Example:
+# # dev-only dependency, fix tracked in TICKET-123
+# CVE-2021-23337
+# # S3 public access is intentional for the www bucket
+# AVD-AWS-0086
