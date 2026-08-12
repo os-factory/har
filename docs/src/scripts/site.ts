@@ -260,7 +260,8 @@ function initVideoModal() {
   const slot = modal?.querySelector<HTMLElement>('[data-video-slot]');
   if (!modal || !slot) return;
 
-  const src = 'https://www.youtube.com/embed/XKl4ZzWy7mQ?autoplay=1&rel=0';
+  const videoId = modal.dataset.videoId || 'XKl4ZzWy7mQ';
+  const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
 
   const open = () => {
     slot.innerHTML = `<iframe src="${src}" title="HAR introduction demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
