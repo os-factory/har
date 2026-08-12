@@ -27,6 +27,7 @@ describe('verify.sh portable timing', () => {
     'src/templates/har-boilerplate-ios/verify.sh',
     'src/templates/plugins/playwright/.har/stages/browser-e2e.sh',
     'src/templates/plugins/rocketsim/.har/stages/rocketsim-flows.sh',
+    'src/templates/plugins/kerno/.har/stages/backend-validation.sh',
     'control/.har/stages/browser-e2e.sh',
   ];
 
@@ -36,12 +37,13 @@ describe('verify.sh portable timing', () => {
     expect(verifyScript).not.toContain('date +%s%3N');
   });
 
-  it('rocketsim-flows.sh avoids mapfile (absent in macOS bash 3.2)', () => {
-    const script = fs.readFileSync(
-      path.join(__dirname, '..', 'src/templates/plugins/rocketsim/.har/stages/rocketsim-flows.sh'),
-      'utf8',
-    );
+  it.each([
+    'src/templates/plugins/rocketsim/.har/stages/rocketsim-flows.sh',
+    'src/templates/plugins/kerno/.har/stages/backend-validation.sh',
+  ])('%s avoids mapfile (absent in macOS bash 3.2)', (relPath) => {
+    const script = fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
     expect(script).not.toMatch(/^\s*mapfile/m);
+    expect(script).not.toMatch(/^\s*readarray/m);
   });
 });
 
@@ -52,6 +54,7 @@ describe('stage scripts set SCRIPT_DIR to .har/', () => {
   const stagePaths = [
     'src/templates/plugins/playwright/.har/stages/browser-e2e.sh',
     'src/templates/plugins/rocketsim/.har/stages/rocketsim-flows.sh',
+    'src/templates/plugins/kerno/.har/stages/backend-validation.sh',
     'src/templates/plugins/custom-stage-skeleton.sh',
     'control/.har/stages/browser-e2e.sh',
     'control/.har/stages/docker-build.sh',

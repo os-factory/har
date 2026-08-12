@@ -82,9 +82,39 @@ describe('plugins', () => {
     expect(verify?.description).not.toContain('browser-e2e');
   });
 
+  it('applies kerno plugin to a scaffolded harness', () => {
+    const repoPath = makeTempRepo('har-kerno');
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'default' });
+
+    const result = applyPlugin(repoPath, 'kerno');
+
+    expect(result.pluginId).toBe('kerno');
+    expect(result.stageId).toBe('backend-validation');
+    expect(result.docsPath).toBe('.har/stages/KERNO.md');
+    expect(result.nextSteps.length).toBeGreaterThan(0);
+
+    const stageScript = path.join(repoPath, '.har', 'stages', 'backend-validation.sh');
+    expect(fs.existsSync(stageScript)).toBe(true);
+    // Stage script is copied with the executable bit set.
+    expect((fs.statSync(stageScript).mode & 0o111) !== 0).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'KERNO.md'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, 'tests', 'kerno', 'README.md'))).toBe(true);
+
+    const registry = readStageRegistry(repoPath);
+    expect(registry.stages.find((s) => s.id === 'backend-validation')).toMatchObject({
+      id: 'backend-validation',
+      kind: 'test',
+      script: 'stages/backend-validation.sh',
+    });
+    expect(registry.verificationStages).toEqual(expect.arrayContaining(['backend-validation']));
+
+    const verify = registry.stages.find((s) => s.id === 'verify');
+    expect(verify?.description).toContain('backend-validation');
+  });
+
   it('every shipped plugin manifest passes schema validation', () => {
     const ids = listPluginIds();
-    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim']));
+    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim', 'kerno']));
 
     for (const id of ids) {
       const manifest = readPluginManifest(id);
