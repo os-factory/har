@@ -1,3 +1,10 @@
+# [0.52.0](https://github.com/os-factory/har/compare/v0.51.0...v0.52.0) (2026-08-12)
+
+
+### Features
+
+* add Gitleaks plugin ([#186](https://github.com/os-factory/har/issues/186)) ([c7c6800](https://github.com/os-factory/har/commit/c7c680004f3918273fb15990891ad605b2fa0b7f))
+
 # [0.51.0](https://github.com/os-factory/har/compare/v0.50.1...v0.51.0) (2026-08-12)
 
 
