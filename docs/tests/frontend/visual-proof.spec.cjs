@@ -43,6 +43,26 @@ test.describe('Visual proof screenshots', () => {
     expect(file).toBeTruthy();
   });
 
+  test('plugin marketplace full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.goto('/plugins/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toContainText('Verification stages your agents must pass');
+    await page.locator('.marketplace-grid').waitFor({ state: 'visible' });
+    await page.waitForTimeout(800);
+    const file = await capturePageScreenshot(page, testInfo, 'plugin-marketplace');
+    expect(file).toBeTruthy();
+  });
+
+  test('plugin detail page full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.goto('/plugins/semgrep/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toContainText('Semgrep');
+    await page.locator('.plugin-detail').waitFor({ state: 'visible' });
+    await page.waitForTimeout(800);
+    const file = await capturePageScreenshot(page, testInfo, 'plugin-detail-semgrep');
+    expect(file).toBeTruthy();
+  });
+
   test('enterprise page full-page shot', async ({ page }, testInfo) => {
     test.setTimeout(90_000);
     await page.goto('/enterprise/', { waitUntil: 'domcontentloaded' });

@@ -1,0 +1,101 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import { plugins } from '../../data/plugins';
+
+export function getStaticPaths() {
+  return plugins.map((plugin) => ({ params: { id: plugin.id }, props: { plugin } }));
+}
+
+const { plugin } = Astro.props;
+
+/** Escape HTML, then render `code` spans — plugin copy uses backticks for inline code. */
+function inlineCode(text: string): string {
+  const escaped = text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+---
+<BaseLayout
+  title={plugin.seoTitle}
+  description={plugin.seoDescription}
+  bodyClass="home-page"
+  canonicalPath={`/plugins/${plugin.id}/`}
+>
+  <Header active="plugins" />
+  <main>
+<section class="hero blueprint-surface">
+<div class="container">
+<div class="hero-copy reveal plugin-hero">
+<a class="plugin-back" href="/plugins/">← All plugins</a>
+<div class="plugin-title">
+<img class:list={['plugin-title-logo', { 'logo-invert-dark': plugin.invertOnDark }]} src={plugin.logo} alt="" width="44" height="44" />
+<div>
+<h1>{plugin.name}</h1>
+<span class="plugin-card-category">{plugin.category} · {plugin.stacks} · stage: <code>{plugin.stageId}</code></span>
+</div>
+</div>
+<p class="hero-lede">{plugin.tagline}</p>
+<div class="hero-install">
+<code class="install-cmd">har env add-plugin {plugin.id}</code>
+</div>
+</div>
+</div>
+</section>
+<section class="section">
+<div class="container plugin-detail reveal">
+<div class="plugin-story">
+{plugin.intro.map((para) => <p set:html={inlineCode(para)} />)}
+</div>
+<h2>What it installs</h2>
+<ul>
+{plugin.installs.map((item) => <li set:html={inlineCode(item)} />)}
+</ul>
+<h2>Requirements</h2>
+<ul>
+{plugin.requirements.map((item) => <li set:html={inlineCode(item)} />)}
+</ul>
+<h2>Artifacts &amp; evidence</h2>
+<p set:html={inlineCode(plugin.artifacts)} />
+<h2>Adapting it to your repo</h2>
+<ul>
+{plugin.adaptation.map((item) => <li set:html={inlineCode(item)} />)}
+</ul>
+{plugin.compliance && (
+<>
+<h2>CI &amp; compliance</h2>
+{plugin.compliance.map((para) => <p set:html={inlineCode(para)} />)}
+</>
+)}
+<div class="plugin-links">
+{plugin.links.map((link) => (
+<a href={link.href}>{link.label} <span aria-hidden="true">→</span></a>
+))}
+</div>
+</div>
+</section>
+  <Footer />
+  </main>
+</BaseLayout>
+
+<style>
+  .plugin-hero { max-width: 760px; }
+  .plugin-back { display: inline-block; margin-bottom: 18px; font-size: 13.5px; color: var(--muted); text-decoration: none; }
+  .plugin-back:hover { color: var(--accent); }
+  .plugin-title { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+  .plugin-title-logo { width: 44px; height: 44px; object-fit: contain; flex: none; }
+  .plugin-title h1 { margin: 0 0 4px; }
+  .plugin-card-category { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--muted); }
+  .install-cmd { display: inline-flex; align-items: center; padding: 11px 18px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface-raised); font-family: var(--mono); font-size: 14px; color: var(--text); }
+  .plugin-detail { max-width: 760px; }
+  .plugin-detail h2 { margin: 34px 0 12px; font-size: 21px; }
+  .plugin-detail p, .plugin-detail li { font-size: 15.5px; line-height: 1.65; color: var(--muted); }
+  .plugin-detail ul { padding-left: 20px; display: grid; gap: 8px; }
+  .plugin-story p { margin: 0 0 14px; }
+  .plugin-story p:first-child { font-size: 17px; color: var(--text); }
+  .plugin-links { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--theme-border); }
+  .plugin-links a { font-size: 14px; color: var(--accent); text-decoration: none; }
+</style>
