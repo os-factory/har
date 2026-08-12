@@ -30,6 +30,7 @@ describe('verify.sh portable timing', () => {
     'src/templates/plugins/kerno/.har/stages/backend-validation.sh',
     'src/templates/plugins/gitleaks/.har/stages/secrets-scan.sh',
     'src/templates/plugins/trivy/.har/stages/vuln-scan.sh',
+    'src/templates/plugins/semgrep/.har/stages/sast.sh',
     'control/.har/stages/browser-e2e.sh',
   ];
 
@@ -59,6 +60,7 @@ describe('stage scripts set SCRIPT_DIR to .har/', () => {
     'src/templates/plugins/kerno/.har/stages/backend-validation.sh',
     'src/templates/plugins/gitleaks/.har/stages/secrets-scan.sh',
     'src/templates/plugins/trivy/.har/stages/vuln-scan.sh',
+    'src/templates/plugins/semgrep/.har/stages/sast.sh',
     'src/templates/plugins/custom-stage-skeleton.sh',
     'control/.har/stages/browser-e2e.sh',
     'control/.har/stages/docker-build.sh',

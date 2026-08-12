@@ -89,9 +89,9 @@ verification. IDs without a registered stage remain inline steps owned by
 
 ## Install plugins
 
-Framework integrations (Playwright, RocketSim, Kerno, Gitleaks, Trivy, …) ship as **plugins**.
-They install files and register stages — agents still only talk to the stage
-registry.
+Framework integrations (Playwright, RocketSim, Kerno, Gitleaks, Trivy, Semgrep, …)
+ship as **plugins**. They install files and register stages — agents still only
+talk to the stage registry.
 
 ```bash
 har env add-plugin --list
@@ -100,6 +100,7 @@ har env add-plugin rocketsim
 har env add-plugin kerno
 har env add-plugin gitleaks
 har env add-plugin trivy
+har env add-plugin semgrep
 ```
 
 See [Plugins](/docs/guides/plugins/) for details.
