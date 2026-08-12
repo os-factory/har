@@ -1,3 +1,10 @@
+# [0.53.0](https://github.com/os-factory/har/compare/v0.52.0...v0.53.0) (2026-08-12)
+
+
+### Features
+
+* add Trivy plugin ([#187](https://github.com/os-factory/har/issues/187)) ([931b7ea](https://github.com/os-factory/har/commit/931b7ea2ba103201fb89dd8182803e769df5174b))
+
 # [0.52.0](https://github.com/os-factory/har/compare/v0.51.0...v0.52.0) (2026-08-12)
 
 
