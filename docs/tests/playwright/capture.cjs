@@ -18,6 +18,20 @@ function screenshotDir() {
 }
 
 /**
+ * Scroll-reveal sections start hidden until IntersectionObserver fires.
+ * Full-page screenshots taken from the top would otherwise capture empty gaps.
+ */
+async function preparePageForScreenshot(page) {
+  await page.evaluate(() => {
+    document.querySelectorAll('.reveal').forEach((element) => {
+      element.classList.add('is-visible');
+    });
+  });
+  // Match .reveal transition duration in global.css.
+  await page.waitForTimeout(750);
+}
+
+/**
  * Save a full-page screenshot and attach it to the Playwright report.
  * @param {import('@playwright/test').Page} page
  * @param {import('@playwright/test').TestInfo} testInfo
@@ -27,8 +41,7 @@ async function capturePageScreenshot(page, testInfo, name) {
   const dir = screenshotDir();
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `${name}.png`);
-  // Prefer a tall viewport shot over fragile fullPage on media-heavy landing pages.
-  // Agents can still prove UI changes; attach both viewport and (best-effort) full page.
+  await preparePageForScreenshot(page);
   await page.screenshot({ path: filePath, fullPage: true, timeout: 60_000 });
   await testInfo.attach(`${process.env.PW_SCREENSHOT_PHASE || 'after'}-${name}`, {
     path: filePath,
@@ -37,4 +50,4 @@ async function capturePageScreenshot(page, testInfo, name) {
   return filePath;
 }
 
-module.exports = { screenshotDir, capturePageScreenshot };
+module.exports = { screenshotDir, preparePageForScreenshot, capturePageScreenshot };
