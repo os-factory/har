@@ -135,6 +135,27 @@ The local stage is pre-merge shift-left; the CI workflow feeds GitHub code
 scanning, the org-level evidence layer that compliance platforms such as Vanta
 ingest. Keep both.
 
+## Semgrep
+
+```bash
+har env add-plugin semgrep
+```
+
+This adds:
+
+- a `sast` test stage that scans the session worktree with Semgrep;
+- an adaptation guide (`.har/stages/SEMGREP.md`) covering rulesets and noise tuning;
+- a CI workflow running the official `semgrep ci` recipe unless `--skip-ci` is used.
+
+The `semgrep` CLI itself is an external requirement (`pipx install semgrep`).
+Reports (JSON + SARIF) land under `.har/artifacts/sast/`. Pin rulesets with
+`HARNESS_SEMGREP_CONFIG` in `.har/harness.env` (default `auto`).
+
+The local stage is the shift-left layer — findings block agents before merge.
+For compliance evidence (e.g. Vanta's native Semgrep integration), set the
+`SEMGREP_APP_TOKEN` secret so the CI workflow publishes to the Semgrep AppSec
+Platform. Local runs are invisible to compliance platforms by design.
+
 ## Custom stages (not plugins)
 
 Project-specific checks (`npm test`, domain scripts) are **custom stages**, not

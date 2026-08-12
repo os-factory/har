@@ -171,9 +171,38 @@ describe('plugins', () => {
     expect(verify?.description).toContain('vuln-scan');
   });
 
+  it('applies semgrep plugin to a scaffolded harness', () => {
+    const repoPath = makeTempRepo('har-semgrep');
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+
+    const result = applyPlugin(repoPath, 'semgrep', { skipCi: true });
+
+    expect(result.pluginId).toBe('semgrep');
+    expect(result.stageId).toBe('sast');
+    expect(result.docsPath).toBe('.har/stages/SEMGREP.md');
+    expect(result.nextSteps.length).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'sast.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'SEMGREP.md'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.github', 'workflows', 'semgrep.yml'))).toBe(false);
+
+    const stat = fs.statSync(path.join(repoPath, '.har', 'stages', 'sast.sh'));
+    expect(stat.mode & 0o111).not.toBe(0);
+
+    const registry = readStageRegistry(repoPath);
+    expect(registry.stages.find((s) => s.id === 'sast')).toMatchObject({
+      id: 'sast',
+      kind: 'test',
+      script: 'stages/sast.sh',
+    });
+    expect(registry.verificationStages).toEqual(expect.arrayContaining(['sast']));
+
+    const verify = registry.stages.find((s) => s.id === 'verify');
+    expect(verify?.description).toContain('sast');
+  });
+
   it('every shipped plugin manifest passes schema validation', () => {
     const ids = listPluginIds();
-    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim', 'kerno', 'gitleaks', 'trivy']));
+    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim', 'kerno', 'gitleaks', 'trivy', 'semgrep']));
 
     for (const id of ids) {
       const manifest = readPluginManifest(id);

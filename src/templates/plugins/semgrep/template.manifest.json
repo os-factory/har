@@ -1,0 +1,44 @@
+{
+  "id": "semgrep",
+  "stageId": "sast",
+  "verificationStages": [
+    "typecheck",
+    "unit-tests",
+    "lint",
+    "sast"
+  ],
+  "stage": {
+    "id": "sast",
+    "kind": "test",
+    "description": "Static analysis (SAST) with Semgrep — scans the session worktree for security findings",
+    "script": "stages/sast.sh",
+    "requiresAgentId": true,
+    "artifacts": [
+      {
+        "path": ".har/artifacts/sast",
+        "kind": "directory",
+        "description": "Semgrep JSON + SARIF reports and scan log"
+      },
+      {
+        "path": ".har/artifacts/sast/semgrep.json",
+        "kind": "report"
+      }
+    ]
+  },
+  "files": [
+    { "src": ".har/stages/sast.sh", "dest": ".har/stages/sast.sh", "executable": true },
+    { "src": ".har/stages/SEMGREP.md", "dest": ".har/stages/SEMGREP.md" }
+  ],
+  "optionalFiles": [
+    { "src": ".github/workflows/semgrep.yml", "dest": ".github/workflows/semgrep.yml", "skipFlag": "skipCi" }
+  ],
+  "nextSteps": [
+    "pipx install semgrep   # or: pip install semgrep / brew install semgrep",
+    "./.har/launch.sh 1",
+    "./.har/stages/sast.sh 1",
+    "Open .har/artifacts/sast/ for the JSON and SARIF reports",
+    "Read .har/stages/SEMGREP.md to pin rulesets (HARNESS_SEMGREP_CONFIG) or add local rules",
+    "CI: set the SEMGREP_APP_TOKEN secret so semgrep ci reports to the Semgrep AppSec Platform (compliance evidence, e.g. Vanta)"
+  ],
+  "docsPath": ".har/stages/SEMGREP.md"
+}

@@ -1,0 +1,39 @@
+# Semgrep SAST — official recipe (https://semgrep.dev/docs/semgrep-ci/sample-ci-configs)
+#
+# With a SEMGREP_APP_TOKEN secret (Semgrep AppSec Platform → Settings), `semgrep ci`
+# publishes findings to the AppSec Platform — the org-level evidence layer that
+# compliance tools like Vanta ingest natively:
+# https://help.vanta.com/en/articles/15705377-connecting-vanta-semgrep
+# Without the token, this falls back to a Community Edition scan that still blocks
+# the PR on findings but publishes nothing.
+name: Semgrep
+
+on:
+  pull_request: {}
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch: {}
+  schedule:
+    # Daily scan so new registry rules surface without a code change
+    - cron: '17 5 * * *'
+
+jobs:
+  semgrep:
+    name: semgrep/ci
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      # Pinned to a SHA so semgrep's own mutable-action-tag rule stays quiet
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run Semgrep
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: |
+          if [ -n "$SEMGREP_APP_TOKEN" ]; then
+            semgrep ci
+          else
+            echo "SEMGREP_APP_TOKEN not set — running Community Edition scan (no platform/Vanta reporting)"
+            semgrep scan --config auto --error
+          fi
