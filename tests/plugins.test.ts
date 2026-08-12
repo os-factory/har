@@ -112,9 +112,39 @@ describe('plugins', () => {
     expect(verify?.description).toContain('backend-validation');
   });
 
+  it('applies gitleaks plugin to a scaffolded harness', () => {
+    const repoPath = makeTempRepo('har-gitleaks');
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+
+    const result = applyPlugin(repoPath, 'gitleaks', { skipCi: true });
+
+    expect(result.pluginId).toBe('gitleaks');
+    expect(result.stageId).toBe('secrets-scan');
+    expect(result.docsPath).toBe('.har/stages/GITLEAKS.md');
+    expect(result.nextSteps.length).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'secrets-scan.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'GITLEAKS.md'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.gitleaks.toml'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.github', 'workflows', 'gitleaks.yml'))).toBe(false);
+
+    const stat = fs.statSync(path.join(repoPath, '.har', 'stages', 'secrets-scan.sh'));
+    expect(stat.mode & 0o111).not.toBe(0);
+
+    const registry = readStageRegistry(repoPath);
+    expect(registry.stages.find((s) => s.id === 'secrets-scan')).toMatchObject({
+      id: 'secrets-scan',
+      kind: 'test',
+      script: 'stages/secrets-scan.sh',
+    });
+    expect(registry.verificationStages).toEqual(expect.arrayContaining(['secrets-scan']));
+
+    const verify = registry.stages.find((s) => s.id === 'verify');
+    expect(verify?.description).toContain('secrets-scan');
+  });
+
   it('every shipped plugin manifest passes schema validation', () => {
     const ids = listPluginIds();
-    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim', 'kerno']));
+    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim', 'kerno', 'gitleaks']));
 
     for (const id of ids) {
       const manifest = readPluginManifest(id);

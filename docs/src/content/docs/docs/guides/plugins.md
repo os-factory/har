@@ -83,6 +83,31 @@ Kerno runs one agent per machine, so this stage never starts or rebinds the agen
 serializes across slots with a fail-fast lock. Backend validation runs one slot at a
 time while frontend stages still run concurrently. See `.har/stages/KERNO.md` for the
 full setup and adaptation guide.
+## Gitleaks
+
+```bash
+har env add-plugin gitleaks
+```
+
+This adds:
+
+- a `secrets-scan` test stage that runs [Gitleaks](https://github.com/gitleaks/gitleaks)
+  against the agent work dir (uncommitted changes included) and fails on findings;
+- a root `.gitleaks.toml` extending the default ruleset with harness allowlists
+  (skipped if the repo already has one);
+- a CI workflow using the official `gitleaks/gitleaks-action` unless `--skip-ci`
+  is used.
+
+The `gitleaks` binary is an external requirement (`brew install gitleaks` or a
+[release binary](https://github.com/gitleaks/gitleaks/releases)) — the stage
+fails fast with an install hint when it is missing. Reports land in
+`.har/artifacts/secrets-scan/` with secret values redacted. Pass `git` as the
+second stage argument to scan full history instead of the working tree.
+
+The local stage keeps secrets from ever reaching your default branch; the CI
+workflow is what produces org-level scanning evidence that compliance platforms
+(Vanta, Drata, …) ingest via GitHub. See `.har/stages/GITLEAKS.md` after install
+for allowlist and baseline tuning.
 
 ## Custom stages (not plugins)
 

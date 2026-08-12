@@ -7,7 +7,7 @@ import { harnessExists } from './parser';
 import { HarnessStageRegistry, HarnessStageSchema } from './schema';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
-export const PLUGIN_IDS = ['playwright', 'rocketsim', 'kerno'] as const;
+export const PLUGIN_IDS = ['playwright', 'rocketsim', 'kerno', 'gitleaks'] as const;
 export type PluginId = (typeof PLUGIN_IDS)[number];
 
 /** @deprecated Use PLUGIN_IDS */

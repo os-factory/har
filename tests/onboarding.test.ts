@@ -40,6 +40,7 @@ describe('onboarding guide', () => {
     expect(ids).toContain('playwright');
     expect(ids).toContain('rocketsim');
     expect(ids).toContain('kerno');
+    expect(ids).toContain('gitleaks');
     expect(choices.every((c) => c.label.includes(c.id))).toBe(true);
   });
 });
