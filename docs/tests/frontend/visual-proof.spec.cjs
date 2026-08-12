@@ -42,4 +42,16 @@ test.describe('Visual proof screenshots', () => {
     const file = await capturePageScreenshot(page, testInfo, 'docs-introduction');
     expect(file).toBeTruthy();
   });
+
+  test('enterprise page full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.goto('/enterprise/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toContainText(
+      'Bring visibility, control, and governance to every agent across your org.',
+    );
+    await page.locator('.hero').waitFor({ state: 'visible' });
+    await page.waitForTimeout(800);
+    const file = await capturePageScreenshot(page, testInfo, 'enterprise');
+    expect(file).toBeTruthy();
+  });
 });

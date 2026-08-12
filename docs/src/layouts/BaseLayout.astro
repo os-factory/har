@@ -3,6 +3,7 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import '../styles/global.css';
 import PostHog from '../components/posthog.astro';
+import DashboardImageModal from '../components/DashboardImageModal.astro';
 
 interface Props {
   title: string;
@@ -42,6 +43,7 @@ const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
   </head>
   <body class={bodyClass}>
     <slot />
+    <DashboardImageModal />
     <script>
       import '../scripts/site';
     </script>
