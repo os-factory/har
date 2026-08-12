@@ -639,7 +639,9 @@ async function syncRepoWithPortal(
   const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
 
   let repoId: string | undefined;
-  await syncRunBatches(newRuns, repoPath, runsTarget, () => repoId, dryRun, async (batch, i) => {
+  // Stamping a changed id here would hide the wipe if the resend below fails.
+  const deltaRepoId = () => stored?.repoId ?? repoId;
+  await syncRunBatches(newRuns, repoPath, runsTarget, deltaRepoId, dryRun, async (batch, i) => {
     const body = i === 0 ? { ...syncBody, runs: batch } : { path: repoPath, runs: batch };
     const res = await postPortal(portal, '/api/sync', body, dryRun);
     if (i === 0 && typeof res?.repositoryId === 'string') repoId = res.repositoryId;
