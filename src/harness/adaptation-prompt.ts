@@ -16,7 +16,7 @@ export const ADAPTATION_PROMPT_FILE = 'ADAPT-PROMPT.md';
 
 const PROFILE_HINTS: Record<HarnessProfile, string> = {
   default:
-    'Web app profile (SaaS/full-stack) — Docker Compose for shared infra (HARNESS_INFRA_SERVICES), PM2 for the primary application only, git worktree per agent slot by default. Launch provisions toolchain via harness.env (HARNESS_ECOSYSTEM, HARNESS_INSTALL_CMD) and writes paths to .env.agent.<id>. Identify the primary app agents modify; run supporting services shared. Install the Kerno plugin (har env add-plugin kerno) for deterministic backend/API validation against the running slot.',
+    'Web app profile (SaaS/full-stack) — Docker Compose for shared infra (HARNESS_INFRA_SERVICES), PM2 for the primary application only, git worktree per agent slot by default. Launch provisions toolchain via harness.env (HARNESS_ECOSYSTEM, HARNESS_INSTALL_CMD) and writes paths to .env.agent.<id>. Identify the primary app agents modify; run supporting services shared.',
   cli:
     'CLI/library profile (typical SWE-bench) — no PM2. Optional Docker Compose via HARNESS_INFRA_SERVICES. Git worktree by default. Launch provisions toolchain declaratively (HARNESS_ECOSYSTEM auto-detects common ecosystems); verify must use resolved tool paths from .env.agent.<id>, never hardcoded interpreter or package-manager paths.',
   ios:
