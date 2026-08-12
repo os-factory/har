@@ -1,3 +1,10 @@
+# [0.54.0](https://github.com/os-factory/har/compare/v0.53.0...v0.54.0) (2026-08-12)
+
+
+### Features
+
+* add Semgrep plugin ([#188](https://github.com/os-factory/har/issues/188)) ([3c146ca](https://github.com/os-factory/har/commit/3c146ca825d13ad32221551cbfbed61236809b5c))
+
 # [0.53.0](https://github.com/os-factory/har/compare/v0.52.0...v0.53.0) (2026-08-12)
 
 
