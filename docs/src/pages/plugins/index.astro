@@ -1,0 +1,89 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import { plugins } from '../../data/plugins';
+---
+<BaseLayout
+  title="HAR plugin marketplace — verification stages for coding agents"
+  description="Browse HAR's verification plugins: Playwright browser e2e, RocketSim iOS flows, Kerno backend validation, Gitleaks secrets scanning, Trivy dependency and IaC scanning, and Semgrep SAST. One command installs a stage every agent run must pass."
+  bodyClass="home-page"
+  canonicalPath="/plugins/"
+>
+  <Header active="plugins" />
+  <main>
+<section class="hero blueprint-surface">
+<div class="container">
+<div class="hero-copy reveal marketplace-hero">
+<div class="eyebrow"><span class="eyebrow-dot"></span> Plugin marketplace</div>
+<h1>Verification stages your agents must pass.</h1>
+<p class="hero-lede">A plugin is one command: it registers a stage in your harness, ships working scaffolding, and becomes part of every agent's definition of done. Framework checks, security scans, backend validation — same registry, same evidence trail.</p>
+<div class="hero-install">
+<code class="install-cmd">har env add-plugin &lt;id&gt;</code>
+<a class="button button-secondary" href="/docs/guides/plugins/">Plugin docs <span aria-hidden="true">→</span></a>
+</div>
+</div>
+</div>
+</section>
+  <div class="page-frame">
+<section class="section" id="marketplace">
+<div class="container">
+<div class="marketplace-grid reveal">
+{plugins.map((p) => (
+<a class="plugin-card" href={`/plugins/${p.id}/`}>
+<div class="plugin-card-head">
+<img class:list={['plugin-card-logo', { 'logo-invert-dark': p.invertOnDark }]} src={p.logo} alt="" width="34" height="34" loading="lazy" />
+<div>
+<h2>{p.name}</h2>
+<span class="plugin-card-category">{p.category} · {p.stacks}</span>
+</div>
+</div>
+<p>{p.tagline}</p>
+<div class="plugin-card-foot">
+<code>add-plugin {p.id}</code>
+<span class="plugin-card-stage">stage: {p.stageId}</span>
+</div>
+</a>
+))}
+<div class="plugin-card plugin-card-custom">
+<div class="plugin-card-head">
+<svg class="plugin-card-logo plugin-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+<div>
+<h2>Your own stages</h2>
+<span class="plugin-card-category">Custom · Any stack</span>
+</div>
+</div>
+<p>Project-specific checks don't need a plugin — register them as custom stages with one command, or package your own plugin.</p>
+<div class="plugin-card-foot">
+<code>add-stage &lt;id&gt; --custom</code>
+<a href="/docs/guides/stages/">Stages guide <span aria-hidden="true">→</span></a>
+</div>
+</div>
+</div>
+<p class="marketplace-note reveal">Plugins compile down to generic stage kinds — agents only ever talk to the stage registry, never to stack-specific tooling. <a href="/docs/guides/plugins/">How plugins relate to stages and profiles →</a></p>
+</div>
+</section>
+  <Footer />
+  </div>
+  </main>
+</BaseLayout>
+
+<style>
+  .marketplace-hero { max-width: 760px; }
+  .install-cmd { display: inline-flex; align-items: center; padding: 11px 18px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface-raised); font-family: var(--mono); font-size: 14px; color: var(--text); }
+  .marketplace-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+  .plugin-card { display: flex; flex-direction: column; gap: 12px; padding: 22px; border: 1px solid var(--theme-border); border-radius: 10px; background: var(--theme-surface-raised); color: var(--text); text-decoration: none; transition: border-color .15s ease, transform .15s ease; }
+  a.plugin-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .plugin-card-head { display: flex; align-items: center; gap: 13px; }
+  .plugin-card-logo { width: 34px; height: 34px; object-fit: contain; flex: none; }
+  .plugin-card-icon { color: var(--accent); }
+  .plugin-card h2 { margin: 0; font-size: 18px; }
+  .plugin-card-category { font-family: var(--mono); font-size: 11.5px; letter-spacing: .03em; color: var(--muted); }
+  .plugin-card p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--muted); flex: 1; }
+  .plugin-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .plugin-card-foot code { font-family: var(--mono); font-size: 12.5px; color: var(--text); background: none; padding: 0; }
+  .plugin-card-stage { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .plugin-card-foot a { font-size: 13px; color: var(--accent); text-decoration: none; }
+  .marketplace-note { margin-top: 26px; font-size: 14px; color: var(--muted); }
+  .marketplace-note a { color: var(--accent); text-decoration: none; }
+</style>

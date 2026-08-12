@@ -492,3 +492,6 @@ body { transition: background-color .25s ease, color .25s ease; }
 :root[data-theme="dark"] .footer-sponsor .sponsor-link .sponsor-logo--light { display: none; }
 :root[data-theme="dark"] .footer-sponsor .sponsor-link .sponsor-logo--dark { display: block; }
 
+
+/* Dark-stroke logos (e.g. Gitleaks) need inverting on the dark theme. */
+:root[data-theme="dark"] .logo-invert-dark { filter: invert(1); }
