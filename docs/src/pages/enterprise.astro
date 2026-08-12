@@ -28,7 +28,7 @@ import Footer from '../components/Footer.astro';
 <span>har.dev.kerno.io / mission-control</span>
 <b>HAR</b>
 </div>
-<img alt="HAR Global view dashboard" src="/assets/enterprise-hero.png" />
+<img alt="HAR Global view dashboard" src="/assets/enterprise-hero.png" data-dashboard-zoom />
 <div class="dashboard-overlay dashboard-overlay-one"><span>Harness adoption</span><strong>89%</strong><small>across the org</small></div>
 <div class="dashboard-overlay dashboard-overlay-alert"><span><i></i> Spend alert</span><strong>$2,095</strong><small>over your $2,000 weekly budget</small></div>
 <div class="hero-gatebar">
@@ -194,6 +194,7 @@ import Footer from '../components/Footer.astro';
   .dashboard-overlay span, .dashboard-overlay small { font-size: 11px; }
   .dashboard-overlay strong { font-size: 23px; margin: 9px 0; }
   .dashboard-overlay-two strong i { width: 9px; height: 9px; }
+  .dashboard-overlay-one { left: -12px; top: auto; bottom: 48px; }
   .dashboard-overlay-alert { right: -30px; top: 66px; }
   .dashboard-overlay-alert span { display: flex; align-items: center; gap: 7px; color: #b9822a; }
   .dashboard-overlay-alert span i { width: 8px; height: 8px; border-radius: 50%; background: #d9a441; box-shadow: 0 0 0 4px rgba(217,164,65,.18); }
