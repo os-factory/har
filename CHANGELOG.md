@@ -1,3 +1,11 @@
+## [0.54.1](https://github.com/os-factory/har/compare/v0.54.0...v0.54.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **harness:** tell Mission Control when a slot changes ([#200](https://github.com/os-factory/har/issues/200)) ([63155b1](https://github.com/os-factory/har/commit/63155b11ba548239f05fcc683c7fc1b55439ab30))
+* **ios:** distinguish an unusable simctl from a missing iOS runtime ([#201](https://github.com/os-factory/har/issues/201)) ([bd47263](https://github.com/os-factory/har/commit/bd472630500f02dd07d6a9b48d211be91f56e2dd))
+
 # [0.54.0](https://github.com/os-factory/har/compare/v0.53.0...v0.54.0) (2026-08-12)
 
 
