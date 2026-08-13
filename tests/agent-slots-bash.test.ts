@@ -47,4 +47,41 @@ describe('bash agent slot limits', () => {
     expect(out).toContain('./.har/launch.sh 2');
     expect(out.indexOf('har env launch')).toBeLessThan(out.indexOf('./.har/launch.sh'));
   });
+
+  // A sync takes about twenty seconds. Waiting on it would make every slot change
+  // pay for the dashboard, which is what detaching the nudge exists to avoid.
+  it('a slot change returns without waiting on the control sync', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-notify-'));
+    const harDir = path.join(dir, '.har');
+    const binDir = path.join(dir, 'bin');
+    fs.mkdirSync(harDir, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(harDir, 'harness.env'), 'export HARNESS_PROJECT_NAME=demo\n');
+
+    // Stands in for a slow CLI, and leaves a trace so we know it was reached at all.
+    const witness = path.join(dir, 'witness');
+    fs.writeFileSync(
+      path.join(binDir, 'har'),
+      `#!/usr/bin/env bash\nsleep 5\necho ran >> "${witness}"\n`,
+    );
+    fs.chmodSync(path.join(binDir, 'har'), 0o755);
+
+    const script = [
+      `export PATH="${binDir}:$PATH"`,
+      `SCRIPT_DIR="${harDir}"`,
+      `source "${harDir}/harness.env"`,
+      `source "${AGENT_SLOT}"`,
+      'mkdir -p "$(dirname "$(slot_registry_file 2)")"',
+      'echo "{}" > "$(slot_registry_file 2)"',
+      'remove_slot_registry 2',
+    ].join('; ');
+
+    const started = Date.now();
+    execSync(`bash -c '${script}'`, { encoding: 'utf8' });
+    const elapsed = Date.now() - started;
+
+    expect(fs.existsSync(path.join(harDir, 'slots', 'agent-2.json'))).toBe(false);
+    expect(elapsed).toBeLessThan(3000);
+    expect(fs.existsSync(witness)).toBe(false); // still running, deliberately not awaited
+  });
 });
