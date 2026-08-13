@@ -1,0 +1,119 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import { plugins } from '../../data/plugins';
+import trivyMark from '../../assets/logo-trivy.svg?raw';
+
+export function getStaticPaths() {
+  return plugins.map((plugin) => ({ params: { id: plugin.id }, props: { plugin } }));
+}
+
+const { plugin } = Astro.props;
+
+/** Escape HTML, then render `code` spans — plugin copy uses backticks for inline code. */
+function inlineCode(text: string): string {
+  const escaped = text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+---
+<BaseLayout
+  title={plugin.seoTitle}
+  description={plugin.seoDescription}
+  bodyClass="home-page"
+  canonicalPath={`/plugins/${plugin.id}/`}
+>
+  <Header active="plugins" />
+  <main>
+<section class="hero blueprint-surface">
+<div class="container">
+<div class="hero-copy reveal plugin-hero">
+<a class="plugin-back" href="/plugins/">← All plugins</a>
+<div class="plugin-title">
+{plugin.id === 'trivy'
+  ? <span class="plugin-title-logo trivy-inline" set:html={trivyMark} />
+  : <img class:list={['plugin-title-logo', { 'logo-invert-dark': plugin.invertOnDark }]} src={plugin.logo} alt="" width="44" height="44" />}
+<h1>{plugin.name}</h1>
+</div>
+<span class="plugin-card-category">{plugin.category} · {plugin.stacks} · stage: <code>{plugin.stageId}</code></span>
+<p class="hero-lede">{plugin.tagline}</p>
+<div class="hero-install">
+<button aria-label="Copy install command" class="install-command" data-copy={`har env add-plugin ${plugin.id}`} type="button">
+<span class="terminal-prompt">$</span>
+<code>har env add-plugin {plugin.id}</code>
+<span class="copy-label" data-copy-label="">Copy</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+  <div class="page-frame">
+<section class="section">
+<div class="container">
+<div class="plugin-detail reveal">
+<div class="plugin-story">
+{plugin.intro.map((para) => <p set:html={inlineCode(para)} />)}
+</div>
+<h2>What it installs</h2>
+<ul>
+{plugin.installs.map((item) => <li set:html={inlineCode(item)} />)}
+</ul>
+<h2>Requirements</h2>
+<ul>
+{plugin.requirements.map((item) => <li set:html={inlineCode(item)} />)}
+</ul>
+<h2>Artifacts &amp; evidence</h2>
+<p set:html={inlineCode(plugin.artifacts)} />
+<h2>Adapting it to your repo</h2>
+<ul>
+{plugin.adaptation.map((item) => <li set:html={inlineCode(item)} />)}
+</ul>
+{plugin.compliance && (
+<>
+<h2>CI &amp; compliance</h2>
+{plugin.compliance.map((para) => <p set:html={inlineCode(para)} />)}
+</>
+)}
+<div class="plugin-links">
+{plugin.links.map((link) => (
+<a href={link.href}><span class="plugin-link-label">{link.label}</span><span class="plugin-link-arrow" aria-hidden="true">→</span></a>
+))}
+</div>
+</div>
+</div>
+</section>
+  <Footer />
+  </div>
+  </main>
+</BaseLayout>
+
+<style>
+  .plugin-hero { max-width: 760px; }
+  .plugin-back { display: inline-block; margin-bottom: 18px; font-size: 13.5px; color: var(--muted); text-decoration: none; }
+  .plugin-back:hover { color: var(--accent); }
+  .plugin-title { display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
+  .plugin-title-logo { width: 42px; height: 42px; object-fit: contain; flex: none; }
+  .trivy-inline { display: inline-flex; align-items: center; justify-content: center; color: var(--text); }
+  .trivy-inline :global(svg) { width: 100%; height: 100%; display: block; }
+  .plugin-title h1 { margin: 0; line-height: 1.05; }
+  .plugin-card-category { display: block; font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--muted); }
+  .plugin-card-category code { font-family: var(--mono); color: var(--accent); }
+  :root[data-theme="dark"] .plugin-card-category code { color: var(--accent-bright); }
+  .plugin-hero .hero-lede { margin: 20px 0 0; }
+  .plugin-detail { max-width: 760px; }
+  .plugin-detail :global(code) { font-family: var(--mono); font-size: .9em; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--muted) 15%, transparent); color: var(--text); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .plugin-detail h2 { margin: 34px 0 12px; font-size: 21px; }
+  .plugin-detail p, .plugin-detail li { font-size: 15.5px; line-height: 1.65; color: var(--muted); }
+  .plugin-detail ul { padding-left: 20px; display: grid; gap: 8px; }
+  .plugin-story p { margin: 0 0 14px; }
+  .plugin-story p:first-child { font-size: 17px; color: var(--text); }
+  .plugin-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1px; margin-top: 44px; background: var(--theme-border-soft); border: 1px solid var(--theme-border-soft); border-radius: 5px; overflow: hidden; }
+  .plugin-links a { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 22px 24px; background: var(--paper); color: var(--text); font-family: var(--mono); font-size: 13px; letter-spacing: .01em; text-decoration: none; transition: background .15s ease; }
+  .plugin-links a:hover { background: var(--paper-2); }
+  .plugin-link-arrow { color: var(--muted); font-size: 1.35em; line-height: 1; transition: color .15s ease; }
+  .plugin-links a:hover .plugin-link-arrow { color: var(--accent); }
+  :root[data-theme="dark"] .plugin-links a:hover .plugin-link-arrow { color: var(--accent-bright); }
+</style>

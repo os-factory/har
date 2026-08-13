@@ -17,6 +17,7 @@ import { listRuns, resolveAgentWorkDir } from './runs';
 import { readSlotRegistry } from './slot-registry';
 import { inspectSlotReadiness, scanWorktreeContext } from './slot-preflight';
 import type { WorktreeContextFinding } from './worktree-context';
+import { packageRunner } from '../utils/package-runner';
 
 const BYPASS_WARNING_MS = 15 * 60 * 1000;
 
@@ -159,7 +160,7 @@ function lastBuildPass(run: RunRecord | undefined): boolean | undefined {
 
 function listPm2Processes(): Array<{ name?: string }> | undefined {
   try {
-    const raw = execSync('npx --yes pm2 jlist', {
+    const raw = execSync(`${packageRunner()} pm2 jlist`, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 3000,

@@ -2,7 +2,7 @@
 import ThemeToggle from './ThemeToggle.astro';
 
 interface Props {
-  active?: 'home';
+  active?: 'home' | 'plugins' | 'enterprise';
   solid?: boolean;
 }
 
@@ -17,6 +17,8 @@ const homePrefix = active === 'home' ? '' : '/';
     <div class="nav-right">
       <nav class="desktop-nav" aria-label="Primary navigation">
         <a href="/docs">Docs</a>
+        <a href="/plugins/" class:list={{ active: active === 'plugins' }} aria-current={active === 'plugins' ? 'page' : undefined}>Plugins</a>
+        <a href="/enterprise" class:list={{ active: active === 'enterprise' }} aria-current={active === 'enterprise' ? 'page' : undefined}>Enterprise</a>
       </nav>
       <div class="nav-actions">
         <a class="nav-link" href="https://github.com/os-factory/har">GitHub <span aria-hidden="true">↗</span></a>
@@ -30,6 +32,8 @@ const homePrefix = active === 'home' ? '' : '/';
   </div>
   <div class="mobile-menu" id="mobile-menu" data-mobile-menu>
     <a href="/docs">Documentation</a>
+    <a href="/plugins/">Plugins</a>
+    <a href="/enterprise">Enterprise</a>
     <a href="https://github.com/os-factory/har">GitHub</a>
   </div>
 </header>

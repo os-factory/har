@@ -7,6 +7,20 @@ Pages at <https://harproject.dev/>:
 - `/blog` — journal index and articles
 - `/docs` — Starlight documentation (same content as before, new theme)
 
+## Agent harness
+
+Isolated agent slots live in [`.har/`](.har/README.md). Prefer that path for live
+preview, Playwright, and before/after screenshots:
+
+```bash
+cd docs
+har env launch 1
+har env verify 1 --full   # includes browser-e2e + screenshots under .har/artifacts/
+```
+
+See [AGENTS.md](./AGENTS.md). This is one of three harnesses in the monorepo
+(root CLI, Mission Control, docs) — indexed in the root [`AGENTS.md`](../AGENTS.md).
+
 ## Local development
 
 Node.js 22.12 or newer is required (Astro 7).
@@ -16,8 +30,7 @@ npm ci
 npm run dev
 ```
 
-From the repository root, prefer launching a HAR slot first and work in the returned
-session worktree.
+Prefer launching a HAR slot first and work in the returned session worktree.
 
 ## Verification
 
@@ -26,11 +39,12 @@ npm run drift
 npm run check
 npm run build
 npm run links
+npm run test:e2e   # requires a running site + BASE_URL; prefer harness full verify
 ```
 
 `drift` compares documented public contracts with the CLI, MCP, schemas, templates,
-profiles, and managed skills. The root HAR full-verification pipeline and pull-request
-workflow run all three commands.
+profiles, and managed skills. Harness full verify runs check/drift/build/links plus
+Playwright with screenshot artifacts.
 
 ## Deployment
 

@@ -1,0 +1,103 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import { plugins } from '../../data/plugins';
+import trivyMark from '../../assets/logo-trivy.svg?raw';
+---
+<BaseLayout
+  title="HAR plugin marketplace — verification stages for coding agents"
+  description="Browse HAR's verification plugins: Playwright browser e2e, RocketSim iOS flows, Kerno backend validation, Gitleaks secrets scanning, Trivy dependency and IaC scanning, and Semgrep SAST. One command installs a stage every agent run must pass."
+  bodyClass="home-page"
+  canonicalPath="/plugins/"
+>
+  <Header active="plugins" />
+  <main>
+<section class="hero blueprint-surface">
+<div class="container">
+<div class="hero-copy reveal marketplace-hero">
+<div class="eyebrow"><span class="eyebrow-dot"></span> Plugin marketplace</div>
+<h1>Verification stages your agents must pass.</h1>
+<p class="hero-lede">A plugin is one command that registers a stage in your harness, ships working scaffolding, and becomes part of every agent's definition of done. Framework checks, security scans, backend validation, all in the same registry with the same evidence trail.</p>
+<div class="hero-install">
+<code class="install-cmd">har env add-plugin &lt;id&gt;</code>
+<a class="button button-secondary" href="/docs/guides/plugins/">Plugin docs <span aria-hidden="true">→</span></a>
+</div>
+</div>
+</div>
+</section>
+  <div class="page-frame">
+<section class="section" id="marketplace">
+<div class="container">
+<div class="marketplace-grid reveal">
+{plugins.map((p) => (
+<a class="plugin-card" href={`/plugins/${p.id}/`}>
+<div class="plugin-card-head">
+{p.id === 'trivy'
+  ? <span class="plugin-card-logo trivy-inline" set:html={trivyMark} />
+  : <img class:list={['plugin-card-logo', { 'logo-invert-dark': p.invertOnDark }]} src={p.logo} alt="" width="34" height="34" loading="lazy" />}
+<div>
+<h2>{p.name}</h2>
+<span class="plugin-card-category">{p.category} · {p.stacks}</span>
+</div>
+</div>
+<p>{p.tagline}</p>
+<div class="plugin-card-foot">
+<code>add-plugin {p.id}</code>
+<span class="plugin-card-stage">stage: <span class="plugin-card-stage-id">{p.stageId}</span></span>
+</div>
+</a>
+))}
+<div class="plugin-card plugin-card-custom">
+<div class="plugin-card-head">
+<svg class="plugin-card-logo plugin-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+<div>
+<h2>Your own stages</h2>
+<span class="plugin-card-category">Custom · Any stack</span>
+</div>
+</div>
+<p>Project-specific checks don't need a plugin. Register them as custom stages with one command, or package your own plugin.</p>
+<div class="plugin-card-foot">
+<code>add-stage &lt;id&gt; --custom</code>
+<a href="/docs/guides/stages/">Stages guide <span aria-hidden="true">→</span></a>
+</div>
+</div>
+<div class="stack-group-link-bar">
+<a class="stack-group-link" href="/docs/guides/plugins/">How plugins relate to stages and profiles <span aria-hidden="true">→</span></a>
+</div>
+</div>
+</div>
+</section>
+  <Footer />
+  </div>
+  </main>
+</BaseLayout>
+
+<style>
+  .marketplace-hero { max-width: 760px; }
+  .install-cmd { display: inline-flex; align-items: center; padding: 11px 18px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface-raised); font-family: var(--mono); font-size: 14px; color: var(--text); }
+  /* Seamless hairline grid matching the main page's .what-grid / .what-cell boxes. */
+  .marketplace-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--theme-border-soft); border: 1px solid var(--theme-border-soft); border-radius: 5px; overflow: hidden; }
+  .plugin-card { display: flex; flex-direction: column; gap: 15px; padding: 34px 32px 40px; min-width: 0; background: var(--paper); color: var(--text); text-decoration: none; transition: background .15s ease; }
+  a.plugin-card:hover { background: var(--theme-surface-raised); }
+  .plugin-card-custom { grid-column: 1 / -1; }
+  .plugin-card-head { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+  .plugin-card-logo { width: 27px; height: 27px; object-fit: contain; border-radius: 6px; flex: none; }
+  .trivy-inline { display: inline-flex; align-items: center; justify-content: center; color: var(--text); }
+  .trivy-inline :global(svg) { width: 100%; height: 100%; display: block; }
+  .plugin-card-icon { width: 22px; height: 22px; border-radius: 0; color: var(--muted); }
+  .plugin-card h2 { margin: 0; font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  :root[data-theme="dark"] .plugin-card h2 { color: var(--accent-bright); }
+  .plugin-card-category { display: block; margin-top: 8px; font-family: var(--mono); font-size: 11.5px; letter-spacing: .03em; color: var(--muted); }
+  .plugin-card p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--muted); flex: 1; }
+  .plugin-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; }
+  .plugin-card-foot code { display: inline-flex; align-items: center; padding: 5px 10px; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-surface-raised); font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .plugin-card-stage { font-family: var(--mono); font-size: 11.5px; letter-spacing: .02em; color: var(--muted); white-space: nowrap; }
+  .plugin-card-stage-id { color: var(--accent); }
+  :root[data-theme="dark"] .plugin-card-stage-id { color: var(--accent-bright); }
+  .plugin-card-foot a { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); text-decoration: none; transition: color .15s ease; }
+  .plugin-card-foot a span { color: inherit; font-size: 1.3em; line-height: 1; }
+  .plugin-card-foot a:hover { color: var(--text); }
+  @media (max-width: 1080px) { .marketplace-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 640px) { .marketplace-grid { grid-template-columns: 1fr; } }
+</style>

@@ -1,0 +1,46 @@
+{
+  "id": "kerno",
+  "stageId": "backend-validation",
+  "verificationStages": [
+    "typecheck",
+    "unit-tests",
+    "api-health",
+    "lint",
+    "backend-validation"
+  ],
+  "stage": {
+    "id": "backend-validation",
+    "kind": "test",
+    "description": "Kerno deterministic backend/API scenario validation against the running slot",
+    "script": "stages/backend-validation.sh",
+    "requiresAgentId": true,
+    "artifacts": [
+      {
+        "path": ".har/artifacts/backend-validation",
+        "kind": "directory",
+        "description": "Per-endpoint run responses, aggregated verdicts, and copied Kerno report.json files"
+      },
+      {
+        "path": ".har/artifacts/backend-validation/report.json",
+        "kind": "report"
+      }
+    ]
+  },
+  "files": [
+    { "src": ".har/stages/backend-validation.sh", "dest": ".har/stages/backend-validation.sh", "executable": true },
+    { "src": ".har/stages/KERNO.md", "dest": ".har/stages/KERNO.md" },
+    { "src": "README.md", "dest": "tests/kerno/README.md" }
+  ],
+  "optionalFiles": [
+    { "src": ".github/workflows/kerno.yml", "dest": ".github/workflows/kerno.yml", "skipFlag": "skipCi" }
+  ],
+  "nextSteps": [
+    "npm install -g @kerno/cli",
+    "kerno init                       # bind the single Kerno agent to THIS worktree",
+    "Ask your Kerno agent to generate a scenario suite (or ensure .kerno/scenarios/ is committed)",
+    "./.har/launch.sh 1               # then start your app in the slot",
+    "./.har/stages/backend-validation.sh 1",
+    "Open .har/artifacts/backend-validation/ for verdicts and per-endpoint run responses"
+  ],
+  "docsPath": ".har/stages/KERNO.md"
+}

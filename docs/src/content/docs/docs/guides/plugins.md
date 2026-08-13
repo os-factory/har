@@ -64,6 +64,98 @@ har env add-plugin rocketsim
 This installs a `rocketsim-flows` runner, authoring guidance, and an example iOS
 flow. RocketSim itself and a booted simulator are external requirements.
 
+## Kerno
+
+```bash
+har env add-plugin kerno
+```
+
+This adds a `backend-validation` test stage that re-runs your committed
+[Kerno](https://kerno.io) scenario suite (`.kerno/scenarios/`) against the app
+running in a slot, deterministically and with no LLM in the loop. It uses the slot's
+own database for greybox checks and reports a pass/fail with a full evidence trail.
+
+Prerequisites: the Kerno CLI (`npm install -g @kerno/cli`), Docker, a Kerno agent
+bound to the slot's worktree (`kerno init`), and a committed suite (validate re-runs
+an existing suite, it does not generate one).
+
+Kerno runs one agent per machine, so this stage never starts or rebinds the agent and
+serializes across slots with a fail-fast lock. Backend validation runs one slot at a
+time while frontend stages still run concurrently. See `.har/stages/KERNO.md` for the
+full setup and adaptation guide.
+## Gitleaks
+
+```bash
+har env add-plugin gitleaks
+```
+
+This adds:
+
+- a `secrets-scan` test stage that runs [Gitleaks](https://github.com/gitleaks/gitleaks)
+  against the agent work dir (uncommitted changes included) and fails on findings;
+- a root `.gitleaks.toml` extending the default ruleset with harness allowlists
+  (skipped if the repo already has one);
+- a CI workflow using the official `gitleaks/gitleaks-action` unless `--skip-ci`
+  is used.
+
+The `gitleaks` binary is an external requirement (`brew install gitleaks` or a
+[release binary](https://github.com/gitleaks/gitleaks/releases)) — the stage
+fails fast with an install hint when it is missing. Reports land in
+`.har/artifacts/secrets-scan/` with secret values redacted. Pass `git` as the
+second stage argument to scan full history instead of the working tree.
+
+The local stage keeps secrets from ever reaching your default branch; the CI
+workflow is what produces org-level scanning evidence that compliance platforms
+(Vanta, Drata, …) ingest via GitHub. See `.har/stages/GITLEAKS.md` after install
+for allowlist and baseline tuning.
+
+## Trivy
+
+```bash
+har env add-plugin trivy
+```
+
+This adds:
+
+- a `vuln-scan` test stage — [Trivy](https://trivy.dev) scans the agent's
+  worktree for known CVEs in dependency lockfiles and misconfigurations in
+  Terraform, Dockerfiles, Kubernetes manifests, and other IaC (Trivy absorbed
+  tfsec, so Terraform checks are included);
+- a `.trivyignore` scaffold for documented suppressions;
+- a CI workflow that uploads SARIF to GitHub code scanning unless `--skip-ci`
+  is used.
+
+The `trivy` binary is an external requirement (`brew install trivy`); the stage
+fails fast with an install hint when missing. The fail threshold defaults to
+`HIGH,CRITICAL` — tune `HARNESS_TRIVY_SEVERITY` and `HARNESS_TRIVY_SCANNERS` in
+`.har/harness.env`, and see `.har/stages/TRIVY.md` for adaptations (container
+images, monorepo scoping).
+
+The local stage is pre-merge shift-left; the CI workflow feeds GitHub code
+scanning, the org-level evidence layer that compliance platforms such as Vanta
+ingest. Keep both.
+
+## Semgrep
+
+```bash
+har env add-plugin semgrep
+```
+
+This adds:
+
+- a `sast` test stage that scans the session worktree with Semgrep;
+- an adaptation guide (`.har/stages/SEMGREP.md`) covering rulesets and noise tuning;
+- a CI workflow running the official `semgrep ci` recipe unless `--skip-ci` is used.
+
+The `semgrep` CLI itself is an external requirement (`pipx install semgrep`).
+Reports (JSON + SARIF) land under `.har/artifacts/sast/`. Pin rulesets with
+`HARNESS_SEMGREP_CONFIG` in `.har/harness.env` (default `auto`).
+
+The local stage is the shift-left layer — findings block agents before merge.
+For compliance evidence (e.g. Vanta's native Semgrep integration), set the
+`SEMGREP_APP_TOKEN` secret so the CI workflow publishes to the Semgrep AppSec
+Platform. Local runs are invisible to compliance platforms by design.
+
 ## Custom stages (not plugins)
 
 Project-specific checks (`npm test`, domain scripts) are **custom stages**, not

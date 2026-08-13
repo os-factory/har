@@ -1,0 +1,103 @@
+# HAR docs site — Agent Development Guide
+
+Astro marketing site + Starlight documentation for HAR
+(<https://harproject.dev/>).
+
+Part of the har monorepo — this app has its own harness (`docs/.har/`). For the
+CLI package, Mission Control, or the index of all harnesses, see the root
+[`AGENTS.md`](../AGENTS.md).
+
+## Stack
+
+- Astro 7 + Starlight, React islands, Playwright for browser-e2e / screenshots
+- Node.js ≥ 22.12
+
+## Layout
+
+```
+src/pages/           landing + blog routes
+src/content/docs/    Starlight documentation
+src/styles/          landing + Starlight theme
+tests/               Playwright (frontend, api, a11y, visual-proof)
+.har/                agent harness (launch / verify / screenshots)
+```
+
+## Agent environment
+
+<!-- har:agent-environment:start -->
+## HAR / agent environment
+
+The harness is not just a verification gate — it is **how you run this project**.
+To see the app live (manual testing, browser sessions, screenshots, driving the UI),
+use `har env launch <id>` or `./.har/launch.sh <id>`. It already encodes database
+setup, ports, env vars, and process management — never hand-roll `docker` / dev-server
+startup, and never claim a task "can't be verified live" without launching a slot first.
+
+If a harness command fails, fix the harness (or report the failure) — do not quietly
+fall back to ad-hoc commands.
+
+### Before making changes
+
+1. On the **main checkout**, switch to the intended base (usually `main`) — launch
+   creates a worktree from that HEAD.
+2. **Launch first** — MCP `har_launch_environment` / `har env launch 1`. Use the
+   returned **work dir** for ALL edits (never the main checkout).
+   **Bind tracker work** when the task names a durable issue or ticket (GitHub,
+   Linear, etc.): pass a short repo-scoped `--work-id` / `workUnitId` (e.g.
+   `widget-123`), `--work-source` / `source`, `--work-url` / `sourceUrl`, and
+   `--work-title` / `title` when known. Skip binding for ad-hoc work with no
+   tracker identity.
+3. Read [`.har/README.md`](.har/README.md), [`.har/stages.json`](.har/stages.json), then
+   [`.har/CLAUDE.agent.md`](.har/CLAUDE.agent.md) (slot URLs / definition of done).
+4. Hot-reload usually applies; if not, `./.har/agent-cli.sh <id> restart` (no-op on
+   cli/ios profiles without managed processes).
+
+**Occupied slots always block.** Run `complete` / `teardown`, then `launch`. Resume
+failed/starting launches with `--resume` / `recover`. Prefer a free slot (2+) over
+sharing slot 1 across unrelated chats. Check `har_get_status` / `har env status` first.
+Commit early — teardown keeps the branch, not uncommitted work.
+
+### After making changes
+
+Prefer MCP → CLI → shell. Quick verify for the loop; **full verify before done**.
+
+- MCP: `har_run_verification` / `full: true`; finish with `har_complete_environment`
+  (propose; wait for approval) or `har_teardown_environment`
+- CLI: `har env verify 1`, `har env verify 1 --full`, `complete 1`, `teardown 1`
+- Shell: `./.har/verify.sh 1`, `./.har/verify.sh 1 --full`, `./.har/teardown.sh 1`
+
+Commit in the session worktree. Run JSON stays in the main checkout `.har/runs/`.
+
+### Definition of done
+
+- Full verify passes; edits only in the session worktree; tests cover new behavior;
+  changes committed; show preview URLs; then **session handoff** (below).
+
+### Session handoff (required)
+
+After full verify and commit, stop. Include summary, session branch
+(`.har/slots/agent-<id>.json`), and preview URLs. Wait — never autonomously
+complete, teardown, push, or open a PR. **Default:** when `gh`/GitHub MCP is available,
+recommend **Complete + open a PR** (still needs approval). Alternatives: **Complete only**,
+or **Something else**. Without PR tooling, recommend **Complete only** and give the
+session branch for a manual push.
+
+### Commit gate
+
+Full verify records a tree hash under `.har/validations/`. With `har hooks install`,
+commits must match a passing full verify. Re-verify after any edit; `git add -A`.
+Do not bypass (`--no-verify`, `HAR_SKIP_GATE=1`).
+
+### Cursor IDE
+
+If `.cursor/rules/har-workflow.mdc` exists, the same harness workflow is injected into
+every Cursor agent session automatically. Run `har env init` or `har env maintain` to
+create or refresh it.
+<!-- har:agent-environment:end -->
+
+## Project-specific notes
+
+- **Primary app:** Astro site (`npm run dev` / `astro dev`) — no database.
+- **Ports:** slot 1 defaults to **4321** (see `.har/harness.env`); never hardcode.
+- **Screenshots:** launch → `screenshots/before/`; full verify → `screenshots/after/`.
+- **Other harnesses:** root `.har/` (CLI) · `control/.har/` (Mission Control).

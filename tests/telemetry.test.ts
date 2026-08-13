@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -167,6 +168,44 @@ describe('telemetry env', () => {
     const text = fs.readFileSync(envFile, 'utf8');
     expect(text).toContain('HAR_SESSION_KEY=s2');
     expect(text.match(/HAR_SESSION_KEY=/g)?.length).toBe(1);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('quotes OTEL_RESOURCE_ATTRIBUTES when the repo path contains a space', () => {
+    const block = buildTelemetryEnvBlock({
+      sessionKey: 's1',
+      agentId: 1,
+      repoPath: '/Users/dev/My Projects/service',
+      workDir: '/Users/dev/My Projects/service',
+    });
+    const line = block
+      .split('\n')
+      .find((l) => l.startsWith('OTEL_RESOURCE_ATTRIBUTES='));
+    expect(line).toBeDefined();
+    // Value is single-quoted so the space survives, and the real path is preserved.
+    expect(line).toMatch(/^OTEL_RESOURCE_ATTRIBUTES='.*'$/);
+    expect(line).toContain('har.repo_path=/Users/dev/My Projects/service');
+  });
+
+  it('stays safe to source when a value contains a space (issue #172)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-env-source-'));
+    const envFile = path.join(dir, '.env.agent.1');
+    const repoPath = '/Users/dev/My Projects/service';
+    appendTelemetryEnvToFile(envFile, {
+      sessionKey: 's1',
+      agentId: 1,
+      repoPath,
+      workDir: repoPath,
+    });
+    // Reproduces the downstream launcher: `set -a; source <file>` then read back.
+    // On the unquoted (buggy) output this bash invocation exits non-zero with
+    // "No such file or directory"; execSync throws. On the fixed output it
+    // sources cleanly and prints the value with the space intact.
+    const out = execSync(
+      `set -a; . ${JSON.stringify(envFile)}; set +a; printf '%s' "$OTEL_RESOURCE_ATTRIBUTES"`,
+      { shell: '/bin/bash', encoding: 'utf8' },
+    );
+    expect(out).toContain(`har.repo_path=${repoPath}`);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

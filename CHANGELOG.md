@@ -1,3 +1,65 @@
+# [0.54.0](https://github.com/os-factory/har/compare/v0.53.0...v0.54.0) (2026-08-12)
+
+
+### Features
+
+* add Semgrep plugin ([#188](https://github.com/os-factory/har/issues/188)) ([3c146ca](https://github.com/os-factory/har/commit/3c146ca825d13ad32221551cbfbed61236809b5c))
+
+# [0.53.0](https://github.com/os-factory/har/compare/v0.52.0...v0.53.0) (2026-08-12)
+
+
+### Features
+
+* add Trivy plugin ([#187](https://github.com/os-factory/har/issues/187)) ([931b7ea](https://github.com/os-factory/har/commit/931b7ea2ba103201fb89dd8182803e769df5174b))
+
+# [0.52.0](https://github.com/os-factory/har/compare/v0.51.0...v0.52.0) (2026-08-12)
+
+
+### Features
+
+* add Gitleaks plugin ([#186](https://github.com/os-factory/har/issues/186)) ([c7c6800](https://github.com/os-factory/har/commit/c7c680004f3918273fb15990891ad605b2fa0b7f))
+
+# [0.51.0](https://github.com/os-factory/har/compare/v0.50.1...v0.51.0) (2026-08-12)
+
+
+### Features
+
+* add Kerno plugin ([#183](https://github.com/os-factory/har/issues/183)) ([f41072e](https://github.com/os-factory/har/commit/f41072e009699cec76c77a07ce4dd67b318d779b))
+
+## [0.50.1](https://github.com/os-factory/har/compare/v0.50.0...v0.50.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **control:** keep the portal repo id until a wipe resend lands ([#182](https://github.com/os-factory/har/issues/182)) ([c219ede](https://github.com/os-factory/har/commit/c219edea152750fb176834ecf217899f4c6a4d68))
+
+
+### Features
+
+* **docs:** add Enterprise page, move demo video into hero lightbox ([#184](https://github.com/os-factory/har/issues/184)) ([adcf25e](https://github.com/os-factory/har/commit/adcf25ecdc1144e29e89149a843b208c6f78b57e))
+
+# [0.50.0](https://github.com/os-factory/har/compare/v0.49.2...v0.50.0) (2026-08-11)
+
+
+### Features
+
+* **harness:** support bun, pnpm, and yarn for node provisioning ([#174](https://github.com/os-factory/har/issues/174)) ([787f87d](https://github.com/os-factory/har/commit/787f87de9df1d5bdddcc758b0eded6306c126219))
+
+## [0.49.2](https://github.com/os-factory/har/compare/v0.49.1...v0.49.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* **telemetry:** quote generated env values so spaced repo paths stay source-safe ([#177](https://github.com/os-factory/har/issues/177)) ([631687b](https://github.com/os-factory/har/commit/631687b137ea293fbcf6cd0782a3baf17f08fe9d))
+
+## [0.49.1](https://github.com/os-factory/har/compare/v0.49.0...v0.49.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **harness:** quote agent env values in the dogfooded harnesses ([#179](https://github.com/os-factory/har/issues/179)) ([30abefd](https://github.com/os-factory/har/commit/30abefdf2fb11fea7a1da601354ca71652329d84))
+* **ios:** keep code signing on the verify test step ([#178](https://github.com/os-factory/har/issues/178)) ([8177284](https://github.com/os-factory/har/commit/81772840ac5615b9015d360d17481dde887a7dad))
+
 # [0.49.0](https://github.com/os-factory/har/compare/v0.48.0...v0.49.0) (2026-08-10)
 
 

@@ -9,7 +9,13 @@ import {
 } from '../harness/stages';
 import { HarnessStage, StageResult } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
-import { runScript, runScriptCapture, runShellCommand, ShellResult } from '../utils/shell';
+import {
+  quoteShellArg,
+  runScript,
+  runScriptCapture,
+  runShellCommand,
+  ShellResult,
+} from '../utils/shell';
 import { buildStageResult, parseVerificationResult } from './results';
 import {
   ArtifactEntry,
@@ -19,12 +25,6 @@ import {
   StageRunOptions,
 } from './types';
 import { readSlotRegistry } from './slot-registry';
-
-/** Quote a single argv token for `bash -lc` when it needs shell metacharacters. */
-export function quoteShellArg(arg: string): string {
-  if (/^[A-Za-z0-9_./:=+-]+$/.test(arg)) return arg;
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
 
 /** Argv fragments forwarded to launch.sh for a launch stage. */
 export function buildLaunchFlagArgs(flags: LaunchFlags): string[] {

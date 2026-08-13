@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getControlApiUrl } from './control-config';
+import { quoteShellArg } from '../utils/shell';
 
 export interface TelemetrySessionAttrs {
   sessionKey: string;
@@ -50,14 +51,17 @@ export function buildSessionKey(input: {
  */
 export function buildTelemetryEnvBlock(attrs: TelemetrySessionAttrs): string {
   const apiUrl = getControlApiUrl().replace(/\/$/, '');
+  // Quote every value so the file stays safe to `source` even when a value
+  // contains a space or shell metacharacter (e.g. a repo path with a space).
+  // quoteShellArg leaves plain tokens unquoted, so ordinary values are unchanged.
   const lines: string[] = [
     '',
     '# HAR session attribution (generated)',
-    `HAR_SESSION_KEY=${attrs.sessionKey}`,
-    ...(attrs.workUnitId ? [`HAR_WORK_UNIT_ID=${attrs.workUnitId}`] : []),
-    ...(attrs.attemptId ? [`HAR_ATTEMPT_ID=${attrs.attemptId}`] : []),
-    `HAR_CONTROL_API_URL=${apiUrl}`,
-    `OTEL_RESOURCE_ATTRIBUTES=${buildOtelResourceAttributes(attrs)}`,
+    `HAR_SESSION_KEY=${quoteShellArg(attrs.sessionKey)}`,
+    ...(attrs.workUnitId ? [`HAR_WORK_UNIT_ID=${quoteShellArg(attrs.workUnitId)}`] : []),
+    ...(attrs.attemptId ? [`HAR_ATTEMPT_ID=${quoteShellArg(attrs.attemptId)}`] : []),
+    `HAR_CONTROL_API_URL=${quoteShellArg(apiUrl)}`,
+    `OTEL_RESOURCE_ATTRIBUTES=${quoteShellArg(buildOtelResourceAttributes(attrs))}`,
     '# Agent telemetry: @osfactory/otel-hook → Mission Control (har telemetry on|off)',
   ];
   return lines.join('\n') + '\n';

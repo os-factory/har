@@ -39,6 +39,10 @@ describe('onboarding guide', () => {
     const ids = choices.map((c) => c.id);
     expect(ids).toContain('playwright');
     expect(ids).toContain('rocketsim');
+    expect(ids).toContain('kerno');
+    expect(ids).toContain('gitleaks');
+    expect(ids).toContain('trivy');
+    expect(ids).toContain('semgrep');
     expect(choices.every((c) => c.label.includes(c.id))).toBe(true);
   });
 });

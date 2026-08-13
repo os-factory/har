@@ -28,7 +28,7 @@ case "$COMMAND" in
     ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT" || true)"
     WORKTREE_DIR="$(existing_slot_worktree "$AGENT_ID")"
     REG_FILE="$(slot_registry_file "$AGENT_ID")"
-    PM2_RAW=$(npx --yes pm2 jlist 2>/dev/null || true)
+    PM2_RAW=$($(har_pkg_exec) pm2 jlist 2>/dev/null || true)
     PM2_FOUND=false
     PM2_FOREIGN=false
     PM2_LEGACY=false
@@ -123,22 +123,23 @@ process.stdin.on('end', () => {
   logs)
     SERVICE="${3:-}"
     if [ -n "$SERVICE" ]; then
-      npx pm2 logs "${PM2_SLOT_PREFIX}-${SERVICE}" --lines 100
+      $(har_pkg_exec) pm2 logs "${PM2_SLOT_PREFIX}-${SERVICE}" --lines 100
     else
-      npx pm2 logs --name "${PM2_SLOT_PREFIX}" --lines 100
+      $(har_pkg_exec) pm2 logs --name "${PM2_SLOT_PREFIX}" --lines 100
     fi
     ;;
 
   restart)
     SERVICE="${3:-}"
+    PKG_EXEC="$(har_pkg_exec)"
     if [ -n "$SERVICE" ]; then
-      npx pm2 restart "${PM2_SLOT_PREFIX}-${SERVICE}"
+      $(har_pkg_exec) pm2 restart "${PM2_SLOT_PREFIX}-${SERVICE}"
     else
-      npx pm2 jlist 2>/dev/null | node -e "
+      $(har_pkg_exec) pm2 jlist 2>/dev/null | node -e "
 const prefix = '${PM2_SLOT_PREFIX}-';
 const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
 const names = d.filter(x => x.name && x.name.startsWith(prefix)).map(x => x.name);
-names.forEach(n => require('child_process').execSync('npx pm2 restart ' + n, {stdio:'inherit'}));
+names.forEach(n => require('child_process').execSync('${PKG_EXEC} pm2 restart ' + n, {stdio:'inherit'}));
 if (names.length === 0) console.log('No processes found for ${PM2_SLOT_PREFIX}');
 " 2>/dev/null || true
     fi

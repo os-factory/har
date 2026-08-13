@@ -1,0 +1,17 @@
+# Gitleaks configuration — installed by `har env add-plugin gitleaks`.
+# Extends the default ruleset; tune allowlists per repo.
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "HAR harness defaults — dependencies, build outputs, harness artifacts"
+paths = [
+  '''node_modules/''',
+  '''dist/''',
+  '''build/''',
+  '''vendor/''',
+  '''\.git/''',
+  '''\.har/artifacts/''',
+]

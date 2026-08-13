@@ -254,3 +254,189 @@ function initHeroTerminalTilt() {
 }
 
 initHeroTerminalTilt();
+
+function initVideoModal() {
+  const modal = document.querySelector<HTMLElement>('[data-video-modal]');
+  const slot = modal?.querySelector<HTMLElement>('[data-video-slot]');
+  if (!modal || !slot) return;
+
+  const videoId = modal.dataset.videoId || 'XKl4ZzWy7mQ';
+  const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+
+  const open = () => {
+    slot.innerHTML = `<iframe src="${src}" title="HAR introduction demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    window.posthog?.capture('demo_video_opened');
+  };
+
+  const close = () => {
+    modal.hidden = true;
+    slot.innerHTML = '';
+    document.body.style.overflow = '';
+  };
+
+  document.querySelectorAll('[data-video-open]').forEach((button) => button.addEventListener('click', open));
+  modal.querySelectorAll('[data-video-close]').forEach((button) => button.addEventListener('click', close));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
+initVideoModal();
+
+function touchDistance(a: Touch, b: Touch) {
+  const dx = a.clientX - b.clientX;
+  const dy = a.clientY - b.clientY;
+  return Math.hypot(dx, dy);
+}
+
+function initDashboardImageModal() {
+  const modal = document.querySelector<HTMLElement>('[data-dashboard-image-modal]');
+  const viewport = modal?.querySelector<HTMLElement>('[data-dashboard-image-viewport]');
+  const target = modal?.querySelector<HTMLImageElement>('[data-dashboard-image-target]');
+  if (!modal || !viewport || !target) return;
+
+  const mobileQuery = window.matchMedia('(max-width: 760px)');
+  let scale = 1;
+  let translateX = 0;
+  let translateY = 0;
+  let pinchStartDistance = 0;
+  let pinchStartScale = 1;
+  let panStartX = 0;
+  let panStartY = 0;
+  let panOriginX = 0;
+  let panOriginY = 0;
+  let isPanning = false;
+  let lastTapAt = 0;
+
+  const applyTransform = () => {
+    target.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale})`;
+  };
+
+  const resetTransform = () => {
+    scale = 1;
+    translateX = 0;
+    translateY = 0;
+    applyTransform();
+  };
+
+  const open = (src: string, alt: string) => {
+    target.src = src;
+    target.alt = alt;
+    resetTransform();
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    window.posthog?.capture('dashboard_image_opened', { src });
+  };
+
+  const close = () => {
+    modal.hidden = true;
+    target.removeAttribute('src');
+    target.alt = '';
+    document.body.style.overflow = '';
+    resetTransform();
+  };
+
+  document.querySelectorAll<HTMLImageElement>('img[data-dashboard-zoom]').forEach((trigger) => {
+    trigger.tabIndex = mobileQuery.matches ? 0 : -1;
+    trigger.setAttribute('role', mobileQuery.matches ? 'button' : 'presentation');
+
+    const handleOpen = () => {
+      if (!mobileQuery.matches) return;
+      open(trigger.currentSrc || trigger.src, trigger.alt);
+    };
+
+    trigger.addEventListener('click', handleOpen);
+    trigger.addEventListener('keydown', (event) => {
+      if (!mobileQuery.matches) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        handleOpen();
+      }
+    });
+  });
+
+  mobileQuery.addEventListener('change', () => {
+    document.querySelectorAll<HTMLImageElement>('img[data-dashboard-zoom]').forEach((trigger) => {
+      trigger.tabIndex = mobileQuery.matches ? 0 : -1;
+      trigger.setAttribute('role', mobileQuery.matches ? 'button' : 'presentation');
+    });
+    if (!mobileQuery.matches && !modal.hidden) close();
+  });
+
+  viewport.addEventListener(
+    'touchstart',
+    (event) => {
+      if (event.touches.length === 2) {
+        isPanning = false;
+        pinchStartDistance = touchDistance(event.touches[0], event.touches[1]);
+        pinchStartScale = scale;
+        return;
+      }
+
+      if (event.touches.length === 1 && scale > 1) {
+        isPanning = true;
+        panStartX = event.touches[0].clientX;
+        panStartY = event.touches[0].clientY;
+        panOriginX = translateX;
+        panOriginY = translateY;
+      }
+    },
+    { passive: true },
+  );
+
+  viewport.addEventListener(
+    'touchmove',
+    (event) => {
+      if (event.touches.length === 2) {
+        event.preventDefault();
+        const distance = touchDistance(event.touches[0], event.touches[1]);
+        scale = Math.min(4, Math.max(1, pinchStartScale * (distance / pinchStartDistance)));
+        if (scale === 1) {
+          translateX = 0;
+          translateY = 0;
+        }
+        applyTransform();
+        return;
+      }
+
+      if (isPanning && event.touches.length === 1) {
+        event.preventDefault();
+        translateX = panOriginX + (event.touches[0].clientX - panStartX);
+        translateY = panOriginY + (event.touches[0].clientY - panStartY);
+        applyTransform();
+      }
+    },
+    { passive: false },
+  );
+
+  viewport.addEventListener('touchend', (event) => {
+    if (event.touches.length > 0) return;
+
+    isPanning = false;
+
+    if (event.changedTouches.length !== 1) return;
+
+    const now = Date.now();
+    if (now - lastTapAt < 280) {
+      if (scale > 1) {
+        resetTransform();
+      } else {
+        scale = 2;
+        applyTransform();
+      }
+    }
+    lastTapAt = now;
+  });
+
+  modal.querySelectorAll('[data-dashboard-image-close]').forEach((button) => {
+    button.addEventListener('click', close);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
+initDashboardImageModal();

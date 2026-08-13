@@ -1,0 +1,237 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+---
+<BaseLayout
+  title="HAR for teams"
+  description="Run a fleet of coding agents across your whole organization, in one shared place. See what every agent costs down to the ticket, check what each run shipped, and help everyone work like your best engineers. Built on the open HAR core you already run."
+  bodyClass="home-page"
+  canonicalPath="/enterprise/"
+>
+  <Header active="enterprise" />
+  <main>
+<section class="hero blueprint-surface">
+<div class="container hero-grid">
+<div class="hero-copy reveal">
+<div class="eyebrow"><span class="eyebrow-dot"></span> Early access · HAR for teams</div>
+<h1>Bring visibility, control, and governance to every agent across your org.</h1>
+<p class="hero-lede">HAR runs every coding agent through your validation gates, keeps deterministic proof of what passed, and ties the cost down to the ticket, so you enforce your standards and trust every result at scale.</p>
+<div class="hero-install">
+<a class="button button-primary" href="#request">Request early access <span aria-hidden="true">→</span></a>
+</div>
+</div>
+<div class="hero-visual reveal reveal-delay-1">
+<div class="dashboard-frame">
+<div class="dashboard-chrome">
+<div><i></i><i></i><i></i></div>
+<span>har.dev.kerno.io / mission-control</span>
+<b>HAR</b>
+</div>
+<img alt="HAR Global view dashboard" src="/assets/enterprise-hero.png" data-dashboard-zoom />
+<div class="dashboard-overlay dashboard-overlay-one"><span>Harness adoption</span><strong>89%</strong><small>across the org</small></div>
+<div class="dashboard-overlay dashboard-overlay-alert"><span><i></i> Spend alert</span><strong>$2,095</strong><small>over your $2,000 weekly budget</small></div>
+<div class="hero-gatebar">
+<span class="hero-gatebar-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Every run clears your gates</span>
+<div class="hero-gatebar-items">
+<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Tests</span>
+<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Secret scan</span>
+<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> SAST</span>
+<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> License check</span>
+<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Policy gate</span>
+</div>
+</div>
+</div>
+<button class="hero-play" type="button" data-video-open aria-label="Watch the HAR demo video">
+<span class="hero-play-btn"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>
+</button>
+</div>
+</div>
+<div class="hero-fade"></div>
+</section>
+  <div class="page-frame">
+<section class="section section-light" id="capabilities">
+<div class="container split-intro reveal">
+<div>
+<div class="section-kicker">For teams</div>
+<h2>Everything your team needs to run a fleet of agents with confidence.</h2>
+</div>
+</div>
+<div class="container what-grid reveal">
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5Z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/></svg>
+<h3>Cost attribution</h3>
+<p>Attribute every token and dollar down to the ticket, then roll it up by model, repository, and teammate.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+<h3>Verifiable proof at scale</h3>
+<p>A stage funnel and per-session matrix show where agent work passes, where it drops off, and the exact tree each run validated.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+<h3>Gemba team analytics</h3>
+<p>Benchmark power users against the rest on throughput, efficiency, and pass rate, and coach the whole team up.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+<h3>Real-time fleet observability</h3>
+<p>Global view, live sessions, and worktrees put every agent, run, and preview URL across your organization in one place, live.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+<h3>Members &amp; roles</h3>
+<p>Multi-tenant workspaces with Owner, Admin, and Member roles, invites, and per-member adoption and cost.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+<h3>Budget &amp; failure alerts</h3>
+<p>Email admins the moment spend or harness failures cross a threshold you set.</p>
+</div>
+</div>
+</section>
+<section class="section" id="security">
+<div class="container split-intro reveal">
+<div>
+<div class="section-kicker">Security &amp; governance</div>
+<h2>Your code, your cloud, your rules.</h2>
+</div>
+</div>
+<div class="container what-grid reveal">
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+<h3>Your code stays in your environment</h3>
+<p>Agents run on your own machines and CI. HAR syncs run results and metadata, so your source and secrets stay with you.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+<h3>Run it in your own cloud</h3>
+<p>Deploy Mission Control in your own cloud account or VPC, so your data lives where your policies require.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-4 4"/><path d="m17 6 2 2"/></svg>
+<h3>SSO and SAML</h3>
+<p>Connect your identity provider, so your team signs in with the accounts and policies you already manage.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+<h3>Role-based access control</h3>
+<p>Org-scoped workspaces with Owner, Admin, and Member roles and invites, so people see only what they should.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+<h3>Audit trail on every run</h3>
+<p>Every run records who triggered it, what it checked, and the exact tree it validated, ready for review.</p>
+</div>
+<div class="what-cell">
+<svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="12" x="3" y="10" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/><circle cx="12" cy="16" r="1"/></svg>
+<h3>Encryption in transit and at rest</h3>
+<p>Every byte is encrypted on the wire and at rest, so your data stays protected end to end.</p>
+</div>
+</div>
+<div class="container trust-badges reveal">
+<span class="trust-badge"><span class="badge-dot badge-dot--pending"></span> SOC 2 Type II <em>In progress</em></span>
+<span class="trust-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Apache-2.0 open core, fully auditable</span>
+</div>
+</section>
+<section class="section section-light enterprise-section" id="request">
+<div class="container enterprise-grid reveal">
+<div class="enterprise-copy">
+<div class="enterprise-kicker-row">
+<div class="section-kicker">For your org</div>
+<span class="soon-tag">Early access</span>
+</div>
+<h2>Bring HAR to your whole organization.</h2>
+<ul class="hair-list">
+<li><svg class="hair-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5Z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/></svg> Spend attributed down to the ticket</li>
+<li><svg class="hair-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg> Verifiable proof for every agent run</li>
+<li><svg class="hair-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Shared workspaces, roles, and team analytics</li>
+</ul>
+</div>
+<div class="enterprise-actions">
+<form
+  class="enterprise-form"
+  data-web3form
+  data-success-message="Thanks, we'll be in touch about early access."
+  action="https://api.web3forms.com/submit"
+  method="POST"
+>
+<input type="hidden" name="access_key" value="9650ee0d-81c2-4edb-9cab-69920938f8ab" />
+<input type="hidden" name="subject" value="HAR Enterprise early access request" />
+<input type="hidden" name="form_type" value="enterprise" />
+<input type="hidden" name="source" value="enterprise-page" />
+<input type="hidden" name="interests" value="ticket-level cost attribution, verifiable proof, gemba team analytics, alerts, shared workspaces" />
+<input type="checkbox" name="botcheck" class="hidden" hidden tabindex="-1" autocomplete="off" />
+<label class="sr-only" for="enterprise-email">Work email</label>
+<input id="enterprise-email" name="email" type="email" placeholder="Work email" autocomplete="email" required />
+<label class="sr-only" for="enterprise-company">Company</label>
+<input id="enterprise-company" name="company" type="text" placeholder="Company" autocomplete="organization" required />
+<label class="sr-only" for="enterprise-message">Message</label>
+<textarea id="enterprise-message" name="message" rows="3" placeholder="Team size, use case, or questions (optional)"></textarea>
+<button class="button button-primary" type="submit">Request early access <span aria-hidden="true">→</span></button>
+<p class="enterprise-note" data-web3form-status aria-live="polite">We'll help you find the right setup for your organization.</p>
+</form>
+</div>
+</div>
+</section>
+  <Footer />
+  </div>
+  </main>
+  <div class="video-modal" data-video-modal data-video-id="BF1ezx7cRtI" hidden>
+    <button class="video-modal-backdrop" type="button" data-video-close aria-label="Close video"></button>
+    <div class="video-modal-dialog" role="dialog" aria-modal="true" aria-label="HAR demo video">
+      <button class="video-modal-close" type="button" data-video-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+      <div class="video-modal-frame" data-video-slot></div>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  /* Hero demo-video overlay (mirrors the home page). */
+  .hero-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 6; display: inline-flex; flex-direction: column; align-items: center; gap: 12px; padding: 0; background: none; border: 0; cursor: pointer; }
+  .hero-play-btn { display: grid; place-items: center; width: 74px; height: 74px; border-radius: 50%; background: var(--blue); color: #fff; box-shadow: 0 18px 50px rgba(11,15,20,.4); transition: transform .2s ease, box-shadow .2s ease; }
+  .hero-play:hover .hero-play-btn { transform: scale(1.06); box-shadow: 0 22px 60px rgba(11,15,20,.5); }
+  .hero-play-btn svg { width: 30px; height: 30px; margin-left: 4px; }
+
+  .video-modal[hidden] { display: none; }
+  .video-modal { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 24px; }
+  .video-modal-backdrop { position: absolute; inset: 0; background: rgba(6,9,12,.82); backdrop-filter: blur(4px); border: 0; margin: 0; padding: 0; cursor: pointer; }
+  .video-modal-dialog { position: relative; width: min(980px, 100%); }
+  .video-modal-frame { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; box-shadow: 0 40px 120px rgba(0,0,0,.6); }
+  .video-modal-frame :global(iframe) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .video-modal-close { position: absolute; top: -46px; right: 0; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; border: 0; cursor: pointer; transition: background .15s ease; }
+  .video-modal-close:hover { background: rgba(255,255,255,.26); }
+  .video-modal-close svg { width: 18px; height: 18px; }
+  @media (max-width: 600px) { .hero-play-btn { width: 60px; height: 60px; } .video-modal-close { top: 8px; right: 8px; } }
+
+  /* Coming-soon layout: stack the hero (copy on top, product shot below). */
+  .hero .hero-grid { grid-template-columns: 1fr; gap: 44px; }
+  .hero-copy { max-width: 820px; }
+  .hero-copy h1 { max-width: 820px; }
+  .hero-visual { width: 100%; max-width: none; }
+  .hero-visual .dashboard-frame { transform: none; }
+  .hero-visual .dashboard-frame img { width: 100%; height: auto; }
+  .trust-badges { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 42px; }
+  .trust-badge { display: inline-flex; align-items: center; gap: 9px; padding: 9px 15px; border: 1px solid var(--theme-border); border-radius: 999px; background: var(--theme-surface-raised); color: var(--text); font-size: 13px; font-weight: 550; }
+  .trust-badge em { font-style: normal; color: var(--muted); }
+  .trust-badge svg { width: 15px; height: 15px; color: var(--accent); }
+  .badge-dot { width: 8px; height: 8px; border-radius: 50%; background: #d9a441; box-shadow: 0 0 0 4px rgba(217,164,65,.16); }
+  /* Enlarge the floating stat tiles over the hero shot. */
+  .dashboard-overlay { padding: 18px 22px; border-radius: 8px; }
+  .dashboard-overlay span, .dashboard-overlay small { font-size: 11px; }
+  .dashboard-overlay strong { font-size: 23px; margin: 9px 0; }
+  .dashboard-overlay-two strong i { width: 9px; height: 9px; }
+  .dashboard-overlay-one { left: -12px; top: auto; bottom: 48px; }
+  .dashboard-overlay-alert { right: -30px; top: 66px; }
+  .dashboard-overlay-alert span { display: flex; align-items: center; gap: 7px; color: #b9822a; }
+  .dashboard-overlay-alert span i { width: 8px; height: 8px; border-radius: 50%; background: #d9a441; box-shadow: 0 0 0 4px rgba(217,164,65,.18); }
+  /* Validation gate status bar inside the hero dashboard frame. */
+  .hero-gatebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-top: 10px; padding: 13px 14px 5px; border-top: 1px solid rgba(255,255,255,.08); }
+  .hero-gatebar-label { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+  .hero-gatebar-label svg { width: 13px; height: 13px; color: var(--green); }
+  .hero-gatebar-items { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .hero-gatebar-items span { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12.5px; color: rgba(255,255,255,.82); }
+  .hero-gatebar-items span svg { width: 12px; height: 12px; color: var(--green); }
+</style>

@@ -1,0 +1,37 @@
+{
+  "id": "gitleaks",
+  "stageId": "secrets-scan",
+  "verificationStages": [
+    "secrets-scan"
+  ],
+  "stage": {
+    "id": "secrets-scan",
+    "kind": "test",
+    "description": "Gitleaks secrets scan (working tree by default; pass 'git' to scan history)",
+    "script": "stages/secrets-scan.sh",
+    "requiresAgentId": true,
+    "artifacts": [
+      {
+        "path": ".har/artifacts/secrets-scan",
+        "kind": "directory",
+        "description": "Redacted JSON findings report and scan log"
+      }
+    ]
+  },
+  "files": [
+    { "src": ".har/stages/secrets-scan.sh", "dest": ".har/stages/secrets-scan.sh", "executable": true },
+    { "src": ".har/stages/GITLEAKS.md",     "dest": ".har/stages/GITLEAKS.md" }
+  ],
+  "optionalFiles": [
+    { "src": ".gitleaks.toml",                "dest": ".gitleaks.toml" },
+    { "src": ".github/workflows/gitleaks.yml", "dest": ".github/workflows/gitleaks.yml", "skipFlag": "skipCi" }
+  ],
+  "nextSteps": [
+    "Install gitleaks: brew install gitleaks — or a release binary from https://github.com/gitleaks/gitleaks/releases",
+    "./.har/launch.sh 1",
+    "./.har/stages/secrets-scan.sh 1",
+    "Open .har/artifacts/secrets-scan/report.json for findings (secrets are redacted)",
+    "Tune allowlists in .gitleaks.toml — read .har/stages/GITLEAKS.md for the adaptation guide"
+  ],
+  "docsPath": ".har/stages/GITLEAKS.md"
+}

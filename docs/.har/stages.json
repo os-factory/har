@@ -1,0 +1,129 @@
+{
+  "version": "1",
+  "artifactsDir": "artifacts",
+  "logsDir": "logs",
+  "agentSlots": {
+    "min": 1,
+    "max": 5
+  },
+  "verificationStages": [
+    "check",
+    "site-health",
+    "drift",
+    "build",
+    "links",
+    "browser-e2e"
+  ],
+  "stages": [
+    {
+      "id": "setup-infra",
+      "kind": "setup",
+      "description": "Shared infrastructure (no-op for docs — no Docker services)",
+      "command": "./.har/setup-infra.sh",
+      "artifacts": []
+    },
+    {
+      "id": "launch",
+      "kind": "launch",
+      "description": "Launch an isolated Astro docs slot (worktree + PM2 + before screenshots)",
+      "command": "./.har/launch.sh {agentId}",
+      "artifacts": [
+        {
+          "path": ".env.agent.{agentId}",
+          "kind": "file",
+          "description": "Generated per-agent environment file in the session work dir"
+        },
+        {
+          "path": ".har/artifacts/browser-e2e/screenshots/before",
+          "kind": "directory",
+          "description": "Baseline full-page screenshots captured at launch"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "description": "Verification pipeline (quick: check + health; --full: drift, build, links, browser-e2e with after screenshots)",
+      "command": "./.har/verify.sh {agentId}",
+      "artifacts": [
+        {
+          "path": ".har/artifacts",
+          "kind": "directory",
+          "description": "Verification outputs: reports, traces, before/after screenshots"
+        }
+      ],
+      "acceptsArgs": [
+        "--full"
+      ]
+    },
+    {
+      "id": "status",
+      "kind": "inspect",
+      "description": "Inspect a running agent environment slot",
+      "command": "./.har/agent-cli.sh {agentId} status",
+      "artifacts": [
+        {
+          "path": ".har/logs",
+          "kind": "directory",
+          "description": "Optional harness logs"
+        }
+      ]
+    },
+    {
+      "id": "logs",
+      "kind": "inspect",
+      "description": "Read recent logs for an agent slot",
+      "command": "./.har/agent-cli.sh {agentId} logs",
+      "artifacts": []
+    },
+    {
+      "id": "teardown",
+      "kind": "teardown",
+      "description": "Stop processes and release agent slot resources",
+      "command": "./.har/teardown.sh {agentId}",
+      "artifacts": []
+    },
+    {
+      "id": "browser-e2e",
+      "kind": "test",
+      "description": "Playwright E2E (frontend + API + a11y) and after screenshots",
+      "script": "stages/browser-e2e.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/browser-e2e",
+          "kind": "directory",
+          "description": "HTML report, traces, after screenshots"
+        },
+        {
+          "path": ".har/artifacts/browser-e2e/screenshots/after",
+          "kind": "directory",
+          "description": "Full-page after screenshots for session handoff"
+        },
+        {
+          "path": ".har/artifacts/browser-e2e/playwright-report",
+          "kind": "report"
+        }
+      ],
+      "requiresAgentId": true
+    },
+    {
+      "id": "capture-screenshots",
+      "kind": "test",
+      "description": "Capture before/after full-page screenshots (visual proof)",
+      "script": "stages/capture-screenshots.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/browser-e2e/screenshots",
+          "kind": "directory",
+          "description": "before/ and after/ PNG directories"
+        }
+      ],
+      "requiresAgentId": true
+    }
+  ],
+  "commitGate": {
+    "enabled": true,
+    "mode": "block",
+    "scope": "worktrees"
+  }
+}

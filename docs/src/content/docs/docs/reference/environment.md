@@ -21,6 +21,7 @@ Edit shared configuration in `.har/harness.env`. Launch expands resolved values 
 | --- | --- |
 | `HARNESS_ECOSYSTEM` | `auto`, `node`, `python`, `go`, `rust`, `java`, `ruby`, `ios`, or `none` |
 | `HARNESS_INSTALL_CMD` | Project-specific install override |
+| `HARNESS_NODE_PACKAGE_MANAGER` | Pins the Node package manager: `npm`, `bun`, `pnpm`, or `yarn` (auto-detected when unset) |
 | `HARNESS_PYTHON_VENV_DIR` | Python virtual environment path relative to the work directory |
 | `DEVELOPER_DIR` | Optional Xcode developer directory |
 | `HARNESS_XCODE_SCHEME` | iOS scheme |
@@ -31,6 +32,22 @@ Edit shared configuration in `.har/harness.env`. Launch expands resolved values 
 Provisioning records resolved values such as `NODE_BIN`, `NPM_BIN`, `PYTHON_BIN`,
 `GO_BIN`, `CARGO_BIN`, `RUSTC_BIN`, `JAVA_HOME`, `RUBY_BIN`, and
 `XCODEBUILD_BIN` in the slot environment.
+
+### Node package managers
+
+`node` projects install with bun, pnpm, yarn, or npm. The manager is taken from
+`HARNESS_NODE_PACKAGE_MANAGER`, then the `packageManager` field in
+`package.json`, then the lockfile (`bun.lock` → bun, `pnpm-lock.yaml` → pnpm,
+`yarn.lock` → yarn, `package-lock.json` → npm).
+
+When the declared manager is not installed, provisioning falls back to one that
+is — so a bun repository still launches on an npm-only machine, and an npm
+repository still launches on a bun-only machine. A substitute never migrates the
+repository: any lockfile it writes is removed after the install.
+
+`NPM_BIN` holds the resolved manager (use `${NPM_BIN:-npm} run <script>` in
+verification steps) and `HARNESS_PKG_EXEC` holds the matching package runner
+(`npx --yes`, `bunx`, `pnpm dlx`, or `yarn dlx`).
 
 ## iOS simulator allocation
 

@@ -4,6 +4,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import HeroFlow from '../components/HeroFlow.astro';
 import { formatHeroRunTotal } from '../lib/hero-stage-meta';
+import { plugins } from '../data/plugins';
 
 const heroRunTotal = formatHeroRunTotal();
 ---
@@ -37,6 +38,9 @@ const heroRunTotal = formatHeroRunTotal();
             <div class="floating-note floating-note-top" data-hero-parallax><span>agentSlots</span><strong>3</strong></div>
             <div class="floating-note floating-note-bottom" data-hero-parallax><span>last run</span><strong>passed in {heroRunTotal}</strong></div>
           </div>
+          <button class="hero-play" type="button" data-video-open aria-label="Watch the HAR demo video">
+            <span class="hero-play-btn"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>
+          </button>
         </div>
 </div>
 <div class="hero-fade"></div>
@@ -175,23 +179,9 @@ const heroRunTotal = formatHeroRunTotal();
 <span>localhost:3847 / mission-control</span>
 <b>HAR</b>
 </div>
-<img alt="HAR Mission Control repository dashboard" src="/assets/mission-control-overview.png"/>
+<img alt="HAR Mission Control repository dashboard" src="/assets/mission-control-overview.png" data-dashboard-zoom />
 <div class="dashboard-overlay dashboard-overlay-one"><span>Active slots</span><strong>27</strong><small>across 6 repositories</small></div>
 <div class="dashboard-overlay dashboard-overlay-two"><span>Latest verification</span><strong><i></i> All checks passed</strong><small>31.2 seconds ago</small></div>
-</div>
-</div>
-</section>
-<section class="section section-light demo-video-section">
-<div class="container demo-video-grid reveal">
-<div class="demo-video-copy">
-<div class="section-kicker">Demo</div>
-<h2>See HAR in action.</h2>
-<p>Onboard an existing Next.js repo, launch an isolated coding agent, and verify the result with Playwright — from setup to a validated branch ready for review.</p>
-</div>
-<div class="demo-video-frame">
-<div class="video-embed">
-<iframe src="https://www.youtube.com/embed/XKl4ZzWy7mQ" title="HAR introduction demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
-</div>
 </div>
 </div>
 </section>
@@ -232,17 +222,18 @@ const heroRunTotal = formatHeroRunTotal();
 <p>Adds a browser-e2e stage with frontend, API health, and accessibility smoke specs.</p>
 </div>
 <div class="what-cell">
-<img class="what-icon what-logo" src="/assets/logo-rocketsim.png" alt="RocketSim" width="28" height="28" loading="lazy" />
-<h3>RocketSim</h3>
-<p>Installs a rocketsim-flows runner and an example iOS flow for simulator testing.</p>
+<img class="what-icon what-logo" src="/assets/logo-semgrep.svg" alt="Semgrep" width="28" height="28" loading="lazy" />
+<h3>Semgrep</h3>
+<p>Adds a sast stage that scans every agent worktree for security findings before code lands.</p>
 </div>
 <div class="what-cell">
 <svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
 <h3>Your own stages</h3>
 <p>Register project-specific checks as custom stages, or build a plugin of your own.</p>
 </div>
-<div class="stack-group-link-bar">
-<a class="stack-group-link" href="/docs/guides/plugins/">Browse all plugins <span aria-hidden="true">→</span></a>
+<div class="stack-group-link-bar plugin-link-bar">
+<a class="stack-group-link" href="/plugins/">Explore the plugin marketplace <span aria-hidden="true">→</span></a>
+<span class="plugin-count">{plugins.length} plugins available</span>
 </div>
 </div>
 </div>
@@ -291,4 +282,34 @@ const heroRunTotal = formatHeroRunTotal();
   <Footer />
   </div>
   </main>
+  <div class="video-modal" data-video-modal hidden>
+    <button class="video-modal-backdrop" type="button" data-video-close aria-label="Close video"></button>
+    <div class="video-modal-dialog" role="dialog" aria-modal="true" aria-label="HAR demo video">
+      <button class="video-modal-close" type="button" data-video-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+      <div class="video-modal-frame" data-video-slot></div>
+    </div>
+  </div>
 </BaseLayout>
+
+<style>
+  .hero-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 6; display: inline-flex; flex-direction: column; align-items: center; gap: 12px; padding: 0; background: none; border: 0; cursor: pointer; }
+  .hero-play-btn { display: grid; place-items: center; width: 74px; height: 74px; border-radius: 50%; background: var(--blue); color: #fff; box-shadow: 0 18px 50px rgba(11,15,20,.4); transition: transform .2s ease, box-shadow .2s ease; }
+  .hero-play:hover .hero-play-btn { transform: scale(1.06); box-shadow: 0 22px 60px rgba(11,15,20,.5); }
+  .hero-play-btn svg { width: 30px; height: 30px; margin-left: 4px; }
+
+  .video-modal[hidden] { display: none; }
+  .video-modal { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 24px; }
+  .video-modal-backdrop { position: absolute; inset: 0; background: rgba(6,9,12,.82); backdrop-filter: blur(4px); border: 0; margin: 0; padding: 0; cursor: pointer; }
+  .video-modal-dialog { position: relative; width: min(980px, 100%); }
+  .video-modal-frame { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; box-shadow: 0 40px 120px rgba(0,0,0,.6); }
+  .video-modal-frame :global(iframe) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .video-modal-close { position: absolute; top: -46px; right: 0; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; border: 0; cursor: pointer; transition: background .15s ease; }
+  .video-modal-close:hover { background: rgba(255,255,255,.26); }
+  .video-modal-close svg { width: 18px; height: 18px; }
+  @media (max-width: 600px) { .hero-play-btn { width: 60px; height: 60px; } .video-modal-close { top: 8px; right: 8px; } }
+  /* Plugin marketplace CTA — count stays in sync with src/data/plugins.ts. */
+  .plugin-link-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .plugin-count { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--muted); }
+</style>

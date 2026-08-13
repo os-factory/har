@@ -1,0 +1,44 @@
+{
+  "id": "trivy",
+  "stageId": "vuln-scan",
+  "verificationStages": [
+    "typecheck",
+    "unit-tests",
+    "lint",
+    "vuln-scan"
+  ],
+  "stage": {
+    "id": "vuln-scan",
+    "kind": "test",
+    "description": "Trivy vulnerability + IaC misconfiguration scan (dependencies, Terraform, Dockerfile, K8s)",
+    "script": "stages/vuln-scan.sh",
+    "requiresAgentId": true,
+    "artifacts": [
+      {
+        "path": ".har/artifacts/vuln-scan",
+        "kind": "directory",
+        "description": "Trivy JSON report and human-readable summary"
+      },
+      {
+        "path": ".har/artifacts/vuln-scan/report.json",
+        "kind": "report"
+      }
+    ]
+  },
+  "files": [
+    { "src": ".har/stages/vuln-scan.sh", "dest": ".har/stages/vuln-scan.sh", "executable": true },
+    { "src": ".har/stages/TRIVY.md",     "dest": ".har/stages/TRIVY.md" },
+    { "src": ".trivyignore",             "dest": ".trivyignore" }
+  ],
+  "optionalFiles": [
+    { "src": ".github/workflows/trivy.yml", "dest": ".github/workflows/trivy.yml", "skipFlag": "skipCi" }
+  ],
+  "nextSteps": [
+    "Install trivy: brew install trivy (or https://trivy.dev/latest/getting-started/installation/)",
+    "./.har/launch.sh 1",
+    "./.har/stages/vuln-scan.sh 1",
+    "Open .har/artifacts/vuln-scan/summary.txt for findings",
+    "Tune HARNESS_TRIVY_SEVERITY / HARNESS_TRIVY_SCANNERS in .har/harness.env — read .har/stages/TRIVY.md"
+  ],
+  "docsPath": ".har/stages/TRIVY.md"
+}
