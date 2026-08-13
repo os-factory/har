@@ -108,10 +108,25 @@ har_sim_claim_owner_of() {
 
 # ── Device discovery ──────────────────────────────────────────────────────────
 
+# Every simctl call goes through here, so "simctl could not be asked" stays
+# distinguishable from "simctl answered, and the answer is empty" at the one place
+# that still knows the difference. Non-zero means the first; callers check it
+# instead of reading an empty list as a fact about the machine.
+har_sim_simctl() {
+  local out rc=0
+  out="$(xcrun simctl "$@" 2>/dev/null)" || rc=$?
+  if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
+    return 1
+  fi
+  printf '%s' "$out"
+}
+
 # Unavailable devices are skipped: a device whose runtime was uninstalled must
 # not pass validation only to fail at boot.
 har_sim_device_field() {
-  xcrun simctl list devices --json 2>/dev/null | node -e '
+  local devices
+  devices="$(har_sim_simctl list devices --json)" || return 1
+  printf '%s' "$devices" | node -e '
 const data = JSON.parse(require("fs").readFileSync(0, "utf8"));
 const [want, field] = process.argv.slice(1);
 const device = Object.values(data.devices || {})
@@ -128,9 +143,10 @@ har_sim_device_name() { har_sim_device_field "$1" name; }
 # UDID of an existing device with this exact name, newest runtime first.
 # A substring match would resolve "iPhone 16" to "iPhone 16 Pro Max".
 har_sim_device_by_name() {
-  local want="${1:-}"
+  local want="${1:-}" devices
   [ -n "$want" ] || return 0
-  xcrun simctl list devices available --json 2>/dev/null | node -e '
+  devices="$(har_sim_simctl list devices available --json)" || return 1
+  printf '%s' "$devices" | node -e '
 const data = JSON.parse(require("fs").readFileSync(0, "utf8"));
 const want = process.argv[1];
 const rows = [];
@@ -157,20 +173,64 @@ har_sim_resolve_configured() {
   printf '%s\t%s' "$udid" "${HARNESS_SIMULATOR_NAME}"
 }
 
-# `simctl list` is a subprocess and a JSON parse; neither answer changes during
-# a launch, so each is fetched at most once per process.
+# `simctl list` is a subprocess and a JSON parse, so each answer is cached — but in
+# the calling shell, not the process: `$(har_sim_runtimes_json)` fetches, then throws
+# the cache and the availability flag away with the subshell that held them. Call
+# these directly and read the variable whenever either one matters.
 har_sim_devicetypes_json() {
   if [ -z "${_HAR_SIM_TYPES_JSON:-}" ]; then
-    _HAR_SIM_TYPES_JSON="$(xcrun simctl list devicetypes --json 2>/dev/null || echo '{}')"
+    _HAR_SIM_TYPES_JSON="$(har_sim_simctl list devicetypes --json)" || _HAR_SIM_TYPES_JSON='{}'
   fi
   printf '%s' "$_HAR_SIM_TYPES_JSON"
 }
 
 har_sim_runtimes_json() {
   if [ -z "${_HAR_SIM_RUNTIMES_JSON:-}" ]; then
-    _HAR_SIM_RUNTIMES_JSON="$(xcrun simctl list runtimes --json 2>/dev/null || echo '{}')"
+    if _HAR_SIM_RUNTIMES_JSON="$(har_sim_simctl list runtimes --json)"; then
+      _HAR_SIM_SIMCTL_OK=true
+    else
+      _HAR_SIM_RUNTIMES_JSON='{}'
+      _HAR_SIM_SIMCTL_OK=false
+      # A second call, but only ever when simctl is already failing — and failing
+      # is the fast path. Its stderr is the only thing that tells the causes apart.
+      _HAR_SIM_SIMCTL_ERROR="$(xcrun simctl list runtimes --json 2>&1 >/dev/null || true)"
+    fi
   fi
   printf '%s' "$_HAR_SIM_RUNTIMES_JSON"
+}
+
+# Ask simctl once, recording in this shell whether it answered and why not.
+har_sim_probe_simctl() {
+  har_sim_runtimes_json >/dev/null
+}
+
+har_sim_simctl_available() {
+  har_sim_probe_simctl
+  [ "${_HAR_SIM_SIMCTL_OK:-true}" = "true" ]
+}
+
+# Two unrelated problems make simctl unusable — a sandbox denying the
+# CoreSimulatorService lookup, and a developer directory with no simctl in it.
+# Naming the wrong one costs the reader the hunt this check exists to prevent.
+har_sim_log_simctl_unavailable() {
+  # Teardown hits two failures in a row; the cause only needs saying once.
+  [ -z "${_HAR_SIM_SIMCTL_CAUSE_REPORTED:-}" ] || return 0
+  _HAR_SIM_SIMCTL_CAUSE_REPORTED=1
+  # For a launch the failing call happened inside the command substitution around
+  # har_sim_plan_creation, so the reason died with that subshell — ask again here.
+  har_sim_probe_simctl
+  case "${_HAR_SIM_SIMCTL_ERROR:-}" in
+    *"not a developer tool"*|*"unable to find utility"*|*"command not found"*)
+      har_sim_log "'xcrun simctl' is not in the selected developer directory"
+      har_sim_log "  install Xcode, then point the toolchain at it:"
+      har_sim_log "    sudo xcode-select -s /Applications/Xcode.app"
+      har_sim_log "  current selection: $(xcode-select -p 2>/dev/null || echo 'none')"
+      return
+      ;;
+  esac
+  har_sim_log "cannot reach CoreSimulatorService — 'xcrun simctl' is unusable here"
+  har_sim_log "  this usually means the command is running inside an agent sandbox"
+  har_sim_log "  run it from a normal terminal, or let the agent run 'xcrun simctl' unsandboxed"
 }
 
 # Model and runtime to create this slot's device from. Failures carry the models
@@ -180,10 +240,18 @@ har_sim_runtimes_json() {
 #   NO_RUNTIME                        no iOS runtime installed
 #   NO_MODEL <models>                 HARNESS_SIMULATOR_NAME is not a device model
 #   NO_RUNTIME_FOR_MODEL <models>     model exists, no installed runtime supports it
+#   SIMCTL_UNAVAILABLE                simctl could not be asked at all
 har_sim_plan_creation() {
   local types runtimes
   types="$(har_sim_devicetypes_json)"
-  runtimes="$(har_sim_runtimes_json)"
+  # Not `$(...)`: that would discard the availability flag with the subshell.
+  har_sim_runtimes_json >/dev/null
+  runtimes="$_HAR_SIM_RUNTIMES_JSON"
+  # Checked before the empty lists are read as an answer about the machine.
+  if ! har_sim_simctl_available; then
+    printf 'SIMCTL_UNAVAILABLE'
+    return
+  fi
   node -e '
 const [typesRaw, runtimesRaw, wantName, family] = process.argv.slice(1);
 const types = JSON.parse(typesRaw).devicetypes || [];
@@ -240,7 +308,9 @@ process.stdout.write(plan());
 # Every device whose name is <prefix> or starts with "<prefix>-", so a slot's
 # leftovers are found whatever model they were created from.
 har_sim_devices_with_prefix() {
-  xcrun simctl list devices --json 2>/dev/null | node -e '
+  local devices
+  devices="$(har_sim_simctl list devices --json)" || return 1
+  printf '%s' "$devices" | node -e '
 const data = JSON.parse(require("fs").readFileSync(0, "utf8"));
 const prefix = process.argv[1];
 const matches = Object.values(data.devices || {})
@@ -252,12 +322,19 @@ process.stdout.write(matches.join("\n"));
 ' "$1" 2>/dev/null || true
 }
 
+# Returns 0 even when it could not look: teardown.sh runs under `set -e`, and
+# aborting there would leave the slot registry behind on top of the device.
 har_sim_delete_devices_with_prefix() {
-  local udid
+  local udid list
+  if ! list="$(har_sim_devices_with_prefix "$1")"; then
+    har_sim_log "cannot check for leftover devices named ${1}* — none were removed"
+    har_sim_log_simctl_unavailable
+    return 0
+  fi
   while read -r udid; do
     [ -n "$udid" ] || continue
     xcrun simctl delete "$udid" >/dev/null 2>&1 || true
-  done <<< "$(har_sim_devices_with_prefix "$1")"
+  done <<< "$list"
 }
 
 # ── Boot ──────────────────────────────────────────────────────────────────────
@@ -289,7 +366,11 @@ _har_sim_select() {
 
   # An explicit UDID is a deliberate override — never fall back off it.
   if [ -n "${HARNESS_SIMULATOR_UDID:-}" ]; then
-    name="$(har_sim_device_name "$HARNESS_SIMULATOR_UDID")"
+    # A failed lookup is "could not ask"; an empty one is "no such device".
+    name="$(har_sim_device_name "$HARNESS_SIMULATOR_UDID")" || {
+      har_sim_log_simctl_unavailable
+      return 1
+    }
     if [ -z "$name" ]; then
       har_sim_log "HARNESS_SIMULATOR_UDID=${HARNESS_SIMULATOR_UDID} is not a known device"
       return 1
@@ -309,6 +390,11 @@ _har_sim_select() {
   # Failure statuses carry the creatable models after the first tab.
   models=""
   [ "$plan" != "$status" ] && models="${plan#*$'\t'}"
+
+  if [ "$status" = "SIMCTL_UNAVAILABLE" ]; then
+    har_sim_log_simctl_unavailable
+    return 1
+  fi
 
   if [ "$status" = "OK" ]; then
     IFS=$'\t' read -r _ device_type model runtime _ <<< "$plan"
@@ -388,8 +474,14 @@ har_sim_release() {
     rm -f "$file"
     if [ "$created" = "true" ] && [ -n "$udid" ]; then
       xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
-      xcrun simctl delete "$udid" >/dev/null 2>&1 || true
-      echo "✓ Deleted simulator created for this slot ($udid)"
+      if xcrun simctl delete "$udid" >/dev/null 2>&1; then
+        echo "✓ Deleted simulator created for this slot ($udid)"
+      else
+        # Naming it is the whole remedy left: the claim is gone, so only the name
+        # prefix sweep at the next launch can still find this device.
+        har_sim_log "could not delete ${udid}, created for agent ${agent_id} — it is still on this machine"
+        har_sim_simctl_available || har_sim_log_simctl_unavailable
+      fi
     fi
   fi
 

@@ -71,7 +71,9 @@ const DEVICES = {
  */
 const tempRoots: string[] = [];
 
-function makeHarness(): { root: string; harnessDir: string; binDir: string; callLog: string } {
+function makeHarness(
+  options: { simctlFailure?: 'sandbox' | 'missing'; noRuntimes?: boolean } = {},
+): { root: string; harnessDir: string; binDir: string; callLog: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'har-ios-sim-'));
   tempRoots.push(root);
   const harnessDir = path.join(root, '.har');
@@ -85,8 +87,26 @@ function makeHarness(): { root: string; harnessDir: string; binDir: string; call
   }
 
   const devicesPath = path.join(root, 'devices.json');
+  // Both leave xcodebuild working and kill every simctl subcommand, which is why
+  // they are indistinguishable to a caller that only looks at an empty list.
+  const simctlFailures = {
+    // An agent sandbox denies the mach lookup to CoreSimulatorService.
+    sandbox: `
+if [ "\$1" = "simctl" ]; then
+  echo "CoreSimulatorService connection became invalid.  Simulator services will no longer be available." >&2
+  echo "Underlying error (domain=NSPOSIXErrorDomain, code=61): Connection refused" >&2
+  exit 1
+fi`,
+    // xcode-select pointing at the Command Line Tools: simctl is not there at all.
+    missing: `
+if [ "\$1" = "simctl" ]; then
+  echo 'xcrun: error: unable to find utility "simctl", not a developer tool or in PATH' >&2
+  exit 72
+fi`,
+  };
+  const failure = options.simctlFailure ? simctlFailures[options.simctlFailure] : '';
   const stub = `#!/usr/bin/env bash
-echo "$*" >> ${JSON.stringify(callLog)}
+echo "$*" >> ${JSON.stringify(callLog)}${failure}
 if [ "\$1" != "simctl" ]; then exit 0; fi
 case "\$2 \$3" in
   "list devices")     cat ${JSON.stringify(devicesPath)} ;;
@@ -115,7 +135,10 @@ exit 0
   fs.writeFileSync(path.join(binDir, 'xcodebuild'), '#!/usr/bin/env bash\necho "Xcode 26.5"\n', { mode: 0o755 });
   fs.writeFileSync(devicesPath, JSON.stringify(DEVICES));
   fs.writeFileSync(path.join(root, 'devicetypes.json'), JSON.stringify(DEVICE_TYPES));
-  fs.writeFileSync(path.join(root, 'runtimes.json'), JSON.stringify(RUNTIMES));
+  fs.writeFileSync(
+    path.join(root, 'runtimes.json'),
+    JSON.stringify(options.noRuntimes ? { runtimes: [] } : RUNTIMES),
+  );
 
   return { root, harnessDir, binDir, callLog };
 }
@@ -384,6 +407,96 @@ describe('iOS per-slot simulator allocation', () => {
     expect(result.code).not.toBe(0);
     expect(result.stdout).toContain('no simulator can be prepared');
     expect(result.stdout).toContain('iPhone 17');
+  });
+
+  it('reports simctl being unreachable rather than blaming a missing runtime', () => {
+    const harness = makeHarness({ simctlFailure: 'sandbox' });
+
+    const result = runSetupInfra(harness);
+
+    expect(result.code).not.toBe(0);
+    expect(result.stdout).toContain('cannot reach CoreSimulatorService');
+    expect(result.stdout).toContain('sandbox');
+    expect(result.stdout).not.toContain('No iOS runtime is installed');
+  });
+
+  it('fails a slot launch with the simctl diagnostic, creating nothing', () => {
+    const harness = makeHarness({ simctlFailure: 'sandbox' });
+
+    const result = bash(harness, 'har_sim_acquire 1', { HARNESS_SIMULATOR_NAME: 'iPhone 16' });
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('cannot reach CoreSimulatorService');
+    expect(result.stderr).not.toContain('no iOS simulator runtime is installed');
+    expect(fs.readFileSync(harness.callLog, 'utf8')).not.toContain('simctl create');
+  });
+
+  it('names the toolchain, not a sandbox, when simctl is not installed', () => {
+    const harness = makeHarness({ simctlFailure: 'missing' });
+
+    const result = bash(harness, 'har_sim_acquire 1', { HARNESS_SIMULATOR_NAME: 'iPhone 16' });
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('not in the selected developer directory');
+    expect(result.stderr).toContain('xcode-select');
+    expect(result.stderr).not.toContain('sandbox');
+  });
+
+  // The message the whole change exists to preserve: a reachable simctl reporting
+  // no iOS runtime must still send the reader to Xcode, not to a sandbox.
+  it('still blames a missing runtime when simctl answers with none', () => {
+    const harness = makeHarness({ noRuntimes: true });
+
+    const result = runSetupInfra(harness);
+
+    expect(result.code).not.toBe(0);
+    expect(result.stdout).toContain('No iOS runtime is installed');
+    expect(result.stdout).not.toContain('CoreSimulatorService');
+  });
+
+  it('does not call a pinned UDID unknown when simctl is unreachable', () => {
+    const harness = makeHarness({ simctlFailure: 'sandbox' });
+
+    const result = bash(harness, 'har_sim_acquire 1', { HARNESS_SIMULATOR_UDID: 'UDID-MY-IPHONE' });
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('cannot reach CoreSimulatorService');
+    expect(result.stderr).not.toContain('not a known device');
+  });
+
+  it('reports simctl being unreachable in shared mode too', () => {
+    const harness = makeHarness({ simctlFailure: 'sandbox' });
+    setHarnessEnv(harness.harnessDir, 'HARNESS_SIMULATOR_SHARED', 'true');
+
+    const result = runSetupInfra(harness);
+
+    expect(result.code).not.toBe(0);
+    expect(result.stdout).toContain('cannot reach CoreSimulatorService');
+    expect(result.stdout).not.toContain('not found in available devices');
+  });
+
+  // The claim is dropped even though the delete failed: nothing reads it once the
+  // slot registry is gone, and keeping it makes `agent-cli.sh <id> simulator`
+  // report a live reservation for a torn-down slot.
+  it('drops the claim and names the device release could not delete', () => {
+    const harness = makeHarness({ simctlFailure: 'sandbox' });
+    claimFor(harness.harnessDir, 1, 'UDID-CREATED-7', true);
+
+    const result = bash(harness, 'har_sim_release 1', { HARNESS_PROJECT_NAME: 'demo' });
+
+    expect(result.stderr).toContain('cannot reach CoreSimulatorService');
+    expect(result.stderr).toContain('UDID-CREATED-7');
+    expect(fs.existsSync(path.join(harness.harnessDir, 'simulators', 'agent-1.json'))).toBe(false);
+    // No cleanup may be claimed that did not happen.
+    expect(result.stdout).not.toContain('Deleted simulator');
+  });
+
+  it('reports that leftover devices could not even be looked for', () => {
+    const harness = makeHarness({ simctlFailure: 'sandbox' });
+
+    const result = bash(harness, 'har_sim_release 1', { HARNESS_PROJECT_NAME: 'demo' });
+
+    expect(result.stderr).toContain('cannot check for leftover devices');
   });
 
   it('lets setup-infra pass when the name is an existing device rather than a model', () => {
