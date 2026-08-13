@@ -109,6 +109,24 @@ launch fails and lists the models this machine can create.
 If `HARNESS_SIMULATOR_NAME` is not a model but names an existing device, that
 device is used as-is and never deleted — how a hand-renamed simulator is targeted.
 
+### Running from an agent sandbox
+
+`xcrun simctl` reaches CoreSimulatorService over XPC. Coding agents that sandbox
+their shell (Codex, Claude Code and others) usually deny that lookup, so `simctl`
+fails while `xcodebuild` keeps working — every simulator command then dies with
+`CoreSimulatorService connection became invalid`. Nothing is missing on the machine.
+
+Launch and teardown say so when it happens. Either run `har env launch <id>` and
+`har env teardown <id>` from a normal terminal and let the agent work in the
+worktree, or grant the agent unsandboxed access to `xcrun simctl` — the escalation
+must cover every subcommand the harness uses (`list`, `create`, `boot`,
+`bootstatus`, `shutdown`, `delete`), not just `list`.
+
+The same messages distinguish a second cause: if `xcrun simctl` is missing from
+the selected developer directory — no Xcode, or `xcode-select` pointing at the
+Command Line Tools — they say so and print the current selection instead of
+blaming a sandbox.
+
 The device lands in `.env.agent.<id>` as `HARNESS_SIMULATOR_UDID`,
 `HARNESS_SIMULATOR_DEVICE_NAME` and `HARNESS_IOS_DESTINATION` — the model stays in
 `HARNESS_SIMULATOR_NAME`, so the two never mean the same thing in one place; what a slot holds is tracked in `.har/simulators/`.

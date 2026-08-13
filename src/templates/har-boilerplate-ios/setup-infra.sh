@@ -19,6 +19,14 @@ source "$SCRIPT_DIR/simulator.sh"
 
 log() { echo "==> $*" >&2; }
 
+# simctl could not be asked, so nothing it did not return is evidence of anything
+# missing on this machine. The wording lives in simulator.sh so launch and this
+# script cannot drift apart on which of the two causes they name.
+fail_simctl_unavailable() {
+  har_sim_log_simctl_unavailable
+  exit 1
+}
+
 # ── Xcode check ───────────────────────────────────────────────────────────────
 if ! command -v xcodebuild >/dev/null 2>&1; then
   echo "Error: xcodebuild not found — install Xcode from the App Store." >&2
@@ -40,6 +48,8 @@ if har_sim_per_slot_enabled; then
   PLAN_STATUS="${PLAN%%$'\t'*}"
   if [ "$PLAN_STATUS" = "OK" ]; then
     log "Per-slot simulators: launch creates one $(printf '%s' "$PLAN" | cut -f3) per agent."
+  elif [ "$PLAN_STATUS" = "SIMCTL_UNAVAILABLE" ]; then
+    fail_simctl_unavailable
   elif [ "$PLAN_STATUS" = "NO_MODEL" ] && [ -n "$(har_sim_device_by_name "${HARNESS_SIMULATOR_NAME:-}")" ]; then
     # Supported fallback: the name is an existing device rather than a model.
     log "Per-slot simulators: launch reuses the existing device '${SIMULATOR_NAME}'."
@@ -63,6 +73,7 @@ else
   UDID="${RESOLVED%%$'\t'*}"
 
   if [ -z "$UDID" ]; then
+    har_sim_simctl_available || fail_simctl_unavailable
     echo "Error: Simulator '${SIMULATOR_NAME}' not found in available devices." >&2
     echo "  Available simulators:" >&2
     xcrun simctl list devices available 2>/dev/null | grep -E 'iPhone|iPad' | head -20 >&2
