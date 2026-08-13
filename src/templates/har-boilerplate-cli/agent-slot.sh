@@ -427,6 +427,35 @@ try {
 #   optional: SLOT_SUFFIX, SLOT_WORKTREE_PATH, SLOT_BRANCH, SLOT_BASE_BRANCH,
 #             SLOT_BASE_COMMIT, SLOT_PORTS_JSON, SLOT_PREVIEW_URLS_JSON,
 #             SLOT_STATUS, SLOT_LAST_ERROR, SLOT_WORK_UNIT_ID, SLOT_ATTEMPT_ID
+# Mission Control re-reads slot state only when something syncs, and a sync takes
+# about twenty seconds — too long to make a slot change wait for it. Detached, and
+# coalesced so a run of slot changes leaves one sync going, then one more if needed.
+har_notify_control() {
+  local root bin lock
+  root="$(cd "${SCRIPT_DIR}/.." && pwd)"
+  bin="$(command -v har 2>/dev/null || echo "${root}/node_modules/.bin/har")"
+  [ -x "$bin" ] || return 0
+
+  lock="${TMPDIR:-/tmp}/har-control-sync.$(id -u)"
+  : > "${lock}.pending"
+  mkdir "$lock" 2>/dev/null || return 0
+  (
+    trap "" HUP
+    trap 'rmdir "$lock" 2>/dev/null || true' EXIT
+    cd "$root" || exit 0
+    while [ -f "${lock}.pending" ]; do
+      rm -f "${lock}.pending"
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 120 "$bin" control sync || true
+      else
+        "$bin" control sync || true
+      fi
+    done
+  # Redirected as a whole, not per command: a background job that keeps the inherited
+  # stdout open makes any caller reading that pipe wait for it.
+  ) >/dev/null 2>&1 &
+}
+
 write_slot_registry() {
   local file
   file="$(slot_registry_file "$SLOT_AGENT_ID")"
@@ -456,10 +485,12 @@ for (const [key, env] of [["ports", "SLOT_PORTS_JSON"], ["previewUrls", "SLOT_PR
 }
 fs.writeFileSync(process.argv[1], JSON.stringify(entry, null, 2) + "\n");
 ' "$file"
+  har_notify_control
 }
 
 remove_slot_registry() {
   rm -f "$(slot_registry_file "$1")"
+  har_notify_control
 }
 
 # Exit 0 when the worktree has uncommitted or untracked changes.
