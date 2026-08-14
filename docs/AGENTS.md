@@ -76,7 +76,10 @@ Commit in the session worktree. Run JSON stays in the main checkout `.har/runs/`
 ### Session handoff (required)
 
 After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-<id>.json`), and preview URLs. Wait — never autonomously
+(`.har/slots/agent-<id>.json`), preview URLs, and **Playwright after-screenshots**
+from full verify (paths under the **session work dir**, not the main checkout —
+e.g. `<work-dir>/.har/artifacts/browser-e2e/screenshots/after/*.png`; list or link
+every PNG so UI changes are reviewable without hunting the worktree). Wait — never autonomously
 complete, teardown, push, or open a PR. **Default:** when `gh`/GitHub MCP is available,
 recommend **Complete + open a PR** (still needs approval). Alternatives: **Complete only**,
 or **Something else**. Without PR tooling, recommend **Complete only** and give the

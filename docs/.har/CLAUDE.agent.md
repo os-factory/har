@@ -44,7 +44,7 @@ When you change the landing page or another route:
 1. Add or update a Playwright spec under `tests/frontend/`
 2. Update `tests/frontend/visual-proof.spec.cjs` if the route/assertion changed
 3. Run `har env verify ${AGENT_ID} --full`
-4. In the session handoff, link the **after** screenshots (and **before** when present)
+4. In the session handoff, **always** link the **after** screenshots (and **before** when present) from the **session work dir** — not the main checkout (`docs/.har/artifacts/…` in the repo root stays stale)
 
 ## Definition of done
 
@@ -53,13 +53,15 @@ When you change the landing page or another route:
 - [ ] UI changes have Playwright coverage; screenshot artifacts prove the result
 - [ ] Changes committed **in the session worktree**
 - [ ] User got the preview URL http://localhost:${FE_PORT}
+- [ ] Session handoff lists Playwright **after** screenshot paths from the work dir (`.har/artifacts/browser-e2e/screenshots/after/`)
 - [ ] Present session handoff and **wait** before `complete`, push, or PR
 
 ### Session handoff
 
 After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-${AGENT_ID}.json`), preview URL, and screenshot artifact paths.
-Never autonomously run `complete`, push, or open a PR. Prefer **Complete + open a PR**
+(`.har/slots/agent-${AGENT_ID}.json`), preview URL, and **Playwright after-screenshots**
+(under `<work-dir>/.har/artifacts/browser-e2e/screenshots/after/` — always list the
+PNG paths; the main checkout copy is not updated). Never autonomously run `complete`, push, or open a PR. Prefer **Complete + open a PR**
 when `gh`/GitHub MCP is available.
 
 Quick loop: `./.har/verify.sh ${AGENT_ID}` (check + health only).
