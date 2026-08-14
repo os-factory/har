@@ -3,6 +3,7 @@ import {
   displayEventType,
   displayPromptText,
   eventDetailSummary,
+  eventToolName,
   isRedundantLogEvent,
   matchesSessionEventView,
   shortEventName,
@@ -94,5 +95,19 @@ describe('event views', () => {
     expect(matchesSessionEventView(logMirror, 'activity')).toBe(false);
     expect(matchesSessionEventView(logMirror, 'logs')).toBe(true);
     expect(matchesSessionEventView(toolSpan, 'tools')).toBe(true);
+  });
+
+  it('classifies canonical otelhook events and standard tool names', () => {
+    const tool = {
+      eventName: 'tool.start',
+      attributes: { 'gen_ai.tool.name': 'shell' },
+    };
+    const prompt = { eventName: 'prompt.submitted' };
+    const generation = { eventName: 'generation.end' };
+
+    expect(eventToolName(tool.attributes)).toBe('shell');
+    expect(matchesSessionEventView(tool, 'tools')).toBe(true);
+    expect(matchesSessionEventView(prompt, 'prompts')).toBe(true);
+    expect(matchesSessionEventView(generation, 'activity')).toBe(true);
   });
 });

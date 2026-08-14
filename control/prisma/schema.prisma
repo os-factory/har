@@ -22,6 +22,7 @@ model Repository {
   sessionUsage    AgentSessionUsage[]
   sessionEvents   AgentSessionEvent[]
   sessionSpans    AgentSessionSpan[]
+  trajectoryRecords AgentTrajectoryRecord[]
   workUnits       WorkUnit[]
   workAttempts    WorkAttempt[]
   validationBindings ValidationBinding[]
@@ -133,6 +134,39 @@ model AgentSessionSpan {
 
   @@unique([repositoryId, traceId, spanId])
   @@index([repositoryId, agentId, startTime])
+}
+
+model AgentTrajectoryRecord {
+  id                String     @id @default(uuid())
+  repositoryId      String
+  repository        Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  version           Int        @default(1)
+  source            String
+  sourceEventId     String
+  contentKey        String
+  sessionKey        String
+  agentId           Int
+  agentTool         String
+  eventType         String
+  sequence          Int
+  eventTimestamp    DateTime
+  payload           Json
+  contentKind       String
+  contentDisclosure String
+  contentLabel      String?
+  traceId           String?
+  spanId            String?
+  parentSpanId      String?
+  generationId      String?
+  toolCallId        String?
+  correlationId     String?
+  workUnitId        String?
+  attemptId         String?
+  createdAt         DateTime   @default(now())
+
+  @@unique([repositoryId, source, sourceEventId, contentKey])
+  @@index([repositoryId, agentId, sessionKey, agentTool, sequence, eventTimestamp, source])
+  @@index([repositoryId, agentId, sessionKey, agentTool, createdAt])
 }
 
 model Run {

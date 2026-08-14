@@ -74,6 +74,13 @@ const ACTIVITY_TYPES = new Set([
   'generation',
   'SessionStart',
   'SessionEnd',
+  'prompt.submitted',
+  'generation.start',
+  'generation.end',
+  'tool.start',
+  'tool.end',
+  'session.start',
+  'session.end',
 ]);
 
 /** Friendlier type label for log bodies like “Tool call: Read”. */
@@ -118,10 +125,13 @@ export function matchesSessionEventView(
   );
   const isPrompt =
     name === 'UserPromptSubmit' ||
+    name === 'prompt.submitted' ||
     Boolean(displayPromptText(event.promptText)) ||
     promptFromAttrs;
   const isTool =
     /ToolUse|ShellExecution|MCPExecution/i.test(name) ||
+    name === 'tool.start' ||
+    name === 'tool.end' ||
     Boolean(eventToolName(event.attributes)) ||
     /^Tool(Call|Result):/i.test(logEventKind(event.rawTruncated) ?? '');
   const isFile = /ReadFile|FileEdit/i.test(name);
@@ -219,7 +229,12 @@ export function displayPromptText(promptText: string | null | undefined): string
 export function eventToolName(attributes: unknown): string | null {
   const attrs = asAttrMap(attributes);
   if (!attrs) return null;
-  return attrString(attrs, 'gen_ai.client.tool_name', 'gen_ai.client.mcp_tool');
+  return attrString(
+    attrs,
+    'gen_ai.tool.name',
+    'gen_ai.client.tool_name',
+    'gen_ai.client.mcp_tool',
+  );
 }
 
 export function eventModel(attributes: unknown): string | null {
@@ -258,7 +273,12 @@ export function eventDetailSummary(
     const fromMessages = textFromGenAiMessages(inputMessages);
     if (fromMessages) return fromMessages;
 
-    const tool = attrString(attrs, 'gen_ai.client.tool_name', 'gen_ai.client.mcp_tool');
+    const tool = attrString(
+      attrs,
+      'gen_ai.tool.name',
+      'gen_ai.client.tool_name',
+      'gen_ai.client.mcp_tool',
+    );
     if (tool) return tool;
   }
 
@@ -283,7 +303,12 @@ export function summarizeEventAttributes(attributes: unknown): string[] {
   if (!attrs) return [];
   const lines: string[] = [];
 
-  const tool = attrString(attrs, 'gen_ai.client.tool_name', 'gen_ai.client.mcp_tool');
+  const tool = attrString(
+    attrs,
+    'gen_ai.tool.name',
+    'gen_ai.client.tool_name',
+    'gen_ai.client.mcp_tool',
+  );
   if (tool) lines.push(`tool: ${tool}`);
 
   const command = attrString(attrs, 'gen_ai.client.command');
