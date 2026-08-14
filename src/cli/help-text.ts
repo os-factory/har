@@ -26,7 +26,7 @@ For a new unrelated task: checkout main (or your intended base) on the main
 repo checkout, free the slot (complete/teardown), then launch.`;
 
 export const HAR_ENV_EPILOG = `Environment lifecycle:
-  preflight <id>   dry-run: ports, PM2, Docker, occupied-slot gates
+  preflight <id>   dry-run: ports, PM2, Docker, occupied-slot gates, untracked paths
   launch <id>      fresh session worktree from the main checkout's current HEAD
   recover <id>     alias for launch --resume (failed/starting only)
   verify <id>      run checks (--full before declaring done)

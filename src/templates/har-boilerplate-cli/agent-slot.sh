@@ -310,6 +310,49 @@ EOF
   fi
 }
 
+# Untracked (not ignored) paths stay in the main checkout when a session
+# worktree is created from HEAD. Advisory — never fails the launch.
+har_warn_untracked_worktree() {
+  case "${USE_WORKTREE:-${HARNESS_USE_WORKTREE:-true}}" in
+    true|TRUE|yes|YES|1) ;;
+    *) return 0 ;;
+  esac
+  local root="${REPO_ROOT:-}"
+  if [ -z "$root" ] && [ -n "${SCRIPT_DIR:-}" ]; then
+    root="$(cd "$SCRIPT_DIR/.." && pwd)"
+  fi
+  [ -n "$root" ] || return 0
+  git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  local paths=()
+  local entry
+  while IFS= read -r -d '' entry; do
+    paths+=("$entry")
+  done < <(git -C "$root" --literal-pathspecs ls-files --others --exclude-standard --directory -z 2>/dev/null || true)
+
+  local count="${#paths[@]}"
+  [ "$count" -gt 0 ] || return 0
+
+  local max=8
+  local listed=""
+  local i
+  for ((i = 0; i < count && i < max; i++)); do
+    [ -n "$listed" ] && listed+=", "
+    listed+="${paths[$i]}"
+  done
+  if [ "$count" -gt "$max" ]; then
+    listed+=" (+$((count - max)) more)"
+  fi
+
+  local noun="paths"
+  local them="They are"
+  if [ "$count" -eq 1 ]; then
+    noun="path"
+    them="It is"
+  fi
+  echo "WARN: ${count} untracked ${noun} will not appear in the session worktree: ${listed}. ${them} only in the main checkout — track them, or launch with --no-worktree." >&2
+}
+
 # har_launch_preflight <agent_id> [resume]
 # Exit 0 when ready; 2 when occupied (free the slot first) or not resumable; 1 on machine blockers.
 har_launch_preflight() {
@@ -346,6 +389,7 @@ har_launch_preflight() {
       fi
     done
   fi
+  har_warn_untracked_worktree
   return 0
 }
 
