@@ -6,7 +6,7 @@ import { getControlApiUrl } from './control-config';
 import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
-export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.1.2';
+export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.2.0';
 
 /** Providers HAR registers with `otel-hook setup --provider`. */
 export const OTEL_HOOKS_PROVIDERS = [
