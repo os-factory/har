@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Enterprise page', () => {
+test.describe('Teams page', () => {
   test.beforeEach(async ({ page }) => {
     await page.route(
       /(?:posthog|googletagmanager|google-analytics|youtube|youtu\.be|web3forms|doubleclick)/i,
@@ -9,19 +9,27 @@ test.describe('Enterprise page', () => {
   });
 
   test('loads with hero and request-access form', async ({ page }) => {
-    await page.goto('/enterprise/');
+    await page.goto('/teams/');
     await expect(page.locator('body')).toBeVisible();
     await expect(page.locator('h1')).toContainText(
       'Bring visibility, control, and governance to every agent across your org.',
     );
-    await expect(page.getByRole('link', { name: 'Enterprise' }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Teams' }).first()).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Work email' })).toBeVisible();
     await expect(page.locator('img[data-dashboard-zoom]')).toBeVisible();
   });
 
+  test('redirects legacy /enterprise/ URL to /teams/', async ({ page }) => {
+    await page.goto('/enterprise/');
+    await expect(page).toHaveURL(/\/teams\/$/);
+    await expect(page.locator('h1')).toContainText(
+      'Bring visibility, control, and governance to every agent across your org.',
+    );
+  });
+
   test('opens dashboard screenshot in zoom modal on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/enterprise/');
+    await page.goto('/teams/');
 
     const trigger = page.locator('img[data-dashboard-zoom]');
     await expect(trigger).toBeVisible();

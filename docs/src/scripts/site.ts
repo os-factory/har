@@ -106,7 +106,7 @@ for (const form of document.querySelectorAll<HTMLFormElement>('[data-newsletter-
         window.posthog?.capture(
           form.matches('[data-newsletter-form]')
             ? 'newsletter_subscription_completed'
-            : 'enterprise_interest_submitted',
+            : 'teams_interest_submitted',
         );
         form.reset();
         if (status) status.textContent = successMessage;
