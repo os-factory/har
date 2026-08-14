@@ -4,12 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { SessionEventsTable } from '@/components/session-events-table';
 import { SessionTimeline } from '@/components/session-timeline';
+import { TrajectoryViewer } from '@/components/trajectory-viewer';
 import { ValidationPipeline } from '@/components/validation-pipeline';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { eventModel } from '@/lib/session-event-detail';
 import { formatModelId, formatCostUsd, modelTotalsFromBreakdown, modelsFromBreakdown, type UsageModelTotals } from '@/lib/usage-models';
 import { getRepository } from '@/server/repositories';
 import { listSessionEventsForSlot } from '@/server/session-events';
+import { getSlotTrajectoryData } from '@/server/trajectory-ledger';
 import { listSessionUsageForSlot } from '@/server/usage';
 import { getValidationStages } from '@/server/validation-stages';
 import { prisma } from '@/lib/db';
@@ -37,7 +40,7 @@ export default async function SlotDetailPage({
   const slot = repo.slots.find((s) => s.slotId === slotId);
   if (!slot) notFound();
 
-  const [usageRows, validation, events, verifyRuns] = await Promise.all([
+  const [usageRows, validation, events, verifyRuns, trajectory] = await Promise.all([
     listSessionUsageForSlot(id, slotId),
     getValidationStages(id, { agentId: slotId }),
     listSessionEventsForSlot(id, slotId),
@@ -46,6 +49,7 @@ export default async function SlotDetailPage({
       orderBy: { startedAt: 'desc' },
       take: 20,
     }),
+    getSlotTrajectoryData(id, slotId),
   ]);
 
   const modelsByUsageKey = new Map<string, string[]>();
@@ -225,27 +229,42 @@ export default async function SlotDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Session events</CardTitle>
+          <CardTitle>Agent activity</CardTitle>
           <CardDescription>
-            Filter by Activity / Tools / Files / Prompts / Errors / Logs. Activity hides raw log
-            noise and keeps the spans that explain what the agent did.
+            Follow the assembled trajectory, or inspect the raw session-event table for debugging.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SessionEventsTable
-            events={events.map((ev) => ({
-              id: ev.id,
-              eventName: ev.eventName,
-              sessionKey: ev.sessionKey,
-              agentTool: ev.agentTool,
-              promptText: ev.promptText,
-              responseText: ev.responseText,
-              attributes: ev.attributes,
-              rawTruncated: ev.rawTruncated,
-              source: ev.source,
-              timestamp: ev.timestamp,
-            }))}
-          />
+          <Tabs defaultValue="trajectory">
+            <TabsList>
+              <TabsTrigger value="trajectory">Trajectory</TabsTrigger>
+              <TabsTrigger value="raw-events">Raw events</TabsTrigger>
+            </TabsList>
+            <TabsContent value="trajectory" className="mt-4">
+              <TrajectoryViewer
+                repositoryId={id}
+                agentId={slotId}
+                streams={trajectory.streams}
+                initialPage={trajectory.initialPage}
+              />
+            </TabsContent>
+            <TabsContent value="raw-events" className="mt-4">
+              <SessionEventsTable
+                events={events.map((ev) => ({
+                  id: ev.id,
+                  eventName: ev.eventName,
+                  sessionKey: ev.sessionKey,
+                  agentTool: ev.agentTool,
+                  promptText: ev.promptText,
+                  responseText: ev.responseText,
+                  attributes: ev.attributes,
+                  rawTruncated: ev.rawTruncated,
+                  source: ev.source,
+                  timestamp: ev.timestamp,
+                }))}
+              />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 

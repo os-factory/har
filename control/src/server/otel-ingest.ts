@@ -1,7 +1,15 @@
 import { createRequire } from 'node:module';
 import type { Prisma } from '@prisma/client';
-import type { AgentSessionUsage, AgentTool } from '@har/schemas';
+import {
+  AgentTrajectoryRecordSchema,
+  type AgentSessionUsage,
+  type AgentTool,
+} from '@har/schemas';
 import { prisma } from '@/lib/db';
+import {
+  appendTrajectoryRecord,
+  stableTrajectoryKey,
+} from '@/server/trajectory-ledger';
 import { upsertSessionUsage } from '@/server/usage';
 import {
   isWorkspaceUnderPath,
@@ -619,7 +627,7 @@ export function extractPromptText(attributes: AttrMap, eventName?: string, bodyT
   return null;
 }
 
-function extractResponseText(
+export function extractResponseText(
   attributes: AttrMap,
   eventName?: string,
   bodyText?: string | null,
@@ -640,6 +648,16 @@ function extractResponseText(
     if (unwrapped) return unwrapped;
   }
   if (String(eventName ?? '').toLowerCase().includes('assistant') && bodyText?.trim()) {
+    return bodyText.trim();
+  }
+  const otelHookEventType = String(attributes['otelhook.event.type'] ?? '').toLowerCase();
+  const otelHookContentKind = String(attributes['otelhook.content.kind'] ?? '').toLowerCase();
+  if (
+    otelHookEventType === 'generation.end' &&
+    (otelHookContentKind === 'response' || otelHookContentKind === 'output') &&
+    !attributes['otelhook.content.withheld'] &&
+    bodyText?.trim()
+  ) {
     return bodyText.trim();
   }
   return null;
@@ -907,7 +925,7 @@ export async function ingestOtelMetricsBody(
   };
 }
 
-function otelTimeToDate(value: unknown): Date {
+function otelTimeToDate(value: unknown, fallback = new Date()): Date {
   if (typeof value === 'string' || typeof value === 'number') {
     const n = Number(value);
     if (Number.isFinite(n) && n > 0) {
@@ -917,7 +935,7 @@ function otelTimeToDate(value: unknown): Date {
       return new Date(n);
     }
   }
-  return new Date();
+  return fallback;
 }
 
 function bodyToText(body: unknown): string | null {
@@ -928,16 +946,20 @@ function bodyToText(body: unknown): string | null {
   return null;
 }
 
-interface ParsedLogRecord {
+export interface ParsedLogRecord {
   resource: AttrMap;
   eventName: string;
   attributes: AttrMap;
   timestamp: Date;
+  body: unknown;
   bodyText: string | null;
   sequence: number;
+  traceId?: string;
+  spanId?: string;
+  parentSpanId?: string;
 }
 
-function extractLogRecords(payload: unknown): ParsedLogRecord[] {
+export function extractLogRecords(payload: unknown): ParsedLogRecord[] {
   const out: ParsedLogRecord[] = [];
   if (!payload || typeof payload !== 'object') return out;
 
@@ -968,7 +990,9 @@ function extractLogRecords(payload: unknown): ParsedLogRecord[] {
         const record = lr as Record<string, unknown>;
         const attributes = attrsFromOtel(record.attributes);
         const eventName = String(
-          attributes['event.name'] ??
+          record.eventName ??
+            record.event_name ??
+            attributes['event.name'] ??
             attributes.event_name ??
             attributes['log.event'] ??
             record.name ??
@@ -984,14 +1008,137 @@ function extractLogRecords(payload: unknown): ParsedLogRecord[] {
           resource,
           eventName,
           attributes,
-          timestamp: otelTimeToDate(ts),
+          timestamp: otelTimeToDate(ts, new Date(0)),
+          body: record.body ?? null,
           bodyText: bodyToText(record.body),
-          sequence: Number(attributes['har.sequence'] ?? attributes.sequence ?? seq),
+          sequence: Number(
+            attributes['otelhook.event.sequence'] ??
+              attributes['har.sequence'] ??
+              attributes.sequence ??
+              seq,
+          ),
+          traceId: record.traceId || record.trace_id
+            ? String(record.traceId ?? record.trace_id)
+            : undefined,
+          spanId: record.spanId || record.span_id
+            ? String(record.spanId ?? record.span_id)
+            : undefined,
+          parentSpanId: record.parentSpanId || record.parent_span_id
+            ? String(record.parentSpanId ?? record.parent_span_id)
+            : undefined,
         });
       }
     }
   }
   return out;
+}
+
+function canonicalContentDisclosure(attributes: AttrMap, bodyText: string | null) {
+  const explicit = String(attributes['otelhook.content.disclosure'] ?? '').toLowerCase();
+  if (attributes['otelhook.content.withheld']) return 'withheld' as const;
+  if (
+    attributes['otelhook.content.truncated'] ||
+    attributes['otelhook.content.body_truncated']
+  ) return 'truncated' as const;
+  if (explicit === 'redact' || explicit === 'redacted') return 'redacted' as const;
+  if (explicit === 'mask' || explicit === 'masked') return 'masked' as const;
+  if (explicit === 'raw' || explicit === 'full') return 'full' as const;
+  if (explicit === 'truncated' || explicit === 'withheld' || explicit === 'metadata_only') {
+    return explicit;
+  }
+  return bodyText == null ? 'metadata_only' as const : 'full' as const;
+}
+
+function canonicalContentKind(attributes: AttrMap): string {
+  return String(attributes['otelhook.content.kind'] ?? 'event').trim().toLowerCase() || 'event';
+}
+
+export function canonicalEventType(record: ParsedLogRecord): string {
+  return String(record.attributes['otelhook.event.type'] ?? record.eventName).trim() || 'log';
+}
+
+export function canonicalSequence(record: ParsedLogRecord): number {
+  return Number.isFinite(record.sequence) && record.sequence >= 0
+    ? Math.floor(record.sequence)
+    : 0;
+}
+
+function canonicalSourceEventId(record: ParsedLogRecord, eventType: string, sequence: number): string {
+  const explicit = String(record.attributes['otelhook.event.id'] ?? '').trim();
+  if (explicit) return explicit;
+  return stableTrajectoryKey({
+    eventType,
+    sequence,
+    timestamp: record.timestamp.toISOString(),
+    traceId: record.traceId ?? null,
+    spanId: record.spanId ?? null,
+    resource: record.resource,
+  });
+}
+
+function canonicalContentKey(record: ParsedLogRecord, contentKind: string): string {
+  const explicitHash = String(record.attributes['otelhook.content.hash'] ?? '').trim();
+  const ordinal = record.attributes['otelhook.content.ordinal'];
+  return stableTrajectoryKey({
+    contentKind,
+    hash: explicitHash || null,
+    label: record.attributes['otelhook.content.label'] ?? null,
+    ordinal: ordinal ?? null,
+    body: explicitHash ? null : record.body,
+    withheld: record.attributes['otelhook.content.withheld'] ?? null,
+    truncated: record.attributes['otelhook.content.truncated'] ?? null,
+  });
+}
+
+export function canonicalizeOtelLogRecord(record: ParsedLogRecord) {
+  const eventType = canonicalEventType(record);
+  const sequence = canonicalSequence(record);
+  const contentKind = canonicalContentKind(record.attributes);
+  const contentDisclosure = canonicalContentDisclosure(record.attributes, record.bodyText);
+  const generationId =
+    String(record.attributes['otelhook.generation.id'] ?? '').trim() || undefined;
+  const toolCallId =
+    String(
+      record.attributes['gen_ai.tool.call.id'] ??
+        record.attributes['tool.call.id'] ??
+        record.attributes.tool_call_id ??
+        '',
+    ).trim() || undefined;
+  return {
+    eventType,
+    sequence,
+    contentKind,
+    contentDisclosure,
+    sourceEventId: canonicalSourceEventId(record, eventType, sequence),
+    contentKey: canonicalContentKey(record, contentKind),
+    contentLabel: String(record.attributes['otelhook.content.label'] ?? '').trim() || undefined,
+    correlationId:
+      String(
+        record.attributes['otelhook.correlation.id'] ??
+          record.attributes['correlation.id'] ??
+          record.attributes['gen_ai.conversation.id'] ??
+          toolCallId ??
+          generationId ??
+          '',
+      ).trim() || undefined,
+    generationId,
+    toolCallId,
+    payload: {
+      body: record.body,
+      attributes: record.attributes,
+      resource: record.resource,
+      recordEventName: record.eventName,
+      disclosure: {
+        status: contentDisclosure,
+        withheld: record.attributes['otelhook.content.withheld'] ?? null,
+        truncated: record.attributes['otelhook.content.truncated'] ?? null,
+        bodyTruncated: record.attributes['otelhook.content.body_truncated'] ?? null,
+        characterLength: record.attributes['otelhook.content.character_length'] ?? null,
+        byteLength: record.attributes['otelhook.content.byte_length'] ?? null,
+        originalDisclosure: record.attributes['otelhook.content.disclosure'] ?? null,
+      },
+    },
+  };
 }
 
 export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestResult> {
@@ -1009,20 +1156,50 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
       continue;
     }
     const { context } = resolved;
+    const canonical = canonicalizeOtelLogRecord(record);
+    const { eventType, sequence } = canonical;
 
-    const promptText = extractPromptText(record.attributes, record.eventName, record.bodyText);
+    const promptText = extractPromptText(record.attributes, eventType, record.bodyText);
     const responseText = extractResponseText(
       record.attributes,
-      record.eventName,
+      eventType,
       record.bodyText,
+    );
+
+    await appendTrajectoryRecord(
+      context.repositoryId,
+      AgentTrajectoryRecordSchema.parse({
+        version: 1,
+        source: 'otel',
+        sourceEventId: canonical.sourceEventId,
+        contentKey: canonical.contentKey,
+        sessionKey: context.sessionKey,
+        agentId: context.agentId,
+        agentTool: context.agentTool,
+        eventType,
+        sequence,
+        timestamp: record.timestamp.toISOString(),
+        payload: canonical.payload,
+        contentKind: canonical.contentKind,
+        contentDisclosure: canonical.contentDisclosure,
+        contentLabel: canonical.contentLabel,
+        traceId: record.traceId,
+        spanId: record.spanId,
+        parentSpanId: record.parentSpanId,
+        generationId: canonical.generationId,
+        toolCallId: canonical.toolCallId,
+        correlationId: canonical.correlationId,
+        workUnitId: context.workUnitId,
+        attemptId: context.attemptId,
+      }),
     );
 
     await upsertSessionEvent(context.repositoryId, {
       sessionKey: context.sessionKey,
       agentId: context.agentId,
       agentTool: context.agentTool,
-      eventName: record.eventName,
-      sequence: Number.isFinite(record.sequence) ? Math.floor(record.sequence) : accepted + 1,
+      eventName: eventType,
+      sequence,
       timestamp: record.timestamp,
       attributes: record.attributes as Prisma.InputJsonValue,
       promptText,

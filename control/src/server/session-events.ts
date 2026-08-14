@@ -1,5 +1,10 @@
 import type { Prisma } from '@prisma/client';
+import { AgentTrajectoryRecordSchema } from '@har/schemas';
 import { prisma } from '@/lib/db';
+import {
+  appendTrajectoryRecord,
+  stableTrajectoryKey,
+} from '@/server/trajectory-ledger';
 
 export interface SessionEventInput {
   sessionKey: string;
@@ -80,6 +85,52 @@ export async function listSessionEventsForRepo(repositoryId: string) {
 export async function syncSessionEvents(repositoryId: string, events: SessionEventInput[]) {
   let synced = 0;
   for (const event of events) {
+    const payload = {
+      attributes: event.attributes ?? {},
+      promptText: event.promptText ?? null,
+      responseText: event.responseText ?? null,
+      raw: event.rawTruncated ?? null,
+    };
+    const source = event.source === 'otel' ? 'otel' : 'harvest';
+    const sourceEventId = stableTrajectoryKey({
+      sessionKey: event.sessionKey,
+      agentTool: event.agentTool,
+      eventName: event.eventName,
+      sequence: event.sequence,
+      timestamp: event.timestamp.toISOString(),
+    });
+    const facts = [
+      ...(event.promptText ? [{ kind: 'prompt', content: event.promptText }] : []),
+      ...(event.responseText ? [{ kind: 'response', content: event.responseText }] : []),
+      ...(!event.promptText && !event.responseText
+        ? [{ kind: 'event', content: event.rawTruncated ?? event.attributes ?? null }]
+        : []),
+    ];
+    for (const fact of facts) {
+      await appendTrajectoryRecord(
+        repositoryId,
+        AgentTrajectoryRecordSchema.parse({
+          version: 1,
+          source,
+          sourceEventId,
+          contentKey: stableTrajectoryKey({
+            kind: fact.kind,
+            content: fact.content,
+          }),
+          sessionKey: event.sessionKey,
+          agentId: event.agentId,
+          agentTool: event.agentTool,
+          eventType: event.eventName,
+          sequence: event.sequence,
+          timestamp: event.timestamp.toISOString(),
+          payload,
+          contentKind: fact.kind,
+          contentDisclosure: event.rawTruncated ? 'truncated' : 'full',
+          workUnitId: event.workUnitId,
+          attemptId: event.attemptId,
+        }),
+      );
+    }
     await upsertSessionEvent(repositoryId, event);
     synced += 1;
   }

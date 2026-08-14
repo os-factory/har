@@ -656,6 +656,61 @@ export type AgentTool = z.infer<typeof AgentToolSchema>;
 export const UsageSourceSchema = z.enum(['otel', 'harvest']);
 export type UsageSource = z.infer<typeof UsageSourceSchema>;
 
+/** Durable origin of an immutable agent trajectory fact. */
+export const AgentTrajectorySourceSchema = z.enum(['otel', 'harvest', 'har']);
+export type AgentTrajectorySource = z.infer<typeof AgentTrajectorySourceSchema>;
+
+/** How much of the original content is present in payload. */
+export const AgentTrajectoryContentDisclosureSchema = z.enum([
+  'full',
+  'redacted',
+  'masked',
+  'truncated',
+  'withheld',
+  'metadata_only',
+]);
+export type AgentTrajectoryContentDisclosure = z.infer<
+  typeof AgentTrajectoryContentDisclosureSchema
+>;
+
+/**
+ * Version 1 of the canonical, append-only agent trajectory fact.
+ *
+ * `sourceEventId` identifies the producer event while `contentKey` identifies
+ * one content fact within it. Multiple facts may therefore share an event id
+ * and sequence without overwriting each other.
+ */
+export const AgentTrajectoryRecordV1Schema = z
+  .object({
+    version: z.literal(1),
+    source: AgentTrajectorySourceSchema,
+    sourceEventId: z.string().min(1),
+    contentKey: z.string().min(1),
+    sessionKey: z.string().min(1),
+    agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
+    agentTool: AgentToolSchema,
+    eventType: z.string().min(1),
+    sequence: z.number().int().nonnegative(),
+    timestamp: z.string(),
+    payload: z.record(z.unknown()),
+    contentKind: z.string().min(1),
+    contentDisclosure: AgentTrajectoryContentDisclosureSchema,
+    contentLabel: z.string().optional(),
+    traceId: z.string().optional(),
+    spanId: z.string().optional(),
+    parentSpanId: z.string().optional(),
+    generationId: z.string().optional(),
+    toolCallId: z.string().optional(),
+    correlationId: z.string().optional(),
+    workUnitId: WorkUnitIdSchema.optional(),
+    attemptId: WorkAttemptIdSchema.optional(),
+  })
+  .passthrough();
+
+export const AgentTrajectoryRecordSchema = AgentTrajectoryRecordV1Schema;
+export type AgentTrajectoryRecordV1 = z.infer<typeof AgentTrajectoryRecordV1Schema>;
+export type AgentTrajectoryRecord = AgentTrajectoryRecordV1;
+
 /** Per-session agent token/cost aggregates for Mission Control. */
 export const AgentSessionUsageSchema = z.object({
   sessionKey: z.string().min(1),

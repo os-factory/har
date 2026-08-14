@@ -1,11 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import {
+  AgentTrajectoryRecordSchema,
   DeleteWorktreesInputSchema,
   RegisterRepoInputSchema,
   ResetMissionControlInputSchema,
   RunRecordSchema,
   SyncWorkUnitsInputSchema,
 } from '@har/schemas';
+
+describe('AgentTrajectoryRecordSchema', () => {
+  it('accepts an immutable v1 content fact and all canonical sources', () => {
+    const base = {
+      version: 1,
+      sourceEventId: 'event-42',
+      contentKey: 'response:abc123',
+      sessionKey: 'session-1',
+      agentId: 2,
+      agentTool: 'cursor',
+      eventType: 'generation.end',
+      sequence: 7,
+      timestamp: '2026-08-14T10:00:00.000Z',
+      payload: { body: 'done' },
+      contentKind: 'response',
+      contentDisclosure: 'full',
+    };
+    for (const source of ['otel', 'harvest', 'har']) {
+      expect(AgentTrajectoryRecordSchema.parse({ ...base, source }).source).toBe(source);
+    }
+    expect(() => AgentTrajectoryRecordSchema.parse({ ...base, version: 2, source: 'otel' })).toThrow();
+  });
+});
 
 describe('RegisterRepoInputSchema', () => {
   it('parses minimal repo registration', () => {
