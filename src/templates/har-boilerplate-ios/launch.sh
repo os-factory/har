@@ -56,6 +56,8 @@ if slot_is_occupied "$AGENT_ID"; then
   exit 2
 fi
 
+har_warn_untracked_worktree
+
 "$SCRIPT_DIR/setup-infra.sh"
 
 # Session worktree (default — use --no-worktree to work in repo root).

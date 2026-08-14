@@ -42,7 +42,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-plugin [plugin]` | Install a shipped plugin (registers stages) |
 | `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
-| `preflight <id>` | Check ports, processes, Docker, and slot occupation |
+| `preflight <id>` | Check ports, processes, Docker, slot occupation, and untracked worktree paths |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
@@ -123,6 +123,13 @@ Work metadata is optional and backward compatible. Bind when the task names a
 tracker issue or ticket: pass a short repo-scoped `--work-id`, plus `--work-source`,
 `--work-url`, and `--work-title` when known. A fresh bound launch creates an
 immutable attempt UUID; `--resume` preserves the failed session's attempt.
+
+A worktree only materializes what is in `HEAD`. Preflight and launch warn when
+untracked (not gitignored) paths will be missing from the session worktree —
+the count plus a few examples. Track them, or launch with `--no-worktree`. The
+check is skipped when `HARNESS_USE_WORKTREE=false` and for a `--no-worktree`
+launch. The same warning appears in `har env status --json`, MCP launch
+`stderr`, and `./.har/launch.sh`.
 
 ### Verify and finish
 

@@ -123,7 +123,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_preflight_environment',
     description:
-      'Readiness gate before launch: checks ports, foreign PM2, Docker conflicts, and occupied slot. Returns canLaunch with actionable blockers. Call before har_launch_environment.',
+      'Readiness gate before launch: checks ports, foreign PM2, Docker conflicts, occupied slot, and untracked paths that will be missing from a session worktree. Returns canLaunch with actionable blockers and warnings. Call before har_launch_environment.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,

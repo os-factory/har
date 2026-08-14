@@ -22,6 +22,11 @@ import {
   slotPortLaneEnd,
 } from './slot-ports';
 import { readSlotRegistry, isSlotResumable } from './slot-registry';
+import {
+  formatUntrackedWorktreeWarning,
+  listUntrackedAbsentFromWorktree,
+  worktreeCheckEnabled,
+} from './worktree-untracked';
 import { execSync } from 'child_process';
 import { packageRunner } from '../utils/package-runner';
 
@@ -36,6 +41,10 @@ export interface PreflightOptions extends LaunchGuardOptions {
   dockerContainers?: DockerRow[];
   /** Test hook: override PM2 process list (pass [] to skip live pm2 jlist). */
   pm2Processes?: Pm2Process[];
+  /** Test hook: override the untracked-path scan (pass [] to skip the git call). */
+  untrackedPaths?: string[];
+  /** False for a `--no-worktree` launch — the slot runs in the repo root. */
+  worktree?: boolean;
 }
 
 interface Pm2Process {
@@ -109,6 +118,19 @@ function checkInfraPort(
     return { error: `No free ${varName} port in range ${scanStart}-${scanEnd}` };
   }
   return { port };
+}
+
+/**
+ * Repo-wide untracked-path scan. Identical for every slot — callers inspecting
+ * several slots should call this once and pass the result back through
+ * `PreflightOptions.untrackedPaths`.
+ */
+export function scanUntrackedWorktreePaths(
+  repoPath: string,
+  env: Record<string, string>,
+): string[] {
+  if (!worktreeCheckEnabled(env, undefined)) return [];
+  return listUntrackedAbsentFromWorktree(repoPath);
 }
 
 /**
@@ -196,6 +218,7 @@ export function inspectSlotReadiness(
   }
 
   let allocatedPorts = false;
+  let portChoiceExplained = false;
   if (usesPm2 && (options.allocatePorts ?? true)) {
     const alloc = allocateAppPorts(repoPath, agentId);
     if ('error' in alloc) {
@@ -216,7 +239,9 @@ export function inspectSlotReadiness(
         agentId,
         portStep(env),
       );
-      warnings.push(...controlDefaultPortWarnings(containers, feDefault, alloc.frontend));
+      const portWarnings = controlDefaultPortWarnings(containers, feDefault, alloc.frontend);
+      portChoiceExplained = portWarnings.length > 0;
+      warnings.push(...portWarnings);
 
       for (const [label, port] of Object.entries({ frontend: alloc.frontend, api: alloc.api })) {
         const control = controlContainerOnPort(containers, port);
@@ -275,6 +300,13 @@ export function inspectSlotReadiness(
     }
   }
 
+  if (worktreeCheckEnabled(env, options.worktree)) {
+    const untracked =
+      options.untrackedPaths ?? scanUntrackedWorktreePaths(repoPath, env);
+    const untrackedWarning = formatUntrackedWorktreeWarning(untracked);
+    if (untrackedWarning) warnings.push(untrackedWarning);
+  }
+
   const canLaunch = blockers.length === 0;
   return {
     canLaunch,
@@ -283,6 +315,7 @@ export function inspectSlotReadiness(
     remediations: [...new Set(remediations)],
     ports: Object.keys(ports).length > 0 ? ports : undefined,
     allocatedPorts: allocatedPorts || undefined,
+    portChoiceExplained: portChoiceExplained || undefined,
     warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
@@ -300,7 +333,8 @@ export function formatPreflightReport(agentId: number, readiness: SlotReadiness)
         p.db !== undefined ? `db=${p.db}` : undefined,
       ].filter(Boolean);
       if (parts.length) lines.push(`  Ports: ${parts.join(' ')}`);
-      if (readiness.allocatedPorts && !readiness.warnings?.length) {
+      // Skip the generic note only when a warning already explains the chosen port.
+      if (readiness.allocatedPorts && !readiness.portChoiceExplained) {
         lines.push('  (alternate ports selected — defaults were busy)');
       }
     }
@@ -316,6 +350,10 @@ export function formatPreflightReport(agentId: number, readiness: SlotReadiness)
   for (const b of readiness.blockers) {
     lines.push(`  [${b.code}] ${b.message}`);
     if (b.remediation) lines.push(`    → ${b.remediation}`);
+  }
+  // Warnings are independent of the verdict — a blocked slot must not hide them.
+  for (const w of readiness.warnings ?? []) {
+    lines.push(`  WARN: ${w}`);
   }
   return lines.join('\n');
 }

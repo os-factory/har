@@ -16,7 +16,7 @@
     "README.md": "efa0dc01d6d3cf7a",
     "STAGES.md": "a4ac0935e883beab",
     "agent-cli.sh": "521a85e86297ebd2",
-    "agent-slot.sh": "30352581225b3200",
+    "agent-slot.sh": "67ef31bacf5143db",
     "docker-compose.agent.yml": "6991f134a3ba81f9",
     "harness.env": "28d0123c52801d59",
     "justfile": "6415e7c5452eb2f9",

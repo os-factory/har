@@ -17,7 +17,7 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 
 | Tool | Inputs | Result |
 | --- | --- | --- |
-| `har_preflight_environment` | `agentId` | Readiness, blockers, and whether launch is safe |
+| `har_preflight_environment` | `agentId` | Readiness, blockers, warnings (including untracked worktree paths), and whether launch is safe |
 | `har_launch_environment` | `agentId`, optional `worktree`, `claude`, `resume`, `workUnitId`, `source`, `sourceUrl`, `title`, `parentWorkUnitId` | Work directory, branch, work/attempt IDs, URLs, and normalized stage result |
 
 Pass `workUnitId`, `source`, and `sourceUrl` when the task names a tracker issue or

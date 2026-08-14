@@ -15,7 +15,7 @@ import { getAgentSlotIds } from '../harness/stages';
 import { computePreviewUrls } from './local-executor';
 import { listRuns, resolveAgentWorkDir } from './runs';
 import { readSlotRegistry } from './slot-registry';
-import { inspectSlotReadiness } from './slot-preflight';
+import { inspectSlotReadiness, scanUntrackedWorktreePaths } from './slot-preflight';
 import { packageRunner } from '../utils/package-runner';
 
 const BYPASS_WARNING_MS = 15 * 60 * 1000;
@@ -206,6 +206,7 @@ function collectSlotStatus(
   agentId: number,
   runs: RunRecord[],
   pm2Procs: Array<{ name?: string }> | undefined,
+  untrackedPaths?: string[],
 ): AgentSlotStatus {
   const env = readHarnessEnv(harnessRoot);
   const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);
@@ -256,6 +257,7 @@ function collectSlotStatus(
   const readiness = inspectSlotReadiness(harnessRoot, agentId, {
     allocatePorts: true,
     occupied: { active, dirty: drift.dirty },
+    untrackedPaths: untrackedPaths ?? scanUntrackedWorktreePaths(harnessRoot, env),
   });
 
   const resumeHint =
@@ -298,13 +300,15 @@ export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
   const manifest = readManifest(harnessRoot);
   const slotIds = getAgentSlotIds(harnessRoot);
   const pm2Procs = listPm2Processes();
+  // Repo-wide and identical for every slot — scanned once, like pm2Procs above.
+  const untrackedPaths = scanUntrackedWorktreePaths(harnessRoot, readHarnessEnv(harnessRoot));
 
   return {
     repoPath: path.resolve(repoPath),
     harnessRoot,
     gitRemote: readGitRemote(harnessRoot),
     profile: manifest?.profile,
-    slots: slotIds.map((id) => collectSlotStatus(harnessRoot, id, runs, pm2Procs)),
+    slots: slotIds.map((id) => collectSlotStatus(harnessRoot, id, runs, pm2Procs, untrackedPaths)),
     generatedAt: new Date().toISOString(),
   };
 }

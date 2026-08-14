@@ -84,4 +84,32 @@ describe('bash agent slot limits', () => {
     expect(elapsed).toBeLessThan(3000);
     expect(fs.existsSync(witness)).toBe(false); // still running, deliberately not awaited
   });
+
+  it('har_warn_untracked_worktree names untracked paths and stays quiet when ignored', () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'har-untracked-warn-'));
+    execSync('git init -q', { cwd: repo });
+    execSync('git -c user.email=har@example.com -c user.name=har -c commit.gpgsign=false commit --allow-empty -qm init', {
+      cwd: repo,
+    });
+    fs.writeFileSync(path.join(repo, '.gitignore'), 'secret.env\n');
+    fs.writeFileSync(path.join(repo, 'CLAUDE.md'), '# rules\n');
+    fs.writeFileSync(path.join(repo, 'secret.env'), 'TOKEN=x\n');
+    execSync('git add .gitignore && git -c user.email=har@example.com -c user.name=har -c commit.gpgsign=false commit -qm ignore', {
+      cwd: repo,
+    });
+
+    const out = execSync(
+      `bash -c 'REPO_ROOT="${repo}"; USE_WORKTREE=true; source "${AGENT_SLOT}"; har_warn_untracked_worktree' 2>&1`,
+      { encoding: 'utf8' },
+    );
+    expect(out).toContain('WARN:');
+    expect(out).toContain('CLAUDE.md');
+    expect(out).not.toContain('secret.env');
+
+    const skipped = execSync(
+      `bash -c 'REPO_ROOT="${repo}"; USE_WORKTREE=false; source "${AGENT_SLOT}"; har_warn_untracked_worktree' 2>&1`,
+      { encoding: 'utf8' },
+    );
+    expect(skipped).toBe('');
+  });
 });

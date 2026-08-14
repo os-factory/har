@@ -283,7 +283,7 @@ export const envCommand = {
       )
       .command(
         'preflight <id>',
-        'Check whether a slot can launch now (ports, PM2, Docker, occupied slot)',
+        'Check whether a slot can launch now (ports, PM2, Docker, occupied slot, untracked worktree paths)',
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
@@ -851,10 +851,13 @@ export async function handleLaunch(argv: {
   const agentId = validateAgentId(argv.id, repo);
 
   if (!argv.resume) {
-    const guard = checkLaunchGuard(repo, agentId, {});
+    const guard = checkLaunchGuard(repo, agentId, { worktree: argv.worktree });
     if (!guard.allowed && guard.blocked) {
       error(guard.reason ?? `Slot ${agentId} is occupied.`);
       return finishCommand(2);
+    }
+    for (const warning of guard.readiness?.warnings ?? []) {
+      warn(warning);
     }
   }
 
