@@ -1,3 +1,10 @@
+# [0.56.0](https://github.com/os-factory/har/compare/v0.55.0...v0.56.0) (2026-08-14)
+
+
+### Features
+
+* **control:** add replayable agent trajectories ([#207](https://github.com/os-factory/har/issues/207)) ([ff1afce](https://github.com/os-factory/har/commit/ff1afce72bbfcc752f2c59065f5674691cba2eb9))
+
 # [0.55.0](https://github.com/os-factory/har/compare/v0.54.1...v0.55.0) (2026-08-14)
 
 
