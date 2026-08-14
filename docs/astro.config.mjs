@@ -36,6 +36,7 @@ const redirects = Object.fromEntries(
 );
 // The docs landing was consolidated into the Introduction; send /docs there.
 redirects['/docs'] = '/docs/getting-started/introduction/';
+redirects['/enterprise'] = '/teams/';
 
 export default defineConfig({
 	site: 'https://harproject.dev',

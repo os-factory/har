@@ -75,8 +75,9 @@ cd docs
 | **before** | End of `launch` (baseline) | `.har/artifacts/browser-e2e/screenshots/before/` |
 | **after** | Full verify / `browser-e2e` | `.har/artifacts/browser-e2e/screenshots/after/` |
 
-UI change tasks must add or update specs under `tests/frontend/` and include
-these artifact paths in the session handoff. See `stages/PLAYWRIGHT.md`.
+UI change tasks must add or update specs under `tests/frontend/` and **always**
+include Playwright screenshot paths from the **session work dir** in the session
+handoff (not the main checkout — see `CLAUDE.agent.md`). See `stages/PLAYWRIGHT.md`.
 
 ## Readiness layers
 
