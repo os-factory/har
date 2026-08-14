@@ -1,3 +1,10 @@
+# [0.55.0](https://github.com/os-factory/har/compare/v0.54.1...v0.55.0) (2026-08-14)
+
+
+### Features
+
+* warn when untracked files will be missing from session worktrees ([#206](https://github.com/os-factory/har/issues/206)) ([398e545](https://github.com/os-factory/har/commit/398e5457aeec7cb9940b233c9a0645fbfe0c80d1))
+
 ## [0.54.1](https://github.com/os-factory/har/compare/v0.54.0...v0.54.1) (2026-08-13)
 
 
