@@ -1,3 +1,10 @@
+## [0.56.1](https://github.com/os-factory/har/compare/v0.56.0...v0.56.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **telemetry:** pin otel-hook 0.2.0 ([#210](https://github.com/os-factory/har/issues/210)) ([28f5334](https://github.com/os-factory/har/commit/28f5334d4bde37fc9d737c11dfe5c50c40a6527e))
+
 # [0.56.0](https://github.com/os-factory/har/compare/v0.55.0...v0.56.0) (2026-08-14)
 
 
