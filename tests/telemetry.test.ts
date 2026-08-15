@@ -17,11 +17,18 @@ import {
 } from '../src/core/telemetry-env';
 import {
   buildOtelHooksConfig,
+  OTEL_HOOKS_PACKAGE,
   pruneLegacyCursorHookEvents,
   rewriteHookCommandsToWrapper,
   writeOtelHooksConfig,
   writeOtelHooksWrapper,
 } from '../src/core/otel-hooks';
+
+describe('otel-hook package pin', () => {
+  it('installs the release with Claude response content support', () => {
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.2.0');
+  });
+});
 
 describe('telemetry preference', () => {
   const originalEnv = process.env.HAR_TELEMETRY;
