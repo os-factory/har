@@ -4,7 +4,6 @@ import * as path from 'path';
 import { HarnessManifest, HarnessManifestSchema } from './schema';
 import { writeFileSafe } from '../utils/file-ops';
 
-const GENERATOR_VERSION = '0.5.0';
 const MANIFEST_VERSION = '1';
 export const DEFAULT_HAR_DIR = '.har';
 
@@ -65,7 +64,6 @@ export function createManifest(
   const harnessDir = getHarnessDir(repoPath);
   return {
     version: MANIFEST_VERSION,
-    generatorVersion: GENERATOR_VERSION,
     outputDir: DEFAULT_HAR_DIR,
     createdAt: now,
     updatedAt: now,
@@ -102,5 +100,3 @@ export function resolveHarnessRoot(inputPath: string): string {
 
   return path.resolve(inputPath);
 }
-
-export { GENERATOR_VERSION };

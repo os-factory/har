@@ -9,7 +9,6 @@ import {
 } from './gitignore-template';
 import {
   computeFileChecksum,
-  GENERATOR_VERSION,
   getHarnessDir,
   readManifest,
 } from './manifest';
@@ -24,11 +23,6 @@ const CLI_EXPECTED_ABSENT = new Set([
 ]);
 
 export interface HarnessDriftResult {
-  generatorVersion: {
-    installed?: string;
-    bundled: string;
-    outdated: boolean;
-  };
   missing: string[];
   checksumMismatch: string[];
   extra: string[];
@@ -182,17 +176,11 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
     }
   }
 
-  const installed = manifest?.generatorVersion;
   const harnessEnv = readHarnessEnv(resolved);
   const missingPortVars = missingPortDocumentationVars(profile, harnessEnv);
   const agentSlotMismatch = detectAgentSlotEnvMismatch(resolved);
 
   return {
-    generatorVersion: {
-      installed,
-      bundled: GENERATOR_VERSION,
-      outdated: installed !== undefined && installed !== GENERATOR_VERSION,
-    },
     missing,
     checksumMismatch,
     extra,

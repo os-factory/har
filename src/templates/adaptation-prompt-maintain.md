@@ -15,7 +15,7 @@ Compare the current repo against the existing harness:
 - Root manifests, CI, Docker, README
 - New or changed test, lint, build, migrate, or seed commands
 - New services, ports, or environment variables
-- Review `.har/maintain/drift-report.json` (generator version, template drift, **missing port documentation vars**)
+- Review `.har/maintain/drift-report.json` (template drift, **missing port documentation vars**)
 
 ## Step 2 — Update `.har/` files
 
@@ -115,4 +115,4 @@ Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge uniq
 4. Replace any remaining TODO placeholders
 5. Do not edit `.har/manifest.json` — managed by the har CLI
 
-When finished, summarize what you changed, confirm verification commands still match the repo, and record the adaptation with `har env maintain --finalize --summary "<what changed>"` (updates the manifest's generator version and checksums).
+When finished, summarize what you changed, confirm verification commands still match the repo, and record the adaptation with `har env maintain --finalize --summary "<what changed>"` (updates the manifest checksums).

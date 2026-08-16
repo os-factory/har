@@ -42,11 +42,6 @@ export const DescribeProjectOutputSchema = z.object({
   }),
   harnessDrift: z
     .object({
-      generatorVersion: z.object({
-        installed: z.string().optional(),
-        bundled: z.string(),
-        outdated: z.boolean(),
-      }),
       missing: z.array(z.string()),
       checksumMismatch: z.array(z.string()),
       extra: z.array(z.string()),

@@ -16,7 +16,6 @@ har env maintain
 
 `maintain` validates the current harness and reports:
 
-- generator version drift;
 - missing bundled files;
 - template checksum differences;
 - stale or extra files;
@@ -26,7 +25,7 @@ har env maintain
 It writes a maintenance bundle and adaptation prompt where changes need review.
 Apply the prompt with your coding agent.
 
-After a manual adaptation, record the new generator version and checksums:
+After a manual adaptation, record the new checksums:
 
 ```bash
 har env maintain --finalize --summary "Adopt updated launch and verification scripts"

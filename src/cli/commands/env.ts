@@ -138,7 +138,7 @@ export const envCommand = {
             .option('finalize', {
               type: 'boolean',
               default: false,
-              describe: 'Record the completed manual adaptation in .har/manifest.json (updates generatorVersion and checksums)',
+              describe: 'Record the completed manual adaptation in .har/manifest.json (updates file checksums)',
             })
             .option('summary', {
               type: 'string',
@@ -571,7 +571,7 @@ export async function handleMaintain(argv: {
         warn('Harness has validation errors — fix them before finalizing.');
         return finishCommand(1);
       }
-      info('Manifest updated — generator version and file checksums recorded.');
+      info('Manifest updated — file checksums recorded.');
     } else {
       if (!result.validation.pass) {
         warn('Harness has validation errors — fix them before running --finalize.');
@@ -1226,11 +1226,6 @@ function printValidation(result: {
 }
 
 function printDrift(drift: HarnessDriftResult): void {
-  if (drift.generatorVersion.outdated) {
-    warn(
-      `  Harness generator ${drift.generatorVersion.installed} → bundled ${drift.generatorVersion.bundled}`,
-    );
-  }
   if (drift.checksumMismatch.length > 0) {
     warn(`  Drift (template changed): ${drift.checksumMismatch.join(', ')}`);
   }
@@ -1253,7 +1248,6 @@ function printDrift(drift: HarnessDriftResult): void {
     warn('  Canonical source is .har/stages.json — har env maintain --finalize syncs harness.env.');
   }
   if (
-    !drift.generatorVersion.outdated &&
     drift.checksumMismatch.length === 0 &&
     drift.missing.length === 0 &&
     drift.extra.length === 0 &&
