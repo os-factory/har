@@ -1,3 +1,10 @@
+# [0.57.0](https://github.com/os-factory/har/compare/v0.56.1...v0.57.0) (2026-08-16)
+
+
+### Features
+
+* plugin-first discovery, ledger, and profile bundles ([#211](https://github.com/os-factory/har/issues/211)) ([bb24a16](https://github.com/os-factory/har/commit/bb24a168f0c482feef01c0b5bd50118cd89118b5))
+
 ## [0.56.1](https://github.com/os-factory/har/compare/v0.56.0...v0.56.1) (2026-08-15)
 
 
