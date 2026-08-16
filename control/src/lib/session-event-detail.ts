@@ -4,6 +4,8 @@
  * dedicated prompt/response columns.
  */
 
+import { isSecretAttributeKey } from '@/lib/trajectory-privacy';
+
 type AttrMap = Record<string, unknown>;
 
 function asString(value: unknown): string | null {
@@ -19,6 +21,7 @@ function asAttrMap(attributes: unknown): AttrMap | null {
 
 function attrString(attrs: AttrMap, ...keys: string[]): string | null {
   for (const key of keys) {
+    if (isSecretAttributeKey(key)) continue;
     const value = asString(attrs[key]);
     if (value) return value;
   }

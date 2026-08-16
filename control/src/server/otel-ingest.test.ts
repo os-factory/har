@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalizeOtelLogRecord,
+  canonicalizeOtelSpan,
+  canonicalSpanSequence,
   extractLogRecords,
   extractPromptText,
   extractResponseText,
@@ -72,6 +74,15 @@ describe('extractResponseText', () => {
       'otelhook.content.kind': 'response',
     };
     expect(extractResponseText(attrs, undefined, 'completed answer')).toBe('completed answer');
+  });
+
+  it('withholds the body when otelhook.content.withheld is set', () => {
+    const attrs: AttrMap = {
+      'otelhook.event.type': 'generation.end',
+      'otelhook.content.kind': 'response',
+      'otelhook.content.withheld': 'privacy-policy',
+    };
+    expect(extractResponseText(attrs, 'otelhook.generation.end', 'secret answer')).toBeNull();
   });
 
   it('does not misclassify reasoning as a response', () => {
@@ -150,6 +161,80 @@ describe('canonical OTLP log facts', () => {
     });
   });
 
+  it('canonicalizes a prompt → generation → tool → response sequence without inventing order', () => {
+    const [prompt, tool, response] = extractLogRecords({
+      resourceLogs: [{
+        resource: { attributes: [] },
+        scopeLogs: [{
+          logRecords: [
+            {
+              eventName: 'otelhook.prompt.submitted',
+              attributes: [
+                { key: 'otelhook.event.id', value: { stringValue: 'evt-prompt' } },
+                { key: 'otelhook.event.type', value: { stringValue: 'prompt.submitted' } },
+                { key: 'otelhook.event.sequence', value: { intValue: '1' } },
+                { key: 'otelhook.content.kind', value: { stringValue: 'prompt' } },
+              ],
+              body: { stringValue: 'fix the flaky test' },
+            },
+            {
+              eventName: 'otelhook.tool.start',
+              attributes: [
+                { key: 'otelhook.event.id', value: { stringValue: 'evt-tool' } },
+                { key: 'otelhook.event.type', value: { stringValue: 'tool.start' } },
+                { key: 'otelhook.event.sequence', value: { intValue: '2' } },
+                { key: 'otelhook.content.kind', value: { stringValue: 'tool_input' } },
+                { key: 'gen_ai.tool.name', value: { stringValue: 'Read' } },
+              ],
+              body: { stringValue: 'tests/flaky.test.ts' },
+            },
+            {
+              eventName: 'otelhook.generation.end',
+              attributes: [
+                { key: 'otelhook.event.id', value: { stringValue: 'evt-response' } },
+                { key: 'otelhook.event.type', value: { stringValue: 'generation.end' } },
+                { key: 'otelhook.event.sequence', value: { intValue: '3' } },
+                { key: 'otelhook.content.kind', value: { stringValue: 'response' } },
+              ],
+              body: { stringValue: 'updated the assertion' },
+            },
+          ],
+        }],
+      }],
+    }).map((record) => canonicalizeOtelLogRecord(record));
+
+    expect(prompt).toMatchObject({ eventType: 'prompt.submitted', sequence: 1, contentKind: 'prompt' });
+    expect(tool).toMatchObject({ eventType: 'tool.start', sequence: 2, contentKind: 'tool_input' });
+    expect(response).toMatchObject({ eventType: 'generation.end', sequence: 3, contentKind: 'response' });
+    expect(prompt.sequence).toBeLessThan(tool.sequence);
+    expect(tool.sequence).toBeLessThan(response.sequence);
+  });
+
+  it('does not persist withheld bodies or secret attributes on the canonical payload', () => {
+    const canonical = canonicalizeOtelLogRecord({
+      resource: {},
+      eventName: 'log',
+      attributes: {
+        'otelhook.event.type': 'generation.end',
+        'otelhook.event.id': 'evt-secret',
+        'otelhook.content.kind': 'response',
+        'otelhook.content.withheld': 'privacy-policy',
+        authorization: 'Bearer leaked-token',
+        'gen_ai.tool.name': 'Read',
+      },
+      timestamp: new Date('2026-08-14T10:00:00.000Z'),
+      body: { stringValue: 'should not be stored' },
+      bodyText: 'should not be stored',
+      sequence: 9,
+    });
+    expect(canonical.contentDisclosure).toBe('withheld');
+    expect(canonical.payload.body).toBeNull();
+    expect(canonical.payload.attributes).toMatchObject({
+      authorization: '[redacted]',
+      'gen_ai.tool.name': 'Read',
+    });
+  });
+
   it('preserves redacted disclosure when a safe body is exported', () => {
     const canonical = canonicalizeOtelLogRecord({
       resource: {},
@@ -166,5 +251,37 @@ describe('canonical OTLP log facts', () => {
       sequence: 4,
     });
     expect(canonical.contentDisclosure).toBe('redacted');
+  });
+});
+
+describe('canonical OTLP span facts', () => {
+  it('uses producer sequence when present and never a span-id hash', () => {
+    expect(canonicalSpanSequence({
+      'otelhook.event.sequence': 6,
+      sequence: 99,
+    })).toBe(6);
+    expect(canonicalSpanSequence({})).toBe(0);
+    expect(canonicalSpanSequence({ sequence: 'not-a-number' })).toBe(0);
+
+    const canonical = canonicalizeOtelSpan({
+      resource: {},
+      traceId: 'trace-1',
+      spanId: 'deadbeefcafebabe',
+      parentSpanId: null,
+      name: 'gen_ai.client.generation',
+      startTime: new Date('2026-08-14T10:00:00.000Z'),
+      endTime: new Date('2026-08-14T10:00:01.000Z'),
+      attributes: {
+        'otelhook.event.sequence': 12,
+        authorization: 'Bearer leaked',
+        'gen_ai.client.prompt.text': 'hello',
+      },
+    });
+    expect(canonical.sequence).toBe(12);
+    expect(canonical.sourceEventId).toBe('span:trace-1:deadbeefcafebabe');
+    expect(canonical.sequence).not.toBe(
+      Math.abs(Number.parseInt('deadbeefcafebabe'.replace(/\D/g, '').slice(-8) || '0', 16)),
+    );
+    expect(canonical.payload.attributes).toMatchObject({ authorization: '[redacted]' });
   });
 });

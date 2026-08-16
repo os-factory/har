@@ -306,10 +306,39 @@ export function TrajectoryViewer({
             {formatAgentToolLabel(streams[0].agentTool)} · {streams[0].sessionKey}
           </p>
         )}
-        <Badge variant="outline" aria-label={`Trajectory connection ${status}`}>
-          <span className={`mr-1.5 h-2 w-2 rounded-full ${status === 'live' ? 'bg-emerald-500' : status === 'offline' ? 'bg-destructive' : 'bg-amber-500'}`} />
-          {status}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {selected ? (
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <a href={endpoint(repositoryId, agentId, selected, '') + '&format=jsonl'} download>
+                  Export JSONL
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (!window.confirm('Delete this session trajectory from local Mission Control? Usage totals are kept.')) {
+                    return;
+                  }
+                  void fetch(endpoint(repositoryId, agentId, selected), { method: 'DELETE' }).then((response) => {
+                    if (!response.ok) return;
+                    replaceRecords([]);
+                    setBefore(null);
+                    setHasMore(false);
+                    cursorRef.current = null;
+                  });
+                }}
+              >
+                Delete session
+              </Button>
+            </>
+          ) : null}
+          <Badge variant="outline" aria-label={`Trajectory connection ${status}`}>
+            <span className={`mr-1.5 h-2 w-2 rounded-full ${status === 'live' ? 'bg-emerald-500' : status === 'offline' ? 'bg-destructive' : 'bg-amber-500'}`} />
+            {status}
+          </Badge>
+        </div>
       </div>
       {hasMore && before ? (
         <Button variant="outline" size="sm" disabled={loadingOlder} onClick={() => void loadOlder()}>

@@ -46,6 +46,18 @@ describe('displayPromptText', () => {
 });
 
 describe('eventDetailSummary', () => {
+  it('does not surface secret-bearing attributes as visible content', () => {
+    expect(eventDetailSummary({
+      authorization: 'Bearer leaked',
+      'gen_ai.request.api_key': 'sk-secret',
+      'gen_ai.client.tool_name': 'Read',
+    })).toBe('Read');
+    expect(summarizeEventAttributes({
+      authorization: 'Bearer leaked',
+      'gen_ai.client.tool_name': 'Read',
+    })).toEqual(['tool: Read']);
+  });
+
   it('prefers command / file / error from attributes', () => {
     expect(
       eventDetailSummary({

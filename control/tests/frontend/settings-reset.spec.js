@@ -5,6 +5,7 @@ test.describe('Settings reset', () => {
     await page.goto('/settings');
 
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Trajectory storage' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Danger zone' })).toBeVisible();
 
     const openButton = page.getByRole('button', { name: /clear all data/i });

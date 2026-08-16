@@ -25,6 +25,10 @@ test.describe('Slot trajectory viewer', () => {
     if (await selector.isVisible().catch(() => false)) {
       await expect(selector).toBeEnabled();
     }
+    const exportLink = panel.getByRole('link', { name: /export jsonl/i });
+    if (await exportLink.isVisible().catch(() => false)) {
+      await expect(exportLink).toHaveAttribute('href', /format=jsonl/);
+    }
 
     await rawTab.click();
     await expect(

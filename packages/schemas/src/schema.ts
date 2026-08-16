@@ -691,6 +691,14 @@ export type AgentTrajectoryContentDisclosure = z.infer<
  * `sourceEventId` identifies the producer event while `contentKey` identifies
  * one content fact within it. Multiple facts may therefore share an event id
  * and sequence without overwriting each other.
+ *
+ * Ordering is deterministic: `sequence`, then occurrence `timestamp`, then
+ * `source`, `sourceEventId`, `contentKey`, and the storage row id. Duplicate
+ * OTLP/harvest delivery is idempotent on `(source, sourceEventId, contentKey)`.
+ * Late or out-of-order facts keep their producer sequence; clients merge by
+ * that order rather than ingestion time. Partial content is represented by
+ * `contentDisclosure` (`truncated` / `redacted` / `withheld` / `metadata_only`)
+ * instead of guessed bodies.
  */
 export const AgentTrajectoryRecordV1Schema = z
   .object({
