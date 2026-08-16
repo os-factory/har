@@ -6,6 +6,7 @@ import type {
   StageResult,
   ValidationRecord,
   VerificationResult,
+  WorkUnitRelatedLink,
 } from '../harness/schema';
 import { z } from 'zod';
 
@@ -56,6 +57,7 @@ export interface LaunchOptions {
   sourceUrl?: string;
   title?: string;
   parentWorkUnitId?: string;
+  relatedLinks?: WorkUnitRelatedLink[];
 }
 
 export interface PreflightOptions {

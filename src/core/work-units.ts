@@ -12,6 +12,8 @@ import {
   WorkUnitOutcome,
   WorkUnitRecord,
   WorkUnitRecordSchema,
+  WorkUnitRelatedLink,
+  WorkUnitRelatedLinkSchema,
 } from '../harness/schema';
 import { markDirty } from './sync-context';
 
@@ -67,6 +69,36 @@ function listRecords<T>(
   return records;
 }
 
+/** Parse `source|url` or `source|url|label` from CLI `--work-link`. */
+export function parseWorkLinkSpec(spec: string): WorkUnitRelatedLink {
+  const parts = spec.split('|');
+  if (parts.length < 2) {
+    throw new Error(
+      `Invalid work link "${spec}" — use source|url or source|url|label (example: github|https://github.com/org/repo/pull/42|PR #42)`,
+    );
+  }
+  const [source, url, ...labelParts] = parts;
+  const label = labelParts.length > 0 ? labelParts.join('|') : undefined;
+  return WorkUnitRelatedLinkSchema.parse({ source, url, label });
+}
+
+export function mergeRelatedLinks(
+  existing: WorkUnitRelatedLink[] | undefined,
+  incoming: WorkUnitRelatedLink[] | undefined,
+  primaryUrl?: string,
+): WorkUnitRelatedLink[] | undefined {
+  if (!incoming?.length) return existing?.length ? existing : undefined;
+  const seen = new Set<string>();
+  const merged: WorkUnitRelatedLink[] = [];
+  for (const link of [...(existing ?? []), ...incoming]) {
+    if (primaryUrl && link.url === primaryUrl) continue;
+    if (seen.has(link.url)) continue;
+    seen.add(link.url);
+    merged.push(link);
+  }
+  return merged.length > 0 ? merged : undefined;
+}
+
 export function findWorkUnit(
   harnessRoot: string,
   workUnitId: string,
@@ -107,13 +139,19 @@ export function upsertWorkUnit(
     }
   }
   const now = new Date().toISOString();
+  const sourceUrl = existing?.sourceUrl ?? metadata.sourceUrl;
   const record = WorkUnitRecordSchema.parse({
     ...existing,
     workUnitId: metadata.workUnitId,
     source: existing?.source ?? metadata.source,
-    sourceUrl: existing?.sourceUrl ?? metadata.sourceUrl,
+    sourceUrl,
     title: existing?.title ?? metadata.title,
     parentWorkUnitId: existing?.parentWorkUnitId ?? metadata.parentWorkUnitId,
+    relatedLinks: mergeRelatedLinks(
+      existing?.relatedLinks,
+      metadata.relatedLinks,
+      sourceUrl,
+    ),
     version: 1,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -121,6 +159,28 @@ export function upsertWorkUnit(
   });
   writeRecord(
     hashedRecordPath(harnessRoot, WORK_UNITS_DIR, metadata.workUnitId),
+    record,
+  );
+  markDirty(harnessRoot);
+  return record;
+}
+
+export function addWorkUnitLinks(
+  harnessRoot: string,
+  workUnitId: string,
+  links: WorkUnitRelatedLink[],
+): WorkUnitRecord {
+  const existing = findWorkUnit(harnessRoot, workUnitId);
+  if (!existing) throw new Error(`Unknown work unit: ${workUnitId}`);
+  const parsed = links.map((link) => WorkUnitRelatedLinkSchema.parse(link));
+  const relatedLinks = mergeRelatedLinks(existing.relatedLinks, parsed, existing.sourceUrl);
+  const record = WorkUnitRecordSchema.parse({
+    ...existing,
+    relatedLinks,
+    updatedAt: new Date().toISOString(),
+  });
+  writeRecord(
+    hashedRecordPath(harnessRoot, WORK_UNITS_DIR, workUnitId),
     record,
   );
   markDirty(harnessRoot);

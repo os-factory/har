@@ -18,11 +18,13 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_preflight_environment` | `agentId` | Readiness, blockers, warnings (including untracked worktree paths), and whether launch is safe |
-| `har_launch_environment` | `agentId`, optional `worktree`, `claude`, `resume`, `workUnitId`, `source`, `sourceUrl`, `title`, `parentWorkUnitId` | Work directory, branch, work/attempt IDs, URLs, and normalized stage result |
+| `har_launch_environment` | `agentId`, optional `worktree`, `claude`, `resume`, `workUnitId`, `source`, `sourceUrl`, `title`, `parentWorkUnitId`, `relatedLinks` | Work directory, branch, work/attempt IDs, URLs, and normalized stage result |
 
 Pass `workUnitId`, `source`, and `sourceUrl` when the task names a tracker issue or
 ticket (short repo-scoped id such as `widget-123`, not a provider-prefixed composite).
-Omit them for ad-hoc work with no tracker identity.
+Use `relatedLinks` or `har_add_work_unit_link` for secondary URLs (GitHub PR, mirrored
+issue, Bitbucket). Omit work metadata for ad-hoc work with no tracker identity.
+| `har_add_work_unit_link` | `workUnitId`, `source`, `url`, optional `label` | Append a related external link to an existing work unit |
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
 | `har_get_status` | optional `agentId` | Slot, process, worktree, branch, and dirty state |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |

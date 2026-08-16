@@ -112,7 +112,10 @@ har env preflight 1 [--json]
 har env launch 1 [--no-worktree] [--claude] [--resume]
   [--work-id <id>] [--work-source <name>] [--work-url <url>]
   [--work-title <title>] [--parent-work-id <id>]
+  [--work-link <source|url|label> ...]
 har env recover 1
+har env work-link --work-id <id> [--link <source|url|label>]
+  [--source <name> --url <url> [--label <text>]]
 ```
 
 Every `launch` creates a **new** session from the current HEAD of `--repo` (the
@@ -127,8 +130,9 @@ launch — it is not a way to replace an active session.
 
 Work metadata is optional and backward compatible. Bind when the task names a
 tracker issue or ticket: pass a short repo-scoped `--work-id`, plus `--work-source`,
-`--work-url`, and `--work-title` when known. A fresh bound launch creates an
-immutable attempt UUID; `--resume` preserves the failed session's attempt.
+`--work-url`, and `--work-title` when known. Add secondary links with repeatable
+`--work-link source|url|label`, or later with `har env work-link`. A fresh bound
+launch creates an immutable attempt UUID; `--resume` preserves the failed session's attempt.
 
 A worktree only materializes what is in `HEAD`. Preflight and launch warn when
 untracked (not gitignored) paths will be missing from the session worktree —

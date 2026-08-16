@@ -59,6 +59,25 @@ describe('SyncWorkUnitsInputSchema', () => {
     });
     expect(result.attempts[0].workUnitId).toBe(result.workUnits[0].workUnitId);
   });
+
+  it('parses work units with related links', () => {
+    const result = SyncWorkUnitsInputSchema.parse({
+      workUnits: [{
+        workUnitId: 'widget-123',
+        source: 'jira',
+        sourceUrl: 'https://company.atlassian.net/browse/WIDGET-123',
+        relatedLinks: [{
+          source: 'github',
+          url: 'https://github.com/acme/widget/issues/123',
+          label: 'GitHub mirror',
+        }],
+        createdAt: '2026-07-23T20:00:00.000Z',
+        updatedAt: '2026-07-23T20:00:00.000Z',
+      }],
+      attempts: [],
+    });
+    expect(result.workUnits[0].relatedLinks).toHaveLength(1);
+  });
 });
 
 describe('RunRecordSchema', () => {

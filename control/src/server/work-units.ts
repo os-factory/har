@@ -20,6 +20,9 @@ export async function syncWorkUnits(repositoryId: string, input: unknown) {
         sourceUrl: unit.sourceUrl,
         title: unit.title,
         parentWorkUnitId: unit.parentWorkUnitId,
+        relatedLinks: unit.relatedLinks
+          ? (unit.relatedLinks as Prisma.InputJsonValue)
+          : undefined,
         outcome: unit.outcome
           ? (unit.outcome as Prisma.InputJsonValue)
           : undefined,
@@ -31,6 +34,9 @@ export async function syncWorkUnits(repositoryId: string, input: unknown) {
         sourceUrl: unit.sourceUrl,
         title: unit.title,
         parentWorkUnitId: unit.parentWorkUnitId,
+        relatedLinks: unit.relatedLinks
+          ? (unit.relatedLinks as Prisma.InputJsonValue)
+          : undefined,
         outcome: unit.outcome
           ? (unit.outcome as Prisma.InputJsonValue)
           : Prisma.DbNull,

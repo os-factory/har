@@ -2,12 +2,15 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  addWorkUnitLinks,
   bindValidationToAttempt,
   createWorkAttempt,
   decideWorkUnitOutcome,
+  findWorkUnit,
   listValidationBindings,
   listWorkAttempts,
   listWorkUnits,
+  parseWorkLinkSpec,
   upsertWorkUnit,
 } from '../src/core/work-units';
 import type { ValidationRecord } from '../src/harness/schema';
@@ -86,5 +89,41 @@ describe('durable work identity', () => {
         decidedAt: new Date().toISOString(),
       }),
     ).toThrow('completed work must reference');
+  });
+
+  it('merges append-only related links and dedupes by url', () => {
+    upsertWorkUnit(repo, {
+      workUnitId: 'har-217',
+      source: 'jira',
+      sourceUrl: 'https://company.atlassian.net/browse/HAR-217',
+      relatedLinks: [
+        { source: 'github', url: 'https://github.com/os-factory/har/issues/217' },
+      ],
+    });
+    addWorkUnitLinks(repo, 'har-217', [
+      { source: 'github', url: 'https://github.com/os-factory/har/pull/999', label: 'PR #999' },
+      { source: 'github', url: 'https://github.com/os-factory/har/pull/999' },
+    ]);
+
+    expect(findWorkUnit(repo, 'har-217')).toEqual(
+      expect.objectContaining({
+        relatedLinks: [
+          { source: 'github', url: 'https://github.com/os-factory/har/issues/217' },
+          {
+            source: 'github',
+            url: 'https://github.com/os-factory/har/pull/999',
+            label: 'PR #999',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('parses CLI work link specs', () => {
+    expect(parseWorkLinkSpec('github|https://github.com/org/repo/pull/1|PR #1')).toEqual({
+      source: 'github',
+      url: 'https://github.com/org/repo/pull/1',
+      label: 'PR #1',
+    });
   });
 });
