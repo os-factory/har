@@ -37,7 +37,8 @@ test.describe('Teams page', () => {
     const modal = page.locator('[data-dashboard-image-modal]');
     await expect(modal).toBeHidden();
 
-    await trigger.click();
+    // Play control sits over the image center; hit a corner so zoom opens.
+    await trigger.click({ position: { x: 12, y: 12 } });
 
     await expect(modal).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'Dashboard screenshot' })).toBeVisible();
