@@ -32,6 +32,14 @@ import {
 import { checkLaunchGuard } from '../../core/slot-launch-guard';
 import { listRuns, getRun } from '../../core/runs';
 import { collectEnvironmentStatus } from '../../core/slot-status';
+import {
+  confirmCleanupSelection,
+  discoverCleanupCandidates,
+  executeCleanupCandidates,
+  formatCleanupPlan,
+  parseCleanupKeepPins,
+  selectAutoApprovedCandidates,
+} from '../../core/cleanup-service';
 import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
 import { readOnboardingPreferences } from '../../core/onboarding-preferences';
 import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
@@ -339,6 +347,49 @@ export const envCommand = {
         handleStatus,
       )
       .command(
+        'cleanup',
+        'Discover stale session worktrees across registered repos and tear them down',
+        (y: Argv) =>
+          y
+            .option('repo', {
+              type: 'string',
+              describe: 'Limit cleanup scan to one repository path',
+            })
+            .option('dry-run', {
+              type: 'boolean',
+              default: false,
+              describe: 'Show the cleanup plan without executing',
+            })
+            .option('yes', {
+              alias: 'y',
+              type: 'boolean',
+              default: false,
+              describe: 'Approve teardown/remove for recommended rows without prompting',
+            })
+            .option('keep', {
+              type: 'string',
+              describe:
+                'Pin sessions to keep (comma-separated repoPath:agentId or worktree paths)',
+            })
+            .option('stale', {
+              type: 'number',
+              default: 7,
+              describe: 'Age in days before a clean idle session is recommended for teardown',
+            })
+            .option('orphans', {
+              type: 'boolean',
+              default: true,
+              describe: 'Include orphan worktree directories under ~/worktrees',
+            })
+            .option('include-review', {
+              type: 'boolean',
+              default: false,
+              describe: 'With --yes, also teardown/remove rows marked review (dirty or recent active)',
+            })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
+        handleCleanup,
+      )
+      .command(
         'runs',
         'Inspect harness run history',
         (y: Argv) =>
@@ -374,7 +425,7 @@ export const envCommand = {
       )
       .demandCommand(
         1,
-        'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, runs',
+        'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, cleanup, runs',
       )
       .epilog(HAR_ENV_EPILOG),
   handler: () => {},
@@ -983,6 +1034,77 @@ export async function handleStatus(argv: { repo: string; json?: boolean }): Prom
     repoPath,
     capture: false,
   });
+}
+
+export async function handleCleanup(argv: {
+  repo?: string;
+  dryRun?: boolean;
+  yes?: boolean;
+  keep?: string;
+  stale?: number;
+  orphans?: boolean;
+  includeReview?: boolean;
+  json?: boolean;
+}): Promise<void> {
+  const keepValues = argv.keep
+    ?.split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const keep = parseCleanupKeepPins(keepValues);
+  const repoPaths = argv.repo ? [path.resolve(argv.repo)] : undefined;
+
+  const plan = await discoverCleanupCandidates({
+    cwd: process.cwd(),
+    repoPaths,
+    keep,
+    staleDays: argv.stale,
+    orphans: argv.orphans,
+  });
+
+  if (argv.json) {
+    process.stdout.write(JSON.stringify(plan, null, 2) + '\n');
+    if (argv.dryRun) return;
+  } else {
+    header('har env cleanup');
+    process.stdout.write(`${formatCleanupPlan(plan)}\n\n`);
+    if (argv.dryRun) {
+      info('Dry run — no changes made.');
+      return;
+    }
+  }
+
+  let selected = selectAutoApprovedCandidates(plan, { includeReview: argv.includeReview });
+  if (!argv.yes) {
+    try {
+      const interactive = await confirmCleanupSelection(plan.candidates);
+      selected = interactive;
+    } catch (err: unknown) {
+      error(err instanceof Error ? err.message : String(err));
+      return finishCommand(1);
+    }
+  }
+
+  if (selected.length === 0) {
+    info('Nothing selected for cleanup.');
+    return;
+  }
+
+  const outcomes = await executeCleanupCandidates(selected, { dryRun: false });
+  let failed = 0;
+  for (const outcome of outcomes) {
+    const label =
+      outcome.candidate.kind === 'orphan_worktree'
+        ? outcome.candidate.worktreePath
+        : `${outcome.candidate.projectName} agent ${outcome.candidate.agentId}`;
+    if (outcome.ok) {
+      success(`Cleaned ${label}`);
+    } else {
+      failed++;
+      error(`${label}: ${outcome.error ?? 'failed'}`);
+    }
+  }
+
+  return finishCommand(failed > 0 ? 1 : 0);
 }
 
 export async function handleRunsList(argv: {

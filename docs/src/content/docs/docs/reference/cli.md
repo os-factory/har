@@ -49,6 +49,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
 | `status` | Inspect all slots |
+| `cleanup` | Discover stale sessions and orphan worktrees across registered repos |
 | `runs list` | List persisted run records |
 | `runs get <runId>` | Return one run record |
 
@@ -149,9 +150,17 @@ har env teardown 1 [--delete-branch]
 
 ```bash
 har env status [--json]
+har env cleanup [--dry-run] [--yes] [--repo <path>]
+                [--keep repo:agentId,/path/to/worktree]
+                [--stale 7] [--orphans] [--include-review] [--json]
 har env runs list [--stage <id>] [--limit 50] [--json]
 har env runs get <uuid> [--json]
 ```
+
+`cleanup` scans every repo in `~/.har/repos.json` (plus `--repo` when set),
+classifies active slots and orphan directories under `~/worktrees`, and runs
+full harness teardown for approved rows. Use `--dry-run` to preview the plan;
+pin live sessions with `--keep har-portal:4` or a worktree path.
 
 ## `har agents`
 
