@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import type { WorkUnitRelatedLink } from '@har/schemas';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { WorkUnitEvidenceTable } from '@/components/work-unit-evidence-table';
@@ -62,6 +63,8 @@ export default async function WorkUnitPage({
     validations: unit.validations,
   });
 
+  const relatedLinks = (unit.relatedLinks as WorkUnitRelatedLink[] | null) ?? [];
+
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
       <div>
@@ -73,17 +76,33 @@ export default async function WorkUnitPage({
           <Badge variant="secondary">{status}</Badge>
         </div>
         <p className="font-mono text-xs text-muted-foreground">{unit.workUnitId}</p>
-        {unit.sourceUrl ? (
-          <p className="mt-1 text-sm">
-            <a
-              href={unit.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary underline-offset-2 hover:underline"
-            >
-              Source
-            </a>
-          </p>
+        {(unit.sourceUrl || relatedLinks.length > 0) ? (
+          <ul className="mt-2 space-y-1 text-sm">
+            {unit.sourceUrl ? (
+              <li>
+                <a
+                  href={unit.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  {unit.source ?? 'Source'}
+                </a>
+              </li>
+            ) : null}
+            {relatedLinks.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  {link.label ?? link.source}
+                </a>
+              </li>
+            ))}
+          </ul>
         ) : null}
       </div>
 

@@ -251,12 +251,22 @@ export const WorkUnitIdSchema = z
 
 export const WorkAttemptIdSchema = z.string().uuid();
 
+/** Secondary external link (PR, mirrored issue, alternate tracker). Append-only on the work unit. */
+export const WorkUnitRelatedLinkSchema = z.object({
+  source: z.string().min(1).max(64),
+  url: z.string().url(),
+  label: z.string().min(1).max(128).optional(),
+});
+
+export type WorkUnitRelatedLink = z.infer<typeof WorkUnitRelatedLinkSchema>;
+
 export const WorkUnitMetadataSchema = z.object({
   workUnitId: WorkUnitIdSchema,
   source: z.string().min(1).max(64).optional(),
   sourceUrl: z.string().url().optional(),
   title: z.string().min(1).max(256).optional(),
   parentWorkUnitId: WorkUnitIdSchema.optional(),
+  relatedLinks: z.array(WorkUnitRelatedLinkSchema).optional(),
 });
 
 export type WorkUnitMetadata = z.infer<typeof WorkUnitMetadataSchema>;

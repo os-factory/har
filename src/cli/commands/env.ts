@@ -31,6 +31,8 @@ import {
 } from '../../core/run-service';
 import { checkLaunchGuard } from '../../core/slot-launch-guard';
 import { listRuns, getRun } from '../../core/runs';
+import { addWorkUnitLinks, parseWorkLinkSpec } from '../../core/work-units';
+import { resolveHarnessRoot } from '../../harness/manifest';
 import { collectEnvironmentStatus } from '../../core/slot-status';
 import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
 import { readOnboardingPreferences } from '../../core/onboarding-preferences';
@@ -43,6 +45,22 @@ import {
   LAUNCH_EPILOG,
   LAUNCH_RESUME_DESCRIBE,
 } from '../help-text';
+
+const workLinkOptions = (y: Argv) =>
+  y
+    .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+    .option('work-id', {
+      type: 'string',
+      demandOption: true,
+      describe: 'Repo-scoped work unit id (same as --work-id at launch)',
+    })
+    .option('link', {
+      type: 'string',
+      describe: 'Link as source|url or source|url|label',
+    })
+    .option('source', { type: 'string', describe: 'Tracker provider (e.g. github, jira)' })
+    .option('url', { type: 'string', describe: 'Canonical URL for the link' })
+    .option('label', { type: 'string', describe: 'Optional display label' });
 
 export const envCommand = {
   command: 'env <subcommand>',
@@ -269,8 +287,20 @@ export const envCommand = {
               type: 'string',
               describe: 'Optional parent work unit identifier',
             })
+            .option('work-link', {
+              type: 'array',
+              string: true,
+              describe:
+                'Additional tracker link: source|url or source|url|label (repeatable)',
+            })
             .epilog(LAUNCH_EPILOG),
         handleLaunch,
+      )
+      .command(
+        'work-link',
+        'Append a related external link to an existing work unit',
+        workLinkOptions,
+        handleWorkLink,
       )
       .command(
         'recover <id>',
@@ -852,6 +882,7 @@ export async function handleLaunch(argv: {
   workUrl?: string;
   workTitle?: string;
   parentWorkId?: string;
+  workLink?: string[];
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -878,6 +909,7 @@ export async function handleLaunch(argv: {
     sourceUrl: argv.workUrl,
     title: argv.workTitle,
     parentWorkUnitId: argv.parentWorkId,
+    relatedLinks: argv.workLink?.map(parseWorkLinkSpec),
     capture: false,
   });
   if (result.blocked) {
@@ -897,6 +929,34 @@ export async function handleLaunch(argv: {
     if (result.branch) info(`Branch: ${result.branch}`);
   }
   return finishCommand(result.code);
+}
+
+export async function handleWorkLink(argv: {
+  repo: string;
+  workId: string;
+  link?: string;
+  source?: string;
+  url?: string;
+  label?: string;
+}): Promise<void> {
+  if (!argv.link && !(argv.source && argv.url)) {
+    error('Provide --link or both --source and --url');
+    return finishCommand(1);
+  }
+
+  const harnessRoot = resolveHarnessRoot(path.resolve(argv.repo));
+  const links = argv.link
+    ? [parseWorkLinkSpec(argv.link)]
+    : [{ source: argv.source!, url: argv.url!, label: argv.label }];
+
+  try {
+    const record = addWorkUnitLinks(harnessRoot, argv.workId, links);
+    success(`Added link to work unit ${record.workUnitId}`);
+    return finishCommand(0);
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
 }
 
 export async function handleRecover(argv: { id?: number; repo: string }): Promise<void> {

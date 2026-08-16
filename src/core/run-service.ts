@@ -240,6 +240,7 @@ export class RunService {
         sourceUrl: options.sourceUrl,
         title: options.title,
         parentWorkUnitId: options.parentWorkUnitId,
+        relatedLinks: options.relatedLinks,
       });
       createWorkAttempt(harnessRoot, {
         attemptId,

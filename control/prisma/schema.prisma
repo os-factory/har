@@ -201,6 +201,7 @@ model WorkUnit {
   sourceUrl        String?
   title            String?
   parentWorkUnitId String?
+  relatedLinks     Json?
   outcome          Json?
   sourceCreatedAt  DateTime
   sourceUpdatedAt  DateTime

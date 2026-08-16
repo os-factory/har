@@ -78,6 +78,23 @@ export const LaunchEnvironmentInputSchema = z.object({
   sourceUrl: z.string().url().optional(),
   title: z.string().min(1).max(256).optional(),
   parentWorkUnitId: z.string().min(1).max(128).optional(),
+  relatedLinks: z
+    .array(
+      z.object({
+        source: z.string().min(1).max(64),
+        url: z.string().url(),
+        label: z.string().min(1).max(128).optional(),
+      }),
+    )
+    .optional(),
+});
+
+export const AddWorkUnitLinkInputSchema = z.object({
+  repo: z.string().default('.'),
+  workUnitId: z.string().min(1).max(128),
+  source: z.string().min(1).max(64),
+  url: z.string().url(),
+  label: z.string().min(1).max(128).optional(),
 });
 
 export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({

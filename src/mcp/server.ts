@@ -22,6 +22,8 @@ import {
   teardownEnvironment,
 } from '../core/run-service';
 import { getRun, listRuns } from '../core/runs';
+import { addWorkUnitLinks } from '../core/work-units';
+import { resolveHarnessRoot } from '../harness/manifest';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -30,6 +32,7 @@ import {
 } from './schema-tools';
 import { validateAgentId } from '../utils/validation';
 import {
+  AddWorkUnitLinkInputSchema,
   CompleteEnvironmentInputSchema,
   CompleteEnvironmentOutputSchema,
   DescribeProjectOutputSchema,
@@ -104,8 +107,40 @@ export const HAR_MCP_TOOLS: Tool[] = [
           type: 'string',
           description: 'Optional parent work unit identifier.',
         },
+        relatedLinks: {
+          type: 'array',
+          description:
+            'Additional tracker links (append-only). Each item: source, url, optional label.',
+          items: {
+            type: 'object',
+            properties: {
+              source: { type: 'string' },
+              url: { type: 'string' },
+              label: { type: 'string' },
+            },
+            required: ['source', 'url'],
+          },
+        },
       },
       ['agentId'],
+    ),
+  },
+  {
+    name: 'har_add_work_unit_link',
+    description:
+      'Append a related external link (PR, mirrored issue, alternate tracker) to an existing work unit.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        workUnitId: {
+          type: 'string',
+          description: 'Repo-scoped work unit id bound at launch.',
+        },
+        source: { type: 'string', description: 'Tracker provider (e.g. github, jira).' },
+        url: { type: 'string', description: 'Canonical URL for the link.' },
+        label: { type: 'string', description: 'Optional display label.' },
+      },
+      ['workUnitId', 'source', 'url'],
     ),
   },
   {
@@ -292,6 +327,7 @@ export async function handleMcpToolCall(
         sourceUrl: input.sourceUrl,
         title: input.title,
         parentWorkUnitId: input.parentWorkUnitId,
+        relatedLinks: input.relatedLinks,
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
@@ -315,6 +351,7 @@ export async function handleMcpToolCall(
         sourceUrl: input.sourceUrl,
         title: input.title,
         parentWorkUnitId: input.parentWorkUnitId,
+        relatedLinks: input.relatedLinks,
         capture: true,
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
@@ -322,6 +359,29 @@ export async function handleMcpToolCall(
         ...jsonContent(parsed),
         ...(result.blocked ? { isError: true } : {}),
       };
+    }
+
+    case 'har_add_work_unit_link': {
+      const input = AddWorkUnitLinkInputSchema.parse({ ...args, repo });
+      const harnessRoot = resolveHarnessRoot(repo);
+      try {
+        const record = addWorkUnitLinks(harnessRoot, input.workUnitId, [
+          { source: input.source, url: input.url, label: input.label },
+        ]);
+        return jsonContent({
+          ok: true,
+          workUnitId: record.workUnitId,
+          relatedLinks: record.relatedLinks,
+        });
+      } catch (err) {
+        return {
+          ...jsonContent({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+          isError: true,
+        };
+      }
     }
 
     case 'har_preflight_environment': {

@@ -30,6 +30,11 @@ Follow [`.cursor/rules/har-workflow.mdc`](.cursor/rules/har-workflow.mdc) and
 dir, full-verify before done, then present a session handoff and wait for approval.
 When the task names a tracker issue or ticket, bind at launch with a short
 `--work-id`, plus `--work-source`, `--work-url`, and `--work-title` when known.
+Add secondary links (GitHub issue, PR, Bitbucket) with repeatable
+`--work-link source|url|label` at launch, or later via
+`har env work-link --work-id <id> --link …` / MCP `har_add_work_unit_link`. Bind the
+planning tracker (Jira/Linear) as `--work-url`; attach code-host links as related
+links. Include any remaining links in session handoff until attached.
 Default recommendation is complete + open a PR when tooling is available (still
 requires approval); never run `complete`, push, or PR autonomously.
 
