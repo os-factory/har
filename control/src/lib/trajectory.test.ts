@@ -180,7 +180,7 @@ describe('trajectory assembler', () => {
     expect(nodes.some((node) => node.records.some((item) => item.id === 'span'))).toBe(false);
   });
 
-  it('drops empty session and generation bookends but keeps message-bearing generation ends', () => {
+  it('keeps session start/end and message-bearing generation ends, but drops empty generation bookends', () => {
     const nodes = assembleTrajectory([
       record('session-start', { eventType: 'session.start', contentKind: 'metadata' }),
       record('prompt', { sequence: 2, eventType: 'prompt.submitted', contentKind: 'prompt' }),
@@ -193,7 +193,12 @@ describe('trajectory assembler', () => {
       }),
       record('session-end', { sequence: 5, eventType: 'session.end', contentKind: 'metadata' }),
     ]);
-    expect(nodes.map((node) => node.kind)).toEqual(['prompt', 'response']);
+    expect(nodes.map((node) => node.title)).toEqual([
+      'Session started',
+      'User prompt',
+      'Assistant response',
+      'Session ended',
+    ]);
   });
 
   it('places input, model, and tool nodes on overview lanes', () => {

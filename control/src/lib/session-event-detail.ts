@@ -43,11 +43,12 @@ export function isRedundantLogEvent(eventName: string, rawTruncated?: string | n
 }
 
 /**
- * Lifecycle bookends (`tool.start` / `tool.end`, `generation.start`, …).
- * The paired end (or a span row) already represents the same call.
+ * Redundant tool/generation bookends (`tool.start` / `tool.end`, `generation.start`, …).
+ * Session start/end stay visible — they frame the run.
  */
 export function isStartEndBoundaryEvent(eventName: string): boolean {
   const name = shortEventName(eventName).toLowerCase().replaceAll('_', '.');
+  if (name.includes('session')) return false;
   return /(^|\.)(start|end)$/.test(name);
 }
 

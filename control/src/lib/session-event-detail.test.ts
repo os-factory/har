@@ -128,7 +128,8 @@ describe('event views', () => {
     expect(isStartEndBoundaryEvent('tool.start')).toBe(true);
     expect(isStartEndBoundaryEvent('tool.end')).toBe(true);
     expect(isStartEndBoundaryEvent('generation.start')).toBe(true);
-    expect(isStartEndBoundaryEvent('session.end')).toBe(true);
+    expect(isStartEndBoundaryEvent('session.start')).toBe(false);
+    expect(isStartEndBoundaryEvent('session.end')).toBe(false);
     expect(isStartEndBoundaryEvent('prompt.submitted')).toBe(false);
     expect(isStartEndBoundaryEvent('span.tool Read')).toBe(false);
     expect(isStartEndBoundaryEvent('span.gen_ai.client.hook.PreToolUse')).toBe(false);

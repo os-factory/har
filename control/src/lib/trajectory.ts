@@ -139,8 +139,16 @@ function pairingKey(
   return { key: `event:${record.sourceEventId}`, confidence: 'fallback' };
 }
 
+function sessionBookendTitle(record: SerializedTrajectoryRecord): string | null {
+  const event = record.eventType.toLowerCase().replaceAll('_', '.');
+  if (event === 'session.start' || event.endsWith('.session.start')) return 'Session started';
+  if (event === 'session.end' || event.endsWith('.session.end')) return 'Session ended';
+  return null;
+}
+
 function contentTitle(record: SerializedTrajectoryRecord, fallback: string): string {
   return record.contentLabel?.trim() ||
+    sessionBookendTitle(record) ||
     attributeString(record, [
       'otelhook.tool.name',
       'gen_ai.tool.name',
@@ -207,10 +215,12 @@ export function isSpanMirrorRecord(record: SerializedTrajectoryRecord): boolean 
     record.eventType.toLowerCase().startsWith('span.');
 }
 
-/** Session/generation start-end rows with no message body — noise next to paired tools. */
+/** Generation start/end with no message body — noise next to paired tools. Session bookends stay. */
 export function isEmptyLifecycleBookend(record: SerializedTrajectoryRecord): boolean {
   const event = record.eventType.toLowerCase().replaceAll('_', '.');
-  if (event.includes('tool') || event.includes('subagent')) return false;
+  if (event.includes('tool') || event.includes('subagent') || event.includes('session')) {
+    return false;
+  }
   if (!/(^|\.)(start|end)$/.test(event)) return false;
   const kind = record.contentKind.toLowerCase();
   return !['prompt', 'response', 'reasoning', 'user', 'assistant'].includes(kind);
