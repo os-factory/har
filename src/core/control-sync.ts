@@ -20,6 +20,7 @@ import {
   PortalTarget,
 } from './control-config';
 import {
+  isRepoPortalSyncEnabled,
   listRegisteredRepos,
   recordRepoForControlSync,
   removeRegisteredRepo,
@@ -621,6 +622,8 @@ async function syncRepoWithPortal(
   options: ControlSyncOptions & { repoPath: string },
   controlApiUrl: string,
 ): Promise<void> {
+  if (!isRepoPortalSyncEnabled(options.repoPath)) return;
+
   const portal = getPortalTarget();
   if (!portal) return;
 
@@ -891,6 +894,7 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
 
   const portal = getPortalTarget();
   if (!portal) return;
+  if (!isRepoPortalSyncEnabled(canonical)) return;
 
   try {
     if (!(await isControlApiReachable(portal.url))) return;

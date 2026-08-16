@@ -4,9 +4,11 @@ import * as path from 'path';
 import {
   clearRegisteredRepos,
   getControlRegistryPath,
+  isRepoPortalSyncEnabled,
   listRegisteredRepos,
   recordRepoForControlSync,
   removeRegisteredRepo,
+  setRepoPortalSync,
 } from '../src/core/control-registry';
 import { canonicalizeControlRepoPath } from '../src/core/control-repo-path';
 
@@ -92,5 +94,63 @@ describe('control registry', () => {
     expect(listRegisteredRepos()).toEqual([]);
     expect(clearRegisteredRepos()).toBe(0);
   });
-});
 
+  it('defaults portal sync to enabled', () => {
+    recordRepoForControlSync(FIXTURE);
+    expect(isRepoPortalSyncEnabled(FIXTURE)).toBe(true);
+  });
+
+  it('persists portal opt-out and re-enable', () => {
+    recordRepoForControlSync(FIXTURE);
+    setRepoPortalSync(FIXTURE, false);
+    expect(isRepoPortalSyncEnabled(FIXTURE)).toBe(false);
+    expect(JSON.parse(fs.readFileSync(registryPath, 'utf8')).portalOptOut).toEqual([
+      FIXTURE_CANONICAL,
+    ]);
+
+    setRepoPortalSync(FIXTURE, true);
+    expect(isRepoPortalSyncEnabled(FIXTURE)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(registryPath, 'utf8')).portalOptOut).toBeUndefined();
+  });
+
+  it('recordRepoForControlSync does not clear an existing portal opt-out', () => {
+    recordRepoForControlSync(FIXTURE);
+    setRepoPortalSync(FIXTURE, false);
+    recordRepoForControlSync(FIXTURE);
+    expect(isRepoPortalSyncEnabled(FIXTURE)).toBe(false);
+  });
+
+  it('removeRegisteredRepo drops portal opt-out for that path', () => {
+    recordRepoForControlSync(FIXTURE);
+    setRepoPortalSync(FIXTURE, false);
+    removeRegisteredRepo(FIXTURE);
+    expect(JSON.parse(fs.readFileSync(registryPath, 'utf8')).portalOptOut).toBeUndefined();
+  });
+
+  it('listRegisteredRepos prunes portal opt-out for missing repos', () => {
+    fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+    fs.writeFileSync(
+      registryPath,
+      JSON.stringify(
+        {
+          repos: [path.resolve(FIXTURE), '/tmp/missing-har-repo'],
+          portalOptOut: ['/tmp/missing-har-repo', path.resolve(FIXTURE)],
+        },
+        null,
+        2,
+      ),
+    );
+
+    expect(listRegisteredRepos()).toEqual([FIXTURE_CANONICAL]);
+    expect(JSON.parse(fs.readFileSync(registryPath, 'utf8')).portalOptOut).toEqual([
+      FIXTURE_CANONICAL,
+    ]);
+  });
+
+  it('clearRegisteredRepos clears portal opt-out', () => {
+    recordRepoForControlSync(FIXTURE);
+    setRepoPortalSync(FIXTURE, false);
+    clearRegisteredRepos();
+    expect(JSON.parse(fs.readFileSync(registryPath, 'utf8'))).toEqual({ repos: [] });
+  });
+});

@@ -211,7 +211,7 @@ are internal hook workers invoked by Git, not day-to-day commands.
 ```bash
 har control up [--build] [-d|--detach|--no-detach]
 har control down
-har control register [--repo .] [--api-url <url>] [--dry-run] [--force]
+har control register [--repo .] [--api-url <url>] [--dry-run] [--force] [--portal|--no-portal]
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
 har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
@@ -225,6 +225,8 @@ one it picked. With `--api-key` it stores that ingest token; without it, HAR
 opens browser SSO and saves the resulting token.
 `sync --select` interactively chooses repositories; `--full` ignores the portal
 watermark and resends the complete payload.
+`register --no-portal` keeps the repo on local Mission Control only (skips hosted
+portal sync even when logged in); `--portal` re-enables portal sync for that repo.
 
 `unregister` removes the repository from Mission Control and `~/.har/repos.json`.
 Interactively it lists session worktrees and asks whether to delete them; pass
