@@ -139,8 +139,16 @@ function pairingKey(
   return { key: `event:${record.sourceEventId}`, confidence: 'fallback' };
 }
 
+function sessionBookendTitle(record: SerializedTrajectoryRecord): string | null {
+  const event = record.eventType.toLowerCase().replaceAll('_', '.');
+  if (event === 'session.start' || event.endsWith('.session.start')) return 'Session started';
+  if (event === 'session.end' || event.endsWith('.session.end')) return 'Session ended';
+  return null;
+}
+
 function contentTitle(record: SerializedTrajectoryRecord, fallback: string): string {
   return record.contentLabel?.trim() ||
+    sessionBookendTitle(record) ||
     attributeString(record, [
       'otelhook.tool.name',
       'gen_ai.tool.name',
@@ -202,8 +210,166 @@ function isBoundary(record: SerializedTrajectoryRecord, kind: 'tool' | 'subagent
   );
 }
 
+export function isSpanMirrorRecord(record: SerializedTrajectoryRecord): boolean {
+  return record.contentKind.toLowerCase() === 'span' ||
+    record.eventType.toLowerCase().startsWith('span.');
+}
+
+/** Generation start/end with no message body — noise next to paired tools. Session bookends stay. */
+export function isEmptyLifecycleBookend(record: SerializedTrajectoryRecord): boolean {
+  const event = record.eventType.toLowerCase().replaceAll('_', '.');
+  if (event.includes('tool') || event.includes('subagent') || event.includes('session')) {
+    return false;
+  }
+  if (!/(^|\.)(start|end)$/.test(event)) return false;
+  const kind = record.contentKind.toLowerCase();
+  return !['prompt', 'response', 'reasoning', 'user', 'assistant'].includes(kind);
+}
+
+function unwrapTrajectoryValue(value: unknown): unknown {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as { stringValue?: unknown };
+    if (typeof record.stringValue === 'string') return record.stringValue;
+  }
+  return value;
+}
+
+export type TrajectoryLane = 'input' | 'model' | 'tools' | 'other';
+
+export function trajectoryLane(kind: TrajectoryNodeKind): TrajectoryLane {
+  if (kind === 'prompt') return 'input';
+  if (kind === 'response' || kind === 'reasoning') return 'model';
+  if (kind === 'tool' || kind === 'subagent') return 'tools';
+  return 'other';
+}
+
+export function trajectoryRoleLabel(kind: TrajectoryNodeKind): string {
+  switch (kind) {
+    case 'prompt':
+      return 'USER';
+    case 'response':
+      return 'ASSISTANT';
+    case 'reasoning':
+      return 'REASON';
+    case 'tool':
+      return 'TOOL';
+    case 'subagent':
+      return 'AGENT';
+    case 'error':
+      return 'ERROR';
+    default:
+      return 'SYSTEM';
+  }
+}
+
+export function nodeDurationMs(node: TrajectoryNode): number | null {
+  if (!node.endedAt) return null;
+  const ms = new Date(node.endedAt).getTime() - new Date(node.startedAt).getTime();
+  return Number.isFinite(ms) && ms >= 0 ? ms : null;
+}
+
+export function formatDurationMs(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1000);
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+export function sessionDurationMs(nodes: TrajectoryNode[]): number | null {
+  if (nodes.length === 0) return null;
+  const starts = nodes.map((node) => new Date(node.startedAt).getTime());
+  const ends = nodes.map((node) => new Date(node.endedAt ?? node.startedAt).getTime());
+  const ms = Math.max(...ends) - Math.min(...starts);
+  return Number.isFinite(ms) && ms >= 0 ? ms : null;
+}
+
+export function countTrajectoryTurns(nodes: TrajectoryNode[]): number {
+  return nodes.filter((node) => node.kind === 'prompt').length;
+}
+
+export function countTrajectoryCalls(nodes: TrajectoryNode[]): number {
+  return nodes.filter((node) => node.kind === 'tool' || node.kind === 'subagent').length;
+}
+
+export function previewTrajectoryNode(node: TrajectoryNode): string {
+  for (const record of node.records) {
+    const body = safeTrajectoryBody(record);
+    if (body == null) continue;
+    const text = typeof body === 'string' ? body : JSON.stringify(body);
+    const compact = text.replace(/\s+/g, ' ').trim();
+    if (compact) return compact.length > 160 ? `${compact.slice(0, 157)}…` : compact;
+  }
+  return node.note ?? '';
+}
+
+export function nodeMatchesQuery(node: TrajectoryNode, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  const haystack = [
+    node.title,
+    node.kind,
+    trajectoryRoleLabel(node.kind),
+    node.note ?? '',
+    previewTrajectoryNode(node),
+    ...node.records.flatMap((record) => [record.eventType, record.contentLabel ?? '']),
+  ].join(' ').toLowerCase();
+  return haystack.includes(needle);
+}
+
+export interface TrajectoryLanePlacement {
+  id: string;
+  lane: Exclude<TrajectoryLane, 'other'>;
+  left: number;
+  width: number;
+}
+
+export function trajectoryOverviewPlacement(nodes: TrajectoryNode[]): TrajectoryLanePlacement[] {
+  const visible = nodes.filter((node) => trajectoryLane(node.kind) !== 'other');
+  if (visible.length === 0) return [];
+
+  const times = visible.flatMap((node) => [
+    new Date(node.startedAt).getTime(),
+    new Date(node.endedAt ?? node.startedAt).getTime(),
+  ]);
+  const minTime = Math.min(...times);
+  const maxTime = Math.max(...times);
+  const useTime = Number.isFinite(minTime) && Number.isFinite(maxTime) && maxTime - minTime >= 400;
+
+  if (useTime) {
+    const span = Math.max(maxTime - minTime, 1);
+    return visible.map((node) => {
+      const start = new Date(node.startedAt).getTime();
+      const end = new Date(node.endedAt ?? node.startedAt).getTime();
+      return {
+        id: node.id,
+        lane: trajectoryLane(node.kind) as Exclude<TrajectoryLane, 'other'>,
+        left: ((start - minTime) / span) * 100,
+        width: Math.max(((Math.max(end, start) - start) / span) * 100, 1.6),
+      };
+    });
+  }
+
+  const sequences = visible.flatMap((node) => node.records.map((record) => record.sequence));
+  const minSeq = Math.min(...sequences);
+  const maxSeq = Math.max(...sequences);
+  const span = Math.max(maxSeq - minSeq, 1);
+  return visible.map((node) => {
+    const start = node.records[0].sequence;
+    const end = node.records[node.records.length - 1].sequence;
+    return {
+      id: node.id,
+      lane: trajectoryLane(node.kind) as Exclude<TrajectoryLane, 'other'>,
+      left: ((start - minSeq) / span) * 100,
+      width: Math.max(((Math.max(end, start) - start + 1) / span) * 100, 2.4),
+    };
+  });
+}
+
 export function assembleTrajectory(records: SerializedTrajectoryRecord[]): TrajectoryNode[] {
-  const ordered = mergeTrajectoryRecords(records);
+  const ordered = mergeTrajectoryRecords(records).filter((record) =>
+    !isSpanMirrorRecord(record) && !isEmptyLifecycleBookend(record),
+  );
   const nodes: TrajectoryNode[] = [];
   const open = new Map<string, TrajectoryNode[]>();
 
@@ -278,9 +444,13 @@ export function safeTrajectoryBody(record: SerializedTrajectoryRecord): unknown 
   }
   const payload = asObject(record.payload);
   if (!payload) return null;
-  if (record.contentKind === 'prompt' && payload.promptText != null) return payload.promptText;
-  if (record.contentKind === 'response' && payload.responseText != null) return payload.responseText;
-  return payload.body ?? payload.raw ?? null;
+  if (record.contentKind === 'prompt' && payload.promptText != null) {
+    return unwrapTrajectoryValue(payload.promptText);
+  }
+  if (record.contentKind === 'response' && payload.responseText != null) {
+    return unwrapTrajectoryValue(payload.responseText);
+  }
+  return unwrapTrajectoryValue(payload.body ?? payload.raw ?? null);
 }
 
 export function sequenceGap(

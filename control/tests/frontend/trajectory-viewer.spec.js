@@ -15,20 +15,33 @@ test.describe('Slot trajectory viewer', () => {
     await expect(trajectoryTab).toBeVisible();
     await expect(rawTab).toBeVisible();
 
-    const panel = page.getByRole('tabpanel');
+    const panel = page.getByRole('tabpanel', { name: 'Trajectory' });
     await expect(
-      panel.getByLabel('Agent trajectory timeline')
-        .or(panel.getByText(/no trajectory records yet|no records in this trajectory stream/i)),
+      page.getByLabel('Agent trajectory timeline')
+        .or(page.getByText(/no trajectory records yet|no records in this trajectory stream/i)),
     ).toBeVisible();
 
     const selector = panel.getByLabel('Select trajectory session and agent');
     if (await selector.isVisible().catch(() => false)) {
       await expect(selector).toBeEnabled();
     }
+    const exportLink = page.getByRole('link', { name: /export jsonl/i });
+    if (await exportLink.isVisible().catch(() => false)) {
+      await expect(exportLink).toHaveAttribute('href', /format=jsonl/);
+    }
+    const overview = page.getByLabel('Trajectory overview');
+    if (await overview.isVisible().catch(() => false)) {
+      await expect(page.getByLabel('Trajectory inspector')).toBeVisible();
+      await expect(page.getByLabel(/turns/i)).toBeVisible();
+    }
 
     await rawTab.click();
     await expect(
       page.getByText(/no otel session events yet/i).or(page.getByRole('table')),
     ).toBeVisible();
+    const hideStartEnd = page.getByLabel('Hide start/end events');
+    if (await hideStartEnd.isVisible().catch(() => false)) {
+      await expect(hideStartEnd).toBeChecked();
+    }
   });
 });

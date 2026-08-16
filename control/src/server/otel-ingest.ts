@@ -1,5 +1,4 @@
 import { createRequire } from 'node:module';
-import type { Prisma } from '@prisma/client';
 import {
   AgentTrajectoryRecordSchema,
   type AgentSessionUsage,
@@ -12,11 +11,15 @@ import {
 } from '@/server/trajectory-ledger';
 import { upsertSessionUsage } from '@/server/usage';
 import {
+  boundTrajectoryPayload,
+  hidesTrajectoryContent,
+  redactSecretAttributes,
+} from '@/lib/trajectory-privacy';
+import {
   isWorkspaceUnderPath,
   normalizeOtelPath,
   pickBestRepoPathMatch,
   pickPathForWorkspaceId,
-  shouldPersistOtelUsage,
 } from '@/server/otel-workspace';
 
 const nodeRequire = createRequire(__filename);
@@ -172,9 +175,12 @@ function extractPointsFromResourceMetrics(payload: unknown): Array<{
   return results;
 }
 
-function detectAgentTool(resource: AttrMap, serviceName?: string): AgentTool | null {
+export function detectAgentTool(resource: AttrMap, serviceName?: string): AgentTool | null {
   const candidates = [
     String(resource['har.agent_tool'] ?? ''),
+    String(resource['otelhook.provider.id'] ?? ''),
+    String(resource['otelhook.agent.name'] ?? ''),
+    String(resource['otelhook.provider'] ?? ''),
     String(resource['gen_ai.client.name'] ?? ''),
     serviceName ?? String(resource['service.name'] ?? ''),
   ]
@@ -684,11 +690,6 @@ async function maybeSetDerivedPurpose(
   });
 }
 
-function shouldPersistUsage(usage: AgentSessionUsage): boolean {
-  // Model-only / zero-token rows are not real usage — keep events/spans, skip usage table.
-  return shouldPersistOtelUsage(usage);
-}
-
 function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap): void {
   const input = Number(
     attributes['gen_ai.usage.input_tokens'] ?? attributes['gen_ai.usage.prompt_tokens'] ?? 0,
@@ -1124,8 +1125,8 @@ export function canonicalizeOtelLogRecord(record: ParsedLogRecord) {
     generationId,
     toolCallId,
     payload: {
-      body: record.body,
-      attributes: record.attributes,
+      body: hidesTrajectoryContent(contentDisclosure) ? null : record.body,
+      attributes: redactSecretAttributes(record.attributes),
       resource: record.resource,
       recordEventName: record.eventName,
       disclosure: {
@@ -1141,8 +1142,55 @@ export function canonicalizeOtelLogRecord(record: ParsedLogRecord) {
   };
 }
 
+export function canonicalSpanSequence(attributes: AttrMap): number {
+  const raw =
+    attributes['otelhook.event.sequence'] ??
+    attributes['har.sequence'] ??
+    attributes.sequence;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+export function canonicalizeOtelSpan(span: ParsedSpan) {
+  const sequence = canonicalSpanSequence(span.attributes);
+  const promptText = extractPromptText(span.attributes, span.name);
+  const responseText = extractResponseText(span.attributes, span.name);
+  const contentKind = promptText ? 'prompt' : responseText ? 'response' : 'span';
+  const withheld = Boolean(span.attributes['otelhook.content.withheld']);
+  const contentDisclosure = withheld
+    ? 'withheld' as const
+    : promptText || responseText
+      ? 'full' as const
+      : 'metadata_only' as const;
+  const bounded = boundTrajectoryPayload({
+    attributes: redactSecretAttributes(span.attributes),
+    body: hidesTrajectoryContent(contentDisclosure) ? null : promptText ?? responseText,
+    promptText: contentDisclosure === 'full' ? promptText : null,
+    responseText: contentDisclosure === 'full' ? responseText : null,
+    span: {
+      name: span.name,
+      startTime: span.startTime.toISOString(),
+      endTime: span.endTime?.toISOString() ?? null,
+    },
+  }, contentDisclosure);
+  return {
+    eventType: `span.${span.name}`,
+    sequence,
+    sourceEventId: `span:${span.traceId}:${span.spanId}`,
+    contentKey: stableTrajectoryKey({
+      kind: contentKind,
+      traceId: span.traceId,
+      spanId: span.spanId,
+    }),
+    contentKind,
+    contentDisclosure: bounded.contentDisclosure,
+    payload: bounded.payload,
+    promptText: contentDisclosure === 'full' ? promptText : null,
+    responseText: contentDisclosure === 'full' ? responseText : null,
+  };
+}
+
 export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestResult> {
-  const { upsertSessionEvent } = await import('@/server/session-events');
   const records = extractLogRecords(payload);
   let accepted = 0;
   let dropped = 0;
@@ -1158,13 +1206,7 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
     const { context } = resolved;
     const canonical = canonicalizeOtelLogRecord(record);
     const { eventType, sequence } = canonical;
-
     const promptText = extractPromptText(record.attributes, eventType, record.bodyText);
-    const responseText = extractResponseText(
-      record.attributes,
-      eventType,
-      record.bodyText,
-    );
 
     await appendTrajectoryRecord(
       context.repositoryId,
@@ -1179,7 +1221,14 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
         eventType,
         sequence,
         timestamp: record.timestamp.toISOString(),
-        payload: canonical.payload,
+        payload: {
+          ...canonical.payload,
+          session: {
+            workDir: context.workDir,
+            branch: context.branch,
+            suffix: context.suffix,
+          },
+        },
         contentKind: canonical.contentKind,
         contentDisclosure: canonical.contentDisclosure,
         contentLabel: canonical.contentLabel,
@@ -1194,41 +1243,7 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
       }),
     );
 
-    await upsertSessionEvent(context.repositoryId, {
-      sessionKey: context.sessionKey,
-      agentId: context.agentId,
-      agentTool: context.agentTool,
-      eventName: eventType,
-      sequence,
-      timestamp: record.timestamp,
-      attributes: record.attributes as Prisma.InputJsonValue,
-      promptText,
-      responseText,
-      rawTruncated: record.bodyText,
-      source: 'otel',
-      workUnitId: context.workUnitId,
-      attemptId: context.attemptId,
-    });
-
     await maybeSetDerivedPurpose(context.repositoryId, context.agentId, promptText);
-
-    const usage = emptyUsage({
-      sessionKey: context.sessionKey,
-      agentId: context.agentId,
-      agentTool: context.agentTool,
-      workDir: context.workDir,
-      branch: context.branch,
-      suffix: context.suffix,
-      workUnitId: context.workUnitId,
-      attemptId: context.attemptId,
-    });
-    applyHooksUsageFromAttrs(usage, record.attributes);
-    usage.tokensTotal =
-      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
-    if (shouldPersistUsage(usage)) {
-      await upsertSessionUsage(context.repositoryId, usage);
-    }
-
     accepted += 1;
   }
 
@@ -1335,83 +1350,40 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
       continue;
     }
     const { context } = resolved;
+    const canonical = canonicalizeOtelSpan(span);
 
-    await prisma.agentSessionSpan.upsert({
-      where: {
-        repositoryId_traceId_spanId: {
-          repositoryId: context.repositoryId,
-          traceId: span.traceId,
-          spanId: span.spanId,
-        },
-      },
-      create: {
-        repositoryId: context.repositoryId,
+    await appendTrajectoryRecord(
+      context.repositoryId,
+      AgentTrajectoryRecordSchema.parse({
+        version: 1,
+        source: 'otel',
+        sourceEventId: canonical.sourceEventId,
+        contentKey: canonical.contentKey,
         sessionKey: context.sessionKey,
         agentId: context.agentId,
         agentTool: context.agentTool,
-        workUnitId: context.workUnitId,
-        attemptId: context.attemptId,
+        eventType: canonical.eventType,
+        sequence: canonical.sequence,
+        timestamp: span.startTime.toISOString(),
+        payload: {
+          ...canonical.payload,
+          session: {
+            workDir: context.workDir,
+            branch: context.branch,
+            suffix: context.suffix,
+          },
+        },
+        contentKind: canonical.contentKind,
+        contentDisclosure: canonical.contentDisclosure,
         traceId: span.traceId,
         spanId: span.spanId,
-        parentSpanId: span.parentSpanId,
-        name: span.name,
-        startTime: span.startTime,
-        endTime: span.endTime,
-        attributes: span.attributes as Prisma.InputJsonValue,
-      },
-      update: {
-        name: span.name,
-        endTime: span.endTime,
+        parentSpanId: span.parentSpanId ?? undefined,
         workUnitId: context.workUnitId,
         attemptId: context.attemptId,
-        attributes: span.attributes as Prisma.InputJsonValue,
-      },
-    });
+      }),
+    );
 
-    // Also fold key spans into the event timeline for UI without a separate spans section.
-    const { upsertSessionEvent } = await import('@/server/session-events');
-    const promptText = extractPromptText(span.attributes, span.name);
-    const responseText = extractResponseText(span.attributes, span.name);
-    await upsertSessionEvent(context.repositoryId, {
-      sessionKey: context.sessionKey,
-      agentId: context.agentId,
-      agentTool: context.agentTool,
-      eventName: `span.${span.name}`,
-      sequence: Math.abs(
-        Number.parseInt(span.spanId.replace(/\D/g, '').slice(-8) || '0', 16) || accepted + 1,
-      ),
-      timestamp: span.startTime,
-      attributes: {
-        ...span.attributes,
-        traceId: span.traceId,
-        spanId: span.spanId,
-      } as Prisma.InputJsonValue,
-      promptText,
-      responseText,
-      source: 'otel',
-      workUnitId: context.workUnitId,
-      attemptId: context.attemptId,
-    });
-
-    await maybeSetDerivedPurpose(context.repositoryId, context.agentId, promptText);
-
-    const usage = emptyUsage({
-      sessionKey: context.sessionKey,
-      agentId: context.agentId,
-      agentTool: context.agentTool,
-      workDir: context.workDir,
-      branch: context.branch,
-      suffix: context.suffix,
-      workUnitId: context.workUnitId,
-      attemptId: context.attemptId,
-    });
-    applyHooksUsageFromAttrs(usage, span.attributes);
-    usage.tokensTotal =
-      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
-    if (shouldPersistUsage(usage)) {
-      await upsertSessionUsage(context.repositoryId, usage);
-    }
-
+    await maybeSetDerivedPurpose(context.repositoryId, context.agentId, canonical.promptText);
     accepted += 1;
   }
 

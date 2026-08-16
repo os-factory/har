@@ -50,7 +50,7 @@ test.describe('Factory and operations', () => {
     await expect(filter).toBeVisible();
 
     await filter.click();
-    const options = page.getByRole('option');
+    const options = page.getByRole('listbox').getByRole('option');
     const optionCount = await options.count();
     if (optionCount <= 1) {
       test.skip(true, 'Only the All repositories option is available');

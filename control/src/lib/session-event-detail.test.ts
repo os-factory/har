@@ -5,6 +5,7 @@ import {
   eventDetailSummary,
   eventToolName,
   isRedundantLogEvent,
+  isStartEndBoundaryEvent,
   matchesSessionEventView,
   shortEventName,
   summarizeEventAttributes,
@@ -46,6 +47,18 @@ describe('displayPromptText', () => {
 });
 
 describe('eventDetailSummary', () => {
+  it('does not surface secret-bearing attributes as visible content', () => {
+    expect(eventDetailSummary({
+      authorization: 'Bearer leaked',
+      'gen_ai.request.api_key': 'sk-secret',
+      'gen_ai.client.tool_name': 'Read',
+    })).toBe('Read');
+    expect(summarizeEventAttributes({
+      authorization: 'Bearer leaked',
+      'gen_ai.client.tool_name': 'Read',
+    })).toEqual(['tool: Read']);
+  });
+
   it('prefers command / file / error from attributes', () => {
     expect(
       eventDetailSummary({
@@ -109,5 +122,16 @@ describe('event views', () => {
     expect(matchesSessionEventView(tool, 'tools')).toBe(true);
     expect(matchesSessionEventView(prompt, 'prompts')).toBe(true);
     expect(matchesSessionEventView(generation, 'activity')).toBe(true);
+  });
+
+  it('identifies start/end lifecycle bookends without hiding span or prompt rows', () => {
+    expect(isStartEndBoundaryEvent('tool.start')).toBe(true);
+    expect(isStartEndBoundaryEvent('tool.end')).toBe(true);
+    expect(isStartEndBoundaryEvent('generation.start')).toBe(true);
+    expect(isStartEndBoundaryEvent('session.start')).toBe(false);
+    expect(isStartEndBoundaryEvent('session.end')).toBe(false);
+    expect(isStartEndBoundaryEvent('prompt.submitted')).toBe(false);
+    expect(isStartEndBoundaryEvent('span.tool Read')).toBe(false);
+    expect(isStartEndBoundaryEvent('span.gen_ai.client.hook.PreToolUse')).toBe(false);
   });
 });

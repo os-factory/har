@@ -7,9 +7,12 @@ import {
   type SessionEventRow,
 } from '@/components/columns/session-event-columns';
 import { SessionEventPreview } from '@/components/session-event-preview';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   countSessionEventViews,
+  isStartEndBoundaryEvent,
   matchesSessionEventView,
   SESSION_EVENT_VIEWS,
   type SessionEventView,
@@ -17,14 +20,21 @@ import {
 
 export function SessionEventsTable({ events }: { events: SessionEventRow[] }) {
   const [view, setView] = useState<SessionEventView>('activity');
+  const [hideStartEnd, setHideStartEnd] = useState(true);
   const [selected, setSelected] = useState<SessionEventRow | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const counts = useMemo(() => countSessionEventViews(events), [events]);
+  const scoped = useMemo(
+    () => hideStartEnd
+      ? events.filter((event) => !isStartEndBoundaryEvent(event.eventName))
+      : events,
+    [events, hideStartEnd],
+  );
+  const counts = useMemo(() => countSessionEventViews(scoped), [scoped]);
 
   const visible = useMemo(
-    () => events.filter((event) => matchesSessionEventView(event, view)),
-    [events, view],
+    () => scoped.filter((event) => matchesSessionEventView(event, view)),
+    [scoped, view],
   );
 
   if (events.length === 0) {
@@ -62,9 +72,24 @@ export function SessionEventsTable({ events }: { events: SessionEventRow[] }) {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        <p className="text-xs text-muted-foreground">
-          Showing {visible.length} of {events.length}. Click a row for attributes.
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="hide-start-end"
+              checked={hideStartEnd}
+              onCheckedChange={(value) => setHideStartEnd(value === true)}
+              aria-label="Hide start/end events"
+            />
+            <Label htmlFor="hide-start-end" className="text-xs font-normal text-muted-foreground">
+              Hide start/end events
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Showing {visible.length} of {scoped.length}
+            {hideStartEnd && scoped.length !== events.length ? ` (${events.length - scoped.length} hidden)` : ''}.
+            {' '}Click a row for attributes.
+          </p>
+        </div>
       </div>
 
       <DataTable

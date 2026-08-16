@@ -2,11 +2,13 @@ import type { AgentTrajectoryRecord as CanonicalTrajectoryRecord } from '@har/sc
 import { Prisma, type AgentTrajectoryRecord } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
+import { boundTrajectoryPayload, trajectoryPolicy } from '@/lib/trajectory-privacy';
 import type {
   SerializedTrajectoryPage,
   SerializedTrajectoryRecord,
   TrajectoryStream,
 } from '@/lib/trajectory';
+import { projectTrajectoryRecord } from '@/server/trajectory-projections';
 
 export interface TrajectoryCursor {
   sequence: number;
@@ -173,10 +175,16 @@ function scopeWhere(scope: TrajectoryScope): Prisma.AgentTrajectoryRecordWhereIn
   };
 }
 
+const globalRetention = globalThis as unknown as {
+  trajectoryRetentionAt?: number;
+};
+
 export async function appendTrajectoryRecord(
   repositoryId: string,
   input: CanonicalTrajectoryRecord,
 ): Promise<AppendTrajectoryResult> {
+  const { maxPayloadBytes } = trajectoryPolicy();
+  const bounded = boundTrajectoryPayload(input.payload, input.contentDisclosure, maxPayloadBytes);
   try {
     const record = await prisma.agentTrajectoryRecord.create({
       data: {
@@ -191,9 +199,9 @@ export async function appendTrajectoryRecord(
         eventType: input.eventType,
         sequence: input.sequence,
         eventTimestamp: new Date(input.timestamp),
-        payload: input.payload as Prisma.InputJsonValue,
+        payload: bounded.payload as Prisma.InputJsonValue,
         contentKind: input.contentKind,
-        contentDisclosure: input.contentDisclosure,
+        contentDisclosure: bounded.contentDisclosure,
         contentLabel: input.contentLabel,
         traceId: input.traceId,
         spanId: input.spanId,
@@ -205,6 +213,8 @@ export async function appendTrajectoryRecord(
         attemptId: input.attemptId,
       },
     });
+    await projectTrajectoryRecord(record);
+    await maybeExpireTrajectoryRecords();
     for (const listener of listeners) {
       try {
         listener(record);
@@ -329,6 +339,57 @@ export async function getSlotTrajectoryData(
     agentTool: latest.agentTool,
   }, { limit });
   return { streams, initialPage: serializeTrajectoryPage(page) };
+}
+
+export async function listTrajectoryExport(
+  scope: TrajectoryScope,
+): Promise<AgentTrajectoryRecord[]> {
+  return prisma.agentTrajectoryRecord.findMany({
+    where: scopeWhere(scope),
+    orderBy: ascendingOrder,
+  });
+}
+
+export async function deleteTrajectoryScope(scope: TrajectoryScope): Promise<{ deleted: number }> {
+  const result = await prisma.agentTrajectoryRecord.deleteMany({ where: scopeWhere(scope) });
+  await prisma.agentSessionEvent.deleteMany({
+    where: {
+      repositoryId: scope.repositoryId,
+      agentId: scope.agentId,
+      sessionKey: scope.sessionKey,
+      agentTool: scope.agentTool,
+    },
+  });
+  await prisma.agentSessionSpan.deleteMany({
+    where: {
+      repositoryId: scope.repositoryId,
+      agentId: scope.agentId,
+      sessionKey: scope.sessionKey,
+      agentTool: scope.agentTool,
+    },
+  });
+  return { deleted: result.count };
+}
+
+export async function expireTrajectoryRecords(now = new Date()): Promise<number> {
+  const { retentionDays } = trajectoryPolicy();
+  if (retentionDays <= 0) return 0;
+  const cutoff = new Date(now.getTime() - retentionDays * 86_400_000);
+  const result = await prisma.agentTrajectoryRecord.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+  await prisma.agentSessionEvent.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  await prisma.agentSessionSpan.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  return result.count;
+}
+
+async function maybeExpireTrajectoryRecords(): Promise<void> {
+  const { retentionDays } = trajectoryPolicy();
+  if (retentionDays <= 0) return;
+  const last = globalRetention.trajectoryRetentionAt ?? 0;
+  if (Date.now() - last < 60_000) return;
+  globalRetention.trajectoryRetentionAt = Date.now();
+  await expireTrajectoryRecords();
 }
 
 export function subscribeToTrajectory(

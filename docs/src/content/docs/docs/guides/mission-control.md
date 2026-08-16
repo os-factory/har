@@ -194,6 +194,24 @@ When telemetry is on:
 **Privacy:** prompt text is included by default and stays in local Mission Control (SQLite).
 Opt out with `har telemetry on --no-prompts` or disable everything with `har telemetry off`.
 
+### Trajectory ledger
+
+The slot **Trajectory** tab is assembled from an append-only ledger, not from the
+usage/event tables. OTLP ingest and harvest write canonical facts first; event,
+span, and usage rows are projections of those facts.
+
+| Concern | Behavior |
+|---|---|
+| Order | Producer `sequence`, then event timestamp, then source / event id / content key. Ingestion order is not canonical. |
+| Duplicates | The same `(source, sourceEventId, contentKey)` is stored once. Replayed OTLP does not create a second row. |
+| Late arrival | Out-of-order facts keep their sequence. The live viewer repairs gaps after reconnect instead of appending blindly. |
+| Partial content | `contentDisclosure` records `full`, `redacted`, `masked`, `truncated`, `withheld`, or `metadata_only`. Withheld and metadata-only bodies are not rendered. |
+| Secrets | Attribute leaves such as `authorization` or `api_key` are stored as `[redacted]` and never used as prompt/response text. |
+| Size | Bodies over `HAR_TRAJECTORY_MAX_PAYLOAD_BYTES` (default 64 KiB) are truncated. Binary tool payloads are omitted. |
+| Retention | `HAR_TRAJECTORY_RETENTION_DAYS=0` (default) keeps rows. A positive value expires ledger, event, and span rows older than that. Usage totals stay. |
+| Export / delete | The slot viewer can download the session as local JSONL or delete that session's trajectory. Factory reset still wipes the whole database. |
+| Local vs remote | Default Mission Control is local SQLite. Export is a local download. Hosted / Cloud sync does not receive these bodies unless you point agents at a remote Mission Control instance. |
+
 ## Local development
 
 Mission Control's source has its own harness:

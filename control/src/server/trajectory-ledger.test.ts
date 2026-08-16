@@ -38,3 +38,14 @@ describe('trajectory ledger ordering', () => {
     expect(() => decodeTrajectoryCursor('not-a-cursor')).toThrow('Invalid trajectory cursor');
   });
 });
+
+describe('trajectory retention policy', () => {
+  it('treats zero days as keep-forever so expire is a no-op without a cutoff', async () => {
+    const previous = process.env.HAR_TRAJECTORY_RETENTION_DAYS;
+    process.env.HAR_TRAJECTORY_RETENTION_DAYS = '0';
+    const { expireTrajectoryRecords } = await import('./trajectory-ledger');
+    await expect(expireTrajectoryRecords()).resolves.toBe(0);
+    if (previous == null) delete process.env.HAR_TRAJECTORY_RETENTION_DAYS;
+    else process.env.HAR_TRAJECTORY_RETENTION_DAYS = previous;
+  });
+});
