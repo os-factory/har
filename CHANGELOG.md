@@ -1,3 +1,10 @@
+# [0.59.0](https://github.com/os-factory/har/compare/v0.58.0...v0.59.0) (2026-08-16)
+
+
+### Features
+
+* **control:** allow per-repo portal opt-out on register ([#219](https://github.com/os-factory/har/issues/219)) ([599df36](https://github.com/os-factory/har/commit/599df36c8858a7d0534b1dcfb60dc8b427698ad7))
+
 # [0.58.0](https://github.com/os-factory/har/compare/v0.57.0...v0.58.0) (2026-08-16)
 
 
