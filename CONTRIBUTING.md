@@ -365,6 +365,10 @@ Add or modify subcommands in the matching file under `src/cli/commands/` (`env.t
 2. Rebuild (`npm run build`) — plugins are **discovered from disk** (no `PLUGIN_IDS` edit)
 3. Test with `har env add-plugin <name>` on a fixture
 
+For **external / community plugins**, start from the
+[os-factory/har-plugin](https://github.com/os-factory/har-plugin) template repository
+(`har env add-plugin github:os-factory/har-plugin`).
+
 Optional: install from a path, npm package, or git URL:
 `har env add-plugin ./my-plugin`, `har env add-plugin @org/har-cypress`, `har env add-plugin github:org/repo`.
 

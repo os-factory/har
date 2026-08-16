@@ -24,7 +24,7 @@ test.describe('Frontend smoke', () => {
     await page.locator('a.plugin-card', { hasText: 'Gitleaks' }).click();
     await expect(page).toHaveURL(/\/plugins\/gitleaks\/$/);
     await expect(page.locator('h1')).toContainText('Gitleaks');
-    await expect(page.locator('.install-cmd')).toContainText('har env add-plugin gitleaks');
+    await expect(page.locator('.install-command')).toContainText('har env add-plugin gitleaks');
   });
 
   test('docs introduction is reachable', async ({ page }) => {

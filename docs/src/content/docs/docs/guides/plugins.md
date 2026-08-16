@@ -209,6 +209,12 @@ See [Stages and artifacts](/docs/guides/stages/) and `.har/STAGES.md`.
 
 HAR is open source. Anyone can ship a verification plugin without changing HAR core.
 
+**Start from the official boilerplate** (GitHub template + npm package layout):
+
+- Repository: [os-factory/har-plugin](https://github.com/os-factory/har-plugin) (*Use this template*)
+- Authoring guide: [docs/AUTHORING.md](https://github.com/os-factory/har-plugin/blob/main/docs/AUTHORING.md)
+- Try the example: `har env add-plugin github:os-factory/har-plugin --skip-ci`
+
 **1. Author a bundle** — a directory with:
 
 - `template.manifest.json` (required) — `id`, `stages` (or legacy `stage` + `stageId`),
@@ -216,8 +222,9 @@ HAR is open source. Anyone can ship a verification plugin without changing HAR c
 - Stage script(s) under `.har/stages/`
 - Optional: `package.fragment.json`, CI workflow, smoke fixtures, adaptation guide
 
-Use an existing plugin under the HAR repo’s `src/templates/plugins/` (e.g. Playwright
-or Gitleaks) as the template. Manifests prefer `stages: [...]` for one or more stages.
+Rename the example `id` / stage, implement the script, run `npm run check-manifest`.
+You can also copy an existing bundled plugin under HAR’s `src/templates/plugins/`
+(e.g. Playwright or Gitleaks). Manifests prefer `stages: [...]` for one or more stages.
 
 **2. Distribute**
 
