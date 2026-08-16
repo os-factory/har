@@ -1,6 +1,6 @@
 {
   "name": "@osfactory/har",
-  "version": "0.59.0",
+  "version": "0.60.0",
   "description": "Open harness for reproducible multi-agent coding workflows",
   "keywords": [
     "har",

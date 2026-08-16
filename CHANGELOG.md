@@ -1,3 +1,10 @@
+# [0.60.0](https://github.com/os-factory/har/compare/v0.59.0...v0.60.0) (2026-08-16)
+
+
+### Features
+
+* **control:** replayable trajectory ledger and split-pane viewer ([#220](https://github.com/os-factory/har/issues/220)) ([6534411](https://github.com/os-factory/har/commit/6534411ba48792bd4d37ac421425302ac4f6bcc6))
+
 # [0.59.0](https://github.com/os-factory/har/compare/v0.58.0...v0.59.0) (2026-08-16)
 
 
