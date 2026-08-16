@@ -212,6 +212,7 @@ HAR is open source. Anyone can ship a verification plugin without changing HAR c
 **Start from the official boilerplate** (GitHub template + npm package layout):
 
 - Repository: [os-factory/har-plugin](https://github.com/os-factory/har-plugin) (*Use this template*)
+- Agent guide (fit + examples): [AGENTS.md](https://github.com/os-factory/har-plugin/blob/main/AGENTS.md)
 - Authoring guide: [docs/AUTHORING.md](https://github.com/os-factory/har-plugin/blob/main/docs/AUTHORING.md)
 - Try the example: `har env add-plugin github:os-factory/har-plugin --skip-ci`
 
