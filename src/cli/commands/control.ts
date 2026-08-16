@@ -32,7 +32,12 @@ import {
   resetMissionControlFromCli,
 } from '../../core/control-reset';
 import { error, header, info, success, warn } from '../../utils/logging';
-import { listRegisteredRepos, recordRepoForControlSync } from '../../core/control-registry';
+import {
+  isRepoPortalSyncEnabled,
+  listRegisteredRepos,
+  recordRepoForControlSync,
+  setRepoPortalSync,
+} from '../../core/control-registry';
 import { finishCommand } from '../finish-command';
 
 export const controlCommand = {
@@ -71,6 +76,11 @@ export const controlCommand = {
               type: 'boolean',
               default: false,
               describe: 'Re-register even if previously unregistered',
+            })
+            .option('portal', {
+              type: 'boolean',
+              describe:
+                'Sync this repo to the hosted portal when logged in. Use --no-portal to keep it local-only.',
             }),
         handleRegister,
       )
@@ -233,6 +243,7 @@ async function handleRegister(argv: {
   apiUrl?: string;
   dryRun: boolean;
   force: boolean;
+  portal?: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
   header('har control register');
@@ -241,6 +252,10 @@ async function handleRegister(argv: {
   try {
     if (!argv.dryRun) {
       recordRepoForControlSync(repoPath);
+      // Only persist when the user passed --portal / --no-portal (undefined = leave as-is).
+      if (argv.portal !== undefined) {
+        setRepoPortalSync(repoPath, argv.portal);
+      }
     }
     // Explicit register always clears a prior unregister blocklist entry.
     await syncRepoWithControl({
@@ -253,6 +268,9 @@ async function handleRegister(argv: {
       info('Dry run — no API call made');
     } else {
       success('Registered and synced with Mission Control');
+      if (!isRepoPortalSyncEnabled(repoPath)) {
+        info('Local-only — skipped hosted portal sync');
+      }
     }
   } catch (err: unknown) {
     error((err as Error).message);

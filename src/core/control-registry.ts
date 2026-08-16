@@ -6,6 +6,8 @@ import { canonicalizeControlRepoPath, resolveMainWorkingTree } from './control-r
 
 interface ControlRegistry {
   repos: string[];
+  /** Paths that stay on local Mission Control only (skip hosted portal sync). */
+  portalOptOut?: string[];
 }
 
 function getRegistryPath(): string {
@@ -15,11 +17,19 @@ function getRegistryPath(): string {
   return path.join(os.homedir(), '.har', 'repos.json');
 }
 
+function normalizeRegistry(raw: Partial<ControlRegistry> | null | undefined): ControlRegistry {
+  const repos = Array.isArray(raw?.repos) ? raw.repos.filter((p): p is string => typeof p === 'string') : [];
+  const portalOptOut = Array.isArray(raw?.portalOptOut)
+    ? raw.portalOptOut.filter((p): p is string => typeof p === 'string')
+    : undefined;
+  return portalOptOut && portalOptOut.length > 0 ? { repos, portalOptOut } : { repos };
+}
+
 function readRegistry(): ControlRegistry {
   const registryPath = getRegistryPath();
   try {
     if (!fs.existsSync(registryPath)) return { repos: [] };
-    return JSON.parse(fs.readFileSync(registryPath, 'utf8')) as ControlRegistry;
+    return normalizeRegistry(JSON.parse(fs.readFileSync(registryPath, 'utf8')) as ControlRegistry);
   } catch {
     return { repos: [] };
   }
@@ -28,12 +38,39 @@ function readRegistry(): ControlRegistry {
 function writeRegistry(registry: ControlRegistry): void {
   const registryPath = getRegistryPath();
   fs.mkdirSync(path.dirname(registryPath), { recursive: true });
-  fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n');
+  const normalized = normalizeRegistry(registry);
+  fs.writeFileSync(registryPath, JSON.stringify(normalized, null, 2) + '\n');
 }
 
 function registryChanged(before: string[], after: string[]): boolean {
   if (before.length !== after.length) return true;
   return before.some((repoPath, index) => repoPath !== after[index]);
+}
+
+function pathEqualsCanonical(entry: string, resolved: string): boolean {
+  try {
+    return canonicalizeControlRepoPath(entry) === resolved;
+  } catch {
+    return path.resolve(entry) === resolved;
+  }
+}
+
+function prunePortalOptOut(registry: ControlRegistry, keptRepos: string[]): string[] | undefined {
+  const kept = new Set(keptRepos);
+  const next: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of registry.portalOptOut ?? []) {
+    let canonical: string;
+    try {
+      canonical = canonicalizeControlRepoPath(entry);
+    } catch {
+      canonical = path.resolve(entry);
+    }
+    if (!kept.has(canonical) || seen.has(canonical)) continue;
+    seen.add(canonical);
+    next.push(canonical);
+  }
+  return next.length > 0 ? next : undefined;
 }
 
 /** Remember a repo so Mission Control can sync it when the dashboard starts. */
@@ -51,19 +88,53 @@ export function recordRepoForControlSync(repoPath: string): void {
   writeRegistry(registry);
 }
 
+/**
+ * Whether this repo may sync to the hosted portal when credentials exist.
+ * Default is enabled; only paths listed in `portalOptOut` are skipped.
+ */
+export function isRepoPortalSyncEnabled(repoPath: string): boolean {
+  const resolved = canonicalizeControlRepoPath(repoPath);
+  const registry = readRegistry();
+  return !(registry.portalOptOut ?? []).some((entry) => pathEqualsCanonical(entry, resolved));
+}
+
+/**
+ * Persist whether a registered repo should sync to the hosted portal.
+ * `enabled: false` opts out; `true` clears a prior opt-out.
+ */
+export function setRepoPortalSync(repoPath: string, enabled: boolean): void {
+  const resolved = canonicalizeControlRepoPath(repoPath);
+  const registry = readRegistry();
+  const current = registry.portalOptOut ?? [];
+  const without = current.filter((entry) => !pathEqualsCanonical(entry, resolved));
+
+  if (enabled) {
+    if (without.length === current.length) return;
+    writeRegistry({
+      repos: registry.repos,
+      ...(without.length > 0 ? { portalOptOut: without } : {}),
+    });
+    return;
+  }
+
+  if (without.length !== current.length) return; // already opted out
+  writeRegistry({
+    repos: registry.repos,
+    portalOptOut: [...without, resolved],
+  });
+}
+
 /** Drop a repo from the local sync registry (does not touch Mission Control DB). */
 export function removeRegisteredRepo(repoPath: string): boolean {
   const resolved = canonicalizeControlRepoPath(repoPath);
   const registry = readRegistry();
-  const next = registry.repos.filter((entry) => {
-    try {
-      return canonicalizeControlRepoPath(entry) !== resolved;
-    } catch {
-      return path.resolve(entry) !== resolved;
-    }
-  });
+  const next = registry.repos.filter((entry) => !pathEqualsCanonical(entry, resolved));
   if (next.length === registry.repos.length) return false;
-  writeRegistry({ repos: next });
+  const portalOptOut = prunePortalOptOut(registry, next);
+  writeRegistry({
+    repos: next,
+    ...(portalOptOut ? { portalOptOut } : {}),
+  });
   return true;
 }
 
@@ -82,8 +153,17 @@ export function listRegisteredRepos(): string[] {
     kept.push(canonical);
   }
 
-  if (registryChanged(registry.repos, kept)) {
-    writeRegistry({ repos: kept });
+  const prunedOptOut = prunePortalOptOut(registry, kept);
+  const optOutBefore = registry.portalOptOut ?? [];
+  const optOutChanged =
+    (prunedOptOut?.length ?? 0) !== optOutBefore.length ||
+    (prunedOptOut ?? []).some((p, i) => p !== optOutBefore[i]);
+
+  if (registryChanged(registry.repos, kept) || optOutChanged) {
+    writeRegistry({
+      repos: kept,
+      ...(prunedOptOut ? { portalOptOut: prunedOptOut } : {}),
+    });
   }
 
   return kept;
@@ -97,7 +177,7 @@ export function getControlRegistryPath(): string {
 export function clearRegisteredRepos(): number {
   const registry = readRegistry();
   const count = registry.repos.length;
-  if (count === 0) return 0;
+  if (count === 0 && !(registry.portalOptOut?.length)) return 0;
   writeRegistry({ repos: [] });
   return count;
 }
