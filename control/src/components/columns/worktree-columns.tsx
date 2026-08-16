@@ -6,11 +6,16 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { Badge } from '@/components/ui/badge';
 import { slotColumns, type SlotRow } from '@/components/columns/slot-columns';
 import { timeAgo } from '@/lib/time';
+import type { WorktreeCleanupRecommendation } from '@/lib/worktree-cleanup-plan';
 
 export interface WorktreeRow extends SlotRow {
   repoId: string;
   repoPath: string;
   syncedAt: Date;
+  sessionCreatedAt: Date | null;
+  cleanupRecommendation: WorktreeCleanupRecommendation;
+  cleanupReason: string;
+  cleanupAgeDays?: number;
   /** Whether Mission Control can see the worktree path on disk. */
   onDisk?: boolean;
 }
@@ -63,8 +68,30 @@ const onDiskColumn: ColumnDef<WorktreeRow> = {
     ),
 };
 
+const cleanupColumn: ColumnDef<WorktreeRow> = {
+  id: 'cleanup',
+  accessorFn: (row) => row.cleanupRecommendation,
+  header: 'Cleanup',
+  cell: ({ row }) => {
+    const rec = row.original.cleanupRecommendation;
+    const variant =
+      rec === 'teardown' || rec === 'clear_missing'
+        ? 'success'
+        : rec === 'review'
+          ? 'warning'
+          : 'secondary';
+    return (
+      <div className="space-y-1">
+        <Badge variant={variant}>{rec}</Badge>
+        <p className="max-w-xs text-xs text-muted-foreground">{row.original.cleanupReason}</p>
+      </div>
+    );
+  },
+};
+
 export const worktreeColumns: ColumnDef<WorktreeRow>[] = [
   repoColumn,
+  cleanupColumn,
   onDiskColumn,
   ...(slotColumns as ColumnDef<WorktreeRow>[]),
   syncedColumn,

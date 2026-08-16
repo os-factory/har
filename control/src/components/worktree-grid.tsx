@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { DataTable } from '@/components/data-table/data-table';
 import { worktreeColumns, type WorktreeRow } from '@/components/columns/worktree-columns';
+import { isAutoCleanupRecommendation } from '@/lib/worktree-cleanup-plan';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -31,11 +32,14 @@ function repoLabel(path: string): string {
   return path.split('/').pop() ?? path;
 }
 
+type CleanupFilter = 'all' | 'safe' | 'review';
+
 export function WorktreeGrid({ worktrees }: { worktrees: WorktreeRow[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const selectedRepo = searchParams.get('repo') ?? 'all';
+  const cleanupFilter = (searchParams.get('cleanup') as CleanupFilter | null) ?? 'all';
 
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [clearMissing, setClearMissing] = useState(true);
@@ -53,9 +57,36 @@ export function WorktreeGrid({ worktrees }: { worktrees: WorktreeRow[] }) {
   }, [worktrees]);
 
   const filtered = useMemo(() => {
-    if (selectedRepo === 'all') return worktrees;
-    return worktrees.filter((row) => row.repoId === selectedRepo);
-  }, [worktrees, selectedRepo]);
+    let rows = worktrees;
+    if (selectedRepo !== 'all') {
+      rows = rows.filter((row) => row.repoId === selectedRepo);
+    }
+    if (cleanupFilter === 'safe') {
+      rows = rows.filter((row) => isAutoCleanupRecommendation(row.cleanupRecommendation));
+    } else if (cleanupFilter === 'review') {
+      rows = rows.filter((row) => row.cleanupRecommendation === 'review');
+    }
+    return rows;
+  }, [worktrees, selectedRepo, cleanupFilter]);
+
+  const setCleanupFilter = (value: CleanupFilter) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === 'all') params.delete('cleanup');
+    else params.set('cleanup', value);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    setRowSelection({});
+  };
+
+  const selectSafeCleanup = () => {
+    const next: RowSelectionState = {};
+    for (const row of filtered) {
+      if (isAutoCleanupRecommendation(row.cleanupRecommendation)) {
+        next[`${row.repoId}:${row.slotId}`] = true;
+      }
+    }
+    setRowSelection(next);
+  };
 
   const selectedRows = useMemo(() => {
     return filtered.filter((row) => rowSelection[`${row.repoId}:${row.slotId}`]);
@@ -126,24 +157,41 @@ export function WorktreeGrid({ worktrees }: { worktrees: WorktreeRow[] }) {
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-1.5 sm:max-w-xs sm:flex-1">
-          <Label htmlFor="worktree-repo-filter" className="text-xs text-muted-foreground">
-            Repository
-          </Label>
-          <Select value={selectedRepo} onValueChange={setRepoFilter}>
-            <SelectTrigger id="worktree-repo-filter" aria-label="Filter by repository" className="w-full">
-              <SelectValue placeholder="All repositories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All repositories</SelectItem>
-              {repositories.map((repo) => (
-                <SelectItem key={repo.id} value={repo.id}>
-                  {repo.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex min-w-0 flex-col gap-1.5 sm:max-w-xs sm:flex-1">
+            <Label htmlFor="worktree-repo-filter" className="text-xs text-muted-foreground">
+              Repository
+            </Label>
+            <Select value={selectedRepo} onValueChange={setRepoFilter}>
+              <SelectTrigger id="worktree-repo-filter" aria-label="Filter by repository" className="w-full">
+                <SelectValue placeholder="All repositories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All repositories</SelectItem>
+                {repositories.map((repo) => (
+                  <SelectItem key={repo.id} value={repo.id}>
+                    {repo.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5 sm:max-w-xs sm:flex-1">
+            <Label htmlFor="worktree-cleanup-filter" className="text-xs text-muted-foreground">
+              Cleanup
+            </Label>
+            <Select value={cleanupFilter} onValueChange={(value) => setCleanupFilter(value as CleanupFilter)}>
+              <SelectTrigger id="worktree-cleanup-filter" aria-label="Filter by cleanup recommendation" className="w-full">
+                <SelectValue placeholder="All recommendations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All recommendations</SelectItem>
+                <SelectItem value="safe">Safe to clean</SelectItem>
+                <SelectItem value="review">Needs review</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -166,7 +214,10 @@ export function WorktreeGrid({ worktrees }: { worktrees: WorktreeRow[] }) {
           router.push(`/repos/${row.repoId}/slots/${row.slotId}`);
         }}
         toolbarExtra={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={selectSafeCleanup}>
+              Select safe cleanup
+            </Button>
             <Button
               variant="destructive"
               size="sm"
@@ -182,10 +233,11 @@ export function WorktreeGrid({ worktrees }: { worktrees: WorktreeRow[] }) {
       <Sheet open={confirmOpen} onOpenChange={setConfirmOpen}>
         <SheetContent className="sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>Delete session worktrees</SheetTitle>
+            <SheetTitle>Clean up session worktrees</SheetTitle>
             <SheetDescription>
-              Removes the selected worktree directories on disk when Mission Control can see them,
-              and drops the matching slot rows from the dashboard. Repository registration is kept.
+              Deletes visible worktree directories and clears dashboard slot rows. For full host
+              cleanup (PM2, databases, slot registry), run{' '}
+              <code className="text-xs">har env cleanup</code> on the machine.
             </SheetDescription>
           </SheetHeader>
 
@@ -193,8 +245,9 @@ export function WorktreeGrid({ worktrees }: { worktrees: WorktreeRow[] }) {
             <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-3 text-xs text-muted-foreground">
               {selectedRows.map((row) => (
                 <li key={`${row.repoId}:${row.slotId}`} className="break-all">
-                  {repoLabel(row.repoPath)} · agent-{row.slotId}
+                  {repoLabel(row.repoPath)} · agent-{row.slotId} · {row.cleanupRecommendation}
                   {row.onDisk === false ? ' (not visible on disk)' : ''}
+                  <span className="mt-0.5 block text-[11px]">{row.cleanupReason}</span>
                   <span className="mt-0.5 block font-mono">
                     {row.worktreePath ?? row.workDir ?? '—'}
                   </span>
