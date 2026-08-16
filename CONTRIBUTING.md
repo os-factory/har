@@ -361,9 +361,20 @@ Add or modify subcommands in the matching file under `src/cli/commands/` (`env.t
 
 ### Plugins
 
-1. Add a bundle under `src/templates/plugins/<name>/`
-2. Register the id in `src/harness/plugins.ts` (`PLUGIN_IDS`)
-3. Rebuild and test with `har env add-plugin <name>` on a fixture
+1. Add a bundle under `src/templates/plugins/<name>/` with `template.manifest.json`
+2. Rebuild (`npm run build`) — plugins are **discovered from disk** (no `PLUGIN_IDS` edit)
+3. Test with `har env add-plugin <name>` on a fixture
+
+Optional: install from a path, npm package, or git URL:
+`har env add-plugin ./my-plugin`, `har env add-plugin @org/har-cypress`, `har env add-plugin github:org/repo`.
+
+Installed plugins are recorded in `.har/plugins.json`. Manifests may declare multiple `stages` (preferred) or legacy `stage` + `stageId`.
+
+### Profiles (runtime bundles)
+
+Profiles are ordered compositions under `src/templates/profiles/<id>/profile.manifest.json`.
+Bundles live in `src/templates/runtime-bundles/` and the legacy `har-boilerplate*` overlays.
+Stack capabilities (PM2, Simulator, app ports) are detected from marker files via `src/harness/capabilities.ts`, not from the profile enum.
 
 ### Tests
 

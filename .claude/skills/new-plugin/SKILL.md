@@ -102,13 +102,14 @@ Model it on `playwright/.har/stages/browser-e2e.sh`. Hard conventions (unit-test
 
 | Where | What |
 |---|---|
-| `src/harness/plugins.ts` | Add `<id>` to `PLUGIN_IDS` (drives the Zod enum, CLI help, drift detection — everything else picks it up automatically) |
-| `tests/plugins.test.ts` | Add an `applies <id> plugin to a scaffolded harness` case (mirror the rocketsim one: files exist, executable bit, stage registered, verificationStages) |
+| `src/templates/plugins/<id>/` | Bundle with valid `template.manifest.json` — **discovered automatically** after `npm run build` (no `PLUGIN_IDS` edit) |
+| `tests/plugins.test.ts` | Add an `applies <id> plugin to a scaffolded harness` case (mirror the rocketsim one: files exist, executable bit, stage registered, verificationStages, `.har/plugins.json` ledger) |
 | `tests/onboarding.test.ts` | Extend the `ids` expectation to contain `<id>` |
 | `tests/verify-shell-timing.test.ts` | Add the stage script path to `verifyPaths` (and a `mapfile` check if it does list processing) |
 | `docs/src/content/docs/docs/guides/plugins.md` | New section: install command, what it adds, adaptation notes |
 | `docs/src/content/docs/docs/reference/cli.md` | Extend `--plugins` / `add-plugin` examples |
 | `docs/src/pages/index.astro` + `docs/public/assets/logo-<id>.(svg\|png)` | Landing card with framework logo (fetch an official logo asset) |
+| `docs/src/data/plugins.ts` | Marketplace catalog entry |
 | `src/harness/adaptation-prompt.ts` | Mention the plugin if it's the natural fit for a profile (like rocketsim ↔ ios) |
 | `src/templates/har-boilerplate*/STAGES.md` | Mention in the plugins list where the existing ones are mentioned |
 

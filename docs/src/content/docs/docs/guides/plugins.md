@@ -7,9 +7,14 @@ description: Install framework-specific verification bundles that register stage
 
 | Concept | What it is | Command |
 |---|---|---|
-| **Profile** | Env scaffold for a stack (`default`, `cli`, `ios`) | `har env init --profile …` |
+| **Profile** | Ordered runtime bundles composing a stack scaffold (`default`, `cli`, `ios`) | `har env init --profile …` |
 | **Stage** | Runtime operation in `.har/stages.json` | `har_run_stage`, `har env verify` |
 | **Plugin** | Installable bundle that *registers* one or more stages | `har env add-plugin …` |
+
+Profiles are defined in `templates/profiles/<id>/profile.manifest.json` as an ordered
+list of runtime bundles (shared kernel, PM2, Xcode, profile overlay). Core detects
+capabilities from marker files (e.g. `ecosystem.agent.template.cjs` → PM2), not from
+the profile name.
 
 Plugins compile down to generic stage kinds. Agents interact with the stage
 registry — never with stack-specific MCP tools like `run_playwright`.
@@ -19,6 +24,24 @@ registry — never with stack-specific MCP tools like `run_playwright`.
 ```bash
 har env add-plugin --list
 ```
+
+Plugins are discovered from the bundled `templates/plugins/` directory (no hardcoded
+allowlist). You can also install from a **local path**, **npm package**, or **git URL**:
+
+```bash
+har env add-plugin ./my-har-plugin
+har env add-plugin @myorg/har-cypress
+har env add-plugin github:myorg/har-plugin-cypress
+```
+
+Installs are recorded in `.har/plugins.json` (source, stage ids, timestamp).
+`har env maintain` uses the ledger when present, otherwise falls back to matching
+stage ids in `stages.json`.
+
+## Multi-stage plugins
+
+A plugin manifest may declare `stages: [...]` (preferred) or the legacy single
+`stage` + `stageId` pair. All registered stage ids are written to the ledger.
 
 ## Playwright
 

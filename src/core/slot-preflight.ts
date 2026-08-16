@@ -21,6 +21,7 @@ import {
   defaultAppPort,
   slotPortLaneEnd,
 } from './slot-ports';
+import { harnessAllocatesAppPorts } from '../harness/capabilities';
 import { readSlotRegistry, isSlotResumable } from './slot-registry';
 import {
   formatUntrackedWorktreeWarning,
@@ -358,9 +359,9 @@ export function formatPreflightReport(agentId: number, readiness: SlotReadiness)
   return lines.join('\n');
 }
 
-/** Whether this harness expects per-slot app ports (PM2 / web profile). */
+/** Whether this harness expects per-slot app ports (capability-based, not profile enum). */
 export function harnessExpectsAppPorts(repoPath: string): boolean {
-  return harnessUsesPm2(repoPath);
+  return harnessAllocatesAppPorts(repoPath);
 }
 
 export { defaultAppPort, portStep, slotPortLaneEnd };

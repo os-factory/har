@@ -1,6 +1,4 @@
 import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
 import { readHarnessEnv } from '../harness/env';
 import { resolveHarnessRoot } from '../harness/manifest';
 
@@ -83,7 +81,5 @@ export function allocateAppPorts(
   };
 }
 
-export function harnessUsesPm2(repoPath: string): boolean {
-  const harnessRoot = resolveHarnessRoot(repoPath);
-  return fs.existsSync(path.join(harnessRoot, '.har', 'ecosystem.agent.template.cjs'));
-}
+/** @deprecated Import from `../harness/capabilities` — re-exported for compatibility. */
+export { harnessUsesPm2 } from '../harness/capabilities';

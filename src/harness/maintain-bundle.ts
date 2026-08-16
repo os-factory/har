@@ -16,16 +16,11 @@ import {
   type PluginDriftAction,
   type PluginDriftResult,
 } from './plugin-drift';
+import { PROFILE_DIRS } from './profiles';
 import type { ValidationIssue, ValidationResult } from './validator';
 import { detectInstructionFiles } from './instruction-files';
 
 export const MAINTAIN_DIR = 'maintain';
-
-const PROFILE_DIRS: Record<HarnessProfile, string> = {
-  default: 'har-boilerplate',
-  cli: 'har-boilerplate-cli',
-  ios: 'har-boilerplate-ios',
-};
 
 export type MaintainActionKind = 'missing' | 'drift';
 

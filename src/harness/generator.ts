@@ -6,15 +6,17 @@ import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
 import { writeHarnessGitignore } from './gitignore-template';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
+import { ensurePluginLedgerScaffold } from './plugin-ledger';
+import {
+  HarnessProfile,
+  PROFILE_DIRS,
+  readProfileManifest,
+  resolveProfileBundleDir,
+} from './profiles';
 import { syncAgentSlotsToHarnessEnv } from './stages';
 
-export type HarnessProfile = 'default' | 'cli' | 'ios';
-
-const PROFILE_DIRS: Record<HarnessProfile, string> = {
-  default: 'har-boilerplate',
-  cli: 'har-boilerplate-cli',
-  ios: 'har-boilerplate-ios',
-};
+export type { HarnessProfile };
+export { PROFILE_DIRS, HARNESS_PROFILES } from './profiles';
 
 /** Files not used by the CLI profile — removed after scaffold so init leaves no dead SaaS/PM2 assets. */
 const CLI_PRUNE_FILES = [
@@ -42,6 +44,7 @@ export interface ScaffoldOptions {
 export interface ScaffoldResult {
   harnessDir: string;
   projectName: string;
+  bundles: string[];
 }
 
 /**
@@ -62,6 +65,10 @@ export function scaffoldClaudeMd(repoPath: string, projectName: string, force: b
   fs.writeFileSync(dest, content);
 }
 
+/**
+ * Scaffold `.har/` by composing ordered profile bundles (later overwrites earlier).
+ * Profile manifests live under `templates/profiles/<id>/profile.manifest.json`.
+ */
 export function scaffoldHarnessBoilerplate(
   repoPath: string,
   options: ScaffoldOptions = {},
@@ -69,7 +76,12 @@ export function scaffoldHarnessBoilerplate(
   const harnessDir = path.join(repoPath, DEFAULT_HAR_DIR);
   const projectName = path.basename(repoPath).toLowerCase().replace(/[^a-z0-9]/g, '_');
   const profile = options.profile ?? 'default';
-  const boilerplateDir = path.join(resolveTemplatesDir(), PROFILE_DIRS[profile]);
+  const profileManifest = readProfileManifest(profile);
+  const bundleIds = profileManifest.bundles.map((b) => b.id);
+
+  // Primary overlay dir — used for .gitignore template and maintain/drift baseline
+  const primaryOverlay = PROFILE_DIRS[profile];
+  const boilerplateDir = path.join(resolveTemplatesDir(), primaryOverlay);
 
   if (fs.existsSync(harnessDir) && !options.force) {
     throw new Error(
@@ -85,7 +97,14 @@ export function scaffoldHarnessBoilerplate(
     fs.rmSync(harnessDir, { recursive: true, force: true });
   }
 
-  copyDirRecursive(boilerplateDir, harnessDir);
+  fs.mkdirSync(harnessDir, { recursive: true });
+
+  // Compose ordered bundles into .har/ (later layers win on file conflict)
+  for (const bundle of profileManifest.bundles) {
+    const bundleDir = resolveProfileBundleDir(bundle);
+    copyDirRecursive(bundleDir, harnessDir);
+  }
+
   writeHarnessGitignore(harnessDir, boilerplateDir);
 
   if (profile === 'cli') {
@@ -115,14 +134,17 @@ export function scaffoldHarnessBoilerplate(
   );
   writeManifest(repoPath, manifest);
 
+  ensurePluginLedgerScaffold(repoPath, { profile, bundles: bundleIds });
+
   // CLAUDE.md / AGENTS.md are installed by handleInstructionFiles during init/onboard
   // (AGENTS.md always; CLAUDE.md only when Claude is a confirmed target).
   ensureRootGitignorePatterns(repoPath);
 
   success(`Copied harness boilerplate to .har/ (profile: ${profile})`);
   info(`Project name: ${projectName}`);
+  info(`Bundles: ${bundleIds.join(' → ')}`);
 
-  return { harnessDir, projectName };
+  return { harnessDir, projectName, bundles: bundleIds };
 }
 
 export function finalizeHarness(

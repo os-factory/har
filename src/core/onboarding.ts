@@ -23,7 +23,9 @@ import { harnessExists } from '../harness/parser';
 import {
   listPluginIds,
   PluginId,
+  primaryStageId,
   readPluginManifest,
+  normalizePluginStages,
 } from '../harness/plugins';
 import { applyAgentSlotMax, getAgentSlotRange } from '../harness/stages';
 import { divider, info, success, warn } from '../utils/logging';
@@ -123,10 +125,11 @@ export function listPluginChoices(): PluginChoice[] {
   return listPluginIds().map((id) => {
     try {
       const manifest = readPluginManifest(id);
+      const stages = normalizePluginStages(manifest);
       const description =
-        typeof manifest.stage.description === 'string'
-          ? manifest.stage.description
-          : `Adds stage ${manifest.stageId}`;
+        typeof stages[0]?.description === 'string'
+          ? stages[0].description
+          : `Adds stage ${primaryStageId(manifest)}`;
       return {
         id,
         label: `${id} — ${description}`,

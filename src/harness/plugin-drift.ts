@@ -1,7 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { computeFileChecksum } from './manifest';
-import { PLUGIN_IDS, PluginId, readPluginManifest } from './plugins';
+import { readPluginLedger } from './plugin-ledger';
+import {
+  listPluginIds,
+  PluginId,
+  primaryStageId,
+  readPluginManifest,
+  readPluginManifestFromDir,
+} from './plugins';
+import { resolvePluginSource, cleanupResolvedPlugin } from './plugin-resolve';
 import { readStageRegistry } from './stages';
 import { resolveTemplatesDir } from '../utils/paths';
 
@@ -25,9 +33,17 @@ export interface PluginDriftAction {
 
 const PACKAGE_SECTIONS = ['scripts', 'devDependencies'] as const;
 
-/** Detect shipped plugins whose stage id is registered in stages.json. */
+/**
+ * Detect installed plugins from `.har/plugins.json` when present,
+ * otherwise fall back to matching bundled plugin stage ids in stages.json.
+ */
 export function detectInstalledPlugins(repoPath: string): PluginId[] {
   const resolved = path.resolve(repoPath);
+  const ledger = readPluginLedger(resolved);
+  if (ledger && ledger.plugins.length > 0) {
+    return ledger.plugins.map((p) => p.id).sort();
+  }
+
   const registryPath = path.join(resolved, '.har', 'stages.json');
   if (!fs.existsSync(registryPath)) return [];
 
@@ -35,18 +51,44 @@ export function detectInstalledPlugins(repoPath: string): PluginId[] {
   const stageIds = new Set(registry.stages.map((stage) => stage.id));
   const installed: PluginId[] = [];
 
-  for (const pluginId of PLUGIN_IDS) {
-    const manifest = readPluginManifest(pluginId);
-    if (stageIds.has(manifest.stageId)) {
-      installed.push(pluginId);
+  for (const pluginId of listPluginIds()) {
+    try {
+      const manifest = readPluginManifest(pluginId);
+      const primary = primaryStageId(manifest);
+      if (stageIds.has(primary)) {
+        installed.push(pluginId);
+      }
+    } catch {
+      // Skip malformed/missing bundled manifests
     }
   }
 
-  return installed;
+  return installed.sort();
 }
 
 function pluginTemplatePath(pluginId: PluginId, srcRel: string): string {
   return path.join(resolveTemplatesDir(), 'plugins', pluginId, srcRel);
+}
+
+function resolvePluginTemplateDir(repoPath: string, pluginId: PluginId): string | null {
+  const ledger = readPluginLedger(repoPath);
+  const entry = ledger?.plugins.find((p) => p.id === pluginId);
+  if (entry && entry.source !== 'bundled') {
+    try {
+      const source = resolvePluginSource(entry.spec);
+      // For non-bundled, we only keep the dir for the duration of the caller's compare —
+      // callers using readBundledPluginFile for non-bundled need the dir.
+      // Prefer bundled templates when available for drift (stable baseline).
+      cleanupResolvedPlugin(source);
+    } catch {
+      // fall through to bundled
+    }
+  }
+  const bundled = path.join(resolveTemplatesDir(), 'plugins', pluginId);
+  if (fs.existsSync(path.join(bundled, 'template.manifest.json'))) {
+    return bundled;
+  }
+  return null;
 }
 
 function readBundledPluginFile(pluginId: PluginId, srcRel: string): string {
@@ -54,7 +96,10 @@ function readBundledPluginFile(pluginId: PluginId, srcRel: string): string {
 }
 
 function listPluginDestPaths(pluginId: PluginId, repoPath: string): string[] {
-  const manifest = readPluginManifest(pluginId);
+  const templateDir = resolvePluginTemplateDir(repoPath, pluginId);
+  const manifest = templateDir
+    ? readPluginManifestFromDir(templateDir)
+    : readPluginManifest(pluginId);
   const paths = manifest.files.map((file) => file.dest);
 
   if (manifest.optionalFiles) {
@@ -202,7 +247,7 @@ export function comparePluginToTemplate(repoPath: string, pluginId: PluginId): P
 
   return {
     pluginId,
-    stageId: manifest.stageId,
+    stageId: primaryStageId(manifest),
     missing,
     checksumMismatch,
     unchanged,
@@ -210,9 +255,13 @@ export function comparePluginToTemplate(repoPath: string, pluginId: PluginId): P
 }
 
 export function compareInstalledPluginsToTemplate(repoPath: string): PluginDriftResult[] {
-  return detectInstalledPlugins(repoPath).map((pluginId) =>
-    comparePluginToTemplate(repoPath, pluginId),
-  );
+  return detectInstalledPlugins(repoPath)
+    .filter((pluginId) => {
+      // Drift comparison needs a bundled template baseline
+      const bundled = path.join(resolveTemplatesDir(), 'plugins', pluginId, 'template.manifest.json');
+      return fs.existsSync(bundled);
+    })
+    .map((pluginId) => comparePluginToTemplate(repoPath, pluginId));
 }
 
 export function buildPluginDriftActions(
