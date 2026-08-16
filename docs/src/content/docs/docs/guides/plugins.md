@@ -190,7 +190,7 @@ For compliance evidence (e.g. Vanta's native Semgrep integration), set the
 `SEMGREP_APP_TOKEN` secret so the CI workflow publishes to the Semgrep AppSec
 Platform. Local runs are invisible to compliance platforms by design.
 
-## Your own checks {#your-own-checks}
+## Your own checks
 
 Two paths — pick based on whether the check is project-private or reusable.
 
@@ -205,7 +205,7 @@ har env add-stage unit-tests-fast --custom --kind test \
 
 See [Stages and artifacts](/docs/guides/stages/) and `.har/STAGES.md`.
 
-### Publish your own plugin {#publish-your-own-plugin}
+### Publish your own plugin
 
 HAR is open source. Anyone can ship a verification plugin without changing HAR core.
 
