@@ -1,3 +1,11 @@
+# [0.58.0](https://github.com/os-factory/har/compare/v0.57.0...v0.58.0) (2026-08-16)
+
+
+### Features
+
+* har env cleanup — discover and teardown stale session worktrees ([#216](https://github.com/os-factory/har/issues/216)) ([b2a2c99](https://github.com/os-factory/har/commit/b2a2c99ca2d612b450af57133c63125ec34f19ac))
+* related links on work units ([#217](https://github.com/os-factory/har/issues/217)) ([#218](https://github.com/os-factory/har/issues/218)) ([e80c765](https://github.com/os-factory/har/commit/e80c765a84f06d7fcb9500c94afaccc99aa02c4a))
+
 # [0.57.0](https://github.com/os-factory/har/compare/v0.56.1...v0.57.0) (2026-08-16)
 
 
