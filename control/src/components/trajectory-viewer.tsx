@@ -245,18 +245,12 @@ function TrajectoryLog({
         const selected = selectedId === node.id;
         return (
           <li key={node.id} className="relative">
-            {node.kind === 'prompt' ? (
-              <span className="absolute -left-0.5 top-2 z-10 rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary">
-                Turn {currentTurn}
-              </span>
-            ) : null}
             <button
               type="button"
               aria-pressed={selected}
               onClick={() => onSelect(node.id)}
               className={cn(
                 'flex w-full gap-3 rounded-md px-2 py-2 text-left transition-colors',
-                node.kind === 'prompt' ? 'mt-5' : '',
                 selected ? 'bg-primary/10' : 'hover:bg-muted/60',
               )}
             >
@@ -269,6 +263,11 @@ function TrajectoryLog({
               />
               <span className="min-w-0 flex-1 space-y-1">
                 <span className="flex flex-wrap items-center gap-2">
+                  {node.kind === 'prompt' ? (
+                    <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      Turn {currentTurn}
+                    </span>
+                  ) : null}
                   <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider', roleTone(node.kind))}>
                     {trajectoryRoleLabel(node.kind)}
                   </span>
