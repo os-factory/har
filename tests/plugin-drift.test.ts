@@ -32,6 +32,9 @@ describe('plugin drift', () => {
     const repoPath = scaffoldRepoWithPlugin('har-plugin-detect');
 
     expect(detectInstalledPlugins(repoPath)).toEqual(['playwright']);
+    // Ledger is authoritative when present
+    const ledgerPath = path.join(repoPath, '.har', 'plugins.json');
+    expect(fs.existsSync(ledgerPath)).toBe(true);
   });
 
   it('reports no drift when plugin files match bundled templates', () => {

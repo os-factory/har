@@ -132,13 +132,15 @@ Const arrays like `HAR_STAGE_KINDS` are the single source of truth — use them 
 ## Extension points
 
 Design for a closed core with open seams. **Plugins** are first-class installable
-bundles under `src/templates/plugins/` (`har env add-plugin`). A *remote community
+bundles under `src/templates/plugins/` (`har env add-plugin`). Bundled plugins are
+discovered from disk; out-of-tree installs use path/npm/git specs. A *remote community
 plugin marketplace* can wait until there is a concrete external publisher —
 naming plugins ≠ shipping a marketplace.
 
 - **`StageExecutor`** (`src/core/types.ts`) — swap local vs cloud execution by injecting a different executor into `RunService`. `local-executor.ts` is the current implementation.
 - **Project-owned stages** — runtime behavior lives in the target repo's `.har/` scripts and `stages.json`, not as hardcoded tool APIs in core.
-- **Plugins** — optional bundles applied with `har env add-plugin <id>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`. Philosophy: *plugins install stages; agents only talk to the stage registry.*
+- **Plugins** — optional bundles applied with `har env add-plugin <id|path|npm|git>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). Discovered from `src/templates/plugins/*/template.manifest.json` (no closed enum). Installs are recorded in `.har/plugins.json`. They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`. Philosophy: *plugins install stages; agents only talk to the stage registry.*
+- **Profiles** — ordered runtime bundles (`src/templates/profiles/<id>/profile.manifest.json`), not forked logic in core. Stack capabilities (PM2, Simulator, ports) are detected via `src/harness/capabilities.ts` marker files.
 
 ## Anti-patterns
 

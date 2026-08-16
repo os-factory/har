@@ -40,7 +40,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | --- | --- |
 | `init` | Scaffold and adapt a new `.har/` |
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
-| `add-plugin [plugin]` | Install a shipped plugin (registers stages) |
+| `add-plugin [plugin]` | Install a plugin (bundled id, path, npm, or git — registers stages) |
 | `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
 | `preflight <id>` | Check ports, processes, Docker, slot occupation, and untracked worktree paths |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
@@ -85,14 +85,20 @@ har env add-plugin kerno [--force] [--skip-ci]
 har env add-plugin gitleaks [--force] [--skip-ci]
 har env add-plugin trivy [--force] [--skip-ci]
 har env add-plugin semgrep [--force] [--skip-ci]
+har env add-plugin ./my-plugin [--force]
+har env add-plugin @org/har-cypress [--force]
+har env add-plugin github:org/har-plugin [--force]
 har env add-stage <id> --custom --kind <kind>
                        [--command <shell-command>|--script]
                        [--description <text>] [--verification] [--force]
 ```
 
-`add-plugin` installs a framework bundle that registers one or more stages.
-`add-stage --custom` registers a project-specific stage. `har env add-stage
-playwright` remains as a deprecated alias of `add-plugin playwright`.
+`add-plugin` installs a framework bundle that registers one or more stages
+(bundled id, local path, npm package, or git URL). Installs are recorded in
+`.har/plugins.json`. Bundled plugins are discovered from disk — no core enum
+edit is required to ship a new id. `add-stage --custom` registers a
+project-specific stage. `har env add-stage playwright` remains as a deprecated
+alias of `add-plugin playwright`.
 
 `--command` registers a direct command. `--script` scaffolds a contract-compliant
 `.har/stages/<id>.sh`; implement its TODO before verification can pass. See

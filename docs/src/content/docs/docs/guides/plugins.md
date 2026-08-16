@@ -1,24 +1,57 @@
 ---
 title: Plugins
-description: Install framework-specific verification bundles that register stages in your harness.
+description: Install framework-specific verification bundles that register stages in your harness — shipped with HAR or from path, npm, or git.
 ---
 
 ## Plugins vs stages vs profiles
 
 | Concept | What it is | Command |
 |---|---|---|
-| **Profile** | Env scaffold for a stack (`default`, `cli`, `ios`) | `har env init --profile …` |
+| **Profile** | Ordered runtime bundles composing a stack scaffold (`default`, `cli`, `ios`) | `har env init --profile …` |
 | **Stage** | Runtime operation in `.har/stages.json` | `har_run_stage`, `har env verify` |
 | **Plugin** | Installable bundle that *registers* one or more stages | `har env add-plugin …` |
+
+Profiles are defined in `templates/profiles/<id>/profile.manifest.json` as an ordered
+list of runtime bundles (shared kernel, PM2, Xcode, profile overlay). Core detects
+capabilities from marker files (e.g. `ecosystem.agent.template.cjs` → PM2), not from
+the profile name. See [Profiles](/docs/guides/profiles/).
 
 Plugins compile down to generic stage kinds. Agents interact with the stage
 registry — never with stack-specific MCP tools like `run_playwright`.
 
-## List shipped plugins
+Profiles and plugins share one ledger file (`.har/plugins.json`): init records
+`profile` + `bundles`; each `add-plugin` appends to `plugins[]`. They are still
+different layers — profiles scaffold the environment; plugins add verification stages.
+
+## Discovery and install
 
 ```bash
 har env add-plugin --list
 ```
+
+Bundled plugins are **discovered from disk**: every directory under the CLI’s
+`templates/plugins/` that contains a valid `template.manifest.json` appears in
+`--list`. There is no hardcoded allowlist in core — shipping a new plugin in a HAR
+release is add-the-folder and publish.
+
+You can also install from outside the CLI package:
+
+```bash
+har env add-plugin playwright                    # bundled id
+har env add-plugin ./my-har-plugin               # local path
+har env add-plugin @myorg/har-cypress            # npm package
+har env add-plugin github:myorg/har-plugin-cypress  # git
+```
+
+Resolution order: path → git → bundled id → npm. The target must expose
+`template.manifest.json`. Installs are recorded in `.har/plugins.json` (source,
+stage ids, timestamp). `har env maintain` uses the ledger when present, otherwise
+falls back to matching stage ids in `stages.json`.
+
+## Multi-stage plugins
+
+A plugin manifest may declare `stages: [...]` (preferred) or the legacy single
+`stage` + `stageId` pair. All registered stage ids are written to the ledger.
 
 ## Playwright
 
@@ -38,9 +71,9 @@ it is listed in `verificationStages` (the plugin updates that list for you).
 
 ## Upgrading installed plugins
 
-`har env maintain` now compares **installed plugins** (detected via registered
-stage ids in `stages.json`) against the bundled plugin templates shipped with
-your HAR version.
+`har env maintain` compares **installed plugins** (from `.har/plugins.json` when
+present, otherwise registered stage ids in `stages.json`) against the bundled
+plugin templates shipped with your HAR version.
 
 When plugin files drift:
 
@@ -83,6 +116,7 @@ Kerno runs one agent per machine, so this stage never starts or rebinds the agen
 serializes across slots with a fail-fast lock. Backend validation runs one slot at a
 time while frontend stages still run concurrently. See `.har/stages/KERNO.md` for the
 full setup and adaptation guide.
+
 ## Gitleaks
 
 ```bash
@@ -156,10 +190,13 @@ For compliance evidence (e.g. Vanta's native Semgrep integration), set the
 `SEMGREP_APP_TOKEN` secret so the CI workflow publishes to the Semgrep AppSec
 Platform. Local runs are invisible to compliance platforms by design.
 
-## Custom stages (not plugins)
+## Your own checks {#your-own-checks}
 
-Project-specific checks (`npm test`, domain scripts) are **custom stages**, not
-plugins:
+Two paths — pick based on whether the check is project-private or reusable.
+
+### Custom stages (not plugins)
+
+Project-specific checks (`npm test`, domain scripts) do **not** need a plugin:
 
 ```bash
 har env add-stage unit-tests-fast --custom --kind test \
@@ -167,6 +204,36 @@ har env add-stage unit-tests-fast --custom --kind test \
 ```
 
 See [Stages and artifacts](/docs/guides/stages/) and `.har/STAGES.md`.
+
+### Publish your own plugin {#publish-your-own-plugin}
+
+HAR is open source. Anyone can ship a verification plugin without changing HAR core.
+
+**1. Author a bundle** — a directory with:
+
+- `template.manifest.json` (required) — `id`, `stages` (or legacy `stage` + `stageId`),
+  `verificationStages`, `files`, `nextSteps`, `docsPath`
+- Stage script(s) under `.har/stages/`
+- Optional: `package.fragment.json`, CI workflow, smoke fixtures, adaptation guide
+
+Use an existing plugin under the HAR repo’s `src/templates/plugins/` (e.g. Playwright
+or Gitleaks) as the template. Manifests prefer `stages: [...]` for one or more stages.
+
+**2. Distribute**
+
+| Channel | How users install |
+|---|---|
+| Upstream HAR | PR into `src/templates/plugins/<id>/` — after release it appears in `add-plugin --list` |
+| Local path | `har env add-plugin ./path/to/plugin` |
+| npm | Publish a package whose root has `template.manifest.json` → `har env add-plugin @org/har-…` |
+| Git | `har env add-plugin github:org/har-plugin-…` |
+
+**3. Consumers** still only run stages — `har env verify --full`, MCP `har_run_stage` —
+never a stack-specific tool API.
+
+There is no separate remote app-store yet: discovery is **bundled with the CLI** or an
+**explicit** path / npm / git spec. The [plugin marketplace](/plugins/) page catalogs
+shipped plugins; community packages install the same way once published.
 
 ## Deprecated alias
 

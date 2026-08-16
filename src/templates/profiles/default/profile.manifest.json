@@ -1,0 +1,9 @@
+{
+  "id": "default",
+  "description": "Web app — shared kernel + PM2 runtime + Docker infra",
+  "bundles": [
+    { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
+    { "id": "pm2-runtime", "path": "runtime-bundles/pm2-runtime" },
+    { "id": "runtime-default", "path": "har-boilerplate" }
+  ]
+}

@@ -4,13 +4,33 @@ import { z } from 'zod';
 import { info, success, warn } from '../utils/logging';
 import { resolveTemplatesDir } from '../utils/paths';
 import { harnessExists } from './parser';
+import {
+  cleanupResolvedPlugin,
+  listBundledPluginIds,
+  resolvePluginSource,
+  type PluginSourceKind,
+} from './plugin-resolve';
+import { upsertPluginLedgerEntry } from './plugin-ledger';
 import { HarnessStageRegistry, HarnessStageSchema } from './schema';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
-export const PLUGIN_IDS = ['playwright', 'rocketsim', 'kerno', 'gitleaks', 'trivy', 'semgrep'] as const;
-export type PluginId = (typeof PLUGIN_IDS)[number];
+/** Plugin id is a free-form slug discovered from manifests (no closed enum). */
+export type PluginId = string;
 
-/** @deprecated Use PLUGIN_IDS */
+/**
+ * @deprecated Prefer `listPluginIds()` — snapshot of historically shipped ids for docs/tests.
+ * Discovery is filesystem-based; this array is not authoritative.
+ */
+export const PLUGIN_IDS = [
+  'playwright',
+  'rocketsim',
+  'kerno',
+  'gitleaks',
+  'trivy',
+  'semgrep',
+] as const;
+
+/** @deprecated Use PLUGIN_IDS / listPluginIds() */
 export const STAGE_TEMPLATE_IDS = PLUGIN_IDS;
 /** @deprecated Use PluginId */
 export type StageTemplateId = PluginId;
@@ -22,27 +42,56 @@ const PluginManifestFileSchema = z.object({
   skipFlag: z.string().optional(),
 });
 
-export const PluginManifestSchema = z.object({
-  id: z.enum(PLUGIN_IDS),
-  stageId: z.string().min(1),
-  verificationStages: z.array(z.string().min(1)).min(1),
-  stage: z.record(z.unknown()),
-  files: z.array(PluginManifestFileSchema).min(1),
-  optionalFiles: z.array(PluginManifestFileSchema).optional(),
-  merge: z.record(z.string()).optional(),
-  nextSteps: z.array(z.string().min(1)).min(1),
-  docsPath: z.string().min(1),
-});
+const PluginIdSchema = z
+  .string()
+  .min(1)
+  .regex(/^[a-z0-9][a-z0-9._-]*$/i, 'Plugin id must be a slug (letters, digits, ._-)');
+
+/**
+ * Manifest for a HAR file-bundle plugin.
+ * Prefer `stages` (one or more). Legacy single-stage form: `stage` + `stageId`.
+ */
+export const PluginManifestSchema = z
+  .object({
+    id: PluginIdSchema,
+    /** @deprecated Prefer `stages` — primary stage id for single-stage plugins. */
+    stageId: z.string().min(1).optional(),
+    verificationStages: z.array(z.string().min(1)).min(1),
+    /** @deprecated Prefer `stages` — single stage object. */
+    stage: z.record(z.unknown()).optional(),
+    /** One or more stages registered by this plugin. */
+    stages: z.array(z.record(z.unknown())).optional(),
+    files: z.array(PluginManifestFileSchema).min(1),
+    optionalFiles: z.array(PluginManifestFileSchema).optional(),
+    merge: z.record(z.string()).optional(),
+    nextSteps: z.array(z.string().min(1)).min(1),
+    docsPath: z.string().min(1),
+  })
+  .superRefine((data, ctx) => {
+    const hasStages = Array.isArray(data.stages) && data.stages.length > 0;
+    const hasLegacy = data.stage !== undefined && data.stageId !== undefined;
+    if (!hasStages && !hasLegacy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Plugin manifest requires `stages` (preferred) or legacy `stage` + `stageId`',
+      });
+    }
+  });
 
 /** @deprecated Use PluginManifestSchema */
 export const StageTemplateManifestSchema = PluginManifestSchema;
 
 type PluginManifestFile = z.infer<typeof PluginManifestFileSchema>;
-type PluginManifest = z.infer<typeof PluginManifestSchema>;
+export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
 export interface ApplyPluginOptions {
   force?: boolean;
   skipCi?: boolean;
+  /**
+   * Install spec when different from the resolved plugin id
+   * (path, npm package, git URL). Defaults to plugin id / bundled.
+   */
+  spec?: string;
 }
 
 /** @deprecated Use ApplyPluginOptions */
@@ -50,11 +99,15 @@ export type ApplyStageTemplateOptions = ApplyPluginOptions;
 
 export interface ApplyPluginResult {
   pluginId: PluginId;
+  /** Primary stage id (first registered). */
   stageId: string;
+  /** All stage ids registered by this plugin. */
+  stageIds: string[];
   filesWritten: string[];
   warnings: string[];
   nextSteps: string[];
   docsPath: string;
+  source: PluginSourceKind;
 }
 
 /** @deprecated Use ApplyPluginResult — `templateId` mirrors `pluginId` */
@@ -67,7 +120,22 @@ export interface ApplyStageTemplateResult {
   docsPath: string;
 }
 
-function resolvePluginDir(pluginId: PluginId): string {
+export function normalizePluginStages(manifest: PluginManifest): Array<z.infer<typeof HarnessStageSchema>> {
+  if (manifest.stages && manifest.stages.length > 0) {
+    return manifest.stages.map((s) => HarnessStageSchema.parse(s));
+  }
+  if (manifest.stage) {
+    return [HarnessStageSchema.parse(manifest.stage)];
+  }
+  throw new Error(`Plugin ${manifest.id} has no stages`);
+}
+
+export function primaryStageId(manifest: PluginManifest): string {
+  const stages = normalizePluginStages(manifest);
+  return manifest.stageId ?? stages[0].id;
+}
+
+function resolveBundledPluginDir(pluginId: PluginId): string {
   const dir = path.join(resolveTemplatesDir(), 'plugins', pluginId);
   if (!fs.existsSync(dir)) {
     throw new Error(`Plugin not found: ${pluginId}. Run npm run build.`);
@@ -75,18 +143,25 @@ function resolvePluginDir(pluginId: PluginId): string {
   return dir;
 }
 
-export function readPluginManifest(pluginId: PluginId): PluginManifest {
-  const manifestPath = path.join(resolvePluginDir(pluginId), 'template.manifest.json');
+export function readPluginManifestFromDir(pluginDir: string, expectedId?: string): PluginManifest {
+  const manifestPath = path.join(pluginDir, 'template.manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`No template.manifest.json in ${pluginDir}`);
+  }
   const parsed = PluginManifestSchema.safeParse(
     JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
   );
   if (!parsed.success) {
-    throw new Error(`Invalid plugin manifest for ${pluginId}: ${parsed.error.message}`);
+    throw new Error(`Invalid plugin manifest: ${parsed.error.message}`);
   }
-  if (parsed.data.id !== pluginId) {
-    throw new Error(`Plugin manifest id mismatch: expected ${pluginId}, got ${parsed.data.id}`);
+  if (expectedId && parsed.data.id !== expectedId) {
+    throw new Error(`Plugin manifest id mismatch: expected ${expectedId}, got ${parsed.data.id}`);
   }
   return parsed.data;
+}
+
+export function readPluginManifest(pluginId: PluginId): PluginManifest {
+  return readPluginManifestFromDir(resolveBundledPluginDir(pluginId), pluginId);
 }
 
 /** @deprecated Use readPluginManifest */
@@ -166,34 +241,36 @@ function mergePackageJson(
 
 function patchStageRegistry(
   repoPath: string,
-  manifest: PluginManifest,
+  stages: Array<z.infer<typeof HarnessStageSchema>>,
+  verificationStageIds: string[],
   force: boolean,
 ): void {
   const registry = readStageRegistry(repoPath);
-  const stage = HarnessStageSchema.parse(manifest.stage);
-  const existing = registry.stages.find((s) => s.id === stage.id);
+  let nextStages = [...registry.stages];
 
-  if (existing && !force) {
-    throw new Error(
-      `Stage "${stage.id}" already registered in .har/stages.json. Use --force to replace.`,
-    );
+  for (const stage of stages) {
+    const existing = nextStages.find((s) => s.id === stage.id);
+    if (existing && !force) {
+      throw new Error(
+        `Stage "${stage.id}" already registered in .har/stages.json. Use --force to replace.`,
+      );
+    }
+    nextStages = existing
+      ? nextStages.map((s) => (s.id === stage.id ? stage : s))
+      : [...nextStages, stage];
   }
 
-  const stages = existing
-    ? registry.stages.map((s) => (s.id === stage.id ? stage : s))
-    : [...registry.stages, stage];
-
   const verificationStages = [...(registry.verificationStages ?? [])];
-  for (const id of manifest.verificationStages) {
+  for (const id of verificationStageIds) {
     if (!verificationStages.includes(id)) {
       verificationStages.push(id);
     }
   }
 
-  const verifyIdx = stages.findIndex((s) => s.id === 'verify');
+  const verifyIdx = nextStages.findIndex((s) => s.id === 'verify');
   if (verifyIdx >= 0) {
-    stages[verifyIdx] = {
-      ...stages[verifyIdx],
+    nextStages[verifyIdx] = {
+      ...nextStages[verifyIdx],
       description: `Verification pipeline (quick smoke by default; --full runs the registry's verificationStages: ${verificationStages.join(', ')})`,
       acceptsArgs: ['--full'],
     };
@@ -201,7 +278,7 @@ function patchStageRegistry(
 
   const updated: HarnessStageRegistry = {
     ...registry,
-    stages,
+    stages: nextStages,
     verificationStages,
   };
 
@@ -214,28 +291,30 @@ function assertHarnessPresent(repoPath: string): void {
   }
 }
 
-function assertStageNotPresent(repoPath: string, stageId: string, force?: boolean): void {
+function assertStagesNotPresent(repoPath: string, stageIds: string[], force?: boolean): void {
   if (force) return;
 
-  const scriptPath = path.join(repoPath, '.har', 'stages', `${stageId}.sh`);
-  if (fs.existsSync(scriptPath)) {
-    throw new Error(
-      `Stage script already exists: .har/stages/${stageId}.sh. Use --force to overwrite.`,
-    );
-  }
-
   const registry = readStageRegistry(repoPath);
-  if (registry.stages.some((s) => s.id === stageId)) {
-    throw new Error(
-      `Stage "${stageId}" already registered in .har/stages.json. Use --force to replace.`,
-    );
+  for (const stageId of stageIds) {
+    const scriptPath = path.join(repoPath, '.har', 'stages', `${stageId}.sh`);
+    if (fs.existsSync(scriptPath)) {
+      throw new Error(
+        `Stage script already exists: .har/stages/${stageId}.sh. Use --force to overwrite.`,
+      );
+    }
+    if (registry.stages.some((s) => s.id === stageId)) {
+      throw new Error(
+        `Stage "${stageId}" already registered in .har/stages.json. Use --force to replace.`,
+      );
+    }
   }
 }
 
-export function applyPlugin(
+function applyPluginFromDir(
   repoPath: string,
-  pluginId: PluginId,
-  options: ApplyPluginOptions = {},
+  pluginDir: string,
+  options: ApplyPluginOptions,
+  meta: { source: PluginSourceKind; spec: string; version?: string },
 ): ApplyPluginResult {
   const resolved = path.resolve(repoPath);
   const force = options.force ?? false;
@@ -244,10 +323,10 @@ export function applyPlugin(
 
   assertHarnessPresent(resolved);
 
-  const manifest = readPluginManifest(pluginId);
-  assertStageNotPresent(resolved, manifest.stageId, force);
-
-  const pluginDir = resolvePluginDir(pluginId);
+  const manifest = readPluginManifestFromDir(pluginDir);
+  const stages = normalizePluginStages(manifest);
+  const stageIds = stages.map((s) => s.id);
+  assertStagesNotPresent(resolved, stageIds, force);
 
   for (const file of manifest.files) {
     const result = copyPluginFile(pluginDir, file, resolved, force);
@@ -279,10 +358,20 @@ export function applyPlugin(
     }
   }
 
-  patchStageRegistry(resolved, manifest, force);
+  patchStageRegistry(resolved, stages, manifest.verificationStages, force);
 
-  success(`Applied plugin: ${pluginId}`);
-  info(`Registered stage: ${manifest.stageId}`);
+  upsertPluginLedgerEntry(resolved, {
+    id: manifest.id,
+    source: meta.source,
+    spec: meta.spec,
+    version: meta.version,
+    stageIds,
+    installedAt: new Date().toISOString(),
+  });
+
+  const primary = primaryStageId(manifest);
+  success(`Applied plugin: ${manifest.id}`);
+  info(`Registered stage(s): ${stageIds.join(', ')}`);
   for (const file of filesWritten) {
     info(`  + ${file}`);
   }
@@ -291,13 +380,36 @@ export function applyPlugin(
   }
 
   return {
-    pluginId,
-    stageId: manifest.stageId,
+    pluginId: manifest.id,
+    stageId: primary,
+    stageIds,
     filesWritten,
     warnings,
     nextSteps: manifest.nextSteps,
     docsPath: manifest.docsPath,
+    source: meta.source,
   };
+}
+
+/**
+ * Install a plugin by id (bundled), path, npm package, or git URL.
+ */
+export function applyPlugin(
+  repoPath: string,
+  pluginSpec: PluginId,
+  options: ApplyPluginOptions = {},
+): ApplyPluginResult {
+  const spec = options.spec ?? pluginSpec;
+  const source = resolvePluginSource(spec);
+  try {
+    return applyPluginFromDir(repoPath, source.dir, options, {
+      source: source.kind,
+      spec: source.spec,
+      version: source.version,
+    });
+  } finally {
+    cleanupResolvedPlugin(source);
+  }
 }
 
 /** @deprecated Use applyPlugin */
@@ -317,18 +429,17 @@ export function applyStageTemplate(
   };
 }
 
+/** Discover bundled plugin ids from templates/plugins/<id>/template.manifest.json */
 export function listPluginIds(): PluginId[] {
-  const root = path.join(resolveTemplatesDir(), 'plugins');
-  if (!fs.existsSync(root)) return [...PLUGIN_IDS];
-
-  return fs
-    .readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((name): name is PluginId => (PLUGIN_IDS as readonly string[]).includes(name));
+  return listBundledPluginIds();
 }
 
 /** @deprecated Use listPluginIds */
 export function listStageTemplateIds(): PluginId[] {
   return listPluginIds();
+}
+
+/** Whether `spec` is a known bundled plugin id (not path/npm/git). */
+export function isBundledPluginId(spec: string): boolean {
+  return listPluginIds().includes(spec);
 }

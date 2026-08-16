@@ -19,6 +19,15 @@ har env init --profile cli
 har env init --profile ios
 ```
 
+Profiles are **ordered compositions** of runtime bundles (shared kernel, optional
+PM2 or Xcode helpers, then the profile overlay). The assembled result is still a
+flat `.har/` directory — same paths agents and maintain already expect. Init
+records the profile and bundle list in `.har/plugins.json`.
+
+Stack capabilities (PM2, Simulator, app ports) are detected from marker files and
+env vars, not from the profile name string. See [Plugins](/docs/guides/plugins/)
+for how verification plugins relate to profiles (same ledger, different layer).
+
 ## Adaptation
 
 The scaffold intentionally contains project-specific placeholders. Adapt:

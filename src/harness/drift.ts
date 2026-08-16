@@ -14,13 +14,8 @@ import {
   readManifest,
 } from './manifest';
 import { detectAgentSlotEnvMismatch } from './stages';
+import { PROFILE_DIRS } from './profiles';
 import { resolveTemplatesDir } from '../utils/paths';
-
-const PROFILE_DIRS: Record<HarnessProfile, string> = {
-  default: 'har-boilerplate',
-  cli: 'har-boilerplate-cli',
-  ios: 'har-boilerplate-ios',
-};
 
 const CLI_EXPECTED_ABSENT = new Set([
   'ecosystem.agent.template.cjs',
@@ -167,7 +162,13 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
     for (const file of fs.readdirSync(harnessDir)) {
       const full = path.join(harnessDir, file);
       if (!fs.statSync(full).isFile()) continue;
-      if (file === 'manifest.json' || file.startsWith('ADAPT-PROMPT')) continue;
+      if (
+        file === 'manifest.json' ||
+        file === 'plugins.json' ||
+        file.startsWith('ADAPT-PROMPT')
+      ) {
+        continue;
+      }
       if (profile === 'cli' && CLI_EXPECTED_ABSENT.has(file)) {
         extra.push(file);
       } else if (isExpectedHarnessOnlyFile(file, templateFiles)) {

@@ -1,0 +1,407 @@
+#!/usr/bin/env bash
+# Provision the project toolchain and append resolved paths to .env.agent.<id>.
+# Called from launch.sh after the agent env file is created.
+#
+# Configure in harness.env:
+#   HARNESS_ECOSYSTEM   — auto (default) | node | python | go | rust | java | ruby | ios | none
+#   HARNESS_INSTALL_CMD — optional override (eval in HAR_WORK_DIR)
+# Ecosystem-specific optional overrides:
+#   HARNESS_PYTHON_VENV_DIR — Python venv path relative to HAR_WORK_DIR (default: .har/venv)
+#
+# Required env from caller: HAR_WORK_DIR, HAR_ENV_FILE
+# Optional: HAR_WORKTREE_DIR, HAR_REL_PREFIX, HAR_AGENT_ID (for logging)
+set -euo pipefail
+
+: "${HAR_WORK_DIR:?HAR_WORK_DIR is required}"
+: "${HAR_ENV_FILE:?HAR_ENV_FILE is required}"
+
+HAR_WORKTREE_DIR="${HAR_WORKTREE_DIR:-}"
+HAR_REL_PREFIX="${HAR_REL_PREFIX:-}"
+HAR_AGENT_ID="${HAR_AGENT_ID:-}"
+
+pt_log() {
+  if [ -n "$HAR_AGENT_ID" ]; then
+    echo "==> [agent-${HAR_AGENT_ID}] toolchain: $*" >&2
+  else
+    echo "==> [provision-toolchain] $*" >&2
+  fi
+}
+
+# ── Node package manager helpers ──────────────────────────────────────────────
+# Mirrored verbatim in harness.env and provision-toolchain.sh so a sourcing
+# script and the provisioning subprocess resolve the same tool.
+
+# Package managers HAR can drive, in fallback preference order.
+HAR_NODE_PACKAGE_MANAGERS="npm bun pnpm yarn"
+
+# Package manager the repo declares: an explicit HARNESS_NODE_PACKAGE_MANAGER
+# wins, then package.json "packageManager", then the lockfile. Empty when the
+# repo says nothing.
+har_node_declared_package_manager() {
+  local dir="${1:-.}"
+
+  if [ -n "${HARNESS_NODE_PACKAGE_MANAGER:-}" ]; then
+    echo "$HARNESS_NODE_PACKAGE_MANAGER"
+    return
+  fi
+  if [ -f "$dir/package.json" ]; then
+    local field
+    field="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"\([a-z]*\)@.*/\1/p' "$dir/package.json" | head -1)"
+    if [ -n "$field" ]; then
+      echo "$field"
+      return
+    fi
+  fi
+  if [ -f "$dir/bun.lock" ] || [ -f "$dir/bun.lockb" ]; then echo bun; return; fi
+  if [ -f "$dir/pnpm-lock.yaml" ]; then echo pnpm; return; fi
+  if [ -f "$dir/yarn.lock" ]; then echo yarn; return; fi
+  if [ -f "$dir/package-lock.json" ]; then echo npm; return; fi
+  echo ""
+}
+
+# Package manager to actually run. A manager the repo declares but this machine
+# lacks falls back to one that is installed, so a repo pinned to npm still
+# provisions on a bun-only machine (and the reverse).
+har_node_package_manager() {
+  local dir="${1:-.}"
+  local declared
+  declared="$(har_node_declared_package_manager "$dir")"
+
+  if [ -n "$declared" ] && command -v "$declared" >/dev/null 2>&1; then
+    echo "$declared"
+    return
+  fi
+
+  local candidate
+  for candidate in $HAR_NODE_PACKAGE_MANAGERS; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      echo "$candidate"
+      return
+    fi
+  done
+
+  echo "${declared:-npm}"
+}
+
+# Lockfile a manager writes, so a substitute install can clean up after itself.
+har_node_lockfile() {
+  case "$1" in
+    bun) echo "bun.lock" ;;
+    npm) echo "package-lock.json" ;;
+    pnpm) echo "pnpm-lock.yaml" ;;
+    yarn) echo "yarn.lock" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Install dependencies in a directory. When a substitute manager stands in for
+# the one the repo declares, any lockfile it creates is removed afterwards:
+# provisioning must not migrate the repo to a different package manager.
+# (bun writes bun.lock even under --no-save, so the flags alone are not enough.)
+har_node_install() {
+  local dir="$1"
+  local manager="$2"
+  local declared="${3:-}"
+  local substituting=false
+  local lockfile=""
+  local had_lockfile=false
+
+  if [ -n "$declared" ] && [ "$declared" != "$manager" ]; then
+    substituting=true
+    lockfile="$(har_node_lockfile "$manager")"
+    if [ -n "$lockfile" ] && [ -e "$dir/$lockfile" ]; then
+      had_lockfile=true
+    fi
+  fi
+
+  local code=0
+  (cd "$dir" && "$manager" install --silent) || code=$?
+
+  if [ "$substituting" = true ] && [ "$had_lockfile" = false ] && [ -n "$lockfile" ]; then
+    rm -f "$dir/$lockfile"
+    [ "$manager" = "bun" ] && rm -f "$dir/bun.lockb"
+  fi
+  return $code
+}
+
+# Package runner (npx equivalent) for one-off CLIs such as pm2, including the
+# flag that keeps it non-interactive. Takes a manager name, or none to resolve
+# from the environment and PATH.
+har_pkg_exec() {
+  case "${1:-${HARNESS_NODE_PACKAGE_MANAGER:-}}" in
+    bun) echo "bunx"; return ;;
+    pnpm) echo "pnpm dlx"; return ;;
+    yarn) echo "yarn dlx"; return ;;
+    npm) echo "npx --yes"; return ;;
+  esac
+  if command -v npx >/dev/null 2>&1; then echo "npx --yes"; return; fi
+  if command -v bunx >/dev/null 2>&1; then echo "bunx"; return; fi
+  if command -v pnpm >/dev/null 2>&1; then echo "pnpm dlx"; return; fi
+  echo "npx --yes"
+}
+
+append_env() {
+  local key="$1"
+  local value="$2"
+  # %q, not a raw value: an unquoted value with spaces (an Xcode scheme, a
+  # simulator name, a path under /Applications) breaks `source .env.agent.<id>`.
+  printf '%s=%q\n' "$key" "$value" >> "$HAR_ENV_FILE"
+}
+
+append_path_prefix() {
+  local prefix="$1"
+  [ -n "$prefix" ] && [ -d "$prefix" ] || return 0
+  append_env "PATH" "${prefix}:${PATH:-$PATH}"
+}
+
+detect_ecosystem() {
+  local dir="$1"
+  local configured="${HARNESS_ECOSYSTEM:-auto}"
+  if [ -n "$configured" ] && [ "$configured" != "auto" ]; then
+    echo "$configured"
+    return
+  fi
+  if [ -f "$dir/package.json" ]; then echo node; return; fi
+  if [ -f "$dir/pyproject.toml" ] || [ -f "$dir/setup.py" ] || [ -f "$dir/setup.cfg" ] \
+    || [ -f "$dir/requirements.txt" ] || [ -f "$dir/Pipfile" ]; then
+    echo python
+    return
+  fi
+  if [ -f "$dir/go.mod" ]; then echo go; return; fi
+  if [ -f "$dir/Cargo.toml" ]; then echo rust; return; fi
+  if [ -f "$dir/pom.xml" ] || [ -f "$dir/build.gradle" ] || [ -f "$dir/build.gradle.kts" ]; then
+    echo java
+    return
+  fi
+  if [ -f "$dir/Gemfile" ]; then echo ruby; return; fi
+  if [ -n "${HARNESS_XCODE_SCHEME:-}" ] || [ -n "${HARNESS_XCODE_PROJECT:-}" ] \
+    || [ -n "${HARNESS_XCODE_WORKSPACE:-}" ]; then
+    echo ios
+    return
+  fi
+  echo none
+}
+
+run_install_cmd() {
+  local dir="$1"
+  if [ -n "${HARNESS_INSTALL_CMD:-}" ]; then
+    pt_log "Running HARNESS_INSTALL_CMD..."
+    (cd "$dir" && eval "$HARNESS_INSTALL_CMD")
+    return
+  fi
+  return 1
+}
+
+provision_node() {
+  local dir="$1"
+  local node_bin="node"
+  local pkg_manager declared_manager
+  declared_manager="$(har_node_declared_package_manager "$dir")"
+  pkg_manager="$(har_node_package_manager "$dir")"
+
+  if [ -n "$declared_manager" ] && [ "$declared_manager" != "$pkg_manager" ]; then
+    pt_log "Repo declares ${declared_manager}, which is not on PATH — installing with ${pkg_manager} and leaving the lockfile untouched."
+  fi
+
+  if ! run_install_cmd "$dir"; then
+    pt_log "Installing Node dependencies with ${pkg_manager}..."
+    har_node_install "$dir" "$pkg_manager" "$declared_manager"
+  fi
+
+  if command -v node >/dev/null 2>&1; then
+    node_bin="$(command -v node)"
+  elif [ "$pkg_manager" = "bun" ]; then
+    # bun-only machine: bun runs the `node -e` snippets verify.sh relies on.
+    node_bin="$(command -v bun)"
+  fi
+
+  local npm_bin="$pkg_manager"
+  if command -v "$pkg_manager" >/dev/null 2>&1; then
+    npm_bin="$(command -v "$pkg_manager")"
+  fi
+
+  append_env "HARNESS_ECOSYSTEM" "node"
+  append_env "NODE_BIN" "$node_bin"
+  append_env "NPM_BIN" "$npm_bin"
+  append_env "HARNESS_NODE_PACKAGE_MANAGER" "$pkg_manager"
+  append_env "HARNESS_PKG_EXEC" "$(har_pkg_exec "$pkg_manager")"
+  append_path_prefix "$dir/node_modules/.bin"
+}
+
+provision_python() {
+  local dir="$1"
+  local venv_rel="${HARNESS_PYTHON_VENV_DIR:-.har/venv}"
+  local venv_dir="$dir/$venv_rel"
+  local python_bin="python3"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    pt_log "python3 not found on PATH — skipping venv provisioning"
+    append_env "HARNESS_ECOSYSTEM" "python"
+    append_env "PYTHON_BIN" "${PYTHON_BIN:-python3}"
+    return
+  fi
+
+  if [ ! -d "$venv_dir" ]; then
+    pt_log "Creating Python venv at $venv_rel..."
+    if ! python3 -m venv "$venv_dir"; then
+      rm -rf "$venv_dir"
+      pt_log "python3 -m venv failed (on Debian/Ubuntu install python3-venv) — using system python3"
+      append_env "HARNESS_ECOSYSTEM" "python"
+      append_env "PYTHON_BIN" "$(command -v python3)"
+      return
+    fi
+  fi
+
+  if [ ! -x "$venv_dir/bin/python" ]; then
+    pt_log "Python venv at $venv_rel is missing or broken — using system python3"
+    append_env "HARNESS_ECOSYSTEM" "python"
+    append_env "PYTHON_BIN" "$(command -v python3)"
+    return
+  fi
+
+  python_bin="$venv_dir/bin/python"
+  # shellcheck disable=SC1091
+  source "$venv_dir/bin/activate"
+
+  if ! run_install_cmd "$dir"; then
+    pt_log "Installing Python dependencies..."
+    if [ -f "$dir/pyproject.toml" ]; then
+      (cd "$dir" && pip install -q -e ".[dev]" 2>/dev/null) || (cd "$dir" && pip install -q -e .)
+    elif [ -f "$dir/requirements.txt" ]; then
+      (cd "$dir" && pip install -q -r requirements.txt)
+    elif [ -f "$dir/setup.py" ] || [ -f "$dir/setup.cfg" ]; then
+      (cd "$dir" && pip install -q -e .)
+    elif [ -f "$dir/Pipfile" ] && command -v pipenv >/dev/null 2>&1; then
+      (cd "$dir" && pipenv install --dev)
+      python_bin="$(cd "$dir" && pipenv --py)"
+    fi
+  fi
+
+  append_env "HARNESS_ECOSYSTEM" "python"
+  append_env "PYTHON_BIN" "$python_bin"
+  append_env "VIRTUAL_ENV" "$venv_dir"
+  append_path_prefix "$venv_dir/bin"
+}
+
+provision_go() {
+  local dir="$1"
+  if ! run_install_cmd "$dir"; then
+    if command -v go >/dev/null 2>&1; then
+      pt_log "Downloading Go modules..."
+      (cd "$dir" && go mod download)
+    else
+      pt_log "go not found on PATH — record paths only"
+    fi
+  fi
+  append_env "HARNESS_ECOSYSTEM" "go"
+  append_env "GO_BIN" "$(command -v go 2>/dev/null || echo go)"
+  if [ -n "${GOPATH:-}" ]; then append_env "GOPATH" "$GOPATH"; fi
+  if [ -n "${GOROOT:-}" ]; then append_env "GOROOT" "$GOROOT"; fi
+}
+
+provision_rust() {
+  local dir="$1"
+  if ! run_install_cmd "$dir"; then
+    if command -v cargo >/dev/null 2>&1; then
+      pt_log "Fetching Rust dependencies..."
+      (cd "$dir" && cargo fetch)
+    else
+      pt_log "cargo not found on PATH — record paths only"
+    fi
+  fi
+  append_env "HARNESS_ECOSYSTEM" "rust"
+  append_env "CARGO_BIN" "$(command -v cargo 2>/dev/null || echo cargo)"
+  append_env "RUSTC_BIN" "$(command -v rustc 2>/dev/null || echo rustc)"
+}
+
+provision_java() {
+  local dir="$1"
+  run_install_cmd "$dir" || true
+  append_env "HARNESS_ECOSYSTEM" "java"
+  if [ -n "${JAVA_HOME:-}" ]; then
+    append_env "JAVA_HOME" "$JAVA_HOME"
+    append_path_prefix "$JAVA_HOME/bin"
+  fi
+  if command -v mvn >/dev/null 2>&1; then
+    append_env "MVN_BIN" "$(command -v mvn)"
+  elif [ -f "$dir/gradlew" ]; then
+    append_env "GRADLE_BIN" "$dir/gradlew"
+  elif command -v gradle >/dev/null 2>&1; then
+    append_env "GRADLE_BIN" "$(command -v gradle)"
+  fi
+}
+
+provision_ruby() {
+  local dir="$1"
+  if ! run_install_cmd "$dir"; then
+    if command -v bundle >/dev/null 2>&1; then
+      pt_log "Installing Ruby gems..."
+      (cd "$dir" && bundle install --quiet)
+    else
+      pt_log "bundle not found on PATH — record paths only"
+    fi
+  fi
+  append_env "HARNESS_ECOSYSTEM" "ruby"
+  append_env "RUBY_BIN" "$(command -v ruby 2>/dev/null || echo ruby)"
+  append_env "BUNDLE_BIN" "$(command -v bundle 2>/dev/null || echo bundle)"
+  append_path_prefix "$dir/vendor/bundle/bin"
+}
+
+provision_ios() {
+  local dir="$1"
+  run_install_cmd "$dir" || true
+  append_env "HARNESS_ECOSYSTEM" "ios"
+  append_env "XCODEBUILD_BIN" "$(command -v xcodebuild 2>/dev/null || echo xcodebuild)"
+  if [ -n "${HARNESS_XCODE_SCHEME:-}" ]; then
+    append_env "HARNESS_XCODE_SCHEME" "$HARNESS_XCODE_SCHEME"
+  fi
+  # The simulator is not recorded here: launch.sh writes the device reserved for
+  # this slot, and harness.env already carries the shared one.
+  if [ -n "${HARNESS_BUNDLE_ID:-}" ]; then
+    append_env "HARNESS_BUNDLE_ID" "$HARNESS_BUNDLE_ID"
+  fi
+  if [ -n "${DEVELOPER_DIR:-}" ]; then
+    append_env "DEVELOPER_DIR" "$DEVELOPER_DIR"
+  fi
+}
+
+provision_monorepo_root() {
+  [ -n "$HAR_REL_PREFIX" ] || return 0
+  [ -n "$HAR_WORKTREE_DIR" ] || return 0
+  [ -f "$HAR_WORKTREE_DIR/package.json" ] || return 0
+  [ -d "$HAR_WORKTREE_DIR/node_modules" ] && return 0
+  local pkg_manager
+  pkg_manager="$(har_node_package_manager "$HAR_WORKTREE_DIR")"
+  pt_log "Installing monorepo root dependencies in $HAR_WORKTREE_DIR with ${pkg_manager}..."
+  har_node_install "$HAR_WORKTREE_DIR" "$pkg_manager" \
+    "$(har_node_declared_package_manager "$HAR_WORKTREE_DIR")"
+}
+
+provision_ecosystem() {
+  local dir="$1"
+  local ecosystem
+  ecosystem="$(detect_ecosystem "$dir")"
+  pt_log "Toolchain ecosystem: ${ecosystem} (work dir: ${dir})"
+
+  case "$ecosystem" in
+    node) provision_node "$dir" ;;
+    python) provision_python "$dir" ;;
+    go) provision_go "$dir" ;;
+    rust) provision_rust "$dir" ;;
+    java) provision_java "$dir" ;;
+    ruby) provision_ruby "$dir" ;;
+    ios) provision_ios "$dir" ;;
+    none)
+      if run_install_cmd "$dir"; then
+        append_env "HARNESS_ECOSYSTEM" "custom"
+      else
+        pt_log "No ecosystem manifest detected — set HARNESS_ECOSYSTEM or HARNESS_INSTALL_CMD in harness.env"
+        append_env "HARNESS_ECOSYSTEM" "none"
+      fi
+      ;;
+  esac
+}
+
+append_env "HARNESS_TOOLCHAIN_PROVISIONED" "true"
+provision_ecosystem "$HAR_WORK_DIR"
+provision_monorepo_root

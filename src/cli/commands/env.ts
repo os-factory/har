@@ -3,8 +3,6 @@ import type { Argv } from 'yargs';
 import { finishCommand } from '../finish-command';
 import { initHarness, maintainHarness, addPlugin } from '../../core/harness';
 import {
-  PLUGIN_IDS,
-  PluginId,
   listPluginIds,
 } from '../../harness/plugins';
 import { addCustomStage } from '../../harness/custom-stage';
@@ -147,17 +145,18 @@ export const envCommand = {
       )
       .command(
         'add-plugin [plugin]',
-        `Install a verification plugin (${PLUGIN_IDS.join(', ')}) that registers stages`,
+        'Install a verification plugin (bundled id, path, npm package, or git URL) that registers stages',
         (y: Argv) =>
           y
             .positional('plugin', {
               type: 'string',
-              describe: `Plugin id (${PLUGIN_IDS.join(', ')})`,
+              describe:
+                'Bundled plugin id, local path (./plugin), npm package (@org/pkg), or git URL (github:org/repo)',
             })
             .option('list', {
               type: 'boolean',
               default: false,
-              describe: 'List available plugins and exit',
+              describe: 'List bundled plugins and exit',
             })
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
             .option('force', {
@@ -179,7 +178,8 @@ export const envCommand = {
           y
             .positional('template', {
               type: 'string',
-              describe: `Custom stage id with --custom, or a plugin id (${PLUGIN_IDS.join(', ')}) as a deprecated alias`,
+              describe:
+                'Custom stage id with --custom, or a plugin id / path / npm / git spec as a deprecated alias',
             })
             .option('list', {
               type: 'boolean',
@@ -693,9 +693,10 @@ export async function handleAddPlugin(argv: {
     return;
   }
 
-  if (!argv.plugin || !available.includes(argv.plugin as PluginId)) {
+  if (!argv.plugin) {
     error(
-      `Unknown plugin: ${argv.plugin ?? '(missing)'}. Available: ${available.join(', ')}. For a project-specific stage, use: har env add-stage <id> --custom`,
+      `Missing plugin. Bundled: ${available.join(', ') || '(none)'}. ` +
+        `Or pass a path, npm package, or git URL. For a project-specific stage, use: har env add-stage <id> --custom`,
     );
     return finishCommand(1);
   }
@@ -705,13 +706,18 @@ export async function handleAddPlugin(argv: {
   info(`Plugin: ${argv.plugin}`);
 
   try {
-    const result = addPlugin(repoPath, argv.plugin as PluginId, {
+    const result = addPlugin(repoPath, argv.plugin, {
       force: argv.force,
       skipCi: argv.skipCi,
+      spec: argv.plugin,
     });
 
     divider();
-    success(`Plugin applied — registered stage: ${result.stageId}`);
+    const stageLabel =
+      result.stageIds.length > 1
+        ? `stages: ${result.stageIds.join(', ')}`
+        : `stage: ${result.stageId}`;
+    success(`Plugin applied — registered ${stageLabel} (source: ${result.source})`);
     console.error('');
     console.error('  Next steps:');
     for (const step of result.nextSteps) {
@@ -793,9 +799,9 @@ export async function handleAddStage(argv: {
     return;
   }
 
-  if (!argv.template || !available.includes(argv.template as PluginId)) {
+  if (!argv.template) {
     error(
-      `Unknown plugin: ${argv.template ?? '(missing)'}. Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-specific stage, use: har env add-stage <id> --custom`,
+      `Unknown plugin: (missing). Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-specific stage, use: har env add-stage <id> --custom`,
     );
     return finishCommand(1);
   }

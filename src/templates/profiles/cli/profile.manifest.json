@@ -1,0 +1,8 @@
+{
+  "id": "cli",
+  "description": "CLI/library — shared kernel + CLI overlay (no PM2)",
+  "bundles": [
+    { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
+    { "id": "runtime-cli", "path": "har-boilerplate-cli" }
+  ]
+}

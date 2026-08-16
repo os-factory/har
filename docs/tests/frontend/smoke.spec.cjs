@@ -16,6 +16,11 @@ test.describe('Frontend smoke', () => {
     for (const name of ['Playwright', 'RocketSim', 'Kerno', 'Gitleaks', 'Trivy', 'Semgrep']) {
       await expect(page.locator('.plugin-card h2', { hasText: name })).toBeVisible();
     }
+    await expect(page.locator('a.plugin-card-custom')).toHaveAttribute(
+      'href',
+      '/docs/guides/plugins/#your-own-checks',
+    );
+    await expect(page.locator('.install-cmd')).toContainText('har env add-plugin');
     await page.locator('a.plugin-card', { hasText: 'Gitleaks' }).click();
     await expect(page).toHaveURL(/\/plugins\/gitleaks\/$/);
     await expect(page.locator('h1')).toContainText('Gitleaks');
