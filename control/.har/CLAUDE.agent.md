@@ -21,6 +21,13 @@ This slot runs **only the primary application** (`HARNESS_PRIMARY_APP=web`, the 
 ./.har/agent-cli.sh ${AGENT_ID} health
 ```
 
+## Readiness — what “agent usable” means
+
+1. **Process ready** — `./.har/agent-cli.sh ${AGENT_ID} health` (`/api/health`)
+2. **Slot data ready** — SQLite `prisma/agent_${AGENT_ID}.db` exists (created by `prisma db push` at launch)
+3. **Workflow usable** — dashboard loads at http://localhost:${FE_PORT}; no shared Postgres
+4. **No extra credentials** — local SQLite, no seed login required
+
 ## Definition of done
 
 A task is complete only when:

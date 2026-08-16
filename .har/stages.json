@@ -63,7 +63,7 @@
       "id": "docs-drift",
       "kind": "custom",
       "description": "Validate documentation against CLI, MCP, stage, profile, template, and skill contracts",
-      "command": "npm run drift --prefix docs",
+      "command": "(cd docs && ${NPM_BIN:-npm} run drift)",
       "requiresAgentId": false,
       "group": "documentation"
     },

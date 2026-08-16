@@ -184,7 +184,7 @@ har_check_foreign_pm2() {
   local agent_id="$1"
   local pm2_raw
   har_harness_uses_pm2 || return 0
-  pm2_raw="$(npx --yes pm2 jlist 2>/dev/null || true)"
+  pm2_raw="$($(har_pkg_exec) pm2 jlist 2>/dev/null || true)"
   [ -n "$pm2_raw" ] || return 0
   set +e
   echo "$pm2_raw" | node -e "

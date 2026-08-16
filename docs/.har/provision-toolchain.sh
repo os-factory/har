@@ -79,34 +79,126 @@ run_install_cmd() {
   return 1
 }
 
+# ── Node package manager helpers (mirrored in harness.env) ────────────────────
+HAR_NODE_PACKAGE_MANAGERS="npm bun pnpm yarn"
+
+har_node_declared_package_manager() {
+  local dir="${1:-.}"
+  if [ -n "${HARNESS_NODE_PACKAGE_MANAGER:-}" ]; then
+    echo "$HARNESS_NODE_PACKAGE_MANAGER"
+    return
+  fi
+  if [ -f "$dir/package.json" ]; then
+    local field
+    field="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"\([a-z]*\)@.*/\1/p' "$dir/package.json" | head -1)"
+    if [ -n "$field" ]; then
+      echo "$field"
+      return
+    fi
+  fi
+  if [ -f "$dir/bun.lock" ] || [ -f "$dir/bun.lockb" ]; then echo bun; return; fi
+  if [ -f "$dir/pnpm-lock.yaml" ]; then echo pnpm; return; fi
+  if [ -f "$dir/yarn.lock" ]; then echo yarn; return; fi
+  if [ -f "$dir/package-lock.json" ]; then echo npm; return; fi
+  echo ""
+}
+
+har_node_package_manager() {
+  local dir="${1:-.}"
+  local declared
+  declared="$(har_node_declared_package_manager "$dir")"
+  if [ -n "$declared" ] && command -v "$declared" >/dev/null 2>&1; then
+    echo "$declared"
+    return
+  fi
+  local candidate
+  for candidate in $HAR_NODE_PACKAGE_MANAGERS; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      echo "$candidate"
+      return
+    fi
+  done
+  echo "${declared:-npm}"
+}
+
+har_node_lockfile() {
+  case "$1" in
+    bun) echo "bun.lock" ;;
+    npm) echo "package-lock.json" ;;
+    pnpm) echo "pnpm-lock.yaml" ;;
+    yarn) echo "yarn.lock" ;;
+    *) echo "" ;;
+  esac
+}
+
+har_node_install() {
+  local dir="$1"
+  local manager="$2"
+  local declared="${3:-}"
+  local substituting=false
+  local lockfile=""
+  local had_lockfile=false
+  if [ -n "$declared" ] && [ "$declared" != "$manager" ]; then
+    substituting=true
+    lockfile="$(har_node_lockfile "$manager")"
+    if [ -n "$lockfile" ] && [ -e "$dir/$lockfile" ]; then
+      had_lockfile=true
+    fi
+  fi
+  local code=0
+  (cd "$dir" && "$manager" install --silent) || code=$?
+  if [ "$substituting" = true ] && [ "$had_lockfile" = false ] && [ -n "$lockfile" ]; then
+    rm -f "$dir/$lockfile"
+    [ "$manager" = "bun" ] && rm -f "$dir/bun.lockb"
+  fi
+  return $code
+}
+
+har_pkg_exec() {
+  case "${1:-${HARNESS_NODE_PACKAGE_MANAGER:-}}" in
+    bun) echo "bunx"; return ;;
+    pnpm) echo "pnpm dlx"; return ;;
+    yarn) echo "yarn dlx"; return ;;
+    npm) echo "npx --yes"; return ;;
+  esac
+  if command -v npx >/dev/null 2>&1; then echo "npx --yes"; return; fi
+  if command -v bunx >/dev/null 2>&1; then echo "bunx"; return; fi
+  if command -v pnpm >/dev/null 2>&1; then echo "pnpm dlx"; return; fi
+  echo "npx --yes"
+}
+
 provision_node() {
   local dir="$1"
-  local npm_bin="npm"
   local node_bin="node"
+  local pkg_manager declared_manager
+  declared_manager="$(har_node_declared_package_manager "$dir")"
+  pkg_manager="$(har_node_package_manager "$dir")"
+
+  if [ -n "$declared_manager" ] && [ "$declared_manager" != "$pkg_manager" ]; then
+    pt_log "Repo declares ${declared_manager}, which is not on PATH — installing with ${pkg_manager} and leaving the lockfile untouched."
+  fi
 
   if ! run_install_cmd "$dir"; then
-    pt_log "Installing Node dependencies..."
-    if [ -f "$dir/pnpm-lock.yaml" ] && command -v pnpm >/dev/null 2>&1; then
-      (cd "$dir" && pnpm install --silent)
-      npm_bin="pnpm"
-    elif [ -f "$dir/yarn.lock" ] && command -v yarn >/dev/null 2>&1; then
-      (cd "$dir" && yarn install --silent)
-      npm_bin="yarn"
-    else
-      (cd "$dir" && npm install --silent)
-    fi
+    pt_log "Installing Node dependencies with ${pkg_manager}..."
+    har_node_install "$dir" "$pkg_manager" "$declared_manager"
   fi
 
   if command -v node >/dev/null 2>&1; then
     node_bin="$(command -v node)"
+  elif [ "$pkg_manager" = "bun" ]; then
+    node_bin="$(command -v bun)"
   fi
-  if [ "$npm_bin" = "npm" ] && command -v npm >/dev/null 2>&1; then
-    npm_bin="$(command -v npm)"
+
+  local npm_bin="$pkg_manager"
+  if command -v "$pkg_manager" >/dev/null 2>&1; then
+    npm_bin="$(command -v "$pkg_manager")"
   fi
 
   append_env "HARNESS_ECOSYSTEM" "node"
   append_env "NODE_BIN" "$node_bin"
   append_env "NPM_BIN" "$npm_bin"
+  append_env "HARNESS_NODE_PACKAGE_MANAGER" "$pkg_manager"
+  append_env "HARNESS_PKG_EXEC" "$(har_pkg_exec "$pkg_manager")"
   append_path_prefix "$dir/node_modules/.bin"
 }
 
@@ -252,8 +344,11 @@ provision_monorepo_root() {
   [ -n "$HAR_WORKTREE_DIR" ] || return 0
   [ -f "$HAR_WORKTREE_DIR/package.json" ] || return 0
   [ -d "$HAR_WORKTREE_DIR/node_modules" ] && return 0
-  pt_log "Installing monorepo root dependencies in $HAR_WORKTREE_DIR..."
-  (cd "$HAR_WORKTREE_DIR" && npm install --silent)
+  local pkg_manager
+  pkg_manager="$(har_node_package_manager "$HAR_WORKTREE_DIR")"
+  pt_log "Installing monorepo root dependencies in $HAR_WORKTREE_DIR with ${pkg_manager}..."
+  har_node_install "$HAR_WORKTREE_DIR" "$pkg_manager" \
+    "$(har_node_declared_package_manager "$HAR_WORKTREE_DIR")"
 }
 
 provision_ecosystem() {

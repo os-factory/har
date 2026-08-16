@@ -17,15 +17,22 @@
 ./.har/agent-cli.sh ${AGENT_ID} url
 ```
 
-## Readiness
+## Readiness / agent usable
 
-This CLI harness has **no runtime server** — agents validate through static analysis and tests. Full verify is sufficient for agent-usable checks today; no `HARNESS_READINESS_CMD` is configured.
+This CLI harness has **no runtime server** — agents validate through static analysis and tests. A slot is **agent usable** when:
 
-For Mission Control (Next.js + Postgres), use `control/.har/` instead.
+- The worktree has Node deps (root + `docs/`) from `provision-toolchain.sh`
+- Quick verify passes: typecheck, build, docs check/build
+- Full verify also passes unit tests, lint, and `docs-drift`
+
+No `HARNESS_READINESS_CMD` is configured. Infra is unused (`HARNESS_INFRA_SERVICES` is empty).
+
+For Mission Control (Next.js + SQLite) or the docs site (Astro), launch `control/.har/` or `docs/.har/` instead.
 
 ## Definition of done
 
 - [ ] Full verification returns `"status": "pass"` (`har env verify ${AGENT_ID} --full`, MCP `har_run_verification` with `full: true`, or `./.har/verify.sh ${AGENT_ID} --full`)
+- [ ] The slot is agent-usable: typecheck, build, docs check/build, unit tests, lint, and `docs-drift` all pass
 - [ ] Full verify runs every registered stage in `stages.json` `verificationStages` (`docs-drift`)
 - [ ] New behavior has automated test coverage
 - [ ] Changes committed **in the session worktree** with a clear message
@@ -54,8 +61,8 @@ Run in the session work dir (or via `agent-cli.sh exec`):
 ./.har/agent-cli.sh ${AGENT_ID} exec npm test
 ./.har/agent-cli.sh ${AGENT_ID} exec npm run typecheck
 ./.har/agent-cli.sh ${AGENT_ID} exec npm run build
-./.har/agent-cli.sh ${AGENT_ID} exec npm run check --prefix docs
-./.har/agent-cli.sh ${AGENT_ID} exec npm run drift --prefix docs
+./.har/agent-cli.sh ${AGENT_ID} exec sh -c 'cd docs && npm run check'
+./.har/agent-cli.sh ${AGENT_ID} exec sh -c 'cd docs && npm run drift'
 ```
 
 Harness control-plane commands (MCP / `har env`) target the main repo checkout; project commands run in your work dir.

@@ -165,7 +165,7 @@ fi
 SHARED_ECOSYSTEM="$SCRIPT_DIR/ecosystem.shared.config.cjs"
 if [ -f "$SHARED_ECOSYSTEM" ]; then
   log "Starting shared app services from ecosystem.shared.config.cjs..."
-  (cd "$REPO_ROOT" && npx --yes pm2 startOrReload "$SHARED_ECOSYSTEM" >/dev/null)
+  (cd "$REPO_ROOT" && $(har_pkg_exec) pm2 startOrReload "$SHARED_ECOSYSTEM" >/dev/null)
   log "Shared app services running (pm2 ls | grep har-${HARNESS_PROJECT_NAME}-shared-)."
 fi
 

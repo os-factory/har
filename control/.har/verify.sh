@@ -36,7 +36,7 @@ source "$ENV_FILE"
 set +a
 
 WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
-API_PORT="${API_PORT:-$(( HARNESS_API_BASE_PORT + AGENT_ID * 10 ))}"
+API_PORT="${API_PORT:-$(( HARNESS_API_BASE_PORT + AGENT_ID * ${HARNESS_PORT_STEP:-10} ))}"
 
 echo "==> Verifying agent ${AGENT_ID} (work dir: ${WORK_DIR})..." >&2
 REG_FILE="$(slot_registry_file "$AGENT_ID")"

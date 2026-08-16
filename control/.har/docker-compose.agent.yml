@@ -1,29 +1,4 @@
-# Shared infrastructure — ONE instance serves all agent slots (fixed ports).
-# Control needs a single Postgres; setup-infra.sh starts the services listed
-# in HARNESS_INFRA_SERVICES (harness.env). Each agent slot gets its own
-# database (agent_<id>) cloned from the template DB.
-services:
-  db:
-    image: pgvector/pgvector:pg16
-    restart: always
-    ports:
-      - "${AGENT_DB_PORT:-15432}:5432"
-    environment:
-      POSTGRES_PASSWORD: password
-    volumes:
-      - agent-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    command:
-      - postgres
-      - -c
-      - shared_preload_libraries=pg_stat_statements
-      - -c
-      - pg_stat_statements.track=all
-    shm_size: 256m
-
-volumes:
-  agent-db-data:
+# No shared Docker infra — Mission Control uses per-slot embedded SQLite
+# (`HARNESS_INFRA_SERVICES` is empty). Add a service here and list it in
+# harness.env if Control later needs one.
+services: {}

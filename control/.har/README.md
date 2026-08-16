@@ -28,7 +28,7 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `env.template` | Per-agent env vars (expanded by `launch.sh`) |
 | `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded by `launch.sh`) |
 | `ecosystem.shared.config.cjs` | Optional — shared app services started once by `setup-infra.sh` (not used by Control today) |
-| `docker-compose.agent.yml` | Optional shared infra menu (not used — SQLite per slot) |
+| `docker-compose.agent.yml` | Empty stub — no shared Docker services (SQLite per slot) |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `justfile` | Optional shortcuts (requires `just`) |
 
@@ -97,7 +97,7 @@ Configure how many slots your machine can run in parallel in `.har/stages.json` 
 | Service | Agent 1 (default) | Agent 2 (default) | Agent 3 (default) |
 |---------|-------------------|-------------------|-------------------|
 | Web (UI + API) | 3847 | 3857 | 3867 |
-| Database | `agent_1` | `agent_2` | `agent_3` (all on shared Postgres host port) |
+| Database | `prisma/agent_1.db` | `prisma/agent_2.db` | `prisma/agent_3.db` (SQLite per slot) |
 
 `HARNESS_FE_BASE_PORT=3837` and `HARNESS_API_BASE_PORT=3837` — slot 1 therefore defaults to **3847** (`3837 + 1 × 10`).
 
@@ -108,9 +108,8 @@ Configure how many slots your machine can run in parallel in `.har/stages.json` 
 | Layer | Scope | Rule | On conflict |
 |-------|-------|------|-------------|
 | Web (UI + API) | Per slot | `HARNESS_FE_BASE_PORT + (AGENT_ID × HARNESS_PORT_STEP)` | Scan `STEP` increments within the slot lane |
-| Shared Postgres | Per machine | `HARNESS_DB_PORT_DEFAULT` (15432) | Scan `HARNESS_DB_PORT_SCAN_START..END` |
 
-Always use `./.har/agent-cli.sh <id>` or read `.har/slots/agent-<id>.json` — never hardcode `3847` or `15432` in app code or tests.
+Always use `./.har/agent-cli.sh <id>` or read `.har/slots/agent-<id>.json` — never hardcode `3847` in app code or tests.
 
 ### `har control up` vs harness slot 1
 
@@ -118,8 +117,8 @@ These are **different ways to run Mission Control** and they **conflict on port 
 
 | Entry point | What it runs | Default port |
 |-------------|--------------|--------------|
-| `har control up` | Docker image `theosfactory/har-control` + bundled Postgres | **3847** (UI/API) |
-| `cd control && har env launch 1` | Harness slot with PM2 + shared Postgres from `setup-infra.sh` | **3847** for slot 1 |
+| `har control up` | Docker image `theosfactory/har-control` | **3847** (UI/API) |
+| `cd control && har env launch 1` | Harness slot with PM2 + per-slot SQLite | **3847** for slot 1 |
 
 Do not run both at once. Before launching harness slot 1, run `har control down` if the control container is up. `launch.sh` preflight also detects a Mission Control container bound to the slot port and fails with a clear message.
 
@@ -129,29 +128,25 @@ For day-to-day agent work on Mission Control itself, use the **harness** (`cd co
 
 | Resource | Model | Configuration |
 |----------|-------|---------------|
-| Postgres | One shared container; per-slot database `agent_<id>` cloned from `template_control` | `HARNESS_INFRA_SERVICES="db"` |
+| SQLite | One file per slot (`prisma/agent_<id>.db`) | `har_slot_db_url` / `HARNESS_DB_MIGRATE_CMD` |
 | Next.js app | One PM2 process per slot on isolated ports | `HARNESS_PRIMARY_APP=web`, `ecosystem.agent.template.cjs` |
 
 ### Do not
 
-- Hardcode `3847` / `15432` in app code, Playwright specs, or docs — read from agent env / slot registry
+- Hardcode `3847` in app code, Playwright specs, or docs — read from agent env / slot registry
 - Run raw `docker compose` for harness infrastructure — use `setup-infra.sh` / `launch.sh`
 
 ### Primary app vs shared services
 
 Each slot runs **only the primary application** (`HARNESS_PRIMARY_APP=web` — the Next.js
-app serving UI + API on one port). Shared infrastructure runs **once** for all slots:
-the `db` service in `docker-compose.agent.yml`, enabled via `HARNESS_INFRA_SERVICES="db"`
-in `harness.env` and started by `setup-infra.sh` (launch runs it automatically).
+app serving UI + API on one port). `HARNESS_INFRA_SERVICES` is empty — no shared Docker
+database. `docker-compose.agent.yml` is a stub for a future service if one is needed.
 
 ### Database
 
-The harness manages one shared Postgres (port 15432). `setup-infra.sh` creates
-`template_control` and applies the Prisma schema to it once; `launch.sh` then clones a
-per-slot database `agent_<id>` from that template, so agents never share state.
-
-`launch.sh` also re-runs `HARNESS_DB_MIGRATE_CMD` against the slot's own database on
-every launch (idempotent), so schema changes are applied before the slot starts serving.
+Each slot gets its own SQLite file at `prisma/agent_<id>.db`. `launch.sh` runs
+`HARNESS_DB_MIGRATE_CMD` (`prisma db push`) against that file on every launch
+(idempotent), so schema changes are applied before the slot starts serving.
 
 It also installs `@har/schemas` dependencies under `packages/schemas/` when typechecking
 from a fresh worktree (monorepo `file:` link).
