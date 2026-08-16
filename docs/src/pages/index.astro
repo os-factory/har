@@ -226,14 +226,14 @@ const heroRunTotal = formatHeroRunTotal();
 <h3>Semgrep</h3>
 <p>Adds a sast stage that scans every agent worktree for security findings before code lands.</p>
 </div>
-<div class="what-cell">
+<a class="what-cell what-cell-link" href="/docs/guides/plugins/#your-own-checks">
 <svg class="what-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-<h3>Your own stages</h3>
-<p>Register project-specific checks as custom stages, or build a plugin of your own.</p>
-</div>
+<h3>Your own checks</h3>
+<p>Custom stages for project-only checks, or publish a plugin via path, npm, or git — no core change required.</p>
+</a>
 <div class="stack-group-link-bar plugin-link-bar">
 <a class="stack-group-link" href="/plugins/">Explore the plugin marketplace <span aria-hidden="true">→</span></a>
-<span class="plugin-count">{plugins.length} plugins available</span>
+<span class="plugin-count">{plugins.length} plugins · path / npm / git</span>
 </div>
 </div>
 </div>
@@ -312,4 +312,6 @@ const heroRunTotal = formatHeroRunTotal();
   /* Plugin marketplace CTA — count stays in sync with src/data/plugins.ts. */
   .plugin-link-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .plugin-count { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--muted); }
+  a.what-cell-link { display: block; color: inherit; text-decoration: none; transition: background .15s ease; }
+  a.what-cell-link:hover { background: var(--theme-surface-raised); }
 </style>
