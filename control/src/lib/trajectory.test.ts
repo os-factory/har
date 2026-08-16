@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   assembleTrajectory,
+  formatDurationMs,
   mergeTrajectoryRecords,
   safeTrajectoryBody,
+  trajectoryOverviewPlacement,
+  trajectoryRoleLabel,
   type SerializedTrajectoryRecord,
 } from './trajectory';
 
@@ -142,5 +145,70 @@ describe('trajectory assembler', () => {
     expect(safeTrajectoryBody(withheld)).toBeNull();
     expect(safeTrajectoryBody(metadataOnly)).toBeNull();
     expect(safeTrajectoryBody(truncated)).toBe('partial answer');
+    expect(safeTrajectoryBody(record('wrapped', {
+      contentKind: 'prompt',
+      payload: { body: { stringValue: 'unwrap me' } },
+    }))).toBe('unwrap me');
+  });
+
+  it('omits span-only mirror records from the assembled timeline', () => {
+    const nodes = assembleTrajectory([
+      record('prompt', {
+        eventType: 'prompt.submitted',
+        contentKind: 'prompt',
+        payload: { promptText: 'read the file' },
+      }),
+      record('span', {
+        sequence: 2,
+        eventType: 'span.tool',
+        contentKind: 'span',
+        contentLabel: 'Read',
+      }),
+      record('start', {
+        sequence: 3,
+        eventType: 'tool.start',
+        toolCallId: 'call-9',
+        contentLabel: 'Read',
+      }),
+      record('end', {
+        sequence: 4,
+        eventType: 'tool.end',
+        toolCallId: 'call-9',
+      }),
+    ]);
+    expect(nodes.map((node) => node.kind)).toEqual(['prompt', 'tool']);
+    expect(nodes.some((node) => node.records.some((item) => item.id === 'span'))).toBe(false);
+  });
+
+  it('drops empty session and generation bookends but keeps message-bearing generation ends', () => {
+    const nodes = assembleTrajectory([
+      record('session-start', { eventType: 'session.start', contentKind: 'metadata' }),
+      record('prompt', { sequence: 2, eventType: 'prompt.submitted', contentKind: 'prompt' }),
+      record('gen-start', { sequence: 3, eventType: 'generation.start', contentKind: 'metadata' }),
+      record('gen-end', {
+        sequence: 4,
+        eventType: 'generation.end',
+        contentKind: 'response',
+        payload: { responseText: 'done' },
+      }),
+      record('session-end', { sequence: 5, eventType: 'session.end', contentKind: 'metadata' }),
+    ]);
+    expect(nodes.map((node) => node.kind)).toEqual(['prompt', 'response']);
+  });
+
+  it('places input, model, and tool nodes on overview lanes', () => {
+    const nodes = assembleTrajectory([
+      record('prompt', { eventType: 'prompt.submitted', contentKind: 'prompt', sequence: 1 }),
+      record('response', { eventType: 'response', contentKind: 'response', sequence: 2 }),
+      record('start', { eventType: 'tool.start', toolCallId: 'c', sequence: 3 }),
+      record('end', { eventType: 'tool.end', toolCallId: 'c', sequence: 4 }),
+    ]);
+    expect(nodes.map((node) => trajectoryRoleLabel(node.kind))).toEqual(['USER', 'ASSISTANT', 'TOOL']);
+    expect(trajectoryOverviewPlacement(nodes).map((item) => item.lane)).toEqual([
+      'input',
+      'model',
+      'tools',
+    ]);
+    expect(formatDurationMs(21)).toBe('21 ms');
   });
 });

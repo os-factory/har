@@ -231,7 +231,7 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Agent activity</CardTitle>
           <CardDescription>
-            Follow the assembled trajectory, or inspect the raw session-event table for debugging.
+            Follow the assembled trajectory, or inspect raw session events. Start/end bookends are hidden by default.
           </CardDescription>
         </CardHeader>
         <CardContent>

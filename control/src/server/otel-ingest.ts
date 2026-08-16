@@ -175,9 +175,12 @@ function extractPointsFromResourceMetrics(payload: unknown): Array<{
   return results;
 }
 
-function detectAgentTool(resource: AttrMap, serviceName?: string): AgentTool | null {
+export function detectAgentTool(resource: AttrMap, serviceName?: string): AgentTool | null {
   const candidates = [
     String(resource['har.agent_tool'] ?? ''),
+    String(resource['otelhook.provider.id'] ?? ''),
+    String(resource['otelhook.agent.name'] ?? ''),
+    String(resource['otelhook.provider'] ?? ''),
     String(resource['gen_ai.client.name'] ?? ''),
     serviceName ?? String(resource['service.name'] ?? ''),
   ]

@@ -3,6 +3,7 @@ import {
   canonicalizeOtelLogRecord,
   canonicalizeOtelSpan,
   canonicalSpanSequence,
+  detectAgentTool,
   extractLogRecords,
   extractPromptText,
   extractResponseText,
@@ -283,5 +284,13 @@ describe('canonical OTLP span facts', () => {
       Math.abs(Number.parseInt('deadbeefcafebabe'.replace(/\D/g, '').slice(-8) || '0', 16)),
     );
     expect(canonical.payload.attributes).toMatchObject({ authorization: '[redacted]' });
+  });
+});
+
+describe('detectAgentTool', () => {
+  it('reads otelhook provider and agent name before defaulting', () => {
+    expect(detectAgentTool({ 'otelhook.provider.id': 'claude-code' })).toBe('claude_code');
+    expect(detectAgentTool({ 'otelhook.agent.name': 'claude-code' })).toBe('claude_code');
+    expect(detectAgentTool({ 'gen_ai.client.name': 'cursor' })).toBe('cursor');
   });
 });

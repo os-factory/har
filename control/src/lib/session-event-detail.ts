@@ -42,6 +42,15 @@ export function isRedundantLogEvent(eventName: string, rawTruncated?: string | n
   return /Hook event:\s*\w+/i.test(rawTruncated ?? '');
 }
 
+/**
+ * Lifecycle bookends (`tool.start` / `tool.end`, `generation.start`, …).
+ * The paired end (or a span row) already represents the same call.
+ */
+export function isStartEndBoundaryEvent(eventName: string): boolean {
+  const name = shortEventName(eventName).toLowerCase().replaceAll('_', '.');
+  return /(^|\.)(start|end)$/.test(name);
+}
+
 /** Views for the session events table (replaces a blunt “hide log mirrors” toggle). */
 export type SessionEventView =
   | 'activity'

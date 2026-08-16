@@ -33,6 +33,12 @@
     --sidebar-accent-foreground: 215 26% 9%;
     --sidebar-border: 218 17% 84%;
     --sidebar-ring: 124 11% 30%;
+    /* Trajectory roles: olive user, ink-teal assistant, earth tool */
+    --trajectory-user: 124 11% 30%;
+    --trajectory-assistant: 200 28% 36%;
+    --trajectory-tool: 32 42% 38%;
+    --trajectory-system: 219 8% 42%;
+    --trajectory-error: 0 72% 42%;
   }
 
   .dark {
@@ -64,6 +70,11 @@
     --sidebar-accent-foreground: 45 31% 95%;
     --sidebar-border: 213 20% 16%;
     --sidebar-ring: 149 42% 64%;
+    --trajectory-user: 149 42% 64%;
+    --trajectory-assistant: 198 48% 72%;
+    --trajectory-tool: 36 55% 62%;
+    --trajectory-system: 214 8% 62%;
+    --trajectory-error: 0 62% 62%;
   }
 }
 

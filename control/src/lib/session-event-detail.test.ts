@@ -5,6 +5,7 @@ import {
   eventDetailSummary,
   eventToolName,
   isRedundantLogEvent,
+  isStartEndBoundaryEvent,
   matchesSessionEventView,
   shortEventName,
   summarizeEventAttributes,
@@ -121,5 +122,15 @@ describe('event views', () => {
     expect(matchesSessionEventView(tool, 'tools')).toBe(true);
     expect(matchesSessionEventView(prompt, 'prompts')).toBe(true);
     expect(matchesSessionEventView(generation, 'activity')).toBe(true);
+  });
+
+  it('identifies start/end lifecycle bookends without hiding span or prompt rows', () => {
+    expect(isStartEndBoundaryEvent('tool.start')).toBe(true);
+    expect(isStartEndBoundaryEvent('tool.end')).toBe(true);
+    expect(isStartEndBoundaryEvent('generation.start')).toBe(true);
+    expect(isStartEndBoundaryEvent('session.end')).toBe(true);
+    expect(isStartEndBoundaryEvent('prompt.submitted')).toBe(false);
+    expect(isStartEndBoundaryEvent('span.tool Read')).toBe(false);
+    expect(isStartEndBoundaryEvent('span.gen_ai.client.hook.PreToolUse')).toBe(false);
   });
 });
