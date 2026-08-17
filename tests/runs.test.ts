@@ -11,7 +11,8 @@ import {
 } from '../src/core/runs';
 import { compareHarnessToTemplate, missingPortDocumentationVars } from '../src/harness/drift';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
-import { GENERATOR_VERSION } from '../src/harness/manifest';
+import { createManifest } from '../src/harness/manifest';
+import { HarnessManifestSchema } from '../src/harness/schema';
 
 describe('run storage layout', () => {
   it('buildRunRelativePath uses date folder and stage id filename', () => {
@@ -94,15 +95,32 @@ describe('run storage layout', () => {
 });
 
 describe('harness drift detection', () => {
-  it('reports generator version and template drift after scaffold', () => {
+  it('reports template drift after scaffold', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-drift-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
 
     const drift = compareHarnessToTemplate(repoPath);
-    expect(drift.generatorVersion.bundled).toBe(GENERATOR_VERSION);
     expect(drift.missing).toEqual([]);
     expect(drift.extra).toEqual([]);
     expect(drift.missingPortVars).toEqual([]);
+  });
+
+  it('omits generatorVersion from new manifests and still reads legacy ones', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-manifest-'));
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+
+    const created = createManifest(repoPath, 'test', undefined, 'cli');
+    expect(created.generatorVersion).toBeUndefined();
+    expect(created).not.toHaveProperty('generatorVersion');
+
+    const legacy = HarnessManifestSchema.parse({
+      version: '1',
+      generatorVersion: '0.5.0',
+      outputDir: '.har',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(legacy.generatorVersion).toBe('0.5.0');
   });
 
   it('flags missing port documentation vars when harness.env lacks infra scan knobs', () => {

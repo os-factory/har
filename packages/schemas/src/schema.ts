@@ -34,7 +34,8 @@ export type ScaffoldedAgentFile = z.infer<typeof ScaffoldedAgentFileSchema>;
 /** Lightweight manifest — metadata only, not runtime behavior. */
 export const HarnessManifestSchema = z.object({
   version: z.string(),
-  generatorVersion: z.string(),
+  /** Legacy field — ignored. Drift is file checksums vs bundled templates. */
+  generatorVersion: z.string().optional(),
   outputDir: z.string().default('.har'),
   createdAt: z.string(),
   updatedAt: z.string(),

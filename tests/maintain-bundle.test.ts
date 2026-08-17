@@ -121,7 +121,6 @@ describe('adaptation prompts with maintain bundle', () => {
     const initPrompt = buildInitAdaptationPrompt('/tmp/app', 'default');
     const maintainPrompt = buildMaintainAdaptationPrompt('/tmp/app', {
       generatedAt: '2026-07-09T12:00:00.000Z',
-      generatorVersion: { installed: '0.3.0', bundled: '0.6.0', outdated: true },
       profile: 'default',
       actions: [
         {
