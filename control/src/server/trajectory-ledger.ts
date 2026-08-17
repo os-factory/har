@@ -350,6 +350,44 @@ export async function listTrajectoryExport(
   });
 }
 
+const REPO_TRAJECTORY_LIMIT = 1_000;
+const REPO_TRAJECTORY_MAX_LIMIT = 5_000;
+
+export async function listTrajectoryForRepo(
+  repositoryId: string,
+  options: { since?: string | null; limit?: number } = {},
+): Promise<AgentTrajectoryRecord[]> {
+  const limit = Math.max(
+    1,
+    Math.min(options.limit ?? REPO_TRAJECTORY_LIMIT, REPO_TRAJECTORY_MAX_LIMIT),
+  );
+  const since = options.since ? new Date(options.since) : null;
+  return prisma.agentTrajectoryRecord.findMany({
+    where: {
+      repositoryId,
+      ...(since && Number.isFinite(since.getTime()) ? { createdAt: { gt: since } } : {}),
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: limit,
+  });
+}
+
+export function serializeTrajectoryForEgress(
+  record: AgentTrajectoryRecord,
+): SerializedTrajectoryRecord {
+  const { maxPayloadBytes } = trajectoryPolicy();
+  const bounded = boundTrajectoryPayload(
+    (record.payload ?? {}) as Record<string, unknown>,
+    record.contentDisclosure as CanonicalTrajectoryRecord['contentDisclosure'],
+    maxPayloadBytes,
+  );
+  return {
+    ...serializeTrajectoryRecord(record),
+    payload: bounded.payload,
+    contentDisclosure: bounded.contentDisclosure,
+  };
+}
+
 export async function deleteTrajectoryScope(scope: TrajectoryScope): Promise<{ deleted: number }> {
   const result = await prisma.agentTrajectoryRecord.deleteMany({ where: scopeWhere(scope) });
   await prisma.agentSessionEvent.deleteMany({

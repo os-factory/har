@@ -21,7 +21,10 @@ jest.mock('../src/core/usage-harvest', () => ({
   harvestUsageForSlot: () => [],
   harvestEventsForSlot: () => [],
 }));
-jest.mock('../src/core/telemetry-config', () => ({ isTelemetryEnabled: () => false }));
+jest.mock('../src/core/telemetry-config', () => ({
+  isTelemetryEnabled: () => false,
+  isPortalTrajectoryEnabled: () => false,
+}));
 jest.mock('../src/harness/manifest', () => ({
   readManifest: () => null,
   resolveHarnessRoot: (p: string) => p,

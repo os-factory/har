@@ -217,6 +217,7 @@ har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>]
 har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
 har control login [--portal <url>] [--api-key <key>]
+har control trajectory [on|off]
 ```
 
 `login` resolves the portal from `--portal`, then `HAR_PORTAL_URL`, then the
@@ -227,6 +228,13 @@ opens browser SSO and saves the resulting token.
 watermark and resends the complete payload.
 `register --no-portal` keeps the repo on local Mission Control only (skips hosted
 portal sync even when logged in); `--portal` re-enables portal sync for that repo.
+
+`trajectory` controls whether sync forwards the trajectory ledger — agent prompts,
+tool arguments and tool results — to a hosted portal. Off by default: without it a
+portal receives runs, slots, token counts and events, and those bodies stay on this
+machine. Requires telemetry to be on, and `HAR_PORTAL_TRAJECTORY=on|off` overrides
+the stored choice. Forwarded content is capped and redacted by the same local policy
+that governs storage (see the Mission Control guide).
 
 `unregister` removes the repository from Mission Control and `~/.har/repos.json`.
 Interactively it lists session worktrees and asks whether to delete them; pass

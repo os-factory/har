@@ -210,7 +210,35 @@ span, and usage rows are projections of those facts.
 | Size | Bodies over `HAR_TRAJECTORY_MAX_PAYLOAD_BYTES` (default 64 KiB) are truncated. Binary tool payloads are omitted. |
 | Retention | `HAR_TRAJECTORY_RETENTION_DAYS=0` (default) keeps rows. A positive value expires ledger, event, and span rows older than that. Usage totals stay. |
 | Export / delete | The slot viewer can download the session as local JSONL or delete that session's trajectory. Factory reset still wipes the whole database. |
-| Local vs remote | Default Mission Control is local SQLite. Export is a local download. Hosted / Cloud sync does not receive these bodies unless you point agents at a remote Mission Control instance. |
+| Local vs remote | Default Mission Control is local SQLite. Export is a local download. A hosted portal receives these bodies only after you opt in (see below). |
+
+#### Forwarding the ledger to a hosted portal
+
+`har control sync` pushes runs, slots and token counts to a hosted portal, but the
+ledger's prompts, tool arguments and tool results stay local until you say
+otherwise:
+
+```bash
+har control trajectory          # show the current setting
+har control trajectory on       # forward prompts / tool payloads
+har control trajectory off      # back to counts and events only (default)
+```
+
+`HAR_PORTAL_TRAJECTORY=on|off` overrides the stored choice for one sync, and
+telemetry must be on either way. What is forwarded goes through the same policy as
+what is stored: bodies are capped at `HAR_TRAJECTORY_MAX_PAYLOAD_BYTES`, secret
+attributes are `[redacted]`, and `contentDisclosure` travels with each record so a
+truncated or withheld body is labelled as such remotely instead of arriving as
+apparently-complete text. The policy is applied again on the way out, so tightening
+the cap also bounds records stored under a looser one.
+
+Forwarding is idempotent on `(source, sourceEventId, contentKey)` and watermarked
+independently of the event and run batches — enabling it later still sends the
+backlog rather than starting from that moment.
+
+Projected **spans** ride along with telemetry rather than with this opt-in: they
+carry call structure and timing, and their attributes were already redacted when
+the span was projected.
 
 ## Local development
 

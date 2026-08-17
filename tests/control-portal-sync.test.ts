@@ -43,7 +43,18 @@ jest.mock('../src/core/portal-watermark', () => ({
   readRunsWatermarkEntry: jest.fn(() => null),
   writeRunsWatermark: jest.fn(),
 }));
-jest.mock('../src/core/telemetry-config', () => ({ isTelemetryEnabled: () => true }));
+jest.mock('../src/core/telemetry-config', () => ({
+  isTelemetryEnabled: () => true,
+  isPortalTrajectoryEnabled: jest.fn(() => false),
+}));
+jest.mock('../src/core/control-persisted-trajectory', () => ({
+  fetchPersistedTrajectory: jest.fn(async () => ({
+    records: [],
+    spans: [],
+    recordsMaxSyncedAt: null,
+    spansMaxSyncedAt: null,
+  })),
+}));
 jest.mock('../src/harness/manifest', () => ({
   readManifest: () => null,
   resolveHarnessRoot: (p: string) => p,
@@ -446,7 +457,9 @@ describe('syncRepoWithControl — portal full payload', () => {
     expect(otelBody.events[0].promptText).toBe('hi');
     expect('responseText' in otelBody.events[0]).toBe(false);
     expect('rawTruncated' in otelBody.events[0]).toBe(false);
-    expect(Array.isArray(otelBody.spans)).toBe(true);
+    // Spans travel in their own call now, so an events batch carries no spans
+    // key at all — it used to always send an empty array.
+    expect('spans' in otelBody).toBe(false);
   });
 
   it('does not call /api/otel when there are no events', async () => {
