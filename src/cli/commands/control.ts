@@ -38,6 +38,11 @@ import {
   recordRepoForControlSync,
   setRepoPortalSync,
 } from '../../core/control-registry';
+import {
+  isTelemetryEnabled,
+  readTelemetryPreference,
+  writePortalTrajectoryPreference,
+} from '../../core/telemetry-config';
 import { finishCommand } from '../finish-command';
 
 export const controlCommand = {
@@ -172,9 +177,20 @@ export const controlCommand = {
             .option('json', { type: 'boolean', default: false }),
         handleReset,
       )
+      .command(
+        'trajectory [state]',
+        'Forward agent prompts, tool arguments and tool results to the hosted portal (off by default)',
+        (y: Argv) =>
+          y.positional('state', {
+            type: 'string',
+            choices: ['on', 'off'] as const,
+            describe: 'Omit to print the current setting',
+          }),
+        handleTrajectory,
+      )
       .demandCommand(
         1,
-        'Please specify a subcommand: up, down, register, unregister, sync, login, reset',
+        'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory',
       ),
   handler: () => {},
 };
@@ -578,5 +594,38 @@ async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<
   } catch (err) {
     error(`Login failed: ${(err as Error).message}`);
     return finishCommand(1);
+  }
+}
+
+async function handleTrajectory(argv: { state?: string }): Promise<void> {
+  header('har control trajectory');
+
+  if (!argv.state) {
+    const enabled = readTelemetryPreference().portalTrajectory === true;
+    info(`Trajectory forwarding: ${enabled ? 'on' : 'off'}`);
+    if (!enabled) {
+      info('Enable: har control trajectory on');
+    }
+    if (!isTelemetryEnabled()) {
+      warn('Telemetry is off, so nothing is forwarded regardless of this setting.');
+    }
+    return;
+  }
+
+  const enabled = argv.state === 'on';
+  writePortalTrajectoryPreference(enabled);
+
+  if (!enabled) {
+    success('Trajectory forwarding off — the portal receives token counts and events only.');
+    return;
+  }
+
+  success('Trajectory forwarding on.');
+  info(
+    'Prompts, tool arguments and tool results now sync to the hosted portal, ' +
+      'capped and redacted by the local policy (HAR_TRAJECTORY_MAX_PAYLOAD_BYTES).',
+  );
+  if (!isTelemetryEnabled()) {
+    warn('Telemetry is off, so nothing is forwarded yet — enable it with har telemetry on.');
   }
 }

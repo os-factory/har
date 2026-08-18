@@ -12,6 +12,7 @@ export interface TelemetrySignals {
 export interface TelemetryPreference {
   enabled: boolean;
   signals: TelemetrySignals;
+  portalTrajectory?: boolean;
   updatedAt?: string;
 }
 
@@ -71,6 +72,7 @@ export function readTelemetryPreference(): TelemetryPreference {
     return {
       enabled,
       signals: normalizeSignals(enabled, parsed.signals),
+      portalTrajectory: parsed.portalTrajectory === true,
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : undefined,
     };
   } catch {
@@ -90,6 +92,7 @@ export function writeTelemetryPreference(
   const preference: TelemetryPreference = {
     enabled,
     signals: enabled ? nextSignals : { ...DEFAULT_SIGNALS_OFF },
+    ...(current.portalTrajectory ? { portalTrajectory: true } : {}),
     updatedAt: new Date().toISOString(),
   };
   const preferencePath = getPreferencePath();
@@ -129,6 +132,27 @@ export function getTelemetrySignals(): TelemetrySignals {
 
 export function getTelemetryPreferencePath(): string {
   return getPreferencePath();
+}
+
+export function isPortalTrajectoryEnabled(): boolean {
+  if (!isTelemetryEnabled()) return false;
+  const envOverride = parseEnvOverride(process.env.HAR_PORTAL_TRAJECTORY);
+  if (envOverride !== undefined) return envOverride;
+  return readTelemetryPreference().portalTrajectory === true;
+}
+
+export function writePortalTrajectoryPreference(enabled: boolean): TelemetryPreference {
+  const current = readTelemetryPreference();
+  const preference: TelemetryPreference = {
+    enabled: current.enabled,
+    signals: current.signals,
+    ...(enabled ? { portalTrajectory: true } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  const preferencePath = getPreferencePath();
+  fs.mkdirSync(path.dirname(preferencePath), { recursive: true });
+  fs.writeFileSync(preferencePath, JSON.stringify(preference, null, 2) + '\n');
+  return preference;
 }
 
 export const TELEMETRY_SIGNALS = [

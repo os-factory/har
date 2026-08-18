@@ -5,8 +5,10 @@ import * as path from 'path';
 import {
   ensureDefaultTelemetryPreference,
   getTelemetryPreferencePath,
+  isPortalTrajectoryEnabled,
   isTelemetryEnabled,
   readTelemetryPreference,
+  writePortalTrajectoryPreference,
   writeTelemetryPreference,
 } from '../src/core/telemetry-config';
 import {
@@ -92,6 +94,69 @@ describe('telemetry preference', () => {
     expect(isTelemetryEnabled()).toBe(false);
     process.env.HAR_TELEMETRY = '1';
     expect(isTelemetryEnabled()).toBe(true);
+  });
+});
+
+describe('portal trajectory opt-in', () => {
+  const originalTelemetry = process.env.HAR_TELEMETRY;
+  const originalTrajectory = process.env.HAR_PORTAL_TRAJECTORY;
+  const originalPath = process.env.HAR_TELEMETRY_CONFIG_PATH;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-trajectory-'));
+    process.env.HAR_TELEMETRY_CONFIG_PATH = path.join(tmpDir, 'telemetry.json');
+    delete process.env.HAR_TELEMETRY;
+    delete process.env.HAR_PORTAL_TRAJECTORY;
+  });
+
+  afterEach(() => {
+    if (originalTelemetry === undefined) delete process.env.HAR_TELEMETRY;
+    else process.env.HAR_TELEMETRY = originalTelemetry;
+    if (originalTrajectory === undefined) delete process.env.HAR_PORTAL_TRAJECTORY;
+    else process.env.HAR_PORTAL_TRAJECTORY = originalTrajectory;
+    if (originalPath === undefined) delete process.env.HAR_TELEMETRY_CONFIG_PATH;
+    else process.env.HAR_TELEMETRY_CONFIG_PATH = originalPath;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('is off by default even with telemetry fully on', () => {
+    expect(isTelemetryEnabled()).toBe(true);
+    expect(isPortalTrajectoryEnabled()).toBe(false);
+  });
+
+  it('persists the opt-in', () => {
+    writePortalTrajectoryPreference(true);
+    expect(isPortalTrajectoryEnabled()).toBe(true);
+    writePortalTrajectoryPreference(false);
+    expect(isPortalTrajectoryEnabled()).toBe(false);
+  });
+
+  it('stays off while telemetry is off', () => {
+    writePortalTrajectoryPreference(true);
+    writeTelemetryPreference(false);
+    expect(isPortalTrajectoryEnabled()).toBe(false);
+  });
+
+  it('survives a telemetry off/on cycle', () => {
+    writePortalTrajectoryPreference(true);
+    writeTelemetryPreference(false);
+    writeTelemetryPreference(true);
+    expect(isPortalTrajectoryEnabled()).toBe(true);
+  });
+
+  it('keeps the telemetry signals when toggled', () => {
+    writeTelemetryPreference(true, { prompts: false });
+    writePortalTrajectoryPreference(true);
+    expect(readTelemetryPreference().signals.prompts).toBe(false);
+  });
+
+  it('lets HAR_PORTAL_TRAJECTORY override the file', () => {
+    process.env.HAR_PORTAL_TRAJECTORY = 'on';
+    expect(isPortalTrajectoryEnabled()).toBe(true);
+    writePortalTrajectoryPreference(true);
+    process.env.HAR_PORTAL_TRAJECTORY = 'off';
+    expect(isPortalTrajectoryEnabled()).toBe(false);
   });
 });
 

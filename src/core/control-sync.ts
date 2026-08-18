@@ -36,11 +36,12 @@ import {
   listWorkUnits,
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
-import { isTelemetryEnabled } from './telemetry-config';
+import { isPortalTrajectoryEnabled, isTelemetryEnabled } from './telemetry-config';
 import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
+import { fetchPersistedTrajectory } from './control-persisted-trajectory';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
 import { enrichUsageWithPricing } from '../harness/schema';
 import {
@@ -113,6 +114,14 @@ function rewindSince(since: string | null): string | null {
 
 function runsWatermarkTarget(target: string): string {
   return `runs:${target}`;
+}
+
+function trajectoryWatermarkTarget(target: string): string {
+  return `trajectory:${target}`;
+}
+
+function spansWatermarkTarget(target: string): string {
+  return `spans:${target}`;
 }
 
 /** Send run batches oldest-first, advancing the watermark (with the server repo
@@ -233,6 +242,33 @@ async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
   return true;
 }
 
+async function postPortalWithRefresh(
+  target: PortalTarget,
+  endpoint: string,
+  body: unknown,
+): Promise<Response> {
+  const response = await postPortalOnce(target, endpoint, body);
+
+  if (
+    (response.status === 401 || response.status === 403) &&
+    (await refreshPortalToken(target))
+  ) {
+    return postPortalOnce(target, endpoint, body);
+  }
+
+  return response;
+}
+
+async function throwPortalFailure(response: Response): Promise<never> {
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har control login\` (or check HAR_PORTAL_TOKEN).`,
+    );
+  }
+  const text = await response.text().catch(() => '');
+  throw new Error(`har-portal sync failed: HTTP ${response.status}${text ? ` — ${text}` : ''}`);
+}
+
 async function postPortal(
   target: PortalTarget,
   endpoint: string,
@@ -241,26 +277,25 @@ async function postPortal(
 ): Promise<Record<string, unknown> | null> {
   if (dryRun) return null;
 
-  let response = await postPortalOnce(target, endpoint, body);
-
-  if (
-    (response.status === 401 || response.status === 403) &&
-    (await refreshPortalToken(target))
-  ) {
-    response = await postPortalOnce(target, endpoint, body);
-  }
-
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new Error(
-        `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har control login\` (or check HAR_PORTAL_TOKEN).`,
-      );
-    }
-    const text = await response.text().catch(() => '');
-    throw new Error(`har-portal sync failed: HTTP ${response.status}${text ? ` — ${text}` : ''}`);
-  }
+  const response = await postPortalWithRefresh(target, endpoint, body);
+  if (!response.ok) await throwPortalFailure(response);
 
   return (await response.json().catch(() => null)) as Record<string, unknown> | null;
+}
+
+async function postPortalIfSupported(
+  target: PortalTarget,
+  endpoint: string,
+  body: unknown,
+  dryRun?: boolean,
+): Promise<boolean> {
+  if (dryRun) return true;
+
+  const response = await postPortalWithRefresh(target, endpoint, body);
+  if (response.status === 404) return false;
+  if (!response.ok) await throwPortalFailure(response);
+
+  return true;
 }
 
 function resolvePortalUserEmail(): string | undefined {
@@ -658,10 +693,64 @@ async function syncRepoWithPortal(
   }
 
   for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes())) {
-    await postPortal(portal, '/api/otel', { path: repoPath, events: batch, spans: [] }, dryRun);
+    await postPortal(portal, '/api/otel', { path: repoPath, events: batch }, dryRun);
   }
   if (!dryRun && maxSyncedAt) {
     writePortalWatermark(repoPath, portal.url, maxSyncedAt);
+  }
+
+  await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full);
+}
+
+async function syncTrajectoryWithPortal(
+  portal: PortalTarget,
+  repoPath: string,
+  controlApiUrl: string,
+  dryRun: boolean | undefined,
+  full: boolean | undefined,
+): Promise<void> {
+  const wantRecords = isPortalTrajectoryEnabled();
+  const wantSpans = isTelemetryEnabled();
+  if (!wantRecords && !wantSpans) return;
+
+  const recordsTarget = trajectoryWatermarkTarget(portal.url);
+  const spansTarget = spansWatermarkTarget(portal.url);
+  const { records, spans, recordsMaxSyncedAt, spansMaxSyncedAt } =
+    await fetchPersistedTrajectory(repoPath, controlApiUrl, {
+      records: wantRecords
+        ? { since: full ? null : readPortalWatermark(repoPath, recordsTarget) }
+        : false,
+      spans: wantSpans
+        ? { since: full ? null : readPortalWatermark(repoPath, spansTarget) }
+        : false,
+    });
+
+  for (const batch of chunkBySerializedSize(spans, maxSyncBatchBytes())) {
+    await postPortal(portal, '/api/otel', { path: repoPath, spans: batch }, dryRun);
+  }
+  if (!dryRun && spansMaxSyncedAt) {
+    writePortalWatermark(repoPath, spansTarget, spansMaxSyncedAt);
+  }
+
+  let recordsLanded = true;
+  for (const batch of chunkBySerializedSize(records, maxSyncBatchBytes())) {
+    const supported = await postPortalIfSupported(
+      portal,
+      '/api/trajectory',
+      { path: repoPath, records: batch },
+      dryRun,
+    );
+    if (!supported) {
+      recordsLanded = false;
+      warn(
+        `${path.basename(repoPath)}: this har-portal has no /api/trajectory endpoint — ` +
+          'trajectory forwarding skipped (upgrade the portal; records are kept for the next sync).',
+      );
+      break;
+    }
+  }
+  if (!dryRun && recordsLanded && recordsMaxSyncedAt) {
+    writePortalWatermark(repoPath, recordsTarget, recordsMaxSyncedAt);
   }
 }
 
