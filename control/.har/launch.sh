@@ -271,7 +271,7 @@ if [ -n "${HARNESS_DB_MIGRATE_CMD:-}" ] && [ "$HARNESS_DB_MIGRATE_CMD" != "true"
 fi
 
 PM2_REGEX="$(har_pm2_delete_regex "$AGENT_ID")"
-npx --yes pm2 delete "$PM2_REGEX" 2>/dev/null || true
+$(har_pkg_exec) pm2 delete "$PM2_REGEX" 2>/dev/null || true
 sleep 1
 
 # Sanity check — allocated ports should be free (har_allocate_slot_app_ports already scanned).
@@ -285,8 +285,8 @@ done
 # Start PM2 processes
 log "Starting PM2 processes..."
 cd "$WORK_DIR"
-npx pm2 start "$ECOSYSTEM_FILE"
-npx pm2 save --force >/dev/null 2>&1 || true
+$(har_pkg_exec) pm2 start "$ECOSYSTEM_FILE"
+$(har_pkg_exec) pm2 save --force >/dev/null 2>&1 || true
 
 # Health check
 if [ -n "${HARNESS_HEALTH_CHECK_PATH:-}" ]; then
@@ -311,7 +311,7 @@ fi
 
 # The health check only proves the port answers — confirm the processes we
 # just started are the ones running (online, not crash-looping).
-if ! npx --yes pm2 jlist 2>/dev/null | AGENT_PREFIX="$(har_pm2_slot_prefix "$AGENT_ID")-" node -e '
+if ! $(har_pkg_exec) pm2 jlist 2>/dev/null | AGENT_PREFIX="$(har_pm2_slot_prefix "$AGENT_ID")-" node -e '
 let d = "";
 process.stdin.on("data", (c) => (d += c));
 process.stdin.on("end", () => {

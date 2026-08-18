@@ -5,34 +5,22 @@ alwaysApply: true
 
 # HAR Harness Workflow
 
-This repository uses agent harnesses under `.har/`. Follow this on every change.
+This repository uses a `.har/` agent harness. Follow this on every change.
 
 The harness is **how you run the project**, not only how you verify it. Launch a
 slot for live apps, browsers, and screenshots — never hand-roll docker/dev-server
 startup. If a harness command fails, fix the harness or surface the failure.
 
-## Harnesses in this repo
-
-| Path | Runs | Use when changing |
-|------|------|-------------------|
-| `.har/` | `@osfactory/har` CLI (typecheck, build, unit tests, lint) | `src/`, `packages/`, `tests/` |
-| `control/.har/` | Mission Control (Next.js) | `control/` |
-| `docs/.har/` | Docs / marketing site (Astro + Playwright screenshots) | `docs/` |
-
-Run harness commands from the directory that owns the harness (e.g. `cd docs`).
-Root index: `AGENTS.md`.
-
 ## Before making changes
 
 1. On the **main checkout**, switch to the intended base (usually `main`) — launch
    creates a worktree from that HEAD.
-2. **Launch first** — MCP `har_launch_environment` / `har env launch 1` from the
-   harness directory. Use the returned **work dir** for ALL edits (never the main
-   checkout). Path looks like `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`
-   (see `<harness>/.har/slots/agent-<id>.json`).
+2. **Launch first** — MCP `har_launch_environment` / `har env launch 1`. Use the
+   returned **work dir** for ALL edits (never the main checkout). Path looks like
+   `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` (see `.har/slots/agent-<id>.json`).
    **Bind tracker work** when the task names an issue or ticket — short `--work-id`
    (e.g. `widget-123`) plus `--work-source` / `--work-url` / `--work-title`. Skip for ad-hoc work.
-3. Read `AGENTS.md`, the harness `.har/README.md`, `.har/stages.json`, then
+3. Read `AGENTS.md`, `.har/README.md`, `.har/stages.json`, then
    `.har/CLAUDE.agent.md` (slot URLs / definition of done).
 4. Hot-reload usually applies; if not, `./.har/agent-cli.sh <id> restart` (no-op on
    cli/ios profiles without managed processes).
@@ -43,6 +31,18 @@ sharing slot 1 across unrelated chats. Check `har_get_status` / `har env status`
 first. Commit early — teardown keeps the branch, not uncommitted work. Gitignored
 paths are ephemeral. With telemetry on, Mission Control derives session purpose from
 the first captured user prompt.
+
+## Harnesses in this repo
+
+Pick the harness that owns the files you are changing. See `AGENTS.md`.
+
+| Path | Runs | Use when changing |
+|------|------|-------------------|
+| `.har/` | `@osfactory/har` (typecheck, build, unit tests, lint) | `src/`, `packages/`, `tests/` |
+| `control/.har/` | Mission Control (Next.js + SQLite, browser-e2e) | `control/` |
+| `docs/.har/` | Docs / marketing site (Astro + Playwright screenshots) | `docs/` |
+
+Run harness commands from the directory that owns the harness (e.g. `cd docs`).
 
 ## After making changes
 

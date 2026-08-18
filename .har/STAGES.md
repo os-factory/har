@@ -3,7 +3,7 @@
 > **This monorepo:** root `.har/` is the CLI profile (no Playwright). Browser E2E is registered in [`control/.har/stages.json`](../control/.har/stages.json).
 
 Stages are the harness's single vocabulary for runnable checks and lifecycle
-actions. Everything — shipped plugins (`playwright`, `rocketsim`), your
+actions. Everything — shipped plugins (`playwright`, `rocketsim`, `kerno`, `gitleaks`, `trivy`, `semgrep`), your
 project's test/lint commands, bespoke validation scripts — registers in
 `.har/stages.json` with the same schema, and agents interact with stages only
 through that registry (CLI `har env verify`, MCP `har_run_stage` /
@@ -92,6 +92,10 @@ committed.
 ## Shipped plugins
 
 `har env add-plugin --list` shows available plugins; `har env add-plugin
-playwright` (web) or `har env add-plugin rocketsim` (iOS) installs one. A
+playwright` (web), `har env add-plugin rocketsim` (iOS), or `har env
+add-plugin kerno` (backend), `har env add-plugin gitleaks` (secrets scanning, any
+stack), or `har env add-plugin trivy` (dependency + IaC security scan, any stack),
+or `har env add-plugin semgrep` (SAST, any stack)
+installs one. A
 plugin is just packaging: it copies files, merges `package.json` fragments,
 and registers stages through the exact same registry as `add-stage --custom`.

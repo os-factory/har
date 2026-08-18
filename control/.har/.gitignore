@@ -6,6 +6,8 @@ artifacts/
 state/
 maintain/
 ADAPT-PROMPT.md
+AGENTS.md.proposed
+AGENTS.md.proposed.meta.json
 AGENT.md.proposed
 AGENT.md.proposed.meta.json
 slots/

@@ -378,9 +378,9 @@ provision_monorepo_root() {
   [ -n "$HAR_WORKTREE_DIR" ] || return 0
   [ -f "$HAR_WORKTREE_DIR/package.json" ] || return 0
   [ -d "$HAR_WORKTREE_DIR/node_modules" ] && return 0
-  pt_log "Installing monorepo root dependencies in $HAR_WORKTREE_DIR..."
   local pkg_manager
   pkg_manager="$(har_node_package_manager "$HAR_WORKTREE_DIR")"
+  pt_log "Installing monorepo root dependencies in $HAR_WORKTREE_DIR with ${pkg_manager}..."
   har_node_install "$HAR_WORKTREE_DIR" "$pkg_manager" \
     "$(har_node_declared_package_manager "$HAR_WORKTREE_DIR")"
 }

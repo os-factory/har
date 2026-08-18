@@ -19,7 +19,7 @@ verify-full id:
 
 status:
     #!/usr/bin/env bash
-    for id in 1 2 3; do
+    for id in 1 2 3 4 5; do
         ./agent-cli.sh "$id" status 2>/dev/null || true
     done
 

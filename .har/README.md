@@ -20,8 +20,9 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start optional Docker Compose stack + template database |
 | `launch.sh` | Launch one agent slot (git worktree by default, toolchain provisioning, env file) |
-| `provision-toolchain.sh` | Install deps and write toolchain paths (`NODE_BIN`, `NPM_BIN`, …) to `.env.agent.<id>` |
-| `verify.sh` | Verification pipeline (smoke by default; --full adds tests, lint, docs-drift) |
+| `provision-toolchain.sh` | Install deps (root + `docs/`) and write toolchain paths (`NODE_BIN`, `NPM_BIN`, …) to `.env.agent.<id>` |
+| `verify.sh` | Verification pipeline (quick: typecheck/build/docs; --full adds tests, lint, docs-drift) |
+| `preflight.sh` | Occupied-slot gate before launch |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run commands in the work dir |
 | `docker-compose.agent.yml` | Shared infrastructure containers (services listed in `HARNESS_INFRA_SERVICES`) |
@@ -64,7 +65,7 @@ Steps in `verify.sh` are adapted for **@osfactory/har** — typecheck, build, do
 | Quick | `har env verify <id>` or `verify.sh <id>` | Typecheck, build, docs check/build |
 | Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, readiness, `docs-drift` |
 
-This CLI harness has no runtime server — full verify is static analysis and tests only. Mission Control dogfooding uses `control/.har/`.
+This CLI harness has no runtime server — full verify is static analysis and tests only. A slot is **agent usable** when typecheck, build, docs check/build, unit tests, lint, and `docs-drift` pass. Mission Control dogfooding uses `control/.har/`; the docs site uses `docs/.har/`.
 
 Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when working in the repo root.
 
@@ -96,6 +97,7 @@ This profile has **no PM2 app ports** — agents run project commands directly i
 | Layer | Scope | Rule | On conflict |
 |-------|-------|------|-------------|
 | Shared Postgres | Per machine | `HARNESS_DB_PORT_DEFAULT` | Scan `HARNESS_DB_PORT_SCAN_START..END` |
+| Other compose services | Per machine | `HARNESS_*_PORT_DEFAULT` for that service | Scan configured ranges in `harness.env` |
 | Per-slot HTTP (optional) | Per slot | `HARNESS_*_BASE_PORT + agentId * HARNESS_PORT_STEP` | — |
 
 ### Shared vs per-slot
@@ -103,6 +105,7 @@ This profile has **no PM2 app ports** — agents run project commands directly i
 | Resource | Model | Configuration |
 |----------|-------|---------------|
 | Postgres / Redis / mail / … | One shared container on a scanned host port | `HARNESS_INFRA_SERVICES` + matching vars in `harness.env` |
+| Per-slot databases | Cloned from template DB when `db` is enabled | `launch.sh` |
 | Application code | Isolated git worktree per slot | `HARNESS_USE_WORKTREE=true` |
 
 ### Do not
@@ -112,7 +115,7 @@ This profile has **no PM2 app ports** — agents run project commands directly i
 
 ## Maintaining this harness
 
-When the project stack changes:
+When the project stack changes (new test commands, database needs, env vars):
 
 ```bash
 har env maintain

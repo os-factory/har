@@ -27,14 +27,9 @@ tests/               Playwright (frontend, api, a11y, visual-proof)
 <!-- har:agent-environment:start -->
 ## HAR / agent environment
 
-The harness is not just a verification gate — it is **how you run this project**.
-To see the app live (manual testing, browser sessions, screenshots, driving the UI),
-use `har env launch <id>` or `./.har/launch.sh <id>`. It already encodes database
-setup, ports, env vars, and process management — never hand-roll `docker` / dev-server
-startup, and never claim a task "can't be verified live" without launching a slot first.
-
-If a harness command fails, fix the harness (or report the failure) — do not quietly
-fall back to ad-hoc commands.
+The harness is **how you run this site**. Launch a slot for `astro dev` on the
+slot port and Playwright before/after screenshots. Never hand-roll `astro dev`.
+If a harness command fails, fix the harness or report it.
 
 ### Before making changes
 
@@ -76,10 +71,7 @@ Commit in the session worktree. Run JSON stays in the main checkout `.har/runs/`
 ### Session handoff (required)
 
 After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-<id>.json`), preview URLs, and **Playwright after-screenshots**
-from full verify (paths under the **session work dir**, not the main checkout —
-e.g. `<work-dir>/.har/artifacts/browser-e2e/screenshots/after/*.png`; list or link
-every PNG so UI changes are reviewable without hunting the worktree). Wait — never autonomously
+(`.har/slots/agent-<id>.json`), and preview URLs. Wait — never autonomously
 complete, teardown, push, or open a PR. **Default:** when `gh`/GitHub MCP is available,
 recommend **Complete + open a PR** (still needs approval). Alternatives: **Complete only**,
 or **Something else**. Without PR tooling, recommend **Complete only** and give the
@@ -102,5 +94,6 @@ create or refresh it.
 
 - **Primary app:** Astro site (`npm run dev` / `astro dev`) — no database.
 - **Ports:** slot 1 defaults to **4321** (see `.har/harness.env`); never hardcode.
-- **Screenshots:** launch → `screenshots/before/`; full verify → `screenshots/after/`.
+- **Screenshots:** launch → `.har/artifacts/browser-e2e/screenshots/before/`; full verify → `…/after/` (paths are under the **session work dir**).
+- **Session handoff:** list every after-screenshot PNG from the work dir so UI changes are reviewable.
 - **Other harnesses:** root `.har/` (CLI) · `control/.har/` (Mission Control).
