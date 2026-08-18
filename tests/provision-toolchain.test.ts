@@ -233,4 +233,123 @@ describe('provision-toolchain.sh template contract', () => {
       expect(content).not.toMatch(/run_step "[^"]+" "npm /);
     }
   });
+
+  describe('Python interpreter resolution', () => {
+    const scriptPath = path.join(
+      resolveTemplatesDir(),
+      'har-boilerplate-cli',
+      'provision-toolchain.sh',
+    );
+
+    const sourcePythonHelpers = (body: string): ReturnType<typeof run> =>
+      run(
+        `HAR_WORK_DIR="." HAR_ENV_FILE=/dev/null HAR_AGENT_ID= HAR_WORKTREE_DIR= HAR_REL_PREFIX= ` +
+          `bash -c 'source <(sed "/^append_env \\"HARNESS_TOOLCHAIN_PROVISIONED\\"/,\\$d" "${scriptPath}") && ${body}'`,
+      );
+
+    it('compares Python versions and parses requires-python minimums', () => {
+      const ge = sourcePythonHelpers(
+        'har_python_version_ge 3.12.1 3.11 && har_python_version_ge 3.11 3.11 && ! har_python_version_ge 3.10 3.11',
+      );
+      expect(ge.code).toBe(0);
+
+      const specs = sourcePythonHelpers(
+        'echo "$(har_python_requires_minimum ">=3.11, <3.14")" && ' +
+          'echo "$(har_python_requires_minimum "~=3.12.0")" && ' +
+          'echo "$(har_python_requires_minimum "==3.10.*")"',
+      );
+      expect(specs.code).toBe(0);
+      expect(specs.stdout.trim().split('\n')).toEqual(['3.11', '3.12', '3.10']);
+    });
+
+    it('derives the project minimum from requires-python and .python-version', () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-py-min-'));
+      fs.writeFileSync(
+        path.join(tmpDir, 'pyproject.toml'),
+        '[project]\nrequires-python = ">=3.11, <3.14"\n',
+      );
+      fs.writeFileSync(path.join(tmpDir, '.python-version'), '3.13\n');
+
+      const result = sourcePythonHelpers(`echo "$(har_python_project_minimum "${tmpDir}")"`);
+      expect(result.code).toBe(0);
+      expect(result.stdout.trim()).toBe('3.13');
+    });
+
+    it('warns when the resolved interpreter is older than requires-python', () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-py-warn-'));
+      const script = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');
+      const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
+
+      fs.writeFileSync(
+        path.join(tmpDir, 'pyproject.toml'),
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=99.0"\n',
+      );
+      fs.writeFileSync(path.join(tmpDir, 'requirements.txt'), '# empty fixture\n');
+
+      const envFile = path.join(tmpDir, '.env.agent.1');
+      fs.writeFileSync(envFile, `AGENT_ID=1\nREPO_ROOT=${tmpDir}\n`);
+
+      const result = run(
+        `set -a && . "${harnessEnv}" && set +a && ` +
+          `HAR_WORK_DIR="${tmpDir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
+          `bash "${script}" 2>&1`,
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain('WARNING: resolved Python');
+      expect(result.stdout).toContain('older than required 99.0');
+    });
+
+    it('flags an existing venv for recreation when its Python is below requires-python', () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-py-recreate-'));
+      const venvPython = path.join(tmpDir, '.har', 'venv', 'bin', 'python');
+
+      fs.mkdirSync(path.dirname(venvPython), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, 'pyproject.toml'),
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.11"\n',
+      );
+
+      const check = sourcePythonHelpers(
+        `project_min="$(har_python_project_minimum "${tmpDir}")" && ` +
+          `venv_ver="3.9.6" && ` +
+          `if ! har_python_version_ge "$venv_ver" "$project_min"; then echo recreate; fi`,
+      );
+
+      expect(check.code).toBe(0);
+      expect(check.stdout.trim()).toBe('recreate');
+    });
+
+    it('detects uv-managed projects and prefers uv for venv creation when available', () => {
+      const uvCheck = run('command -v uv');
+      if (uvCheck.code !== 0) {
+        return;
+      }
+
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-py-uv-'));
+      const script = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');
+      const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
+
+      fs.writeFileSync(
+        path.join(tmpDir, 'pyproject.toml'),
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.11"\n\n[tool.uv]\n',
+      );
+      fs.writeFileSync(path.join(tmpDir, 'uv.lock'), '# uv lock fixture\n');
+      fs.writeFileSync(path.join(tmpDir, 'requirements.txt'), '# empty fixture\n');
+
+      const envFile = path.join(tmpDir, '.env.agent.1');
+      fs.writeFileSync(envFile, `AGENT_ID=1\nREPO_ROOT=${tmpDir}\n`);
+
+      const result = run(
+        `set -a && . "${harnessEnv}" && set +a && ` +
+          `HAR_WORK_DIR="${tmpDir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
+          `bash "${script}"`,
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.stderr).toContain('Creating Python venv with uv');
+      const envContent = fs.readFileSync(envFile, 'utf8');
+      expect(envContent).toContain('PYTHON_BIN=');
+    });
+  });
 });
