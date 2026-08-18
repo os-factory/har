@@ -1,3 +1,15 @@
+# [0.61.0](https://github.com/os-factory/har/compare/v0.60.1...v0.61.0) (2026-08-18)
+
+
+### Bug Fixes
+
+* drop vulnerable tmp transitive via inquirer 12 ([#224](https://github.com/os-factory/har/issues/224)) ([bb93aad](https://github.com/os-factory/har/commit/bb93aad0b5b50286056dd9ccce05257d074933cf))
+
+
+### Features
+
+* **control:** forward the trajectory ledger to a hosted portal ([#223](https://github.com/os-factory/har/issues/223)) ([ce657e5](https://github.com/os-factory/har/commit/ce657e50a55d94e7eb5d6d8d6808f360569b692c))
+
 ## [0.60.1](https://github.com/os-factory/har/compare/v0.60.0...v0.60.1) (2026-08-17)
 
 
