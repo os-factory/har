@@ -120,6 +120,24 @@ har_allocate_port() {
   har_pick_free_port "$scan_start" "$scan_end"
 }
 
+# Load persisted infra host ports from .har/state/infra.env (written by setup-infra.sh).
+# Optional repo_root: when launching from a worktree, infra may live in the main checkout.
+har_load_infra_state() {
+  local repo_root="${1:-${REPO_ROOT:-}}"
+  local infra_state="$SCRIPT_DIR/state/infra.env"
+  if [ ! -f "$infra_state" ] && [ -n "$repo_root" ]; then
+    local common_git_dir
+    common_git_dir="$(git -C "$repo_root" rev-parse --git-common-dir 2>/dev/null || true)"
+    if [ -n "$common_git_dir" ]; then
+      infra_state="$(cd "$(dirname "$common_git_dir")" && pwd)/.har/state/infra.env"
+    fi
+  fi
+  if [ -f "$infra_state" ]; then
+    # shellcheck source=/dev/null
+    source "$infra_state"
+  fi
+}
+
 # Allocate FE/API/DEBUG ports for a slot. Sets FE_PORT, API_PORT, DEBUG_PORT.
 har_allocate_slot_app_ports() {
   local agent_id="$1"
@@ -304,6 +322,7 @@ har_regenerate_agent_env_file() {
   if [ ! -f "$template" ]; then
     return 0
   fi
+  har_load_infra_state "${work_dir:-${REPO_ROOT:-}}"
   AGENT_ID="$agent_id" \
   API_PORT="$API_PORT" \
   FE_PORT="$FE_PORT" \
@@ -444,6 +463,7 @@ try {
     fi
   fi
   har_allocate_slot_app_ports "$agent_id"
+  har_load_infra_state "$repo_root"
   DB_PORT="${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}"
   export FE_PORT API_PORT DEBUG_PORT DB_PORT
 }

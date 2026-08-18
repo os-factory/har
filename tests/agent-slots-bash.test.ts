@@ -85,6 +85,44 @@ describe('bash agent slot limits', () => {
     expect(fs.existsSync(witness)).toBe(false); // still running, deliberately not awaited
   });
 
+  it('har_load_infra_state reads persisted ports from infra.env', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-infra-state-'));
+    const harDir = path.join(dir, '.har');
+    fs.mkdirSync(path.join(harDir, 'state'), { recursive: true });
+    fs.writeFileSync(
+      path.join(harDir, 'state', 'infra.env'),
+      'export AGENT_DB_PORT=15433\nexport AGENT_MINIO_PORT=19001\n',
+    );
+
+    const out = execSync(
+      `bash -c 'SCRIPT_DIR="${harDir}"; source "${AGENT_SLOT}"; har_load_infra_state; echo "db=$AGENT_DB_PORT minio=$AGENT_MINIO_PORT"'`,
+      { encoding: 'utf8' },
+    ).trim();
+    expect(out).toBe('db=15433 minio=19001');
+  });
+
+  it('har_load_infra_state falls back to the main checkout when worktree has no infra.env', () => {
+    const main = fs.mkdtempSync(path.join(os.tmpdir(), 'har-infra-main-'));
+    execSync('git init -q', { cwd: main });
+    execSync('git -c user.email=har@example.com -c user.name=har -c commit.gpgsign=false commit --allow-empty -qm init', {
+      cwd: main,
+    });
+    const mainHar = path.join(main, '.har');
+    fs.mkdirSync(path.join(mainHar, 'state'), { recursive: true });
+    fs.writeFileSync(path.join(mainHar, 'state', 'infra.env'), 'export AGENT_DB_PORT=15444\n');
+
+    const worktree = path.join(main, 'wt');
+    execSync(`git worktree add -q "${worktree}" -b har-agent-1`, { cwd: main });
+    const worktreeHar = path.join(worktree, '.har');
+    fs.mkdirSync(worktreeHar, { recursive: true });
+
+    const out = execSync(
+      `bash -c 'SCRIPT_DIR="${worktreeHar}"; REPO_ROOT="${worktree}"; source "${AGENT_SLOT}"; har_load_infra_state "${worktree}"; echo "db=$AGENT_DB_PORT"'`,
+      { encoding: 'utf8' },
+    ).trim();
+    expect(out).toBe('db=15444');
+  });
+
   it('har_warn_untracked_worktree names untracked paths and stays quiet when ignored', () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'har-untracked-warn-'));
     execSync('git init -q', { cwd: repo });
