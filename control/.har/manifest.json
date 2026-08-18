@@ -15,7 +15,7 @@
     "agent-slot.sh": "b61a59f65467f7d1",
     "attach.sh": "4755c9cfaf9abb45",
     "docker-compose.agent.yml": "1e47f6ff3ed219d1",
-    "ecosystem.agent.template.cjs": "ad305dbfcf6724e1",
+    "ecosystem.agent.template.cjs": "2511163f68bcfce0",
     "env.template": "d8c2c518447d6f55",
     "harness.env": "85ba37b2a8f478b1",
     "justfile": "e7c1048680a7a28c",
