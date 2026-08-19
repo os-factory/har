@@ -1,3 +1,10 @@
+## [0.61.1](https://github.com/os-factory/har/compare/v0.61.0...v0.61.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* load persisted infra ports after setup-infra.sh ([#246](https://github.com/os-factory/har/issues/246)) ([db6e192](https://github.com/os-factory/har/commit/db6e192c226781a8554bd4648f71359f6d50f9ff))
+
 # [0.61.0](https://github.com/os-factory/har/compare/v0.60.1...v0.61.0) (2026-08-18)
 
 
