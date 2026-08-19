@@ -7,11 +7,17 @@
 
 // launch.sh writes this file (and .env.agent.N) to the work dir root,
 // so __dirname IS the work dir — repo root or the agent's git worktree.
+const fs = require('fs');
 const path = require('path');
-const dotenv = require('dotenv');
 
 const agentEnvPath = path.resolve(__dirname, '.env.agent.${AGENT_ID}');
-const env = dotenv.config({ path: agentEnvPath }).parsed || {};
+const env = {};
+try {
+  for (const line of fs.readFileSync(agentEnvPath, 'utf8').split('\n')) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m && !line.trimStart().startsWith('#')) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+} catch {}
 
 module.exports = {
   apps: [

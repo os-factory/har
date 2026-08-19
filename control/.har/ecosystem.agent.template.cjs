@@ -6,11 +6,17 @@
 // launch.sh writes this file (and .env.agent.N) into the work dir — the
 // control/ project dir (repo root checkout or inside the agent's worktree) —
 // so __dirname IS the Next.js app directory.
+const fs = require('fs');
 const path = require('path');
-const dotenv = require('dotenv');
 
 const agentEnvPath = path.resolve(__dirname, '.env.agent.${AGENT_ID}');
-const env = dotenv.config({ path: agentEnvPath }).parsed || {};
+const env = {};
+try {
+  for (const line of fs.readFileSync(agentEnvPath, 'utf8').split('\n')) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m && !line.trimStart().startsWith('#')) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+} catch {}
 const port = env.FE_PORT || env.PORT || '3847';
 
 module.exports = {
