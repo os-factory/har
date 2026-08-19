@@ -343,11 +343,11 @@ describe('provision-toolchain.sh template contract', () => {
       const result = run(
         `set -a && . "${harnessEnv}" && set +a && ` +
           `HAR_WORK_DIR="${tmpDir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
-          `bash "${script}"`,
+          `bash "${script}" 2>&1`,
       );
 
       expect(result.code).toBe(0);
-      expect(result.stderr).toContain('Creating Python venv with uv');
+      expect(result.stdout).toContain('Creating Python venv with uv');
       const envContent = fs.readFileSync(envFile, 'utf8');
       expect(envContent).toContain('PYTHON_BIN=');
     });
