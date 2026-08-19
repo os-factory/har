@@ -228,52 +228,291 @@ provision_node() {
   append_path_prefix "$dir/node_modules/.bin"
 }
 
+# ── Python interpreter helpers ────────────────────────────────────────────────
+# Resolve the project Python (requires-python, .python-version, uv) instead of
+# blindly using PATH python3.
+
+har_python_version_from_bin() {
+  local bin="$1"
+  "$bin" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null \
+    | tr -d '[:space:]'
+}
+
+har_python_version_to_sortable() {
+  local v="${1#python}"
+  v="${v#v}"
+  local major=0 minor=0 patch=0
+  IFS='.' read -r major minor patch _ <<< "$v"
+  major=${major:-0}
+  minor=${minor:-0}
+  patch=${patch:-0}
+  printf '%03d%03d%03d' "$major" "$minor" "$patch"
+}
+
+har_python_version_ge() {
+  local a b
+  a="$(har_python_version_to_sortable "$1")"
+  b="$(har_python_version_to_sortable "$2")"
+  [ "$a" -ge "$b" ]
+}
+
+har_python_requires_minimum() {
+  local spec="$1"
+  local ver=""
+
+  [ -n "$spec" ] || return 1
+
+  ver="$(printf '%s' "$spec" | sed -n \
+    -e 's/.*>=\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' \
+    -e 's/.*~=\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' \
+    -e 's/.*==\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' \
+    | head -1)"
+
+  if [ -z "$ver" ]; then
+    ver="$(printf '%s' "$spec" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  fi
+
+  [ -n "$ver" ] && echo "$ver"
+}
+
+har_python_read_dot_version() {
+  local dir="$1"
+  [ -f "$dir/.python-version" ] || return 1
+  head -1 "$dir/.python-version" | tr -d '[:space:]'
+}
+
+har_python_read_requires_spec() {
+  local dir="$1"
+  local spec=""
+
+  if [ -f "$dir/pyproject.toml" ]; then
+    spec="$(sed -n 's/^[[:space:]]*requires-python[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+      "$dir/pyproject.toml" | head -1)"
+  fi
+  if [ -z "$spec" ] && [ -f "$dir/setup.cfg" ]; then
+    spec="$(sed -n '/^\[options\]/,/^\[/ s/^python_requires[[:space:]]*=[[:space:]]*\(.*\)/\1/p' \
+      "$dir/setup.cfg" | head -1 | tr -d ' "')"
+  fi
+  [ -n "$spec" ] && echo "$spec"
+}
+
+har_python_project_minimum() {
+  local dir="$1"
+  local req_min="" dot_ver="" higher=""
+
+  req_min="$(har_python_requires_minimum "$(har_python_read_requires_spec "$dir" || true)" || true)"
+  dot_ver="$(har_python_read_dot_version "$dir" || true)"
+  if [ -n "$dot_ver" ]; then
+    dot_ver="$(printf '%s' "$dot_ver" | sed 's/^v//; s/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/')"
+  fi
+
+  if [ -n "$req_min" ] && [ -n "$dot_ver" ]; then
+    if har_python_version_ge "$dot_ver" "$req_min"; then
+      higher="$dot_ver"
+    else
+      higher="$req_min"
+    fi
+  elif [ -n "$req_min" ]; then
+    higher="$req_min"
+  elif [ -n "$dot_ver" ]; then
+    higher="$dot_ver"
+  fi
+
+  [ -n "$higher" ] && echo "$higher"
+}
+
+har_python_is_uv_project() {
+  local dir="$1"
+  [ -f "$dir/uv.lock" ] && return 0
+  [ -f "$dir/pyproject.toml" ] && grep -q '^\[tool\.uv\]' "$dir/pyproject.toml" 2>/dev/null
+}
+
+har_python_uv_find() {
+  local dir="$1"
+  local request="${2:-}"
+
+  command -v uv >/dev/null 2>&1 || return 1
+  if [ -n "$request" ]; then
+    (cd "$dir" && uv python find "$request" 2>/dev/null)
+  else
+    (cd "$dir" && uv python find 2>/dev/null)
+  fi
+}
+
+har_python_resolve_interpreter() {
+  local dir="$1"
+  local minimum="${2:-}"
+  local found=""
+
+  if har_python_is_uv_project "$dir"; then
+    found="$(har_python_uv_find "$dir" "$minimum" || true)"
+    if [ -n "$found" ] && [ -x "$found" ]; then
+      echo "$found"
+      return 0
+    fi
+  fi
+
+  if [ -f "$dir/.python-version" ]; then
+    found="$(har_python_uv_find "$dir" "$(har_python_read_dot_version "$dir")" || true)"
+    if [ -n "$found" ] && [ -x "$found" ]; then
+      echo "$found"
+      return 0
+    fi
+    if command -v pyenv >/dev/null 2>&1; then
+      found="$(cd "$dir" && pyenv which python 2>/dev/null || true)"
+      if [ -n "$found" ] && [ -x "$found" ]; then
+        echo "$found"
+        return 0
+      fi
+    fi
+  fi
+
+  if [ -n "$minimum" ]; then
+    found="$(har_python_uv_find "$dir" "$minimum" || true)"
+    if [ -n "$found" ] && [ -x "$found" ]; then
+      echo "$found"
+      return 0
+    fi
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    local sys_py sys_ver=""
+    sys_py="$(command -v python3)"
+    if [ -z "$minimum" ]; then
+      echo "$sys_py"
+      return 0
+    fi
+    sys_ver="$(har_python_version_from_bin "$sys_py")"
+    if [ -n "$sys_ver" ] && har_python_version_ge "$sys_ver" "$minimum"; then
+      echo "$sys_py"
+      return 0
+    fi
+    echo "$sys_py"
+    return 0
+  fi
+
+  return 1
+}
+
+har_python_warn_if_below_minimum() {
+  local bin="$1"
+  local minimum="$2"
+  local actual=""
+
+  [ -n "$minimum" ] || return 0
+  actual="$(har_python_version_from_bin "$bin")"
+  [ -n "$actual" ] || return 0
+  if ! har_python_version_ge "$actual" "$minimum"; then
+    pt_log "WARNING: resolved Python ${actual} is older than required ${minimum} (requires-python / .python-version)"
+  fi
+}
+
+har_python_create_venv() {
+  local dir="$1"
+  local venv_dir="$2"
+  local interpreter="$3"
+  local venv_rel="${venv_dir#"$dir"/}"
+
+  if har_python_is_uv_project "$dir" && command -v uv >/dev/null 2>&1; then
+    pt_log "Creating Python venv with uv at ${venv_rel}..."
+    if (cd "$dir" && uv venv --python "$interpreter" "$venv_dir" 2>/dev/null) \
+      || (cd "$dir" && uv venv "$venv_dir" 2>/dev/null); then
+      return 0
+    fi
+    pt_log "uv venv failed — falling back to ${interpreter} -m venv"
+  fi
+
+  pt_log "Creating Python venv at ${venv_rel}..."
+  "$interpreter" -m venv "$venv_dir"
+}
+
+har_python_install_deps() {
+  local dir="$1"
+  local venv_dir="$2"
+
+  if har_python_is_uv_project "$dir" && command -v uv >/dev/null 2>&1; then
+    pt_log "Syncing Python dependencies with uv..."
+    if (cd "$dir" && UV_PROJECT_ENVIRONMENT="$venv_dir" uv sync --quiet 2>/dev/null); then
+      return 0
+    fi
+    if (cd "$dir" && uv sync --quiet 2>/dev/null); then
+      return 0
+    fi
+    pt_log "uv sync failed — falling back to pip"
+    return 1
+  fi
+  return 1
+}
+
 provision_python() {
   local dir="$1"
   local venv_rel="${HARNESS_PYTHON_VENV_DIR:-.har/venv}"
   local venv_dir="$dir/$venv_rel"
-  local python_bin="python3"
+  local python_bin=""
+  local interpreter=""
+  local project_min=""
 
-  if ! command -v python3 >/dev/null 2>&1; then
-    pt_log "python3 not found on PATH — skipping venv provisioning"
+  project_min="$(har_python_project_minimum "$dir" || true)"
+  interpreter="$(har_python_resolve_interpreter "$dir" "$project_min" || true)"
+
+  if [ -z "$interpreter" ] || ! command -v "$interpreter" >/dev/null 2>&1; then
+    pt_log "No suitable Python interpreter found — skipping venv provisioning"
     append_env "HARNESS_ECOSYSTEM" "python"
     append_env "PYTHON_BIN" "${PYTHON_BIN:-python3}"
     return
   fi
 
-  if [ ! -d "$venv_dir" ]; then
-    pt_log "Creating Python venv at $venv_rel..."
-    if ! python3 -m venv "$venv_dir"; then
+  if [ -n "$project_min" ]; then
+    har_python_warn_if_below_minimum "$interpreter" "$project_min"
+  fi
+
+  if [ -d "$venv_dir" ] && [ -x "$venv_dir/bin/python" ] && [ -n "$project_min" ]; then
+    local venv_ver=""
+    venv_ver="$(har_python_version_from_bin "$venv_dir/bin/python")"
+    if [ -n "$venv_ver" ] && ! har_python_version_ge "$venv_ver" "$project_min"; then
+      pt_log "Existing venv Python ${venv_ver} is older than required ${project_min} — recreating..."
       rm -rf "$venv_dir"
-      pt_log "python3 -m venv failed (on Debian/Ubuntu install python3-venv) — using system python3"
+    fi
+  fi
+
+  if [ ! -d "$venv_dir" ]; then
+    if ! har_python_create_venv "$dir" "$venv_dir" "$interpreter"; then
+      rm -rf "$venv_dir"
+      pt_log "venv creation failed (on Debian/Ubuntu install python3-venv) — using resolved interpreter"
       append_env "HARNESS_ECOSYSTEM" "python"
-      append_env "PYTHON_BIN" "$(command -v python3)"
+      append_env "PYTHON_BIN" "$interpreter"
       return
     fi
   fi
 
   if [ ! -x "$venv_dir/bin/python" ]; then
-    pt_log "Python venv at $venv_rel is missing or broken — using system python3"
+    pt_log "Python venv at $venv_rel is missing or broken — using resolved interpreter"
     append_env "HARNESS_ECOSYSTEM" "python"
-    append_env "PYTHON_BIN" "$(command -v python3)"
+    append_env "PYTHON_BIN" "$interpreter"
     return
   fi
 
   python_bin="$venv_dir/bin/python"
+  if [ -n "$project_min" ]; then
+    har_python_warn_if_below_minimum "$python_bin" "$project_min"
+  fi
+
   # shellcheck disable=SC1091
   source "$venv_dir/bin/activate"
 
   if ! run_install_cmd "$dir"; then
-    pt_log "Installing Python dependencies..."
-    if [ -f "$dir/pyproject.toml" ]; then
-      (cd "$dir" && pip install -q -e ".[dev]" 2>/dev/null) || (cd "$dir" && pip install -q -e .)
-    elif [ -f "$dir/requirements.txt" ]; then
-      (cd "$dir" && pip install -q -r requirements.txt)
-    elif [ -f "$dir/setup.py" ] || [ -f "$dir/setup.cfg" ]; then
-      (cd "$dir" && pip install -q -e .)
-    elif [ -f "$dir/Pipfile" ] && command -v pipenv >/dev/null 2>&1; then
-      (cd "$dir" && pipenv install --dev)
-      python_bin="$(cd "$dir" && pipenv --py)"
+    if ! har_python_install_deps "$dir" "$venv_dir"; then
+      pt_log "Installing Python dependencies..."
+      if [ -f "$dir/pyproject.toml" ]; then
+        (cd "$dir" && pip install -q -e ".[dev]" 2>/dev/null) || (cd "$dir" && pip install -q -e .)
+      elif [ -f "$dir/requirements.txt" ]; then
+        (cd "$dir" && pip install -q -r requirements.txt)
+      elif [ -f "$dir/setup.py" ] || [ -f "$dir/setup.cfg" ]; then
+        (cd "$dir" && pip install -q -e .)
+      elif [ -f "$dir/Pipfile" ] && command -v pipenv >/dev/null 2>&1; then
+        (cd "$dir" && pipenv install --dev)
+        python_bin="$(cd "$dir" && pipenv --py)"
+      fi
     fi
   fi
 
