@@ -89,6 +89,7 @@ else
 fi
 
 "$SCRIPT_DIR/setup-infra.sh"
+har_load_infra_state
 
 if [ "$RESUME" != true ]; then
   WORK_DIR="$REPO_ROOT"

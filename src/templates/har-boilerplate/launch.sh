@@ -99,6 +99,7 @@ fi
 
 # Ensure shared infra is running (persists host ports in .har/state/infra.env).
 "$SCRIPT_DIR/setup-infra.sh"
+har_load_infra_state
 DB_PORT="${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}"
 MINIO_PORT="${AGENT_MINIO_PORT:-${HARNESS_MINIO_PORT_DEFAULT:-19000}}"
 BROWSER_PORT="${AGENT_BROWSER_PORT:-${HARNESS_BROWSER_PORT_DEFAULT:-13001}}"
