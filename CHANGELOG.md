@@ -1,3 +1,10 @@
+## [0.61.3](https://github.com/os-factory/har/compare/v0.61.2...v0.61.3) (2026-08-19)
+
+
+### Bug Fixes
+
+* stop har env verify from dumping duplicate JSON ([#247](https://github.com/os-factory/har/issues/247)) ([df92e12](https://github.com/os-factory/har/commit/df92e12dbb4a3944f4ce4fdf8783d2eb2c42147b))
+
 ## [0.61.2](https://github.com/os-factory/har/compare/v0.61.1...v0.61.2) (2026-08-19)
 
 
