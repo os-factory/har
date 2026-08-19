@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Verification pipeline for @osfactory/har.
-# Outputs JSON to stdout, human-readable progress to stderr.
+# Outputs JSON to stdout (machine contract), human-readable progress to stderr.
+# Passing steps omit `output`. `har env verify` streams progress only.
 #
 # Usage: ./.har/verify.sh <agent-id> [--full]
 #
@@ -68,7 +69,7 @@ run_step() {
   end=$(now_ms)
   elapsed=$(( end - start ))
 
-  local pass_bool step_output_escaped
+  local pass_bool
   if [ "$exit_code" = "0" ]; then
     echo "✓ (${elapsed}ms)" >&2
     pass_bool="true"
@@ -79,14 +80,7 @@ run_step() {
     OVERALL_PASS=false
   fi
 
-  step_output_escaped=$(escape_step_output "$output")
-
-  RESULTS_JSON=$(echo "$RESULTS_JSON" | node -e "
-const fs = require('fs');
-let arr = JSON.parse(fs.readFileSync('/dev/stdin','utf8'));
-arr.push({name:'$name',pass:$pass_bool,ms:$elapsed,output:$step_output_escaped});
-process.stdout.write(JSON.stringify(arr));
-" 2>/dev/null || echo "$RESULTS_JSON")
+  record_step_result "$name" "$pass_bool" "$elapsed" "$output"
 
   if [ "$pass_bool" = "false" ] && [ -z "$FULL" ]; then
     return 1

@@ -776,6 +776,29 @@ escape_step_output() {
   printf '%s' "$1" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const s=d.trim().split('\n').slice(0,50).join('\n');process.stdout.write(JSON.stringify(s))})" 2>/dev/null || echo '""'
 }
 
+# Append one verify.sh step to RESULTS_JSON (caller global).
+# Passing steps omit output — it already appeared as ✓ on stderr.
+record_step_result() {
+  local name="$1"
+  local pass_bool="$2"
+  local elapsed="$3"
+  local output="${4:-}"
+  local step_json
+  if [ "$pass_bool" = "true" ]; then
+    step_json=$(NAME="$name" MS="$elapsed" node -e 'process.stdout.write(JSON.stringify({name:process.env.NAME,pass:true,ms:Number(process.env.MS)}))' 2>/dev/null) || return 0
+  else
+    local escaped
+    escaped=$(escape_step_output "$output")
+    step_json=$(NAME="$name" MS="$elapsed" node -e "process.stdout.write(JSON.stringify({name:process.env.NAME,pass:false,ms:Number(process.env.MS),output:$escaped}))" 2>/dev/null) || return 0
+  fi
+  RESULTS_JSON=$(echo "$RESULTS_JSON" | node -e "
+const fs = require('fs');
+const arr = JSON.parse(fs.readFileSync('/dev/stdin','utf8'));
+arr.push($step_json);
+process.stdout.write(JSON.stringify(arr));
+" 2>/dev/null || echo "$RESULTS_JSON")
+}
+
 # Emit "<id>\t<command>" for each registered stage listed in stages.json
 # verificationStages (used by verify --full). Ids without a matching registered
 # stage are inline verify.sh steps and skipped here; lifecycle stages

@@ -46,6 +46,7 @@ import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
 import { readOnboardingPreferences } from '../../core/onboarding-preferences';
 import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
 import { validateAgentId } from '../../utils/validation';
+import { slimVerificationResult } from '../../core/results';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
 import {
   HAR_ENV_EPILOG,
@@ -336,7 +337,12 @@ export const envCommand = {
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
             .option('repo', { type: 'string', default: '.' })
-            .option('full', { type: 'boolean', default: false }),
+            .option('full', { type: 'boolean', default: false })
+            .option('json', {
+              type: 'boolean',
+              default: false,
+              describe: 'Structured JSON (passing steps omit output; default is progress only)',
+            }),
         handleVerify,
       )
       .command(
@@ -1025,16 +1031,42 @@ export async function handleRecover(argv: { id?: number; repo: string }): Promis
   });
 }
 
-export async function handleVerify(argv: { id?: number; repo: string; full: boolean }): Promise<void> {
+export async function handleVerify(argv: {
+  id?: number;
+  repo: string;
+  full: boolean;
+  json?: boolean;
+}): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
   const result = await runVerification({
     repoPath: repo,
     agentId,
     full: argv.full,
-    capture: false,
+    capture: Boolean(argv.json),
   });
-  if (result.stdout) process.stdout.write(result.stdout);
+
+  if (argv.json) {
+    const payload = slimVerificationResult(result.verification) ?? {
+      status: result.code === 0 ? 'pass' : 'fail',
+      agent_id: agentId,
+      stages: [],
+    };
+    process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+    return finishCommand(result.code);
+  }
+
+  if (result.verification) {
+    const failed = result.verification.stages.filter((stage) => !stage.pass).map((stage) => stage.name);
+    const elapsed =
+      result.verification.total_ms != null ? ` (${result.verification.total_ms}ms)` : '';
+    if (failed.length > 0) {
+      error(`Verification failed: ${failed.join(', ')}${elapsed}`);
+    } else {
+      success(`Verification ${result.verification.status}${elapsed}`);
+    }
+  }
+
   return finishCommand(result.code);
 }
 

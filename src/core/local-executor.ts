@@ -11,7 +11,6 @@ import { HarnessStage, StageResult } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
 import {
   quoteShellArg,
-  runScript,
   runScriptCapture,
   runShellCommand,
   ShellResult,
@@ -178,18 +177,23 @@ function buildExecutionPlan(
   };
 }
 
-async function executePlan(plan: StageExecutionPlan, capture: boolean): Promise<ShellResult> {
-  const spawnOptions = { cwd: plan.cwd, env: plan.env };
+async function executePlan(
+  plan: StageExecutionPlan,
+  options: { capture: boolean; streamStdout?: boolean },
+): Promise<ShellResult> {
+  const spawnOptions = {
+    cwd: plan.cwd,
+    env: plan.env,
+    stream: !options.capture,
+    streamStdout: options.streamStdout,
+  };
 
   if (plan.mode === 'shell' && plan.shellCommand) {
-    return runShellCommand(plan.shellCommand, { ...spawnOptions, stream: !capture });
+    return runShellCommand(plan.shellCommand, spawnOptions);
   }
 
   if (plan.scriptPath) {
-    if (capture) {
-      return runScriptCapture(plan.scriptPath, plan.args, spawnOptions);
-    }
-    return runScript(plan.scriptPath, plan.args, spawnOptions);
+    return runScriptCapture(plan.scriptPath, plan.args, spawnOptions);
   }
 
   throw new Error('Invalid stage execution plan');
@@ -215,7 +219,12 @@ export class LocalScriptExecutor implements StageExecutor {
     const plan = buildExecutionPlan(repoPath, stage, options);
     const capture = options.capture ?? ctx.capture ?? true;
     const started = Date.now();
-    const result = await executePlan(plan, capture);
+    // verify.sh writes a JSON contract to stdout and progress to stderr.
+    // Stream progress only — echoing stdout duplicates the blob in CI/agent logs.
+    const result = await executePlan(plan, {
+      capture,
+      streamStdout: stage.kind !== 'verify',
+    });
     const durationMs = Date.now() - started;
 
     const verification =

@@ -1,6 +1,7 @@
 import {
   extractJsonFromOutput,
   parseVerificationResult,
+  slimVerificationResult,
   buildStageResult,
 } from '../src/core/results';
 
@@ -35,6 +36,35 @@ describe('parseVerificationResult', () => {
 
   it('returns null for invalid output', () => {
     expect(parseVerificationResult('not json')).toBeNull();
+  });
+});
+
+describe('slimVerificationResult', () => {
+  it('drops output from passing stages and keeps failed-step output', () => {
+    expect(
+      slimVerificationResult({
+        status: 'fail',
+        agent_id: 1,
+        total_ms: 20,
+        stages: [
+          { name: 'typecheck', pass: true, ms: 5, output: 'ok' },
+          { name: 'unit-tests', pass: false, ms: 15, output: 'FAIL' },
+        ],
+      }),
+    ).toEqual({
+      status: 'fail',
+      agent_id: 1,
+      total_ms: 20,
+      stages: [
+        { name: 'typecheck', pass: true, ms: 5 },
+        { name: 'unit-tests', pass: false, ms: 15, output: 'FAIL' },
+      ],
+    });
+  });
+
+  it('returns null when verification is missing', () => {
+    expect(slimVerificationResult(null)).toBeNull();
+    expect(slimVerificationResult(undefined)).toBeNull();
   });
 });
 

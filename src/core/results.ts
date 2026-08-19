@@ -48,6 +48,22 @@ export function parseVerificationResult(stdout: string): VerificationResult | nu
   return parsed.success ? parsed.data : null;
 }
 
+/** Drop passing-step logs — they duplicate stderr progress and bloat CI/MCP context. */
+export function slimVerificationResult(
+  verification: VerificationResult | null | undefined,
+): VerificationResult | null {
+  if (!verification) return null;
+  return {
+    ...verification,
+    stages: verification.stages.map((stage) => {
+      if (!stage.pass || stage.output === undefined) return stage;
+      const rest = { ...stage };
+      delete rest.output;
+      return rest;
+    }),
+  };
+}
+
 export function buildStageResult(input: {
   stageId: string;
   kind?: StageKind;

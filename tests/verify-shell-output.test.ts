@@ -40,14 +40,50 @@ node -e "const r=$RESULTS_JSON;process.stdout.write(String(r.length)+':'+r.every
   const verifyPaths = [
     '.har/verify.sh',
     'control/.har/verify.sh',
+    'docs/.har/verify.sh',
     'src/templates/har-boilerplate/verify.sh',
     'src/templates/har-boilerplate-cli/verify.sh',
     'src/templates/har-boilerplate-ios/verify.sh',
   ];
 
-  it.each(verifyPaths)('%s escapes output without head -50 pipefail trap', (relPath) => {
+  it.each(verifyPaths)('%s records steps without embedding passing-step output', (relPath) => {
     const verifyScript = fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
-    expect(verifyScript).toContain('escape_step_output "$output"');
+    expect(verifyScript).toContain('record_step_result "$name" "$pass_bool" "$elapsed" "$output"');
+    expect(verifyScript).not.toMatch(/arr\.push\(\{name:'\$name',pass:\$pass_bool,ms:\$elapsed,output:\$step_output_escaped\}\)/);
     expect(verifyScript).not.toMatch(/step_output_escaped=\$\(echo "\$output" \| head -50/);
+  });
+});
+
+describe('record_step_result', () => {
+  it('omits output on pass and keeps a truncated excerpt on fail', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-record-step-'));
+    const script = path.join(dir, 'repro.sh');
+    fs.writeFileSync(
+      script,
+      `#!/usr/bin/env bash
+set -euo pipefail
+source "${AGENT_SLOT}"
+RESULTS_JSON='[]'
+record_step_result "typecheck" "true" "5" "$(seq 1 80)"
+record_step_result "unit-tests" "false" "9" "$(seq 1 80)"
+node -e "const r=$RESULTS_JSON;process.stdout.write(JSON.stringify(r))"
+`,
+    );
+    fs.chmodSync(script, 0o755);
+    const parsed = JSON.parse(sh(`bash "${script}"`, dir)) as Array<{
+      name: string;
+      pass: boolean;
+      output?: string;
+    }>;
+    expect(parsed).toEqual([
+      { name: 'typecheck', pass: true, ms: 5 },
+      expect.objectContaining({
+        name: 'unit-tests',
+        pass: false,
+        ms: 9,
+      }),
+    ]);
+    expect(parsed[0]).not.toHaveProperty('output');
+    expect(parsed[1]?.output?.split('\n')).toHaveLength(50);
   });
 });

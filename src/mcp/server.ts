@@ -30,6 +30,7 @@ import {
   repoJsonProperty,
   stageKindJsonProperty,
 } from './schema-tools';
+import { slimVerificationResult } from '../core/results';
 import { validateAgentId } from '../utils/validation';
 import {
   AddWorkUnitLinkInputSchema,
@@ -180,7 +181,8 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_run_verification',
-    description: 'Run the project verification pipeline for an agent slot.',
+    description:
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump).',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -423,7 +425,14 @@ export async function handleMcpToolCall(
         capture: true,
         trigger: 'mcp',
       });
-      return jsonContent(RunVerificationOutputSchema.parse(result));
+      return jsonContent(
+        RunVerificationOutputSchema.parse({
+          code: result.code,
+          stdout: '',
+          stderr: result.stderr,
+          verification: slimVerificationResult(result.verification),
+        }),
+      );
     }
 
     case 'har_get_status': {
@@ -473,7 +482,12 @@ export async function handleMcpToolCall(
         capture: true,
         trigger: 'mcp',
       });
-      return jsonContent(CompleteEnvironmentOutputSchema.parse(result));
+      return jsonContent(
+        CompleteEnvironmentOutputSchema.parse({
+          ...result,
+          verification: slimVerificationResult(result.verification),
+        }),
+      );
     }
 
     case 'har_list_artifacts': {
