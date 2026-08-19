@@ -279,6 +279,10 @@ describe('provision-toolchain.sh template contract', () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-py-warn-'));
       const script = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');
       const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
+      const fakeBin = path.join(tmpDir, 'bin');
+
+      fs.mkdirSync(fakeBin, { recursive: true });
+      fs.writeFileSync(path.join(fakeBin, 'uv'), '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
 
       fs.writeFileSync(
         path.join(tmpDir, 'pyproject.toml'),
@@ -291,6 +295,7 @@ describe('provision-toolchain.sh template contract', () => {
 
       const result = run(
         `set -a && . "${harnessEnv}" && set +a && ` +
+          `PATH="${fakeBin}:$PATH" HARNESS_INSTALL_CMD=true ` +
           `HAR_WORK_DIR="${tmpDir}" HAR_ENV_FILE="${envFile}" HAR_AGENT_ID=1 ` +
           `bash "${script}" 2>&1`,
       );
