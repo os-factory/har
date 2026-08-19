@@ -21,6 +21,12 @@ describe('env CLI delegation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (runVerification as jest.Mock).mockResolvedValue({
+      code: 1,
+      stdout: '',
+      stderr: '',
+      verification: null,
+    });
     exitSpy = jest.spyOn(process, 'exit').mockImplementation((code) => {
       throw new Error(`exit:${code}`);
     });
@@ -62,6 +68,74 @@ describe('env CLI delegation', () => {
       full: true,
       capture: false,
     });
+  });
+
+  it('does not reprint the verify JSON contract on stdout', async () => {
+    (runVerification as jest.Mock).mockResolvedValue({
+      code: 0,
+      stdout: JSON.stringify({
+        status: 'pass',
+        agent_id: 3,
+        stages: [{ name: 'typecheck', pass: true, ms: 10, output: 'huge log' }],
+      }),
+      stderr: '  → typecheck... ✓',
+      verification: {
+        status: 'pass',
+        agent_id: 3,
+        total_ms: 10,
+        stages: [{ name: 'typecheck', pass: true, ms: 10, output: 'huge log' }],
+      },
+    });
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await expect(handleVerify({ repo: FIXTURE, id: 3, full: true })).rejects.toThrow('exit:0');
+
+    expect(writeSpy).not.toHaveBeenCalled();
+    writeSpy.mockRestore();
+  });
+
+  it('prints slim verification JSON with --json', async () => {
+    (runVerification as jest.Mock).mockResolvedValue({
+      code: 1,
+      stdout: '{"status":"fail","agent_id":3,"stages":[]}',
+      stderr: '',
+      verification: {
+        status: 'fail',
+        agent_id: 3,
+        total_ms: 50,
+        stages: [
+          { name: 'typecheck', pass: true, ms: 10, output: 'ok' },
+          { name: 'unit-tests', pass: false, ms: 40, output: 'FAIL spec.ts' },
+        ],
+      },
+    });
+    const chunks: string[] = [];
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      chunks.push(String(chunk));
+      return true;
+    });
+
+    await expect(handleVerify({ repo: FIXTURE, id: 3, full: true, json: true })).rejects.toThrow(
+      'exit:1',
+    );
+
+    expect(runVerification).toHaveBeenCalledWith({
+      repoPath: path.resolve(FIXTURE),
+      agentId: 3,
+      full: true,
+      capture: true,
+    });
+    const payload = JSON.parse(chunks.join(''));
+    expect(payload).toEqual({
+      status: 'fail',
+      agent_id: 3,
+      total_ms: 50,
+      stages: [
+        { name: 'typecheck', pass: true, ms: 10 },
+        { name: 'unit-tests', pass: false, ms: 40, output: 'FAIL spec.ts' },
+      ],
+    });
+    writeSpy.mockRestore();
   });
 
   it('delegates status to the core status runner without forcing process exit', async () => {

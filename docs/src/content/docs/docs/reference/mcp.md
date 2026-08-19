@@ -44,7 +44,7 @@ active session.
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_run_stage` | `stageId` or `kind`, optional `agentId`, `args` | Normalized generic stage result |
-| `har_run_verification` | `agentId`, `full` | Verification steps, output, timing, and status |
+| `har_run_verification` | `agentId`, `full` | Status, timing, and failed-step output (passing steps omit logs) |
 
 Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
 `teardown`, and `custom`.

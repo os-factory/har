@@ -145,10 +145,16 @@ launch. The same warning appears in `har env status --json`, MCP launch
 ### Verify and finish
 
 ```bash
-har env verify 1 [--full]
+har env verify 1 [--full] [--json]
 har env complete 1 [--skip-verify]
 har env teardown 1 [--delete-branch]
 ```
+
+Default verify output is the live progress lines on stderr (and a one-line
+summary). It does **not** reprint the machine JSON contract — that blob
+duplicates step logs already shown. Use `--json` when a script needs the
+structured result. Passing steps omit `output`; failed steps keep a truncated
+excerpt. MCP `har_run_verification` returns the same slim shape.
 
 ### Status and runs
 

@@ -8,12 +8,18 @@ description: Bind successful checks to exact code and enforce the result at comm
 ```bash
 har env verify 1
 har env verify 1 --full
+har env verify 1 --full --json   # structured result only
 ```
 
 Quick verification should be fast enough for iteration. Full verification is the
 repository's completion contract. The exact commands are adapted in
 `.har/verify.sh`; typical full checks include unit tests, lint, readiness, browser
 E2E, and project-specific stages.
+
+`har env verify` streams progress to stderr. It does not dump the per-step JSON
+contract afterward — that duplicated CI logs and agent context. Scripts that
+need the object can pass `--json`. Passing steps omit `output`; failed steps
+include a truncated excerpt.
 
 HAR records CLI and MCP verification as run JSON and records the exact Git tree state
 for full verification. A later source edit invalidates that validation.

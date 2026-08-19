@@ -14,6 +14,8 @@ export function quoteShellArg(arg: string): string {
 
 export interface RunScriptOptions extends SpawnOptions {
   stream?: boolean;
+  /** When streaming, also echo child stdout. Default true. Set false for JSON-on-stdout contracts (verify). */
+  streamStdout?: boolean;
 }
 
 export function run(command: string, options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): ShellResult {
@@ -49,8 +51,10 @@ export function runScriptCapture(
   options: RunScriptOptions = {},
 ): Promise<ShellResult> {
   const stream = options.stream ?? false;
-  const { stream: _stream, ...spawnOptions } = options;
+  const echoStdout = stream && (options.streamStdout ?? true);
+  const { stream: _stream, streamStdout: _streamStdout, ...spawnOptions } = options;
   void _stream;
+  void _streamStdout;
   return new Promise((resolve) => {
     const proc = spawn('bash', [scriptPath, ...args], {
       ...spawnOptions,
@@ -60,7 +64,7 @@ export function runScriptCapture(
     let stderr = '';
     proc.stdout?.on('data', (d: Buffer) => {
       stdout += d;
-      if (stream) process.stdout.write(d);
+      if (echoStdout) process.stdout.write(d);
     });
     proc.stderr?.on('data', (d: Buffer) => {
       stderr += d;
@@ -75,8 +79,10 @@ export function runShellCommand(
   options: RunScriptOptions = {},
 ): Promise<ShellResult> {
   const stream = options.stream ?? false;
-  const { stream: _stream, ...spawnOptions } = options;
+  const echoStdout = stream && (options.streamStdout ?? true);
+  const { stream: _stream, streamStdout: _streamStdout, ...spawnOptions } = options;
   void _stream;
+  void _streamStdout;
   return new Promise((resolve) => {
     const proc = spawn('bash', ['-lc', command], {
       ...spawnOptions,
@@ -86,7 +92,7 @@ export function runShellCommand(
     let stderr = '';
     proc.stdout?.on('data', (d: Buffer) => {
       stdout += d;
-      if (stream) process.stdout.write(d);
+      if (echoStdout) process.stdout.write(d);
     });
     proc.stderr?.on('data', (d: Buffer) => {
       stderr += d;
