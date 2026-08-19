@@ -1,3 +1,10 @@
+## [0.61.2](https://github.com/os-factory/har/compare/v0.61.1...v0.61.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* parse agent env in ecosystem template without dotenv ([#245](https://github.com/os-factory/har/issues/245)) ([5eba73b](https://github.com/os-factory/har/commit/5eba73bd2f68a60ca71745da2c37402c3ae88bb0))
+
 ## [0.61.1](https://github.com/os-factory/har/compare/v0.61.0...v0.61.1) (2026-08-19)
 
 
