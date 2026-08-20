@@ -3,11 +3,18 @@ import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import {
   DEFAULT_PORTAL_URL,
+  describePortalTarget,
   getControlApiUrl,
   isControlEnabled,
   resolvePortalUrl,
   type PortalUrlSource,
 } from '../../core/control-config';
+import {
+  upsertPortalTarget,
+  recordToPortalTarget,
+  writePortalTargetTrajectoryPreference,
+} from '../../core/portal-targets';
+import { registerControlTargetCommand } from './control-target';
 import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   discoverHarRepos,
@@ -19,7 +26,6 @@ import {
   resolveSyncSelection,
   writeSyncSelection,
 } from '../../core/control-sync-selection';
-import { writePortalCredentials } from '../../core/portal-credentials';
 import { loginViaBrowser } from '../../core/portal-login';
 import { startMissionControl, syncReposAfterControlStart, stopMissionControl } from '../../core/control-lifecycle';
 import {
@@ -48,8 +54,8 @@ import { finishCommand } from '../finish-command';
 export const controlCommand = {
   command: 'control <subcommand>',
   describe: 'Mission Control dashboard (local)',
-  builder: (yargs: Argv) =>
-    yargs
+  builder: (yargs: Argv) => {
+    const chain = yargs
       .command(
         'up',
         'Start Mission Control (single Docker container, SQLite)',
@@ -133,6 +139,14 @@ export const controlCommand = {
               type: 'boolean',
               default: false,
               describe: 'Ignore the portal watermark and resend the complete payload',
+            })
+            .option('target', {
+              type: 'string',
+              describe: 'Sync to a named portal target instead of the repository default',
+            })
+            .option('targets', {
+              type: 'string',
+              describe: 'Comma-separated portal targets for an explicit multi-destination sync',
             }),
         handleSync,
       )
@@ -144,6 +158,10 @@ export const controlCommand = {
             .option('portal', {
               type: 'string',
               describe: `Portal base URL (or HAR_PORTAL_URL; defaults to the last login, else ${DEFAULT_PORTAL_URL})`,
+            })
+            .option('target', {
+              type: 'string',
+              describe: 'Save this login under a durable target alias',
             })
             .option('api-key', {
               type: 'string',
@@ -181,17 +199,23 @@ export const controlCommand = {
         'trajectory [state]',
         'Forward agent prompts, tool arguments and tool results to the hosted portal (off by default)',
         (y: Argv) =>
-          y.positional('state', {
-            type: 'string',
-            choices: ['on', 'off'] as const,
-            describe: 'Omit to print the current setting',
-          }),
+          y
+            .positional('state', {
+              type: 'string',
+              choices: ['on', 'off'] as const,
+              describe: 'Omit to print the current setting',
+            })
+            .option('target', {
+              type: 'string',
+              describe: 'Apply to a named portal target (default: global legacy setting)',
+            }),
         handleTrajectory,
-      )
-      .demandCommand(
-        1,
-        'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory',
-      ),
+      );
+    return registerControlTargetCommand(chain).demandCommand(
+      1,
+      'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory, target',
+    );
+  },
   handler: () => {},
 };
 
@@ -472,6 +496,8 @@ async function handleSync(argv: {
   json: boolean;
   cloud?: boolean;
   full: boolean;
+  target?: string;
+  targets?: string;
 }): Promise<void> {
   const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const discovered = await discoverHarRepos({ apiUrl: argv.apiUrl, cwd: process.cwd() });
@@ -530,12 +556,24 @@ async function handleSync(argv: {
     return;
   }
 
+  if (argv.target && argv.targets) {
+    error('Use either --target or --targets, not both.');
+    return finishCommand(1);
+  }
+
+  const portalTargets = argv.targets
+    ? argv.targets.split(',').map((part) => part.trim()).filter(Boolean)
+    : argv.target
+      ? [argv.target]
+      : undefined;
+
   const { synced, failed, results } = await syncReposWithControl({
     repoPaths,
     apiUrl: argv.apiUrl,
     dryRun: argv.dryRun,
     cloud: argv.cloud,
     full: argv.full,
+    portalTargets,
   });
 
   if (argv.json) {
@@ -546,6 +584,16 @@ async function handleSync(argv: {
 
   header('har control sync');
   for (const result of results) {
+    if (result.targets && result.targets.length > 0) {
+      for (const target of result.targets) {
+        if (target.ok) {
+          success(`Synced ${result.repoPath} → ${target.alias}`);
+        } else {
+          warn(`Failed ${result.repoPath} → ${target.alias}: ${target.error}`);
+        }
+      }
+      continue;
+    }
     if (result.ok) {
       success(`Synced ${result.repoPath}`);
     } else {
@@ -568,27 +616,47 @@ const PORTAL_SOURCE_LABEL: Record<PortalUrlSource, string> = {
   default: 'default',
 };
 
-async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<void> {
+async function handleLogin(argv: {
+  apiKey?: string;
+  portal?: string;
+  target?: string;
+}): Promise<void> {
   header('har control login');
   const { url: portalUrl, source } = resolvePortalUrl(argv.portal);
   info(`Portal: ${portalUrl} (${PORTAL_SOURCE_LABEL[source]})`);
+  if (argv.target) info(`Target alias: ${argv.target}`);
 
   if (argv.apiKey) {
-    writePortalCredentials({
+    const record = upsertPortalTarget({
+      alias: argv.target,
       portalUrl,
       token: argv.apiKey,
-      createdAt: new Date().toISOString(),
+      setAsDefault: true,
     });
-    success(`Saved ingest token for ${portalUrl}`);
+    success(
+      `Saved ingest token for target ${record.alias} (${describePortalTarget(recordToPortalTarget(record))})`,
+    );
     info('Sync: har control sync');
     return;
   }
 
   try {
     const creds = await loginViaBrowser(portalUrl);
-    writePortalCredentials(creds);
+    const record = upsertPortalTarget({
+      alias: argv.target,
+      portalUrl,
+      workspaceId: creds.workspaceId,
+      workspace: creds.workspace,
+      workspaceSlug: creds.workspaceSlug,
+      workspaceName: creds.workspaceName,
+      token: creds.token,
+      refreshToken: creds.refreshToken,
+      expiresAt: creds.expiresAt,
+      email: creds.email,
+      setAsDefault: true,
+    });
     success(
-      `Logged in to ${portalUrl}${creds.workspace ? ` (workspace: ${creds.workspace})` : ''}`,
+      `Logged in to target ${record.alias} (${describePortalTarget(recordToPortalTarget(record))})`,
     );
     info('Sync: har control sync');
   } catch (err) {
@@ -597,10 +665,23 @@ async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<
   }
 }
 
-async function handleTrajectory(argv: { state?: string }): Promise<void> {
+async function handleTrajectory(argv: { state?: string; target?: string }): Promise<void> {
   header('har control trajectory');
 
   if (!argv.state) {
+    if (argv.target) {
+      const { getPortalTargetRecord, isPortalTrajectoryEnabledForTarget } = await import(
+        '../../core/portal-targets'
+      );
+      const record = getPortalTargetRecord(argv.target);
+      if (!record) {
+        error(`Unknown target "${argv.target}".`);
+        return finishCommand(1);
+      }
+      const enabled = isPortalTrajectoryEnabledForTarget(recordToPortalTarget(record));
+      info(`Trajectory forwarding for ${record.alias}: ${enabled ? 'on' : 'off'}`);
+      return;
+    }
     const enabled = readTelemetryPreference().portalTrajectory === true;
     info(`Trajectory forwarding: ${enabled ? 'on' : 'off'}`);
     if (!enabled) {
@@ -613,6 +694,11 @@ async function handleTrajectory(argv: { state?: string }): Promise<void> {
   }
 
   const enabled = argv.state === 'on';
+  if (argv.target) {
+    writePortalTargetTrajectoryPreference(argv.target, enabled);
+    success(`Trajectory forwarding ${enabled ? 'on' : 'off'} for target ${argv.target}.`);
+    return;
+  }
   writePortalTrajectoryPreference(enabled);
 
   if (!enabled) {

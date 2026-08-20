@@ -1,3 +1,7 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
 import { getPortalTarget } from '../src/core/control-config';
 import { syncRepoWithControl } from '../src/core/control-sync';
 
@@ -8,6 +12,10 @@ import { syncRepoWithControl } from '../src/core/control-sync';
 jest.mock('../src/core/portal-credentials', () => ({
   readPortalCredentials: jest.fn(() => null),
   writePortalCredentials: jest.fn(),
+}));
+jest.mock('../src/core/portal-targets', () => ({
+  ...jest.requireActual('../src/core/portal-targets'),
+  updatePortalTargetTokens: jest.fn(),
 }));
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
@@ -46,6 +54,11 @@ jest.mock('../src/core/portal-watermark', () => ({
 jest.mock('../src/core/telemetry-config', () => ({
   isTelemetryEnabled: () => true,
   isPortalTrajectoryEnabled: jest.fn(() => false),
+  readTelemetryPreference: jest.fn(() => ({
+    enabled: true,
+    signals: { metrics: true, logs: true, prompts: true, traces: true },
+    portalTrajectory: false,
+  })),
 }));
 jest.mock('../src/core/control-persisted-trajectory', () => ({
   fetchPersistedTrajectory: jest.fn(async () => ({
@@ -68,6 +81,7 @@ import {
   readPortalCredentials,
   writePortalCredentials,
 } from '../src/core/portal-credentials';
+import { updatePortalTargetTokens, upsertPortalTarget } from '../src/core/portal-targets';
 import {
   listWorkUnits,
   listWorkAttempts,
@@ -82,6 +96,7 @@ const listRunsMock = listRuns as jest.Mock;
 const listValidationsMock = listValidations as jest.Mock;
 const readPortalCredentialsMock = readPortalCredentials as jest.Mock;
 const writePortalCredentialsMock = writePortalCredentials as jest.Mock;
+const updatePortalTargetTokensMock = updatePortalTargetTokens as jest.Mock;
 const listWorkUnitsMock = listWorkUnits as jest.Mock;
 const listWorkAttemptsMock = listWorkAttempts as jest.Mock;
 const listValidationBindingsMock = listValidationBindings as jest.Mock;
@@ -190,7 +205,15 @@ function mockFetch(result: FetchResult): jest.Mock {
 }
 
 describe('getPortalTarget', () => {
-  beforeEach(clearPortalEnv);
+  let targetsFile: string;
+  beforeEach(() => {
+    clearPortalEnv();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-portal-target-'));
+    targetsFile = path.join(dir, 'portal-targets.json');
+    process.env.HAR_PORTAL_TARGETS_PATH = targetsFile;
+    process.env.HAR_CREDENTIALS_PATH = path.join(dir, 'credentials.json');
+    fs.writeFileSync(targetsFile, '{"version":1,"targets":[]}\n');
+  });
   afterAll(clearPortalEnv);
 
   it('prefers HAR_PORTAL_* over the legacy HAR_CLOUD_* alias', () => {
@@ -198,7 +221,7 @@ describe('getPortalTarget', () => {
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_new';
     process.env.HAR_CLOUD_API_URL = 'https://cloud.example.com';
     process.env.HAR_CLOUD_API_KEY = 'har_ingest_old';
-    expect(getPortalTarget()).toEqual({
+    expect(getPortalTarget()).toMatchObject({
       url: 'https://portal.example.com',
       token: 'har_ingest_new',
     });
@@ -207,7 +230,7 @@ describe('getPortalTarget', () => {
   it('falls back to HAR_CLOUD_* when HAR_PORTAL_* is unset', () => {
     process.env.HAR_CLOUD_API_URL = 'https://cloud.example.com';
     process.env.HAR_CLOUD_API_KEY = 'har_ingest_old';
-    expect(getPortalTarget()).toEqual({
+    expect(getPortalTarget()).toMatchObject({
       url: 'https://cloud.example.com',
       token: 'har_ingest_old',
     });
@@ -222,7 +245,7 @@ describe('getPortalTarget', () => {
   it('returns null when only one of URL/token is set (opt-in)', () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     expect(getPortalTarget()).toBeNull();
-    clearPortalEnv();
+    delete process.env.HAR_PORTAL_URL;
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_x';
     expect(getPortalTarget()).toBeNull();
   });
@@ -861,10 +884,17 @@ describe('syncRepoWithControl — portal watermark', () => {
 
 describe('syncRepoWithControl — token refresh on 401', () => {
   const realFetch = global.fetch;
+  let targetsFile: string;
   beforeEach(() => {
     resetPayloadMocks();
     clearPortalEnv();
     writePortalCredentialsMock.mockReset();
+    updatePortalTargetTokensMock.mockClear();
+    targetsFile = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'har-portal-sync-')),
+      'portal-targets.json',
+    );
+    process.env.HAR_PORTAL_TARGETS_PATH = targetsFile;
   });
   afterEach(() => {
     (global as unknown as { fetch: unknown }).fetch = realFetch;
@@ -872,11 +902,13 @@ describe('syncRepoWithControl — token refresh on 401', () => {
   afterAll(clearPortalEnv);
 
   function storedCreds(overrides: Record<string, unknown> = {}): void {
-    readPortalCredentialsMock.mockReturnValue({
+    upsertPortalTarget({
+      alias: 'test',
       portalUrl: 'https://portal.example.com',
+      workspaceId: 'ws_test',
       token: 'har_ingest_old',
-      createdAt: '2026-01-01T00:00:00.000Z',
       refreshToken: 'har_refresh_ok',
+      setAsDefault: true,
       ...overrides,
     });
   }
@@ -949,11 +981,11 @@ describe('syncRepoWithControl — token refresh on 401', () => {
       'Bearer har_ingest_new',
     );
 
-    expect(writePortalCredentialsMock).toHaveBeenCalledWith(
+    expect(updatePortalTargetTokensMock).toHaveBeenCalledWith(
+      'test',
       expect.objectContaining({
         token: 'har_ingest_new',
         expiresAt: '2026-02-01T00:00:00.000Z',
-        refreshToken: 'har_refresh_ok',
       }),
     );
   });
@@ -966,7 +998,7 @@ describe('syncRepoWithControl — token refresh on 401', () => {
       /rejected the ingest token/,
     );
     expect(callsTo(fetchMock, '/api/cli/refresh')).toHaveLength(0);
-    expect(writePortalCredentialsMock).not.toHaveBeenCalled();
+    expect(updatePortalTargetTokensMock).not.toHaveBeenCalled();
   });
 
   it('surfaces the original 401 when the refresh itself is rejected', async () => {
@@ -978,6 +1010,6 @@ describe('syncRepoWithControl — token refresh on 401', () => {
     );
     expect(callsTo(fetchMock, '/api/cli/refresh')).toHaveLength(1);
     expect(callsTo(fetchMock, '/api/sync')).toHaveLength(1);
-    expect(writePortalCredentialsMock).not.toHaveBeenCalled();
+    expect(updatePortalTargetTokensMock).not.toHaveBeenCalled();
   });
 });

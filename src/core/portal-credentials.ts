@@ -1,12 +1,23 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import {
+  getPortalTargetRecord,
+  migrateLegacyCredentialsIfNeeded,
+  readPortalTargetsStore,
+  resolveWorkspaceId,
+  upsertPortalTarget,
+} from './portal-targets';
 import { markAllRegisteredDirty } from './sync-context';
 
 export interface PortalCredentials {
   portalUrl: string;
   token: string;
   workspace?: string;
+  workspaceSlug?: string;
+  workspaceName?: string;
+  workspaceId?: string;
+  targetAlias?: string;
   email?: string;
   createdAt: string;
   refreshToken?: string;
@@ -21,6 +32,26 @@ export function portalCredentialsPath(): string {
 }
 
 export function readPortalCredentials(): PortalCredentials | null {
+  migrateLegacyCredentialsIfNeeded();
+  const store = readPortalTargetsStore();
+  const alias = store.defaultTarget ?? store.targets[0]?.alias;
+  if (alias) {
+    const record = getPortalTargetRecord(alias);
+    if (record) {
+      return {
+        portalUrl: record.portalUrl,
+        token: record.token,
+        workspace: record.workspaceSlug ?? record.workspaceName,
+        workspaceId: record.workspaceId,
+        targetAlias: record.alias,
+        email: record.email,
+        createdAt: record.createdAt,
+        refreshToken: record.refreshToken,
+        expiresAt: record.expiresAt,
+      };
+    }
+  }
+
   try {
     const raw = fs.readFileSync(portalCredentialsPath(), 'utf8');
     const parsed = JSON.parse(raw) as Partial<PortalCredentials>;
@@ -29,6 +60,8 @@ export function readPortalCredentials(): PortalCredentials | null {
       portalUrl: parsed.portalUrl,
       token: parsed.token,
       workspace: parsed.workspace,
+      workspaceId: parsed.workspaceId,
+      targetAlias: parsed.targetAlias,
       email: parsed.email,
       createdAt: parsed.createdAt ?? '',
       refreshToken: parsed.refreshToken,
@@ -39,10 +72,26 @@ export function readPortalCredentials(): PortalCredentials | null {
   }
 }
 
+/** @deprecated Prefer upsertPortalTarget — kept for callers not yet on named targets. */
 export function writePortalCredentials(creds: PortalCredentials): void {
-  const file = portalCredentialsPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(creds, null, 2), { mode: 0o600 });
-  fs.chmodSync(file, 0o600);
+  upsertPortalTarget({
+    alias: creds.targetAlias,
+    portalUrl: creds.portalUrl,
+    workspaceId: creds.workspaceId,
+    workspace: creds.workspace,
+    token: creds.token,
+    refreshToken: creds.refreshToken,
+    expiresAt: creds.expiresAt,
+    email: creds.email,
+    setAsDefault: true,
+  });
   markAllRegisteredDirty();
+}
+
+export function legacyWorkspaceIdFromCredentials(creds: PortalCredentials): string {
+  return resolveWorkspaceId({
+    workspaceId: creds.workspaceId,
+    workspace: creds.workspace,
+    alias: creds.targetAlias,
+  });
 }

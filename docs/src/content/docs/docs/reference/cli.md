@@ -220,27 +220,34 @@ har control down
 har control register [--repo .] [--api-url <url>] [--dry-run] [--force] [--portal|--no-portal]
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
-har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
+har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full] [--target <alias>] [--targets a,b]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
-har control login [--portal <url>] [--api-key <key>]
-har control trajectory [on|off]
+har control login [--portal <url>] [--target <alias>] [--api-key <key>]
+har control target list|show|use|remove|rename [--repo .] [--json]
+har control trajectory [on|off] [--target <alias>]
 ```
 
 `login` resolves the portal from `--portal`, then `HAR_PORTAL_URL`, then the
 portal of your last login, and finally `https://app.harhq.com`; it prints which
-one it picked. With `--api-key` it stores that ingest token; without it, HAR
-opens browser SSO and saves the resulting token.
+one it picked. Use `--target` to store the connection under a durable alias
+(for example separate dev and prod destinations). With `--api-key` it stores that
+ingest token; without it, HAR opens browser SSO and saves the resulting token
+with the workspace identity returned by the portal.
 `sync --select` interactively chooses repositories; `--full` ignores the portal
-watermark and resends the complete payload.
+watermark and resends the complete payload. `--target` / `--targets` send to named
+portal destinations explicitly; automatic activity-edge sync uses each repository's
+selected default from `har control target use <alias> --repo .`.
 `register --no-portal` keeps the repo on local Mission Control only (skips hosted
 portal sync even when logged in); `--portal` re-enables portal sync for that repo.
 
 `trajectory` controls whether sync forwards the trajectory ledger — agent prompts,
 tool arguments and tool results — to a hosted portal. Off by default: without it a
 portal receives runs, slots, token counts and events, and those bodies stay on this
-machine. Requires telemetry to be on, and `HAR_PORTAL_TRAJECTORY=on|off` overrides
-the stored choice. Forwarded content is capped and redacted by the same local policy
-that governs storage (see the Mission Control guide).
+machine. Use `--target` to scope the setting to one saved portal destination; the
+preference is stored per target in `~/.har/portal-targets.json`. Requires telemetry
+to be on, and `HAR_PORTAL_TRAJECTORY=on|off` overrides the stored choice. Forwarded
+content is capped and redacted by the same local policy that governs storage (see
+the Mission Control guide).
 
 `unregister` removes the repository from Mission Control and `~/.har/repos.json`.
 Interactively it lists session worktrees and asks whether to delete them; pass

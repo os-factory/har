@@ -43,9 +43,22 @@ jest.mock('../src/core/portal-watermark', () => ({
   readRunsWatermarkEntry: jest.fn(() => null),
   writeRunsWatermark: jest.fn(),
 }));
+jest.mock('../src/core/portal-targets', () => {
+  const actual = jest.requireActual('../src/core/portal-targets') as typeof import('../src/core/portal-targets');
+  return {
+    ...actual,
+    isPortalTrajectoryEnabledForTarget: jest.fn(() => true),
+    updatePortalTargetTokens: jest.fn(),
+  };
+});
 jest.mock('../src/core/telemetry-config', () => ({
   isTelemetryEnabled: jest.fn(() => true),
   isPortalTrajectoryEnabled: jest.fn(() => true),
+  readTelemetryPreference: jest.fn(() => ({
+    enabled: true,
+    signals: { metrics: true, logs: true, prompts: true, traces: true },
+    portalTrajectory: true,
+  })),
 }));
 jest.mock('../src/harness/manifest', () => ({
   readManifest: () => null,
@@ -54,11 +67,12 @@ jest.mock('../src/harness/manifest', () => ({
 jest.mock('../src/harness/stages', () => ({ readStageRegistry: () => null }));
 
 import { fetchPersistedTrajectory } from '../src/core/control-persisted-trajectory';
-import { isPortalTrajectoryEnabled, isTelemetryEnabled } from '../src/core/telemetry-config';
+import { isPortalTrajectoryEnabledForTarget } from '../src/core/portal-targets';
+import { isTelemetryEnabled } from '../src/core/telemetry-config';
 import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
 
 const fetchPersistedTrajectoryMock = fetchPersistedTrajectory as jest.Mock;
-const isPortalTrajectoryEnabledMock = isPortalTrajectoryEnabled as jest.Mock;
+const isPortalTrajectoryEnabledForTargetMock = isPortalTrajectoryEnabledForTarget as jest.Mock;
 const isTelemetryEnabledMock = isTelemetryEnabled as jest.Mock;
 const readPortalWatermarkMock = readPortalWatermark as jest.Mock;
 const writePortalWatermarkMock = writePortalWatermark as jest.Mock;
@@ -130,7 +144,7 @@ beforeEach(() => {
   process.env.HAR_PORTAL_URL = 'https://portal.example.com';
   process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
   isTelemetryEnabledMock.mockReturnValue(true);
-  isPortalTrajectoryEnabledMock.mockReturnValue(true);
+  isPortalTrajectoryEnabledForTargetMock.mockReturnValue(true);
   readPortalWatermarkMock.mockReturnValue(null);
   fetchPersistedTrajectoryMock.mockResolvedValue({
     records: [RECORD],
@@ -186,7 +200,7 @@ describe('trajectory forwarding', () => {
   });
 
   it('skips records but still sends spans when the opt-in is off', async () => {
-    isPortalTrajectoryEnabledMock.mockReturnValue(false);
+    isPortalTrajectoryEnabledForTargetMock.mockReturnValue(false);
     fetchPersistedTrajectoryMock.mockResolvedValue({
       records: [],
       spans: [SPAN],
@@ -208,7 +222,7 @@ describe('trajectory forwarding', () => {
 
   it('sends nothing when telemetry is off and the opt-in is off', async () => {
     isTelemetryEnabledMock.mockReturnValue(false);
-    isPortalTrajectoryEnabledMock.mockReturnValue(false);
+    isPortalTrajectoryEnabledForTargetMock.mockReturnValue(false);
     const fetchMock = mockFetch();
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
