@@ -10,7 +10,7 @@
           "name": "setup-har",
           "description": "Install the har CLI and scaffold the .har/ agent harness in this repository (init, adapt, launch, verify, commit). User-invoked onboarding.",
           "disable-model-invocation": true,
-          "allowed-tools": "Bash(har *) Bash(npm *) Bash(git *) Read Grep Glob Edit Write"
+          "allowed-tools": "Bash(har *) Bash(npm *) Bash(git *) Bash(docker *) Read Grep Glob Edit Write"
         }
       },
       "cursor": { "command": true },
