@@ -37,6 +37,7 @@ import {
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
 import { isPortalTrajectoryEnabled, isTelemetryEnabled } from './telemetry-config';
+import { getHarPackageVersion } from './package-version';
 import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
 import { buildSessionKey } from './telemetry-env';
@@ -440,6 +441,7 @@ async function buildPortalPayload(
 
   const syncBody: Record<string, unknown> = {
     path: repoPath,
+    cliVersion: getHarPackageVersion(),
     ...(status.gitRemote ? { gitRemote: status.gitRemote } : {}),
     ...(manifest ? { manifest } : {}),
     ...(stagesRegistry ? { stagesRegistry } : {}),
