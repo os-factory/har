@@ -43,7 +43,7 @@ npm install -g @osfactory/har
 
 ```bash
 cd my-app
-har env init              # scaffold .har/ and print a prompt for your coding agent
+har onboard               # scaffold .har/ and print a prompt for your coding agent
 har env launch 1          # isolated worktree + running stack for agent slot 1
 har env verify 1 --full   # run the project's real checks, record what passed
 ```
