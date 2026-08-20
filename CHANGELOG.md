@@ -1,3 +1,10 @@
+## [0.62.1](https://github.com/os-factory/har/compare/v0.62.0...v0.62.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **control:** point login at app.harhq.com ([#250](https://github.com/os-factory/har/issues/250)) ([fcacc98](https://github.com/os-factory/har/commit/fcacc9869a9319db80c261ca7e4a1c2437eb33dd))
+
 # [0.62.0](https://github.com/os-factory/har/compare/v0.61.3...v0.62.0) (2026-08-20)
 
 
