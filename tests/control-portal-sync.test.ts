@@ -258,6 +258,32 @@ describe('syncRepoWithControl — portal push', () => {
     expect(body.generatedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 
+  it('identifies the sending CLI with cliVersion', async () => {
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    process.env.HAR_PACKAGE_VERSION = '9.9.9';
+    try {
+      const fetchMock = mockFetch({ status: 200 });
+      await syncRepoWithControl({ repoPath: '/repo/x' });
+      const [, init] = portalSyncCall(fetchMock);
+      expect(JSON.parse(init.body as string).cliVersion).toBe('9.9.9');
+    } finally {
+      delete process.env.HAR_PACKAGE_VERSION;
+    }
+  });
+
+  it('resolves cliVersion from the package when no override is set', async () => {
+    delete process.env.HAR_PACKAGE_VERSION;
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const [, init] = portalSyncCall(fetchMock);
+    expect(JSON.parse(init.body as string).cliVersion).toMatch(/^\d+\.\d+\.\d+/);
+  });
+
   it('syncs to local Mission Control before pushing to the portal', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
