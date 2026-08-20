@@ -1,3 +1,10 @@
+## [0.62.2](https://github.com/os-factory/har/compare/v0.62.1...v0.62.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **ios:** generate the Xcode project at launch and detect the real target ([#251](https://github.com/os-factory/har/issues/251)) ([8e8efd8](https://github.com/os-factory/har/commit/8e8efd899377337dc08a97c18027c9b5c1e4e9df))
+
 ## [0.62.1](https://github.com/os-factory/har/compare/v0.62.0...v0.62.1) (2026-08-20)
 
 
