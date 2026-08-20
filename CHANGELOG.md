@@ -1,3 +1,15 @@
+# [0.62.0](https://github.com/os-factory/har/compare/v0.61.3...v0.62.0) (2026-08-20)
+
+
+### Bug Fixes
+
+* honor requires-python and uv when provisioning Python venv ([#244](https://github.com/os-factory/har/issues/244)) ([e0d39ec](https://github.com/os-factory/har/commit/e0d39ecc287d3008f3b1e19f2990bfbc9d3c65f6))
+
+
+### Features
+
+* **control:** send the CLI version on portal sync ([#249](https://github.com/os-factory/har/issues/249)) ([92e1700](https://github.com/os-factory/har/commit/92e1700d5f40f4ddd10550f09f1efd495acac12c))
+
 ## [0.61.3](https://github.com/os-factory/har/compare/v0.61.2...v0.61.3) (2026-08-19)
 
 
