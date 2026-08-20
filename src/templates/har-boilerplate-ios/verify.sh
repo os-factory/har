@@ -58,12 +58,18 @@ xc_target_flags() {
   elif [ -n "${HARNESS_XCODE_PROJECT:-}" ] && [ -e "$WORK_DIR/${HARNESS_XCODE_PROJECT}" ]; then
     echo "-project $WORK_DIR/${HARNESS_XCODE_PROJECT}"
   else
-    # Auto-detect: prefer workspace (CocoaPods), then project
+    # Auto-detect: prefer workspace (CocoaPods), then project. Runs from inside
+    # WORK_DIR so a dot in the worktree path itself cannot trip the dotfile
+    # filter, and skips both the project.xcworkspace every .xcodeproj carries
+    # inside it and the CocoaPods project under Pods/ — either would point
+    # xcodebuild at the wrong target.
     local ws prj
-    ws="$(find "$WORK_DIR" -maxdepth 2 -name "*.xcworkspace" ! -path "*/\.*" 2>/dev/null | head -1 || true)"
-    prj="$(find "$WORK_DIR" -maxdepth 2 -name "*.xcodeproj" ! -path "*/\.*" 2>/dev/null | head -1 || true)"
-    if [ -n "$ws" ]; then echo "-workspace $ws"
-    elif [ -n "$prj" ]; then echo "-project $prj"
+    ws="$(cd "$WORK_DIR" && find . -maxdepth 2 -name "*.xcworkspace" \
+      ! -path "./.*" ! -path "*.xcodeproj/*" ! -path "*/Pods/*" 2>/dev/null | head -1 || true)"
+    prj="$(cd "$WORK_DIR" && find . -maxdepth 2 -name "*.xcodeproj" \
+      ! -path "./.*" ! -path "*/Pods/*" 2>/dev/null | head -1 || true)"
+    if [ -n "$ws" ]; then echo "-workspace $WORK_DIR/${ws#./}"
+    elif [ -n "$prj" ]; then echo "-project $WORK_DIR/${prj#./}"
     fi
   fi
 }

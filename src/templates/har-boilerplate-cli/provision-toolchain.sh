@@ -586,9 +586,129 @@ provision_ruby() {
   append_path_prefix "$dir/vendor/bundle/bin"
 }
 
+# ── iOS Xcode project helpers ─────────────────────────────────────────────────
+# Tuist, XcodeGen and CocoaPods treat the .xcodeproj / .xcworkspace as a build
+# product rather than a tracked file, so a fresh worktree has nothing for
+# xcodebuild to open. Generate it here — and fail naming the missing generator,
+# instead of letting xcodebuild report an opaque "scheme not found" later.
+
+# First project file of a kind in the work dir. Runs from inside the dir so a dot
+# in the worktree path itself cannot trip the dotfile filter, and skips both the
+# project.xcworkspace every .xcodeproj carries inside it and whatever CocoaPods
+# generates under Pods/.
+har_ios_find_project_file() {
+  local dir="$1"
+  local pattern="$2"
+  local match=""
+  match="$(cd "$dir" 2>/dev/null && find . -maxdepth 2 -name "$pattern" \
+    ! -path "./.*" ! -path "*.xcodeproj/*" ! -path "*/Pods/*" 2>/dev/null | head -1)" || true
+  [ -n "$match" ] || return 1
+  echo "${match#./}"
+}
+
+# True when this worktree already has something xcodebuild can open. Adapt-time
+# HARNESS_XCODE_WORKSPACE / HARNESS_XCODE_PROJECT decide it when set: they name
+# the generated file, so a missing one means the generator still has to run.
+har_ios_has_project() {
+  local dir="$1"
+
+  if [ -n "${HARNESS_XCODE_WORKSPACE:-}" ] || [ -n "${HARNESS_XCODE_PROJECT:-}" ]; then
+    if [ -n "${HARNESS_XCODE_WORKSPACE:-}" ] && [ -e "$dir/$HARNESS_XCODE_WORKSPACE" ]; then
+      return 0
+    fi
+    if [ -n "${HARNESS_XCODE_PROJECT:-}" ] && [ -e "$dir/$HARNESS_XCODE_PROJECT" ]; then
+      return 0
+    fi
+    return 1
+  fi
+
+  if har_ios_find_project_file "$dir" '*.xcworkspace' >/dev/null; then return 0; fi
+  if har_ios_find_project_file "$dir" '*.xcodeproj' >/dev/null; then return 0; fi
+  return 1
+}
+
+# Generator this repo declares, or empty. A Podfile counts: `pod install` is what
+# writes the .xcworkspace for a CocoaPods project.
+har_ios_project_generator() {
+  local dir="$1"
+  if [ -f "$dir/Project.swift" ] || [ -f "$dir/Workspace.swift" ]; then echo tuist; return; fi
+  if [ -f "$dir/project.yml" ] || [ -f "$dir/project.yaml" ]; then echo xcodegen; return; fi
+  if [ -f "$dir/Podfile" ]; then echo pod; return; fi
+  echo ""
+}
+
+har_ios_generate_project() {
+  local dir="$1"
+  local generator=""
+
+  if har_ios_has_project "$dir"; then
+    return 0
+  fi
+
+  generator="$(har_ios_project_generator "$dir")"
+  if [ -z "$generator" ]; then
+    pt_log "No .xcodeproj/.xcworkspace found and no generator manifest (Project.swift, project.yml, Podfile) — set HARNESS_XCODE_PROJECT/HARNESS_XCODE_WORKSPACE or HARNESS_INSTALL_CMD in harness.env"
+    return 0
+  fi
+
+  if ! command -v "$generator" >/dev/null 2>&1; then
+    local label="$generator"
+    [ "$generator" = "pod" ] && label="CocoaPods (pod)"
+    pt_log "ERROR: this repo generates its Xcode project with ${label}, which is not on PATH."
+    pt_log "       Install ${label}, or set HARNESS_INSTALL_CMD in harness.env to provision the project another way."
+    return 1
+  fi
+
+  case "$generator" in
+    tuist)
+      pt_log "Generating the Xcode project with tuist..."
+      if ! (cd "$dir" && tuist generate --no-open); then
+        pt_log "tuist generate --no-open failed — retrying without the flag"
+        (cd "$dir" && tuist generate)
+      fi
+      ;;
+    xcodegen)
+      pt_log "Generating the Xcode project with xcodegen..."
+      (cd "$dir" && xcodegen generate)
+      ;;
+    pod)
+      # har_ios_pod_install writes the workspace right after this.
+      :
+      ;;
+  esac
+}
+
+# CocoaPods dependencies. Independent of project generation: a tracked
+# .xcworkspace still cannot build when Pods/ is missing in a fresh worktree.
+har_ios_pod_install() {
+  local dir="$1"
+
+  [ -f "$dir/Podfile" ] || return 0
+  [ -d "$dir/Pods" ] && return 0
+
+  if ! command -v pod >/dev/null 2>&1; then
+    pt_log "ERROR: this repo uses CocoaPods (Podfile, no Pods/) and pod is not on PATH."
+    pt_log "       Install CocoaPods, or set HARNESS_INSTALL_CMD in harness.env to provision the project another way."
+    return 1
+  fi
+
+  pt_log "Installing CocoaPods dependencies..."
+  (cd "$dir" && pod install)
+}
+
 provision_ios() {
   local dir="$1"
-  run_install_cmd "$dir" || true
+
+  # An explicit HARNESS_INSTALL_CMD owns provisioning outright: the default
+  # generators stay out of the way, and a failing override fails the launch
+  # rather than being papered over.
+  if [ -n "${HARNESS_INSTALL_CMD:-}" ]; then
+    run_install_cmd "$dir"
+  else
+    har_ios_generate_project "$dir"
+    har_ios_pod_install "$dir"
+  fi
+
   append_env "HARNESS_ECOSYSTEM" "ios"
   append_env "XCODEBUILD_BIN" "$(command -v xcodebuild 2>/dev/null || echo xcodebuild)"
   if [ -n "${HARNESS_XCODE_SCHEME:-}" ]; then
