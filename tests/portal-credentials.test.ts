@@ -120,6 +120,7 @@ describe('resolvePortalUrl', () => {
   }
 
   it('falls back to the default portal when nothing is set', () => {
+    expect(DEFAULT_PORTAL_URL).toBe('https://app.harhq.com');
     expect(resolvePortalUrl()).toEqual({
       url: DEFAULT_PORTAL_URL,
       source: 'default',

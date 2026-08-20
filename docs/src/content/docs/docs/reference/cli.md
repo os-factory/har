@@ -227,7 +227,7 @@ har control trajectory [on|off]
 ```
 
 `login` resolves the portal from `--portal`, then `HAR_PORTAL_URL`, then the
-portal of your last login, and finally `https://har.kerno.io`; it prints which
+portal of your last login, and finally `https://app.harhq.com`; it prints which
 one it picked. With `--api-key` it stores that ingest token; without it, HAR
 opens browser SSO and saves the resulting token.
 `sync --select` interactively chooses repositories; `--full` ignores the portal

@@ -3,7 +3,7 @@ import { readPortalCredentials } from './portal-credentials';
 /** Default Mission Control API base URL (local Docker Compose). */
 export const DEFAULT_CONTROL_API_URL = 'http://localhost:3847';
 
-export const DEFAULT_PORTAL_URL = 'https://har.kerno.io';
+export const DEFAULT_PORTAL_URL = 'https://app.harhq.com';
 
 export function getControlApiUrl(): string {
   return process.env.HAR_CONTROL_API_URL ?? DEFAULT_CONTROL_API_URL;
