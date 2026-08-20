@@ -49,6 +49,24 @@ repository: any lockfile it writes is removed after the install.
 verification steps) and `HARNESS_PKG_EXEC` holds the matching package runner
 (`npx --yes`, `bunx`, `pnpm dlx`, or `yarn dlx`).
 
+### iOS generated Xcode projects
+
+Tuist, XcodeGen, and CocoaPods treat the `.xcodeproj` / `.xcworkspace` as a build
+product, so a fresh session worktree has nothing for `xcodebuild` to open. When no
+project file is present, launch runs the generator the repository declares —
+`tuist generate` for `Project.swift`, `xcodegen generate` for `project.yml` — and
+`pod install` whenever a `Podfile` is present and `Pods/` is missing. A generator
+the repository needs but the machine lacks fails the launch by name instead of
+surfacing later as an opaque *scheme not found* from `xcodebuild`.
+
+`HARNESS_INSTALL_CMD` owns provisioning outright when set: the default generators
+do not run behind it, and a failing override fails the launch.
+
+`HARNESS_XCODE_WORKSPACE`, `HARNESS_XCODE_PROJECT`, `HARNESS_XCODE_SCHEME`, and
+`HARNESS_BUNDLE_ID` stay adapt-time values in `.har/harness.env`. With both project
+variables empty, verification auto-detects the project — ignoring the
+`project.xcworkspace` nested inside every `.xcodeproj` and anything under `Pods/`.
+
 ## iOS simulator allocation
 
 Each iOS slot creates `har-<project>-agent-<id>-<model>` at launch and deletes it at

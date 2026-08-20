@@ -21,7 +21,7 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `setup-infra.sh` | Check the toolchain; start optional Docker services |
 | `simulator.sh` | Create, boot and delete one iOS Simulator per agent slot |
 | `launch.sh` | Launch one agent slot (git worktree, toolchain provisioning, simulator, env file) |
-| `provision-toolchain.sh` | Write Xcode/simulator paths (`XCODEBUILD_BIN`, …) to `.env.agent.<id>` |
+| `provision-toolchain.sh` | Generate the Xcode project when it is a build product (Tuist / XcodeGen / CocoaPods) and write Xcode paths (`XCODEBUILD_BIN`, …) to `.env.agent.<id>` |
 | `verify.sh` | Verification pipeline (build smoke by default; --full adds tests, lint, flows) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run xcodebuild commands, install/launch app |

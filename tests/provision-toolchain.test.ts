@@ -420,4 +420,166 @@ describe('provision-toolchain.sh template contract', () => {
       expect(uvLogContent).toContain('sync');
     });
   });
+
+  describe('iOS project generation', () => {
+    const scriptPath = path.join(
+      resolveTemplatesDir(),
+      'har-boilerplate-ios',
+      'provision-toolchain.sh',
+    );
+
+    /** Fixture work dir with a fake bin dir on PATH and an agent env file. */
+    const iosFixture = (name: string): { dir: string; bin: string; envFile: string; log: string } => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), `har-pt-ios-${name}-`));
+      const bin = path.join(dir, 'fakebin');
+      const envFile = path.join(dir, '.env.agent.1');
+      fs.mkdirSync(bin, { recursive: true });
+      fs.writeFileSync(envFile, `AGENT_ID=1\nREPO_ROOT=${dir}\n`);
+      return { dir, bin, envFile, log: path.join(dir, 'generator.log') };
+    };
+
+    /** Stub generator that records its argv and creates the project it would generate. */
+    const stubGenerator = (bin: string, tool: string, log: string, project = ''): void => {
+      const create = project ? `mkdir -p "${project}"\n` : '';
+      fs.writeFileSync(
+        path.join(bin, tool),
+        `#!/usr/bin/env bash\nprintf '%s %s\\n' "${tool}" "$*" >> "${log}"\n${create}exit 0\n`,
+        { mode: 0o755 },
+      );
+    };
+
+    const provision = (
+      fixture: { dir: string; bin: string; envFile: string },
+      opts: { pathPrefix?: string; installCmd?: string } = {},
+    ): ReturnType<typeof run> => {
+      // A bare system PATH for the "generator missing" cases: the machine
+      // running the tests may well have tuist or xcodegen installed elsewhere.
+      const pathValue =
+        opts.pathPrefix === undefined ? `${fixture.bin}:/usr/bin:/bin` : opts.pathPrefix;
+      const install = opts.installCmd === undefined ? '' : `HARNESS_INSTALL_CMD=${opts.installCmd} `;
+      return run(
+        `PATH="${pathValue}" HARNESS_ECOSYSTEM=ios ${install}` +
+          `HAR_WORK_DIR="${fixture.dir}" HAR_ENV_FILE="${fixture.envFile}" HAR_AGENT_ID=1 ` +
+          `bash "${scriptPath}" 2>&1`,
+      );
+    };
+
+    it('runs xcodegen when project.yml has no generated .xcodeproj', () => {
+      const fixture = iosFixture('xcodegen');
+      fs.writeFileSync(path.join(fixture.dir, 'project.yml'), 'name: Fixture\n');
+      stubGenerator(fixture.bin, 'xcodegen', fixture.log, path.join(fixture.dir, 'Fixture.xcodeproj'));
+
+      const result = provision(fixture);
+
+      expect(result.code).toBe(0);
+      expect(fs.readFileSync(fixture.log, 'utf8')).toContain('xcodegen generate');
+    });
+
+    it('runs tuist generate for a Project.swift repo', () => {
+      const fixture = iosFixture('tuist');
+      fs.writeFileSync(path.join(fixture.dir, 'Project.swift'), '// tuist fixture\n');
+      stubGenerator(fixture.bin, 'tuist', fixture.log, path.join(fixture.dir, 'Fixture.xcodeproj'));
+
+      const result = provision(fixture);
+
+      expect(result.code).toBe(0);
+      expect(fs.readFileSync(fixture.log, 'utf8')).toContain('tuist generate --no-open');
+    });
+
+    it('fails naming the generator when it is not on PATH', () => {
+      const fixture = iosFixture('no-tuist');
+      fs.writeFileSync(path.join(fixture.dir, 'Project.swift'), '// tuist fixture\n');
+
+      const result = provision(fixture, { pathPrefix: '/usr/bin:/bin' });
+
+      expect(result.code).not.toBe(0);
+      expect(result.stdout).toContain('tuist');
+      expect(result.stdout).toContain('HARNESS_INSTALL_CMD');
+    });
+
+    it('installs CocoaPods dependencies when Pods/ is missing', () => {
+      const fixture = iosFixture('pods');
+      fs.writeFileSync(path.join(fixture.dir, 'Podfile'), "platform :ios, '17.0'\n");
+      stubGenerator(fixture.bin, 'pod', fixture.log, path.join(fixture.dir, 'Fixture.xcworkspace'));
+
+      const result = provision(fixture);
+
+      expect(result.code).toBe(0);
+      expect(fs.readFileSync(fixture.log, 'utf8')).toContain('pod install');
+    });
+
+    it('fails naming CocoaPods when pod is not on PATH', () => {
+      const fixture = iosFixture('no-pod');
+      fs.writeFileSync(path.join(fixture.dir, 'Podfile'), "platform :ios, '17.0'\n");
+
+      const result = provision(fixture, { pathPrefix: '/usr/bin:/bin' });
+
+      expect(result.code).not.toBe(0);
+      expect(result.stdout).toContain('CocoaPods');
+    });
+
+    it('skips generation when the worktree already has a project', () => {
+      const fixture = iosFixture('tracked');
+      fs.writeFileSync(path.join(fixture.dir, 'project.yml'), 'name: Fixture\n');
+      // A real .xcodeproj carries an inner project.xcworkspace — that must not
+      // change the answer either way.
+      fs.mkdirSync(path.join(fixture.dir, 'Fixture.xcodeproj', 'project.xcworkspace'), {
+        recursive: true,
+      });
+      stubGenerator(fixture.bin, 'xcodegen', fixture.log);
+
+      const result = provision(fixture);
+
+      expect(result.code).toBe(0);
+      expect(fs.existsSync(fixture.log)).toBe(false);
+    });
+
+    it('regenerates when HARNESS_XCODE_PROJECT names a file this worktree lacks', () => {
+      const fixture = iosFixture('adapt-time');
+      fs.writeFileSync(path.join(fixture.dir, 'project.yml'), 'name: Fixture\n');
+      stubGenerator(fixture.bin, 'xcodegen', fixture.log, path.join(fixture.dir, 'Fixture.xcodeproj'));
+
+      const result = run(
+        `PATH="${fixture.bin}:/usr/bin:/bin" HARNESS_ECOSYSTEM=ios ` +
+          `HARNESS_XCODE_PROJECT=Fixture.xcodeproj ` +
+          `HAR_WORK_DIR="${fixture.dir}" HAR_ENV_FILE="${fixture.envFile}" HAR_AGENT_ID=1 ` +
+          `bash "${scriptPath}" 2>&1`,
+      );
+
+      expect(result.code).toBe(0);
+      expect(fs.readFileSync(fixture.log, 'utf8')).toContain('xcodegen generate');
+    });
+
+    it('lets an explicit HARNESS_INSTALL_CMD own provisioning', () => {
+      const fixture = iosFixture('install-cmd');
+      fs.writeFileSync(path.join(fixture.dir, 'project.yml'), 'name: Fixture\n');
+      stubGenerator(fixture.bin, 'xcodegen', fixture.log);
+
+      const result = provision(fixture, { installCmd: 'true' });
+
+      expect(result.code).toBe(0);
+      expect(fs.existsSync(fixture.log)).toBe(false);
+    });
+
+    it('fails the launch when HARNESS_INSTALL_CMD fails', () => {
+      const fixture = iosFixture('install-cmd-fail');
+      fs.writeFileSync(path.join(fixture.dir, 'project.yml'), 'name: Fixture\n');
+      stubGenerator(fixture.bin, 'xcodegen', fixture.log);
+
+      const result = provision(fixture, { installCmd: 'false' });
+
+      expect(result.code).not.toBe(0);
+      expect(fs.existsSync(fixture.log)).toBe(false);
+    });
+
+    it('records XCODEBUILD_BIN with no generator manifest present', () => {
+      const fixture = iosFixture('bare');
+
+      const result = provision(fixture);
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain('no generator manifest');
+      expect(fs.readFileSync(fixture.envFile, 'utf8')).toContain('XCODEBUILD_BIN=');
+    });
+  });
 });

@@ -21,6 +21,12 @@ structure, then make the changes listed below. Commit when done.
 | `HARNESS_SIMULATOR_NAME` | Display name exactly as shown in `xcrun simctl list devices` (e.g. `iPhone 16`). |
 | `HARNESS_BUNDLE_ID` | App bundle identifier from the Xcode target (e.g. `com.example.myapp`). |
 
+If the project is generated (`Project.swift`, `project.yml`, or a `Podfile` with no
+tracked `.xcworkspace`), still set the path the generator produces — launch runs
+`tuist generate` / `xcodegen generate` / `pod install` when the file is absent from
+a fresh worktree. Use `HARNESS_INSTALL_CMD` only when that default is wrong; it then
+owns provisioning outright.
+
 Run `./.har/setup-infra.sh` after editing to confirm the simulator boots.
 
 ## 3 — Verify `.har/verify.sh` builds and tests correctly
