@@ -229,9 +229,17 @@ har hq disconnect [name] [--yes] [--json]
 Connect this checkout to a HAR HQ workspace. On a TTY, `connect` asks Production
 (`https://app.harhq.com`), Development (`https://app.dev.harhq.com`), or a custom
 URL, then opens browser SSO. The workspace chosen on the consent screen is the
-destination; HAR attaches **this repository** to that workspace. A second
-`har hq connect` from another checkout (or against another workspace) adds another
-attachment — it does not replace the first connection.
+destination; HAR attaches **this repository** to that workspace. When other
+repositories are already registered locally, the consent page (or a TTY fallback)
+shows their count and paths. You can send all of them to one workspace, or pick
+a workspace and then the repositories for it — already-assigned paths are hidden
+on the next workspace. `--yes` / `--json` skip that prompt and attach only the
+current checkout. A second `har hq connect` from another checkout (or against
+another workspace) adds another attachment — it does not replace the first
+connection.
+
+Automatic sync sends only to workspaces a repository is **attached** to. A
+single leftover connection is not inherited by unattached checkouts.
 
 `list` shows saved connections (workspace + portal host, never tokens).
 `disconnect` removes one connection and its credentials. Credentials stay in

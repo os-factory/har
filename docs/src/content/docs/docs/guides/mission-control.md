@@ -259,10 +259,12 @@ conflict and can select another port in the slot lane.
 ## HAR HQ
 
 `har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
-repository to the workspace you pick in the portal. Saved connections live in
-`~/.har/portal-targets.json`; `har hq list` / `har hq disconnect` manage them.
-Workspace choices are never committed into `.har/`. `har control login` still
-works as a deprecated alias.
+repository to the workspace you pick in the portal. Other locally registered
+repositories are listed with a count so you can send all of them to one workspace,
+or assign leftover paths per workspace. Unattached checkouts are not ingested into
+the only leftover connection. Saved connections live in `~/.har/portal-targets.json`;
+`har hq list` / `har hq disconnect` manage them. Workspace choices are never
+committed into `.har/`. `har control login` still works as a deprecated alias.
 
 `har control sync --cloud` targets HAR Cloud. Hosted coordination is separate from
 the local open-source dashboard and portable `.har/` contract.
