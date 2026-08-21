@@ -14,11 +14,24 @@ interface Props {
 
 const {
   title,
-  description = 'HAR is an open-source, agent-agnostic standard for multi-agent coding workflows — parallel agents, deterministic validation gates, verifiable proof, and full observability.',
+  description = 'HAR is an open-source agent harness — CLI and MCP server — for multi-agent coding workflows. Isolated worktrees, deterministic verification, and software-factory observability for Claude Code, Cursor, and Codex.',
   bodyClass = '',
   canonicalPath = Astro.url.pathname,
 } = Astro.props;
 const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
+const ogImage = new URL('/assets/har-logo.png', Astro.site ?? Astro.url.origin);
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'HAR',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Linux, macOS, Windows',
+  url: 'https://harproject.dev/',
+  downloadUrl: 'https://www.npmjs.com/package/@osfactory/har',
+  license: 'https://www.apache.org/licenses/LICENSE-2.0',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  description,
+};
 ---
 <!doctype html>
 <html lang="en">
@@ -28,9 +41,20 @@ const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
     <meta name="description" content={description} />
     <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HAR" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/png" href="/assets/har-logo.png" />
     <title>{title}</title>
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <PostHog />
     <script is:inline>
       (() => {
