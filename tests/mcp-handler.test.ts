@@ -2,6 +2,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { handleMcpToolCall } from '../src/mcp/server';
+import { detectDockerStatus } from '../src/core/docker-status';
+
+jest.mock('../src/core/docker-status', () => {
+  const actual = jest.requireActual('../src/core/docker-status') as typeof import('../src/core/docker-status');
+  return {
+    ...actual,
+    detectDockerStatus: jest.fn(() => ({
+      cliInstalled: false,
+      daemonRunning: false,
+    })),
+  };
+});
 
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
 
@@ -26,17 +38,16 @@ describe('handleMcpToolCall', () => {
         profile: 'cli',
       });
       const payload = JSON.parse(response.content[0].text);
-      expect(typeof payload.docker.cliInstalled).toBe('boolean');
-      expect(typeof payload.docker.daemonRunning).toBe('boolean');
-      if (payload.docker.cliInstalled && payload.docker.daemonRunning) {
-        expect(payload.docker.warning).toBeNull();
-      } else {
-        expect(payload.docker.warning).toContain('Docker is required');
-      }
+      expect(detectDockerStatus).toHaveBeenCalled();
+      expect(payload.docker).toMatchObject({
+        cliInstalled: false,
+        daemonRunning: false,
+      });
+      expect(payload.docker.warning).toContain('Docker is required');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   it('returns structured errors for unknown tools', async () => {
     await expect(handleMcpToolCall('har_unknown_tool', {})).rejects.toThrow('Unknown tool');

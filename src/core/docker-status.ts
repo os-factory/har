@@ -6,7 +6,7 @@
  * Docker Compose (`.har/setup-infra.sh`). Onboarding surfaces the requirement
  * up front instead of failing later with a raw Docker error.
  */
-import { execFileSync } from 'child_process';
+import * as childProcess from 'child_process';
 import { warn } from '../utils/logging';
 
 /** Where to send users who do not have Docker yet. */
@@ -28,12 +28,17 @@ export interface DockerProbe {
   daemon: () => boolean;
 }
 
+/** Fail fast so a hung daemon cannot stall onboarding or `har env init`. */
+const VERSION_PROBE_MS = 1000;
+const DAEMON_PROBE_MS = 2000;
+
 function execDocker(args: string[], timeout: number): string | null {
   try {
-    return execFileSync('docker', args, {
+    return childProcess.execFileSync('docker', args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout,
+      killSignal: 'SIGKILL',
     });
   } catch {
     return null;
@@ -41,8 +46,8 @@ function execDocker(args: string[], timeout: number): string | null {
 }
 
 const defaultProbe: DockerProbe = {
-  version: () => execDocker(['--version'], 3000),
-  daemon: () => execDocker(['info', '--format', '{{.ServerVersion}}'], 5000) !== null,
+  version: () => execDocker(['--version'], VERSION_PROBE_MS),
+  daemon: () => execDocker(['info', '--format', '{{.ServerVersion}}'], DAEMON_PROBE_MS) !== null,
 };
 
 /** Parse `Docker version 27.3.1, build ce12230` → `27.3.1`. */

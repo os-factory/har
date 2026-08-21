@@ -1,3 +1,14 @@
+jest.mock('child_process', () => {
+  const actual = jest.requireActual('child_process') as typeof import('child_process');
+  return {
+    ...actual,
+    execFileSync: jest.fn(() => {
+      throw new Error('default docker probe is stubbed in unit tests');
+    }),
+  };
+});
+
+import * as childProcess from 'child_process';
 import {
   DOCKER_INSTALL_URL,
   describeDockerStatus,
@@ -58,11 +69,32 @@ describe('detectDockerStatus', () => {
   });
 
   it('memoizes the default probe and re-probes after a cache reset', () => {
-    const first = detectDockerStatus();
-    expect(detectDockerStatus()).toBe(first);
-    resetDockerStatusCache();
-    expect(detectDockerStatus()).not.toBe(first);
-    expect(detectDockerStatus()).toEqual(first);
+    const exec = childProcess.execFileSync as jest.MockedFunction<typeof childProcess.execFileSync>;
+    exec.mockImplementation((_file, args) => {
+      const flag = Array.isArray(args) ? String(args[0]) : '';
+      if (flag === '--version') return 'Docker version 27.3.1, build test\n';
+      return '27.3.1\n';
+    });
+    try {
+      const first = detectDockerStatus();
+      expect(first).toEqual({ cliInstalled: true, daemonRunning: true, version: '27.3.1' });
+      expect(detectDockerStatus()).toBe(first);
+      const callsAfterCacheHit = exec.mock.calls.length;
+      detectDockerStatus();
+      expect(exec.mock.calls.length).toBe(callsAfterCacheHit);
+
+      resetDockerStatusCache();
+      const second = detectDockerStatus();
+      expect(second).not.toBe(first);
+      expect(second).toEqual(first);
+      expect(exec.mock.calls.length).toBeGreaterThan(callsAfterCacheHit);
+    } finally {
+      exec.mockReset();
+      exec.mockImplementation(() => {
+        throw new Error('default docker probe is stubbed in unit tests');
+      });
+      resetDockerStatusCache();
+    }
   });
 });
 
