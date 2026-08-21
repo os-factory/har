@@ -225,7 +225,10 @@ har control trajectory off      # back to counts and events only (default)
 ```
 
 `HAR_PORTAL_TRAJECTORY=on|off` overrides the stored choice for one sync, and
-telemetry must be on either way. What is forwarded goes through the same policy as
+telemetry must be on either way. Use `har control trajectory on --target …` when
+this checkout is attached to more than one HQ workspace — forwarding is stored
+per connection so a private dev workspace can receive prompts without enabling
+them for production. What is forwarded goes through the same policy as
 what is stored: bodies are capped at `HAR_TRAJECTORY_MAX_PAYLOAD_BYTES`, secret
 attributes are `[redacted]`, and `contentDisclosure` travels with each record so a
 truncated or withheld body is labelled as such remotely instead of arriving as

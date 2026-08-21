@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { canonicalizeControlRepoPath } from './control-repo-path';
+import { listRegisteredRepos } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
 import { markAllRegisteredDirty } from './sync-context';
 
@@ -464,7 +465,7 @@ export function resolvePortalTargetsForRepo(options?: {
 
   if (options?.explicitTargets && options.explicitTargets.length > 0) {
     const targets = options.explicitTargets.map((alias) => {
-      const record = getPortalTargetRecord(alias);
+      const record = findPortalTargetRecord(alias);
       if (!record) throw new Error(`Unknown portal target "${alias}".`);
       return recordToPortalTarget(record);
     });
@@ -633,7 +634,17 @@ export function migrateLegacyCredentialsIfNeeded(): void {
       createdAt: new Date().toISOString(),
     };
 
-    writeStore({ version: 1, defaultTarget: alias, targets: [record] });
+    const repoTargets: Record<string, string[]> = {};
+    for (const repoPath of listRegisteredRepos()) {
+      repoTargets[repoPath] = [alias];
+    }
+
+    writeStore({
+      version: 1,
+      defaultTarget: alias,
+      targets: [record],
+      ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
+    });
   } catch {
     // ignore corrupt legacy files
   }

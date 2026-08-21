@@ -14,6 +14,8 @@ import {
   redactPortalTargetRecord,
   removePortalTarget,
   resolvePortalTargetsForRepo,
+  resolveWorkspaceId,
+  updatePortalTargetTokens,
   upsertPortalTarget,
   writePortalTargetTrajectoryPreference,
 } from '../src/core/portal-targets';
@@ -31,6 +33,7 @@ const ENV_KEYS = [
   'HAR_CREDENTIALS_PATH',
   'HAR_PORTAL_TARGETS_PATH',
   'HAR_PORTAL_SYNC_STATE_PATH',
+  'HAR_CONTROL_REGISTRY_PATH',
 ] as const;
 
 let tmpDir: string;
@@ -40,6 +43,7 @@ beforeEach(() => {
   process.env.HAR_CREDENTIALS_PATH = path.join(tmpDir, 'credentials.json');
   process.env.HAR_PORTAL_TARGETS_PATH = path.join(tmpDir, 'portal-targets.json');
   process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(tmpDir, 'portal-sync-state.json');
+  process.env.HAR_CONTROL_REGISTRY_PATH = path.join(tmpDir, 'repos.json');
   for (const key of ENV_KEYS) {
     if (key.endsWith('_PATH')) continue;
     delete process.env[key];
@@ -152,8 +156,32 @@ describe('legacy credentials migration', () => {
     const store = readPortalTargetsStore();
     expect(store.targets).toHaveLength(1);
     expect(store.defaultTarget).toBe(store.targets[0].alias);
+    expect(store.targets[0].workspaceId).toBe('slug:acme');
     expect(readPortalCredentials()?.token).toBe('legacy-token');
     expect(getPortalTarget()?.token).toBe('legacy-token');
+  });
+
+  it('attaches registered repos to the migrated default target', () => {
+    const repoPath = path.join(__dirname, 'fixtures/minimal-harness');
+    fs.writeFileSync(
+      process.env.HAR_CONTROL_REGISTRY_PATH!,
+      JSON.stringify({ repos: [repoPath] }),
+    );
+    fs.writeFileSync(
+      process.env.HAR_CREDENTIALS_PATH!,
+      JSON.stringify({
+        portalUrl: 'https://portal.example.com',
+        token: 'legacy-token',
+        workspace: 'acme',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+
+    migrateLegacyCredentialsIfNeeded();
+
+    expect(getRepoPortalTargetAliases(repoPath)).toEqual([
+      readPortalTargetsStore().targets[0].alias,
+    ]);
   });
 });
 
@@ -278,5 +306,40 @@ describe('removePortalTarget', () => {
     expect(removePortalTarget('dev')).toBe(true);
     expect(readPortalTargetsStore().targets.map((entry) => entry.alias)).toEqual(['prod']);
     expect(getPortalTarget()?.alias).toBe('prod');
+  });
+});
+
+describe('workspace identity compatibility', () => {
+  it('uses a slug: prefix when an older portal returns only the workspace slug', () => {
+    expect(resolveWorkspaceId({ workspace: 'acme' })).toBe('slug:acme');
+    expect(resolveWorkspaceId({ workspaceId: 'org_acme', workspace: 'acme' })).toBe('org_acme');
+  });
+});
+
+describe('refresh isolation', () => {
+  it('rotates tokens for one target without touching another', () => {
+    upsertPortalTarget({
+      alias: 'dev',
+      portalUrl: 'https://dev.example.com',
+      workspaceId: 'ws_dev',
+      token: 'dev-old',
+      refreshToken: 'dev-refresh',
+    });
+    upsertPortalTarget({
+      alias: 'prod',
+      portalUrl: 'https://prod.example.com',
+      workspaceId: 'ws_prod',
+      token: 'prod-old',
+      refreshToken: 'prod-refresh',
+    });
+
+    updatePortalTargetTokens('dev', { token: 'dev-new', expiresAt: '2026-03-01T00:00:00.000Z' });
+
+    const store = readPortalTargetsStore();
+    expect(store.targets.find((entry) => entry.alias === 'dev')?.token).toBe('dev-new');
+    expect(store.targets.find((entry) => entry.alias === 'prod')).toMatchObject({
+      token: 'prod-old',
+      refreshToken: 'prod-refresh',
+    });
   });
 });

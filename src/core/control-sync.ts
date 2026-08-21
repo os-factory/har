@@ -587,12 +587,12 @@ export async function syncReposWithControl(options: {
   const results: SyncRepoResult[] = [];
   let synced = 0;
   let failed = 0;
-  const multiTarget = (options.portalTargets?.length ?? 0) > 1;
 
   for (const repoPath of options.repoPaths) {
-    if (multiTarget) {
+    const destinationAliases = destinationAliasesForSync(repoPath, options.portalTargets);
+    if (destinationAliases.length > 1) {
       const targetResults: Array<{ alias: string; ok: boolean; error?: string }> = [];
-      for (const alias of options.portalTargets ?? []) {
+      for (const alias of destinationAliases) {
         try {
           await withTimeout(
             syncRepoWithControl({
@@ -644,6 +644,14 @@ export async function syncReposWithControl(options: {
   }
 
   return { synced, failed, results };
+}
+
+function destinationAliasesForSync(repoPath: string, explicit?: string[]): string[] {
+  if (explicit && explicit.length > 0) return explicit;
+  const resolved = resolvePortalTargetsForRepo({ repoPath });
+  return (resolved?.targets ?? [])
+    .map((target) => target.alias)
+    .filter((alias): alias is string => Boolean(alias));
 }
 
 export async function syncAllKnownReposWithControl(options?: {

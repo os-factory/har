@@ -8,6 +8,8 @@ function hitCallback(
     token?: string;
     state?: string;
     workspace?: string;
+    workspaceId?: string;
+    workspaceName?: string;
     email?: string;
     refreshToken?: string;
     expiresAt?: string;
@@ -19,6 +21,8 @@ function hitCallback(
   if (opts.token) params.set('token', opts.token);
   params.set('state', opts.state ?? (url.searchParams.get('state') as string));
   if (opts.workspace) params.set('workspace', opts.workspace);
+  if (opts.workspaceId) params.set('workspaceId', opts.workspaceId);
+  if (opts.workspaceName) params.set('workspaceName', opts.workspaceName);
   if (opts.email) params.set('email', opts.email);
   if (opts.refreshToken) params.set('refreshToken', opts.refreshToken);
   if (opts.expiresAt) params.set('expiresAt', opts.expiresAt);
@@ -35,6 +39,20 @@ describe('loginViaBrowser', () => {
       token: 'har_ingest_abc',
       workspace: 'acme',
     });
+  });
+
+  it('captures the stable workspace id from FE-1646 callbacks', async () => {
+    const creds = await loginViaBrowser('https://portal.example.com', (url) =>
+      hitCallback(url, {
+        token: 'har_ingest_abc',
+        workspace: 'acme',
+        workspaceId: 'org_acme',
+        workspaceName: 'Acme',
+      }),
+    );
+    expect(creds.workspaceId).toBe('org_acme');
+    expect(creds.workspaceName).toBe('Acme');
+    expect(creds.workspaceSlug).toBe('acme');
   });
 
   it('captures the login email from the callback', async () => {

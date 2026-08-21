@@ -28,12 +28,14 @@ beforeEach(() => {
   );
   process.env.HAR_CREDENTIALS_PATH = tmpFile;
   process.env.HAR_PORTAL_TARGETS_PATH = path.join(path.dirname(tmpFile), 'portal-targets.json');
+  process.env.HAR_CONTROL_REGISTRY_PATH = path.join(path.dirname(tmpFile), 'repos.json');
   for (const key of PORTAL_ENV) delete process.env[key];
 });
 
 afterEach(() => {
   delete process.env.HAR_CREDENTIALS_PATH;
   delete process.env.HAR_PORTAL_TARGETS_PATH;
+  delete process.env.HAR_CONTROL_REGISTRY_PATH;
 });
 
 describe('portal credentials store', () => {

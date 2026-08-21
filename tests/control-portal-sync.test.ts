@@ -1078,5 +1078,43 @@ describe('syncRepoWithControl — attached destinations', () => {
     expect(watermarkKeys.some((key) => String(key).includes('ws_dev'))).toBe(true);
     expect(watermarkKeys.some((key) => String(key).includes('ws_prod'))).toBe(false);
   });
+
+  it('posts an independent payload to each attached workspace', async () => {
+    upsertPortalTarget({
+      alias: 'org-a',
+      portalUrl: 'https://portal.example.com',
+      workspaceId: 'org_a',
+      token: 'token-a',
+    });
+    upsertPortalTarget({
+      alias: 'org-b',
+      portalUrl: 'https://portal.example.com',
+      workspaceId: 'org_b',
+      token: 'token-b',
+    });
+    attachRepoPortalTarget('/repo/x', 'org-a');
+    attachRepoPortalTarget('/repo/x', 'org-b');
+
+    const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (String(url).endsWith('/api/repos') && method === 'POST') {
+        return { ok: true, status: 200, text: async () => '', json: async () => ({ id: 'local-repo-1' }) };
+      }
+      return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const syncCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith('/api/sync'),
+    ) as [string, RequestInit][];
+    expect(syncCalls).toHaveLength(2);
+    const tokens = syncCalls.map(
+      ([, init]) => (init.headers as Record<string, string>).Authorization,
+    );
+    expect(tokens.sort()).toEqual(['Bearer token-a', 'Bearer token-b']);
+    expect(syncCalls.every(([url]) => url === 'https://portal.example.com/api/sync')).toBe(true);
+  });
 });
 

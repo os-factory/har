@@ -8,7 +8,6 @@ import {
   resolveWorkspaceId,
   upsertPortalTarget,
 } from './portal-targets';
-import { markAllRegisteredDirty } from './sync-context';
 
 export interface PortalCredentials {
   portalUrl: string;
@@ -85,7 +84,6 @@ export function writePortalCredentials(creds: PortalCredentials): void {
     email: creds.email,
     setAsDefault: true,
   });
-  markAllRegisteredDirty();
 }
 
 export function legacyWorkspaceIdFromCredentials(creds: PortalCredentials): string {

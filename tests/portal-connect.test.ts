@@ -59,19 +59,37 @@ describe('runPortalConnect', () => {
 
     const a = await runPortalConnect({
       portalUrl: 'https://app.harhq.com',
-      apiKey: 'token-1',
+      apiKey: 'token-shared',
       repoPath: first,
     });
     const b = await runPortalConnect({
       portalUrl: 'https://app.harhq.com',
-      apiKey: 'token-2',
+      apiKey: 'token-shared',
       repoPath: second,
     });
 
     expect(a.record.alias).toBe(b.record.alias);
     expect(readPortalTargetsStore().targets).toHaveLength(1);
-    expect(readPortalTargetsStore().targets[0].token).toBe('token-2');
     expect(getRepoPortalTargetAliases(first)).toEqual([a.record.alias]);
     expect(getRepoPortalTargetAliases(second)).toEqual([b.record.alias]);
+  });
+
+  it('keeps two api-key connections on the same portal when the tokens differ', async () => {
+    const repoPath = path.join(tmpDir, 'app');
+    fs.mkdirSync(repoPath, { recursive: true });
+
+    await runPortalConnect({
+      portalUrl: 'https://app.harhq.com',
+      apiKey: 'token-org-a',
+      repoPath,
+    });
+    await runPortalConnect({
+      portalUrl: 'https://app.harhq.com',
+      apiKey: 'token-org-b',
+      repoPath,
+    });
+
+    expect(readPortalTargetsStore().targets).toHaveLength(2);
+    expect(getRepoPortalTargetAliases(repoPath)).toHaveLength(2);
   });
 });

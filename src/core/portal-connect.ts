@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { recordRepoForControlSync } from './control-registry';
 import { loginViaBrowser } from './portal-login';
@@ -31,11 +32,16 @@ function attachRepoIfPresent(alias: string, repoPath?: string): string | null {
   return canonical;
 }
 
+function workspaceIdForApiKey(token: string): string {
+  return `key:${createHash('sha256').update(token).digest('hex').slice(0, 12)}`;
+}
+
 export async function runPortalConnect(input: PortalConnectInput): Promise<PortalConnectResult> {
   if (input.apiKey) {
     const record = upsertPortalTarget({
       alias: input.alias,
       portalUrl: input.portalUrl,
+      workspaceId: workspaceIdForApiKey(input.apiKey),
       token: input.apiKey,
       setAsDefault: true,
     });
