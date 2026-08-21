@@ -8,6 +8,12 @@ import {
 } from '../../core/control-config';
 import { runPortalConnect } from '../../core/portal-connect';
 import {
+  applyRepoWorkspaceMap,
+  planRepoWorkspaceMap,
+  remainingConnections,
+  remainingUnassignedRepos,
+} from '../../core/portal-repo-map';
+import {
   displayPortalTargetLabel,
   findPortalTargetRecord,
   listPortalTargetRecords,
@@ -53,7 +59,7 @@ export const hqCommand = {
               alias: 'y',
               type: 'boolean',
               default: false,
-              describe: 'Skip the destination prompt and use the resolved portal URL',
+              describe: 'Skip interactive prompts (portal URL and extra-repo mapping)',
             }),
         (argv) =>
           handleHqConnect(
@@ -136,6 +142,102 @@ async function resolveConnectPortalUrl(
   return resolvePortalUrl(url);
 }
 
+async function promptExtraRepoAttachments(opts: {
+  currentRepo: string | null;
+  currentAlias: string;
+}): Promise<string[]> {
+  const plan = planRepoWorkspaceMap(opts);
+  if (plan.kind === 'none') return [];
+
+  const noun = plan.repos.length === 1 ? 'repository' : 'repositories';
+  info(`${plan.repos.length} other registered ${noun}:`);
+  for (const repoPath of plan.repos) info(`  ${repoPath}`);
+
+  if (plan.kind === 'attach-more') {
+    const { selected } = await inquirer.prompt<{ selected: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'selected',
+        message: `Attach which of these ${plan.repos.length} ${noun} to ${plan.workspaceLabel}?`,
+        choices: plan.repos.map((repoPath) => ({
+          name: repoPath,
+          value: repoPath,
+          checked: true,
+        })),
+      },
+    ]);
+    return applyRepoWorkspaceMap(
+      selected.map((repoPath) => ({ repoPath, alias: plan.workspaceAlias })),
+    );
+  }
+
+  const { sendAll } = await inquirer.prompt<{ sendAll: boolean }>([
+    {
+      type: 'confirm',
+      name: 'sendAll',
+      message: `Send all ${plan.repos.length} ${noun} to the same workspace?`,
+      default: true,
+    },
+  ]);
+
+  if (sendAll) {
+    const { alias } = await inquirer.prompt<{ alias: string }>([
+      {
+        type: 'list',
+        name: 'alias',
+        message: 'Which workspace?',
+        default: plan.currentAlias,
+        choices: plan.connections.map((entry) => ({
+          name: entry.label,
+          value: entry.alias,
+        })),
+      },
+    ]);
+    return applyRepoWorkspaceMap(plan.repos.map((repoPath) => ({ repoPath, alias })));
+  }
+
+  const attached: string[] = [];
+  let remainingRepos = [...plan.repos];
+  let remainingOrgs = [...plan.connections];
+  while (remainingRepos.length > 0 && remainingOrgs.length > 0) {
+    const left = remainingRepos.length === 1 ? 'repository' : 'repositories';
+    info(`${remainingRepos.length} ${left} left to assign.`);
+    const { alias } = await inquirer.prompt<{ alias: string }>([
+      {
+        type: 'list',
+        name: 'alias',
+        message: 'Workspace to assign repositories to',
+        default:
+          remainingOrgs.some((entry) => entry.alias === plan.currentAlias)
+            ? plan.currentAlias
+            : remainingOrgs[0]?.alias,
+        choices: [
+          ...remainingOrgs.map((entry) => ({
+            name: entry.label,
+            value: entry.alias,
+          })),
+          { name: 'Done — leave the rest unattached', value: '' },
+        ],
+      },
+    ]);
+    if (!alias) break;
+    const { selected } = await inquirer.prompt<{ selected: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'selected',
+        message: `Repositories for ${remainingOrgs.find((entry) => entry.alias === alias)?.label ?? alias}`,
+        choices: remainingRepos.map((repoPath) => ({ name: repoPath, value: repoPath })),
+      },
+    ]);
+    if (selected.length > 0) {
+      attached.push(...applyRepoWorkspaceMap(selected.map((repoPath) => ({ repoPath, alias }))));
+    }
+    remainingRepos = remainingUnassignedRepos(remainingRepos, selected);
+    remainingOrgs = remainingConnections(remainingOrgs, [alias]);
+  }
+  return attached;
+}
+
 export async function handleHqConnect(argv: {
   portal?: string;
   apiKey?: string;
@@ -156,7 +258,7 @@ export async function handleHqConnect(argv: {
   }
 
   try {
-    const { record, attachedRepo } = await runPortalConnect({
+    const { record, attachedRepo, extraAttached, mappedInBrowser } = await runPortalConnect({
       portalUrl,
       apiKey: argv.apiKey,
       repoPath: argv.repo ?? '.',
@@ -184,6 +286,20 @@ export async function handleHqConnect(argv: {
     } else {
       info('No local repository attached (run this from a repo, or pass --repo).');
     }
+    for (const repoPath of extraAttached) {
+      success(`Attached ${repoPath}`);
+    }
+
+    if (!argv.json && !argv.yes && !mappedInBrowser && isInteractive()) {
+      const extra = await promptExtraRepoAttachments({
+        currentRepo: attachedRepo,
+        currentAlias: record.alias,
+      });
+      for (const repoPath of extra) {
+        success(`Attached ${repoPath}`);
+      }
+    }
+
     info('Sync: har control sync');
   } catch (err) {
     error(`Connect failed: ${(err as Error).message}`);

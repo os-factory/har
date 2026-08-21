@@ -481,11 +481,9 @@ export function resolvePortalTargetsForRepo(options?: {
       .map(recordToPortalTarget);
     if (attached.length > 0) return { source: 'repo', targets: attached };
 
-    // One saved connection and no explicit mapping yet: existing single-login users
-    // keep syncing without a second connect.
-    if (store.targets.length === 1) {
-      return { source: 'single', targets: [recordToPortalTarget(store.targets[0])] };
-    }
+    // Unattached repos do not inherit the only saved connection — that would
+    // ingest every registered checkout into whichever workspace you last
+    // connected. Attach explicitly at `har hq connect` (or via --target).
     return null;
   }
 

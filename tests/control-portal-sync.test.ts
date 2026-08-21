@@ -911,6 +911,7 @@ describe('syncRepoWithControl — token refresh on 401', () => {
       setAsDefault: true,
       ...overrides,
     });
+    attachRepoPortalTarget('/repo/x', 'test');
   }
 
   function refreshFetch(opts: {

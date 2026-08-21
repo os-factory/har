@@ -263,6 +263,18 @@ describe('resolvePortalTargetsForRepo', () => {
       resolvePortalTargetsForRepo({ repoPath })?.targets.map((entry) => entry.alias).sort(),
     ).toEqual(['dev', 'prod']);
   });
+
+  it('does not fan an unattached repo out to the only saved connection', () => {
+    upsertPortalTarget({
+      alias: 'only',
+      portalUrl: 'https://app.harhq.com',
+      workspaceId: 'ws_only',
+      token: 't',
+    });
+    const repoPath = path.join(tmpDir, 'unattached');
+    fs.mkdirSync(repoPath, { recursive: true });
+    expect(resolvePortalTargetsForRepo({ repoPath })).toBeNull();
+  });
 });
 
 describe('target-specific trajectory preference', () => {

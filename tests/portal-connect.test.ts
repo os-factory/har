@@ -47,6 +47,7 @@ describe('runPortalConnect', () => {
     expect(result.record.portalUrl).toBe('https://app.harhq.com');
     expect(result.record.token).toBe('har_ingest_test');
     expect(result.attachedRepo).toBe(repoPath);
+    expect(result.mappedInBrowser).toBe(false);
     expect(getRepoPortalTargetAliases(repoPath)).toEqual([result.record.alias]);
     expect(readPortalTargetsStore().targets).toHaveLength(1);
   });

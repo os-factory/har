@@ -24,13 +24,65 @@ function openBrowser(url: string): void {
   }
 }
 
+export type BrowserConnectTarget = {
+  workspaceId: string;
+  workspace?: string;
+  workspaceName?: string;
+  token: string;
+  refreshToken?: string;
+  expiresAt?: string;
+  repos: string[];
+};
+
+export type PortalLoginResult = PortalCredentials & {
+  /** Present when the portal assigned repositories in the browser. */
+  targets?: BrowserConnectTarget[];
+};
+
+export type LoginViaBrowserOptions = {
+  openUrl?: (url: string) => void;
+  repos?: string[];
+};
+
+const REPOS_QUERY_BUDGET = 1800;
+
+export function encodeCliReposQuery(repos: string[]): string | null {
+  const unique = [...new Set(repos.filter((repo) => repo.trim().length > 0))];
+  if (unique.length === 0) return null;
+  const encoded = encodeURIComponent(JSON.stringify(unique));
+  if (encoded.length > REPOS_QUERY_BUDGET) return null;
+  return encoded;
+}
+
+export function parseCliTargetsParam(raw: string | null): BrowserConnectTarget[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as {
+      targets?: BrowserConnectTarget[];
+    };
+    if (!Array.isArray(parsed.targets)) return null;
+    const targets = parsed.targets.filter(
+      (entry) =>
+        typeof entry?.workspaceId === 'string' &&
+        typeof entry?.token === 'string' &&
+        Array.isArray(entry.repos),
+    );
+    return targets.length > 0 ? targets : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loginViaBrowser(
   portalUrl: string,
-  openUrl: (url: string) => void = openBrowser,
-): Promise<PortalCredentials> {
+  openUrlOrOptions: ((url: string) => void) | LoginViaBrowserOptions = openBrowser,
+): Promise<PortalLoginResult> {
+  const options: LoginViaBrowserOptions =
+    typeof openUrlOrOptions === 'function' ? { openUrl: openUrlOrOptions } : openUrlOrOptions;
+  const openUrl = options.openUrl ?? openBrowser;
   const state = randomUUID();
 
-  return new Promise<PortalCredentials>((resolve, reject) => {
+  return new Promise<PortalLoginResult>((resolve, reject) => {
     let timer: NodeJS.Timeout;
     const server = http.createServer((req, res) => {
       const requestUrl = new URL(req.url ?? '', 'http://127.0.0.1');
@@ -61,6 +113,7 @@ export async function loginViaBrowser(
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<h1>Logged in</h1><p>You can close this tab and return to the terminal.</p>');
       cleanup();
+      const targets = parseCliTargetsParam(requestUrl.searchParams.get('targets'));
       resolve({
         portalUrl,
         token,
@@ -76,6 +129,7 @@ export async function loginViaBrowser(
         refreshToken,
         expiresAt,
         createdAt: new Date().toISOString(),
+        ...(targets ? { targets } : {}),
       });
     });
 
@@ -92,7 +146,10 @@ export async function loginViaBrowser(
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address() as AddressInfo;
       const callback = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
-      const loginUrl = `${portalUrl}/cli/login?callback=${encodeURIComponent(callback)}&state=${state}`;
+      const reposQuery = encodeCliReposQuery(options.repos ?? []);
+      const loginUrl = `${portalUrl}/cli/login?callback=${encodeURIComponent(callback)}&state=${state}${
+        reposQuery ? `&repos=${reposQuery}` : ''
+      }`;
       openUrl(loginUrl);
       process.stderr.write(`Opening ${loginUrl}\nIf your browser did not open, paste that URL.\n`);
       timer = setTimeout(() => {
