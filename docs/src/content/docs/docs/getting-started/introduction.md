@@ -1,12 +1,12 @@
 ---
 title: Introduction
-description: What HAR solves and where it fits in an agent development workflow.
+description: HAR is an open-source agent harness (CLI + MCP) for multi-agent coding workflows, isolated worktrees, and deterministic verification.
 ---
 
-HAR is an open-source, agent-agnostic framework for building multi-agent coding
-workflows. Run a fleet of coding agents in parallel on any repository, with
-deterministic validation gates, verifiable proof, and full observability across
-every agent, all extensible and customizable to your own workflow and tooling.
+HAR is an open-source, agent-agnostic **harness** — a CLI and MCP server — for
+building multi-agent coding workflows. Run a fleet of coding agents in isolated
+worktrees, with deterministic validation gates, verifiable proof, and full
+observability. Use it as a portable software factory across any coding agent.
 
 <div class="intro-video">
 <div class="video-embed">

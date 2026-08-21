@@ -1,14 +1,23 @@
 {
   "name": "@osfactory/har",
   "version": "0.62.2",
-  "description": "Open harness for reproducible multi-agent coding workflows",
+  "description": "HAR: open agent harness CLI and MCP server for coding agents, isolated worktrees, and software-factory workflows",
   "keywords": [
     "har",
+    "harness",
+    "agent-harness",
     "cli",
     "mcp",
+    "mcp-server",
     "agent",
-    "harness",
-    "devops"
+    "coding-agent",
+    "coding-agents",
+    "software-factory",
+    "worktree",
+    "claude-code",
+    "cursor",
+    "devops",
+    "typescript"
   ],
   "bin": {
     "har": "dist/index.js"

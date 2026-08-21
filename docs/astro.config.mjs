@@ -48,7 +48,7 @@ export default defineConfig({
 		starlight({
 			title: 'HAR',
 			description:
-				'An open-source, agent-agnostic standard for multi-agent coding workflows — parallel agents, deterministic validation, verifiable proof, and observability.',
+				'HAR is an open-source agent harness — CLI and MCP server — for multi-agent coding workflows. Isolated worktrees, deterministic verification, and software-factory observability.',
 			logo: {
 				src: './public/assets/har-logo.png',
 				alt: 'HAR',

@@ -8,6 +8,15 @@ test.describe('Frontend smoke', () => {
       'The open harness for multi-agent coding workflows',
     );
     await expect(page.getByRole('link', { name: /Read the docs/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Star on GitHub/i }).first()).toBeVisible();
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      'content',
+      /agent harness/i,
+    );
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+      'content',
+      /agent harness/i,
+    );
   });
 
   test('plugin marketplace lists every plugin with a working detail page', async ({ page }) => {

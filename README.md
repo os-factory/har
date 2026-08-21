@@ -7,8 +7,9 @@
 [![Release](https://img.shields.io/github/v/release/os-factory/har)](https://github.com/os-factory/har/releases)
 [![CI](https://github.com/os-factory/har/actions/workflows/test.yml/badge.svg)](https://github.com/os-factory/har/actions/workflows/test.yml)
 [![Documentation](https://img.shields.io/badge/docs-harproject.dev-38c976)](https://harproject.dev/)
+[![GitHub stars](https://img.shields.io/github/stars/os-factory/har?style=social)](https://github.com/os-factory/har)
 
-HAR is an open-source, agent-agnostic framework for building multi-agent coding workflows. Run a fleet of coding agents in parallel on any repository, with deterministic validation gates, verifiable proof, and full observability across every agent, all extensible and customizable to your own workflow and tooling.
+HAR is an open-source **agent harness** — a **CLI** and **MCP** server — for multi-agent coding workflows. Run a fleet of coding agents in isolated **worktrees**, with deterministic validation, verifiable proof, and full observability. Use it as a portable **software factory** for Claude Code, Cursor, Codex, or any MCP agent.
 
 <table align="center">
   <tr>
