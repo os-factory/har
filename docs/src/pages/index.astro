@@ -8,7 +8,12 @@ import { plugins } from '../data/plugins';
 
 const heroRunTotal = formatHeroRunTotal();
 ---
-<BaseLayout title="HAR — Harnesses for coding agents" bodyClass="home-page" canonicalPath="/">
+<BaseLayout
+  title="HAR — Open agent harness (CLI + MCP) for coding agents"
+  description="HAR is an open-source agent harness — CLI and MCP server — for multi-agent coding workflows. Isolated worktrees, deterministic verification, and software-factory observability for Claude Code, Cursor, and Codex."
+  bodyClass="home-page"
+  canonicalPath="/"
+>
   <Header active="home" />
   <main>
 <section class="hero blueprint-surface">
@@ -16,7 +21,7 @@ const heroRunTotal = formatHeroRunTotal();
 <div class="hero-copy reveal">
 <div class="eyebrow"><span class="eyebrow-dot"></span> Open-source · Agent-agnostic</div>
 <h1>The open harness for multi-agent coding workflows.</h1>
-<p class="hero-lede">Run fleets of coding agents with deterministic validation gates, verifiable proof, and full observability. Extensible and customizable to your workflow and tooling.</p>
+<p class="hero-lede">An open agent harness — CLI and MCP — for coding agents. Isolated worktrees, deterministic validation, and verifiable proof. Extensible to your own software-factory workflow.</p>
 <div class="hero-install">
 <button aria-label="Copy install command" class="install-command" data-copy="npm install -g @osfactory/har@latest" type="button">
 <span class="terminal-prompt">$</span>
