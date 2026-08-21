@@ -11,6 +11,10 @@ From your project root:
 har onboard
 ```
 
+The wizard starts with a Docker check — Docker is required for Mission Control and
+containerized harness infrastructure, so a missing CLI or stopped daemon is reported
+before anything else (see [Installation](/docs/getting-started/installation/)).
+
 The guided wizard walks through how HAR works, then lets you:
 
 - choose agent telemetry (`on` / `on-no-prompts` / `off`)

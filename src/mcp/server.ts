@@ -9,6 +9,7 @@ import {
 import { describeProject, initHarness } from '../core/harness';
 import { startControlAndSync } from '../core/control-lifecycle';
 import { getHarPackageVersion } from '../core/package-version';
+import { detectDockerStatus, formatDockerRequirementWarning } from '../core/docker-status';
 import { ensureDefaultTelemetryPreference } from '../core/telemetry-config';
 import {
   completeEnvironment,
@@ -67,7 +68,8 @@ export const HAR_MCP_TOOLS: Tool[] = [
   },
   {
     name: 'har_init_harness',
-    description: 'Scaffold .har/ boilerplate for a coding agent to adapt.',
+    description:
+      'Scaffold .har/ boilerplate for a coding agent to adapt. Docker is required (Mission Control container + harness infra); the response reports Docker availability.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       force: { type: 'boolean' },
@@ -308,10 +310,15 @@ export async function handleMcpToolCall(
         smoke: input.smoke,
         profile: input.profile,
       });
+      const docker = detectDockerStatus();
       return jsonContent({
         harnessDir: result.harnessDir,
         validation: result.validation,
         smoke: result.smoke,
+        docker: {
+          ...docker,
+          warning: formatDockerRequirementWarning(docker),
+        },
       });
     }
 

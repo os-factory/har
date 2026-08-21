@@ -12,6 +12,12 @@ import {
 } from './telemetry-config';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
 import {
+  DOCKER_INSTALL_URL,
+  detectDockerStatus,
+  formatDockerRequirementWarning,
+  type DockerStatus,
+} from './docker-status';
+import {
   buildInitAdaptationPrompt,
   buildMaintainAdaptationPrompt,
   offerAdaptationPromptClipboard,
@@ -46,6 +52,14 @@ export const ONBOARDING_GUIDE_STEPS: readonly { title: string; body: string }[] 
       'HAR (Harness) gives coding agents a reproducible environment for your repo:',
       'an editable `.har/` scaffold, isolated git worktree sessions, and a verify → complete loop.',
       'You adapt the scaffold once to your stack; agents then use the same launch/verify/teardown contract.',
+    ].join('\n'),
+  },
+  {
+    title: 'What you need',
+    body: [
+      'Node.js 20+, git, and Docker. Docker is required: Mission Control runs as a container',
+      'and harness infra (databases, queues, browsers) starts through Docker Compose from `.har/`.',
+      `Install Docker if it is missing (${DOCKER_INSTALL_URL}) and make sure the daemon is running.`,
     ].join('\n'),
   },
   {
@@ -89,6 +103,11 @@ export interface OnboardOptions {
   autoYes?: boolean;
   /** Force overwrite when applying plugins. */
   forcePlugins?: boolean;
+  /**
+   * Docker status already probed (and reported) by the caller. When omitted,
+   * onboarding probes Docker itself and warns when it is unusable.
+   */
+  docker?: DockerStatus;
   /** Parallel agent slot max to write into `.har/stages.json` after the harness exists. */
   agentSlotsMax?: number;
 }
@@ -107,10 +126,15 @@ export interface OnboardResult {
   adaptationPromptCopied: boolean;
   /** Slot range after onboarding when a harness is present. */
   agentSlots: { min: number; max: number } | null;
+  /** Docker availability observed during onboarding. */
+  docker: DockerStatus;
+  /** Warning shown when Docker is missing or the daemon is down. */
+  dockerWarning: string | null;
 }
 
 export interface OnboardingDeps {
   applyTelemetry?: (choice: TelemetryChoice) => Promise<void>;
+  detectDocker?: () => DockerStatus;
   ensureControl?: (options: {
     startControl: boolean;
     telemetry: TelemetryChoice;
@@ -253,6 +277,13 @@ export async function runOnboarding(
   const init = deps.initHarness ?? initHarness;
   const applyPlugin = deps.addPlugin ?? addPlugin;
   const offerClipboard = deps.offerClipboard ?? offerAdaptationPromptClipboard;
+  const probeDocker = deps.detectDocker ?? (() => detectDockerStatus());
+
+  // Docker is a hard requirement — surface it before Mission Control or infra fail.
+  const alreadyReported = options.docker !== undefined;
+  const docker = options.docker ?? probeDocker();
+  const dockerWarning = formatDockerRequirementWarning(docker);
+  if (dockerWarning && !alreadyReported) warn(dockerWarning);
 
   await applyTelemetry(options.telemetry);
 
@@ -354,6 +385,8 @@ export async function runOnboarding(
     adaptationPromptPath,
     adaptationPromptCopied,
     agentSlots,
+    docker,
+    dockerWarning,
   };
 }
 

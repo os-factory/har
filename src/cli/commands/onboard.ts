@@ -11,6 +11,13 @@ import {
 } from '../../harness/stages';
 import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
 import {
+  describeDockerStatus,
+  detectDockerStatus,
+  isDockerUsable,
+  warnIfDockerUnavailable,
+  type DockerStatus,
+} from '../../core/docker-status';
+import {
   finalizeOnboardingAdaptation,
   listPluginChoices,
   ONBOARDING_GUIDE_STEPS,
@@ -94,7 +101,18 @@ async function pauseForGuide(autoYes: boolean): Promise<void> {
   ]);
 }
 
-async function promptChoices(args: OnboardArgs): Promise<{
+/**
+ * Mission Control needs Docker — never default to starting it when the engine
+ * is unusable (an explicit `--control` still wins over this default).
+ */
+export function defaultStartControl(telemetry: TelemetryChoice, docker: DockerStatus): boolean {
+  return telemetry !== 'off' && isDockerUsable(docker);
+}
+
+async function promptChoices(
+  args: OnboardArgs,
+  docker: DockerStatus,
+): Promise<{
   profile: HarnessProfile;
   telemetry: TelemetryChoice;
   startControl: boolean;
@@ -109,7 +127,7 @@ async function promptChoices(args: OnboardArgs): Promise<{
     return {
       profile: args.profile ?? 'default',
       telemetry,
-      startControl: args.control ?? telemetry !== 'off',
+      startControl: args.control ?? defaultStartControl(telemetry, docker),
       plugins: parsePluginsFlag(args.plugins) ?? [],
       agentSlotsMax: shouldConfigureSlots ? flaggedSlots : undefined,
     };
@@ -132,7 +150,7 @@ async function promptChoices(args: OnboardArgs): Promise<{
     return {
       profile: args.profile ?? 'default',
       telemetry,
-      startControl: args.control ?? telemetry !== 'off',
+      startControl: args.control ?? defaultStartControl(telemetry, docker),
       plugins: parsePluginsFlag(args.plugins) ?? [],
       agentSlotsMax: shouldConfigureSlots ? flaggedSlots : undefined,
     };
@@ -184,10 +202,12 @@ async function promptChoices(args: OnboardArgs): Promise<{
     {
       type: 'confirm',
       name: 'startControl',
-      message: 'Start Mission Control now?',
+      message: isDockerUsable(docker)
+        ? 'Start Mission Control now?'
+        : 'Start Mission Control now? (needs Docker — currently unavailable)',
       when: () => args.control === undefined,
       default: (current: { telemetry?: TelemetryChoice }) =>
-        (args.telemetry ?? current.telemetry ?? 'on') !== 'off',
+        defaultStartControl(args.telemetry ?? current.telemetry ?? 'on', docker),
     },
     {
       type: 'checkbox',
@@ -234,7 +254,8 @@ async function promptChoices(args: OnboardArgs): Promise<{
   return {
     profile,
     telemetry,
-    startControl: args.control ?? answers.startControl ?? telemetry !== 'off',
+    startControl:
+      args.control ?? answers.startControl ?? defaultStartControl(telemetry, docker),
     plugins: parsePluginsFlag(args.plugins) ?? answers.plugins ?? [],
     agentSlotsMax,
   };
@@ -251,6 +272,7 @@ function printSummary(result: {
   adaptationPromptPath: string | null;
   adaptationPromptCopied: boolean;
   agentSlots: { min: number; max: number } | null;
+  docker: DockerStatus;
 }): void {
   divider();
   success('Onboarding complete');
@@ -265,6 +287,7 @@ function printSummary(result: {
     }`,
   );
   info(`Telemetry:      ${result.telemetry}`);
+  info(`Docker:         ${describeDockerStatus(result.docker)}`);
   info(
     `Mission Control:${
       result.controlStarted
@@ -292,6 +315,9 @@ function printSummary(result: {
   }
   console.error('');
   console.error('  Next:');
+  if (!isDockerUsable(result.docker)) {
+    console.error('    Docker:  install / start Docker — required for Mission Control and harness infra');
+  }
   console.error('    Adapt:   paste the prompt into your coding agent');
   console.error('    Launch:  har env launch 1');
   console.error('    Verify:  har env verify 1 --full');
@@ -312,11 +338,15 @@ export async function handleOnboard(argv: OnboardArgs): Promise<void> {
       info(`Skipped guide (${ONBOARDING_GUIDE_STEPS.length} steps available without --skip-guide)`);
     }
 
-    const choices = await promptChoices(argv);
+    const docker = detectDockerStatus();
+    warnIfDockerUnavailable(docker);
+
+    const choices = await promptChoices(argv, docker);
     const onboarding = resolveOnboardingOptions(argv);
 
     const result = await runOnboarding({
       repoPath,
+      docker,
       profile: choices.profile,
       telemetry: choices.telemetry,
       startControl: choices.startControl,
@@ -378,7 +408,7 @@ export const onboardCommand = {
         type: 'boolean',
         default: false,
         describe:
-          'Accept defaults without prompting (telemetry on, start Mission Control, no plugins)',
+          'Accept defaults without prompting (telemetry on, start Mission Control when Docker is available, no plugins)',
       })
       .option('profile', {
         type: 'string',
@@ -392,7 +422,7 @@ export const onboardCommand = {
       })
       .option('control', {
         type: 'boolean',
-        describe: 'Start Mission Control (use --no-control to skip)',
+        describe: 'Start Mission Control — requires Docker (use --no-control to skip)',
       })
       .option('plugins', {
         type: 'string',

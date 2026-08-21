@@ -25,8 +25,14 @@ har onboard [--repo .] [--yes] [--skip-guide] [--skip-init]
             [--gate-mode block|warn] [--gate-scope worktrees|all]
 ```
 
-`--yes` accepts defaults (telemetry on, start Mission Control, no plugins) without
-prompts. Prefer this over hand-rolling `preferences` + `env init` + `telemetry`
+Onboarding probes Docker first (`docker --version` + `docker info`). Docker is
+required — Mission Control runs as a container and harness infra uses Docker
+Compose — so a missing CLI or stopped daemon is warned about, reported in the
+summary, and Mission Control is not started by default until Docker works.
+`har env init` prints the same warning.
+
+`--yes` accepts defaults (telemetry on, start Mission Control when Docker is
+available, no plugins) without prompts. Prefer this over hand-rolling `preferences` + `env init` + `telemetry`
 + `control up` for new repositories.
 
 `--agent-slots <n>` sets how many agents may run in parallel (`1`–`10`), written to

@@ -43,6 +43,7 @@ import {
   selectAutoApprovedCandidates,
 } from '../../core/cleanup-service';
 import { handleCommitGateOnboarding } from '../../core/commit-gate-onboarding';
+import { warnIfDockerUnavailable } from '../../core/docker-status';
 import { readOnboardingPreferences } from '../../core/onboarding-preferences';
 import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
 import { validateAgentId } from '../../utils/validation';
@@ -487,6 +488,8 @@ export async function handleInit(argv: {
 
   header('har env init');
   info(`Repository: ${repoPath}`);
+  // Docker is required (Mission Control container + harness infra) — warn early.
+  warnIfDockerUnavailable();
 
   try {
     const result = await initHarness({
