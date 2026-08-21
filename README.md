@@ -27,6 +27,8 @@ HAR is an open-source, agent-agnostic framework for building multi-agent coding 
 
 Works with **Claude Code** · **Cursor** · **Codex** · any MCP agent.
 
+Hello world
+
 ## What's included out of the box
 
 - **HAR.** The core harness, available as both a CLI and an MCP server. It turns any repository into isolated worktrees with deterministic launch, verify, and teardown stages for coding agents to work in.
