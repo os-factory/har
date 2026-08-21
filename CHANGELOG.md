@@ -1,3 +1,10 @@
+# [0.64.0](https://github.com/os-factory/har/compare/v0.63.0...v0.64.0) (2026-08-21)
+
+
+### Features
+
+* assign leftover repos to workspaces after hq connect ([#264](https://github.com/os-factory/har/issues/264)) ([5bc2c72](https://github.com/os-factory/har/commit/5bc2c72225e0964a0e20f4b3e68d61904d9c93f6))
+
 # [0.63.0](https://github.com/os-factory/har/compare/v0.62.2...v0.63.0) (2026-08-21)
 
 
