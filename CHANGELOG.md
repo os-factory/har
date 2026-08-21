@@ -1,3 +1,15 @@
+# [0.63.0](https://github.com/os-factory/har/compare/v0.62.2...v0.63.0) (2026-08-21)
+
+
+### Bug Fixes
+
+* docker is required and onboarding should warn the user about it ([#259](https://github.com/os-factory/har/issues/259)) ([7e0efd2](https://github.com/os-factory/har/commit/7e0efd215c8c99d180886237ec8948f97eb2a8d6))
+
+
+### Features
+
+* named portal targets via har hq connect ([#262](https://github.com/os-factory/har/issues/262)) ([9d6479d](https://github.com/os-factory/har/commit/9d6479deaf0084c46ce00c026e4916a9bcd0c15d))
+
 ## [0.62.2](https://github.com/os-factory/har/compare/v0.62.1...v0.62.2) (2026-08-20)
 
 
