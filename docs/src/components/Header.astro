@@ -21,7 +21,13 @@ const homePrefix = active === 'home' ? '' : '/';
         <a href="/teams/" class:list={{ active: active === 'teams' }} aria-current={active === 'teams' ? 'page' : undefined}>Teams</a>
       </nav>
       <div class="nav-actions">
-        <a class="nav-link" href="https://github.com/os-factory/har">Star on GitHub <span aria-hidden="true">★</span></a>
+        <iframe
+          class="github-star"
+          src="https://ghbtns.com/github-btn.html?user=os-factory&repo=har&type=star&count=true&size=large"
+          title="Star HAR on GitHub"
+          width="170"
+          height="30"
+        ></iframe>
         <ThemeToggle />
         <button class="menu-button" type="button" aria-expanded="false" aria-controls="mobile-menu" data-menu-button>
           <span></span><span></span>

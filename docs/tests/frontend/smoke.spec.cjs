@@ -8,7 +8,10 @@ test.describe('Frontend smoke', () => {
       'The open harness for multi-agent coding workflows',
     );
     await expect(page.getByRole('link', { name: /Read the docs/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Star on GitHub/i }).first()).toBeVisible();
+    await expect(page.locator('iframe.github-star')).toHaveAttribute(
+      'src',
+      /ghbtns\.com\/github-btn\.html\?user=os-factory&repo=har/,
+    );
     await expect(page.locator('meta[name="description"]')).toHaveAttribute(
       'content',
       /agent harness/i,
