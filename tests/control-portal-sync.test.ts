@@ -81,7 +81,7 @@ import {
   readPortalCredentials,
   writePortalCredentials,
 } from '../src/core/portal-credentials';
-import { updatePortalTargetTokens, upsertPortalTarget } from '../src/core/portal-targets';
+import { attachRepoPortalTarget, updatePortalTargetTokens, upsertPortalTarget } from '../src/core/portal-targets';
 import {
   listWorkUnits,
   listWorkAttempts,
@@ -1013,3 +1013,70 @@ describe('syncRepoWithControl — token refresh on 401', () => {
     expect(updatePortalTargetTokensMock).not.toHaveBeenCalled();
   });
 });
+
+describe('syncRepoWithControl — attached destinations', () => {
+  const realFetch = global.fetch;
+  beforeEach(() => {
+    resetPayloadMocks();
+    clearPortalEnv();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-portal-attach-'));
+    process.env.HAR_PORTAL_TARGETS_PATH = path.join(dir, 'portal-targets.json');
+    process.env.HAR_CREDENTIALS_PATH = path.join(dir, 'credentials.json');
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [],
+      events: [],
+      maxSyncedAt: '2026-03-01T00:00:00.000Z',
+    });
+    listRunsMock.mockReturnValue([
+      {
+        runId: '11111111-1111-1111-1111-111111111111',
+        repoPath: '/repo/x',
+        stageId: 'verify',
+        status: 'pass',
+        trigger: 'cli',
+        startedAt: '2026-03-01T00:00:00.000Z',
+      },
+    ]);
+  });
+  afterEach(() => {
+    (global as unknown as { fetch: unknown }).fetch = realFetch;
+  });
+  afterAll(clearPortalEnv);
+
+  it('does not advance a failed destination watermark after a sibling succeeds', async () => {
+    upsertPortalTarget({
+      alias: 'dev',
+      portalUrl: 'https://dev.example.com',
+      workspaceId: 'ws_dev',
+      token: 'dev',
+    });
+    upsertPortalTarget({
+      alias: 'prod',
+      portalUrl: 'https://prod.example.com',
+      workspaceId: 'ws_prod',
+      token: 'prod',
+    });
+    attachRepoPortalTarget('/repo/x', 'dev');
+    attachRepoPortalTarget('/repo/x', 'prod');
+
+    const fn = jest.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      const method = init?.method ?? 'GET';
+      if (u.includes('prod.example.com') && u.endsWith('/api/sync')) {
+        return { ok: false, status: 500, text: async () => 'boom', json: async () => ({}) };
+      }
+      if (u.endsWith('/api/repos') && method === 'POST') {
+        return { ok: true, status: 200, text: async () => '', json: async () => ({ id: 'local-repo-1' }) };
+      }
+      return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fn;
+
+    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).rejects.toThrow(/prod/);
+
+    const watermarkKeys = writePortalWatermarkMock.mock.calls.map((call) => call[1]);
+    expect(watermarkKeys.some((key) => String(key).includes('ws_dev'))).toBe(true);
+    expect(watermarkKeys.some((key) => String(key).includes('ws_prod'))).toBe(false);
+  });
+});
+

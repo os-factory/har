@@ -2,19 +2,14 @@ import * as path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import {
-  DEFAULT_PORTAL_URL,
-  describePortalTarget,
   getControlApiUrl,
   isControlEnabled,
-  resolvePortalUrl,
-  type PortalUrlSource,
 } from '../../core/control-config';
 import {
-  upsertPortalTarget,
   recordToPortalTarget,
   writePortalTargetTrajectoryPreference,
 } from '../../core/portal-targets';
-import { registerControlTargetCommand } from './control-target';
+import { handleHqConnect } from './hq';
 import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   discoverHarRepos,
@@ -26,7 +21,6 @@ import {
   resolveSyncSelection,
   writeSyncSelection,
 } from '../../core/control-sync-selection';
-import { loginViaBrowser } from '../../core/portal-login';
 import { startMissionControl, syncReposAfterControlStart, stopMissionControl } from '../../core/control-lifecycle';
 import {
   confirmUnregister,
@@ -152,22 +146,34 @@ export const controlCommand = {
       )
       .command(
         'login',
-        'Log in to a har-portal (browser SSO) and store an ingest token',
+        'Deprecated alias for har hq connect',
         (y: Argv) =>
           y
             .option('portal', {
               type: 'string',
-              describe: `Portal base URL (or HAR_PORTAL_URL; defaults to the last login, else ${DEFAULT_PORTAL_URL})`,
+              describe: 'Portal base URL (or HAR_PORTAL_URL)',
             })
             .option('target', {
               type: 'string',
-              describe: 'Save this login under a durable target alias',
+              describe: 'Optional connection alias (prefer har hq connect)',
             })
             .option('api-key', {
               type: 'string',
               describe: 'Store this ingest token directly instead of browser login',
+            })
+            .option('repo', {
+              type: 'string',
+              default: '.',
+              describe: 'Repository to attach to the chosen workspace',
             }),
-        handleLogin,
+        (argv) =>
+          handleHqConnect({
+            portal: argv.portal as string | undefined,
+            apiKey: argv.apiKey as string | undefined,
+            repo: (argv.repo as string | undefined) ?? '.',
+            alias: argv.target as string | undefined,
+            deprecated: true,
+          }),
       )
       .command(
         'reset',
@@ -211,9 +217,9 @@ export const controlCommand = {
             }),
         handleTrajectory,
       );
-    return registerControlTargetCommand(chain).demandCommand(
+    return chain.demandCommand(
       1,
-      'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory, target',
+      'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory',
     );
   },
   handler: () => {},
@@ -605,62 +611,6 @@ async function handleSync(argv: {
   }
   if (failed > 0) {
     warn(`${failed} ${failed === 1 ? 'repository' : 'repositories'} could not be synced`);
-    return finishCommand(1);
-  }
-}
-
-const PORTAL_SOURCE_LABEL: Record<PortalUrlSource, string> = {
-  flag: '--portal',
-  env: 'HAR_PORTAL_URL',
-  saved: 'saved login',
-  default: 'default',
-};
-
-async function handleLogin(argv: {
-  apiKey?: string;
-  portal?: string;
-  target?: string;
-}): Promise<void> {
-  header('har control login');
-  const { url: portalUrl, source } = resolvePortalUrl(argv.portal);
-  info(`Portal: ${portalUrl} (${PORTAL_SOURCE_LABEL[source]})`);
-  if (argv.target) info(`Target alias: ${argv.target}`);
-
-  if (argv.apiKey) {
-    const record = upsertPortalTarget({
-      alias: argv.target,
-      portalUrl,
-      token: argv.apiKey,
-      setAsDefault: true,
-    });
-    success(
-      `Saved ingest token for target ${record.alias} (${describePortalTarget(recordToPortalTarget(record))})`,
-    );
-    info('Sync: har control sync');
-    return;
-  }
-
-  try {
-    const creds = await loginViaBrowser(portalUrl);
-    const record = upsertPortalTarget({
-      alias: argv.target,
-      portalUrl,
-      workspaceId: creds.workspaceId,
-      workspace: creds.workspace,
-      workspaceSlug: creds.workspaceSlug,
-      workspaceName: creds.workspaceName,
-      token: creds.token,
-      refreshToken: creds.refreshToken,
-      expiresAt: creds.expiresAt,
-      email: creds.email,
-      setAsDefault: true,
-    });
-    success(
-      `Logged in to target ${record.alias} (${describePortalTarget(recordToPortalTarget(record))})`,
-    );
-    info('Sync: har control sync');
-  } catch (err) {
-    error(`Login failed: ${(err as Error).message}`);
     return finishCommand(1);
   }
 }

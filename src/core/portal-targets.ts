@@ -24,11 +24,11 @@ export interface PortalTargetRecord {
 
 export interface PortalTargetsStore {
   version: 1;
-  /** Global default when a repository has no explicit selection. */
+  /** Last-used connection (login URL / credentials.json mirror). Not a current-org pointer. */
   defaultTarget?: string;
   targets: PortalTargetRecord[];
-  /** Canonical repo path → target alias. */
-  repoTargets?: Record<string, string>;
+  /** Canonical repo path → attached target aliases (additive at connect). */
+  repoTargets?: Record<string, string[]>;
 }
 
 export interface PortalTargetResolution {
@@ -46,7 +46,8 @@ export type PortalTargetSource =
   | 'flag'
   | 'repo'
   | 'default'
-  | 'explicit';
+  | 'explicit'
+  | 'single';
 
 const ALIAS_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 
@@ -81,21 +82,27 @@ function normalizeStore(raw: Partial<PortalTargetsStore> | null | undefined): Po
         );
       })
     : [];
-  const repoTargets =
-    raw?.repoTargets && typeof raw.repoTargets === 'object'
-      ? Object.fromEntries(
-          Object.entries(raw.repoTargets).filter(
-            (entry): entry is [string, string] =>
-              typeof entry[0] === 'string' && typeof entry[1] === 'string',
-          ),
-        )
-      : undefined;
+  const repoTargets = normalizeRepoTargetMap(raw?.repoTargets);
   return {
     version: 1,
     defaultTarget: typeof raw?.defaultTarget === 'string' ? raw.defaultTarget : undefined,
     targets,
-    ...(repoTargets && Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
+    ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
   };
+}
+
+function normalizeRepoTargetMap(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== 'object') return {};
+  const next: Record<string, string[]> = {};
+  for (const [repoPath, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof repoPath !== 'string' || !repoPath) continue;
+    const aliases = (typeof value === 'string' ? [value] : Array.isArray(value) ? value : [])
+      .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      .map((entry) => entry.trim().toLowerCase());
+    const unique = [...new Set(aliases)];
+    if (unique.length > 0) next[repoPath] = unique;
+  }
+  return next;
 }
 
 function writeStore(store: PortalTargetsStore): void {
@@ -321,8 +328,10 @@ export function removePortalTarget(alias: string): boolean {
   if (nextTargets.length === store.targets.length) return false;
 
   const repoTargets = { ...(store.repoTargets ?? {}) };
-  for (const [repoPath, selected] of Object.entries(repoTargets)) {
-    if (selected === normalized) delete repoTargets[repoPath];
+  for (const [repoPath, aliases] of Object.entries(repoTargets)) {
+    const next = aliases.filter((alias) => alias !== normalized);
+    if (next.length > 0) repoTargets[repoPath] = next;
+    else delete repoTargets[repoPath];
   }
 
   let defaultTarget = store.defaultTarget;
@@ -347,37 +356,6 @@ export function removePortalTarget(alias: string): boolean {
   return true;
 }
 
-export function renamePortalTarget(fromAlias: string, toAlias: string): PortalTargetRecord {
-  const from = fromAlias.trim().toLowerCase();
-  const to = sanitizeAlias(toAlias);
-  if (!to) throw new Error('New target alias is invalid.');
-  validateTargetAlias(to);
-
-  const store = readPortalTargetsStore();
-  const record = store.targets.find((entry) => entry.alias === from);
-  if (!record) throw new Error(`Unknown target "${fromAlias}".`);
-  if (store.targets.some((entry) => entry.alias === to)) {
-    throw new Error(`Target alias "${to}" already exists.`);
-  }
-
-  const targets = store.targets.map((entry) =>
-    entry.alias === from ? { ...entry, alias: to, updatedAt: new Date().toISOString() } : entry,
-  );
-  const repoTargets = Object.fromEntries(
-    Object.entries(store.repoTargets ?? {}).map(([repoPath, alias]) => [
-      repoPath,
-      alias === from ? to : alias,
-    ]),
-  );
-  writeStore({
-    ...store,
-    targets,
-    defaultTarget: store.defaultTarget === from ? to : store.defaultTarget,
-    ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
-  });
-  return getPortalTargetRecord(to)!;
-}
-
 export function setDefaultPortalTarget(alias: string): PortalTargetRecord {
   const record = getPortalTargetRecord(alias);
   if (!record) throw new Error(`Unknown target "${alias}".`);
@@ -387,24 +365,36 @@ export function setDefaultPortalTarget(alias: string): PortalTargetRecord {
   return record;
 }
 
-export function setRepoPortalTarget(repoPath: string, alias: string): PortalTargetRecord {
+export function attachRepoPortalTarget(repoPath: string, alias: string): PortalTargetRecord {
   const record = getPortalTargetRecord(alias);
   if (!record) throw new Error(`Unknown target "${alias}".`);
   const canonical = canonicalizeControlRepoPath(repoPath);
   const store = readPortalTargetsStore();
+  const current = store.repoTargets?.[canonical] ?? [];
+  const next = current.includes(record.alias) ? current : [...current, record.alias];
   writeStore({
     ...store,
-    repoTargets: { ...(store.repoTargets ?? {}), [canonical]: record.alias },
+    repoTargets: { ...(store.repoTargets ?? {}), [canonical]: next },
   });
   return record;
 }
 
-export function clearRepoPortalTarget(repoPath: string): boolean {
+export function detachRepoPortalTarget(repoPath: string, alias?: string): boolean {
   const canonical = canonicalizeControlRepoPath(repoPath);
   const store = readPortalTargetsStore();
-  if (!store.repoTargets?.[canonical]) return false;
-  const repoTargets = { ...store.repoTargets };
-  delete repoTargets[canonical];
+  const current = store.repoTargets?.[canonical];
+  if (!current || current.length === 0) return false;
+
+  const repoTargets = { ...(store.repoTargets ?? {}) };
+  if (!alias) {
+    delete repoTargets[canonical];
+  } else {
+    const next = current.filter((entry) => entry !== alias.trim().toLowerCase());
+    if (next.length === current.length) return false;
+    if (next.length > 0) repoTargets[canonical] = next;
+    else delete repoTargets[canonical];
+  }
+
   writeStore({
     ...store,
     ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
@@ -412,9 +402,46 @@ export function clearRepoPortalTarget(repoPath: string): boolean {
   return true;
 }
 
-export function getRepoPortalTargetAlias(repoPath: string): string | null {
+export function getRepoPortalTargetAliases(repoPath: string): string[] {
   const canonical = canonicalizeControlRepoPath(repoPath);
-  return readPortalTargetsStore().repoTargets?.[canonical] ?? null;
+  return readPortalTargetsStore().repoTargets?.[canonical] ?? [];
+}
+
+export function displayPortalTargetLabel(record: PortalTargetRecord): string {
+  let host = record.portalUrl;
+  try {
+    host = new URL(record.portalUrl).host;
+  } catch {
+    host = record.portalUrl;
+  }
+  const workspace =
+    record.workspaceName ||
+    record.workspaceSlug ||
+    (record.workspaceId.startsWith('legacy:') ||
+    record.workspaceId.startsWith('manual:') ||
+    record.workspaceId.startsWith('slug:')
+      ? undefined
+      : record.workspaceId);
+  return workspace ? `${workspace} @ ${host}` : host;
+}
+
+export function findPortalTargetRecord(ref: string): PortalTargetRecord | null {
+  const trimmed = ref.trim();
+  if (!trimmed) return null;
+  const byAlias = getPortalTargetRecord(trimmed);
+  if (byAlias) return byAlias;
+
+  const lowered = trimmed.toLowerCase();
+  const matches = listPortalTargetRecords().filter((entry) => {
+    const label = displayPortalTargetLabel(entry).toLowerCase();
+    return (
+      label === lowered ||
+      (entry.workspaceSlug ?? '').toLowerCase() === lowered ||
+      (entry.workspaceName ?? '').toLowerCase() === lowered ||
+      entry.workspaceId.toLowerCase() === lowered
+    );
+  });
+  return matches.length === 1 ? matches[0] : null;
 }
 
 export function resolvePortalTargetsForRepo(options?: {
@@ -446,11 +473,19 @@ export function resolvePortalTargetsForRepo(options?: {
 
   const store = readPortalTargetsStore();
   if (options?.repoPath) {
-    const alias = getRepoPortalTargetAlias(options.repoPath);
-    if (alias) {
-      const record = getPortalTargetRecord(alias);
-      if (record) return { source: 'repo', targets: [recordToPortalTarget(record)] };
+    const aliases = getRepoPortalTargetAliases(options.repoPath);
+    const attached = aliases
+      .map((alias) => getPortalTargetRecord(alias))
+      .filter((entry): entry is PortalTargetRecord => entry !== null)
+      .map(recordToPortalTarget);
+    if (attached.length > 0) return { source: 'repo', targets: attached };
+
+    // One saved connection and no explicit mapping yet: existing single-login users
+    // keep syncing without a second connect.
+    if (store.targets.length === 1) {
+      return { source: 'single', targets: [recordToPortalTarget(store.targets[0])] };
     }
+    return null;
   }
 
   if (store.defaultTarget) {
@@ -459,7 +494,7 @@ export function resolvePortalTargetsForRepo(options?: {
   }
 
   if (store.targets.length === 1) {
-    return { source: 'default', targets: [recordToPortalTarget(store.targets[0])] };
+    return { source: 'single', targets: [recordToPortalTarget(store.targets[0])] };
   }
 
   return null;

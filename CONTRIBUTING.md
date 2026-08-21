@@ -186,6 +186,7 @@ Top-level command groups (see `har <cmd> --help`):
 | `har env …` | Harness lifecycle (init, maintain, launch, verify, complete, …) |
 | `har agents …` | Scaffold/remove agent skills (`/setup-har`, `/har-wt`, `/har-maintain`) |
 | `har control …` | Local Mission Control dashboard |
+| `har hq …` | HAR HQ hosted portal (connect, list, disconnect) |
 | `har hooks …` | Commit gate and Claude worktree guard |
 | `har mcp` | MCP stdio server |
 | `har preferences …` | User onboarding defaults (`~/.har/preferences.json`) |

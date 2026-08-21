@@ -1,5 +1,7 @@
 import { readPortalCredentials } from './portal-credentials';
 import {
+  displayPortalTargetLabel,
+  getPortalTargetRecord,
   normalizePortalUrl,
   readPortalTargetsStore,
   recordToPortalTarget,
@@ -11,6 +13,7 @@ import {
 export const DEFAULT_CONTROL_API_URL = 'http://localhost:3847';
 
 export const DEFAULT_PORTAL_URL = 'https://app.harhq.com';
+export const DEFAULT_DEV_PORTAL_URL = 'https://app.dev.harhq.com';
 
 export function getControlApiUrl(): string {
   return process.env.HAR_CONTROL_API_URL ?? DEFAULT_CONTROL_API_URL;
@@ -59,9 +62,12 @@ export function getPortalTarget(repoPath?: string): PortalTarget | null {
 }
 
 export function describePortalTarget(target: PortalTarget): string {
-  const alias = target.alias ? `${target.alias} ` : '';
+  if (target.alias) {
+    const record = getPortalTargetRecord(target.alias);
+    if (record) return displayPortalTargetLabel(record);
+  }
   const workspace = target.workspaceId ? ` (${target.workspaceId})` : '';
-  return `${alias}@ ${target.url}${workspace}`.trim();
+  return `${target.url}${workspace}`;
 }
 
 export function listSavedPortalUrls(): string[] {

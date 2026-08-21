@@ -4,7 +4,9 @@ import * as path from 'path';
 
 import { getPortalTarget } from '../src/core/control-config';
 import {
-  getRepoPortalTargetAlias,
+  attachRepoPortalTarget,
+  displayPortalTargetLabel,
+  getRepoPortalTargetAliases,
   migrateLegacyCredentialsIfNeeded,
   portalTargetIdentityKey,
   portalTargetsPath,
@@ -12,7 +14,6 @@ import {
   redactPortalTargetRecord,
   removePortalTarget,
   resolvePortalTargetsForRepo,
-  setRepoPortalTarget,
   upsertPortalTarget,
   writePortalTargetTrajectoryPreference,
 } from '../src/core/portal-targets';
@@ -96,17 +97,27 @@ describe('portal targets store', () => {
     );
   });
 
-  it('stores per-repository default targets', () => {
+  it('attaches a repository to a connection without replacing others', () => {
     upsertPortalTarget({
       alias: 'dev',
       portalUrl: 'https://dev.example.com',
       workspaceId: 'ws_dev',
+      workspaceName: 'Dev',
       token: 'dev',
+    });
+    upsertPortalTarget({
+      alias: 'prod',
+      portalUrl: 'https://prod.example.com',
+      workspaceId: 'ws_prod',
+      workspaceName: 'Prod',
+      token: 'prod',
     });
     const repoPath = path.join(tmpDir, 'repo-a');
     fs.mkdirSync(repoPath, { recursive: true });
-    setRepoPortalTarget(repoPath, 'dev');
-    expect(getRepoPortalTargetAlias(repoPath)).toBe('dev');
+    attachRepoPortalTarget(repoPath, 'dev');
+    attachRepoPortalTarget(repoPath, 'prod');
+    expect(getRepoPortalTargetAliases(repoPath).sort()).toEqual(['dev', 'prod']);
+    expect(displayPortalTargetLabel(readPortalTargetsStore().targets[0])).toContain(' @ ');
   });
 
   it('redacts tokens from list/show payloads', () => {
@@ -195,6 +206,34 @@ describe('resolvePortalTargetsForRepo', () => {
     const resolved = resolvePortalTargetsForRepo({ explicitTargets: ['prod'] });
     expect(resolved?.targets[0].alias).toBe('prod');
     expect(readPortalTargetsStore().defaultTarget).toBe('dev');
+  });
+
+  it('syncs a repo to every attached workspace, not every saved connection', () => {
+    upsertPortalTarget({
+      alias: 'dev',
+      portalUrl: 'https://dev.example.com',
+      workspaceId: 'ws_dev',
+      token: 'dev',
+    });
+    upsertPortalTarget({
+      alias: 'prod',
+      portalUrl: 'https://prod.example.com',
+      workspaceId: 'ws_prod',
+      token: 'prod',
+    });
+    const repoPath = path.join(tmpDir, 'repo-b');
+    fs.mkdirSync(repoPath, { recursive: true });
+    expect(resolvePortalTargetsForRepo({ repoPath })).toBeNull();
+
+    attachRepoPortalTarget(repoPath, 'prod');
+    expect(resolvePortalTargetsForRepo({ repoPath })?.targets.map((entry) => entry.alias)).toEqual([
+      'prod',
+    ]);
+
+    attachRepoPortalTarget(repoPath, 'dev');
+    expect(
+      resolvePortalTargetsForRepo({ repoPath })?.targets.map((entry) => entry.alias).sort(),
+    ).toEqual(['dev', 'prod']);
   });
 });
 

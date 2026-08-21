@@ -212,6 +212,27 @@ The default installs the Git commit gate. `--claude` selects the Claude Code
 main-checkout edit guard instead. `har hooks check` and `har hooks record-commit`
 are internal hook workers invoked by Git, not day-to-day commands.
 
+## `har hq`
+
+```bash
+har hq connect [--portal <url>] [--api-key <key>] [--repo .] [--yes] [--json]
+har hq list [--json]
+har hq disconnect [name] [--yes] [--json]
+```
+
+Connect this checkout to a HAR HQ workspace. On a TTY, `connect` asks Production
+(`https://app.harhq.com`), Development (`https://app.dev.harhq.com`), or a custom
+URL, then opens browser SSO. The workspace chosen on the consent screen is the
+destination; HAR attaches **this repository** to that workspace. A second
+`har hq connect` from another checkout (or against another workspace) adds another
+attachment — it does not replace the first connection.
+
+`list` shows saved connections (workspace + portal host, never tokens).
+`disconnect` removes one connection and its credentials. Credentials stay in
+`~/.har/` and are never committed into `.har/`.
+
+`har control login` remains a deprecated alias for `har hq connect`.
+
 ## `har control`
 
 ```bash
@@ -222,21 +243,15 @@ har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
 har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full] [--target <alias>] [--targets a,b]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
-har control login [--portal <url>] [--target <alias>] [--api-key <key>]
-har control target list|show|use|remove|rename [--repo .] [--json]
+har control login [--portal <url>] [--api-key <key>] [--repo .]
 har control trajectory [on|off] [--target <alias>]
 ```
 
-`login` resolves the portal from `--portal`, then `HAR_PORTAL_URL`, then the
-portal of your last login, and finally `https://app.harhq.com`; it prints which
-one it picked. Use `--target` to store the connection under a durable alias
-(for example separate dev and prod destinations). With `--api-key` it stores that
-ingest token; without it, HAR opens browser SSO and saves the resulting token
-with the workspace identity returned by the portal.
+`login` is a deprecated alias for `har hq connect`. Prefer `har hq connect`.
 `sync --select` interactively chooses repositories; `--full` ignores the portal
 watermark and resends the complete payload. `--target` / `--targets` send to named
-portal destinations explicitly; automatic activity-edge sync uses each repository's
-selected default from `har control target use <alias> --repo .`.
+saved connections for a one-off push; automatic activity-edge sync uses the
+workspace(s) this repository was attached to at `har hq connect`.
 `register --no-portal` keeps the repo on local Mission Control only (skips hosted
 portal sync even when logged in); `--portal` re-enables portal sync for that repo.
 

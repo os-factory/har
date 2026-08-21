@@ -15,7 +15,6 @@ import {
 } from '../harness/schema';
 import {
   getControlApiUrl,
-  getPortalTarget,
   isControlEnabled,
   PortalTarget,
 } from './control-config';
@@ -318,7 +317,7 @@ async function postPortalWithRefresh(
 async function throwPortalFailure(response: Response): Promise<never> {
   if (response.status === 401 || response.status === 403) {
     throw new Error(
-      `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har control login\` (or check HAR_PORTAL_TOKEN).`,
+      `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har hq connect\` (or check HAR_PORTAL_TOKEN).`,
     );
   }
   const text = await response.text().catch(() => '');
@@ -914,9 +913,24 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
   });
   if (!resolved) return;
 
+  const failures: Array<{ alias: string; error: string }> = [];
   for (const portal of resolved.targets) {
-    await syncRepoWithPortal({ ...options, repoPath }, apiUrl, portal);
+    try {
+      await syncRepoWithPortal({ ...options, repoPath }, apiUrl, portal);
+    } catch (err: unknown) {
+      failures.push({
+        alias: portal.alias ?? portal.identityKey,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
+
+  if (failures.length === 0) return;
+  if (failures.length === resolved.targets.length && failures.length === 1) {
+    throw new Error(failures[0].error);
+  }
+  const detail = failures.map((entry) => `${entry.alias}: ${entry.error}`).join('; ');
+  throw new Error(`Portal sync failed for ${failures.length} destination(s): ${detail}`);
 }
 
 async function syncRepoRunsAndSlots(
@@ -1108,15 +1122,17 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
     process.stderr.write(`[har control] run sync skipped: ${message}\n`);
   }
 
-  const portal = getPortalTarget(canonical);
-  if (!portal) return;
+  const resolved = resolvePortalTargetsForRepo({ repoPath: canonical });
+  if (!resolved) return;
   if (!isRepoPortalSyncEnabled(canonical)) return;
 
-  try {
-    if (!(await isControlApiReachable(portal.url))) return;
-    await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[har control] run sync skipped: ${message}\n`);
+  for (const portal of resolved.targets) {
+    try {
+      if (!(await isControlApiReachable(portal.url))) continue;
+      await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[har control] run sync skipped: ${message}\n`);
+    }
   }
 }

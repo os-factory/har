@@ -253,14 +253,13 @@ Use this path for development, manual testing, and screenshots. Do not run it on
 same port as the packaged `har control up` instance. Harness preflight detects the
 conflict and can select another port in the slot lane.
 
-## HAR Cloud
+## HAR HQ
 
-`har control login --target prod --portal https://app.harhq.com` stores a hosted
-ingest token under a durable alias. Use `har control target list` to inspect saved
-destinations and `har control target use <alias> --repo .` to pick the default portal
-for automatic sync in that repository. Credentials and workspace choices stay in
-`~/.har/` and are never committed into `.har/`.
+`har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
+repository to the workspace you pick in the portal. Saved connections live in
+`~/.har/portal-targets.json`; `har hq list` / `har hq disconnect` manage them.
+Workspace choices are never committed into `.har/`. `har control login` still
+works as a deprecated alias.
 
-`har control login --api-key ...` configures a hosted API key for the current
-process, and `har control sync --cloud` targets HAR Cloud. Hosted coordination is
-separate from the local open-source dashboard and portable `.har/` contract.
+`har control sync --cloud` targets HAR Cloud. Hosted coordination is separate from
+the local open-source dashboard and portable `.har/` contract.
