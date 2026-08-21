@@ -225,7 +225,10 @@ har control trajectory off      # back to counts and events only (default)
 ```
 
 `HAR_PORTAL_TRAJECTORY=on|off` overrides the stored choice for one sync, and
-telemetry must be on either way. What is forwarded goes through the same policy as
+telemetry must be on either way. Use `har control trajectory on --target …` when
+this checkout is attached to more than one HQ workspace — forwarding is stored
+per connection so a private dev workspace can receive prompts without enabling
+them for production. What is forwarded goes through the same policy as
 what is stored: bodies are capped at `HAR_TRAJECTORY_MAX_PAYLOAD_BYTES`, secret
 attributes are `[redacted]`, and `contentDisclosure` travels with each record so a
 truncated or withheld body is labelled as such remotely instead of arriving as
@@ -253,8 +256,13 @@ Use this path for development, manual testing, and screenshots. Do not run it on
 same port as the packaged `har control up` instance. Harness preflight detects the
 conflict and can select another port in the slot lane.
 
-## HAR Cloud
+## HAR HQ
 
-`har control login --api-key ...` configures a hosted API key for the current
-process, and `har control sync --cloud` targets HAR Cloud. Hosted coordination is
-separate from the local open-source dashboard and portable `.har/` contract.
+`har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
+repository to the workspace you pick in the portal. Saved connections live in
+`~/.har/portal-targets.json`; `har hq list` / `har hq disconnect` manage them.
+Workspace choices are never committed into `.har/`. `har control login` still
+works as a deprecated alias.
+
+`har control sync --cloud` targets HAR Cloud. Hosted coordination is separate from
+the local open-source dashboard and portable `.har/` contract.

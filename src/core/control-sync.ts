@@ -15,7 +15,6 @@ import {
 } from '../harness/schema';
 import {
   getControlApiUrl,
-  getPortalTarget,
   isControlEnabled,
   PortalTarget,
 } from './control-config';
@@ -25,7 +24,12 @@ import {
   recordRepoForControlSync,
   removeRegisteredRepo,
 } from './control-registry';
-import { readPortalCredentials, writePortalCredentials } from './portal-credentials';
+import { readPortalCredentials } from './portal-credentials';
+import {
+  isPortalTrajectoryEnabledForTarget,
+  resolvePortalTargetsForRepo,
+  updatePortalTargetTokens,
+} from './portal-targets';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
@@ -36,7 +40,7 @@ import {
   listWorkUnits,
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
-import { isPortalTrajectoryEnabled, isTelemetryEnabled } from './telemetry-config';
+import { isTelemetryEnabled } from './telemetry-config';
 import { getHarPackageVersion } from './package-version';
 import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
@@ -63,6 +67,15 @@ export interface ControlSyncOptions {
   force?: boolean;
   /** Ignore the portal watermark and resend the complete persisted payload. */
   full?: boolean;
+  /** Named portal target aliases for an explicit sync (comma-separated on CLI). */
+  portalTargets?: string[];
+}
+
+export interface SyncRepoResult {
+  repoPath: string;
+  ok: boolean;
+  error?: string;
+  targets?: Array<{ alias: string; ok: boolean; error?: string }>;
 }
 
 export interface ControlRegisterOptions extends ControlSyncOptions {
@@ -113,16 +126,55 @@ function rewindSince(since: string | null): string | null {
   return new Date(new Date(since).getTime() - overlap).toISOString();
 }
 
+function watermarkKeyForTarget(target: PortalTarget): string {
+  return target.identityKey;
+}
+
+function legacyWatermarkKeysForTarget(target: PortalTarget): string[] {
+  return target.url === target.identityKey ? [] : [target.url];
+}
+
+function readScopedPortalWatermark(
+  repoPath: string,
+  scopedKey: string,
+  legacyScopedKeys: string[] = [],
+): string | null {
+  const direct = readPortalWatermark(repoPath, scopedKey);
+  if (direct) return direct;
+  for (const legacyKey of legacyScopedKeys) {
+    const legacy = readPortalWatermark(repoPath, legacyKey);
+    if (legacy) return legacy;
+  }
+  return null;
+}
+
+function legacyScopedWatermarkKeys(portal: PortalTarget, prefix: string): string[] {
+  if (portal.url === portal.identityKey) return [];
+  return [`${prefix}:${portal.url}`];
+}
+
+function runsWatermarkTargetForPortal(target: PortalTarget): string {
+  return runsWatermarkTarget(watermarkKeyForTarget(target));
+}
+
+function readPortalWatermarkForTarget(repoPath: string, target: PortalTarget): string | null {
+  return readScopedPortalWatermark(
+    repoPath,
+    watermarkKeyForTarget(target),
+    legacyWatermarkKeysForTarget(target),
+  );
+}
+
+function trajectoryWatermarkTarget(target: PortalTarget): string {
+  return `trajectory:${watermarkKeyForTarget(target)}`;
+}
+
+function spansWatermarkTarget(target: PortalTarget): string {
+  return `spans:${watermarkKeyForTarget(target)}`;
+}
+
 function runsWatermarkTarget(target: string): string {
   return `runs:${target}`;
-}
-
-function trajectoryWatermarkTarget(target: string): string {
-  return `trajectory:${target}`;
-}
-
-function spansWatermarkTarget(target: string): string {
-  return `spans:${target}`;
 }
 
 /** Send run batches oldest-first, advancing the watermark (with the server repo
@@ -236,9 +288,11 @@ async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
   if (!data?.token) return false;
 
   target.token = data.token;
-  const stored = readPortalCredentials();
-  if (stored) {
-    writePortalCredentials({ ...stored, token: data.token, expiresAt: data.expiresAt });
+  if (target.alias) {
+    updatePortalTargetTokens(target.alias, {
+      token: data.token,
+      expiresAt: data.expiresAt,
+    });
   }
   return true;
 }
@@ -263,7 +317,7 @@ async function postPortalWithRefresh(
 async function throwPortalFailure(response: Response): Promise<never> {
   if (response.status === 401 || response.status === 403) {
     throw new Error(
-      `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har control login\` (or check HAR_PORTAL_TOKEN).`,
+      `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har hq connect\` (or check HAR_PORTAL_TOKEN).`,
     );
   }
   const text = await response.text().catch(() => '');
@@ -299,7 +353,8 @@ async function postPortalIfSupported(
   return true;
 }
 
-function resolvePortalUserEmail(): string | undefined {
+function resolvePortalUserEmail(target?: PortalTarget): string | undefined {
+  if (target?.email) return target.email;
   return readPortalCredentials()?.email || undefined;
 }
 
@@ -322,6 +377,7 @@ async function collectPortalTelemetry(
   slots: EnvironmentStatus['slots'],
   controlApiUrl: string,
   since: string | null,
+  portal?: PortalTarget,
 ): Promise<{
   usage: Record<string, unknown>[];
   events: Record<string, unknown>[];
@@ -329,7 +385,7 @@ async function collectPortalTelemetry(
 }> {
   if (!isTelemetryEnabled()) return { usage: [], events: [], maxSyncedAt: null };
   try {
-    const userEmail = resolvePortalUserEmail();
+    const userEmail = resolvePortalUserEmail(portal);
     const fallbackAgentId =
       slots.length > 0 ? Math.min(...slots.map((slot) => slot.agentId)) : null;
     const liveUsage: AgentSessionUsage[] = slots.flatMap((slot) =>
@@ -406,6 +462,7 @@ async function buildPortalPayload(
   controlApiUrl: string,
   since: string | null,
   full = false,
+  portal?: PortalTarget,
 ): Promise<{
   syncBody: Record<string, unknown>;
   runs: RunRecord[];
@@ -423,12 +480,13 @@ async function buildPortalPayload(
   const validationBindings = listValidationBindings(harnessRoot);
   // Attribute runs/validations to the syncing member so the portal can resolve
   // a real user FK instead of the lossy (repo, agentId) derivation.
-  const userEmail = resolvePortalUserEmail();
+  const userEmail = resolvePortalUserEmail(portal);
   const { usage, events, maxSyncedAt } = await collectPortalTelemetry(
     repoPath,
     status.slots,
     controlApiUrl,
     since,
+    portal,
   );
 
   if (full && isTelemetryEnabled() && usage.length === 0 && runs.some((r) => r.agentId != null)) {
@@ -492,12 +550,6 @@ export async function waitForControlApi(
   return false;
 }
 
-export interface SyncRepoResult {
-  repoPath: string;
-  ok: boolean;
-  error?: string;
-}
-
 /**
  * Every har repo known locally: the control registry (`~/.har/repos.json`) plus
  * an optional cwd — both manifest-gated and canonicalized. Detection is registry
@@ -529,6 +581,7 @@ export async function syncReposWithControl(options: {
   dryRun?: boolean;
   cloud?: boolean;
   full?: boolean;
+  portalTargets?: string[];
 }): Promise<{ synced: number; failed: number; results: SyncRepoResult[] }> {
   const apiUrl = options.apiUrl ?? getControlApiUrl();
   const results: SyncRepoResult[] = [];
@@ -536,9 +589,49 @@ export async function syncReposWithControl(options: {
   let failed = 0;
 
   for (const repoPath of options.repoPaths) {
+    const destinationAliases = destinationAliasesForSync(repoPath, options.portalTargets);
+    if (destinationAliases.length > 1) {
+      const targetResults: Array<{ alias: string; ok: boolean; error?: string }> = [];
+      for (const alias of destinationAliases) {
+        try {
+          await withTimeout(
+            syncRepoWithControl({
+              repoPath,
+              apiUrl,
+              dryRun: options.dryRun,
+              cloud: options.cloud,
+              full: options.full,
+              portalTargets: [alias],
+            }),
+            EXPLICIT_SYNC_TIMEOUT_MS,
+            'control sync',
+          );
+          targetResults.push({ alias, ok: true });
+        } catch (err: unknown) {
+          targetResults.push({
+            alias,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      const ok = targetResults.every((entry) => entry.ok);
+      if (ok) synced++;
+      else failed++;
+      results.push({ repoPath, ok, targets: targetResults, error: ok ? undefined : 'one or more targets failed' });
+      continue;
+    }
+
     try {
       await withTimeout(
-        syncRepoWithControl({ repoPath, apiUrl, dryRun: options.dryRun, cloud: options.cloud, full: options.full }),
+        syncRepoWithControl({
+          repoPath,
+          apiUrl,
+          dryRun: options.dryRun,
+          cloud: options.cloud,
+          full: options.full,
+          portalTargets: options.portalTargets,
+        }),
         EXPLICIT_SYNC_TIMEOUT_MS,
         'control sync',
       );
@@ -551,6 +644,14 @@ export async function syncReposWithControl(options: {
   }
 
   return { synced, failed, results };
+}
+
+function destinationAliasesForSync(repoPath: string, explicit?: string[]): string[] {
+  if (explicit && explicit.length > 0) return explicit;
+  const resolved = resolvePortalTargetsForRepo({ repoPath });
+  return (resolved?.targets ?? [])
+    .map((target) => target.alias)
+    .filter((alias): alias is string => Boolean(alias));
 }
 
 export async function syncAllKnownReposWithControl(options?: {
@@ -658,28 +759,33 @@ async function syncRepoWithLocalControl(
 async function syncRepoWithPortal(
   options: ControlSyncOptions & { repoPath: string },
   controlApiUrl: string,
+  portal: PortalTarget,
 ): Promise<void> {
   if (!isRepoPortalSyncEnabled(options.repoPath)) return;
 
-  const portal = getPortalTarget();
-  if (!portal) return;
-
   const { repoPath, dryRun, full } = options;
-  const since = full ? null : readPortalWatermark(repoPath, portal.url);
+  const watermarkKey = watermarkKeyForTarget(portal);
+  const since = full ? null : readPortalWatermarkForTarget(repoPath, portal);
 
-  const runsTarget = runsWatermarkTarget(portal.url);
-  const stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
+  const runsTarget = runsWatermarkTargetForPortal(portal);
+  let stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
+  if (!stored && !full) {
+    for (const legacyKey of legacyScopedWatermarkKeys(portal, 'runs')) {
+      stored = readRunsWatermarkEntry(repoPath, legacyKey);
+      if (stored) break;
+    }
+  }
   const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
   const { syncBody, runs, events, maxSyncedAt } = await buildPortalPayload(
     repoPath,
     controlApiUrl,
     since,
     full,
+    portal,
   );
   const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
 
   let repoId: string | undefined;
-  // Stamping a changed id here would hide the wipe if the resend below fails.
   const deltaRepoId = () => stored?.repoId ?? repoId;
   await syncRunBatches(newRuns, repoPath, runsTarget, deltaRepoId, dryRun, async (batch, i) => {
     const body = i === 0 ? { ...syncBody, runs: batch } : { path: repoPath, runs: batch };
@@ -687,7 +793,6 @@ async function syncRepoWithPortal(
     if (i === 0 && typeof res?.repositoryId === 'string') repoId = res.repositoryId;
   });
 
-  // Repo id changed → the portal repo was wiped; resend the whole history.
   if (!full && !dryRun && stored?.repoId && repoId && stored.repoId !== repoId) {
     await syncRunBatches(listRuns(repoPath), repoPath, runsTarget, () => repoId, dryRun, async (batch) => {
       await postPortal(portal, '/api/sync', { path: repoPath, runs: batch }, dryRun);
@@ -698,7 +803,7 @@ async function syncRepoWithPortal(
     await postPortal(portal, '/api/otel', { path: repoPath, events: batch }, dryRun);
   }
   if (!dryRun && maxSyncedAt) {
-    writePortalWatermark(repoPath, portal.url, maxSyncedAt);
+    writePortalWatermark(repoPath, watermarkKey, maxSyncedAt);
   }
 
   await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full);
@@ -711,19 +816,35 @@ async function syncTrajectoryWithPortal(
   dryRun: boolean | undefined,
   full: boolean | undefined,
 ): Promise<void> {
-  const wantRecords = isPortalTrajectoryEnabled();
+  const wantRecords = isPortalTrajectoryEnabledForTarget(portal);
   const wantSpans = isTelemetryEnabled();
   if (!wantRecords && !wantSpans) return;
 
-  const recordsTarget = trajectoryWatermarkTarget(portal.url);
-  const spansTarget = spansWatermarkTarget(portal.url);
+  const recordsTarget = trajectoryWatermarkTarget(portal);
+  const spansTarget = spansWatermarkTarget(portal);
   const { records, spans, recordsMaxSyncedAt, spansMaxSyncedAt } =
     await fetchPersistedTrajectory(repoPath, controlApiUrl, {
       records: wantRecords
-        ? { since: full ? null : readPortalWatermark(repoPath, recordsTarget) }
+        ? {
+            since: full
+              ? null
+              : readScopedPortalWatermark(
+                  repoPath,
+                  recordsTarget,
+                  legacyScopedWatermarkKeys(portal, 'trajectory'),
+                ),
+          }
         : false,
       spans: wantSpans
-        ? { since: full ? null : readPortalWatermark(repoPath, spansTarget) }
+        ? {
+            since: full
+              ? null
+              : readScopedPortalWatermark(
+                  repoPath,
+                  spansTarget,
+                  legacyScopedWatermarkKeys(portal, 'spans'),
+                ),
+          }
         : false,
     });
 
@@ -791,7 +912,33 @@ export async function syncRepoWithControl(options: ControlSyncOptions): Promise<
   }
 
   await syncRepoWithLocalControl({ ...options, repoPath, apiUrl });
-  await syncRepoWithPortal({ ...options, repoPath }, apiUrl);
+
+  if (!isRepoPortalSyncEnabled(repoPath)) return;
+
+  const resolved = resolvePortalTargetsForRepo({
+    repoPath,
+    explicitTargets: options.portalTargets,
+  });
+  if (!resolved) return;
+
+  const failures: Array<{ alias: string; error: string }> = [];
+  for (const portal of resolved.targets) {
+    try {
+      await syncRepoWithPortal({ ...options, repoPath }, apiUrl, portal);
+    } catch (err: unknown) {
+      failures.push({
+        alias: portal.alias ?? portal.identityKey,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (failures.length === 0) return;
+  if (failures.length === resolved.targets.length && failures.length === 1) {
+    throw new Error(failures[0].error);
+  }
+  const detail = failures.map((entry) => `${entry.alias}: ${entry.error}`).join('; ');
+  throw new Error(`Portal sync failed for ${failures.length} destination(s): ${detail}`);
 }
 
 async function syncRepoRunsAndSlots(
@@ -983,15 +1130,17 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
     process.stderr.write(`[har control] run sync skipped: ${message}\n`);
   }
 
-  const portal = getPortalTarget();
-  if (!portal) return;
+  const resolved = resolvePortalTargetsForRepo({ repoPath: canonical });
+  if (!resolved) return;
   if (!isRepoPortalSyncEnabled(canonical)) return;
 
-  try {
-    if (!(await isControlApiReachable(portal.url))) return;
-    await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[har control] run sync skipped: ${message}\n`);
+  for (const portal of resolved.targets) {
+    try {
+      if (!(await isControlApiReachable(portal.url))) continue;
+      await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[har control] run sync skipped: ${message}\n`);
+    }
   }
 }

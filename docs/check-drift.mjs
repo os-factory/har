@@ -156,6 +156,7 @@ if (/\brequires `--force`/.test(quickStart) || /requires --force/.test(quickStar
   );
 }
 requireTerms(docs.cli, ['--portal'], 'CLI reference (control login)');
+requireTerms(docs.cli, ['har hq connect'], 'CLI reference (har hq)');
 requireTerms(docs.mcp, ['ios'], 'MCP reference (har_init_harness profile)');
 requireTerms(docs.mcp, ['worktree'], 'MCP reference (har_launch_environment)');
 

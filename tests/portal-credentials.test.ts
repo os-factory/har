@@ -27,11 +27,15 @@ beforeEach(() => {
     'credentials.json',
   );
   process.env.HAR_CREDENTIALS_PATH = tmpFile;
+  process.env.HAR_PORTAL_TARGETS_PATH = path.join(path.dirname(tmpFile), 'portal-targets.json');
+  process.env.HAR_CONTROL_REGISTRY_PATH = path.join(path.dirname(tmpFile), 'repos.json');
   for (const key of PORTAL_ENV) delete process.env[key];
 });
 
 afterEach(() => {
   delete process.env.HAR_CREDENTIALS_PATH;
+  delete process.env.HAR_PORTAL_TARGETS_PATH;
+  delete process.env.HAR_CONTROL_REGISTRY_PATH;
 });
 
 describe('portal credentials store', () => {
@@ -44,11 +48,11 @@ describe('portal credentials store', () => {
     });
     const mode = fs.statSync(tmpFile).mode & 0o777;
     expect(mode).toBe(0o600);
-    expect(readPortalCredentials()).toEqual({
+    expect(readPortalCredentials()).toMatchObject({
       portalUrl: 'https://portal.example.com',
       token: 'har_ingest_x',
       workspace: 'acme',
-      createdAt: '2026-01-01T00:00:00.000Z',
+      targetAlias: 'acme',
     });
   });
 
@@ -89,7 +93,7 @@ describe('getPortalTarget source precedence', () => {
       token: 'har_ingest_stored',
       createdAt: '2026-01-01T00:00:00.000Z',
     });
-    expect(getPortalTarget()).toEqual({
+    expect(getPortalTarget()).toMatchObject({
       url: 'https://portal.example.com',
       token: 'har_ingest_stored',
     });
@@ -103,7 +107,7 @@ describe('getPortalTarget source precedence', () => {
     });
     process.env.HAR_PORTAL_URL = 'https://env.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_env';
-    expect(getPortalTarget()).toEqual({
+    expect(getPortalTarget()).toMatchObject({
       url: 'https://env.example.com',
       token: 'har_ingest_env',
     });

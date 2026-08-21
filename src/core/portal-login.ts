@@ -43,6 +43,9 @@ export async function loginViaBrowser(
       const token = requestUrl.searchParams.get('token');
       const returnedState = requestUrl.searchParams.get('state');
       const workspace = requestUrl.searchParams.get('workspace') ?? undefined;
+      const workspaceId = requestUrl.searchParams.get('workspaceId') ?? undefined;
+      const workspaceSlug =
+        requestUrl.searchParams.get('workspaceSlug') ?? workspace ?? undefined;
       const email = requestUrl.searchParams.get('email') ?? undefined;
       const refreshToken = requestUrl.searchParams.get('refreshToken') ?? undefined;
       const expiresAt = requestUrl.searchParams.get('expiresAt') ?? undefined;
@@ -61,7 +64,14 @@ export async function loginViaBrowser(
       resolve({
         portalUrl,
         token,
-        workspace,
+        workspace: workspaceSlug ?? workspace,
+        workspaceSlug,
+        workspaceName:
+          requestUrl.searchParams.get('workspaceName') ??
+          requestUrl.searchParams.get('organizationName') ??
+          workspace ??
+          undefined,
+        workspaceId,
         email,
         refreshToken,
         expiresAt,

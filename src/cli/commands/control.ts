@@ -2,12 +2,20 @@ import * as path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import {
-  DEFAULT_PORTAL_URL,
+  describePortalTarget,
   getControlApiUrl,
   isControlEnabled,
-  resolvePortalUrl,
-  type PortalUrlSource,
 } from '../../core/control-config';
+import {
+  displayPortalTargetLabel,
+  findPortalTargetRecord,
+  getRepoPortalTargetAliases,
+  isPortalTrajectoryEnabledForTarget,
+  recordToPortalTarget,
+  resolvePortalTargetsForRepo,
+  writePortalTargetTrajectoryPreference,
+} from '../../core/portal-targets';
+import { handleHqConnect } from './hq';
 import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   discoverHarRepos,
@@ -19,8 +27,6 @@ import {
   resolveSyncSelection,
   writeSyncSelection,
 } from '../../core/control-sync-selection';
-import { writePortalCredentials } from '../../core/portal-credentials';
-import { loginViaBrowser } from '../../core/portal-login';
 import { startMissionControl, syncReposAfterControlStart, stopMissionControl } from '../../core/control-lifecycle';
 import {
   confirmUnregister,
@@ -48,8 +54,8 @@ import { finishCommand } from '../finish-command';
 export const controlCommand = {
   command: 'control <subcommand>',
   describe: 'Mission Control dashboard (local)',
-  builder: (yargs: Argv) =>
-    yargs
+  builder: (yargs: Argv) => {
+    const chain = yargs
       .command(
         'up',
         'Start Mission Control (single Docker container, SQLite)',
@@ -133,23 +139,42 @@ export const controlCommand = {
               type: 'boolean',
               default: false,
               describe: 'Ignore the portal watermark and resend the complete payload',
+            })
+            .option('target', {
+              type: 'string',
+              describe: 'Sync to a named portal target instead of the repository default',
+            })
+            .option('targets', {
+              type: 'string',
+              describe: 'Comma-separated portal targets for an explicit multi-destination sync',
             }),
         handleSync,
       )
       .command(
         'login',
-        'Log in to a har-portal (browser SSO) and store an ingest token',
+        'Deprecated alias for har hq connect',
         (y: Argv) =>
           y
             .option('portal', {
               type: 'string',
-              describe: `Portal base URL (or HAR_PORTAL_URL; defaults to the last login, else ${DEFAULT_PORTAL_URL})`,
+              describe: 'Portal base URL (or HAR_PORTAL_URL)',
             })
             .option('api-key', {
               type: 'string',
               describe: 'Store this ingest token directly instead of browser login',
+            })
+            .option('repo', {
+              type: 'string',
+              default: '.',
+              describe: 'Repository to attach to the chosen workspace',
             }),
-        handleLogin,
+        (argv) =>
+          handleHqConnect({
+            portal: argv.portal as string | undefined,
+            apiKey: argv.apiKey as string | undefined,
+            repo: (argv.repo as string | undefined) ?? '.',
+            deprecated: true,
+          }),
       )
       .command(
         'reset',
@@ -181,17 +206,24 @@ export const controlCommand = {
         'trajectory [state]',
         'Forward agent prompts, tool arguments and tool results to the hosted portal (off by default)',
         (y: Argv) =>
-          y.positional('state', {
-            type: 'string',
-            choices: ['on', 'off'] as const,
-            describe: 'Omit to print the current setting',
-          }),
+          y
+            .positional('state', {
+              type: 'string',
+              choices: ['on', 'off'] as const,
+              describe: 'Omit to print the current setting',
+            })
+            .option('target', {
+              type: 'string',
+              describe:
+                'Apply to one saved HQ connection (required when this repo is attached to more than one)',
+            }),
         handleTrajectory,
-      )
-      .demandCommand(
-        1,
-        'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory',
-      ),
+      );
+    return chain.demandCommand(
+      1,
+      'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory',
+    );
+  },
   handler: () => {},
 };
 
@@ -472,6 +504,8 @@ async function handleSync(argv: {
   json: boolean;
   cloud?: boolean;
   full: boolean;
+  target?: string;
+  targets?: string;
 }): Promise<void> {
   const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const discovered = await discoverHarRepos({ apiUrl: argv.apiUrl, cwd: process.cwd() });
@@ -530,12 +564,38 @@ async function handleSync(argv: {
     return;
   }
 
+  if (argv.target && argv.targets) {
+    error('Use either --target or --targets, not both.');
+    return finishCommand(1);
+  }
+
+  const portalTargets = argv.targets
+    ? argv.targets.split(',').map((part) => part.trim()).filter(Boolean)
+    : argv.target
+      ? [argv.target]
+      : undefined;
+
+  if (!argv.json) {
+    header('har control sync');
+    for (const repoPath of repoPaths) {
+      const resolved = resolvePortalTargetsForRepo({
+        repoPath,
+        explicitTargets: portalTargets,
+      });
+      if (!resolved || resolved.targets.length === 0) continue;
+      info(
+        `${repoPath} → ${resolved.targets.map((target) => describePortalTarget(target)).join(', ')}`,
+      );
+    }
+  }
+
   const { synced, failed, results } = await syncReposWithControl({
     repoPaths,
     apiUrl: argv.apiUrl,
     dryRun: argv.dryRun,
     cloud: argv.cloud,
     full: argv.full,
+    portalTargets,
   });
 
   if (argv.json) {
@@ -544,8 +604,19 @@ async function handleSync(argv: {
     return;
   }
 
-  header('har control sync');
   for (const result of results) {
+    if (result.targets && result.targets.length > 0) {
+      for (const target of result.targets) {
+        const record = findPortalTargetRecord(target.alias);
+        const label = record ? displayPortalTargetLabel(record) : target.alias;
+        if (target.ok) {
+          success(`Synced ${result.repoPath} → ${label}`);
+        } else {
+          warn(`Failed ${result.repoPath} → ${label}: ${target.error}`);
+        }
+      }
+      continue;
+    }
     if (result.ok) {
       success(`Synced ${result.repoPath}`);
     } else {
@@ -561,46 +632,40 @@ async function handleSync(argv: {
   }
 }
 
-const PORTAL_SOURCE_LABEL: Record<PortalUrlSource, string> = {
-  flag: '--portal',
-  env: 'HAR_PORTAL_URL',
-  saved: 'saved login',
-  default: 'default',
-};
-
-async function handleLogin(argv: { apiKey?: string; portal?: string }): Promise<void> {
-  header('har control login');
-  const { url: portalUrl, source } = resolvePortalUrl(argv.portal);
-  info(`Portal: ${portalUrl} (${PORTAL_SOURCE_LABEL[source]})`);
-
-  if (argv.apiKey) {
-    writePortalCredentials({
-      portalUrl,
-      token: argv.apiKey,
-      createdAt: new Date().toISOString(),
-    });
-    success(`Saved ingest token for ${portalUrl}`);
-    info('Sync: har control sync');
-    return;
-  }
-
-  try {
-    const creds = await loginViaBrowser(portalUrl);
-    writePortalCredentials(creds);
-    success(
-      `Logged in to ${portalUrl}${creds.workspace ? ` (workspace: ${creds.workspace})` : ''}`,
-    );
-    info('Sync: har control sync');
-  } catch (err) {
-    error(`Login failed: ${(err as Error).message}`);
-    return finishCommand(1);
-  }
-}
-
-async function handleTrajectory(argv: { state?: string }): Promise<void> {
+async function handleTrajectory(argv: { state?: string; target?: string }): Promise<void> {
   header('har control trajectory');
 
+  const resolveNamed = (ref: string) => {
+    const record = findPortalTargetRecord(ref);
+    if (!record) {
+      error(`Unknown connection "${ref}".`);
+      info('See: har hq list');
+      return null;
+    }
+    return record;
+  };
+
   if (!argv.state) {
+    if (argv.target) {
+      const record = resolveNamed(argv.target);
+      if (!record) return finishCommand(1);
+      const enabled = isPortalTrajectoryEnabledForTarget(recordToPortalTarget(record));
+      info(`Trajectory forwarding for ${displayPortalTargetLabel(record)}: ${enabled ? 'on' : 'off'}`);
+      return;
+    }
+    const attached = getRepoPortalTargetAliases(process.cwd())
+      .map((alias) => findPortalTargetRecord(alias))
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    if (attached.length > 0) {
+      for (const record of attached) {
+        const enabled = isPortalTrajectoryEnabledForTarget(recordToPortalTarget(record));
+        info(`${displayPortalTargetLabel(record)}: ${enabled ? 'on' : 'off'}`);
+      }
+      if (!isTelemetryEnabled()) {
+        warn('Telemetry is off, so nothing is forwarded regardless of this setting.');
+      }
+      return;
+    }
     const enabled = readTelemetryPreference().portalTrajectory === true;
     info(`Trajectory forwarding: ${enabled ? 'on' : 'off'}`);
     if (!enabled) {
@@ -613,6 +678,44 @@ async function handleTrajectory(argv: { state?: string }): Promise<void> {
   }
 
   const enabled = argv.state === 'on';
+  if (argv.target) {
+    const record = resolveNamed(argv.target);
+    if (!record) return finishCommand(1);
+    writePortalTargetTrajectoryPreference(record.alias, enabled);
+    success(
+      `Trajectory forwarding ${enabled ? 'on' : 'off'} for ${displayPortalTargetLabel(record)}.`,
+    );
+    return;
+  }
+
+  const attachedAliases = getRepoPortalTargetAliases(process.cwd());
+  if (attachedAliases.length > 1) {
+    error('This repository is attached to more than one HQ workspace — pass --target.');
+    info('See: har hq list');
+    return finishCommand(1);
+  }
+  if (attachedAliases.length === 1) {
+    const record = findPortalTargetRecord(attachedAliases[0]);
+    if (record) {
+      writePortalTargetTrajectoryPreference(record.alias, enabled);
+      if (!enabled) {
+        success(
+          `Trajectory forwarding off for ${displayPortalTargetLabel(record)} — the portal receives token counts and events only.`,
+        );
+        return;
+      }
+      success(`Trajectory forwarding on for ${displayPortalTargetLabel(record)}.`);
+      info(
+        'Prompts, tool arguments and tool results now sync to that hosted workspace, ' +
+          'capped and redacted by the local policy (HAR_TRAJECTORY_MAX_PAYLOAD_BYTES).',
+      );
+      if (!isTelemetryEnabled()) {
+        warn('Telemetry is off, so nothing is forwarded yet — enable it with har telemetry on.');
+      }
+      return;
+    }
+  }
+
   writePortalTrajectoryPreference(enabled);
 
   if (!enabled) {

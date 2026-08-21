@@ -6,6 +6,7 @@ import { syncDirtyRepos } from '../core/sync-context';
 import { agentsCommand } from './commands/agents';
 import { envCommand } from './commands/env';
 import { controlCommand } from './commands/control';
+import { hqCommand } from './commands/hq';
 import { hooksCommand } from './commands/hooks';
 import { mcpCommand } from './commands/mcp';
 import { onboardCommand } from './commands/onboard';
@@ -22,6 +23,7 @@ export async function runCli(): Promise<void> {
     .command(envCommand)
     .command(agentsCommand)
     .command(controlCommand)
+    .command(hqCommand)
     .command(hooksCommand)
     .command(mcpCommand)
     .command(preferencesCommand)
