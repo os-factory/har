@@ -24,59 +24,6 @@ function setTheme(theme: 'light' | 'dark', persist = true) {
 
 setTheme(html.dataset.theme === 'dark' ? 'dark' : 'light', false);
 
-const GITHUB_STAR_CACHE_KEY = 'har-github-stars';
-const GITHUB_STAR_CACHE_TTL_MS = 60 * 60 * 1000;
-
-function formatStarCount(count: number): string {
-  return new Intl.NumberFormat('en-US').format(count);
-}
-
-async function hydrateGithubStars() {
-  const counters = document.querySelectorAll<HTMLElement>('[data-github-star-count]');
-  if (counters.length === 0) return;
-
-  const apply = (count: number) => {
-    const label = formatStarCount(count);
-    counters.forEach((node) => {
-      node.textContent = label;
-      node.hidden = false;
-    });
-  };
-
-  try {
-    const cached = sessionStorage.getItem(GITHUB_STAR_CACHE_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached) as { count?: number; fetchedAt?: number };
-      if (
-        typeof parsed.count === 'number' &&
-        typeof parsed.fetchedAt === 'number' &&
-        Date.now() - parsed.fetchedAt < GITHUB_STAR_CACHE_TTL_MS
-      ) {
-        apply(parsed.count);
-        return;
-      }
-    }
-  } catch {
-    /* ignore stale cache */
-  }
-
-  try {
-    const response = await fetch('https://api.github.com/repos/os-factory/har');
-    if (!response.ok) return;
-    const body = (await response.json()) as { stargazers_count?: number };
-    if (typeof body.stargazers_count !== 'number') return;
-    apply(body.stargazers_count);
-    sessionStorage.setItem(
-      GITHUB_STAR_CACHE_KEY,
-      JSON.stringify({ count: body.stargazers_count, fetchedAt: Date.now() }),
-    );
-  } catch {
-    /* keep the compact Star label if GitHub is unreachable */
-  }
-}
-
-void hydrateGithubStars();
-
 document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]').forEach((button) => {
   button.addEventListener('click', () => {
     setTheme(html.dataset.theme === 'dark' ? 'light' : 'dark');

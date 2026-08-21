@@ -8,11 +8,10 @@ test.describe('Frontend smoke', () => {
       'The open harness for multi-agent coding workflows',
     );
     await expect(page.getByRole('link', { name: /Read the docs/i })).toBeVisible();
-    await expect(page.locator('a.github-star')).toHaveAttribute(
-      'href',
-      'https://github.com/os-factory/har',
+    await expect(page.locator('iframe.github-star')).toHaveAttribute(
+      'src',
+      /ghbtns\.com\/github-btn\.html\?user=os-factory&repo=har/,
     );
-    await expect(page.locator('a.github-star')).toContainText('Star');
     await expect(page.locator('meta[name="description"]')).toHaveAttribute(
       'content',
       /agent harness/i,
