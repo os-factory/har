@@ -8,7 +8,15 @@ description: Install HAR, verify the CLI, and connect an MCP client.
 - Node.js 20 or newer
 - npm
 - Git
-- Docker only when your harness uses containerized infrastructure
+- **Docker** — required. Mission Control runs as a container (`har control up`) and
+  harness profiles start shared infrastructure through Docker Compose
+  (`.har/setup-infra.sh`). Install it from
+  [docs.docker.com](https://docs.docker.com/get-started/get-docker/) and make sure
+  the daemon is running before you onboard.
+
+`har onboard` and `har env init` probe Docker on start and warn when the CLI is
+missing or the daemon is down. Onboarding still completes without Docker, but it
+will not offer to start Mission Control until Docker is available.
 
 ## Install from npm
 

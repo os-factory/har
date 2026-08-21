@@ -14,7 +14,21 @@ If missing, install it and re-check:
 npm install -g @osfactory/har
 ```
 
-## 2. Pick a harness profile
+## 2. Check Docker
+
+Docker is required: Mission Control runs as a container and harness infrastructure
+(databases, queues, browsers) starts through Docker Compose.
+
+```bash
+docker info
+```
+
+If the command fails, tell the user Docker must be installed and running
+(https://docs.docker.com/get-started/get-docker/). You can still scaffold the
+harness, but say clearly that Mission Control and containerized infra stay
+unavailable until Docker works.
+
+## 3. Pick a harness profile
 
 Inspect the repository and choose the profile that matches how agents will run it:
 
@@ -26,7 +40,7 @@ Inspect the repository and choose the profile that matches how agents will run i
 
 Tell the user which profile you picked and why before continuing.
 
-## 3. Initialize the harness
+## 4. Initialize the harness
 
 ```bash
 har env init --profile <profile>   # omit --profile for default
@@ -34,11 +48,11 @@ har env init --profile <profile>   # omit --profile for default
 
 If `.har/` already exists, stop and suggest `/har-maintain` instead.
 
-## 4. Perform the adaptation yourself
+## 5. Perform the adaptation yourself
 
 `har env init` prints an adaptation prompt and writes it to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor `.har/` scripts (`launch.sh`, `verify.sh`, `setup-infra.sh`, `harness.env`, `stages.json`) and `AGENTS.md` to this repository's real stack, ports, and commands.
 
-## 5. Register the project's checks as stages
+## 6. Register the project's checks as stages
 
 Convert the repository's real check commands (test, lint, typecheck, whatever CI runs) into registered stages so they run in `verify --full` and are visible to every agent. Read `.har/STAGES.md` for the contract, then:
 
@@ -49,7 +63,7 @@ har env add-stage unit-tests --custom --kind test --command "npm test" --verific
 - Use `--command` for one-liner checks; use `--script` when a check needs the slot's env, ports, or artifacts (then implement the scaffolded `.har/stages/<id>.sh`).
 - Rich integrations ship as **plugins**: `har env add-plugin --list`, then e.g. `har env add-plugin playwright` (web) or `har env add-plugin rocketsim` (iOS). Plugins install stages; agents only talk to the stage registry.
 
-## 6. Prove the harness works
+## 7. Prove the harness works
 
 ```bash
 har env launch 1
@@ -58,7 +72,7 @@ har env verify 1
 
 Fix the harness scripts until both pass. Then tear down or keep the slot as the user prefers (`har env teardown 1` keeps the branch).
 
-## 7. Commit
+## 8. Commit
 
 After the user confirms, commit the harness:
 

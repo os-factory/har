@@ -10,8 +10,10 @@ import {
 } from '../src/core/onboarding';
 import {
   defaultAgentSlotMaxForProfile,
+  defaultStartControl,
   parseAgentSlotsFlag,
 } from '../src/cli/commands/onboard';
+import { DOCKER_INSTALL_URL, type DockerStatus } from '../src/core/docker-status';
 import {
   isTelemetryEnabled,
   readTelemetryPreference,
@@ -23,6 +25,7 @@ describe('onboarding guide', () => {
     const titles = ONBOARDING_GUIDE_STEPS.map((step) => step.title);
     expect(titles).toEqual([
       'What HAR is',
+      'What you need',
       'Sessions and slots',
       'Verify and finish',
       'Mission Control and plugins',
@@ -32,6 +35,12 @@ describe('onboarding guide', () => {
     expect(body).toContain('complete');
     expect(body).toContain('Mission Control');
     expect(body).toContain('add-plugin');
+  });
+
+  it('tells the user Docker is required', () => {
+    const requirements = ONBOARDING_GUIDE_STEPS.find((step) => step.title === 'What you need');
+    expect(requirements?.body).toContain('Docker is required');
+    expect(requirements?.body).toContain(DOCKER_INSTALL_URL);
   });
 
   it('lists shipped plugins with descriptions', () => {
@@ -102,6 +111,22 @@ describe('applyOnboardingTelemetry', () => {
   });
 });
 
+const DOCKER_OK: DockerStatus = { cliInstalled: true, daemonRunning: true, version: '27.3.1' };
+const DOCKER_MISSING: DockerStatus = { cliInstalled: false, daemonRunning: false };
+
+describe('Mission Control start default', () => {
+  it('is on when telemetry is on and Docker is usable', () => {
+    expect(defaultStartControl('on', DOCKER_OK)).toBe(true);
+    expect(defaultStartControl('on-no-prompts', DOCKER_OK)).toBe(true);
+  });
+
+  it('is off when telemetry is off or Docker is unusable', () => {
+    expect(defaultStartControl('off', DOCKER_OK)).toBe(false);
+    expect(defaultStartControl('on', DOCKER_MISSING)).toBe(false);
+    expect(defaultStartControl('on', { cliInstalled: true, daemonRunning: false })).toBe(false);
+  });
+});
+
 describe('runOnboarding', () => {
   let tmpDir: string;
 
@@ -130,6 +155,7 @@ describe('runOnboarding', () => {
       },
       {
         applyTelemetry: async () => {},
+        detectDocker: () => DOCKER_OK,
         ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
         offerClipboard: async (content) => {
           clipboardCalls.push(content);
@@ -169,6 +195,7 @@ describe('runOnboarding', () => {
       },
       {
         applyTelemetry: async () => {},
+        detectDocker: () => DOCKER_OK,
         ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
       },
     );
@@ -194,6 +221,7 @@ describe('runOnboarding', () => {
       },
       {
         applyTelemetry: async () => {},
+        detectDocker: () => DOCKER_OK,
         ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
       },
     );
@@ -209,6 +237,7 @@ describe('runOnboarding', () => {
       },
       {
         applyTelemetry: async () => {},
+        detectDocker: () => DOCKER_OK,
         ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
         offerClipboard: async () => false,
       },
@@ -217,6 +246,88 @@ describe('runOnboarding', () => {
     expect(second.harnessInitialized).toBe(false);
     expect(second.harnessAlreadyPresent).toBe(true);
     expect(fs.readFileSync(second.adaptationPromptPath!, 'utf8')).toContain('already exists');
+  });
+
+  it('warns that Docker is required when the engine is unavailable', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await runOnboarding(
+        {
+          repoPath: tmpDir,
+          profile: 'cli',
+          telemetry: 'off',
+          startControl: false,
+          plugins: [],
+          skipInit: true,
+          autoYes: true,
+        },
+        {
+          applyTelemetry: async () => {},
+          detectDocker: () => DOCKER_MISSING,
+          ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
+        },
+      );
+
+      expect(result.docker).toEqual(DOCKER_MISSING);
+      expect(result.dockerWarning).toContain('Docker is required');
+      const logged = errors.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toContain('Docker is required');
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it('does not warn twice when the caller already reported Docker status', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await runOnboarding(
+        {
+          repoPath: tmpDir,
+          profile: 'cli',
+          telemetry: 'off',
+          startControl: false,
+          plugins: [],
+          skipInit: true,
+          autoYes: true,
+          docker: DOCKER_MISSING,
+        },
+        {
+          applyTelemetry: async () => {},
+          detectDocker: () => {
+            throw new Error('should not probe Docker when the caller passed a status');
+          },
+          ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
+        },
+      );
+
+      expect(result.dockerWarning).toContain('Docker is required');
+      const logged = errors.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).not.toContain('Docker is required');
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it('reports no Docker warning when the engine is usable', async () => {
+    const result = await runOnboarding(
+      {
+        repoPath: tmpDir,
+        profile: 'cli',
+        telemetry: 'off',
+        startControl: false,
+        plugins: [],
+        skipInit: true,
+        autoYes: true,
+      },
+      {
+        applyTelemetry: async () => {},
+        detectDocker: () => DOCKER_OK,
+        ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
+      },
+    );
+
+    expect(result.docker).toEqual(DOCKER_OK);
+    expect(result.dockerWarning).toBeNull();
   });
 
   it('honors skipInit', async () => {
@@ -232,6 +343,7 @@ describe('runOnboarding', () => {
       },
       {
         applyTelemetry: async () => {},
+        detectDocker: () => DOCKER_OK,
         ensureControl: async () => ({ started: false, apiUrl: 'http://127.0.0.1:3847' }),
       },
     );

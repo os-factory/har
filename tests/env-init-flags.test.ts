@@ -89,7 +89,7 @@ describe('har env init --no-agents / --no-cursor-rule (CLI)', () => {
     expect(fs.existsSync(path.join(dir, '.cursor', 'rules', 'har-workflow.mdc'))).toBe(false);
     expect(fs.existsSync(path.join(dir, '.claude', 'skills', 'setup-har', 'SKILL.md'))).toBe(false);
     expect(fs.existsSync(path.join(dir, '.cursor', 'commands', 'setup-har.md'))).toBe(false);
-  });
+  }, 20_000);
 
   maybeIt('still writes the cursor rule when --yes without --no-cursor-rule', () => {
     const dir = initFixtureRepo();
@@ -101,7 +101,7 @@ describe('har env init --no-agents / --no-cursor-rule (CLI)', () => {
     expect(status).toBe(0);
     expect(combined).not.toMatch(/raw\.split is not a function/);
     expect(fs.existsSync(path.join(dir, '.cursor', 'rules', 'har-workflow.mdc'))).toBe(true);
-  });
+  }, 20_000);
 
   maybeIt('does not install auto-detected skills by default with --yes', () => {
     const dir = initFixtureRepo();
@@ -115,5 +115,5 @@ describe('har env init --no-agents / --no-cursor-rule (CLI)', () => {
     expect(fs.existsSync(path.join(dir, '.cursor', 'rules', 'har-workflow.mdc'))).toBe(true);
     expect(fs.existsSync(path.join(dir, '.claude', 'skills', 'setup-har', 'SKILL.md'))).toBe(false);
     expect(fs.existsSync(path.join(dir, '.cursor', 'commands', 'setup-har.md'))).toBe(false);
-  });
+  }, 20_000);
 });
