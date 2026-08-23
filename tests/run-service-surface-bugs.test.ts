@@ -4,6 +4,7 @@ import * as path from 'path';
 import {
   getEnvironmentStatus,
   launchEnvironment,
+  runStage,
   teardownEnvironment,
 } from '../src/core/run-service';
 import { createWorkAttempt, findWorkUnit, upsertWorkUnit, decideWorkUnitOutcome } from '../src/core/work-units';
@@ -86,15 +87,26 @@ describe('MCP launch trigger parity (#228)', () => {
   }, 20_000);
 });
 
-describe('status execution (#228)', () => {
-  // The fixture agent-cli.sh rejects extra args, so the old duplicated
-  // `status status` invocation fails this test.
-  it('runs the status stage without a duplicated subcommand arg', async () => {
+describe('status execution (#228, #233)', () => {
+  // The fixture agent-cli.sh rejects extra args, so a duplicated
+  // `status status` invocation fails this test (guards {agentId} substitution).
+  it('runs the registered status stage via run-stage without a duplicated subcommand arg', async () => {
+    const tempRepo = makeTempRepo();
+    const result = await runStage({ repoPath: tempRepo, stageId: 'status', agentId: 1, capture: true });
+    const stdout = result.logs?.find((log) => log.stream === 'stdout')?.content ?? '';
+    expect(stdout).toContain('Agent 1 running');
+    expect(stdout).not.toContain('unexpected extra args');
+    expect(result.status).toBe('pass');
+  }, 20_000);
+
+  it('status is a structured pure read: text rendered from the collector, no run records', async () => {
     const tempRepo = makeTempRepo();
     const result = await getEnvironmentStatus({ repoPath: tempRepo, agentId: 1, capture: true });
-    expect(result.stderr).not.toContain('unexpected extra args');
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain('Agent 1 running');
+    expect(result.status.slots).toHaveLength(1);
+    expect(result.status.slots[0].agentId).toBe(1);
+    expect(result.stdout).toContain('Agent 1');
+    expect(readRunRecords(tempRepo)).toHaveLength(0);
   }, 20_000);
 });
 

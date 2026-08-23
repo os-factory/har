@@ -14,7 +14,8 @@ import {
   upsertWorkUnit,
 } from './work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
-import { getAgentSlotIds, resolveStage } from '../harness/stages';
+import { resolveStage } from '../harness/stages';
+import { collectEnvironmentStatus, renderEnvironmentStatusText } from './slot-status';
 import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
@@ -27,6 +28,7 @@ import * as path from 'path';
 import {
   ArtifactEntry,
   EnvironmentRunResult,
+  EnvironmentStatusRunResult,
   ExecutionContext,
   LaunchOptions,
   LogsOptions,
@@ -317,6 +319,11 @@ export class RunService {
       if (launchBanner) {
         envResult.stderr = `${launchBanner}${envResult.stderr ?? ''}`;
       }
+      // Structured copy of the readiness warnings so surfaces can render them
+      // without scraping WARN: lines out of stderr.
+      if (guard.readiness?.warnings?.length) {
+        envResult.warnings = guard.readiness.warnings;
+      }
     }
     return envResult;
   }
@@ -531,45 +538,33 @@ export class RunService {
     };
   }
 
+  /**
+   * Status is a pure read with one implementation: the structured collector is
+   * the source, text is rendered on top. No run records are written on any
+   * surface (CLI text, CLI --json, MCP) — the policy is identical by design.
+   */
   async getEnvironmentStatus(options: {
     repoPath: string;
     agentId?: number;
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
-  }): Promise<EnvironmentRunResult> {
-    const capture = options.capture ?? true;
-
+  }): Promise<EnvironmentStatusRunResult> {
     if (options.agentId !== undefined) {
       validateAgentId(options.agentId, options.repoPath);
-      const result = await this.runStage({
-        repoPath: options.repoPath,
-        stageId: 'status',
-        agentId: options.agentId,
-        capture,
-        trigger: options.trigger ?? 'cli',
-      });
-      return toEnvironmentRunResult(result);
     }
 
-    let combinedStdout = '';
-    let combinedStderr = '';
-    let exitCode = 0;
+    const full = collectEnvironmentStatus(options.repoPath);
+    const status =
+      options.agentId !== undefined
+        ? { ...full, slots: full.slots.filter((slot) => slot.agentId === options.agentId) }
+        : full;
 
-    for (const id of getAgentSlotIds(options.repoPath)) {
-      const result = await this.runStage({
-        repoPath: options.repoPath,
-        stageId: 'status',
-        agentId: id,
-        capture,
-        trigger: options.trigger ?? 'cli',
-      });
-      const shell = extractShellOutput(result);
-      combinedStdout += shell.stdout;
-      combinedStderr += shell.stderr;
-      if (shell.code !== 0) exitCode = shell.code;
-    }
-
-    return { code: exitCode, stdout: combinedStdout, stderr: combinedStderr };
+    return {
+      code: 0,
+      stdout: renderEnvironmentStatusText(status),
+      stderr: '',
+      status,
+    };
   }
 
   async getEnvironmentLogs(options: LogsOptions & { trigger?: ExecutionContext['trigger'] }): Promise<EnvironmentRunResult> {
@@ -608,6 +603,7 @@ export { computePreviewUrls, readHarnessEnv } from './local-executor';
 export type {
   ArtifactEntry,
   EnvironmentRunResult,
+  EnvironmentStatusRunResult,
   LaunchOptions,
   LogsOptions,
   PreflightOptions,

@@ -1,5 +1,6 @@
 import type { ShellResult } from '../utils/shell';
 import type {
+  EnvironmentStatus,
   RunRecordTriggerSchema,
   SlotReadiness,
   StageKind,
@@ -87,6 +88,8 @@ export interface EnvironmentRunResult {
   attemptId?: string;
   /** Launch refused because the slot is occupied — teardown/complete it first, then launch. */
   blocked?: boolean;
+  /** Advisory readiness warnings — surfaces render them; they never block. */
+  warnings?: string[];
   occupiedSlot?: {
     agentId: number;
     workDir?: string;
@@ -95,6 +98,11 @@ export interface EnvironmentRunResult {
     dirty?: boolean;
     sessionCreatedAt?: string;
   };
+}
+
+/** Status is a pure read: one structured source, text rendered on top, no run records. */
+export interface EnvironmentStatusRunResult extends EnvironmentRunResult {
+  status: EnvironmentStatus;
 }
 
 export interface VerificationRunResult extends EnvironmentRunResult {

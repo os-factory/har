@@ -55,6 +55,9 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
 | `status` | Inspect all slots |
+| `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
+| `run-stage <id> <stage> [args..]` | Run one registered harness stage by id |
+| `artifacts` | List result files under `.har/artifacts/` |
 | `cleanup` | Discover stale sessions and orphan worktrees across registered repos |
 | `runs list` | List persisted run records |
 | `runs get <runId>` | Return one run record |
@@ -166,12 +169,22 @@ excerpt. MCP `har_run_verification` returns the same slim shape.
 
 ```bash
 har env status [--json]
+har env logs 1 [service]
+har env run-stage 1 <stage> [args..] [--json]
+har env artifacts [--stage <id>] [--json]
 har env cleanup [--dry-run] [--yes] [--repo <path>]
                 [--keep repo:agentId,/path/to/worktree]
                 [--stale 7] [--orphans] [--include-review] [--json]
 har env runs list [--stage <id>] [--limit 50] [--json]
 har env runs get <uuid> [--json]
 ```
+
+`status` has one implementation on every surface: the structured collector
+behind `--json` is the source, the text view is rendered on top, and MCP
+`har_get_status` returns the same object. Status is a pure read — it writes no
+run records. `run-stage` executes any stage registered in `.har/stages.json`
+(the CLI twin of MCP `har_run_stage`); `artifacts` is the twin of
+`har_list_artifacts`.
 
 `cleanup` scans every repo in `~/.har/repos.json` (plus `--repo` when set),
 classifies active slots and orphan directories under `~/worktrees`, and runs

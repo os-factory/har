@@ -23,17 +23,18 @@ import {
 } from '../../harness/instruction-files';
 import {
   completeEnvironment,
+  getEnvironmentLogs,
   getEnvironmentStatus,
   launchEnvironment,
+  listArtifacts,
   preflightEnvironment,
+  runStage,
   runVerification,
   teardownEnvironment,
 } from '../../core/run-service';
-import { checkLaunchGuard } from '../../core/slot-launch-guard';
 import { listRuns, getRun } from '../../core/runs';
 import { addWorkUnitLinks, parseWorkLinkSpec } from '../../core/work-units';
 import { resolveHarnessRoot } from '../../harness/manifest';
-import { collectEnvironmentStatus } from '../../core/slot-status';
 import {
   confirmCleanupSelection,
   discoverCleanupCandidates,
@@ -56,6 +57,8 @@ import {
   LAUNCH_RESUME_DESCRIBE,
 } from '../help-text';
 
+// Operation × surface matrix (CLI ↔ MCP) is documented in AGENTS.md — keep it
+// current when adding or removing a subcommand here or a tool in mcp/server.ts.
 const workLinkOptions = (y: Argv) =>
   y
     .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
@@ -396,6 +399,38 @@ export const envCommand = {
         handleStatus,
       )
       .command(
+        'logs <id> [service]',
+        'Show recent logs for an agent slot (optionally one service)',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .positional('service', { type: 'string', describe: 'Limit logs to one service' })
+            .option('repo', { type: 'string', default: '.' }),
+        handleLogs,
+      )
+      .command(
+        'run-stage <id> <stage> [args..]',
+        'Run one registered harness stage by id for an agent slot',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .positional('stage', { type: 'string', describe: 'Stage id from .har/stages.json' })
+            .positional('args', { type: 'string', array: true, describe: 'Extra arguments passed to the stage' })
+            .option('repo', { type: 'string', default: '.' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
+        handleRunStage,
+      )
+      .command(
+        'artifacts',
+        'List result JSON, screenshots, traces, and reports under .har/artifacts/',
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.' })
+            .option('stage', { type: 'string', describe: 'Filter by stage id' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
+        handleArtifacts,
+      )
+      .command(
         'cleanup',
         'Discover stale session worktrees across registered repos and tear them down',
         (y: Argv) =>
@@ -474,7 +509,7 @@ export const envCommand = {
       )
       .demandCommand(
         1,
-        'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, cleanup, runs',
+        'Please specify a subcommand: init, maintain, add-plugin, add-stage, launch, recover, verify, complete, teardown, status, logs, run-stage, artifacts, cleanup, runs',
       )
       .epilog(HAR_ENV_EPILOG),
   handler: () => {},
@@ -963,17 +998,8 @@ export async function handleLaunch(argv: {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
 
-  if (!argv.resume) {
-    const guard = checkLaunchGuard(repo, agentId, { worktree: argv.worktree });
-    if (!guard.allowed && guard.blocked) {
-      error(guard.reason ?? `Slot ${agentId} is occupied.`);
-      return finishCommand(2);
-    }
-    for (const warning of guard.readiness?.warnings ?? []) {
-      warn(warning);
-    }
-  }
-
+  // The launch guard runs exactly once, inside run-service (also on --resume);
+  // this layer only renders the outcome.
   const result = await launchEnvironment({
     repoPath: repo,
     agentId,
@@ -991,6 +1017,9 @@ export async function handleLaunch(argv: {
   if (result.blocked) {
     error(result.stderr || 'Launch blocked: slot is occupied.');
     return finishCommand(result.code || 2);
+  }
+  for (const warning of result.warnings ?? []) {
+    warn(warning);
   }
   if (result.code === 0 && result.workDir) {
     if (result.stderr) {
@@ -1134,17 +1163,95 @@ export async function handleComplete(argv: {
 export async function handleStatus(argv: { repo: string; json?: boolean }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
+  // One status implementation for text, --json, and MCP: the structured
+  // collector inside getEnvironmentStatus. Status is a pure read (no run records).
+  const result = await getEnvironmentStatus({
+    repoPath,
+    capture: false,
+  });
+
   if (argv.json) {
-    const status = collectEnvironmentStatus(repoPath);
-    const output = EnvironmentStatusSchema.parse(status);
+    const output = EnvironmentStatusSchema.parse(result.status);
     process.stdout.write(JSON.stringify(output, null, 2) + '\n');
     return;
   }
 
-  await getEnvironmentStatus({
-    repoPath,
-    capture: false,
+  if (result.stdout) process.stdout.write(result.stdout);
+}
+
+export async function handleLogs(argv: {
+  id?: number;
+  repo: string;
+  service?: string;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  const result = await getEnvironmentLogs({
+    repoPath: repo,
+    agentId,
+    service: argv.service,
   });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  return finishCommand(result.code);
+}
+
+export async function handleRunStage(argv: {
+  id?: number;
+  stage?: string;
+  repo: string;
+  args?: string[];
+  json?: boolean;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  if (!argv.stage) {
+    error('Missing stage id. Usage: har env run-stage <id> <stage> [args..]');
+    return finishCommand(1);
+  }
+
+  try {
+    const result = await runStage({
+      repoPath: repo,
+      stageId: argv.stage,
+      agentId,
+      args: argv.args,
+      capture: Boolean(argv.json),
+    });
+    if (argv.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    }
+    const code = result.code ?? (result.status === 'pass' ? 0 : 1);
+    return finishCommand(code);
+  } catch (err: unknown) {
+    error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
+}
+
+export async function handleArtifacts(argv: {
+  repo: string;
+  stage?: string;
+  json?: boolean;
+}): Promise<void> {
+  const artifacts = listArtifacts({
+    repoPath: path.resolve(argv.repo),
+    stageId: argv.stage,
+  });
+
+  if (argv.json) {
+    process.stdout.write(JSON.stringify({ artifacts }, null, 2) + '\n');
+    return;
+  }
+
+  header('har env artifacts');
+  if (artifacts.length === 0) {
+    info('No artifacts found under .har/artifacts/');
+    return;
+  }
+  for (const artifact of artifacts) {
+    info(`${artifact.relativePath}  (${artifact.sizeBytes} bytes, ${artifact.modifiedAt})`);
+  }
 }
 
 export async function handleCleanup(argv: {
