@@ -1,6 +1,10 @@
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+
+// Two exec seams coexist here for now: SystemOps (async, streaming — used by
+// provision/node-pm) and ExecFn (sync — used by infra/process/xcode-sim).
+// The #234 integration pass may unify them; call sites only depend on their own seam.
 
 /** Result of a runtime subprocess. */
 export interface ExecResult {
@@ -98,3 +102,42 @@ export const realSystemOps: SystemOps = {
     return out.length > 0 ? out : null;
   },
 };
+
+/**
+ * Injected process runner for the sync runtime modules (infra/process/xcode-sim).
+ * Every docker/pm2/psql/simctl invocation goes through one of these so tests
+ * can observe commands and script behavior stays byte-compatible.
+ */
+export type ExecFn = (
+  command: string,
+  args: string[],
+  options?: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string },
+) => { stdout: string; code: number };
+
+export const defaultExec: ExecFn = (command, args, options = {}) => {
+  try {
+    const stdout = execFileSync(command, args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      input: options.input,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return { stdout: stdout ?? '', code: 0 };
+  } catch (err: unknown) {
+    const e = err as { stdout?: string; status?: number };
+    return { stdout: e.stdout ?? '', code: e.status ?? 1 };
+  }
+};
+
+export type LogFn = (message: string) => void;
+
+/** Matches the scripts' `log() { echo "==> $*" >&2; }`. */
+export const stderrLog: LogFn = (message) => {
+  process.stderr.write(`==> ${message}\n`);
+};
+
+export type SleepFn = (seconds: number) => Promise<void>;
+
+export const realSleep: SleepFn = (seconds) =>
+  new Promise((resolve) => setTimeout(resolve, seconds * 1000));
