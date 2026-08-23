@@ -120,6 +120,30 @@ run_step() {
 # Quick (default): compile-only — use XCODEBUILD_BIN from .env.agent.<id> (written by launch)
 # Nothing is installed or run, so CODE_SIGNING_ALLOWED=NO keeps the smoke build
 # from needing a signing identity.
+# Emit the results JSON and exit non-zero when any step failed. Quick mode
+# calls this at the first failing step (stopping early); the full pipeline
+# runs every step and calls it once at the end.
+emit_results() {
+  END_TOTAL=$(now_ms)
+  TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
+
+  node -e "
+const results = $RESULTS_JSON;
+const overall = results.length > 0 && results.every(r => r.pass);
+const out = {
+  status: overall ? 'pass' : 'fail',
+  agent_id: $AGENT_ID,
+  total_ms: $TOTAL_MS,
+  stages: results,
+};
+process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+" 2>/dev/null || echo "{\"status\":\"fail\",\"agent_id\":${AGENT_ID},\"stages\":[]}"
+
+  if [ "$OVERALL_PASS" = "false" ]; then
+    exit 1
+  fi
+}
+
 run_step "build" '${XCODEBUILD_BIN:-xcodebuild} build \
   ${XC_FLAGS} \
   -scheme "${XC_SCHEME}" \
@@ -131,7 +155,7 @@ run_step "build" '${XCODEBUILD_BIN:-xcodebuild} build \
     -scheme "${XC_SCHEME}" \
     -destination "${XC_DESTINATION}" \
     -derivedDataPath "${XC_DERIVED}" \
-    CODE_SIGNING_ALLOWED=NO' || { [ -z "$FULL" ] && true; }
+    CODE_SIGNING_ALLOWED=NO' || emit_results
 
 if [ -n "$FULL" ]; then
   # Full: project-specific checks — add/remove/reorder steps for this repo.
@@ -165,21 +189,4 @@ if [ -n "$FULL" ]; then
   done < <(list_registered_verification_stage_commands "$SCRIPT_DIR" "$AGENT_ID")
 fi
 
-END_TOTAL=$(now_ms)
-TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
-
-node -e "
-const results = $RESULTS_JSON;
-const overall = results.length > 0 && results.every(r => r.pass);
-const out = {
-  status: overall ? 'pass' : 'fail',
-  agent_id: $AGENT_ID,
-  total_ms: $TOTAL_MS,
-  stages: results,
-};
-process.stdout.write(JSON.stringify(out, null, 2) + '\n');
-" 2>/dev/null || echo "{\"status\":\"fail\",\"agent_id\":${AGENT_ID},\"stages\":[]}"
-
-if [ "$OVERALL_PASS" = "false" ]; then
-  exit 1
-fi
+emit_results

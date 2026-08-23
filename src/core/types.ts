@@ -58,6 +58,7 @@ export interface LaunchOptions {
   title?: string;
   parentWorkUnitId?: string;
   relatedLinks?: WorkUnitRelatedLink[];
+  trigger?: ExecutionContext['trigger'];
 }
 
 export interface PreflightOptions {

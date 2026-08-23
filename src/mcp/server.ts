@@ -338,6 +338,7 @@ export async function handleMcpToolCall(
         parentWorkUnitId: input.parentWorkUnitId,
         relatedLinks: input.relatedLinks,
         capture: true,
+        trigger: 'mcp',
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
       return {
@@ -362,6 +363,7 @@ export async function handleMcpToolCall(
         parentWorkUnitId: input.parentWorkUnitId,
         relatedLinks: input.relatedLinks,
         capture: true,
+        trigger: 'mcp',
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
       return {
