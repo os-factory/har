@@ -184,20 +184,58 @@ milestone_asserts() {
       fi
       echo "    verificationStages fully resolvable, tiered, runner-delegated ✓"
 
-      echo "──> M1 asserts: doctor contract checks"
+      echo "──> M1 asserts: doctor contract checks (#232)"
+      har "$CLONE" env doctor >/dev/null 2>&1 \
+        || fail "M1: doctor red on the freshly adapted harness"
+      echo "    doctor green on adapted harness ✓"
+
+      # doctor --json is structured and machine-checkable (CI contract)
+      har "$CLONE" env doctor --json | node -e '
+        let raw = "";
+        process.stdin.on("data", (c) => (raw += c));
+        process.stdin.on("end", () => {
+          const report = JSON.parse(raw);
+          if (report.ok !== true || !Array.isArray(report.checks) || report.checks.length === 0) {
+            console.error("M1: doctor --json missing ok/checks");
+            process.exit(1);
+          }
+        });
+      ' || fail "M1: har env doctor --json is not structured"
+      echo "    doctor --json structured ✓"
+
+      cp "$CLONE/.har/stages.json" "$ART_DIR/stages.json.bak"
+      echo '{"broken": true}' > "$CLONE/.har/stages.json"
       if har "$CLONE" env doctor >/dev/null 2>&1; then
-        echo "    doctor green on adapted harness ✓"
-        cp "$CLONE/.har/stages.json" "$ART_DIR/stages.json.bak"
-        echo '{"broken": true}' > "$CLONE/.har/stages.json"
-        if har "$CLONE" env doctor >/dev/null 2>&1; then
-          mv "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
-          fail "M1: doctor passed on corrupted stages.json"
-        fi
         mv "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
-        echo "    doctor red on corrupted stages.json ✓"
-      else
-        echo "    doctor not available yet — skipping (lands with #232)"
+        fail "M1: doctor passed on corrupted stages.json"
       fi
+      mv "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
+      echo "    doctor red on corrupted stages.json ✓"
+
+      # a misnamed verification id must be caught (resolvable-namespace contract)
+      node -e '
+        const fs = require("fs");
+        const p = process.argv[1];
+        const r = JSON.parse(fs.readFileSync(p, "utf8"));
+        r.verificationStages = [...(r.verificationStages ?? []), "phantom-stage"];
+        fs.writeFileSync(p, JSON.stringify(r, null, 2));
+      ' "$CLONE/.har/stages.json"
+      if har "$CLONE" env doctor >/dev/null 2>&1; then
+        mv "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
+        fail "M1: doctor passed on a phantom verificationStages id"
+      fi
+      cp "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
+      echo "    doctor red on phantom verification id ✓"
+
+      # corrupting harness.env must be caught
+      cp "$CLONE/.har/harness.env" "$ART_DIR/harness.env.bak"
+      echo 'export HARNESS_ECOSYSTM=node' >> "$CLONE/.har/harness.env"
+      if har "$CLONE" env doctor >/dev/null 2>&1; then
+        cp "$ART_DIR/harness.env.bak" "$CLONE/.har/harness.env"
+        fail "M1: doctor passed on corrupted harness.env"
+      fi
+      cp "$ART_DIR/harness.env.bak" "$CLONE/.har/harness.env"
+      echo "    doctor red on corrupted harness.env ✓"
       ;;
     M2)
       echo "──> M2 asserts: shim parity (extend when #235 lands)"

@@ -12,6 +12,7 @@ import {
 import { readManifest, getHarnessDir } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages, syncAgentSlotsToHarnessEnv } from '../harness/stages';
 import { ensureEcosystemVerificationStages } from '../harness/verification';
+import { DoctorReport, runDoctor } from '../harness/doctor';
 import {
   applyPlugin,
   ApplyPluginOptions,
@@ -43,6 +44,8 @@ export interface MaintainHarnessOptions {
 export interface MaintainHarnessResult {
   validation: ValidationResult;
   drift: HarnessDriftResult;
+  /** Contract validation (#232) — runs automatically on every maintain. */
+  doctor: DoctorReport;
   bundle?: MaintainBundleResult;
 }
 
@@ -149,6 +152,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     return {
       validation,
       drift: compareHarnessToTemplate(repoPath),
+      doctor: runDoctor(repoPath),
     };
   }
 
@@ -157,6 +161,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   return {
     validation,
     drift,
+    doctor: runDoctor(repoPath),
     bundle,
   };
 }

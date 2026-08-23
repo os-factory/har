@@ -25,6 +25,7 @@ import {
 import { getRun, listRuns } from '../core/runs';
 import { addWorkUnitLinks } from '../core/work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
+import { runDoctor } from '../harness/doctor';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -232,6 +233,12 @@ export const HAR_MCP_TOOLS: Tool[] = [
       },
       ['agentId'],
     ),
+  },
+  {
+    name: 'har_doctor',
+    description:
+      'Validate the harness contract: harness.env schema, stages.json, stage scripts exist and are executable, lifecycle stages resolve, verificationStages ids resolve, port lanes are coherent, slot registry entries point at existing worktrees. Returns pass/fail with actionable findings.',
+    inputSchema: objectJsonSchema({ repo: repoJsonProperty }),
   },
   {
     name: 'har_get_status',
@@ -514,6 +521,14 @@ export async function handleMcpToolCall(
           verification: slimVerificationResult(result.verification),
         }),
       );
+    }
+
+    case 'har_doctor': {
+      const report = runDoctor(repo);
+      return {
+        ...jsonContent(report),
+        ...(report.ok ? {} : { isError: true }),
+      };
     }
 
     case 'har_get_status': {

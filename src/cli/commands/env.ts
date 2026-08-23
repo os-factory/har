@@ -35,6 +35,7 @@ import {
 import { listRuns, getRun } from '../../core/runs';
 import { addWorkUnitLinks, parseWorkLinkSpec } from '../../core/work-units';
 import { resolveHarnessRoot } from '../../harness/manifest';
+import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
 import {
   confirmCleanupSelection,
   discoverCleanupCandidates,
@@ -390,6 +391,15 @@ export const envCommand = {
         handleComplete,
       )
       .command(
+        'doctor',
+        'Validate the harness contract: harness.env schema, stages.json, stage scripts, verification ids, port lanes, slot registry',
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output (exit 0 pass, 1 errors)' }),
+        handleDoctor,
+      )
+      .command(
         'status',
         'Show status of all running agents',
         (y: Argv) =>
@@ -509,7 +519,7 @@ export const envCommand = {
       )
       .demandCommand(
         1,
-        'Please specify a subcommand: init, maintain, add-plugin, add-stage, launch, recover, verify, complete, teardown, status, logs, run-stage, artifacts, cleanup, runs',
+        'Please specify a subcommand: init, maintain, add-plugin, add-stage, launch, recover, verify, complete, teardown, doctor, status, logs, run-stage, artifacts, cleanup, runs',
       )
       .epilog(HAR_ENV_EPILOG),
   handler: () => {},
@@ -617,6 +627,17 @@ export async function handleMaintain(argv: {
     info('Validating harness...');
     printValidation(result.validation);
     printDrift(result.drift);
+
+    // Doctor runs automatically on every maintain (#232).
+    if (result.doctor.ok) {
+      const summary = summarizeDoctorReport(result.doctor);
+      info(summary ? `Doctor: PASS (${summary})` : 'Doctor: PASS');
+    } else {
+      warn('Doctor: FAIL — harness contract is broken:');
+      for (const line of formatDoctorReport(result.doctor).split('\n')) {
+        info(line);
+      }
+    }
 
     if (result.bundle) {
       printMaintainBundleSummary(result.bundle.report);
@@ -1158,6 +1179,30 @@ export async function handleComplete(argv: {
     error(result.stderr.trim());
   }
   return finishCommand(result.code);
+}
+
+export async function handleDoctor(argv: { repo: string; json?: boolean }): Promise<void> {
+  const repoPath = path.resolve(argv.repo);
+  const report = runDoctor(repoPath);
+
+  if (argv.json) {
+    console.log(JSON.stringify(report, null, 2));
+    return finishCommand(report.ok ? 0 : 1);
+  }
+
+  header('har env doctor');
+  info(`Repository: ${repoPath}`);
+  divider();
+  for (const line of formatDoctorReport(report).split('\n')) {
+    info(line);
+  }
+  divider();
+  if (report.ok) {
+    success('Harness contract is healthy.');
+  } else {
+    error('Harness contract is broken — fix the errors above.');
+  }
+  return finishCommand(report.ok ? 0 : 1);
 }
 
 export async function handleStatus(argv: { repo: string; json?: boolean }): Promise<void> {

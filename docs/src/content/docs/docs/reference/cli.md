@@ -54,6 +54,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `verify <id>` | Run quick or full verification |
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
+| `doctor` | Validate the harness contract (schema, stages, scripts, port lanes) |
 | `status` | Inspect all slots |
 | `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
 | `run-stage <id> <stage> [args..]` | Run one registered harness stage by id |
@@ -164,6 +165,24 @@ summary). It does **not** reprint the machine JSON contract — that blob
 duplicates step logs already shown. Use `--json` when a script needs the
 structured result. Passing steps omit `output`; failed steps keep a truncated
 excerpt. MCP `har_run_verification` returns the same slim shape.
+
+### Doctor
+
+```bash
+har env doctor [--json]
+```
+
+`doctor` validates the harness contract and exits `0` on pass, `1` on errors
+(so it slots into CI): `harness.env` against the schema, `stages.json` against
+the registry schema, every registered stage's script/command file exists and is
+executable, the lifecycle stages (launch/verify/teardown) resolve,
+`verificationStages` ids resolve to registered stages, infra port lanes are
+coherent (no overlaps, defaults inside scan ranges), and slot registry entries
+point at existing worktrees. Every finding carries a remedy. Doctor also runs
+automatically inside `har env maintain` and before every `launch` — a broken
+adaptation blocks the launch instead of failing mid-session. Pre-1.0 harnesses
+report contract findings as warnings until they migrate. MCP twin:
+`har_doctor`.
 
 ### Status and runs
 

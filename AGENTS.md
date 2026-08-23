@@ -230,6 +230,7 @@ every surface.
 | describe / init / maintain / add-plugin | `har env init`, `maintain`, `add-plugin` | `har_describe_project`, `har_init_harness`, `har_maintain`, `har_add_plugin` |
 | launch / recover / preflight | `har env launch`, `recover`, `preflight` | `har_launch_environment`, `har_recover_environment`, `har_preflight_environment` |
 | verify / run-stage / logs / status / artifacts | `har env verify`, `run-stage`, `logs`, `status`, `artifacts` | `har_run_verification`, `har_run_stage`, `har_get_logs`, `har_get_status`, `har_list_artifacts` |
+| doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
 | complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
 | runs / work links | `har env runs list\|get`, `work-link` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link` |
 | Mission Control | `har control up` | `har_control_up` |
