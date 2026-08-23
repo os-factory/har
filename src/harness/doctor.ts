@@ -172,6 +172,15 @@ export function runDoctor(repoPath: string): DoctorReport {
   // 2. stages.json parses against the registry schema
   let registry: HarnessStageRegistry | null = null;
   try {
+    const stagesPath = path.join(harnessDir, 'stages.json');
+    if (fs.existsSync(stagesPath)) {
+      // The registry schema is deliberately lenient (defaults + passthrough),
+      // so a structurally gutted stages.json would otherwise parse as empty.
+      const raw = JSON.parse(fs.readFileSync(stagesPath, 'utf8'));
+      if (typeof raw !== 'object' || raw === null || !Array.isArray(raw.stages)) {
+        throw new Error('stages.json has no `stages` array — the registry is structurally invalid');
+      }
+    }
     registry = readStageRegistry(repoPath);
     if (registry.stages.length === 0) {
       findings.push({

@@ -169,7 +169,7 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
     echo "Frontend:  http://localhost:${FE_PORT}"
     echo "API:       http://localhost:${API_PORT}"
     har_infra_enabled db               && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
-    har_infra_enabled minio            && echo "MinIO:     http://localhost:${AGENT_MINIO_CONSOLE_PORT:-19001}"
+    har_infra_enabled minio            && echo "MinIO:     http://localhost:${AGENT_MINIO_CONSOLE_PORT:-19050}"
     har_infra_enabled headless-browser && echo "Browser:   http://localhost:${AGENT_BROWSER_PORT:-13001}"
     har_infra_enabled mailpit          && echo "Mailpit:   http://localhost:${AGENT_MAILPIT_WEB_PORT:-18025}"
     ;;

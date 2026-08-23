@@ -203,13 +203,20 @@ milestone_asserts() {
       ' || fail "M1: har env doctor --json is not structured"
       echo "    doctor --json structured ✓"
 
-      cp "$CLONE/.har/stages.json" "$ART_DIR/stages.json.bak"
-      echo '{"broken": true}' > "$CLONE/.har/stages.json"
-      if har "$CLONE" env doctor >/dev/null 2>&1; then
-        mv "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
+      # Corruption asserts run against the FRESH scaffold: it follows the 1.0
+      # contract, where doctor enforces errors (the adapted clone is pre-1.0
+      # and degrades contract findings to warnings until #241 migrates it).
+      har "$FRESH" env doctor >/dev/null 2>&1 \
+        || fail "M1: doctor red on the fresh 1.0 scaffold"
+      echo "    doctor green on fresh 1.0 scaffold ✓"
+
+      cp "$FRESH/.har/stages.json" "$ART_DIR/stages.json.bak"
+      echo '{"broken": true}' > "$FRESH/.har/stages.json"
+      if har "$FRESH" env doctor >/dev/null 2>&1; then
+        mv "$ART_DIR/stages.json.bak" "$FRESH/.har/stages.json"
         fail "M1: doctor passed on corrupted stages.json"
       fi
-      mv "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
+      cp "$ART_DIR/stages.json.bak" "$FRESH/.har/stages.json"
       echo "    doctor red on corrupted stages.json ✓"
 
       # a misnamed verification id must be caught (resolvable-namespace contract)
@@ -219,22 +226,22 @@ milestone_asserts() {
         const r = JSON.parse(fs.readFileSync(p, "utf8"));
         r.verificationStages = [...(r.verificationStages ?? []), "phantom-stage"];
         fs.writeFileSync(p, JSON.stringify(r, null, 2));
-      ' "$CLONE/.har/stages.json"
-      if har "$CLONE" env doctor >/dev/null 2>&1; then
-        mv "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
+      ' "$FRESH/.har/stages.json"
+      if har "$FRESH" env doctor >/dev/null 2>&1; then
+        mv "$ART_DIR/stages.json.bak" "$FRESH/.har/stages.json"
         fail "M1: doctor passed on a phantom verificationStages id"
       fi
-      cp "$ART_DIR/stages.json.bak" "$CLONE/.har/stages.json"
+      cp "$ART_DIR/stages.json.bak" "$FRESH/.har/stages.json"
       echo "    doctor red on phantom verification id ✓"
 
       # corrupting harness.env must be caught
-      cp "$CLONE/.har/harness.env" "$ART_DIR/harness.env.bak"
-      echo 'export HARNESS_ECOSYSTM=node' >> "$CLONE/.har/harness.env"
-      if har "$CLONE" env doctor >/dev/null 2>&1; then
-        cp "$ART_DIR/harness.env.bak" "$CLONE/.har/harness.env"
+      cp "$FRESH/.har/harness.env" "$ART_DIR/harness.env.bak"
+      echo 'export HARNESS_ECOSYSTM=node' >> "$FRESH/.har/harness.env"
+      if har "$FRESH" env doctor >/dev/null 2>&1; then
+        cp "$ART_DIR/harness.env.bak" "$FRESH/.har/harness.env"
         fail "M1: doctor passed on corrupted harness.env"
       fi
-      cp "$ART_DIR/harness.env.bak" "$CLONE/.har/harness.env"
+      cp "$ART_DIR/harness.env.bak" "$FRESH/.har/harness.env"
       echo "    doctor red on corrupted harness.env ✓"
       ;;
     M2)

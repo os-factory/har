@@ -99,6 +99,18 @@ describe('har env doctor (#232)', () => {
     expect(report.checks.find((c) => c.id === 'stage-files')?.status).toBe('skip');
   });
 
+  it('fails when stages.json parses but has no stages array, on any contract', () => {
+    const repo = makeRepo();
+    fs.appendFileSync(path.join(repo, '.har', 'harness.env'), '\nhar_pg() {\n  true\n}\n');
+    fs.writeFileSync(path.join(repo, '.har', 'stages.json'), '{"broken": true}');
+    const report = runDoctor(repo);
+    expect(report.contract).toBe('pre-1.0');
+    expect(report.ok).toBe(false);
+    const finding = report.findings.find((f) => f.check === 'stages-registry');
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('structurally invalid');
+  });
+
   it('fails on corrupted harness.env (unknown key) on a 1.0 harness', () => {
     const repo = makeRepo();
     fs.appendFileSync(path.join(repo, '.har', 'harness.env'), 'export HARNESS_ECOSYSTM=node\n');

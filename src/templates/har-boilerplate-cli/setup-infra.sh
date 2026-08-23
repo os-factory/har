@@ -65,7 +65,7 @@ DB_PORT="$(har_resolve_infra_port AGENT_DB_PORT db 15432 \
   db)"
 MINIO_PORT="$(har_resolve_infra_port AGENT_MINIO_PORT minio 19000 \
   minio)"
-MINIO_CONSOLE_PORT="$(har_resolve_infra_port AGENT_MINIO_CONSOLE_PORT minio-console 19001)"
+MINIO_CONSOLE_PORT="$(har_resolve_infra_port AGENT_MINIO_CONSOLE_PORT minio-console 19050)"
 BROWSER_PORT="$(har_resolve_infra_port AGENT_BROWSER_PORT browser 13001 \
   headless-browser)"
 MAILPIT_WEB_PORT="$(har_resolve_infra_port AGENT_MAILPIT_WEB_PORT mailpit-web 18025 \
