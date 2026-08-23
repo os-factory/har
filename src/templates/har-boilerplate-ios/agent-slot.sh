@@ -5,6 +5,14 @@
 #   source "$SCRIPT_DIR/agent-slot.sh"
 #   validate_agent_id "$AGENT_ID"
 
+# Node package-manager helpers (har_node_*, har_pkg_exec) are single-sourced
+# from lib/node-pm.sh so every .har script and provision-toolchain.sh resolve
+# the same tool.
+# shellcheck source=/dev/null
+if [ -f "${SCRIPT_DIR:-}/lib/node-pm.sh" ]; then
+  source "${SCRIPT_DIR}/lib/node-pm.sh"
+fi
+
 # Canonical slot limits live in stages.json (agentSlots); harness.env is legacy fallback.
 har_load_agent_slot_limits() {
   local registry="${SCRIPT_DIR}/stages.json"
