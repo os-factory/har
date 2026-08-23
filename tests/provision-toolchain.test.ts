@@ -260,16 +260,13 @@ describe('provision-toolchain.sh template contract', () => {
     expect(fs.readFileSync(PROVISION_SCRIPT, 'utf8')).toContain('lib/node-pm.sh');
   });
 
-  it('verify.sh dispatches stock smoke by ecosystem', () => {
+  it('verify.sh delegates to the stage-registry runner (no inline ecosystem tables)', () => {
     for (const profile of ['har-boilerplate', 'har-boilerplate-cli'] as const) {
       const verifyPath = path.join(resolveTemplatesDir(), profile, 'verify.sh');
       const content = fs.readFileSync(verifyPath, 'utf8');
-      expect(content).toContain('run_quick_smoke');
-      expect(content).toContain('HARNESS_ECOSYSTEM');
-      expect(content).toContain('python-compile');
-      expect(content).toContain('go-build');
-      expect(content).toContain('rust-check');
-      expect(content).not.toMatch(/run_step "[^"]+" "npm /);
+      expect(content).toContain('lib/verify-runner.mjs');
+      expect(content).not.toContain('run_quick_smoke');
+      expect(content).not.toContain('run_full_checks');
     }
   });
 

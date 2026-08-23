@@ -41,9 +41,6 @@ node -e "const r=$RESULTS_JSON;process.stdout.write(String(r.length)+':'+r.every
     '.har/verify.sh',
     'control/.har/verify.sh',
     'docs/.har/verify.sh',
-    'src/templates/har-boilerplate/verify.sh',
-    'src/templates/har-boilerplate-cli/verify.sh',
-    'src/templates/har-boilerplate-ios/verify.sh',
   ];
 
   it.each(verifyPaths)('%s records steps without embedding passing-step output', (relPath) => {

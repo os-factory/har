@@ -73,10 +73,17 @@ The scaffolded skeleton implements all of this — replace its TODO block.
 
 ## Verification membership
 
-Listing a stage id in `verificationStages` is what includes it in
-`har env verify <id> --full`. Ids that match a registered stage run via their
-script/command; ids without a registry entry (e.g. `typecheck`, `api-health`)
-are inline steps owned by `.har/verify.sh`. Lifecycle kinds
+`verificationStages` is the single namespace for the verification pipeline:
+every id listed must resolve to a registered stage of kind `test` or `custom`,
+and the list order is the execution order. There are no inline steps — the
+ecosystem defaults (`typecheck`, `unit-tests`, `lint`, `readiness`, and
+`api-health` on web profiles) are ordinary registered stages, written at init
+from `HARNESS_ECOSYSTEM`.
+
+Each stage may declare `"tier": "quick" | "full"` (default `full`). Plain
+`har env verify <id>` runs the `quick`-tier stages; `--full` runs the whole
+list. Unresolvable ids are reported by validation (and `har env doctor`) and
+skipped with a warning at run time. Lifecycle kinds
 (`setup`/`launch`/`reset`/`teardown`/`inspect`) and `verify` itself never run
 as part of verification, even if listed.
 

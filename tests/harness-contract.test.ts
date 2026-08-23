@@ -116,8 +116,8 @@ describe('harness stage contract', () => {
     expect(manifest.profile).toBe('cli');
 
     const verifyScript = fs.readFileSync(path.join(repoPath, '.har', 'verify.sh'), 'utf8');
-    expect(verifyScript).toContain('run_quick_smoke');
-    expect(verifyScript).toContain('HARNESS_ECOSYSTEM');
+    expect(verifyScript).toContain('lib/verify-runner.mjs');
+    expect(verifyScript).not.toContain('run_quick_smoke');
     expect(verifyScript).not.toContain("echo 'TODO:");
 
     const registry = readStageRegistry(repoPath);

@@ -4,6 +4,7 @@ import { run } from '../utils/shell';
 import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
 import { readStageRegistry } from './stages';
+import { findPhantomVerificationStageIds } from './verification';
 
 export interface ValidationIssue {
   file: string;
@@ -158,6 +159,15 @@ export function validateHarness(repoPath: string): ValidationResult {
       const registry = readStageRegistry(repoPath);
       if (registry.stages.length === 0) {
         issues.push({ file: 'stages.json', message: 'No harness stages declared', severity: 'warning' });
+      }
+      for (const id of findPhantomVerificationStageIds(registry)) {
+        // Warning until har env doctor (#232) enforces the resolvable-namespace
+        // contract as an error.
+        issues.push({
+          file: 'stages.json',
+          message: `verificationStages id "${id}" does not resolve to a registered runnable stage`,
+          severity: 'warning',
+        });
       }
     } catch (err) {
       issues.push({

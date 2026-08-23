@@ -164,6 +164,26 @@ milestone_asserts() {
       har "$CLONE" env artifacts --json >/dev/null || fail "M1: har env artifacts failed"
       echo "    artifacts listing ✓"
 
+      echo "──> M1 asserts: verification as data (#231)"
+      node -e '
+        const fs = require("fs");
+        const reg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const ids = reg.verificationStages ?? [];
+        if (ids.length === 0) { console.error("M1: fresh scaffold has no verificationStages"); process.exit(1); }
+        const runnable = new Set(["test", "custom"]);
+        for (const id of ids) {
+          const st = (reg.stages ?? []).find((s) => s.id === id);
+          if (!st || !runnable.has(st.kind)) { console.error(`M1: verificationStages id ${id} does not resolve`); process.exit(1); }
+        }
+        if (!(reg.stages ?? []).some((s) => s.tier === "quick")) { console.error("M1: no quick-tier stage registered"); process.exit(1); }
+      ' "$FRESH/.har/stages.json" || fail "M1: fresh scaffold verificationStages namespace not fully resolvable/tiered"
+      grep -q 'lib/verify-runner.mjs' "$FRESH/.har/verify.sh" \
+        || fail "M1: fresh scaffold verify.sh does not delegate to the stage-registry runner"
+      if grep -q 'run_quick_smoke' "$FRESH/.har/verify.sh"; then
+        fail "M1: fresh scaffold verify.sh still carries inline ecosystem case tables"
+      fi
+      echo "    verificationStages fully resolvable, tiered, runner-delegated ✓"
+
       echo "──> M1 asserts: doctor contract checks"
       if har "$CLONE" env doctor >/dev/null 2>&1; then
         echo "    doctor green on adapted harness ✓"

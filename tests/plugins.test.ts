@@ -22,6 +22,8 @@ function makeTempRepo(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
 }
 
+import { findPhantomVerificationStageIds } from '../src/harness/verification';
+
 describe('plugins', () => {
   it('applies playwright plugin to a scaffolded harness', () => {
     const repoPath = makeTempRepo('har-playwright');
@@ -53,7 +55,7 @@ describe('plugins', () => {
       script: 'stages/browser-e2e.sh',
     });
     expect(registry.verificationStages).toEqual(
-      expect.arrayContaining(['typecheck', 'unit-tests', 'api-health', 'lint', 'browser-e2e']),
+      expect.arrayContaining(['typecheck', 'unit-tests', 'lint', 'readiness', 'browser-e2e']),
     );
 
     const pkg = JSON.parse(fs.readFileSync(path.join(repoPath, 'package.json'), 'utf8')) as {
@@ -85,8 +87,8 @@ describe('plugins', () => {
     });
     expect(registry.verificationStages).toEqual(expect.arrayContaining(['rocketsim-flows']));
 
+    expect(findPhantomVerificationStageIds(registry)).toEqual([]);
     const verify = registry.stages.find((s) => s.id === 'verify');
-    expect(verify?.description).toContain('rocketsim-flows');
     expect(verify?.description).not.toContain('browser-e2e');
   });
 
@@ -116,8 +118,7 @@ describe('plugins', () => {
     });
     expect(registry.verificationStages).toEqual(expect.arrayContaining(['backend-validation']));
 
-    const verify = registry.stages.find((s) => s.id === 'verify');
-    expect(verify?.description).toContain('backend-validation');
+    expect(findPhantomVerificationStageIds(registry)).toEqual([]);
   });
 
   it('applies gitleaks plugin to a scaffolded harness', () => {
@@ -146,8 +147,7 @@ describe('plugins', () => {
     });
     expect(registry.verificationStages).toEqual(expect.arrayContaining(['secrets-scan']));
 
-    const verify = registry.stages.find((s) => s.id === 'verify');
-    expect(verify?.description).toContain('secrets-scan');
+    expect(findPhantomVerificationStageIds(registry)).toEqual([]);
   });
 
   it('applies trivy plugin to a scaffolded harness', () => {
@@ -175,8 +175,7 @@ describe('plugins', () => {
     });
     expect(registry.verificationStages).toEqual(expect.arrayContaining(['vuln-scan']));
 
-    const verify = registry.stages.find((s) => s.id === 'verify');
-    expect(verify?.description).toContain('vuln-scan');
+    expect(findPhantomVerificationStageIds(registry)).toEqual([]);
   });
 
   it('applies semgrep plugin to a scaffolded harness', () => {
@@ -204,8 +203,7 @@ describe('plugins', () => {
     });
     expect(registry.verificationStages).toEqual(expect.arrayContaining(['sast']));
 
-    const verify = registry.stages.find((s) => s.id === 'verify');
-    expect(verify?.description).toContain('sast');
+    expect(findPhantomVerificationStageIds(registry)).toEqual([]);
   });
 
   it('every shipped plugin manifest passes schema validation', () => {

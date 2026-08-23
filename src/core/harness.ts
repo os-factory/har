@@ -11,6 +11,7 @@ import {
 } from '../harness/maintain-bundle';
 import { readManifest, getHarnessDir } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages, syncAgentSlotsToHarnessEnv } from '../harness/stages';
+import { ensureEcosystemVerificationStages } from '../harness/verification';
 import {
   applyPlugin,
   ApplyPluginOptions,
@@ -105,6 +106,7 @@ export async function initHarness(options: InitHarnessOptions): Promise<InitHarn
     profile: options.profile,
   });
   syncAgentSlotsToHarnessEnv(repoPath);
+  ensureEcosystemVerificationStages(repoPath);
 
   const validation = validateHarness(repoPath);
   let smoke: ValidationResult | undefined;
@@ -127,6 +129,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     throw new Error('No .har/ found. Run "har env init" first.');
   }
 
+  ensureEcosystemVerificationStages(repoPath);
   const drift = compareHarnessToTemplate(repoPath);
   const validation = validateHarness(repoPath);
 

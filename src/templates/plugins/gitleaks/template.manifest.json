@@ -16,15 +16,30 @@
         "kind": "directory",
         "description": "Redacted JSON findings report and scan log"
       }
-    ]
+    ],
+    "tier": "full"
   },
   "files": [
-    { "src": ".har/stages/secrets-scan.sh", "dest": ".har/stages/secrets-scan.sh", "executable": true },
-    { "src": ".har/stages/GITLEAKS.md",     "dest": ".har/stages/GITLEAKS.md" }
+    {
+      "src": ".har/stages/secrets-scan.sh",
+      "dest": ".har/stages/secrets-scan.sh",
+      "executable": true
+    },
+    {
+      "src": ".har/stages/GITLEAKS.md",
+      "dest": ".har/stages/GITLEAKS.md"
+    }
   ],
   "optionalFiles": [
-    { "src": ".gitleaks.toml",                "dest": ".gitleaks.toml" },
-    { "src": ".github/workflows/gitleaks.yml", "dest": ".github/workflows/gitleaks.yml", "skipFlag": "skipCi" }
+    {
+      "src": ".gitleaks.toml",
+      "dest": ".gitleaks.toml"
+    },
+    {
+      "src": ".github/workflows/gitleaks.yml",
+      "dest": ".github/workflows/gitleaks.yml",
+      "skipFlag": "skipCi"
+    }
   ],
   "nextSteps": [
     "Install gitleaks: brew install gitleaks — or a release binary from https://github.com/gitleaks/gitleaks/releases",
