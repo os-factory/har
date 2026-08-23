@@ -102,7 +102,7 @@ try { console.log(JSON.stringify(JSON.parse(d), null, 2)); } catch { console.log
     [ -d "$WORKTREE_DIR" ] && echo "Worktree:  $WORKTREE_DIR"
     [ -n "${HARNESS_HEALTH_CHECK_PATH:-}" ] && echo "API:       http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}"
     har_infra_enabled db && echo "Database:  agent_${AGENT_ID} @ localhost:${DB_PORT}"
-    har_infra_enabled minio && echo "MinIO:     http://localhost:19001"
+    har_infra_enabled minio && echo "MinIO:     http://localhost:${AGENT_MINIO_CONSOLE_PORT:-19050}"
     har_infra_enabled headless-browser && echo "Browser:   http://localhost:13001"
     har_infra_enabled mailpit && echo "Mailpit:   http://localhost:18025"
     ;;

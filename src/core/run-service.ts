@@ -14,6 +14,7 @@ import {
   upsertWorkUnit,
 } from './work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
+import { runDoctor, summarizeDoctorReport } from '../harness/doctor';
 import { resolveStage } from '../harness/stages';
 import { collectEnvironmentStatus, renderEnvironmentStatusText } from './slot-status';
 import { HarnessStage } from '../harness/schema';
@@ -191,11 +192,30 @@ export class RunService {
       };
     }
 
+    // Doctor contract validation runs before every launch (#232) so a broken
+    // adaptation is caught here, not mid-session. Pre-1.0 harnesses degrade
+    // contract findings to warnings inside runDoctor, so only real breakage
+    // (corrupt stages.json, missing stage scripts, phantom ids) blocks.
+    const doctor = runDoctor(resolveHarnessRoot(options.repoPath));
+    if (!doctor.ok) {
+      const errors = doctor.findings
+        .filter((f) => f.severity === 'error')
+        .map((f) => `${f.file ? `[${f.file}] ` : ''}${f.message}${f.remedy ? `\n  → ${f.remedy}` : ''}`);
+      return {
+        code: 2,
+        stdout: '',
+        stderr: `Launch blocked by harness doctor:\n${errors.join('\n')}\nRun \`har env doctor\` for the full report.\n`,
+        blocked: true,
+      };
+    }
+
     // Readiness warnings are advisory, but a launch that passes the guard is the
     // moment they matter most — they must not be dropped with the guard result.
     let launchBanner = (guard.readiness?.warnings ?? [])
       .map((warning) => `WARN: ${warning}\n`)
       .join('');
+    const doctorSummary = summarizeDoctorReport(doctor);
+    if (doctorSummary) launchBanner += `WARN: ${doctorSummary}\n`;
     if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
       const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
       if (ensured.message) {

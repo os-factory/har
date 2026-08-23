@@ -221,3 +221,25 @@ describe('synthesizeStageRegistry fallback', () => {
     );
   });
 });
+
+describe('doctor gate before launch (#232)', () => {
+  it('blocks launch with actionable findings when the harness contract is broken', async () => {
+    const tempRepo = makeTempRepo('har-doctor-gate-');
+    const stagesPath = path.join(tempRepo, '.har', 'stages.json');
+    const registry = JSON.parse(fs.readFileSync(stagesPath, 'utf8'));
+    registry.verificationStages = ['phantom-stage'];
+    fs.writeFileSync(stagesPath, JSON.stringify(registry));
+
+    const result = await launchEnvironment({ repoPath: tempRepo, agentId: 1, capture: true });
+    expect(result.blocked).toBe(true);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('phantom-stage');
+    expect(result.stderr).toContain('har env doctor');
+  });
+
+  it('lets a healthy harness pass the doctor gate', async () => {
+    const tempRepo = makeTempRepo('har-doctor-gate-ok-');
+    const result = await launchEnvironment({ repoPath: tempRepo, agentId: 1, capture: true });
+    expect(result.stderr || '').not.toContain('Launch blocked by harness doctor');
+  });
+});

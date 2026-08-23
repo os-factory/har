@@ -100,7 +100,7 @@ describe('harness.env pure-config contract (#230)', () => {
 describe('HARNESS_INFRA_PORT_LANES parsing', () => {
   it('parses the shipped default lanes', () => {
     const { lanes, issues } = parsePortLanes(
-      'db=15432:15432-15499 minio=19000:19000-19099 minio-console=19001:19001-19099 browser=13001:13001-13099 mailpit-web=18025:18025-18099 mailpit-smtp=11025:11025-11099',
+      'db=15432:15432-15499 minio=19000:19000-19049 minio-console=19050:19050-19099 browser=13001:13001-13099 mailpit-web=18025:18025-18099 mailpit-smtp=11025:11025-11099',
     );
     expect(Object.keys(lanes)).toHaveLength(6);
     expect(lanes.db).toEqual({ default: 15432, scanStart: 15432, scanEnd: 15499 });
