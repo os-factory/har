@@ -76,7 +76,7 @@ xc_target_flags() {
 
 XC_FLAGS="$(xc_target_flags)"
 XC_SCHEME="${HARNESS_XCODE_SCHEME:-MyApp}"
-XC_DESTINATION="${HARNESS_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 16}"
+XC_DESTINATION="${HARNESS_IOS_DESTINATION:-platform=iOS Simulator,name=${HARNESS_SIMULATOR_NAME:-iPhone 16}}"
 XC_DERIVED="${WORK_DIR}/build/DerivedData"
 
 OVERALL_PASS=true

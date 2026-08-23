@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { run } from '../utils/shell';
+import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
 import { readStageRegistry } from './stages';
 
@@ -128,6 +129,17 @@ export function validateHarness(repoPath: string): ValidationResult {
     }
     if (content.includes('TODO: set seed command')) {
       issues.push({ file: 'harness.env', message: 'Seed command still has TODO', severity: 'warning' });
+    }
+    // Schema-validate against the 1.0 pure-config contract. Reported as
+    // warnings here so pre-1.0 harnesses keep validating until they migrate;
+    // `har env doctor` (#232) enforces these as errors.
+    const envValidation = readValidatedHarnessEnv(repoPath);
+    for (const issue of envValidation?.issues ?? []) {
+      issues.push({
+        file: 'harness.env',
+        message: issue.line !== undefined ? `line ${issue.line}: ${issue.message}` : issue.message,
+        severity: 'warning',
+      });
     }
   }
 

@@ -13,6 +13,13 @@ if [ -f "${SCRIPT_DIR:-}/lib/node-pm.sh" ]; then
   source "${SCRIPT_DIR}/lib/node-pm.sh"
 fi
 
+# Infra helpers (har_infra_enabled, har_pg, har_infra_port_lane) are
+# single-sourced from lib/infra.sh — harness.env is pure KEY=value config.
+# shellcheck source=/dev/null
+if [ -f "${SCRIPT_DIR:-}/lib/infra.sh" ]; then
+  source "${SCRIPT_DIR}/lib/infra.sh"
+fi
+
 # Canonical slot limits live in stages.json (agentSlots); harness.env is legacy fallback.
 har_load_agent_slot_limits() {
   local registry="${SCRIPT_DIR}/stages.json"
@@ -310,9 +317,9 @@ har_regenerate_agent_env_file() {
     API_PORT="${API_PORT:-}" \
     FE_PORT="${FE_PORT:-}" \
     DEBUG_PORT="${DEBUG_PORT:-}" \
-    DB_PORT="${DB_PORT:-${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}}" \
-    MINIO_PORT="${MINIO_PORT:-${AGENT_MINIO_PORT:-${HARNESS_MINIO_PORT_DEFAULT:-19000}}}" \
-    BROWSER_PORT="${BROWSER_PORT:-${AGENT_BROWSER_PORT:-${HARNESS_BROWSER_PORT_DEFAULT:-13001}}}" \
+    DB_PORT="${DB_PORT:-${AGENT_DB_PORT:-$(har_infra_port_default db 15432)}}" \
+    MINIO_PORT="${MINIO_PORT:-${AGENT_MINIO_PORT:-$(har_infra_port_default minio 19000)}}" \
+    BROWSER_PORT="${BROWSER_PORT:-${AGENT_BROWSER_PORT:-$(har_infra_port_default browser 13001)}}" \
     REPO_ROOT="$work_dir" \
       envsubst '${AGENT_ID} ${API_PORT} ${FE_PORT} ${DEBUG_PORT} ${DB_PORT} ${MINIO_PORT} ${BROWSER_PORT} ${REPO_ROOT}' \
       < "$template" > "$env_file"
@@ -454,7 +461,7 @@ try {
   fi
   har_allocate_slot_app_ports "$agent_id"
   har_load_infra_state "$repo_root"
-  DB_PORT="${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}"
+  DB_PORT="${AGENT_DB_PORT:-$(har_infra_port_default db 15432)}"
   export FE_PORT API_PORT DEBUG_PORT DB_PORT
 }
 

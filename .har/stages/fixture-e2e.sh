@@ -138,6 +138,14 @@ milestone_asserts() {
       [ "$count" -ge 12 ] || fail "M0: fresh scaffold suspiciously small ($count files)"
       ;;
     M1)
+      echo "──> M1 asserts: harness.env pure-config contract (#230)"
+      if grep -qE '^[a-zA-Z_][a-zA-Z0-9_]*\(\)' "$FRESH/.har/harness.env"; then
+        fail "M1: fresh scaffold harness.env contains function definitions — must be pure KEY=value config"
+      fi
+      grep -q '^export HARNESS_INFRA_PORT_LANES=' "$FRESH/.har/harness.env" \
+        || fail "M1: fresh scaffold harness.env missing HARNESS_INFRA_PORT_LANES"
+      [ -f "$FRESH/.har/lib/infra.sh" ] || fail "M1: fresh scaffold missing lib/infra.sh"
+      echo "    harness.env is pure config with port lanes; lib/infra.sh present ✓"
       echo "──> M1 asserts: doctor contract checks"
       if har "$CLONE" env doctor >/dev/null 2>&1; then
         echo "    doctor green on adapted harness ✓"

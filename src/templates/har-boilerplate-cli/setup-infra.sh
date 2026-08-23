@@ -29,17 +29,28 @@ har_compose_service_running() {
     | grep -q "^${COMPOSE_PROJECT}-${service}-1\$"
 }
 
+# Resolve a shared-infra host port from its lane declared in harness.env
+# (HARNESS_INFRA_PORT_LANES, via har_infra_port_lane from lib/infra.sh).
+# Usage: har_resolve_infra_port <persisted_var> <lane> <fallback_default> [compose_service]
 har_resolve_infra_port() {
   local var_name="$1"
-  local default_port="$2"
-  local scan_start="$3"
-  local scan_end="$4"
-  local service="${5:-}"
+  local lane="$2"
+  local fallback_default="$3"
+  local service="${4:-}"
   local current="${!var_name:-}"
 
   if [ -n "$current" ] && { ! port_in_use "$current" || { [ -n "$service" ] && har_compose_service_running "$service"; }; }; then
     echo "$current"
     return 0
+  fi
+
+  local lane_info default_port scan_start scan_end
+  if lane_info="$(har_infra_port_lane "$lane")"; then
+    read -r default_port scan_start scan_end <<<"$lane_info"
+  else
+    default_port="$fallback_default"
+    scan_start="$fallback_default"
+    scan_end="$fallback_default"
   fi
   har_allocate_port "$default_port" "$scan_start" "$scan_end"
 }
@@ -50,34 +61,16 @@ if [ -f "$INFRA_STATE" ]; then
   source "$INFRA_STATE"
 fi
 
-DB_PORT="$(har_resolve_infra_port AGENT_DB_PORT \
-  "${HARNESS_DB_PORT_DEFAULT:-15432}" \
-  "${HARNESS_DB_PORT_SCAN_START:-15432}" \
-  "${HARNESS_DB_PORT_SCAN_END:-15499}" \
+DB_PORT="$(har_resolve_infra_port AGENT_DB_PORT db 15432 \
   db)"
-MINIO_PORT="$(har_resolve_infra_port AGENT_MINIO_PORT \
-  "${HARNESS_MINIO_PORT_DEFAULT:-19000}" \
-  "${HARNESS_MINIO_PORT_SCAN_START:-19000}" \
-  "${HARNESS_MINIO_PORT_SCAN_END:-19099}" \
+MINIO_PORT="$(har_resolve_infra_port AGENT_MINIO_PORT minio 19000 \
   minio)"
-MINIO_CONSOLE_PORT="$(har_resolve_infra_port AGENT_MINIO_CONSOLE_PORT \
-  "${HARNESS_MINIO_CONSOLE_PORT_DEFAULT:-19001}" \
-  "${HARNESS_MINIO_CONSOLE_PORT_SCAN_START:-19001}" \
-  "${HARNESS_MINIO_CONSOLE_PORT_SCAN_END:-19099}")"
-BROWSER_PORT="$(har_resolve_infra_port AGENT_BROWSER_PORT \
-  "${HARNESS_BROWSER_PORT_DEFAULT:-13001}" \
-  "${HARNESS_BROWSER_PORT_SCAN_START:-13001}" \
-  "${HARNESS_BROWSER_PORT_SCAN_END:-13099}" \
+MINIO_CONSOLE_PORT="$(har_resolve_infra_port AGENT_MINIO_CONSOLE_PORT minio-console 19001)"
+BROWSER_PORT="$(har_resolve_infra_port AGENT_BROWSER_PORT browser 13001 \
   headless-browser)"
-MAILPIT_WEB_PORT="$(har_resolve_infra_port AGENT_MAILPIT_WEB_PORT \
-  "${HARNESS_MAILPIT_WEB_PORT_DEFAULT:-18025}" \
-  "${HARNESS_MAILPIT_WEB_PORT_SCAN_START:-18025}" \
-  "${HARNESS_MAILPIT_WEB_PORT_SCAN_END:-18099}" \
+MAILPIT_WEB_PORT="$(har_resolve_infra_port AGENT_MAILPIT_WEB_PORT mailpit-web 18025 \
   mailpit)"
-MAILPIT_SMTP_PORT="$(har_resolve_infra_port AGENT_MAILPIT_SMTP_PORT \
-  "${HARNESS_MAILPIT_SMTP_PORT_DEFAULT:-11025}" \
-  "${HARNESS_MAILPIT_SMTP_PORT_SCAN_START:-11025}" \
-  "${HARNESS_MAILPIT_SMTP_PORT_SCAN_END:-11099}")"
+MAILPIT_SMTP_PORT="$(har_resolve_infra_port AGENT_MAILPIT_SMTP_PORT mailpit-smtp 11025)"
 
 export AGENT_DB_PORT="$DB_PORT"
 export AGENT_MINIO_PORT="$MINIO_PORT"
