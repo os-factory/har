@@ -1,10 +1,58 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { launchEnvironment, runStage } from '../src/core/run-service';
+import { getEnvironmentStatus, launchEnvironment, runStage } from '../src/core/run-service';
+import { collectEnvironmentStatus, renderEnvironmentStatusText } from '../src/core/slot-status';
+import { getSlotRegistryPath } from '../src/core/slot-registry';
 import { synthesizeStageRegistry } from '../src/harness/stages';
 
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
+
+function makeTempRepo(prefix: string): string {
+  const tempRepo = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  fs.cpSync(path.join(FIXTURE, '.har'), path.join(tempRepo, '.har'), { recursive: true });
+  for (const dir of ['runs', 'slots', 'work-units', 'work-attempts']) {
+    fs.rmSync(path.join(tempRepo, '.har', dir), { recursive: true, force: true });
+  }
+  return tempRepo;
+}
+
+function readRunRecords(repoPath: string): Array<Record<string, unknown>> {
+  const runsDir = path.join(repoPath, '.har', 'runs');
+  const records: Array<Record<string, unknown>> = [];
+  const walk = (dir: string) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.json')) records.push(JSON.parse(fs.readFileSync(full, 'utf8')));
+    }
+  };
+  walk(runsDir);
+  return records;
+}
+
+function writeSlotRegistryEntry(
+  repoPath: string,
+  agentId: number,
+  status: 'starting' | 'active' | 'failed' | 'completed',
+): void {
+  const file = getSlotRegistryPath(repoPath, agentId);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      version: 1,
+      agentId,
+      projectName: 'minimal',
+      mode: 'root',
+      workDir: repoPath,
+      branch: 'session-branch',
+      createdAt: new Date().toISOString(),
+      status,
+    }),
+  );
+}
 
 describe('run service parity', () => {
   it(
@@ -76,6 +124,89 @@ describe('run service parity', () => {
     expect(allFiles.length).toBeGreaterThan(0);
     expect(allFiles.some((f) => f.includes('launch_agent-1.json'))).toBe(true);
   });
+});
+
+describe('trigger tagging parity (#233)', () => {
+  it('tags run records with the surface trigger for generic stages', async () => {
+    const tempRepo = makeTempRepo('har-trigger-parity-');
+
+    await runStage({ repoPath: tempRepo, stageId: 'logs', agentId: 1, capture: true, trigger: 'mcp' });
+    await runStage({ repoPath: tempRepo, stageId: 'logs', agentId: 2, capture: true, trigger: 'cli' });
+
+    const records = readRunRecords(tempRepo).filter((r) => r.stageId === 'logs');
+    expect(records.find((r) => r.agentId === 1)?.trigger).toBe('mcp');
+    expect(records.find((r) => r.agentId === 2)?.trigger).toBe('cli');
+  }, 20_000);
+});
+
+describe('status parity (#233)', () => {
+  it('renders text from the same structured source on every surface and writes no run records', async () => {
+    const tempRepo = makeTempRepo('har-status-parity-');
+    writeSlotRegistryEntry(tempRepo, 1, 'active');
+
+    const result = await getEnvironmentStatus({ repoPath: tempRepo, capture: true });
+    const structured = collectEnvironmentStatus(tempRepo);
+
+    // Same structured source: identical slot set and identical text rendering.
+    expect(result.status.slots.map((s) => s.agentId)).toEqual(
+      structured.slots.map((s) => s.agentId),
+    );
+    expect(result.stdout).toBe(
+      renderEnvironmentStatusText({ ...structured, generatedAt: result.status.generatedAt }),
+    );
+    expect(result.status.slots.find((s) => s.agentId === 1)?.active).toBe(true);
+    expect(result.stdout).toContain('Agent 1');
+    // Remote URLs can embed credentials — the text view must never include them.
+    if (structured.gitRemote) expect(result.stdout).not.toContain(structured.gitRemote);
+
+    // Run-record policy is identical across CLI text, CLI --json, and MCP: none.
+    expect(readRunRecords(tempRepo)).toHaveLength(0);
+  }, 30_000);
+
+  it('filters to one slot when agentId is given', async () => {
+    const tempRepo = makeTempRepo('har-status-one-slot-');
+    const result = await getEnvironmentStatus({ repoPath: tempRepo, agentId: 3, capture: true });
+    expect(result.status.slots.map((s) => s.agentId)).toEqual([3]);
+  }, 30_000);
+});
+
+describe('launch guard parity (#233)', () => {
+  it('blocks an occupied slot inside run-service (no CLI-layer guard needed)', async () => {
+    const tempRepo = makeTempRepo('har-guard-occupied-');
+    writeSlotRegistryEntry(tempRepo, 1, 'active');
+
+    const result = await launchEnvironment({ repoPath: tempRepo, agentId: 1, capture: true });
+    expect(result.blocked).toBe(true);
+    expect(result.code).toBe(2);
+    expect(readRunRecords(tempRepo).filter((r) => r.kind === 'launch')).toHaveLength(0);
+  }, 20_000);
+
+  it('applies the guard on resume too: an active slot cannot be resumed', async () => {
+    const tempRepo = makeTempRepo('har-guard-resume-active-');
+    writeSlotRegistryEntry(tempRepo, 1, 'active');
+
+    const result = await launchEnvironment({
+      repoPath: tempRepo,
+      agentId: 1,
+      resume: true,
+      capture: true,
+    });
+    expect(result.blocked).toBe(true);
+  }, 20_000);
+
+  it('allows resuming a failed session', async () => {
+    const tempRepo = makeTempRepo('har-guard-resume-failed-');
+    writeSlotRegistryEntry(tempRepo, 1, 'failed');
+
+    const result = await launchEnvironment({
+      repoPath: tempRepo,
+      agentId: 1,
+      resume: true,
+      capture: true,
+    });
+    expect(result.blocked).toBeUndefined();
+    expect(result.code).toBe(0);
+  }, 20_000);
 });
 
 describe('synthesizeStageRegistry fallback', () => {

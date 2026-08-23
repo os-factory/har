@@ -294,6 +294,57 @@ function collectSlotStatus(
   };
 }
 
+/**
+ * Text rendering over the structured status — the single status source for the
+ * CLI text view, `--json`, and MCP. Deliberately omits gitRemote: remote URLs
+ * can embed credentials and must never reach logs.
+ */
+export function renderEnvironmentStatusText(status: EnvironmentStatus): string {
+  const lines: string[] = [];
+  lines.push(`Harness: ${status.harnessRoot}${status.profile ? ` (profile: ${status.profile})` : ''}`);
+
+  for (const slot of status.slots) {
+    const state = slot.active ? (slot.sessionStatus ?? 'active') : 'free';
+    lines.push(`Agent ${slot.agentId}: ${state}`);
+    if (slot.branch) {
+      const drift = [
+        slot.dirty ? 'dirty' : undefined,
+        slot.ahead ? `ahead ${slot.ahead}` : undefined,
+        slot.stale ? `stale (base behind main by ${slot.behind})` : undefined,
+        slot.detachedHead ? 'detached HEAD' : undefined,
+      ].filter(Boolean);
+      lines.push(`  branch:      ${slot.branch}${drift.length ? ` [${drift.join(', ')}]` : ''}`);
+    }
+    if (slot.workDir) lines.push(`  work dir:    ${slot.workDir}`);
+    if (slot.previewUrls && Object.keys(slot.previewUrls).length > 0) {
+      lines.push(
+        `  preview:     ${Object.entries(slot.previewUrls)
+          .map(([label, url]) => `${label}=${url}`)
+          .join(' ')}`,
+      );
+    }
+    if (slot.workUnitId) {
+      lines.push(`  work unit:   ${slot.workUnitId}${slot.attemptId ? ` (attempt ${slot.attemptId})` : ''}`);
+    }
+    if (slot.lastRunAt) {
+      lines.push(`  last run:    ${slot.lastRunAt} (${slot.harnessUsage})`);
+    }
+    if (slot.lastVerifyStatus) {
+      lines.push(`  last verify: ${slot.lastVerifyStatus}`);
+    }
+    if (slot.pm2Issue) lines.push(`  pm2:         ${slot.pm2Issue}`);
+    if (slot.lastError) lines.push(`  last error:  ${slot.lastError}`);
+    if (slot.resumeHint) lines.push(`  resume:      ${slot.resumeHint}`);
+    if (slot.readiness && !slot.readiness.canLaunch && !slot.active) {
+      for (const blocker of slot.readiness.blockers) {
+        lines.push(`  blocker:     ${blocker}`);
+      }
+    }
+  }
+
+  return lines.join('\n') + '\n';
+}
+
 export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
   const harnessRoot = resolveHarnessRoot(repoPath);
   const runs = listRuns(harnessRoot, { limit: 200 });

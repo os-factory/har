@@ -216,6 +216,35 @@ naming plugins ≠ shipping a marketplace.
 - **Plugins** — optional bundles applied with `har env add-plugin <id|path|npm|git>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). Discovered from `src/templates/plugins/*/template.manifest.json` (no closed enum). Installs are recorded in `.har/plugins.json`. They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`. Philosophy: *plugins install stages; agents only talk to the stage registry.*
 - **Profiles** — ordered runtime bundles (`src/templates/profiles/<id>/profile.manifest.json`), not forked logic in core. Stack capabilities (PM2, Simulator, ports) are detected via `src/harness/capabilities.ts` marker files.
 
+## Operation × surface matrix (CLI ↔ MCP)
+
+Every environment operation is available on both surfaces unless listed here as an
+intentional hole. Both surfaces delegate to the same `core/run-service.ts` /
+`core/harness.ts` code paths; status is one structured implementation
+(`collectEnvironmentStatus`) with text rendered on top, the launch guard runs
+exactly once inside `run-service`, and status is a pure read (no run records) on
+every surface.
+
+| Operation | CLI | MCP |
+|---|---|---|
+| describe / init / maintain / add-plugin | `har env init`, `maintain`, `add-plugin` | `har_describe_project`, `har_init_harness`, `har_maintain`, `har_add_plugin` |
+| launch / recover / preflight | `har env launch`, `recover`, `preflight` | `har_launch_environment`, `har_recover_environment`, `har_preflight_environment` |
+| verify / run-stage / logs / status / artifacts | `har env verify`, `run-stage`, `logs`, `status`, `artifacts` | `har_run_verification`, `har_run_stage`, `har_get_logs`, `har_get_status`, `har_list_artifacts` |
+| complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
+| runs / work links | `har env runs list\|get`, `work-link` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link` |
+| Mission Control | `har control up` | `har_control_up` |
+
+Intentional holes (human-only, no MCP tool):
+
+- `har env cleanup` — cross-repo destructive teardown with interactive confirmation; an
+  agent must free its own slot with complete/teardown instead.
+- `har env add-stage --custom` — authoring a project stage is an adaptation task done in
+  the checkout, not a tool call; agents edit `.har/stages.json` + `stages/` directly.
+- Hooks / commit-gate onboarding (`har hooks …`, init/maintain onboarding prompts) —
+  installs git hooks and records user policy preferences; a policy decision for humans.
+- Onboarding/preferences, telemetry toggles, and portal login (`har onboard`,
+  `har preferences`, `har telemetry`, `har hq`) — account- and machine-level state.
+
 ## Anti-patterns
 
 - Orchestration logic in `mcp/server.ts` or `cli/commands/` — adapters delegate to `core/`

@@ -146,6 +146,24 @@ milestone_asserts() {
         || fail "M1: fresh scaffold harness.env missing HARNESS_INFRA_PORT_LANES"
       [ -f "$FRESH/.har/lib/infra.sh" ] || fail "M1: fresh scaffold missing lib/infra.sh"
       echo "    harness.env is pure config with port lanes; lib/infra.sh present ✓"
+
+      echo "──> M1 asserts: CLI/MCP parity surfaces (#233)"
+      # One status implementation: --json must be the structured source with slots.
+      har "$CLONE" env status --json | node -e '
+        let raw = "";
+        process.stdin.on("data", (c) => (raw += c));
+        process.stdin.on("end", () => {
+          const status = JSON.parse(raw);
+          if (!Array.isArray(status.slots) || status.slots.length === 0) {
+            console.error("M1: status --json returned no slots");
+            process.exit(1);
+          }
+        });
+      ' || fail "M1: har env status --json is not structured"
+      echo "    status --json structured ✓"
+      har "$CLONE" env artifacts --json >/dev/null || fail "M1: har env artifacts failed"
+      echo "    artifacts listing ✓"
+
       echo "──> M1 asserts: doctor contract checks"
       if har "$CLONE" env doctor >/dev/null 2>&1; then
         echo "    doctor green on adapted harness ✓"

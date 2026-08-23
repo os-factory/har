@@ -8,6 +8,8 @@ describe('HAR MCP tool schemas', () => {
     expect(names).toEqual([
       'har_describe_project',
       'har_init_harness',
+      'har_maintain',
+      'har_add_plugin',
       'har_launch_environment',
       'har_add_work_unit_link',
       'har_recover_environment',

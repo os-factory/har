@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { describeProject, initHarness } from '../core/harness';
+import { addPlugin, describeProject, initHarness, maintainHarness } from '../core/harness';
 import { startControlAndSync } from '../core/control-lifecycle';
 import { getHarPackageVersion } from '../core/package-version';
 import { detectDockerStatus, formatDockerRequirementWarning } from '../core/docker-status';
@@ -54,6 +54,9 @@ import {
   GetRunOutputSchema,
   ControlUpInputSchema,
   ControlUpOutputSchema,
+  GetStatusOutputSchema,
+  MaintainHarnessInputSchema,
+  AddPluginInputSchema,
   RunStageInputSchema,
   RunVerificationInputSchema,
   RunVerificationOutputSchema,
@@ -76,6 +79,42 @@ export const HAR_MCP_TOOLS: Tool[] = [
       smoke: { type: 'boolean' },
       profile: { type: 'string', enum: ['default', 'cli', 'ios'] },
     }),
+  },
+  {
+    name: 'har_maintain',
+    description:
+      'Validate .har/ against the bundled templates: returns validation issues, drift, and a maintenance bundle report. Pass finalize=true (optionally with summary) to record a completed manual adaptation in .har/manifest.json.',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      finalize: {
+        type: 'boolean',
+        description: 'Record the completed manual adaptation in .har/manifest.json',
+      },
+      summary: {
+        type: 'string',
+        description: 'Adaptation summary stored in the manifest (finalize only)',
+      },
+    }),
+  },
+  {
+    name: 'har_add_plugin',
+    description:
+      'Install a verification plugin (bundled id, local path, npm package, or git URL) that registers stages in .har/stages.json.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        plugin: {
+          type: 'string',
+          description: 'Bundled plugin id, local path (./plugin), npm package (@org/pkg), or git URL',
+        },
+        force: { type: 'boolean', description: 'Overwrite existing plugin files and stage entry' },
+        withCi: {
+          type: 'boolean',
+          description: 'Also copy optional CI workflow files (skipped by default)',
+        },
+      },
+      ['plugin'],
+    ),
   },
   {
     name: 'har_launch_environment',
@@ -197,7 +236,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_get_status',
     description:
-      'Return slot/process status for one agent or all slots. Call BEFORE har_launch_environment when a slot may already be in use — shows worktree path, dirty state, and branch.',
+      'Return structured slot status for one agent or all slots (same source as har env status/--json). Call BEFORE har_launch_environment when a slot may already be in use — shows worktree path, dirty state, branch, and readiness.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       agentId: agentIdJsonProperty,
@@ -319,6 +358,39 @@ export async function handleMcpToolCall(
           ...docker,
           warning: formatDockerRequirementWarning(docker),
         },
+      });
+    }
+
+    case 'har_maintain': {
+      const input = MaintainHarnessInputSchema.parse({ ...args, repo });
+      const result = await maintainHarness({
+        repoPath: repo,
+        finalize: input.finalize,
+        summary: input.summary,
+      });
+      return jsonContent({
+        validation: result.validation,
+        drift: result.drift,
+        bundleReport: result.bundle?.report,
+        finalized: input.finalize,
+      });
+    }
+
+    case 'har_add_plugin': {
+      const input = AddPluginInputSchema.parse({ ...args, repo });
+      const result = addPlugin(repo, input.plugin, {
+        force: input.force,
+        skipCi: !input.withCi,
+        spec: input.plugin,
+      });
+      return jsonContent({
+        pluginId: result.pluginId,
+        stageIds: result.stageIds,
+        filesWritten: result.filesWritten,
+        warnings: result.warnings,
+        nextSteps: result.nextSteps,
+        docsPath: result.docsPath,
+        source: result.source,
       });
     }
 
@@ -453,7 +525,7 @@ export async function handleMcpToolCall(
         capture: true,
         trigger: 'mcp',
       });
-      return jsonContent(EnvironmentRunOutputSchema.parse(result));
+      return jsonContent(GetStatusOutputSchema.parse(result.status));
     }
 
     case 'har_get_logs': {
