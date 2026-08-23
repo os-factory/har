@@ -9,7 +9,7 @@ agent's worktree:
   CloudFormation (Trivy absorbed tfsec, so this covers the Terraform use case)
 
 ```bash
-har env add-plugin trivy            # --skip-ci to omit the GitHub workflow
+har env add-plugin trivy            # --with-ci to include the GitHub workflow
 ```
 
 What it adds:

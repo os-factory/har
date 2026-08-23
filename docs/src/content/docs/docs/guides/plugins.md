@@ -64,7 +64,7 @@ This adds:
 - a `browser-e2e` test stage;
 - Playwright configuration;
 - frontend, API health, and accessibility smoke specs;
-- CI workflow and artifact directories unless `--skip-ci` is used.
+- artifact directories, plus a CI workflow when `--with-ci` is passed (CI files are skipped by default).
 
 Adapt selectors and URLs after installation. Full verification runs the stage when
 it is listed in `verificationStages` (the plugin updates that list for you).
@@ -129,8 +129,8 @@ This adds:
   against the agent work dir (uncommitted changes included) and fails on findings;
 - a root `.gitleaks.toml` extending the default ruleset with harness allowlists
   (skipped if the repo already has one);
-- a CI workflow using the official `gitleaks/gitleaks-action` unless `--skip-ci`
-  is used.
+- a CI workflow using the official `gitleaks/gitleaks-action` when `--with-ci`
+  is passed (skipped by default).
 
 The `gitleaks` binary is an external requirement (`brew install gitleaks` or a
 [release binary](https://github.com/gitleaks/gitleaks/releases)) — the stage
@@ -156,8 +156,8 @@ This adds:
   Terraform, Dockerfiles, Kubernetes manifests, and other IaC (Trivy absorbed
   tfsec, so Terraform checks are included);
 - a `.trivyignore` scaffold for documented suppressions;
-- a CI workflow that uploads SARIF to GitHub code scanning unless `--skip-ci`
-  is used.
+- a CI workflow that uploads SARIF to GitHub code scanning when `--with-ci`
+  is passed (skipped by default).
 
 The `trivy` binary is an external requirement (`brew install trivy`); the stage
 fails fast with an install hint when missing. The fail threshold defaults to
@@ -179,7 +179,7 @@ This adds:
 
 - a `sast` test stage that scans the session worktree with Semgrep;
 - an adaptation guide (`.har/stages/SEMGREP.md`) covering rulesets and noise tuning;
-- a CI workflow running the official `semgrep ci` recipe unless `--skip-ci` is used.
+- a CI workflow running the official `semgrep ci` recipe when `--with-ci` is passed (skipped by default).
 
 The `semgrep` CLI itself is an external requirement (`pipx install semgrep`).
 Reports (JSON + SARIF) land under `.har/artifacts/sast/`. Pin rulesets with
@@ -214,7 +214,7 @@ HAR is open source. Anyone can ship a verification plugin without changing HAR c
 - Repository: [os-factory/har-plugin](https://github.com/os-factory/har-plugin) (*Use this template*)
 - Agent guide (fit + examples): [AGENTS.md](https://github.com/os-factory/har-plugin/blob/main/AGENTS.md)
 - Authoring guide: [docs/AUTHORING.md](https://github.com/os-factory/har-plugin/blob/main/docs/AUTHORING.md)
-- Try the example: `har env add-plugin github:os-factory/har-plugin --skip-ci`
+- Try the example: `har env add-plugin github:os-factory/har-plugin`
 
 **1. Author a bundle** — a directory with:
 

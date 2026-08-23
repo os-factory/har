@@ -407,6 +407,51 @@ describe('plugins', () => {
     expect(registry.stages.some((s) => s.id === 'browser-e2e')).toBe(true);
   });
 
+  it('CLI add-plugin skips CI workflow by default and copies it with --with-ci', () => {
+    const workflowPath = ['.github', 'workflows', 'playwright.yml'];
+
+    const defaultRepo = makeTempRepo('har-playwright-cli-noci');
+    fs.writeFileSync(
+      path.join(defaultRepo, 'package.json'),
+      JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
+    );
+    scaffoldHarnessBoilerplate(defaultRepo, { force: true, profile: 'cli' });
+    execFileSync(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'dist', 'index.js'),
+        'env',
+        'add-plugin',
+        'playwright',
+        '--repo',
+        defaultRepo,
+      ],
+      { encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(fs.existsSync(path.join(defaultRepo, ...workflowPath))).toBe(false);
+
+    const ciRepo = makeTempRepo('har-playwright-cli-withci');
+    fs.writeFileSync(
+      path.join(ciRepo, 'package.json'),
+      JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
+    );
+    scaffoldHarnessBoilerplate(ciRepo, { force: true, profile: 'cli' });
+    execFileSync(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'dist', 'index.js'),
+        'env',
+        'add-plugin',
+        'playwright',
+        '--repo',
+        ciRepo,
+        '--with-ci',
+      ],
+      { encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(fs.existsSync(path.join(ciRepo, ...workflowPath))).toBe(true);
+  });
+
   it('CLI add-stage <plugin> still works as deprecated alias', () => {
     const repoPath = makeTempRepo('har-playwright-cli-alias');
     fs.writeFileSync(

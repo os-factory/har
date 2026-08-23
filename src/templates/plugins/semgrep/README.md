@@ -13,7 +13,7 @@ har env add-plugin semgrep
 |------|---------|
 | `.har/stages/sast.sh` | Stage runner — scans the session worktree with Semgrep |
 | `.har/stages/SEMGREP.md` | Adaptation guide: rulesets, noise tuning, CI/Vanta story |
-| `.github/workflows/semgrep.yml` | Optional CI workflow (`--skip-ci` to omit) — official `semgrep ci` recipe |
+| `.github/workflows/semgrep.yml` | Optional CI workflow (opt in with `--with-ci`) — official `semgrep ci` recipe |
 
 ## Workflow
 

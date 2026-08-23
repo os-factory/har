@@ -86,12 +86,12 @@ har env maintain [--yes] [--finalize]
 
 ```bash
 har env add-plugin --list
-har env add-plugin playwright [--force] [--skip-ci]
+har env add-plugin playwright [--force] [--with-ci]
 har env add-plugin rocketsim [--force]
-har env add-plugin kerno [--force] [--skip-ci]
-har env add-plugin gitleaks [--force] [--skip-ci]
-har env add-plugin trivy [--force] [--skip-ci]
-har env add-plugin semgrep [--force] [--skip-ci]
+har env add-plugin kerno [--force] [--with-ci]
+har env add-plugin gitleaks [--force] [--with-ci]
+har env add-plugin trivy [--force] [--with-ci]
+har env add-plugin semgrep [--force] [--with-ci]
 har env add-plugin ./my-plugin [--force]
 har env add-plugin @org/har-cypress [--force]
 har env add-plugin github:org/har-plugin [--force]

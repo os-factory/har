@@ -194,8 +194,14 @@ export const envCommand = {
             })
             .option('skip-ci', {
               type: 'boolean',
+              default: true,
+              describe:
+                'Do not copy optional CI workflow files (default; pass --with-ci to include them)',
+            })
+            .option('with-ci', {
+              type: 'boolean',
               default: false,
-              describe: 'Do not copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
+              describe: 'Copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
             }),
         handleAddPlugin,
       )
@@ -249,8 +255,14 @@ export const envCommand = {
             })
             .option('skip-ci', {
               type: 'boolean',
+              default: true,
+              describe:
+                'Do not copy optional CI workflow files (default; pass --with-ci to include them)',
+            })
+            .option('with-ci', {
+              type: 'boolean',
               default: false,
-              describe: 'Do not copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
+              describe: 'Copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
             }),
         handleAddStage,
       )
@@ -772,6 +784,7 @@ export async function handleAddPlugin(argv: {
   repo: string;
   force: boolean;
   skipCi: boolean;
+  withCi?: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
   const available = listPluginIds();
@@ -798,7 +811,8 @@ export async function handleAddPlugin(argv: {
   try {
     const result = addPlugin(repoPath, argv.plugin, {
       force: argv.force,
-      skipCi: argv.skipCi,
+      // --with-ci wins over the skip-ci default: CI workflows are opt-in.
+      skipCi: argv.withCi ? false : argv.skipCi,
       spec: argv.plugin,
     });
 
@@ -834,6 +848,7 @@ export async function handleAddStage(argv: {
   repo: string;
   force: boolean;
   skipCi: boolean;
+  withCi?: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
   const available = listPluginIds();
@@ -905,6 +920,7 @@ export async function handleAddStage(argv: {
     repo: argv.repo,
     force: argv.force,
     skipCi: argv.skipCi,
+    withCi: argv.withCi,
   });
 }
 
