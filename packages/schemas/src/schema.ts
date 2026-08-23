@@ -99,6 +99,12 @@ export const HarnessStageSchema = z
     requiresAgentId: z.boolean().optional(),
     group: z.string().optional(),
     acceptsArgs: z.array(z.string()).optional(),
+    /**
+     * Verification tier: 'quick' stages run on every verify; 'full' stages
+     * only on --full. Absent means 'full'. Only meaningful for stages listed
+     * in verificationStages.
+     */
+    tier: z.enum(['quick', 'full']).optional(),
   })
   .passthrough();
 

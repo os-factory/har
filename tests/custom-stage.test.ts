@@ -82,16 +82,16 @@ describe('addCustomStage', () => {
 
   it('refuses to replace an existing stage without force', () => {
     const repoPath = makeTempHarness('har-custom-dup');
-    addCustomStage(repoPath, { id: 'lint', command: 'npm run lint' });
+    addCustomStage(repoPath, { id: 'custom-lint', command: 'npm run lint' });
 
-    expect(() => addCustomStage(repoPath, { id: 'lint', command: 'npm run lint' })).toThrow(
+    expect(() => addCustomStage(repoPath, { id: 'custom-lint', command: 'npm run lint' })).toThrow(
       /already registered/,
     );
 
-    addCustomStage(repoPath, { id: 'lint', command: 'npm run lint:ci', force: true });
+    addCustomStage(repoPath, { id: 'custom-lint', command: 'npm run lint:ci', force: true });
     const registry = readStageRegistry(repoPath);
-    expect(registry.stages.filter((s) => s.id === 'lint')).toHaveLength(1);
-    expect(registry.stages.find((s) => s.id === 'lint')?.command).toBe('npm run lint:ci');
+    expect(registry.stages.filter((s) => s.id === 'custom-lint')).toHaveLength(1);
+    expect(registry.stages.find((s) => s.id === 'custom-lint')?.command).toBe('npm run lint:ci');
   });
 
   it('requires an existing harness', () => {

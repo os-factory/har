@@ -28,8 +28,9 @@ Stages are registered in `.har/stages.json`:
 
 A stage has an `id`, `kind`, and either `script` (relative to `.har/`) or `command`.
 Other fields are `description`, `cwd`, `env`, `resultPath`, `requiresAgentId`,
-`group`, `acceptsArgs`, and `artifacts`. `{agentId}` is expanded in commands at
-execution.
+`group`, `acceptsArgs`, `tier`, and `artifacts`. `{agentId}` is expanded in
+commands at execution. `tier` (`"quick"` or `"full"`, default `"full"`) controls
+whether a verification stage runs on every `har env verify` or only on `--full`.
 
 Kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`, `teardown`, and
 `custom`. Artifact kinds are `file`, `directory`, `log`, `report`, `screenshot`,
@@ -82,10 +83,15 @@ Repositories may declare the stage ids that constitute verification:
 }
 ```
 
-Full verification runs registered `test` and `custom` stages listed in
-`verificationStages`. Lifecycle and `verify` stages are never nested into
-verification. IDs without a registered stage remain inline steps owned by
-`.har/verify.sh`. Mission Control uses the same list to render the expected pipeline.
+`verificationStages` is the pipeline: every id must resolve to a registered
+`test` or `custom` stage, and the list order is the execution order. Quick
+verification (`har env verify <id>`) runs the stages marked `tier: "quick"`;
+`--full` runs the whole list. The ecosystem defaults (`typecheck`, `unit-tests`,
+`lint`, `readiness`, and `api-health` on web profiles) are ordinary registered
+stages written at init from `HARNESS_ECOSYSTEM` — there are no inline steps.
+Unresolvable ids are reported by validation and skipped with a warning at run
+time. Lifecycle and `verify` stages are never nested into verification. Mission
+Control uses the same list to render the expected pipeline.
 
 ## Install plugins
 

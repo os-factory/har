@@ -32,9 +32,11 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Verification pipeline (quick smoke by default; --full runs the registry's verificationStages)",
+      "description": "Verification pipeline: runs stages.json verificationStages in order (tier \"quick\" by default; --full runs the whole list)",
       "command": "./.har/verify.sh {agentId}",
-      "acceptsArgs": ["--full"],
+      "acceptsArgs": [
+        "--full"
+      ],
       "artifacts": [
         {
           "path": ".har/artifacts",
@@ -67,6 +69,53 @@
       "kind": "teardown",
       "description": "Stop processes and release agent slot resources",
       "command": "./.har/teardown.sh {agentId}"
+    },
+    {
+      "id": "typecheck",
+      "kind": "test",
+      "tier": "quick",
+      "description": "Ecosystem quick smoke (registered from HARNESS_ECOSYSTEM at init; adapt to this repo)",
+      "command": "${NPM_BIN:-npm} run typecheck",
+      "requiresAgentId": true
+    },
+    {
+      "id": "api-health",
+      "kind": "test",
+      "tier": "quick",
+      "description": "API health endpoint for the slot's primary app",
+      "script": "stages/api-health.sh",
+      "requiresAgentId": true
+    },
+    {
+      "id": "unit-tests",
+      "kind": "test",
+      "tier": "full",
+      "description": "Unit tests",
+      "command": "${NPM_BIN:-npm} test",
+      "requiresAgentId": true
+    },
+    {
+      "id": "lint",
+      "kind": "test",
+      "tier": "full",
+      "description": "Lint",
+      "command": "${NPM_BIN:-npm} run lint",
+      "requiresAgentId": true
+    },
+    {
+      "id": "readiness",
+      "kind": "test",
+      "tier": "full",
+      "description": "Project readiness smoke (HARNESS_READINESS_CMD)",
+      "script": "stages/readiness.sh",
+      "requiresAgentId": true
     }
+  ],
+  "verificationStages": [
+    "typecheck",
+    "api-health",
+    "unit-tests",
+    "lint",
+    "readiness"
   ]
 }

@@ -791,67 +791,7 @@ escape_step_output() {
   printf '%s' "$1" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const s=d.trim().split('\n').slice(0,50).join('\n');process.stdout.write(JSON.stringify(s))})" 2>/dev/null || echo '""'
 }
 
-# Append one verify.sh step to RESULTS_JSON (caller global).
-# Passing steps omit output — it already appeared as ✓ on stderr.
-record_step_result() {
-  local name="$1"
-  local pass_bool="$2"
-  local elapsed="$3"
-  local output="${4:-}"
-  local step_json
-  if [ "$pass_bool" = "true" ]; then
-    step_json=$(NAME="$name" MS="$elapsed" node -e 'process.stdout.write(JSON.stringify({name:process.env.NAME,pass:true,ms:Number(process.env.MS)}))' 2>/dev/null) || return 0
-  else
-    local escaped
-    escaped=$(escape_step_output "$output")
-    step_json=$(NAME="$name" MS="$elapsed" node -e "process.stdout.write(JSON.stringify({name:process.env.NAME,pass:false,ms:Number(process.env.MS),output:$escaped}))" 2>/dev/null) || return 0
-  fi
-  RESULTS_JSON=$(echo "$RESULTS_JSON" | node -e "
-const fs = require('fs');
-const arr = JSON.parse(fs.readFileSync('/dev/stdin','utf8'));
-arr.push($step_json);
-process.stdout.write(JSON.stringify(arr));
-" 2>/dev/null || echo "$RESULTS_JSON")
-}
 
-# Emit "<id>\t<command>" for each registered stage listed in stages.json
-# verificationStages (used by verify --full). Ids without a matching registered
-# stage are inline verify.sh steps and skipped here; lifecycle stages
-# (setup/launch/reset/teardown/inspect) and the verify stage itself never run.
-# Authoring contract: .har/STAGES.md
-list_registered_verification_stage_commands() {
-  local script_dir="$1"
-  local agent_id="$2"
-  local registry="$script_dir/stages.json"
-  [ -f "$registry" ] || return 0
-  HAR_STAGE_REGISTRY="$registry" HAR_SCRIPT_DIR="$script_dir" HAR_AGENT_ID="$agent_id" node <<'NODE' 2>/dev/null || true
-const fs = require('fs');
-const { HAR_STAGE_REGISTRY, HAR_SCRIPT_DIR, HAR_AGENT_ID } = process.env;
-const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
-let reg;
-try { reg = JSON.parse(fs.readFileSync(HAR_STAGE_REGISTRY, 'utf8')); } catch { process.exit(0); }
-const ids = Array.isArray(reg.verificationStages) ? reg.verificationStages : [];
-const stages = Array.isArray(reg.stages) ? reg.stages : [];
-const runnable = new Set(['test', 'custom']);
-for (const id of ids) {
-  const stage = stages.find((s) => s && s.id === id);
-  if (!stage || stage.id === 'verify' || !runnable.has(stage.kind)) continue;
-  const needsAgent = stage.requiresAgentId !== false;
-  let cmd;
-  if (stage.script) {
-    cmd = shq(HAR_SCRIPT_DIR + '/' + stage.script) + (needsAgent ? ' ' + shq(HAR_AGENT_ID) : '');
-  } else if (stage.command) {
-    cmd = stage.command.split('{agentId}').join(HAR_AGENT_ID);
-  } else {
-    continue;
-  }
-  if (stage.cwd) cmd = 'cd ' + shq(stage.cwd) + ' && ' + cmd;
-  const env = stage.env && typeof stage.env === 'object' ? stage.env : {};
-  const prefix = Object.entries(env).map(([k, v]) => k + '=' + shq(v)).join(' ');
-  process.stdout.write(id + '\t' + (prefix ? prefix + ' ' : '') + cmd + '\n');
-}
-NODE
-}
 
 # Optional project-owned "agent usable" smoke beyond health.
 run_readiness_if_configured() {

@@ -22,9 +22,6 @@ describe('verify.sh portable timing', () => {
   const verifyPaths = [
     '.har/verify.sh',
     'control/.har/verify.sh',
-    'src/templates/har-boilerplate/verify.sh',
-    'src/templates/har-boilerplate-cli/verify.sh',
-    'src/templates/har-boilerplate-ios/verify.sh',
     'src/templates/plugins/playwright/.har/stages/browser-e2e.sh',
     'src/templates/plugins/rocketsim/.har/stages/rocketsim-flows.sh',
     'src/templates/plugins/kerno/.har/stages/backend-validation.sh',

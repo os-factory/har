@@ -267,15 +267,6 @@ function patchStageRegistry(
     }
   }
 
-  const verifyIdx = nextStages.findIndex((s) => s.id === 'verify');
-  if (verifyIdx >= 0) {
-    nextStages[verifyIdx] = {
-      ...nextStages[verifyIdx],
-      description: `Verification pipeline (quick smoke by default; --full runs the registry's verificationStages: ${verificationStages.join(', ')})`,
-      acceptsArgs: ['--full'],
-    };
-  }
-
   const updated: HarnessStageRegistry = {
     ...registry,
     stages: nextStages,

@@ -32,9 +32,11 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Verification pipeline (quick smoke by default; --full runs the registry's verificationStages)",
+      "description": "Verification pipeline: runs stages.json verificationStages in order (tier \"quick\" by default; --full runs the whole list)",
       "command": "./.har/verify.sh {agentId}",
-      "acceptsArgs": ["--full"],
+      "acceptsArgs": [
+        "--full"
+      ],
       "artifacts": [
         {
           "path": ".har/artifacts",
@@ -61,6 +63,44 @@
       "kind": "teardown",
       "description": "Remove worktree and env file for the slot",
       "command": "./.har/teardown.sh {agentId}"
+    },
+    {
+      "id": "build",
+      "kind": "test",
+      "tier": "quick",
+      "description": "Xcode build smoke (compile-only, unsigned)",
+      "command": "${XCODEBUILD_BIN:-xcodebuild} build ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" CODE_SIGNING_ALLOWED=NO | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} build ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" CODE_SIGNING_ALLOWED=NO",
+      "requiresAgentId": true
+    },
+    {
+      "id": "unit-tests",
+      "kind": "test",
+      "tier": "full",
+      "description": "Xcode unit tests (signed: simulator installs the host app)",
+      "command": "${XCODEBUILD_BIN:-xcodebuild} test ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} test ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\"",
+      "requiresAgentId": true
+    },
+    {
+      "id": "lint",
+      "kind": "test",
+      "tier": "full",
+      "description": "SwiftLint (skips when not installed)",
+      "command": "command -v \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" >/dev/null 2>&1 && \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" --quiet || echo \"swiftlint not installed — skipping\"",
+      "requiresAgentId": true
+    },
+    {
+      "id": "readiness",
+      "kind": "test",
+      "tier": "full",
+      "description": "Project readiness smoke (HARNESS_READINESS_CMD)",
+      "script": "stages/readiness.sh",
+      "requiresAgentId": true
     }
+  ],
+  "verificationStages": [
+    "build",
+    "unit-tests",
+    "lint",
+    "readiness"
   ]
 }

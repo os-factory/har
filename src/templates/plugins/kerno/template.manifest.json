@@ -2,10 +2,6 @@
   "id": "kerno",
   "stageId": "backend-validation",
   "verificationStages": [
-    "typecheck",
-    "unit-tests",
-    "api-health",
-    "lint",
     "backend-validation"
   ],
   "stage": {
@@ -24,15 +20,30 @@
         "path": ".har/artifacts/backend-validation/report.json",
         "kind": "report"
       }
-    ]
+    ],
+    "tier": "full"
   },
   "files": [
-    { "src": ".har/stages/backend-validation.sh", "dest": ".har/stages/backend-validation.sh", "executable": true },
-    { "src": ".har/stages/KERNO.md", "dest": ".har/stages/KERNO.md" },
-    { "src": "README.md", "dest": "tests/kerno/README.md" }
+    {
+      "src": ".har/stages/backend-validation.sh",
+      "dest": ".har/stages/backend-validation.sh",
+      "executable": true
+    },
+    {
+      "src": ".har/stages/KERNO.md",
+      "dest": ".har/stages/KERNO.md"
+    },
+    {
+      "src": "README.md",
+      "dest": "tests/kerno/README.md"
+    }
   ],
   "optionalFiles": [
-    { "src": ".github/workflows/kerno.yml", "dest": ".github/workflows/kerno.yml", "skipFlag": "skipCi" }
+    {
+      "src": ".github/workflows/kerno.yml",
+      "dest": ".github/workflows/kerno.yml",
+      "skipFlag": "skipCi"
+    }
   ],
   "nextSteps": [
     "npm install -g @kerno/cli",

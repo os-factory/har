@@ -61,13 +61,18 @@ Primary app, ports, `HARNESS_INFRA_SERVICES`, migrate/seed commands, health chec
 ### `.har/ecosystem.agent.template.cjs` (default profile only)
 PM2 processes for the primary application only, matching how it runs in dev. Skip entirely for the CLI profile.
 
-### `.har/verify.sh`
-Adapt verification for this repository's toolchain. Step lists in the template are
-**examples, not exhaustive** — add, remove, or reorder `run_step` calls to match
-how this project is built and tested. Use toolchain variables from `.env.agent.<id>`
-(e.g. `${NPM_BIN:-npm}`, `${PYTHON_BIN:-python3}`, `${XCODEBUILD_BIN:-xcodebuild}`).
-The stock verify section is keyed by `HARNESS_ECOSYSTEM`; it is a starting point,
-not the repo's final contract. Replace conventions that do not match this project.
+### Verification stages (`.har/stages.json`)
+Verification is data: `.har/stages.json` lists the pipeline in
+`verificationStages` (execution order), and every id resolves to a registered
+stage with `"tier": "quick" | "full"`. Adapt verification by editing the stage
+entries — commands, tiers, order — or adding stage scripts (see
+`.har/STAGES.md`). **Never edit `.har/verify.sh`**; it is a thin iterator that
+runs the registry. The scaffolded defaults (`typecheck`, `unit-tests`, `lint`,
+`readiness`, plus `api-health` on web profiles) are derived from
+`HARNESS_ECOSYSTEM` — a starting point, not the repo's final contract. Replace
+conventions that do not match this project. Use toolchain variables from
+`.env.agent.<id>` (e.g. `${NPM_BIN:-npm}`, `${PYTHON_BIN:-python3}`,
+`${XCODEBUILD_BIN:-xcodebuild}`).
 
 `${NPM_BIN}` may resolve to bun, pnpm, or yarn as well as npm, so keep Node steps
 package-manager agnostic: always `${NPM_BIN:-npm} run <script>` (never bare
@@ -84,7 +89,7 @@ such as `--prefix` — use a subshell like `(cd docs && ${NPM_BIN:-npm} run buil
 - **Quick** must stay fast and minimal (syntax, compile, import smoke) — not the full test suite.
 - **Full** holds unit tests, lint, and heavier checks; optional Playwright runs on `--full` when installed.
 - Reuse real commands from `package.json`, `Makefile`, CI, `pyproject.toml`, etc.
-- Remove stock npm/pytest/go/cargo/maven/gradle examples that do not apply.
+- Remove stock stage commands that do not apply; keep every listed id resolvable.
 - Replace all TODO placeholders in both tiers.
 
 ### Readiness vs liveness (required)
