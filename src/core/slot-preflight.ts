@@ -34,6 +34,12 @@ import { packageRunner } from '../utils/package-runner';
 export interface PreflightOptions extends LaunchGuardOptions {
   allocatePorts?: boolean;
   /**
+   * Whether this harness runs per-slot PM2 app processes. Defaults to the
+   * file-presence check (ecosystem.agent.template.cjs) — #236 will supply this
+   * from the profile capability manifest instead.
+   */
+  usesPm2?: boolean;
+  /**
    * Precomputed occupied state — pass from collectSlotStatus to avoid recursion
    * through collectEnvironmentStatus.
    */
@@ -146,7 +152,7 @@ export function inspectSlotReadiness(
   const harnessRoot = resolveHarnessRoot(repoPath);
   const env = readHarnessEnv(harnessRoot);
   const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);
-  const usesPm2 = harnessUsesPm2(repoPath);
+  const usesPm2 = options.usesPm2 ?? harnessUsesPm2(repoPath);
   const blockers: SlotReadiness['blockers'] = [];
   const remediations: string[] = [];
   const warnings: string[] = [];
@@ -227,6 +233,7 @@ export function inspectSlotReadiness(
         code: 'ports_exhausted',
         message: alloc.error,
         remediation: 'Free a port in the slot lane or stop the process/container using it.',
+        details: { lane: alloc.lane, range: alloc.range },
       });
     } else {
       ports.frontend = alloc.frontend;
@@ -362,6 +369,150 @@ export function formatPreflightReport(agentId: number, readiness: SlotReadiness)
 /** Whether this harness expects per-slot app ports (capability-based, not profile enum). */
 export function harnessExpectsAppPorts(repoPath: string): boolean {
   return harnessAllocatesAppPorts(repoPath);
+}
+
+// ── Launch preflight (bash har_launch_preflight parity, #234) ─────────────────
+
+export type LaunchPreflightStatus = 'ok' | 'occupied' | 'blocked';
+
+export interface LaunchPreflightResult {
+  status: LaunchPreflightStatus;
+  /** Bash-parity exit code: 0 ready, 2 occupied / not resumable, 1 machine blockers. */
+  exitCode: 0 | 1 | 2;
+  readiness: SlotReadiness;
+  /** Allocated app ports — only when the harness runs per-slot PM2 processes. */
+  ports?: { frontend: number; api: number; debug: number };
+  /** stderr-parity error lines, in the order bash would print them. */
+  errors: string[];
+  /** Non-blocking warning lines (untracked paths, control default port, …). */
+  warnings: string[];
+  /** Informational lines (e.g. the resume banner). */
+  notes: string[];
+}
+
+function bashBlockerLines(agentId: number, b: SlotReadiness['blockers'][number]): string[] {
+  const details = (b.details ?? {}) as Record<string, unknown>;
+  switch (b.code) {
+    case 'foreign_pm2': {
+      const procs = (details.processes ?? []) as Array<{ name: string; cwd?: string }>;
+      return [
+        `ERROR: foreign PM2 processes match agent ${agentId}:`,
+        ...procs.map((p) => `  ${p.name}  cwd=${p.cwd ?? 'unknown'}`),
+        '  Stop the other harness session or use a different slot.',
+      ];
+    }
+    case 'control_port_conflict':
+      return [
+        `ERROR: har control up (container "${details.container}") occupies port ${details.port}.`,
+        '  Run: har control down — or use a different agent slot.',
+      ];
+    case 'docker_port_conflict':
+      return [
+        `ERROR: Docker container "${details.container}" binds port ${details.port}.`,
+        `  Stop it with: docker stop ${details.container}`,
+      ];
+    case 'ports_exhausted': {
+      const range = details.range as { start: number; end: number } | undefined;
+      if (range) return [`Error: no free port in range ${range.start}-${range.end}`];
+      return [b.message];
+    }
+    default:
+      return [b.message, ...(b.remediation ? [`  ${b.remediation}`] : [])];
+  }
+}
+
+export interface LaunchPreflightOptions extends PreflightOptions {
+  repoPath: string;
+  agentId: number;
+}
+
+/**
+ * Single package-side entry point for the pre-launch readiness gate — the TS
+ * replacement for bash har_launch_preflight. Occupied / not-resumable slots
+ * short-circuit with exit code 2 (bash parity: no PM2 or port checks run);
+ * machine blockers map to exit code 1 with bash-format error lines.
+ */
+export function runLaunchPreflight(options: LaunchPreflightOptions): LaunchPreflightResult {
+  const { repoPath, agentId, ...preflightOptions } = options;
+  const harnessRoot = resolveHarnessRoot(repoPath);
+  const session = readSlotRegistry(harnessRoot, agentId);
+  const notes: string[] = [];
+
+  if (options.resume) {
+    if (!isSlotResumable(session)) {
+      const status = session?.status ?? 'none';
+      const errors = [
+        `ERROR: slot ${agentId} is not resumable (status=${status}; need failed or starting).`,
+        `  Free the slot first: har env teardown ${agentId} (or complete ${agentId}), then har env launch ${agentId}.`,
+      ];
+      return {
+        status: 'occupied',
+        exitCode: 2,
+        readiness: {
+          canLaunch: false,
+          verdict: 'blocked',
+          blockers: [
+            {
+              code: 'slot_not_resumable',
+              message: errors[0],
+              remediation: `har env teardown ${agentId} (or complete ${agentId}), then har env launch ${agentId}.`,
+            },
+          ],
+          remediations: [`har env teardown ${agentId}`],
+        },
+        errors,
+        warnings: [],
+        notes,
+      };
+    }
+    notes.push(`==> [agent-${agentId}] Resuming partial launch (worktree and deps preserved)...`);
+  }
+
+  const readiness = inspectSlotReadiness(repoPath, agentId, preflightOptions);
+  const warnings = [...(readiness.warnings ?? [])];
+
+  const occupiedBlocker = readiness.blockers.find(
+    (b) => b.code === 'slot_occupied' || b.code === 'slot_dirty' || b.code === 'slot_resumable',
+  );
+  if (occupiedBlocker && !options.resume) {
+    // Bash parity: an occupied slot returns before PM2/port checks are reported.
+    return {
+      status: 'occupied',
+      exitCode: 2,
+      readiness,
+      errors: [
+        `ERROR: slot ${agentId} is occupied.`,
+        `  Free it first: har env teardown ${agentId} (or complete ${agentId}), then har env launch ${agentId}.`,
+      ],
+      warnings,
+      notes,
+    };
+  }
+
+  const machineBlockers = readiness.blockers.filter((b) => b !== occupiedBlocker);
+  if (machineBlockers.length > 0) {
+    return {
+      status: 'blocked',
+      exitCode: 1,
+      readiness,
+      errors: machineBlockers.flatMap((b) => bashBlockerLines(agentId, b)),
+      warnings,
+      notes,
+    };
+  }
+
+  const ports =
+    readiness.ports?.frontend !== undefined &&
+    readiness.ports?.api !== undefined &&
+    readiness.ports?.debug !== undefined
+      ? {
+          frontend: readiness.ports.frontend,
+          api: readiness.ports.api,
+          debug: readiness.ports.debug,
+        }
+      : undefined;
+
+  return { status: 'ok', exitCode: 0, readiness, ports, errors: [], warnings, notes };
 }
 
 export { defaultAppPort, portStep, slotPortLaneEnd };

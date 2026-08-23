@@ -1,7 +1,11 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { formatPreflightReport, inspectSlotReadiness } from '../src/core/slot-preflight';
+import {
+  formatPreflightReport,
+  inspectSlotReadiness,
+  runLaunchPreflight,
+} from '../src/core/slot-preflight';
 import type { SlotReadiness } from '../src/harness/schema';
 import { allocateAppPorts, isPortInUse } from '../src/core/slot-ports';
 
@@ -204,5 +208,124 @@ describe('allocateAppPorts', () => {
 describe('isPortInUse', () => {
   it('returns false for a high ephemeral port unlikely to be bound', () => {
     expect(isPortInUse(59999)).toBe(false);
+  });
+});
+
+describe('runLaunchPreflight', () => {
+  it('returns ok with exit code 0 for an empty slot', () => {
+    const repo = makeHarness();
+    const result = runLaunchPreflight({ repoPath: repo, agentId: 1 });
+    expect(result.status).toBe('ok');
+    expect(result.exitCode).toBe(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('short-circuits an occupied slot with exit code 2 and bash-format errors', () => {
+    const repo = makeHarness();
+    writeOccupiedSlot(repo, 1);
+    const result = runLaunchPreflight({ repoPath: repo, agentId: 1 });
+    expect(result.status).toBe('occupied');
+    expect(result.exitCode).toBe(2);
+    expect(result.errors[0]).toBe('ERROR: slot 1 is occupied.');
+    expect(result.errors[1]).toBe(
+      '  Free it first: har env teardown 1 (or complete 1), then har env launch 1.',
+    );
+  });
+
+  it('rejects resume of a non-resumable slot with exit code 2', () => {
+    const repo = makeHarness();
+    writeOccupiedSlot(repo, 1, false, 'active');
+    const result = runLaunchPreflight({ repoPath: repo, agentId: 1, resume: true });
+    expect(result.status).toBe('occupied');
+    expect(result.exitCode).toBe(2);
+    expect(result.errors[0]).toBe(
+      'ERROR: slot 1 is not resumable (status=active; need failed or starting).',
+    );
+  });
+
+  it('rejects resume of an empty slot with status=none', () => {
+    const repo = makeHarness();
+    const result = runLaunchPreflight({ repoPath: repo, agentId: 1, resume: true });
+    expect(result.exitCode).toBe(2);
+    expect(result.errors[0]).toBe(
+      'ERROR: slot 1 is not resumable (status=none; need failed or starting).',
+    );
+  });
+
+  it('resumes a failed slot with the bash resume banner', () => {
+    const repo = makeHarness();
+    writeOccupiedSlot(repo, 1, false, 'failed');
+    const result = runLaunchPreflight({
+      repoPath: repo,
+      agentId: 1,
+      resume: true,
+      pm2Processes: [],
+    });
+    expect(result.status).toBe('ok');
+    expect(result.exitCode).toBe(0);
+    expect(result.notes[0]).toBe(
+      '==> [agent-1] Resuming partial launch (worktree and deps preserved)...',
+    );
+  });
+
+  it('blocks on foreign PM2 with exit code 1 and bash-format lines', () => {
+    const repo = makeHarness({ pm2: true });
+    const result = runLaunchPreflight({
+      repoPath: repo,
+      agentId: 1,
+      pm2Processes: [{ name: 'har-other-project-agent-1-api', pm2_env: { pm_cwd: '/elsewhere' } }],
+    });
+    expect(result.status).toBe('blocked');
+    expect(result.exitCode).toBe(1);
+    expect(result.errors[0]).toBe('ERROR: foreign PM2 processes match agent 1:');
+    expect(result.errors[1]).toBe('  har-other-project-agent-1-api  cwd=/elsewhere');
+    expect(result.errors[2]).toBe('  Stop the other harness session or use a different slot.');
+  });
+
+  it('blocks on a docker port conflict with bash-format lines', () => {
+    const repo = makeHarness({ pm2: true });
+    const fePort = TEST_FE_BASE + 10;
+    const result = runLaunchPreflight({
+      repoPath: repo,
+      agentId: 1,
+      pm2Processes: [],
+      dockerContainers: [{ name: 'other-app', ports: `0.0.0.0:${fePort}->3000/tcp` }],
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.errors[0]).toBe(`ERROR: Docker container "other-app" binds port ${fePort}.`);
+    expect(result.errors[1]).toBe('  Stop it with: docker stop other-app');
+  });
+
+  it('blocks on a control port conflict with bash-format lines', () => {
+    const repo = makeHarness({ pm2: true });
+    const fePort = TEST_FE_BASE + 10;
+    const result = runLaunchPreflight({
+      repoPath: repo,
+      agentId: 1,
+      pm2Processes: [],
+      dockerContainers: [{ name: 'har-control-1', ports: `0.0.0.0:${fePort}->3847/tcp` }],
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.errors[0]).toBe(
+      `ERROR: har control up (container "har-control-1") occupies port ${fePort}.`,
+    );
+    expect(result.errors[1]).toBe('  Run: har control down — or use a different agent slot.');
+  });
+
+  it('honors the usesPm2 override instead of file presence', () => {
+    const pm2Repo = makeHarness({ pm2: true });
+    const skipped = runLaunchPreflight({ repoPath: pm2Repo, agentId: 1, usesPm2: false });
+    expect(skipped.ports).toBeUndefined();
+
+    const plainRepo = makeHarness();
+    const forced = runLaunchPreflight({
+      repoPath: plainRepo,
+      agentId: 1,
+      usesPm2: true,
+      pm2Processes: [],
+    });
+    expect(forced.ports?.frontend).toBe(TEST_FE_BASE + 10);
+    expect(forced.ports?.api).toBe(TEST_API_BASE + 10);
+    expect(forced.ports?.debug).toBe(9210);
   });
 });
