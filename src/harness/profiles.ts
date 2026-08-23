@@ -96,3 +96,44 @@ export function resolveProfileBundleDir(bundle: ProfileBundleRef): string {
 export function listProfileBundleIds(profile: HarnessProfile): string[] {
   return readProfileManifest(profile).bundles.map((b) => b.id);
 }
+
+export interface ComposedTemplateEntry {
+  /** Path relative to the composed .har/ root (e.g. "provision-toolchain.sh", "stages/README.sh"). */
+  relPath: string;
+  /** Absolute path of the winning source file. */
+  sourcePath: string;
+  /** Bundle that serves the file after composition (later bundles win). */
+  bundleId: string;
+}
+
+function walkTemplateFiles(dir: string, prefix = ''): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...walkTemplateFiles(path.join(dir, entry.name), rel));
+    } else if (entry.isFile()) {
+      out.push(rel);
+    }
+  }
+  return out.sort();
+}
+
+/**
+ * Composed template view for a profile: relPath → winning source file, applying
+ * bundle order (later bundles overwrite earlier ones — same rule as scaffold).
+ * Drift/maintain must resolve template content through this map, never through
+ * a single overlay dir: bundle-provided files no longer exist in the overlays.
+ */
+export function composeProfileTemplateMap(
+  profile: HarnessProfile,
+): Map<string, ComposedTemplateEntry> {
+  const map = new Map<string, ComposedTemplateEntry>();
+  for (const bundle of readProfileManifest(profile).bundles) {
+    const dir = resolveProfileBundleDir(bundle);
+    for (const relPath of walkTemplateFiles(dir)) {
+      map.set(relPath, { relPath, sourcePath: path.join(dir, relPath), bundleId: bundle.id });
+    }
+  }
+  return map;
+}

@@ -82,8 +82,13 @@ function makeHarness(
   fs.mkdirSync(harnessDir, { recursive: true });
   fs.mkdirSync(binDir, { recursive: true });
 
+  // simulator.sh is bundle-provided since the composition; the rest stay in the overlay.
+  const templateSource = (file: string): string =>
+    file === 'simulator.sh'
+      ? path.join(resolveTemplatesDir(), 'runtime-bundles', 'xcode-sim', file)
+      : path.join(resolveTemplatesDir(), IOS_TEMPLATE, file);
   for (const file of ['agent-slot.sh', 'simulator.sh', 'setup-infra.sh', 'harness.env', 'stages.json']) {
-    fs.copyFileSync(path.join(resolveTemplatesDir(), IOS_TEMPLATE, file), path.join(harnessDir, file));
+    fs.copyFileSync(templateSource(file), path.join(harnessDir, file));
   }
 
   const devicesPath = path.join(root, 'devices.json');
@@ -221,7 +226,7 @@ describe('iOS per-slot simulator allocation', () => {
 
   it('ships simulator.sh with valid bash syntax and wires it into the lifecycle scripts', () => {
     const templateDir = path.join(resolveTemplatesDir(), IOS_TEMPLATE);
-    const scriptPath = path.join(templateDir, 'simulator.sh');
+    const scriptPath = path.join(resolveTemplatesDir(), 'runtime-bundles', 'xcode-sim', 'simulator.sh');
     expect(fs.existsSync(scriptPath)).toBe(true);
     expect(run(`bash -n "${scriptPath}"`).code).toBe(0);
 

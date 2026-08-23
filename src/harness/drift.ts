@@ -13,8 +13,7 @@ import {
   readManifest,
 } from './manifest';
 import { detectAgentSlotEnvMismatch } from './stages';
-import { PROFILE_DIRS } from './profiles';
-import { resolveTemplatesDir } from '../utils/paths';
+import { composeProfileTemplateMap } from './profiles';
 
 const CLI_EXPECTED_ABSENT = new Set([
   'ecosystem.agent.template.cjs',
@@ -106,23 +105,16 @@ function substituteProjectName(content: string, projectName: string): string {
     .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
 }
 
-function listBoilerplateFiles(boilerplateDir: string): string[] {
-  if (!fs.existsSync(boilerplateDir)) return [];
-  return fs
-    .readdirSync(boilerplateDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
-    .sort();
-}
-
 export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const resolved = path.resolve(repoPath);
   const manifest = readManifest(resolved);
   const profile: HarnessProfile = manifest?.profile ?? 'default';
   const harnessDir = getHarnessDir(resolved);
   const projectName = path.basename(resolved).toLowerCase().replace(/[^a-z0-9]/g, '_');
-  const boilerplateDir = path.join(resolveTemplatesDir(), PROFILE_DIRS[profile]);
-  const templateFiles = listBoilerplateFiles(boilerplateDir);
+  // Composed bundle set (shared kernel → runtime bundle → overlay). Drift keeps
+  // comparing top-level files only, matching the pre-composition behavior.
+  const composed = composeProfileTemplateMap(profile);
+  const templateFiles = [...composed.keys()].filter((f) => !f.includes('/')).sort();
 
   const missing: string[] = [];
   const checksumMismatch: string[] = [];
@@ -131,7 +123,7 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
 
   for (const file of templateFiles) {
     const harnessFile = harnessFileForTemplate(file);
-    const templatePath = path.join(boilerplateDir, file);
+    const templatePath = composed.get(file)!.sourcePath;
     const harnessPath = path.join(harnessDir, harnessFile);
     let templateContent = fs.readFileSync(templatePath, 'utf8');
     if (file === 'harness.env') {

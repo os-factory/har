@@ -6,15 +6,23 @@ import { resolveTemplatesDir } from '../src/utils/paths';
 
 const PROFILES = ['har-boilerplate', 'har-boilerplate-cli', 'har-boilerplate-ios'] as const;
 
-describe('provision-toolchain.sh template contract', () => {
-  for (const profile of PROFILES) {
-    it(`${profile} ships provision-toolchain.sh with valid bash syntax`, () => {
-      const scriptPath = path.join(resolveTemplatesDir(), profile, 'provision-toolchain.sh');
-      expect(fs.existsSync(scriptPath)).toBe(true);
-      const result = run(`bash -n "${scriptPath}"`);
-      expect(result.code).toBe(0);
-    });
+// Single source since the bundle composition: every profile is served the same
+// script by the shared-kernel runtime bundle.
+const PROVISION_SCRIPT = path.join(
+  resolveTemplatesDir(),
+  'runtime-bundles',
+  'shared-kernel',
+  'provision-toolchain.sh',
+);
 
+describe('provision-toolchain.sh template contract', () => {
+  it('shared-kernel ships provision-toolchain.sh with valid bash syntax', () => {
+    expect(fs.existsSync(PROVISION_SCRIPT)).toBe(true);
+    const result = run(`bash -n "${PROVISION_SCRIPT}"`);
+    expect(result.code).toBe(0);
+  });
+
+  for (const profile of PROFILES) {
     it(`${profile} launch.sh invokes provision-toolchain.sh`, () => {
       const launchPath = path.join(resolveTemplatesDir(), profile, 'launch.sh');
       const content = fs.readFileSync(launchPath, 'utf8');
@@ -35,7 +43,7 @@ describe('provision-toolchain.sh template contract', () => {
 
   it('auto-detects python and writes PYTHON_BIN to agent env', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-python-'));
-    const scriptPath = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');
+    const scriptPath = PROVISION_SCRIPT;
     const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
 
     fs.writeFileSync(path.join(tmpDir, 'requirements.txt'), '# empty fixture\n');
@@ -60,7 +68,7 @@ describe('provision-toolchain.sh template contract', () => {
 
   it('writes values with spaces so the agent env file can be sourced', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-quoting-'));
-    const scriptPath = path.join(resolveTemplatesDir(), 'har-boilerplate-ios', 'provision-toolchain.sh');
+    const scriptPath = PROVISION_SCRIPT;
     const envFile = path.join(tmpDir, '.env.agent.1');
     fs.writeFileSync(envFile, `AGENT_ID=1\nREPO_ROOT=${tmpDir}\n`);
 
@@ -79,7 +87,7 @@ describe('provision-toolchain.sh template contract', () => {
 
   it('auto-detects node and writes NPM_BIN to agent env', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-node-'));
-    const scriptPath = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');
+    const scriptPath = PROVISION_SCRIPT;
     const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
 
     fs.writeFileSync(
@@ -215,9 +223,7 @@ describe('provision-toolchain.sh template contract', () => {
 
     for (const profile of PROFILES) {
       const dir = path.join(resolveTemplatesDir(), profile);
-      expect(extract(path.join(dir, 'harness.env'))).toBe(
-        extract(path.join(dir, 'provision-toolchain.sh')),
-      );
+      expect(extract(path.join(dir, 'harness.env'))).toBe(extract(PROVISION_SCRIPT));
     }
   });
 
@@ -235,11 +241,7 @@ describe('provision-toolchain.sh template contract', () => {
   });
 
   describe('Python interpreter resolution', () => {
-    const scriptPath = path.join(
-      resolveTemplatesDir(),
-      'har-boilerplate-cli',
-      'provision-toolchain.sh',
-    );
+    const scriptPath = PROVISION_SCRIPT;
 
     const sourcePythonHelpers = (body: string): ReturnType<typeof run> =>
       run(
@@ -277,7 +279,7 @@ describe('provision-toolchain.sh template contract', () => {
 
     it('warns when the resolved interpreter is older than requires-python', () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-py-warn-'));
-      const script = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');
+      const script = PROVISION_SCRIPT;
       const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
       const fakeBin = path.join(tmpDir, 'bin');
 
@@ -348,7 +350,7 @@ describe('provision-toolchain.sh template contract', () => {
 
     it('routes uv-managed projects through uv venv/sync when uv is on PATH', () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-py-uv-'));
-      const script = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'provision-toolchain.sh');
+      const script = PROVISION_SCRIPT;
       const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
       const fakeBin = path.join(tmpDir, 'bin');
       const fakeUv = path.join(fakeBin, 'uv');
@@ -422,11 +424,7 @@ describe('provision-toolchain.sh template contract', () => {
   });
 
   describe('iOS project generation', () => {
-    const scriptPath = path.join(
-      resolveTemplatesDir(),
-      'har-boilerplate-ios',
-      'provision-toolchain.sh',
-    );
+    const scriptPath = PROVISION_SCRIPT;
 
     /** Fixture work dir with a fake bin dir on PATH and an agent env file. */
     const iosFixture = (name: string): { dir: string; bin: string; envFile: string; log: string } => {
