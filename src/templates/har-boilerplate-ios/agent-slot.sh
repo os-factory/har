@@ -13,6 +13,13 @@ if [ -f "${SCRIPT_DIR:-}/lib/node-pm.sh" ]; then
   source "${SCRIPT_DIR}/lib/node-pm.sh"
 fi
 
+# Infra helpers (har_infra_enabled, har_pg, har_infra_port_lane) are
+# single-sourced from lib/infra.sh — harness.env is pure KEY=value config.
+# shellcheck source=/dev/null
+if [ -f "${SCRIPT_DIR:-}/lib/infra.sh" ]; then
+  source "${SCRIPT_DIR}/lib/infra.sh"
+fi
+
 # Canonical slot limits live in stages.json (agentSlots); harness.env is legacy fallback.
 har_load_agent_slot_limits() {
   local registry="${SCRIPT_DIR}/stages.json"

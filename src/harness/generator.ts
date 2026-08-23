@@ -13,6 +13,7 @@ import {
   readProfileManifest,
   resolveProfileBundleDir,
 } from './profiles';
+import { validateHarnessEnvSource } from './schema';
 import { syncAgentSlotsToHarnessEnv } from './stages';
 
 export type { HarnessProfile };
@@ -95,6 +96,18 @@ export function scaffoldHarnessBoilerplate(
       .replace(/__PROJECT_NAME__/g, projectName)
       .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
     fs.writeFileSync(harnessEnvPath, content);
+
+    // The generated file must honor the 1.0 contract: pure KEY=value config
+    // that validates against HarnessEnvSchema. A failure here is template
+    // drift in the package itself, not a user error.
+    const validation = validateHarnessEnvSource(content);
+    if (!validation.ok) {
+      const details = validation.issues
+        .filter((i) => i.severity === 'error')
+        .map((i) => (i.line !== undefined ? `line ${i.line}: ${i.message}` : i.message))
+        .join('\n  ');
+      throw new Error(`Generated harness.env violates HarnessEnvSchema:\n  ${details}`);
+    }
   }
 
   const manifest = createManifest(

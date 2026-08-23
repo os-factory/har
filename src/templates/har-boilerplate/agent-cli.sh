@@ -18,7 +18,7 @@ COMMAND="${2:?Usage: agent-cli.sh <agent-id> <command> [args...]}"
 validate_agent_id "$AGENT_ID"
 
 load_agent_ports "$AGENT_ID" "$REPO_ROOT"
-DB_PORT="${DB_PORT:-${AGENT_DB_PORT:-${HARNESS_DB_PORT_DEFAULT:-15432}}}"
+DB_PORT="${DB_PORT:-${AGENT_DB_PORT:-$(har_infra_port_default db 15432)}}"
 export PGPASSWORD="password"
 
 PM2_SLOT_PREFIX="$(har_pm2_slot_prefix "$AGENT_ID")"

@@ -151,19 +151,17 @@ Document and configure ports in `.har/harness.env` and `.har/README.md`. Use the
 
 **Shared infra ports** (one per machine, all profiles when the service is in `HARNESS_INFRA_SERVICES`):
 
-| Service | Default var | On conflict |
-|---------|-------------|-------------|
-| Postgres | `HARNESS_DB_PORT_DEFAULT` | Scan `HARNESS_DB_PORT_SCAN_START..END` |
-| MinIO | `HARNESS_MINIO_PORT_DEFAULT` (+ console) | Scan configured ranges |
-| Mailpit | `HARNESS_MAILPIT_*_PORT_DEFAULT` | Scan configured ranges |
-| Headless browser | `HARNESS_BROWSER_PORT_DEFAULT` | Scan configured ranges |
+Each shared service gets one lane in `HARNESS_INFRA_PORT_LANES`
+(`<lane>=<default>:<scan_start>-<scan_end>`): `db`, `minio`, `minio-console`,
+`browser`, `mailpit-web`, `mailpit-smtp`. setup-infra.sh tries the default
+first and scans the range on conflict.
 
 Onboarding may set an initial `agentSlots.max` in `.har/stages.json`. After you know the real stack cost, **re-tune** that limit for machine capacity (lighter stack → you can raise; heavy Docker/DB → lower). `har env maintain --finalize` syncs legacy `HARNESS_AGENT_SLOT_*` exports in `harness.env`.
 
 **Port / infra checklist:**
 
 - [ ] `.har/harness.env` has `HARNESS_FE_BASE_PORT`, `HARNESS_API_BASE_PORT`, `HARNESS_PORT_STEP` (default profile) or explains why they are absent (CLI/iOS)
-- [ ] For each service in `HARNESS_INFRA_SERVICES`, matching `HARNESS_*_PORT_DEFAULT` and `SCAN_*` vars exist in `harness.env`
+- [ ] For each service in `HARNESS_INFRA_SERVICES`, a matching lane exists in `HARNESS_INFRA_PORT_LANES` in `harness.env`
 - [ ] `.har/README.md` has a **Port & shared services** section (allocation table, shared vs per-slot, do-not rules)
 - [ ] App code and tests read ports from `.env.agent.<id>` / `agent-cli.sh` / slot registry — no hardcoded `3000`, `15432`, `3847`, etc.
 - [ ] `env.template` and `CLAUDE.agent.md` show resolved ports via variables, not literals

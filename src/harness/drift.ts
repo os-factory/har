@@ -41,6 +41,14 @@ const APP_PORT_VARS = [
   'HARNESS_PORT_STEP',
 ] as const;
 
+/** Lanes each compose service needs in HARNESS_INFRA_PORT_LANES (1.0 contract). */
+const INFRA_PORT_LANES_BY_SERVICE: Record<string, readonly string[]> = {
+  db: ['db'],
+  minio: ['minio', 'minio-console'],
+  mailpit: ['mailpit-web', 'mailpit-smtp'],
+  'headless-browser': ['browser'],
+};
+
 const INFRA_PORT_VARS_BY_SERVICE: Record<string, readonly string[]> = {
   db: [
     'HARNESS_DB_PORT_DEFAULT',
@@ -88,11 +96,22 @@ export function missingPortDocumentationVars(
   }
 
   const services = (env.HARNESS_INFRA_SERVICES ?? '').trim().split(/\s+/).filter(Boolean);
+  const declaredLanes = new Set(
+    (env.HARNESS_INFRA_PORT_LANES ?? '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((entry) => entry.split('=')[0]),
+  );
   for (const service of services) {
+    const lanes = INFRA_PORT_LANES_BY_SERVICE[service];
+    if (lanes && lanes.every((lane) => declaredLanes.has(lane))) continue;
     const vars = INFRA_PORT_VARS_BY_SERVICE[service];
     if (!vars) continue;
-    for (const key of vars) {
-      if (!(key in env)) missing.push(key);
+    if (vars.some((key) => !(key in env))) {
+      // Neither a lane declaration nor the legacy triplets — report the lane
+      // entries the 1.0 contract expects in HARNESS_INFRA_PORT_LANES.
+      missing.push(...(lanes ?? []).map((lane) => `HARNESS_INFRA_PORT_LANES:${lane}`));
     }
   }
 
