@@ -15,6 +15,15 @@ const PROVISION_SCRIPT = path.join(
   'provision-toolchain.sh',
 );
 
+// Single source for the node package-manager helpers (har_node_*, har_pkg_exec).
+const NODE_PM_LIB = path.join(
+  resolveTemplatesDir(),
+  'runtime-bundles',
+  'shared-kernel',
+  'lib',
+  'node-pm.sh',
+);
+
 describe('provision-toolchain.sh template contract', () => {
   it('shared-kernel ships provision-toolchain.sh with valid bash syntax', () => {
     expect(fs.existsSync(PROVISION_SCRIPT)).toBe(true);
@@ -126,7 +135,6 @@ describe('provision-toolchain.sh template contract', () => {
   }
 
   it('resolves the package manager from lockfile, packageManager field, and override', () => {
-    const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-pm-'));
 
     const declared = (files: Record<string, string>, env = ''): string => {
@@ -139,7 +147,7 @@ describe('provision-toolchain.sh template contract', () => {
       // detection order is what is under test, not the ambient pin.
       const result = run(
         `env -u HARNESS_NODE_PACKAGE_MANAGER ${env} ` +
-          `bash -c '. "${harnessEnv}" && har_node_declared_package_manager "${tmpDir}"'`,
+          `bash -c '. "${NODE_PM_LIB}" && har_node_declared_package_manager "${tmpDir}"'`,
       );
       expect(result.code).toBe(0);
       return result.stdout.trim();
@@ -168,9 +176,8 @@ describe('provision-toolchain.sh template contract', () => {
   });
 
   it('maps each package manager to its runner and lockfile', () => {
-    const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
     const result = run(
-      `bash -c '. "${harnessEnv}" && for m in npm bun pnpm yarn; do ` +
+      `bash -c '. "${NODE_PM_LIB}" && for m in npm bun pnpm yarn; do ` +
         `echo "$m|$(har_pkg_exec "$m")|$(har_node_lockfile "$m")"; done'`,
     );
 
@@ -185,7 +192,6 @@ describe('provision-toolchain.sh template contract', () => {
 
   it('falls back to an installed manager and leaves the declared lockfile alone', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-pt-fallback-'));
-    const harnessEnv = path.join(resolveTemplatesDir(), 'har-boilerplate-cli', 'harness.env');
 
     // A repo that declares pnpm, installed by npm because pnpm is missing: the
     // substitute writes package-lock.json, which must not survive the install.
@@ -193,7 +199,7 @@ describe('provision-toolchain.sh template contract', () => {
     fs.writeFileSync(path.join(tmpDir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
 
     const substitute = run(
-      `bash -c '. "${harnessEnv}" && npm() { : > package-lock.json; } && ` +
+      `bash -c '. "${NODE_PM_LIB}" && npm() { : > package-lock.json; } && ` +
         `har_node_install "${tmpDir}" npm pnpm'`,
     );
 
@@ -203,7 +209,7 @@ describe('provision-toolchain.sh template contract', () => {
 
     // The declared manager keeps its own lockfile.
     const declaredRun = run(
-      `bash -c '. "${harnessEnv}" && npm() { : > package-lock.json; } && ` +
+      `bash -c '. "${NODE_PM_LIB}" && npm() { : > package-lock.json; } && ` +
         `har_node_install "${tmpDir}" npm npm'`,
     );
 
@@ -211,20 +217,47 @@ describe('provision-toolchain.sh template contract', () => {
     expect(fs.existsSync(path.join(tmpDir, 'package-lock.json'))).toBe(true);
   });
 
-  it('ships the package manager helpers identically in harness.env and provision-toolchain.sh', () => {
-    const extract = (file: string): string => {
-      const content = fs.readFileSync(file, 'utf8');
-      const start = content.indexOf('# ── Node package manager helpers');
-      const end = content.indexOf('  echo "npx --yes"\n}', start);
-      expect(start).toBeGreaterThan(-1);
-      expect(end).toBeGreaterThan(start);
-      return content.slice(start, end);
-    };
+  it('defines the node package-manager helpers in exactly one template file', () => {
+    const helperDefs = /^(HAR_NODE_PACKAGE_MANAGERS=|har_node_declared_package_manager\(\)|har_node_package_manager\(\)|har_node_lockfile\(\)|har_node_install\(\)|har_pkg_exec\(\))/m;
 
-    for (const profile of PROFILES) {
-      const dir = path.join(resolveTemplatesDir(), profile);
-      expect(extract(path.join(dir, 'harness.env'))).toBe(extract(PROVISION_SCRIPT));
+    // The lib is the single source and defines the full helper set.
+    const lib = fs.readFileSync(NODE_PM_LIB, 'utf8');
+    for (const fn of [
+      'har_node_declared_package_manager()',
+      'har_node_package_manager()',
+      'har_node_lockfile()',
+      'har_node_install()',
+      'har_pkg_exec()',
+    ]) {
+      expect(lib).toContain(fn);
     }
+
+    // No other template file defines any of the helpers; harness.env is config.
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name);
+        return entry.isDirectory() ? walk(full) : [full];
+      });
+    const offenders = walk(resolveTemplatesDir()).filter(
+      (file) => file !== NODE_PM_LIB && helperDefs.test(fs.readFileSync(file, 'utf8')),
+    );
+    expect(offenders).toEqual([]);
+
+    // Every consumer sources the lib: agent-slot.sh serves the .har scripts,
+    // provision-toolchain.sh sources it as a subprocess.
+    for (const profile of PROFILES) {
+      const agentSlot = fs.readFileSync(
+        path.join(resolveTemplatesDir(), profile, 'agent-slot.sh'),
+        'utf8',
+      );
+      expect(agentSlot).toContain('lib/node-pm.sh');
+      const harnessEnv = fs.readFileSync(
+        path.join(resolveTemplatesDir(), profile, 'harness.env'),
+        'utf8',
+      );
+      expect(harnessEnv).not.toMatch(/har_node_|har_pkg_exec/);
+    }
+    expect(fs.readFileSync(PROVISION_SCRIPT, 'utf8')).toContain('lib/node-pm.sh');
   });
 
   it('verify.sh dispatches stock smoke by ecosystem', () => {
@@ -245,7 +278,10 @@ describe('provision-toolchain.sh template contract', () => {
 
     const sourcePythonHelpers = (body: string): ReturnType<typeof run> =>
       run(
+        // Sourcing from a stream loses BASH_SOURCE, so point the script at the
+        // node-pm lib explicitly.
         `HAR_WORK_DIR="." HAR_ENV_FILE=/dev/null HAR_AGENT_ID= HAR_WORKTREE_DIR= HAR_REL_PREFIX= ` +
+          `HAR_NODE_PM_LIB="${NODE_PM_LIB}" ` +
           `bash -c 'source <(sed "/^append_env \\"HARNESS_TOOLCHAIN_PROVISIONED\\"/,\\$d" "${scriptPath}") && ${body}'`,
       );
 
