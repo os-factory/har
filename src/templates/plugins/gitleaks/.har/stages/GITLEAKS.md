@@ -63,7 +63,7 @@ same config governs local stage runs and CI.
 
 ## CI and compliance platforms (Vanta, Drata, …)
 
-The optional workflow `.github/workflows/gitleaks.yml` (skipped with `--skip-ci`)
+The optional workflow `.github/workflows/gitleaks.yml` (installed only with `--with-ci`)
 runs the official [`gitleaks/gitleaks-action`](https://github.com/gitleaks/gitleaks-action)
 on pushes and pull requests.
 
