@@ -4,7 +4,9 @@
     "min": 1,
     "max": 5
   },
-  "verificationStages": ["smoke"],
+  "verificationStages": [
+    "smoke"
+  ],
   "stages": [
     {
       "id": "launch",
@@ -31,8 +33,7 @@
       "id": "status",
       "kind": "inspect",
       "description": "Inspect agent slot",
-      "script": "agent-cli.sh",
-      "requiresAgentId": true
+      "command": "./.har/agent-cli.sh {agentId} status"
     },
     {
       "id": "logs",

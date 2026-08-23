@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Sets up shared infrastructure for all agents.
-# Starts the docker compose services listed in HARNESS_INFRA_SERVICES, creates
-# the template database (when "db" is enabled), and starts optional shared app
-# services (ecosystem.shared.config.cjs). One instance serves every agent slot.
+# Starts the docker compose services listed in HARNESS_INFRA_SERVICES and
+# optional shared app services (ecosystem.shared.config.cjs). One instance
+# serves every agent slot.
 # Idempotent — safe to run multiple times.
 #
 # Usage: ./.har/setup-infra.sh
@@ -111,7 +111,9 @@ else
   log "No shared infra services enabled in harness.env (HARNESS_INFRA_SERVICES)"
 fi
 
-# Wait for PostgreSQL and prepare the template database
+# Wait for PostgreSQL when the optional db service is enabled. The cli profile
+# has no template-database flow — per-slot databases are the pm2 profiles'
+# concern (see har-boilerplate/setup-infra.sh).
 if har_infra_enabled db; then
   log "Waiting for PostgreSQL on port $DB_PORT..."
   for i in $(seq 1 30); do
@@ -128,33 +130,6 @@ if har_infra_enabled db; then
 
   log "Enabling pg_stat_statements extension..."
   $PSQL -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" 2>/dev/null || true
-
-  if [ -n "${HARNESS_TEMPLATE_DB:-}" ]; then
-    if $PSQL -tAc "SELECT 1 FROM pg_database WHERE datname = '$HARNESS_TEMPLATE_DB'" | grep -q 1; then
-      log "Template database '$HARNESS_TEMPLATE_DB' already exists. Skipping creation."
-    else
-      log "Creating template database '$HARNESS_TEMPLATE_DB'..."
-      $PSQL -c "CREATE DATABASE $HARNESS_TEMPLATE_DB"
-
-      if [ -n "${HARNESS_DB_MIGRATE_CMD:-}" ] && [ "$HARNESS_DB_MIGRATE_CMD" != "echo 'TODO: set migrate command'" ]; then
-        log "Running migrations..."
-        PGPASSWORD=password PGHOST=localhost PGPORT="$DB_PORT" PGUSER=postgres \
-          PGDATABASE="$HARNESS_TEMPLATE_DB" \
-          bash -c "cd '$REPO_ROOT' && $HARNESS_DB_MIGRATE_CMD"
-      fi
-
-      if [ -n "${HARNESS_DB_SEED_CMD:-}" ] && [ "$HARNESS_DB_SEED_CMD" != "echo 'TODO: set seed command'" ]; then
-        log "Running seeds..."
-        PGPASSWORD=password PGHOST=localhost PGPORT="$DB_PORT" PGUSER=postgres \
-          PGDATABASE="$HARNESS_TEMPLATE_DB" \
-          bash -c "cd '$REPO_ROOT' && $HARNESS_DB_SEED_CMD"
-      fi
-
-      log "Marking '$HARNESS_TEMPLATE_DB' as a PostgreSQL template..."
-      $PSQL -c "UPDATE pg_database SET datistemplate = true WHERE datname = '$HARNESS_TEMPLATE_DB'"
-      log "Template database ready: $HARNESS_TEMPLATE_DB"
-    fi
-  fi
 fi
 
 # Shared app services — supporting services of a monolith/monorepo that agents

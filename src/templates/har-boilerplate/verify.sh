@@ -208,12 +208,36 @@ run_full_checks() {
   esac
 }
 
+# Emit the results JSON and exit non-zero when any step failed. Quick mode
+# calls this at the first failing step (stopping early); the full pipeline
+# runs every step and calls it once at the end.
+emit_results() {
+  END_TOTAL=$(now_ms)
+  TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
+
+  node -e "
+const results = $RESULTS_JSON;
+const overall = results.length > 0 && results.every(r => r.pass);
+const out = {
+  status: overall ? 'pass' : 'fail',
+  agent_id: $AGENT_ID,
+  total_ms: $TOTAL_MS,
+  stages: results,
+};
+process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+" 2>/dev/null || echo "{\"status\":\"fail\",\"agent_id\":${AGENT_ID},\"stages\":[]}"
+
+  if [ "$OVERALL_PASS" = "false" ]; then
+    exit 1
+  fi
+}
+
 # ── Verification stages ─────────────────────────────────────────────────────
 # These stock steps are intentionally generic conventions. Adapt this section
 # to the repository's real commands from package.json, Makefile, CI, pyproject,
 # Cargo.toml, go.mod, pom.xml, etc.
-run_quick_smoke || { [ -z "$FULL" ] && true; }
-run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}" || { [ -z "$FULL" ] && true; }
+run_quick_smoke || emit_results
+run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}" || emit_results
 
 if [ -n "$FULL" ]; then
   run_full_checks
@@ -229,21 +253,4 @@ fi
 
 # ── Output results ────────────────────────────────────────────────────────────
 
-END_TOTAL=$(now_ms)
-TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
-
-node -e "
-const results = $RESULTS_JSON;
-const overall = results.length > 0 && results.every(r => r.pass);
-const out = {
-  status: overall ? 'pass' : 'fail',
-  agent_id: $AGENT_ID,
-  total_ms: $TOTAL_MS,
-  stages: results,
-};
-process.stdout.write(JSON.stringify(out, null, 2) + '\n');
-" 2>/dev/null || echo "{\"status\":\"fail\",\"agent_id\":${AGENT_ID},\"stages\":[]}"
-
-if [ "$OVERALL_PASS" = "false" ]; then
-  exit 1
-fi
+emit_results

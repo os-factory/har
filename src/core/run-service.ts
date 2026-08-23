@@ -10,6 +10,7 @@ import {
   bindValidationToAttempt,
   createWorkAttempt,
   decideWorkUnitOutcome,
+  findWorkUnit,
   upsertWorkUnit,
 } from './work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
@@ -263,7 +264,7 @@ export class RunService {
         workUnitId,
         attemptId,
       },
-      trigger: 'cli',
+      trigger: options.trigger ?? 'cli',
     });
     const envResult = toEnvironmentRunResult(result);
     if (envResult.code === 0) {
@@ -404,6 +405,11 @@ export class RunService {
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
   }): Promise<EnvironmentRunResult> {
+    // Captured before teardown clears the slot registry — the attempt binding
+    // is gone afterwards.
+    const harnessRoot = resolveHarnessRoot(options.repoPath);
+    const session = readSlotRegistry(harnessRoot, options.agentId);
+
     const result = await this.runStage({
       repoPath: options.repoPath,
       kind: 'teardown',
@@ -412,7 +418,27 @@ export class RunService {
       capture: options.capture ?? false,
       trigger: options.trigger ?? 'cli',
     });
-    return toEnvironmentRunResult(result);
+    const envResult = toEnvironmentRunResult(result);
+
+    // Teardown is the only exit besides `complete`; close the open attempt so
+    // work units don't linger as in-flight forever. `complete` records its
+    // 'completed' outcome before tearing down, so an existing outcome wins.
+    if (envResult.code === 0 && session?.workUnitId) {
+      try {
+        const workUnit = findWorkUnit(harnessRoot, session.workUnitId);
+        if (workUnit && !workUnit.outcome) {
+          decideWorkUnitOutcome(harnessRoot, session.workUnitId, {
+            decision: 'abandoned',
+            decidedAt: new Date().toISOString(),
+            attemptId: session.attemptId,
+            reason: 'Session torn down without completion.',
+          });
+        }
+      } catch {
+        // Outcome bookkeeping must not fail an otherwise successful teardown.
+      }
+    }
+    return envResult;
   }
 
   /**
@@ -519,7 +545,6 @@ export class RunService {
         repoPath: options.repoPath,
         stageId: 'status',
         agentId: options.agentId,
-        args: ['status'],
         capture,
         trigger: options.trigger ?? 'cli',
       });
@@ -535,7 +560,6 @@ export class RunService {
         repoPath: options.repoPath,
         stageId: 'status',
         agentId: id,
-        args: ['status'],
         capture,
         trigger: options.trigger ?? 'cli',
       });
