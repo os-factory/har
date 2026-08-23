@@ -7,7 +7,6 @@ import type { HarnessProfile } from './generator';
 import type { HarnessDriftResult } from './drift';
 import { templateFileForHarness } from './gitignore-template';
 import { getHarnessDir, readManifest } from './manifest';
-import { resolveTemplatesDir } from '../utils/paths';
 import {
   buildPluginDriftActions,
   compareInstalledPluginsToTemplate,
@@ -16,7 +15,7 @@ import {
   type PluginDriftAction,
   type PluginDriftResult,
 } from './plugin-drift';
-import { PROFILE_DIRS } from './profiles';
+import { composeProfileTemplateMap } from './profiles';
 import type { ValidationIssue, ValidationResult } from './validator';
 import { detectInstructionFiles } from './instruction-files';
 
@@ -82,17 +81,18 @@ function projectNameFromRepo(repoPath: string): string {
   return path.basename(repoPath).toLowerCase().replace(/[^a-z0-9]/g, '_');
 }
 
-function boilerplateDirForProfile(profile: HarnessProfile): string {
-  return path.join(resolveTemplatesDir(), PROFILE_DIRS[profile]);
-}
-
 function readBundledTemplateContent(
   repoPath: string,
   profile: HarnessProfile,
   file: string,
 ): string {
-  const templatePath = path.join(boilerplateDirForProfile(profile), templateFileForHarness(file));
-  let content = fs.readFileSync(templatePath, 'utf8');
+  // Resolve through the composed bundle set — bundle-provided files (e.g.
+  // provision-toolchain.sh) no longer exist in the profile overlay dirs.
+  const entry = composeProfileTemplateMap(profile).get(templateFileForHarness(file));
+  if (!entry) {
+    throw new Error(`Template file not found in composed ${profile} profile: ${file}`);
+  }
+  let content = fs.readFileSync(entry.sourcePath, 'utf8');
   if (file === 'harness.env') {
     content = substituteProjectName(content, projectNameFromRepo(repoPath));
   }
