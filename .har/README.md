@@ -15,6 +15,7 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `harness.env` | Shared config: worktree default, `HARNESS_INFRA_SERVICES`, toolchain provisioning (`HARNESS_ECOSYSTEM`, `HARNESS_INSTALL_CMD`), migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
+| `stages/fixture-e2e.sh` | v1.0.0 milestone gate — built CLI vs a car-app fixture clone (opt-in via `HAR_FIXTURE_E2E=1`; see `.claude/skills/v1-milestone/`) |
 | `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |

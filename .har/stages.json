@@ -5,7 +5,8 @@
     "max": 5
   },
   "verificationStages": [
-    "docs-drift"
+    "docs-drift",
+    "fixture-e2e"
   ],
   "commitGate": {
     "enabled": true,
@@ -66,6 +67,21 @@
       "command": "(cd docs && ${NPM_BIN:-npm} run drift)",
       "requiresAgentId": false,
       "group": "documentation"
+    },
+    {
+      "id": "fixture-e2e",
+      "kind": "test",
+      "description": "v1.0.0 milestone gate: run the built CLI end-to-end against a clone of the car-app example (skipped unless HAR_FIXTURE_E2E=1; HAR_FIXTURE_MILESTONE=M0..M5 adds milestone asserts)",
+      "script": "stages/fixture-e2e.sh",
+      "requiresAgentId": true,
+      "group": "release-gate",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/fixture-e2e",
+          "kind": "directory",
+          "description": "Gate logs and fixture status snapshots"
+        }
+      ]
     },
     {
       "id": "teardown",
