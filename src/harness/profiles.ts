@@ -27,62 +27,20 @@ export const ProfileManifestSchema = z.object({
 export type ProfileManifest = z.infer<typeof ProfileManifestSchema>;
 export type ProfileBundleRef = z.infer<typeof ProfileBundleRefSchema>;
 
-/**
- * Built-in profile compositions (DeepSeek-style: profile = ordered bundles).
- * Shared kernel first; profile overlay last.
- */
-const PROFILE_COMPOSITIONS: Record<HarnessProfile, ProfileManifest> = {
-  default: {
-    id: 'default',
-    description: 'Web app — shared kernel + PM2 runtime + Docker infra',
-    bundles: [
-      { id: 'shared-kernel', path: 'runtime-bundles/shared-kernel' },
-      { id: 'pm2-runtime', path: 'runtime-bundles/pm2-runtime' },
-      { id: 'runtime-default', path: 'har-boilerplate' },
-    ],
-  },
-  cli: {
-    id: 'cli',
-    description: 'CLI/library — shared kernel + CLI overlay (no PM2)',
-    bundles: [
-      { id: 'shared-kernel', path: 'runtime-bundles/shared-kernel' },
-      { id: 'runtime-cli', path: 'har-boilerplate-cli' },
-    ],
-  },
-  ios: {
-    id: 'ios',
-    description: 'iOS — shared kernel + Xcode/Simulator overlay',
-    bundles: [
-      { id: 'shared-kernel', path: 'runtime-bundles/shared-kernel' },
-      { id: 'xcode-sim', path: 'runtime-bundles/xcode-sim' },
-      { id: 'runtime-ios', path: 'har-boilerplate-ios' },
-    ],
-  },
-};
-
-/** @deprecated Prefer readProfileManifest — maps profile → primary overlay dir for maintain/drift. */
-export const PROFILE_DIRS: Record<HarnessProfile, string> = {
-  default: 'har-boilerplate',
-  cli: 'har-boilerplate-cli',
-  ios: 'har-boilerplate-ios',
-};
-
 export function readProfileManifest(profile: HarnessProfile): ProfileManifest {
   const templates = resolveTemplatesDir();
   const manifestPath = path.join(templates, 'profiles', profile, 'profile.manifest.json');
-  if (fs.existsSync(manifestPath)) {
-    const parsed = ProfileManifestSchema.safeParse(
-      JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
-    );
-    if (!parsed.success) {
-      throw new Error(`Invalid profile manifest for ${profile}: ${parsed.error.message}`);
-    }
-    if (parsed.data.id !== profile) {
-      throw new Error(`Profile manifest id mismatch: expected ${profile}, got ${parsed.data.id}`);
-    }
-    return parsed.data;
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Profile manifest not found: ${manifestPath}. Run npm run build.`);
   }
-  return PROFILE_COMPOSITIONS[profile];
+  const parsed = ProfileManifestSchema.safeParse(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
+  if (!parsed.success) {
+    throw new Error(`Invalid profile manifest for ${profile}: ${parsed.error.message}`);
+  }
+  if (parsed.data.id !== profile) {
+    throw new Error(`Profile manifest id mismatch: expected ${profile}, got ${parsed.data.id}`);
+  }
+  return parsed.data;
 }
 
 export function resolveProfileBundleDir(bundle: ProfileBundleRef): string {

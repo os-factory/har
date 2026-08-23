@@ -2,37 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { copyDirRecursive } from '../utils/file-ops';
 import { info, success } from '../utils/logging';
-import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
+import { resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
-import { writeHarnessGitignore } from './gitignore-template';
+import { HARNESS_GITIGNORE_TEMPLATE, writeHarnessGitignore } from './gitignore-template';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 import { ensurePluginLedgerScaffold } from './plugin-ledger';
 import {
   HarnessProfile,
-  PROFILE_DIRS,
+  composeProfileTemplateMap,
   readProfileManifest,
   resolveProfileBundleDir,
 } from './profiles';
 import { syncAgentSlotsToHarnessEnv } from './stages';
 
 export type { HarnessProfile };
-export { PROFILE_DIRS, HARNESS_PROFILES } from './profiles';
-
-/** Files not used by the CLI profile — removed after scaffold so init leaves no dead SaaS/PM2 assets. */
-const CLI_PRUNE_FILES = [
-  'ecosystem.agent.template.cjs',
-  'env.template',
-  'attach.sh',
-] as const;
-
-function pruneCliProfile(harnessDir: string): void {
-  for (const file of CLI_PRUNE_FILES) {
-    const filePath = path.join(harnessDir, file);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  }
-}
+export { HARNESS_PROFILES } from './profiles';
 
 export { DEFAULT_HAR_DIR };
 
@@ -79,18 +63,10 @@ export function scaffoldHarnessBoilerplate(
   const profileManifest = readProfileManifest(profile);
   const bundleIds = profileManifest.bundles.map((b) => b.id);
 
-  // Primary overlay dir — used for .gitignore template and maintain/drift baseline
-  const primaryOverlay = PROFILE_DIRS[profile];
-  const boilerplateDir = path.join(resolveTemplatesDir(), primaryOverlay);
-
   if (fs.existsSync(harnessDir) && !options.force) {
     throw new Error(
       '.har/ already exists. Use --force to overwrite or run "har env maintain" to update in place.',
     );
-  }
-
-  if (!fs.existsSync(boilerplateDir)) {
-    throw new Error(`Boilerplate template not found at ${boilerplateDir}`);
   }
 
   if (options.force && fs.existsSync(harnessDir)) {
@@ -105,10 +81,9 @@ export function scaffoldHarnessBoilerplate(
     copyDirRecursive(bundleDir, harnessDir);
   }
 
-  writeHarnessGitignore(harnessDir, boilerplateDir);
-
-  if (profile === 'cli') {
-    pruneCliProfile(harnessDir);
+  const gitignoreSource = composeProfileTemplateMap(profile).get(HARNESS_GITIGNORE_TEMPLATE);
+  if (gitignoreSource) {
+    writeHarnessGitignore(harnessDir, path.dirname(gitignoreSource.sourcePath));
   }
 
   syncAgentSlotsToHarnessEnv(repoPath);

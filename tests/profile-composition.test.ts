@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { compareHarnessToTemplate } from '../src/harness/drift';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 import {
   composeProfileTemplateMap,
@@ -71,4 +72,27 @@ describe('profile bundle composition', () => {
       expect(extras).toEqual([]);
     });
   }
+});
+
+describe('adaptation prompt is generated, not templated', () => {
+  it('no bundle ships a static ADAPT-PROMPT.md', () => {
+    for (const profile of HARNESS_PROFILES) {
+      expect(composeProfileTemplateMap(profile).has('ADAPT-PROMPT.md')).toBe(false);
+    }
+  });
+
+  it('ios: onboarding-written ADAPT-PROMPT.md causes no day-one drift', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-ios-drift-'));
+    tmpDirs.push(repoPath);
+    scaffoldHarnessBoilerplate(repoPath, { profile: 'ios' });
+    // Onboarding rewrites the prompt with project-specific content.
+    fs.writeFileSync(
+      path.join(repoPath, '.har', 'ADAPT-PROMPT.md'),
+      '# Adapt this harness\nproject-specific content\n',
+    );
+
+    const drift = compareHarnessToTemplate(repoPath);
+    const flagged = [...drift.missing, ...drift.checksumMismatch, ...drift.extra];
+    expect(flagged.filter((f) => f.startsWith('ADAPT-PROMPT'))).toEqual([]);
+  });
 });
