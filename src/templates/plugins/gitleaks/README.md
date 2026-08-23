@@ -16,7 +16,7 @@ What it adds:
 - `.gitleaks.toml` — default config extending the built-in ruleset with harness
   allowlists (skipped if the repo already has one)
 - `.github/workflows/gitleaks.yml` — official `gitleaks/gitleaks-action` CI
-  workflow (skip with `--skip-ci`)
+  workflow (opt in with `--with-ci`)
 
 Requirements: the `gitleaks` binary on PATH (`brew install gitleaks` or a
 [release binary](https://github.com/gitleaks/gitleaks/releases)). No package.json

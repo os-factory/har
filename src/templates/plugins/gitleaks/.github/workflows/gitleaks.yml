@@ -1,5 +1,5 @@
 # Secrets scanning with the official Gitleaks action.
-# Installed by `har env add-plugin gitleaks` (skip with --skip-ci).
+# Installed by `har env add-plugin gitleaks --with-ci` (CI files are skipped by default).
 #
 # This CI run is what produces org-level scanning evidence that compliance
 # platforms (Vanta, Drata, …) can ingest via your GitHub organization.
