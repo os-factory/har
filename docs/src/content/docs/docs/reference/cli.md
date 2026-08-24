@@ -56,6 +56,8 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
 | `doctor` | Validate the harness contract (schema, stages, scripts, port lanes) |
+| `eject` | Vendor the runtime into `.har/runtime/` and own the scripts yourself |
+| `adopt` | Return an ejected harness to managed shims |
 | `status` | Inspect all slots |
 | `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
 | `agent <id> <command>` | Per-slot ops: `status`, `logs`, `restart`, `psql`, `health`, `url`, `reset-db`, `slow-queries`, `exec`, `attach` |
@@ -183,8 +185,32 @@ coherent (no overlaps, defaults inside scan ranges), and slot registry entries
 point at existing worktrees. Every finding carries a remedy. Doctor also runs
 automatically inside `har env maintain` and before every `launch` — a broken
 adaptation blocks the launch instead of failing mid-session. Pre-1.0 harnesses
-report contract findings as warnings until they migrate. MCP twin:
-`har_doctor`.
+report contract findings as warnings until they migrate. On an ejected
+harness, doctor additionally checks the vendored runtime exists and the
+user-owned scripts are executable. MCP twin: `har_doctor`.
+
+### Eject and adopt
+
+```bash
+har env eject [--yes]
+har env adopt
+```
+
+`eject` is the explicit, supported path for power users who want to own the
+runtime scripts: it vendors the complete HAR runtime bundle into
+`.har/runtime/` and rewrites the `.har/*.sh` scripts to execute it directly
+with node — no `har` on PATH, no npx fallback. The choice is recorded in
+`.har/manifest.json` (`ejected`, `ejectedVersion`). From then on those files
+are user-owned: `maintain` reports no upstream drift for them, and upstream
+fixes reach them only by re-ejecting. Support covers issues reproducible with
+the managed shims; changes made to an ejected runtime are yours to maintain.
+Config surface files (`harness.env`, `stages.json`, `stages/`, docs) stay
+managed either way.
+
+`adopt` reverses it: regenerates the managed shims, removes `.har/runtime/`,
+and clears the manifest record, preserving the config surface. Both commands
+are deliberately CLI-only (no MCP twin) — runtime ownership is a human policy
+decision with an interactive confirmation (`--yes` for automation).
 
 ### Status and runs
 

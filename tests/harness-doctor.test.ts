@@ -57,7 +57,12 @@ describe('har env doctor (#232)', () => {
     expect(report.contract).toBe('1.0');
     expect(report.findings.filter((f) => f.severity === 'error')).toEqual([]);
     expect(report.ok).toBe(true);
-    expect(report.checks.every((c) => c.status === 'pass')).toBe(true);
+    // ejected-runtime (#239) is skipped on a non-ejected harness by design.
+    expect(
+      report.checks.every(
+        (c) => c.status === 'pass' || (c.id === 'ejected-runtime' && c.status === 'skip'),
+      ),
+    ).toBe(true);
     expect(summarizeDoctorReport(report)).toBeNull();
   });
 

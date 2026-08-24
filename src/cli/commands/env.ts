@@ -36,6 +36,7 @@ import { listRuns, getRun } from '../../core/runs';
 import { runAgentOp } from '../../runtime';
 import { addWorkUnitLinks, parseWorkLinkSpec } from '../../core/work-units';
 import { resolveHarnessRoot } from '../../harness/manifest';
+import { adoptHarness, ejectHarness } from '../../harness/eject';
 import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
 import {
   confirmCleanupSelection,
@@ -418,6 +419,26 @@ export const envCommand = {
         handleDoctor,
       )
       .command(
+        'eject',
+        'Vendor the HAR runtime into .har/ and own the scripts yourself (reversible: har env adopt)',
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('yes', {
+              alias: 'y',
+              type: 'boolean',
+              default: false,
+              describe: 'Skip the confirmation prompt',
+            }),
+        handleEject,
+      )
+      .command(
+        'adopt',
+        'Return an ejected harness to managed shims (removes .har/runtime/, keeps your config)',
+        (y: Argv) => y.option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
+        handleAdopt,
+      )
+      .command(
         'status',
         'Show status of all running agents',
         (y: Argv) =>
@@ -537,7 +558,7 @@ export const envCommand = {
       )
       .demandCommand(
         1,
-        'Please specify a subcommand: init, maintain, add-plugin, add-stage, launch, recover, verify, complete, teardown, doctor, status, logs, run-stage, artifacts, cleanup, runs',
+        'Please specify a subcommand: init, maintain, add-plugin, add-stage, launch, recover, verify, complete, teardown, doctor, eject, adopt, status, logs, run-stage, artifacts, cleanup, runs',
       )
       .epilog(HAR_ENV_EPILOG),
   handler: () => {},
@@ -1251,6 +1272,63 @@ export async function handleDoctor(argv: { repo: string; json?: boolean }): Prom
   return finishCommand(report.ok ? 0 : 1);
 }
 
+async function confirm(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false;
+  const readline = await import('readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  const answer = await new Promise<string>((resolve) => rl.question(question, resolve));
+  rl.close();
+  return /^y(es)?$/i.test(answer.trim());
+}
+
+export async function handleEject(argv: { repo: string; yes: boolean }): Promise<void> {
+  const repoPath = resolveHarnessRoot(path.resolve(argv.repo));
+
+  header('har env eject');
+  warn('This vendors the complete HAR runtime into .har/runtime/ and rewrites the');
+  warn('.har/*.sh scripts to execute it directly — from then on YOU OWN those files:');
+  warn('  • har env maintain will no longer update them (no upstream drift reports)');
+  warn('  • upstream fixes and features reach you only by re-ejecting or adopting');
+  warn('  • support covers issues reproducible with managed shims; changes you make');
+  warn('    to the ejected runtime are yours to maintain');
+  warn('Config files (harness.env, stages.json, stages/, hooks, docs) stay managed.');
+  info('Reversible anytime: `har env adopt` (or `har env init --force`).');
+
+  if (!argv.yes) {
+    const ok = await confirm('Eject the runtime and own the scripts yourself? [y/N] ');
+    if (!ok) {
+      info('Aborted — nothing changed. Pass --yes to skip this prompt.');
+      return finishCommand(1);
+    }
+  }
+
+  try {
+    const result = ejectHarness(repoPath);
+    success(`Ejected @osfactory/har@${result.version} → .har/runtime/`);
+    info(`  Rewritten as user-owned: ${result.scripts.map((s) => `.har/${s}`).join(', ')}`);
+    info('  Recorded in .har/manifest.json (ejected: true) — commit .har/ to keep it.');
+    info('  Return to managed shims anytime: har env adopt');
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
+  return finishCommand(0);
+}
+
+export async function handleAdopt(argv: { repo: string }): Promise<void> {
+  const repoPath = resolveHarnessRoot(path.resolve(argv.repo));
+  try {
+    const result = adoptHarness(repoPath);
+    success('Returned to managed shims — .har/runtime/ removed, eject flag cleared.');
+    info(`  Regenerated: ${result.scripts.map((s) => `.har/${s}`).join(', ')}`);
+    info('  Config surface files (harness.env, stages.json, stages/, docs) were not touched.');
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
+  return finishCommand(0);
+}
+
 export async function handleStatus(argv: { repo: string; json?: boolean }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
@@ -1475,6 +1553,9 @@ function printValidation(result: {
 }
 
 function printDrift(drift: HarnessDriftResult): void {
+  if (drift.ownedByUser.length > 0) {
+    info(`  User-owned (ejected, never drift-checked): ${drift.ownedByUser.join(', ')}`);
+  }
   if (drift.conflict.length > 0) {
     warn(`  Conflict (upstream updated AND user edited — merge): ${drift.conflict.join(', ')}`);
   }

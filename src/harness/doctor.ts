@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { listSlotRegistryEntries } from '../core/slot-registry';
+import { EJECTED_RUNTIME_BUNDLE, EJECTED_RUNTIME_DIR } from './eject';
 import { readValidatedHarnessEnv } from './env';
-import { getHarnessDir } from './manifest';
+import { getHarnessDir, readManifest } from './manifest';
+import { RUNTIME_SHIM_FILES } from './template-tokens';
 import { HarnessStage, HarnessStageRegistry, PortLane } from './schema';
 import { readStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
@@ -24,7 +26,8 @@ export type DoctorCheckId =
   | 'verification-ids'
   | 'port-lanes'
   | 'slot-registry'
-  | 'hooks';
+  | 'hooks'
+  | 'ejected-runtime';
 
 export type DoctorContract = '1.0' | 'pre-1.0' | 'none';
 
@@ -69,6 +72,7 @@ const CHECK_LABELS: Record<DoctorCheckId, string> = {
   'port-lanes': 'infra port lanes',
   'slot-registry': 'slot registry worktrees',
   hooks: 'lifecycle hooks (.har/hooks)',
+  'ejected-runtime': 'ejected runtime (user-owned)',
 };
 
 /** Legacy helper functions whose presence marks a pre-1.0 harness.env. */
@@ -301,7 +305,39 @@ export function runDoctor(repoPath: string): DoctorReport {
     }
   }
 
-  // 7. Slot registry entries point at existing worktrees
+  // 7. Ejected runtime (#239): the vendored runtime the user-owned scripts
+  // execute must exist and the scripts must be executable. Not ejected → skip.
+  const manifest = readManifest(repoPath);
+  if (!manifest?.ejected) {
+    skipped.add('ejected-runtime');
+  } else {
+    const runtimeRel = path.join(EJECTED_RUNTIME_DIR, EJECTED_RUNTIME_BUNDLE);
+    const runtimePath = path.join(harnessDir, runtimeRel);
+    if (!fs.existsSync(runtimePath)) {
+      findings.push({
+        check: 'ejected-runtime',
+        severity: 'error',
+        file: runtimeRel,
+        message: `Harness is ejected but the vendored runtime .har/${runtimeRel} is missing`,
+        remedy: 'Restore it from git, re-run `har env eject`, or return to managed shims with `har env adopt`',
+      });
+    }
+    for (const shim of RUNTIME_SHIM_FILES) {
+      const shimPath = path.join(harnessDir, shim);
+      if (!fs.existsSync(shimPath)) continue; // missing lifecycle scripts are caught above
+      if (!(fs.statSync(shimPath).mode & 0o111)) {
+        findings.push({
+          check: 'ejected-runtime',
+          severity: 'warning',
+          file: shim,
+          message: `Ejected script ${shim} is not executable`,
+          remedy: `chmod +x .har/${shim}`,
+        });
+      }
+    }
+  }
+
+  // 8. Slot registry entries point at existing worktrees
   for (const entry of listSlotRegistryEntries(repoPath)) {
     if (entry.status === 'completed') continue;
     const dir = entry.worktreePath ?? entry.workDir;
