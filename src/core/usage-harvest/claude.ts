@@ -52,6 +52,11 @@ export interface ModelUsageTotals {
   tokensTotal: number;
 }
 
+interface NestedUsage {
+  usage: Record<string, unknown>;
+  model?: string;
+}
+
 function extractClaudeUsageFromRecords(records: unknown[]): {
   tokensInput: number;
   tokensOutput: number;
@@ -67,6 +72,13 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
   let costUsd: number | null = null;
   const modelBreakdown: Record<string, ModelUsageTotals> = {};
 
+  // One assistant message is written across several records — a text record, one
+  // per tool call — and every one of them repeats the same `usage`. Keyed by
+  // message id so a repeat is not a second charge; only records with no id at
+  // all are summed as they come.
+  const billed = new Map<string, NestedUsage>();
+  const unkeyed: NestedUsage[] = [];
+
   for (const record of records) {
     if (!record || typeof record !== 'object') continue;
     const payload = record as Record<string, unknown>;
@@ -79,44 +91,58 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
       tokensCacheCreation = Number(usage.cache_creation_input_tokens ?? 0);
       if (payload.total_cost_usd != null) costUsd = Number(payload.total_cost_usd);
     }
-    // Some transcripts nest usage on message/assistant events — accumulate when present.
+    // Some transcripts nest usage on message/assistant events — collect when present.
     const message = payload.message as
-      | { usage?: Record<string, unknown>; model?: string }
+      | { usage?: Record<string, unknown>; model?: string; id?: string }
       | undefined;
     const nestedUsage = (payload.usage ?? message?.usage) as
       | Record<string, unknown>
       | undefined;
     if (nestedUsage && payload.type !== 'result') {
-      const i = Number(nestedUsage.input_tokens ?? 0);
-      const o = Number(nestedUsage.output_tokens ?? 0);
-      const cr = Number(nestedUsage.cache_read_input_tokens ?? 0);
-      const cc = Number(nestedUsage.cache_creation_input_tokens ?? 0);
-      tokensInput += i;
-      tokensOutput += o;
-      tokensCacheRead += cr;
-      tokensCacheCreation += cc;
       const model = typeof message?.model === 'string' ? message.model : undefined;
-      if (model && model !== '<synthetic>') {
-        const totals = (modelBreakdown[model] ??= {
-          tokensInput: 0,
-          tokensOutput: 0,
-          tokensCacheRead: 0,
-          tokensCacheCreation: 0,
-          tokensTotal: 0,
-        });
-        totals.tokensInput += i;
-        totals.tokensOutput += o;
-        totals.tokensCacheRead += cr;
-        totals.tokensCacheCreation += cc;
-        totals.tokensTotal += i + o + cr + cc;
-      }
+      const entry: NestedUsage = { usage: nestedUsage, model };
+      if (typeof message?.id === 'string' && message.id) billed.set(message.id, entry);
+      else unkeyed.push(entry);
+    }
+  }
+
+  for (const { usage, model } of [...billed.values(), ...unkeyed]) {
+    const i = Number(usage.input_tokens ?? 0);
+    const o = Number(usage.output_tokens ?? 0);
+    const cr = Number(usage.cache_read_input_tokens ?? 0);
+    const cc = Number(usage.cache_creation_input_tokens ?? 0);
+    tokensInput += i;
+    tokensOutput += o;
+    tokensCacheRead += cr;
+    tokensCacheCreation += cc;
+    if (model && model !== '<synthetic>') {
+      const totals = (modelBreakdown[model] ??= {
+        tokensInput: 0,
+        tokensOutput: 0,
+        tokensCacheRead: 0,
+        tokensCacheCreation: 0,
+        tokensTotal: 0,
+      });
+      totals.tokensInput += i;
+      totals.tokensOutput += o;
+      totals.tokensCacheRead += cr;
+      totals.tokensCacheCreation += cc;
+      totals.tokensTotal += i + o + cr + cc;
     }
   }
 
   return { tokensInput, tokensOutput, tokensCacheRead, tokensCacheCreation, costUsd, modelBreakdown };
 }
 
-function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePath: string; records: unknown[]; mtimeMs: number }> {
+interface TranscriptMatch {
+  filePath: string;
+  records: unknown[];
+  mtimeMs: number;
+  /** Matched the slot's own work dir, rather than the repo-path fallback. */
+  primary: boolean;
+}
+
+function findMatchingClaudeTranscripts(slot: HarvestSlotContext): TranscriptMatch[] {
   const primaryTargets = [slot.workDir, slot.worktreePath].filter(Boolean) as string[];
   const fallbackTargets =
     slot.includeRepoPathFallback && slot.repoPath && !primaryTargets.includes(slot.repoPath)
@@ -127,8 +153,8 @@ function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePa
   const root = claudeProjectsRoot();
   if (!fs.existsSync(root)) return [];
 
-  const primary: Array<{ filePath: string; records: unknown[]; mtimeMs: number }> = [];
-  const fallback: Array<{ filePath: string; records: unknown[]; mtimeMs: number }> = [];
+  const primary: TranscriptMatch[] = [];
+  const fallback: TranscriptMatch[] = [];
 
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -157,8 +183,9 @@ function findMatchingClaudeTranscripts(slot: HarvestSlotContext): Array<{ filePa
           }
         }
       }
-      if (primaryHit) primary.push({ filePath, records, mtimeMs: stat.mtimeMs });
-      else if (fallbackHit) fallback.push({ filePath, records, mtimeMs: stat.mtimeMs });
+      if (primaryHit) primary.push({ filePath, records, mtimeMs: stat.mtimeMs, primary: true });
+      else if (fallbackHit)
+        fallback.push({ filePath, records, mtimeMs: stat.mtimeMs, primary: false });
     }
   }
 
@@ -237,23 +264,23 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
     createdAt: slot.sessionCreatedAt,
   });
 
-  let best: ReturnType<typeof extractClaudeUsageFromRecords> | null = null;
-  for (const match of matches) {
-    const usage = extractClaudeUsageFromRecords(match.records);
-    if (
-      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead === 0 &&
-      (usage.costUsd == null || usage.costUsd === 0)
-    ) {
-      continue;
-    }
-    best = usage;
-    break;
+  // Every transcript of the slot, not just the newest one: a slot is reused
+  // across sessions and each of them was a real charge. The repo-path fallback
+  // stays a fallback — main-checkout work is only this slot's when the slot has
+  // no transcript of its own, so the two tiers are never summed together.
+  const own = matches.filter((match) => match.primary);
+  const usable = own.length > 0 ? own : matches;
+  const usage = extractClaudeUsageFromRecords(usable.flatMap((match) => match.records));
+  if (
+    usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead === 0 &&
+    (usage.costUsd == null || usage.costUsd === 0)
+  ) {
+    return null;
   }
 
-  if (!best) return null;
   const now = new Date().toISOString();
   const tokensTotal =
-    best.tokensInput + best.tokensOutput + best.tokensCacheRead + best.tokensCacheCreation;
+    usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
 
   return {
     sessionKey,
@@ -262,14 +289,14 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
     workDir: slot.workDir,
     branch: slot.branch,
     suffix: slot.suffix,
-    tokensInput: best.tokensInput,
-    tokensOutput: best.tokensOutput,
-    tokensCacheRead: best.tokensCacheRead,
-    tokensCacheCreation: best.tokensCacheCreation,
+    tokensInput: usage.tokensInput,
+    tokensOutput: usage.tokensOutput,
+    tokensCacheRead: usage.tokensCacheRead,
+    tokensCacheCreation: usage.tokensCacheCreation,
     tokensTotal,
-    costUsd: best.costUsd,
-    ...(Object.keys(best.modelBreakdown).length > 0
-      ? { modelBreakdown: best.modelBreakdown }
+    costUsd: usage.costUsd,
+    ...(Object.keys(usage.modelBreakdown).length > 0
+      ? { modelBreakdown: usage.modelBreakdown }
       : {}),
     sources: ['harvest'],
     firstSeenAt: slot.sessionCreatedAt ?? now,
