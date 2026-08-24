@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { renderProfileDoc } from '../src/harness/profiles';
 import { resolveTemplatesDir } from '../src/utils/paths';
 
 const IOS_TEMPLATE = path.join(resolveTemplatesDir(), 'har-boilerplate-ios');
@@ -29,7 +30,7 @@ describe('iOS verification stage code signing', () => {
   });
 
   it('keeps the agent doc xcodebuild examples in step with the stage commands', () => {
-    const doc = fs.readFileSync(path.join(IOS_TEMPLATE, 'CLAUDE.agent.md'), 'utf8');
+    const doc = renderProfileDoc('ios', 'CLAUDE.agent.md');
     const examples = doc.split('\n').filter((line) => line.startsWith('xcodebuild '));
     const build = examples.filter((line) => line.includes('xcodebuild build'));
     const test = examples.filter((line) => line.includes('xcodebuild test'));

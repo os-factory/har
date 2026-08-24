@@ -5,5 +5,66 @@
     { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
     { "id": "pm2-runtime", "path": "runtime-bundles/pm2-runtime" },
     { "id": "runtime-default", "path": "har-boilerplate" }
-  ]
+  ],
+  "capabilities": {
+    "processManager": "pm2",
+    "appPortLanes": true,
+    "infra": {
+      "defaultServices": ["db"],
+      "portLanes": "db=15432:15432-15499 minio=19000:19000-19049 minio-console=19050:19050-19099 browser=13001:13001-13099 mailpit-web=18025:18025-18099 mailpit-smtp=11025:11025-11099"
+    },
+    "defaultStages": [
+      "setup-infra",
+      "launch",
+      "verify",
+      "status",
+      "logs",
+      "teardown",
+      "typecheck",
+      "api-health",
+      "unit-tests",
+      "lint",
+      "readiness"
+    ],
+    "defaultEnvKeys": [
+      "HARNESS_PROJECT_NAME",
+      "HARNESS_USE_WORKTREE",
+      "HARNESS_PRIMARY_APP",
+      "HARNESS_TEMPLATE_DB",
+      "HARNESS_FE_BASE_PORT",
+      "HARNESS_API_BASE_PORT",
+      "HARNESS_PORT_STEP",
+      "HARNESS_HEALTH_CHECK_PATH",
+      "HARNESS_INFRA_PORT_LANES",
+      "HARNESS_AGENT_SLOT_MIN",
+      "HARNESS_AGENT_SLOT_MAX",
+      "HARNESS_ECOSYSTEM",
+      "HARNESS_INFRA_SERVICES",
+      "HARNESS_DB_MIGRATE_CMD",
+      "HARNESS_DB_SEED_CMD"
+    ]
+  },
+  "docs": {
+    "README.md": [
+      "intro",
+      "what-s-in-here",
+      "quick-start",
+      "verification-contract",
+      "readiness-layers",
+      "run-history",
+      "for-coding-agents",
+      "architecture",
+      "port-shared-services",
+      "maintaining-this-harness",
+      "session-lifecycle"
+    ],
+    "CLAUDE.agent.md": [
+      "intro",
+      "environment",
+      "readiness",
+      "definition-of-done",
+      "project-commands",
+      "do-not"
+    ]
+  }
 }

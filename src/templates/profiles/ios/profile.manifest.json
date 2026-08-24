@@ -4,5 +4,62 @@
   "bundles": [
     { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
     { "id": "runtime-ios", "path": "har-boilerplate-ios" }
-  ]
+  ],
+  "capabilities": {
+    "processManager": "simulator",
+    "appPortLanes": false,
+    "infra": {
+      "defaultServices": [],
+      "portLanes": ""
+    },
+    "defaultStages": [
+      "setup-infra",
+      "launch",
+      "verify",
+      "status",
+      "teardown",
+      "build",
+      "unit-tests",
+      "lint",
+      "readiness"
+    ],
+    "defaultEnvKeys": [
+      "HARNESS_PROJECT_NAME",
+      "HARNESS_USE_WORKTREE",
+      "HARNESS_AGENT_SLOT_MIN",
+      "HARNESS_AGENT_SLOT_MAX",
+      "HARNESS_ECOSYSTEM",
+      "HARNESS_XCODE_WORKSPACE",
+      "HARNESS_XCODE_PROJECT",
+      "HARNESS_XCODE_SCHEME",
+      "HARNESS_SIMULATOR_NAME",
+      "HARNESS_BUNDLE_ID",
+      "HARNESS_SIMULATOR_FAMILY",
+      "HARNESS_SIMULATOR_SHARED",
+      "HARNESS_IOS_DESTINATION",
+      "HARNESS_INFRA_SERVICES"
+    ]
+  },
+  "docs": {
+    "README.md": [
+      "intro",
+      "what-s-in-here",
+      "quick-start",
+      "user-flow-validation",
+      "verification-contract",
+      "configuration",
+      "simulators",
+      "port-shared-services-ios-profile",
+      "session-lifecycle"
+    ],
+    "CLAUDE.agent.md": [
+      "intro",
+      "environment",
+      "readiness",
+      "definition-of-done",
+      "project-commands",
+      "user-flow-validation-rocketsim",
+      "do-not"
+    ]
+  }
 }

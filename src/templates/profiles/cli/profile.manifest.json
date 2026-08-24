@@ -4,5 +4,60 @@
   "bundles": [
     { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
     { "id": "runtime-cli", "path": "har-boilerplate-cli" }
-  ]
+  ],
+  "capabilities": {
+    "processManager": "none",
+    "appPortLanes": false,
+    "infra": {
+      "defaultServices": [],
+      "portLanes": "db=15432:15432-15499"
+    },
+    "defaultStages": [
+      "setup-infra",
+      "launch",
+      "verify",
+      "status",
+      "teardown",
+      "typecheck",
+      "unit-tests",
+      "lint",
+      "readiness"
+    ],
+    "defaultEnvKeys": [
+      "HARNESS_PROJECT_NAME",
+      "HARNESS_USE_WORKTREE",
+      "HARNESS_FE_BASE_PORT",
+      "HARNESS_API_BASE_PORT",
+      "HARNESS_PORT_STEP",
+      "HARNESS_HEALTH_CHECK_PATH",
+      "HARNESS_INFRA_PORT_LANES",
+      "HARNESS_AGENT_SLOT_MIN",
+      "HARNESS_AGENT_SLOT_MAX",
+      "HARNESS_ECOSYSTEM",
+      "HARNESS_INFRA_SERVICES",
+      "HARNESS_DB_MIGRATE_CMD",
+      "HARNESS_DB_SEED_CMD"
+    ]
+  },
+  "docs": {
+    "README.md": [
+      "intro",
+      "what-s-in-here",
+      "quick-start",
+      "verification-contract",
+      "run-history",
+      "for-coding-agents",
+      "port-shared-services-cli-profile",
+      "maintaining-this-harness",
+      "session-lifecycle"
+    ],
+    "CLAUDE.agent.md": [
+      "intro",
+      "environment",
+      "readiness",
+      "definition-of-done",
+      "project-commands",
+      "do-not"
+    ]
+  }
 }

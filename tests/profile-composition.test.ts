@@ -6,6 +6,7 @@ import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from '../src/harness/tem
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 import {
   composeProfileTemplateMap,
+  readComposedTemplateContent,
   readProfileManifest,
   resolveProfileBundleDir,
   HARNESS_PROFILES,
@@ -57,7 +58,7 @@ describe('profile bundle composition', () => {
       for (const entry of composed.values()) {
         const installedPath = path.join(harnessDir, entry.relPath);
         expect(fs.existsSync(installedPath)).toBe(true);
-        let expected = fs.readFileSync(entry.sourcePath, 'utf8');
+        let expected = readComposedTemplateContent(entry);
         if (
           entry.relPath === 'harness.env' ||
           (RUNTIME_SHIM_FILES as readonly string[]).includes(entry.relPath)

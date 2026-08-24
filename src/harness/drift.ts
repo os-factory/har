@@ -13,7 +13,7 @@ import {
   readManifest,
 } from './manifest';
 import { detectAgentSlotEnvMismatch } from './stages';
-import { composeProfileTemplateMap } from './profiles';
+import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
 import { substituteTemplateTokens } from './template-tokens';
 
 const CLI_EXPECTED_ABSENT = new Set([
@@ -139,9 +139,8 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
 
   for (const file of templateFiles) {
     const harnessFile = harnessFileForTemplate(file);
-    const templatePath = composed.get(file)!.sourcePath;
     const harnessPath = path.join(harnessDir, harnessFile);
-    let templateContent = fs.readFileSync(templatePath, 'utf8');
+    let templateContent = readComposedTemplateContent(composed.get(file)!);
     if (file === 'harness.env') {
       templateContent = substituteProjectName(templateContent, projectName);
     }

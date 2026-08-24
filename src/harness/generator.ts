@@ -11,6 +11,7 @@ import {
   HarnessProfile,
   composeProfileTemplateMap,
   readProfileManifest,
+  renderProfileDoc,
   resolveProfileBundleDir,
 } from './profiles';
 import { validateHarnessEnvSource } from './schema';
@@ -81,6 +82,12 @@ export function scaffoldHarnessBoilerplate(
   for (const bundle of profileManifest.bundles) {
     const bundleDir = resolveProfileBundleDir(bundle);
     copyDirRecursive(bundleDir, harnessDir);
+  }
+
+  // Assembled docs (#236): README.md / CLAUDE.agent.md are rendered from
+  // shared sections + profile blocks, not copied from a bundle.
+  for (const docName of Object.keys(profileManifest.docs)) {
+    fs.writeFileSync(path.join(harnessDir, docName), renderProfileDoc(profile, docName));
   }
 
   const gitignoreSource = composeProfileTemplateMap(profile).get(HARNESS_GITIGNORE_TEMPLATE);

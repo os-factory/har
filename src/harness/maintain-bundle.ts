@@ -15,7 +15,7 @@ import {
   type PluginDriftAction,
   type PluginDriftResult,
 } from './plugin-drift';
-import { composeProfileTemplateMap } from './profiles';
+import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
 import { substituteTemplateTokens } from './template-tokens';
 import type { ValidationIssue, ValidationResult } from './validator';
 import { detectInstructionFiles } from './instruction-files';
@@ -89,7 +89,7 @@ function readBundledTemplateContent(
   if (!entry) {
     throw new Error(`Template file not found in composed ${profile} profile: ${file}`);
   }
-  let content = fs.readFileSync(entry.sourcePath, 'utf8');
+  let content = readComposedTemplateContent(entry);
   if (file === 'harness.env') {
     content = substituteProjectName(content, projectNameFromRepo(repoPath));
   }
