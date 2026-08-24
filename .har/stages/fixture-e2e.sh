@@ -111,8 +111,8 @@ fresh_init_mode() {
   har "$FRESH" env init --yes --profile default || fail "init failed on fresh clone"
 
   local f
-  for f in launch.sh verify.sh teardown.sh setup-infra.sh agent-slot.sh \
-           provision-toolchain.sh agent-cli.sh harness.env stages.json \
+  for f in launch.sh verify.sh teardown.sh setup-infra.sh \
+           agent-cli.sh harness.env stages.json \
            manifest.json README.md CLAUDE.agent.md; do
     [ -f "$FRESH/.har/$f" ] || fail "init did not produce .har/$f"
   done
@@ -144,8 +144,8 @@ milestone_asserts() {
       fi
       grep -q '^export HARNESS_INFRA_PORT_LANES=' "$FRESH/.har/harness.env" \
         || fail "M1: fresh scaffold harness.env missing HARNESS_INFRA_PORT_LANES"
-      [ -f "$FRESH/.har/lib/infra.sh" ] || fail "M1: fresh scaffold missing lib/infra.sh"
-      echo "    harness.env is pure config with port lanes; lib/infra.sh present ✓"
+      # lib/infra.sh moved into the package in M2 (#234); config purity is the M1 contract.
+      echo "    harness.env is pure config with port lanes ✓"
 
       echo "──> M1 asserts: CLI/MCP parity surfaces (#233)"
       # One status implementation: --json must be the structured source with slots.
@@ -177,7 +177,8 @@ milestone_asserts() {
         }
         if (!(reg.stages ?? []).some((s) => s.tier === "quick")) { console.error("M1: no quick-tier stage registered"); process.exit(1); }
       ' "$FRESH/.har/stages.json" || fail "M1: fresh scaffold verificationStages namespace not fully resolvable/tiered"
-      grep -q 'lib/verify-runner.mjs' "$FRESH/.har/verify.sh" \
+      # Pre-#234 verify.sh exec'd the runner itself; post-#234 it delegates via har env verify.
+      grep -qE 'lib/verify-runner\.mjs|exec har env verify|har" env verify' "$FRESH/.har/verify.sh" \
         || fail "M1: fresh scaffold verify.sh does not delegate to the stage-registry runner"
       if grep -q 'run_quick_smoke' "$FRESH/.har/verify.sh"; then
         fail "M1: fresh scaffold verify.sh still carries inline ecosystem case tables"
@@ -245,8 +246,36 @@ milestone_asserts() {
       echo "    doctor red on corrupted harness.env ✓"
       ;;
     M2)
-      echo "──> M2 asserts: shim parity (extend when #235 lands)"
-      echo "    pending: direct ./.har/verify.sh must write run + validation records"
+      echo "──> M2 asserts: runtime in the package (#234)"
+      # The bash runtime must be gone from fresh scaffolds — logic lives in the package.
+      local gone
+      for gone in agent-slot.sh provision-toolchain.sh simulator.sh lib/infra.sh lib/node-pm.sh; do
+        [ ! -f "$FRESH/.har/$gone" ] || fail "M2: fresh scaffold still ships runtime bash: .har/$gone"
+      done
+      echo "    no runtime bash in fresh scaffold ✓"
+
+      local shim lines
+      for shim in launch.sh verify.sh teardown.sh setup-infra.sh agent-cli.sh preflight.sh; do
+        [ -f "$FRESH/.har/$shim" ] || fail "M2: fresh scaffold missing .har/$shim"
+        grep -q 'exec har env\|node_modules/.bin/har' "$FRESH/.har/$shim" \
+          || fail "M2: .har/$shim does not delegate to har env"
+        if grep -q 'node -e' "$FRESH/.har/$shim"; then
+          fail "M2: .har/$shim carries embedded node programs"
+        fi
+        lines=$(wc -l < "$FRESH/.har/$shim")
+        [ "$lines" -le 25 ] || fail "M2: .har/$shim is $lines lines — business logic belongs in the package"
+      done
+      echo "    generated .har/*.sh are thin delegates ✓"
+
+      # Direct shim execution reaches the packaged runtime (full record parity is #235).
+      local bindir="$ART_DIR/bin"
+      mkdir -p "$bindir"
+      printf '#!/usr/bin/env bash\nexec node "%s" "$@"\n' "$HAR_CLI" > "$bindir/har"
+      chmod +x "$bindir/har"
+      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/preflight.sh 1 >/dev/null) \
+        || fail "M2: direct ./.har/preflight.sh execution failed"
+      echo "    direct shim execution works ✓"
+      echo "    pending (#235): pinned npx fallback + run/validation record parity assert"
       ;;
     M3)
       echo "──> M3 asserts: plugin/eject (extend when #239/#240 land)"

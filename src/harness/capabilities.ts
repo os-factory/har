@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { resolveHarnessRoot } from './manifest';
+import { readManifest, resolveHarnessRoot } from './manifest';
 import { readHarnessEnv } from './env';
 
 /**
@@ -14,9 +14,10 @@ export function harnessUsesPm2(repoPath: string): boolean {
   return fs.existsSync(path.join(harnessRoot, '.har', 'ecosystem.agent.template.cjs'));
 }
 
-/** iOS profile: Simulator helpers present */
+/** iOS profile: manifest profile, or the pre-#234 simulator.sh helper file */
 export function harnessUsesSimulator(repoPath: string): boolean {
   const harnessRoot = resolveHarnessRoot(repoPath);
+  if (readManifest(harnessRoot)?.profile === 'ios') return true;
   return fs.existsSync(path.join(harnessRoot, '.har', 'simulator.sh'));
 }
 

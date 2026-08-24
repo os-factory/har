@@ -8,6 +8,25 @@ import { listValidations } from '../src/core/validations';
 
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
 
+// #234: verify runs through the package runtime; stub the plan so the suite
+// exercises validation recording, not the stage runner.
+jest.mock('../src/runtime', () => {
+  const actual = jest.requireActual('../src/runtime');
+  return {
+    ...actual,
+    buildVerifyPlan: jest.fn((_repo: string, agentId: number) => ({
+      shellCommand:
+        "echo '" +
+        JSON.stringify({ status: 'pass', agent_id: agentId, total_ms: 10, stages: [{ name: 'smoke', pass: true }] }) +
+        "'",
+      cwd: process.cwd(),
+      env: process.env,
+    })),
+  };
+});
+
+
+
 function sh(cwd: string, command: string): string {
   return execSync(command, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 }

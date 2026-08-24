@@ -1,9 +1,8 @@
 {
   "id": "ios",
-  "description": "iOS — shared kernel + Xcode/Simulator overlay",
+  "description": "iOS — shared kernel + Xcode/Simulator overlay (simulator runtime lives in the package)",
   "bundles": [
     { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
-    { "id": "xcode-sim", "path": "runtime-bundles/xcode-sim" },
     { "id": "runtime-ios", "path": "har-boilerplate-ios" }
   ]
 }

@@ -107,7 +107,7 @@ describe('harness stage contract', () => {
     const readme = fs.readFileSync(path.join(repoPath, '.har', 'README.md'), 'utf8');
     expect(readme).toContain('Port & shared services');
 
-    expect(fs.existsSync(path.join(repoPath, '.har', 'provision-toolchain.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'provision-toolchain.sh'))).toBe(false);
 
     expect(fs.existsSync(path.join(repoPath, '.har', 'ecosystem.agent.template.cjs'))).toBe(false);
     expect(fs.existsSync(path.join(repoPath, '.har', 'env.template'))).toBe(false);
@@ -116,7 +116,8 @@ describe('harness stage contract', () => {
     expect(manifest.profile).toBe('cli');
 
     const verifyScript = fs.readFileSync(path.join(repoPath, '.har', 'verify.sh'), 'utf8');
-    expect(verifyScript).toContain('lib/verify-runner.mjs');
+    // #234: verify.sh delegates to har env verify, which runs the stage-registry runner.
+    expect(verifyScript).toContain('exec har env verify');
     expect(verifyScript).not.toContain('run_quick_smoke');
     expect(verifyScript).not.toContain("echo 'TODO:");
 

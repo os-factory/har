@@ -320,7 +320,6 @@ describe('plugins', () => {
     ]);
     expect(readProfileManifest('ios').bundles.map((b) => b.id)).toEqual([
       'shared-kernel',
-      'xcode-sim',
       'runtime-ios',
     ]);
 

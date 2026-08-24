@@ -19,7 +19,7 @@ describe('maintain bundle', () => {
   it('creates templates for missing required files', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-missing-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
-    fs.unlinkSync(path.join(repoPath, '.har', 'provision-toolchain.sh'));
+    fs.unlinkSync(path.join(repoPath, '.har', 'launch.sh'));
 
     const drift = compareHarnessToTemplate(repoPath);
     const validation = validateHarness(repoPath);
@@ -27,10 +27,10 @@ describe('maintain bundle', () => {
 
     const { bundleDir, report } = buildMaintainBundle(repoPath, validation, drift);
 
-    expect(report.actions.some((a) => a.file === 'provision-toolchain.sh' && a.kind === 'missing')).toBe(
+    expect(report.actions.some((a) => a.file === 'launch.sh' && a.kind === 'missing')).toBe(
       true,
     );
-    expect(fs.existsSync(path.join(bundleDir, 'templates', 'provision-toolchain.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(bundleDir, 'templates', 'launch.sh'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'README.md'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'drift-report.json'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'validation.json'))).toBe(true);
@@ -71,13 +71,13 @@ describe('maintain bundle', () => {
   it('maintainHarness builds bundle even when validation fails', async () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-harness-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
-    fs.unlinkSync(path.join(repoPath, '.har', 'provision-toolchain.sh'));
+    fs.unlinkSync(path.join(repoPath, '.har', 'launch.sh'));
 
     const result = await maintainHarness({ repoPath, finalize: false });
 
     expect(result.validation.pass).toBe(false);
     expect(result.bundle).toBeDefined();
-    expect(fs.existsSync(path.join(repoPath, '.har', MAINTAIN_DIR, 'templates', 'provision-toolchain.sh'))).toBe(
+    expect(fs.existsSync(path.join(repoPath, '.har', MAINTAIN_DIR, 'templates', 'launch.sh'))).toBe(
       true,
     );
   });
@@ -124,7 +124,7 @@ describe('adaptation prompts with maintain bundle', () => {
       profile: 'default',
       actions: [
         {
-          file: 'provision-toolchain.sh',
+          file: 'launch.sh',
           kind: 'missing',
           template: 'maintain/templates/provision-toolchain.sh',
           hint: 'Add this file.',
@@ -144,13 +144,13 @@ describe('adaptation prompts with maintain bundle', () => {
       ],
       validation: {
         pass: false,
-        errors: [{ file: 'provision-toolchain.sh', message: 'Required file missing', severity: 'error' }],
+        errors: [{ file: 'launch.sh', message: 'Required file missing', severity: 'error' }],
         warnings: [],
       },
     });
 
     expect(maintainPrompt).not.toEqual(initPrompt);
-    expect(maintainPrompt).toContain('provision-toolchain.sh');
+    expect(maintainPrompt).toContain('launch.sh');
     expect(maintainPrompt).toContain('legacy.sh');
     expect(maintainPrompt).toContain('HARNESS_DB_PORT_DEFAULT');
     expect(maintainPrompt).toContain('Validation blockers');
