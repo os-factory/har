@@ -10,6 +10,7 @@ import { hqCommand } from './commands/hq';
 import { hooksCommand } from './commands/hooks';
 import { mcpCommand } from './commands/mcp';
 import { onboardCommand } from './commands/onboard';
+import { pluginCommand } from './commands/plugin';
 import { preferencesCommand } from './commands/preferences';
 import { telemetryCommand } from './commands/telemetry';
 import { HAR_ROOT_EPILOG } from './help-text';
@@ -26,6 +27,7 @@ export async function runCli(): Promise<void> {
     .command(hqCommand)
     .command(hooksCommand)
     .command(mcpCommand)
+    .command(pluginCommand)
     .command(preferencesCommand)
     .command(telemetryCommand)
     .demandCommand(1, 'Please specify a command. Try: har onboard   or   har env --help')

@@ -474,7 +474,27 @@ milestone_asserts() {
         har "$FRESH" env doctor >/dev/null 2>&1 || fail "M3: doctor red after adopt"
         echo "    adopt restores managed shims and clears the record ✓"
       fi
-      echo "──> M3 asserts: plugins (extend when #240 lands)"
+      echo "──> M3 asserts: local plugins (#240)"
+      # #240 — local plugins: create → install → stage resolves in the registry
+      if har "$FRESH" plugin create --help >/dev/null 2>&1; then
+        har "$FRESH" plugin create fixture-check --description "M3 fixture check" --force \
+          || fail "M3: har plugin create failed"
+        [ -f "$FRESH/.har/plugins/fixture-check/template.manifest.json" ] \
+          || fail "M3: plugin create wrote no manifest"
+        har "$FRESH" env add-plugin fixture-check --force \
+          || fail "M3: add-plugin of the local plugin failed"
+        grep -q '"fixture-check"' "$FRESH/.har/stages.json" \
+          || fail "M3: local plugin stage not registered in stages.json"
+        grep -q '"source": "local"' "$FRESH/.har/plugins.json" \
+          || fail "M3: plugins.json ledger does not record source \"local\""
+        # add-stage --custom is retired: must fail and point at har plugin create
+        if har "$FRESH" env add-stage nope --custom >/dev/null 2>&1; then
+          fail "M3: har env add-stage --custom still succeeds — removed in 1.0"
+        fi
+        echo "    local plugin create → install → stage registered (ledger source: local) ✓"
+      else
+        echo "    skip: har plugin create not available yet (#240 not landed)"
+      fi
       ;;
     M4|M5)
       echo "──> $MILESTONE asserts: migration (extend when #241 lands)"
