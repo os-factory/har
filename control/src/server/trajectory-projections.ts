@@ -132,6 +132,9 @@ export async function projectTrajectoryRecord(record: AgentTrajectoryRecord): Pr
         attributes: redactSecretAttributes(attributes) as Prisma.InputJsonValue,
       },
       update: {
+        sessionKey: record.sessionKey,
+        agentId: record.agentId,
+        agentTool: record.agentTool,
         parentSpanId: record.parentSpanId,
         endTime: endTime && Number.isFinite(endTime.getTime()) ? endTime : undefined,
         attributes: redactSecretAttributes(attributes) as Prisma.InputJsonValue,

@@ -60,7 +60,7 @@ function loadOtlpProtobufDecoder(
   }
 }
 
-function decodeOtlpProtobufJson(
+export function decodeOtlpProtobufJson(
   kind: 'trace' | 'logs' | 'metrics',
   body: Buffer,
 ): unknown | null {
@@ -71,7 +71,9 @@ function decodeOtlpProtobufJson(
     return decoder.toObject(message, {
       longs: String,
       enums: String,
-      bytes: (value: Uint8Array) => Buffer.from(value).toString('hex'),
+      // protobufjs honours only String (base64) or Array here; a converter
+      // function is ignored and yields raw Buffers. normalizeOtelId re-hexes.
+      bytes: String,
       defaults: true,
       arrays: true,
       objects: true,
@@ -79,6 +81,38 @@ function decodeOtlpProtobufJson(
   } catch {
     return null;
   }
+}
+
+const HEX_ONLY = /^[0-9a-f]+$/;
+
+function bytesToHexId(bytes: Uint8Array): string {
+  if (bytes.length === 0 || bytes.every((b) => b === 0)) return '';
+  return Buffer.from(bytes).toString('hex');
+}
+
+/**
+ * OTLP trace/span ids are bytes; only their hex form survives JSON, a database
+ * column or an id comparison. Accepts every shape a decoder can hand us —
+ * protobuf base64, OTLP/JSON hex, Buffer, byte array — and drops anything else
+ * rather than storing a lossy UTF-8 reading of the bytes.
+ */
+export function normalizeOtelId(value: unknown, byteLength: number): string {
+  if (value == null) return '';
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (lower.length === byteLength * 2 && HEX_ONLY.test(lower)) return lower;
+    const decoded = Buffer.from(value, 'base64');
+    if (decoded.length === byteLength) return bytesToHexId(decoded);
+    if (lower.length % 2 === 0 && HEX_ONLY.test(lower)) return lower;
+    return '';
+  }
+  if (value instanceof Uint8Array) return bytesToHexId(value);
+  if (Array.isArray(value)) return bytesToHexId(Uint8Array.from(value as number[]));
+  if (typeof value === 'object') {
+    const data = (value as { data?: unknown }).data;
+    if (Array.isArray(data)) return bytesToHexId(Uint8Array.from(data as number[]));
+  }
+  return '';
 }
 
 export interface AttrMap {
@@ -363,6 +397,32 @@ async function defaultAgentIdForRepo(repositoryId: string): Promise<number> {
   return active?.slotId ?? 1;
 }
 
+/**
+ * The agent id a session was already attributed to.
+ *
+ * Slot attribution for a workspace outside any session worktree is a guess from
+ * the repo's live slots, and that guess moves as slots come and go — the same
+ * session then splits across agent ids and renders as several partial streams.
+ * The first attribution a session got wins for the rest of its life.
+ */
+async function pinnedAgentIdForSession(
+  repositoryId: string,
+  sessionKey: string,
+): Promise<number | undefined> {
+  if (!sessionKey) return undefined;
+  const event = await prisma.agentSessionEvent.findFirst({
+    where: { repositoryId, sessionKey },
+    orderBy: { timestamp: 'asc' },
+    select: { agentId: true },
+  });
+  if (event) return event.agentId;
+  const usage = await prisma.agentSessionUsage.findFirst({
+    where: { repositoryId, sessionKey },
+    select: { agentId: true },
+  });
+  return usage?.agentId;
+}
+
 interface ActiveSlotAttribution {
   agentId: number;
   workDir?: string;
@@ -450,13 +510,15 @@ export async function resolveSessionContext(
     const byRepo = await resolveRepositoryByWorkspacePath(workspace);
     if (byRepo) {
       const activeSlot = await resolveUnambiguousActiveSlot(byRepo.repositoryId);
+      const sessionKey =
+        harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`;
       return {
         context: {
           repositoryId: byRepo.repositoryId,
-          sessionKey:
-            harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`,
+          sessionKey,
           agentId:
             explicitAgentId ??
+            (await pinnedAgentIdForSession(byRepo.repositoryId, sessionKey)) ??
             activeSlot?.agentId ??
             (await defaultAgentIdForRepo(byRepo.repositoryId)),
           agentTool: tool ?? 'cursor',
@@ -482,13 +544,15 @@ export async function resolveSessionContext(
     const byId = await resolveRepositoryByWorkspaceId(workspaceId);
     if (byId) {
       const activeSlot = await resolveUnambiguousActiveSlot(byId.repositoryId);
+      const sessionKey =
+        harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`;
       return {
         context: {
           repositoryId: byId.repositoryId,
-          sessionKey:
-            harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`,
+          sessionKey,
           agentId:
             explicitAgentId ??
+            (await pinnedAgentIdForSession(byId.repositoryId, sessionKey)) ??
             activeSlot?.agentId ??
             (await defaultAgentIdForRepo(byId.repositoryId)),
           agentTool: tool ?? 'cursor',
@@ -528,7 +592,10 @@ export async function resolveSessionContext(
       context: {
         repositoryId,
         sessionKey: harSessionKey,
-        agentId: explicitAgentId ?? 1,
+        agentId:
+          explicitAgentId ??
+          (await pinnedAgentIdForSession(repositoryId, harSessionKey)) ??
+          1,
         agentTool: tool,
         workDir: resource['har.work_dir']
           ? String(resource['har.work_dir'])
@@ -1018,15 +1085,10 @@ export function extractLogRecords(payload: unknown): ParsedLogRecord[] {
               attributes.sequence ??
               seq,
           ),
-          traceId: record.traceId || record.trace_id
-            ? String(record.traceId ?? record.trace_id)
-            : undefined,
-          spanId: record.spanId || record.span_id
-            ? String(record.spanId ?? record.span_id)
-            : undefined,
-          parentSpanId: record.parentSpanId || record.parent_span_id
-            ? String(record.parentSpanId ?? record.parent_span_id)
-            : undefined,
+          traceId: normalizeOtelId(record.traceId ?? record.trace_id, 16) || undefined,
+          spanId: normalizeOtelId(record.spanId ?? record.span_id, 8) || undefined,
+          parentSpanId:
+            normalizeOtelId(record.parentSpanId ?? record.parent_span_id, 8) || undefined,
         });
       }
     }
@@ -1286,7 +1348,7 @@ interface ParsedSpan {
   attributes: AttrMap;
 }
 
-function extractSpans(payload: unknown): ParsedSpan[] {
+export function extractSpans(payload: unknown): ParsedSpan[] {
   const out: ParsedSpan[] = [];
   if (!payload || typeof payload !== 'object') return out;
   const root = payload as {
@@ -1312,11 +1374,9 @@ function extractSpans(payload: unknown): ParsedSpan[] {
         const record = span as Record<string, unknown>;
         out.push({
           resource,
-          traceId: String(record.traceId ?? record.trace_id ?? ''),
-          spanId: String(record.spanId ?? record.span_id ?? ''),
-          parentSpanId: record.parentSpanId || record.parent_span_id
-            ? String(record.parentSpanId ?? record.parent_span_id)
-            : null,
+          traceId: normalizeOtelId(record.traceId ?? record.trace_id, 16),
+          spanId: normalizeOtelId(record.spanId ?? record.span_id, 8),
+          parentSpanId: normalizeOtelId(record.parentSpanId ?? record.parent_span_id, 8) || null,
           name: String(record.name ?? 'span'),
           startTime: otelTimeToDate(record.startTimeUnixNano ?? record.start_time_unix_nano),
           endTime: record.endTimeUnixNano || record.end_time_unix_nano

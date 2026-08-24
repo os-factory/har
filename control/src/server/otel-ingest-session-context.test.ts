@@ -14,8 +14,31 @@ interface FakeSlot {
   updatedAt: number;
 }
 
+interface FakeSessionRow {
+  repositoryId: string;
+  sessionKey: string;
+  agentId: number;
+  timestamp: number;
+}
+
 const repos = [{ id: 'repo-1', path: '/home/user/project' }];
 let slots: FakeSlot[] = [];
+let sessionEvents: FakeSessionRow[] = [];
+let sessionUsages: FakeSessionRow[] = [];
+
+function findSessionRow(
+  rows: FakeSessionRow[],
+  where: { repositoryId: string; sessionKey: string },
+): FakeSessionRow | null {
+  return (
+    rows
+      .filter(
+        (row) =>
+          row.repositoryId === where.repositoryId && row.sessionKey === where.sessionKey,
+      )
+      .sort((a, b) => a.timestamp - b.timestamp)[0] ?? null
+  );
+}
 
 vi.mock('@/lib/db', () => ({
   prisma: {
@@ -23,6 +46,18 @@ vi.mock('@/lib/db', () => ({
       findMany: vi.fn(async () => repos),
       findUnique: vi.fn(async ({ where }: { where: { path: string } }) =>
         repos.find((r) => r.path === where.path) ?? null,
+      ),
+    },
+    agentSessionEvent: {
+      findFirst: vi.fn(
+        async ({ where }: { where: { repositoryId: string; sessionKey: string } }) =>
+          findSessionRow(sessionEvents, where),
+      ),
+    },
+    agentSessionUsage: {
+      findFirst: vi.fn(
+        async ({ where }: { where: { repositoryId: string; sessionKey: string } }) =>
+          findSessionRow(sessionUsages, where),
       ),
     },
     agentSlot: {
@@ -70,6 +105,8 @@ function makeSlot(overrides: Partial<FakeSlot>): FakeSlot {
 describe('resolveSessionContext — Cursor on the main checkout', () => {
   beforeEach(() => {
     slots = [];
+    sessionEvents = [];
+    sessionUsages = [];
   });
 
   it('attributes to the one active worktree when correlation is unambiguous', async () => {
@@ -163,6 +200,74 @@ describe('resolveSessionContext — Cursor on the main checkout', () => {
       branch: 'fix/y',
       workUnitId: 'WU-2',
     });
+  });
+
+  it('keeps a session on the agent id it was first attributed to', async () => {
+    slots = [
+      makeSlot({ slotId: 4, workDir: '/home/user/worktrees/project-a', updatedAt: 1 }),
+      makeSlot({ slotId: 5, workDir: '/home/user/worktrees/project-b', updatedAt: 2 }),
+    ];
+    sessionEvents = [
+      {
+        repositoryId: 'repo-1',
+        sessionKey: 'session-uuid',
+        agentId: 4,
+        timestamp: 1,
+      },
+    ];
+
+    const { context } = await resolveSessionContext(
+      {},
+      {
+        'gen_ai.client.workspace': '/home/user/project',
+        'session.id': 'session-uuid',
+        'otelhook.provider.id': 'claude-code',
+      },
+    );
+
+    expect(context).toMatchObject({
+      sessionKey: 'session-uuid',
+      agentId: 4,
+      agentTool: 'claude_code',
+    });
+  });
+
+  it('falls back to persisted usage when the session has no events yet', async () => {
+    slots = [makeSlot({ slotId: 3, workDir: '/home/user/worktrees/project-a', updatedAt: 9 })];
+    sessionUsages = [
+      { repositoryId: 'repo-1', sessionKey: 'session-uuid', agentId: 2, timestamp: 1 },
+    ];
+
+    const { context } = await resolveSessionContext(
+      {},
+      { 'gen_ai.client.workspace': '/home/user/project', 'session.id': 'session-uuid' },
+    );
+
+    expect(context).toMatchObject({ sessionKey: 'session-uuid', agentId: 2 });
+  });
+
+  it('does not let a pin override the slot whose worktree the session ran in', async () => {
+    slots = [
+      makeSlot({
+        slotId: 2,
+        workDir: '/home/user/worktrees/project-abcd-har-agent-2-xyz',
+        worktreePath: '/home/user/worktrees/project-abcd-har-agent-2-xyz',
+        branch: 'feat/x',
+        updatedAt: 1,
+      }),
+    ];
+    sessionEvents = [
+      { repositoryId: 'repo-1', sessionKey: 'feat/x', agentId: 5, timestamp: 1 },
+    ];
+
+    const { context } = await resolveSessionContext(
+      {},
+      {
+        'gen_ai.client.workspace': '/home/user/worktrees/project-abcd-har-agent-2-xyz',
+      },
+    );
+
+    expect(context).toMatchObject({ agentId: 2 });
   });
 
   it('refuses harSessionKey-only attribution when agent tool is unknown', async () => {
