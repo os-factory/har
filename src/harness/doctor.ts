@@ -170,7 +170,7 @@ export function runDoctor(repoPath: string): DoctorReport {
         message: issue.message,
         remedy:
           contract === 'pre-1.0'
-            ? 'Pre-1.0 harness — migration to the 1.0 pure-config contract lands with `har env migrate` (#241)'
+            ? 'Pre-1.0 harness — run `har env maintain` to generate the MIGRATE prompt, then `har env maintain --migrate`'
             : undefined,
       });
     }
@@ -416,7 +416,7 @@ export function formatDoctorReport(report: DoctorReport): string {
   if (report.contract !== '1.0') {
     lines.push(
       report.contract === 'pre-1.0'
-        ? 'Contract: pre-1.0 harness — contract findings reported as warnings until migration (#241).'
+        ? 'Contract: pre-1.0 harness — contract findings reported as warnings until migrated (`har env maintain` → MIGRATE-PROMPT.md → `--migrate`).'
         : 'Contract: no harness.env found.',
     );
   }

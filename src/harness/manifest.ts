@@ -5,6 +5,12 @@ import { HarnessManifest, HarnessManifestSchema } from './schema';
 import { writeFileSafe } from '../utils/file-ops';
 
 const MANIFEST_VERSION = '1';
+/**
+ * Runtime-contract version of the generated harness shape (#241): thin shims
+ * + pure config. Stamped at init/finalize/migration; the migration registry
+ * (migrations.ts) keys on it.
+ */
+export const HARNESS_RUNTIME_VERSION = '1.0.0';
 export const DEFAULT_HAR_DIR = '.har';
 
 const CHECKSUM_SKIP = new Set([
@@ -15,6 +21,7 @@ const CHECKSUM_SKIP = new Set([
   'AGENT.md.proposed',
   'AGENT.md.proposed.meta.json',
   'ADAPT-PROMPT.md',
+  'MIGRATE-PROMPT.md',
 ]);
 
 export function getHarnessDir(repoPath: string): string {
@@ -78,6 +85,7 @@ export function createManifest(
   const harnessDir = getHarnessDir(repoPath);
   return {
     version: MANIFEST_VERSION,
+    runtimeVersion: HARNESS_RUNTIME_VERSION,
     outputDir: DEFAULT_HAR_DIR,
     createdAt: now,
     updatedAt: now,

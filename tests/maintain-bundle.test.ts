@@ -144,7 +144,10 @@ describe('adaptation prompts with maintain bundle', () => {
     expect(maintainPrompt).toContain('.har/maintain/');
     expect(maintainPrompt).toContain('Do **not** read files from the globally installed har package');
     expect(maintainPrompt).not.toContain('{{MAINTAIN_BUNDLE_SECTION}}');
-    expect(maintainPrompt).toContain('Generator 0.5.0');
+    // Platform upgrades are the migration registry now (#241), not prose.
+    expect(maintainPrompt).toContain('migration registry');
+    expect(maintainPrompt).toContain('MIGRATE-PROMPT.md');
+    expect(maintainPrompt).not.toContain('Generator 0.5.0');
     expect(maintainPrompt).toContain('AGENTS.md');
   });
 
@@ -188,6 +191,6 @@ describe('adaptation prompts with maintain bundle', () => {
     expect(maintainPrompt).toContain('Validation blockers');
     expect(maintainPrompt).toContain('Agent instruction files');
     expect(maintainPrompt).toContain('AGENT.md');
-    expect(maintainPrompt).toContain('Generator 0.5.0');
+    expect(maintainPrompt).toContain('migration registry');
   });
 });

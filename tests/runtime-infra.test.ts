@@ -16,6 +16,7 @@ import {
   runPg,
   setupInfra,
   writeInfraState,
+  resolveInfraPorts,
 } from '../src/runtime/infra';
 
 const PORTS = {
@@ -169,6 +170,36 @@ describe('resolveInfraPort', () => {
       portInUse: () => false,
     });
     expect(port).toBe(13001);
+  });
+});
+
+describe('resolveInfraPorts', () => {
+  it('does not require a free port for lanes whose service is disabled (#241)', () => {
+    const { exec } = mockExec();
+    // Everything reads busy; no services enabled — pre-1.0 harnesses that
+    // dropped their unused legacy triplets must still launch.
+    const ports = resolveInfraPorts(
+      { HARNESS_PROJECT_NAME: 'proj', HARNESS_INFRA_SERVICES: '' },
+      {},
+      { exec, portInUse: () => true },
+    );
+    expect(ports.AGENT_DB_PORT).toBe(15432);
+    expect(ports.AGENT_MINIO_PORT).toBe(19000);
+  });
+
+  it('still scans (and fails loudly) for an enabled service with no free port', () => {
+    const { exec } = mockExec();
+    expect(() =>
+      resolveInfraPorts(
+        {
+          HARNESS_PROJECT_NAME: 'proj',
+          HARNESS_INFRA_SERVICES: 'db',
+          HARNESS_INFRA_PORT_LANES: 'db=15432:15432-15433',
+        },
+        {},
+        { exec, portInUse: () => true },
+      ),
+    ).toThrow('no free port in range 15432-15433');
   });
 });
 

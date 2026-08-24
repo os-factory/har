@@ -2,6 +2,7 @@ import * as path from 'path';
 import type { Argv } from 'yargs';
 import { finishCommand } from '../finish-command';
 import { initHarness, maintainHarness, addPlugin } from '../../core/harness';
+import type { MaintainMigrationInfo } from '../../core/harness';
 import {
   listPluginIds,
 } from '../../harness/plugins';
@@ -145,6 +146,12 @@ export const envCommand = {
               type: 'boolean',
               default: false,
               describe: 'Record the completed manual adaptation in .har/manifest.json (updates file checksums)',
+            })
+            .option('migrate', {
+              type: 'boolean',
+              default: false,
+              describe:
+                'Apply the pending mechanical migration steps (pre-1.0 → 1.0; backups in .har/migrate/backup/)',
             })
             .option('summary', {
               type: 'string',
@@ -620,6 +627,7 @@ export async function handleMaintain(argv: {
   verbose: boolean;
   yes: boolean;
   finalize: boolean;
+  migrate?: boolean;
   summary?: string;
   /** Tri-state from yargs: unset | --cursor-rule | --no-cursor-rule */
   cursorRule?: boolean;
@@ -640,8 +648,15 @@ export async function handleMaintain(argv: {
       repoPath,
       verbose: argv.verbose,
       finalize: argv.finalize,
+      migrate: argv.migrate,
       summary: argv.summary,
     });
+
+    if (result.migration) {
+      printMigrationSummary(result.migration);
+    } else if (argv.migrate) {
+      info('No pending migration — the harness is already on the 1.0 shape.');
+    }
 
     divider();
     info('Validating harness...');
@@ -673,14 +688,23 @@ export async function handleMaintain(argv: {
       if (!result.validation.pass) {
         warn('Harness has validation errors — fix them before running --finalize.');
       }
-      await emitManualAdaptationPrompt(
-        repoPath,
-        'maintain',
-        'default',
-        result.bundle?.report,
-        argv.yes,
-      );
-      info('After your coding agent finishes adapting, record it with: har env maintain --finalize');
+      if (result.migration) {
+        info('Migration prompt for your coding agent (also saved to .har/MIGRATE-PROMPT.md):');
+        printAdaptationPrompt(result.migration.prompt);
+        await offerAdaptationPromptClipboard(result.migration.prompt, { autoYes: argv.yes });
+        info(
+          'After your coding agent finishes the migration, record it with: har env maintain --finalize',
+        );
+      } else {
+        await emitManualAdaptationPrompt(
+          repoPath,
+          'maintain',
+          'default',
+          result.bundle?.report,
+          argv.yes,
+        );
+        info('After your coding agent finishes adapting, record it with: har env maintain --finalize');
+      }
     }
 
     divider();
@@ -1567,6 +1591,32 @@ function printMaintainBundleSummary(report: MaintainBundleReport): void {
   }
   if (!report.validation.pass) {
     warn(`  Validation: ${report.validation.errors.length} error(s) — blocks --finalize`);
+  }
+}
+
+/** Loud pre-1.0 → 1.0 migration report (#241). */
+function printMigrationSummary(migration: MaintainMigrationInfo): void {
+  divider();
+  if (migration.applied) {
+    const applied = migration.appliedResult;
+    success(`Migration applied: ${migration.title}`);
+    if (applied) {
+      if (applied.written.length > 0) info(`  Rewritten: ${applied.written.join(', ')}`);
+      if (applied.deleted.length > 0) info(`  Removed:   ${applied.deleted.join(', ')}`);
+      info(`  Backups:   .har/migrate/backup/`);
+    }
+    info(`  Manifest stamped runtimeVersion=${migration.to}`);
+    if (migration.plan.residue.length > 0) {
+      warn(
+        `  ${migration.plan.residue.length} adapted item(s) need lifting into config/stages/hooks/plugins — see .har/MIGRATE-PROMPT.md`,
+      );
+    }
+  } else {
+    warn(`PRE-1.0 HARNESS DETECTED — migration available: ${migration.title}`);
+    warn('  Your vendored .har/*.sh scripts keep working for now (deprecated, compat window).');
+    info(`  Plan:    .har/migrate/plan.json`);
+    info(`  Prompt:  .har/MIGRATE-PROMPT.md (paste into your coding agent)`);
+    info(`  Apply mechanical steps: har env maintain --migrate`);
   }
 }
 
