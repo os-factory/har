@@ -15,13 +15,10 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `harness.env` | Shared config: Xcode scheme, simulator name, bundle ID, toolchain provisioning, infra flags |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
-| `runs/` | Run history from `har env` / MCP — gitignored |
+| `runs/` | Run history from every entry point — gitignored |
 | `artifacts/` | Stage outputs: test results, screenshots, logs |
-| `agent-slot.sh` | Shared agent-id validation and slot registry helpers |
 | `setup-infra.sh` | Check the toolchain; start optional Docker services |
-| `simulator.sh` | Create, boot and delete one iOS Simulator per agent slot |
-| `launch.sh` | Launch one agent slot (git worktree, toolchain provisioning, simulator, env file) |
-| `provision-toolchain.sh` | Generate the Xcode project when it is a build product (Tuist / XcodeGen / CocoaPods) and write Xcode paths (`XCODEBUILD_BIN`, …) to `.env.agent.<id>` |
+| `launch.sh` | Launch one agent slot — thin shim forwarding to `har env launch` |
 | `verify.sh` | Verification pipeline (build smoke by default; --full adds tests, lint, flows) |
 | `teardown.sh` | Tear down one agent slot (worktree + env file) |
 | `agent-cli.sh` | Inspect slot status, run xcodebuild commands, install/launch app |
@@ -33,7 +30,7 @@ No PM2 or web-port wiring in this profile — agents run xcodebuild commands dir
 
 ## Quick start
 
-**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+**har CLI or MCP:**
 
 ```bash
 har env launch 1
@@ -44,7 +41,7 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
 
-**Shell fallback** (no CLI/MCP installed):
+**Shell shims** (same runtime — each `./.har/*.sh` forwards to `har env`, with a pinned `npx @osfactory/har` fallback):
 
 ```bash
 ./.har/setup-infra.sh          # boots the iOS Simulator

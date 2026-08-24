@@ -15,7 +15,7 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `harness.env` | Shared config: worktree default, `HARNESS_INFRA_SERVICES`, toolchain provisioning (`HARNESS_ECOSYSTEM`, `HARNESS_INSTALL_CMD`), migrate/seed commands |
 | `stages.json` | Machine-readable registry of runnable harness stages |
 | `stages/` | Optional custom stage scripts registered from `stages.json` |
-| `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
+| `runs/` | Run history from every entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
 | `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
 | `setup-infra.sh` | Start optional Docker Compose stack + template database |
@@ -32,7 +32,7 @@ No PM2 or `ecosystem.agent.template.cjs` in this profile — agents run project 
 
 ## Quick start
 
-**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+**har CLI or MCP:**
 
 ```bash
 har env launch 1
@@ -43,7 +43,7 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
 
-**Shell fallback** (no CLI/MCP installed):
+**Shell shims** (same runtime — each `./.har/*.sh` forwards to `har env`, with a pinned `npx @osfactory/har` fallback):
 
 ```bash
 ./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
@@ -80,10 +80,7 @@ Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only 
 
 ## Run history
 
-| Entry point | Writes `.har/runs/`? |
-|-------------|------------------------|
-| `./.har/*.sh` | No |
-| `har env …` / MCP | Yes — main checkout `.har/runs/YYYY-MM-DD/` |
+Every entry point — `./.har/*.sh`, `har env …`, MCP — runs the same packaged runtime and writes the same records under the main checkout `.har/runs/YYYY-MM-DD/`.
 
 With worktree slots, tests run in the worktree; run JSON lives in the main repo. See `workDir` in each record.
 

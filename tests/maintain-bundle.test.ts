@@ -23,7 +23,9 @@ describe('maintain bundle', () => {
 
     const drift = compareHarnessToTemplate(repoPath);
     const validation = validateHarness(repoPath);
-    expect(validation.pass).toBe(false);
+    // #235: shims are not required files — deleting launch.sh keeps validation
+    // green (the runtime lives in the package); drift still restores it.
+    expect(validation.pass).toBe(true);
 
     const { bundleDir, report } = buildMaintainBundle(repoPath, validation, drift);
 
@@ -68,9 +70,11 @@ describe('maintain bundle', () => {
     expect(fs.existsSync(path.join(bundleDir, 'stale', 'MANIFEST.md'))).toBe(true);
   });
 
-  it('maintainHarness builds bundle even when validation fails', async () => {
+  it('maintainHarness builds bundle even when a required config file is missing', async () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-harness-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+    // CLAUDE.agent.md is part of the required config surface (#235); shims are not.
+    fs.unlinkSync(path.join(repoPath, '.har', 'CLAUDE.agent.md'));
     fs.unlinkSync(path.join(repoPath, '.har', 'launch.sh'));
 
     const result = await maintainHarness({ repoPath, finalize: false });

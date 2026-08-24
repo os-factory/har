@@ -9,6 +9,9 @@ if command -v har >/dev/null 2>&1; then
   exec har env preflight "$@"
 elif [ -x "$REPO_ROOT/node_modules/.bin/har" ]; then
   exec "$REPO_ROOT/node_modules/.bin/har" env preflight "$@"
+elif command -v npx >/dev/null 2>&1; then
+  exec npx --yes @osfactory/har@__HAR_VERSION__ env preflight "$@"
 fi
-echo "Error: the 'har' CLI is not available. Install @osfactory/har (npm i -D @osfactory/har) or run: npx @osfactory/har env preflight" >&2
+echo "Error: cannot run the HAR runtime — 'har' is not on PATH and Node.js (npx) is unavailable." >&2
+echo "  Install Node.js, then: npm i -D @osfactory/har   # or: npx @osfactory/har@__HAR_VERSION__ env preflight" >&2
 exit 127

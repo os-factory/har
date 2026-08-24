@@ -15,6 +15,7 @@ import {
 } from './profiles';
 import { validateHarnessEnvSource } from './schema';
 import { syncAgentSlotsToHarnessEnv } from './stages';
+import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 
 export type { HarnessProfile };
 export { HARNESS_PROFILES } from './profiles';
@@ -89,12 +90,19 @@ export function scaffoldHarnessBoilerplate(
 
   syncAgentSlotsToHarnessEnv(repoPath);
 
+  // Render template tokens into the generated files: harness.env gets the
+  // project name; the runtime shims get the pinned package version (#235).
+  for (const shim of RUNTIME_SHIM_FILES) {
+    const shimPath = path.join(harnessDir, shim);
+    if (!fs.existsSync(shimPath)) continue;
+    const rendered = substituteTemplateTokens(fs.readFileSync(shimPath, 'utf8'), projectName);
+    fs.writeFileSync(shimPath, rendered);
+  }
+
   const harnessEnvPath = path.join(harnessDir, 'harness.env');
   if (fs.existsSync(harnessEnvPath)) {
     let content = fs.readFileSync(harnessEnvPath, 'utf8');
-    content = content
-      .replace(/__PROJECT_NAME__/g, projectName)
-      .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
+    content = substituteTemplateTokens(content, projectName);
     fs.writeFileSync(harnessEnvPath, content);
 
     // The generated file must honor the 1.0 contract: pure KEY=value config

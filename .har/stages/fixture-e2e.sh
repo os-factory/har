@@ -275,7 +275,57 @@ milestone_asserts() {
       (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/preflight.sh 1 >/dev/null) \
         || fail "M2: direct ./.har/preflight.sh execution failed"
       echo "    direct shim execution works ✓"
-      echo "    pending (#235): pinned npx fallback + run/validation record parity assert"
+
+      echo "──> M2 asserts: thin shims with pinned npx fallback (#235)"
+      # Fresh shims pin the generating package version for a deterministic npx fallback.
+      local pkg_version
+      pkg_version="$(node -p "require('$REPO_ROOT/package.json').version")"
+      for shim in launch.sh verify.sh teardown.sh setup-infra.sh agent-cli.sh preflight.sh; do
+        grep -q "npx --yes @osfactory/har@${pkg_version} " "$FRESH/.har/$shim" \
+          || fail "M2: .har/$shim lacks the pinned npx fallback (@${pkg_version})"
+        if grep -q '__HAR_VERSION__' "$FRESH/.har/$shim"; then
+          fail "M2: .har/$shim still carries the unrendered __HAR_VERSION__ token"
+        fi
+      done
+      echo "    shims pin npx fallback to @osfactory/har@${pkg_version} ✓"
+
+      # Record parity: a launch → verify → teardown cycle driven ONLY through
+      # the generated shims must leave the same evidence records as har env.
+      # Runs on FRESH — the 1.0 scaffold with shims; CLONE keeps its pre-1.0
+      # scripts (no records) until #241 migrates it.
+      local shim_marker="$ART_DIR/.m2-shim-start"; touch "$shim_marker"
+      "$bindir/har" --version >/dev/null 2>&1 || true
+      (cd "$FRESH" && "$bindir/har" env teardown 1 >/dev/null 2>&1) || true
+      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/launch.sh 1 >/dev/null) \
+        || fail "M2: direct ./.har/launch.sh execution failed on fresh scaffold"
+      # The fresh scaffold is unadapted, so quick verify may report failures —
+      # the parity claim is that the shim surface records the run either way.
+      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/verify.sh 1 >/dev/null) || true
+      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/teardown.sh 1 --delete-branch >/dev/null) \
+        || fail "M2: direct ./.har/teardown.sh execution failed on fresh scaffold"
+      local kind
+      for kind in launch verify teardown; do
+        find "$FRESH/.har/runs" -name "*_${kind}_*.json" -newer "$shim_marker" 2>/dev/null | grep -q . \
+          || fail "M2: shim-driven ${kind} wrote no run record — entry points are not parity"
+      done
+      echo "    shim-driven launch/verify/teardown all write run records ✓"
+
+      # Commit gate satisfiable from the shim surface: on the ADAPTED clone
+      # (where quick verify passes), a shim verify must produce a validation
+      # record. CLONE's own verify.sh is pre-1.0 bash until #241 — stand in
+      # the generated shim, exactly what migration will install.
+      cp "$FRESH/.har/verify.sh" "$CLONE/.har/verify.sh"
+      (cd "$CLONE" && "$bindir/har" env launch 1 >/dev/null 2>&1) \
+        || fail "M2: launch on adapted clone failed for shim-verify parity check"
+      # --full: the pre-1.0 clone's stages.json has no quick-tier stages yet
+      # (#241 migrates it); full resolves its verificationStages list.
+      (cd "$CLONE" && PATH="$bindir:$PATH" ./.har/verify.sh 1 --full >/dev/null) \
+        || fail "M2: shim verify failed on the adapted clone"
+      find "$CLONE/.har/validations" -name '*.json' -newer "$shim_marker" 2>/dev/null | grep -q . \
+        || fail "M2: shim verify wrote no validation record — commit gate not satisfiable from the shim surface"
+      (cd "$CLONE" && "$bindir/har" env teardown 1 >/dev/null 2>&1) || true
+      git -C "$CLONE" checkout -- .har/verify.sh 2>/dev/null || true
+      echo "    shim verify writes validation records (commit gate satisfiable from any surface) ✓"
       ;;
     M3)
       echo "──> M3 asserts: plugin/eject (extend when #239/#240 land)"
