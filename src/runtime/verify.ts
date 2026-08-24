@@ -5,6 +5,7 @@ import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
 import { resolveAgentEnvFile } from '../core/slot-status';
 import { readSlotRegistry } from '../core/slot-registry';
 import { detectProcessManager } from './launch';
+import { lifecycleHookPath } from './hooks';
 
 export interface VerifyPlan {
   /** Bash program that sources the agent env and execs the stage runner. */
@@ -112,6 +113,9 @@ export function buildVerifyPlan(
       : `==> Verifying agent ${agentId} (work dir: \${WORK_DIR})...`;
 
   const xcBlock = pm === 'simulator' ? XC_BLOCK : API_PORT_BLOCK;
+  // Lifecycle hook (#238): user-owned pre-verify runs before the stage runner,
+  // with the same exported contract; a non-zero exit fails verify with attribution.
+  const preVerifyHook = lifecycleHookPath(harnessDir, 'pre-verify');
 
   const shellCommand = `set -euo pipefail
 set -a
@@ -129,6 +133,16 @@ else
 fi
 export HAR_HARNESS_DIR=${JSON.stringify(harnessDir)}
 export WORK_DIR AGENT_ID
+ENV_FILE=${JSON.stringify(envFile)}
+export ENV_FILE
+if [ -f ${JSON.stringify(preVerifyHook)} ]; then
+  echo "==> Running .har/hooks/pre-verify.sh..." >&2
+  (cd "$WORK_DIR" && HAR_HOOK=pre-verify HAR_HOOK_CONTRACT=1 bash ${JSON.stringify(preVerifyHook)}) || {
+    hook_code=$?
+    echo "ERROR: pre-verify hook failed (exit $hook_code): .har/hooks/pre-verify.sh" >&2
+    exit "$hook_code"
+  }
+fi
 ${xcBlock}
 exec node ${JSON.stringify(resolveVerifyRunner(harnessDir))} --agent ${agentId}${full ? ' --full' : ''}`;
 

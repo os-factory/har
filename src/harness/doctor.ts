@@ -6,6 +6,7 @@ import { getHarnessDir } from './manifest';
 import { HarnessStage, HarnessStageRegistry, PortLane } from './schema';
 import { readStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
+import { LIFECYCLE_HOOKS } from '../runtime/hooks';
 
 /**
  * `har env doctor` — harness contract validation (#232).
@@ -22,7 +23,8 @@ export type DoctorCheckId =
   | 'lifecycle-stages'
   | 'verification-ids'
   | 'port-lanes'
-  | 'slot-registry';
+  | 'slot-registry'
+  | 'hooks';
 
 export type DoctorContract = '1.0' | 'pre-1.0' | 'none';
 
@@ -66,6 +68,7 @@ const CHECK_LABELS: Record<DoctorCheckId, string> = {
   'verification-ids': 'verificationStages ids',
   'port-lanes': 'infra port lanes',
   'slot-registry': 'slot registry worktrees',
+  hooks: 'lifecycle hooks (.har/hooks)',
 };
 
 /** Legacy helper functions whose presence marks a pre-1.0 harness.env. */
@@ -310,6 +313,35 @@ export function runDoctor(repoPath: string): DoctorReport {
         message: `Slot ${entry.agentId} (${entry.status}) points at a missing worktree: ${dir}`,
         remedy: `Run \`har env teardown ${entry.agentId}\` (or \`har env cleanup\`) to clear the stale session`,
       });
+    }
+  }
+
+  // 8. Lifecycle hooks (#238): user-owned scripts — validated for shape only
+  // (recognized name, executable), never compared against templates.
+  const hooksDir = path.join(harnessDir, 'hooks');
+  if (fs.existsSync(hooksDir)) {
+    for (const file of fs.readdirSync(hooksDir).sort()) {
+      const full = path.join(hooksDir, file);
+      if (!fs.statSync(full).isFile() || !file.endsWith('.sh')) continue;
+      if (!(LIFECYCLE_HOOKS as readonly string[]).includes(file.replace(/\.sh$/, ''))) {
+        findings.push({
+          check: 'hooks',
+          severity: 'warning',
+          file: `hooks/${file}`,
+          message: `hooks/${file} is not a recognized lifecycle hook (expected one of: ${LIFECYCLE_HOOKS.map((h) => `${h}.sh`).join(', ')})`,
+          remedy: 'Rename it to a supported hook, or keep helper scripts outside .har/hooks/',
+        });
+        continue;
+      }
+      if (!(fs.statSync(full).mode & 0o111)) {
+        findings.push({
+          check: 'hooks',
+          severity: 'warning',
+          file: `hooks/${file}`,
+          message: `Hook hooks/${file} is not executable`,
+          remedy: `chmod +x .har/hooks/${file}`,
+        });
+      }
     }
   }
 

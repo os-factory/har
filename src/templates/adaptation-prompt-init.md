@@ -136,6 +136,23 @@ If the user ran `har env add-plugin playwright` (or `@playwright/test` is in pac
 
 See `.har/stages/PLAYWRIGHT.md` when present.
 
+### Custom lifecycle behavior — `.har/hooks/` (optional)
+
+Need something custom at launch/verify/teardown time (warm a cache, prep test
+fixtures, prepare screenshots, clean up external resources)? Do **not** edit
+harness machinery — drop an executable script into `.har/hooks/`:
+
+`pre-launch.sh` · `post-launch.sh` · `pre-verify.sh` · `pre-teardown.sh` · `post-teardown.sh`
+
+Hooks receive a stable env contract (`HAR_HOOK_CONTRACT=1`): `AGENT_ID`,
+`WORK_DIR`, `ENV_FILE` (once the session has one), `HAR_HARNESS_DIR`, and
+`HAR_PORT_<NAME>` for allocated ports. A failing `pre-*` hook aborts the
+operation with attribution; `post-*` failures warn by default (set
+`HARNESS_HOOK_POST_FAILURE=fail` in `harness.env` to make them fatal). Hooks
+are user-owned: never drift-checked; `har env doctor` only validates names and
+executability. Use registered stages for verification steps; use hooks for
+lifecycle side effects.
+
 ### `.har/CLAUDE.agent.md`
 Detailed agent instructions: commands, credentials, architecture, definition of done.
 

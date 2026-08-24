@@ -63,6 +63,17 @@ Look specifically for drift introduced since the last adaptation:
 Update `.har/CLAUDE.agent.md` with skipped setup steps, substitutes, credentials,
 and the repo-specific definition of "agent usable."
 
+### Custom lifecycle behavior — `.har/hooks/`
+
+Custom launch/verify/teardown needs belong in lifecycle hooks, never in edits
+to harness machinery: `.har/hooks/pre-launch.sh`, `post-launch.sh`,
+`pre-verify.sh`, `pre-teardown.sh`, `post-teardown.sh`. Hooks receive
+`AGENT_ID`, `WORK_DIR`, `ENV_FILE`, `HAR_HARNESS_DIR`, and `HAR_PORT_<NAME>`
+(contract `HAR_HOOK_CONTRACT=1`). Failing `pre-*` hooks abort the operation;
+`post-*` failures warn unless `HARNESS_HOOK_POST_FAILURE=fail`. Hooks are
+user-owned and never drift-checked — if a past adaptation patched machinery
+scripts for a lifecycle side effect, move that code into a hook.
+
 ### HAR platform upgrades checklist
 
 When upgrading `@osfactory/har` or adopting new harness standards:

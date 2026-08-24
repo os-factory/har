@@ -105,3 +105,19 @@ describe('adaptation prompt is generated, not templated', () => {
     expect(flagged.filter((f) => f.startsWith('ADAPT-PROMPT'))).toEqual([]);
   });
 });
+
+describe('lifecycle hooks are user-owned (#238)', () => {
+  it('.har/hooks/ scripts never appear in drift', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-hooks-drift-'));
+    tmpDirs.push(repoPath);
+    scaffoldHarnessBoilerplate(repoPath, { profile: 'cli' });
+    const hooksDir = path.join(repoPath, '.har', 'hooks');
+    fs.mkdirSync(hooksDir, { recursive: true });
+    fs.writeFileSync(path.join(hooksDir, 'pre-launch.sh'), '#!/usr/bin/env bash\ntrue\n');
+    fs.chmodSync(path.join(hooksDir, 'pre-launch.sh'), 0o755);
+
+    const drift = compareHarnessToTemplate(repoPath);
+    const flagged = [...drift.missing, ...drift.checksumMismatch, ...drift.extra];
+    expect(flagged.filter((f) => f.includes('hooks'))).toEqual([]);
+  });
+});

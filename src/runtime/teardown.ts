@@ -13,6 +13,7 @@ import { GitRunner, removeSessionWorktree } from './worktree';
 import { detectProcessManager } from './launch';
 import { releaseSimulator } from './xcode-sim';
 import { loadInfraState } from '../core/slot-ports';
+import { postHookFailureMode, runLifecycleHook } from './hooks';
 
 export interface TeardownSessionOptions {
   repoPath: string;
@@ -52,6 +53,20 @@ export async function teardownSession(options: TeardownSessionOptions): Promise<
     session?.worktreePath || path.join(homeDir, 'worktrees', `${projectName}-agent-${agentId}`);
   const workDir = session?.workDir ?? '';
   const branch = session?.branch ?? '';
+
+  // ── pre-teardown hook (#238) — session resources still exist ────────────────
+  const preHook = runLifecycleHook('pre-teardown', {
+    harnessDir,
+    agentId,
+    workDir: workDir || repoRoot,
+    envFile: workDir ? path.join(workDir, `.env.agent.${agentId}`) : undefined,
+    exec: options.exec,
+    log: (message) => out(`==> ${message}`),
+  });
+  if (preHook.ran && preHook.code !== 0) {
+    out(`ERROR: pre-teardown hook failed (exit ${preHook.code}): ${preHook.file}`);
+    return { code: preHook.code || 1 };
+  }
 
   if (pm === 'pm2') {
     deleteAgentProcesses({
@@ -105,6 +120,24 @@ export async function teardownSession(options: TeardownSessionOptions): Promise<
   }
 
   removeSlotRegistry(repoRoot, agentId);
+
+  // ── post-teardown hook (#238) — everything is gone; failure policy is config ─
+  const postHook = runLifecycleHook('post-teardown', {
+    harnessDir,
+    agentId,
+    workDir: repoRoot,
+    exec: options.exec,
+    log: (message) => out(`==> ${message}`),
+  });
+  if (postHook.ran && postHook.code !== 0) {
+    if (postHookFailureMode(env) === 'fail') {
+      out(`ERROR: post-teardown hook failed (exit ${postHook.code}): ${postHook.file}`);
+      return { code: postHook.code || 1 };
+    }
+    out(
+      `WARN: post-teardown hook failed (exit ${postHook.code}): ${postHook.file} — continuing (HARNESS_HOOK_POST_FAILURE=warn)`,
+    );
+  }
 
   out(`✓ Agent ${agentId} torn down`);
   return { code: 0 };

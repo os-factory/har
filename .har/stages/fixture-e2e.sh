@@ -381,7 +381,54 @@ milestone_asserts() {
       har "$FRESH" env maintain --finalize --summary "M3 drift assert: reset baseline" >/dev/null 2>&1 || true
       echo "    upstream update on adapted file → conflict ✓"
 
-      echo "──> M3 asserts: hooks/eject/plugins (extend when #238/#239/#240 land)"
+      echo "──> M3 asserts: lifecycle hooks (#238)"
+      # Hooks land in the runtime, so the fresh 1.0 scaffold honors them with
+      # zero adaptation: drop scripts into .har/hooks/ and drive the lifecycle.
+      local hooks_bindir="$ART_DIR/bin"
+      mkdir -p "$hooks_bindir"
+      printf '#!/usr/bin/env bash\nexec node "%s" "$@"\n' "$HAR_CLI" > "$hooks_bindir/har"
+      chmod +x "$hooks_bindir/har"
+      local hook_log="$FRESH/.hook-fired"
+      rm -f "$hook_log"
+      mkdir -p "$FRESH/.har/hooks"
+      printf '#!/usr/bin/env bash\necho "$HAR_HOOK:$AGENT_ID:$HAR_HOOK_CONTRACT" >> %q\n' "$hook_log" \
+        > "$FRESH/.har/hooks/pre-launch.sh"
+      cp "$FRESH/.har/hooks/pre-launch.sh" "$FRESH/.har/hooks/post-teardown.sh"
+      chmod +x "$FRESH/.har/hooks/pre-launch.sh" "$FRESH/.har/hooks/post-teardown.sh"
+
+      (cd "$FRESH" && "$hooks_bindir/har" env teardown 1 >/dev/null 2>&1) || true
+      rm -f "$hook_log"
+      (cd "$FRESH" && "$hooks_bindir/har" env launch 1 >/dev/null) \
+        || fail "M3: launch failed with hooks installed"
+      grep -q '^pre-launch:1:1$' "$hook_log" 2>/dev/null \
+        || fail "M3: pre-launch hook did not fire with the v1 env contract"
+      echo "    pre-launch hook fires with the v1 contract ✓"
+
+      # A failing pre-verify hook must abort verify with attribution.
+      printf '#!/usr/bin/env bash\nexit 42\n' > "$FRESH/.har/hooks/pre-verify.sh"
+      chmod +x "$FRESH/.har/hooks/pre-verify.sh"
+      local hook_verify_out
+      if hook_verify_out=$(cd "$FRESH" && "$hooks_bindir/har" env verify 1 2>&1); then
+        fail "M3: verify passed despite a failing pre-verify hook"
+      fi
+      echo "$hook_verify_out" | grep -q 'pre-verify hook failed (exit 42)' \
+        || fail "M3: verify failure not attributed to the pre-verify hook"
+      rm -f "$FRESH/.har/hooks/pre-verify.sh"
+      echo "    failing pre-verify hook blocks verify with attribution ✓"
+
+      (cd "$FRESH" && "$hooks_bindir/har" env teardown 1 --delete-branch >/dev/null) \
+        || fail "M3: teardown failed with hooks installed"
+      grep -q '^post-teardown:1:1$' "$hook_log" 2>/dev/null \
+        || fail "M3: post-teardown hook did not fire"
+      echo "    post-teardown hook fires ✓"
+
+      # Hooks are user-owned: doctor stays green with hooks installed.
+      (cd "$FRESH" && "$hooks_bindir/har" env doctor >/dev/null 2>&1) \
+        || fail "M3: doctor red with valid hooks installed"
+      echo "    doctor green with hooks installed ✓"
+      rm -rf "$FRESH/.har/hooks" "$hook_log"
+
+      echo "──> M3 asserts: eject/plugins (extend when #239/#240 land)"
       ;;
     M4|M5)
       echo "──> $MILESTONE asserts: migration (extend when #241 lands)"
