@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readHarnessEnv } from '../harness/env';
 import { getHarnessDir, readManifest, resolveHarnessRoot } from '../harness/manifest';
-import { harnessUsesPm2 } from '../harness/capabilities';
+import { harnessCapabilities, harnessUsesPm2 } from '../harness/capabilities';
 import { runLaunchPreflight } from '../core/slot-preflight';
 import { loadInfraState } from '../core/slot-ports';
 import { writeSlotRegistry } from '../core/slot-registry';
@@ -34,10 +34,12 @@ import { pkgExec } from './node-pm';
 import { acquireSimulator, perSlotEnabled, releaseSimulator } from './xcode-sim';
 import { runSetupInfra } from './setup';
 
-/** Pre-#236 capability detection: file/manifest presence, not a data manifest. */
 export type ProcessManager = 'pm2' | 'simulator' | 'none';
 
+/** Capability manifest first (#236); file/manifest presence only for legacy harnesses. */
 export function detectProcessManager(repoPath: string): ProcessManager {
+  const capabilities = harnessCapabilities(repoPath);
+  if (capabilities) return capabilities.processManager;
   if (harnessUsesPm2(repoPath)) return 'pm2';
   const harnessRoot = resolveHarnessRoot(repoPath);
   const manifest = readManifest(harnessRoot);
