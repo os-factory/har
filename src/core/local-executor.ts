@@ -24,8 +24,16 @@ import {
   StageRunOptions,
 } from './types';
 import { readSlotRegistry } from './slot-registry';
+import {
+  launchSession,
+  runAgentOp,
+  runSetupInfra,
+  teardownSession,
+  buildVerifyPlan,
+  VerifyPlanError,
+} from '../runtime';
 
-/** Argv fragments forwarded to launch.sh for a launch stage. */
+/** Argv fragments forwarded to the launch pipeline for a launch stage. */
 export function buildLaunchFlagArgs(flags: LaunchFlags): string[] {
   const args: string[] = [];
   if (flags.worktree === false) args.push('--no-worktree');
@@ -199,6 +207,165 @@ async function executePlan(
   throw new Error('Invalid stage execution plan');
 }
 
+/** Collects pipeline output for run records while optionally echoing it live. */
+function makeSink(stream: NodeJS.WriteStream, live: boolean): { write: (line: string) => void; text: () => string } {
+  const lines: string[] = [];
+  return {
+    write: (line: string) => {
+      lines.push(line);
+      if (live) stream.write(`${line}\n`);
+    },
+    text: () => (lines.length > 0 ? lines.join('\n') + '\n' : ''),
+  };
+}
+
+/** Stage command tail after `./.har/agent-cli.sh {agentId}` (or empty when not an agent-cli stage). */
+function agentCliOp(stage: HarnessStage): string[] | undefined {
+  const target = stage.command ?? stage.script ?? '';
+  if (!/agent-cli\.sh/.test(target)) return undefined;
+  const tokens = (stage.command ?? '').split(/\s+/).filter(Boolean);
+  const scriptIndex = tokens.findIndex((token) => token.includes('agent-cli.sh'));
+  if (scriptIndex < 0) return [];
+  return tokens.slice(scriptIndex + 1).filter((token) => token !== '{agentId}');
+}
+
+const RUNTIME_SCRIPT_FOR_KIND: Partial<Record<string, string>> = {
+  launch: 'launch.sh',
+  teardown: 'teardown.sh',
+  setup: 'setup-infra.sh',
+  verify: 'verify.sh',
+};
+
+/**
+ * A pre-#234 harness still carries the full bash runtime in its generated
+ * scripts (adapted, possibly customized). Until #241 migrates it, that script
+ * stays authoritative — the package runtime takes over only when the script is
+ * one of the thin `exec har env` delegates, or is absent entirely.
+ */
+function harnessScriptIsLegacy(repoPath: string, scriptName: string): boolean {
+  const file = path.join(getHarnessDir(resolveHarnessRoot(repoPath)), scriptName);
+  if (!fs.existsSync(file)) return false;
+  return !fs.readFileSync(file, 'utf8').includes('exec har env');
+}
+
+/**
+ * Kinds the package runtime owns (#234): launch, teardown, setup, verify, and
+ * agent-cli inspect ops. Returns undefined for everything else (project stages,
+ * custom commands, pre-1.0 harnesses with their own runtime bash) so they keep
+ * running as scripts/shell.
+ */
+async function runPackageRuntimeStage(
+  repoPath: string,
+  stage: HarnessStage,
+  options: StageRunOptions,
+  capture: boolean,
+): Promise<StageResult | undefined> {
+  const legacyScript = RUNTIME_SCRIPT_FOR_KIND[stage.kind];
+  if (legacyScript && harnessScriptIsLegacy(repoPath, legacyScript)) return undefined;
+  const started = Date.now();
+  const finish = (exitCode: number, stdout: string, stderr: string, previewUrls?: Record<string, string>) =>
+    buildStageResult({
+      stageId: stage.id,
+      kind: stage.kind,
+      agentId: options.agentId,
+      exitCode,
+      stdout,
+      stderr,
+      durationMs: Date.now() - started,
+      previewUrls,
+    });
+
+  if (stage.kind === 'launch' && options.agentId !== undefined) {
+    const out = makeSink(process.stderr, !capture);
+    const flags = options.launchFlags ?? {};
+    const result = await launchSession({
+      repoPath,
+      agentId: options.agentId,
+      worktree: flags.worktree,
+      claude: flags.claude,
+      resume: flags.resume,
+      workUnitId: flags.workUnitId,
+      attemptId: flags.attemptId,
+      log: out.write,
+      error: out.write,
+    });
+    const previewUrls =
+      result.code === 0
+        ? result.previewUrls ?? computePreviewUrls(repoPath, options.agentId)
+        : undefined;
+    return finish(result.code, '', out.text(), previewUrls);
+  }
+
+  if (stage.kind === 'teardown' && options.agentId !== undefined) {
+    const out = makeSink(process.stdout, !capture);
+    const result = await teardownSession({
+      repoPath,
+      agentId: options.agentId,
+      deleteBranch: options.args?.includes('--delete-branch'),
+      out: out.write,
+    });
+    return finish(result.code, out.text(), '');
+  }
+
+  if (stage.kind === 'setup') {
+    const out = makeSink(process.stderr, !capture);
+    const result = await runSetupInfra({ repoPath, log: out.write });
+    return finish(result.code, '', out.text());
+  }
+
+  if (stage.kind === 'verify' && options.agentId !== undefined) {
+    let plan;
+    try {
+      plan = buildVerifyPlan(repoPath, options.agentId, options.args ?? [], {
+        ...process.env,
+        ...readHarnessEnv(resolveHarnessRoot(repoPath)),
+        ...(stage.env ?? {}),
+      });
+    } catch (err) {
+      if (err instanceof VerifyPlanError) {
+        const stderr = [err.message, ...err.hint].join('\n') + '\n';
+        if (!capture) process.stderr.write(stderr);
+        return finish(1, '', stderr);
+      }
+      throw err;
+    }
+    const result = await runShellCommand(plan.shellCommand, {
+      cwd: plan.cwd,
+      env: plan.env,
+      stream: !capture,
+      streamStdout: false,
+    });
+    return buildStageResult({
+      stageId: stage.id,
+      kind: stage.kind,
+      agentId: options.agentId,
+      exitCode: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      durationMs: Date.now() - started,
+      verification: parseVerificationResult(result.stdout),
+    });
+  }
+
+  const op = agentCliOp(stage);
+  if (op !== undefined && harnessScriptIsLegacy(repoPath, 'agent-cli.sh')) return undefined;
+  if (op !== undefined && options.agentId !== undefined) {
+    const command = op[0] ?? options.args?.[0] ?? 'status';
+    const args = op.length > 0 ? [...op.slice(1), ...(options.args ?? [])] : (options.args ?? []).slice(1);
+    const out = makeSink(process.stdout, !capture);
+    const result = await runAgentOp({
+      repoPath,
+      agentId: options.agentId,
+      command,
+      args,
+      out: out.write,
+    });
+    return finish(result.code, out.text(), '');
+  }
+
+  return undefined;
+}
+
 export class LocalScriptExecutor implements StageExecutor {
   async runStage(ctx: ExecutionContext, options: StageRunOptions): Promise<StageResult> {
     const repoPath = resolveRepoPath(options.repoPath ?? ctx.repoPath);
@@ -216,8 +383,14 @@ export class LocalScriptExecutor implements StageExecutor {
       validateAgentId(options.agentId, repoPath);
     }
 
-    const plan = buildExecutionPlan(repoPath, stage, options);
     const capture = options.capture ?? ctx.capture ?? true;
+
+    // The runtime kinds (#234) run in the package — never through generated
+    // scripts, which are now argument-preserving delegates back into har.
+    const runtimeResult = await runPackageRuntimeStage(repoPath, stage, options, capture);
+    if (runtimeResult) return runtimeResult;
+
+    const plan = buildExecutionPlan(repoPath, stage, options);
     const started = Date.now();
     // verify.sh writes a JSON contract to stdout and progress to stderr.
     // Stream progress only — echoing stdout duplicates the blob in CI/agent logs.

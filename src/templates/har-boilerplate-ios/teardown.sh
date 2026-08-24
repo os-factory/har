@@ -1,68 +1,14 @@
 #!/usr/bin/env bash
-# Tear down an agent slot for iOS mobile app repos.
-# The session's git branch is KEPT by default so you can push it / open a PR —
-# pass --delete-branch to remove it too.
-#
+# Tear down one agent slot: stop processes, release resources, keep the session branch.
+# The runtime lives in the HAR package (#234) — this file only forwards to it.
 # Usage: ./.har/teardown.sh <agent-id> [--delete-branch]
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/harness.env"
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/agent-slot.sh"
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/simulator.sh"
-
-AGENT_ID="${1:?Usage: teardown.sh <agent-id> [--delete-branch]}"
-DELETE_BRANCH=false
-
-for arg in "${@:2}"; do
-  case "$arg" in
-    --delete-branch) DELETE_BRANCH=true ;;
-  esac
-done
-
-validate_agent_id "$AGENT_ID"
-
-echo "==> Tearing down agent ${AGENT_ID}..."
-
-REGISTRY_FILE="$(slot_registry_file "$AGENT_ID")"
-WORKTREE_PATH=""
-WORK_DIR=""
-BRANCH=""
-if [ -f "$REGISTRY_FILE" ]; then
-  WORKTREE_PATH="$(read_slot_field "$REGISTRY_FILE" worktreePath || true)"
-  WORK_DIR="$(read_slot_field "$REGISTRY_FILE" workDir || true)"
-  BRANCH="$(read_slot_field "$REGISTRY_FILE" branch || true)"
+if command -v har >/dev/null 2>&1; then
+  exec har env teardown "$@"
+elif [ -x "$REPO_ROOT/node_modules/.bin/har" ]; then
+  exec "$REPO_ROOT/node_modules/.bin/har" env teardown "$@"
 fi
-[ -n "$WORKTREE_PATH" ] || WORKTREE_PATH="$HOME/worktrees/${HARNESS_PROJECT_NAME}-agent-${AGENT_ID}"
-
-rm -f "$REPO_ROOT/.env.agent.${AGENT_ID}"
-if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
-  rm -f "$WORK_DIR/.env.agent.${AGENT_ID}"
-fi
-
-if [ -d "$WORKTREE_PATH" ]; then
-  rm -f "$WORKTREE_PATH/.env.agent.${AGENT_ID}"
-  git -C "$REPO_ROOT" worktree remove "$WORKTREE_PATH" --force 2>/dev/null || rm -rf "$WORKTREE_PATH"
-  echo "✓ Removed worktree: $WORKTREE_PATH"
-fi
-git -C "$REPO_ROOT" worktree prune 2>/dev/null || true
-
-if [ -n "$BRANCH" ]; then
-  if [ "$DELETE_BRANCH" = true ]; then
-    git -C "$REPO_ROOT" branch -D "$BRANCH" 2>/dev/null || true
-    echo "✓ Deleted branch: $BRANCH"
-  else
-    echo "✓ Kept branch: $BRANCH (push it or delete with: git branch -D $BRANCH)"
-  fi
-fi
-
-har_sim_release "$AGENT_ID"
-
-remove_slot_registry "$AGENT_ID"
-
-echo "✓ Agent ${AGENT_ID} torn down"
+echo "Error: the 'har' CLI is not available. Install @osfactory/har (npm i -D @osfactory/har) or run: npx @osfactory/har env teardown" >&2
+exit 127

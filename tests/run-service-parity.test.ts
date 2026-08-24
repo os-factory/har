@@ -6,6 +6,41 @@ import { collectEnvironmentStatus, renderEnvironmentStatusText } from '../src/co
 import { getSlotRegistryPath } from '../src/core/slot-registry';
 import { synthesizeStageRegistry } from '../src/harness/stages';
 
+
+// #234: launch/teardown/setup/verify/agent ops run in the package runtime.
+// Stub the pipelines: these suites assert the run-service surface (records,
+// triggers, work units), not the runtime internals (covered in tests/runtime-*).
+jest.mock('../src/runtime', () => {
+  const actual = jest.requireActual('../src/runtime');
+  return {
+    ...actual,
+    launchSession: jest.fn(async () => ({ code: 0 })),
+    teardownSession: jest.fn(async (options: { agentId: number; out?: (line: string) => void }) => {
+      options.out?.(`==> Tearing down agent ${options.agentId}...`);
+      return { code: 0 };
+    }),
+    runSetupInfra: jest.fn(async () => ({ code: 0 })),
+    runAgentOp: jest.fn(
+      async (options: { agentId: number; command: string; out?: (line: string) => void }) => {
+        options.out?.(
+          options.command === 'logs'
+            ? `log line for agent ${options.agentId}`
+            : `Agent ${options.agentId} running`,
+        );
+        return { code: 0 };
+      },
+    ),
+    buildVerifyPlan: jest.fn((_repo: string, agentId: number) => ({
+      shellCommand:
+        "echo '" +
+        JSON.stringify({ status: 'pass', agent_id: agentId, total_ms: 10, stages: [{ name: 'smoke', pass: true }] }) +
+        "'",
+      cwd: process.cwd(),
+      env: process.env,
+    })),
+  };
+});
+
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
 
 function makeTempRepo(prefix: string): string {

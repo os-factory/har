@@ -101,25 +101,8 @@ describe('computePreviewUrls', () => {
   });
 });
 
-describe('shell PM2 naming helpers', () => {
-  it('har_pm2_slot_prefix scopes PM2 names by project', () => {
-    const script = path.join(process.cwd(), 'src/templates/har-boilerplate/agent-slot.sh');
-    const out = execSync(
-      `bash -c 'export HARNESS_PROJECT_NAME=control; source "${script}" >/dev/null 2>&1; har_pm2_slot_prefix 1'`,
-      { encoding: 'utf8' },
-    ).trim();
-    expect(out).toBe('har-control-agent-1');
-  });
-
-  it('har_pm2_delete_regex only matches this harness agent slot', () => {
-    const script = path.join(process.cwd(), 'src/templates/har-boilerplate/agent-slot.sh');
-    const out = execSync(
-      `bash -c 'export HARNESS_PROJECT_NAME=control; source "${script}" >/dev/null 2>&1; har_pm2_delete_regex 1'`,
-      { encoding: 'utf8' },
-    ).trim();
-    expect(out).toBe('/^har-control-agent-1-/');
-  });
-});
+// PM2 slot naming formulas are TS-only since #234 (pm2SlotPrefix / pm2DeleteRegex
+// in src/runtime/process.ts, covered by tests/runtime-process.test.ts).
 
 describe('port formulas', () => {
   it('computes default app ports and lane ends (step 10)', () => {

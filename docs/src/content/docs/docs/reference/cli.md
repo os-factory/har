@@ -49,6 +49,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `add-plugin [plugin]` | Install a plugin (bundled id, path, npm, or git — registers stages) |
 | `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
 | `preflight <id>` | Check ports, processes, Docker, slot occupation, and untracked worktree paths |
+| `setup-infra` | Set up shared infrastructure (Docker services, template DB, or the iOS toolchain) |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
@@ -57,6 +58,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `doctor` | Validate the harness contract (schema, stages, scripts, port lanes) |
 | `status` | Inspect all slots |
 | `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
+| `agent <id> <command>` | Per-slot ops: `status`, `logs`, `restart`, `psql`, `health`, `url`, `reset-db`, `slow-queries`, `exec`, `attach` |
 | `run-stage <id> <stage> [args..]` | Run one registered harness stage by id |
 | `artifacts` | List result files under `.har/artifacts/` |
 | `cleanup` | Discover stale sessions and orphan worktrees across registered repos |

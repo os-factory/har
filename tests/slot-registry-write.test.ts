@@ -14,8 +14,6 @@ import {
   slotDirtySummary,
 } from '../src/core/slot-status';
 
-const AGENT_SLOT = path.join(process.cwd(), 'src/templates/har-boilerplate/agent-slot.sh');
-
 function makeRepo(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   fs.mkdirSync(path.join(dir, '.har'), { recursive: true });
@@ -49,41 +47,39 @@ describe('writeSlotRegistry', () => {
     previewUrls: { frontend: 'http://localhost:3030', api: 'http://localhost:8030' },
   };
 
-  it('is byte-compatible with the bash write_slot_registry', () => {
+  it('is byte-compatible with the retired bash write_slot_registry', () => {
     const repo = makeRepo('har-reg-bytes-');
     const harDir = path.join(repo, '.har');
 
-    // Bash writer — run with an empty PATH tail so har_notify_control no-ops.
-    const env = {
-      ...process.env,
-      SLOT_AGENT_ID: String(fullInput.agentId),
-      HARNESS_PROJECT_NAME: fullInput.projectName,
-      SLOT_MODE: fullInput.mode,
-      SLOT_WORK_DIR: fullInput.workDir,
-      SLOT_STATUS: fullInput.status,
-      SLOT_SUFFIX: fullInput.suffix,
-      SLOT_WORKTREE_PATH: fullInput.worktreePath,
-      SLOT_BRANCH: fullInput.branch,
-      SLOT_BASE_BRANCH: fullInput.baseBranch,
-      SLOT_BASE_COMMIT: fullInput.baseCommit,
-      SLOT_LAST_ERROR: fullInput.lastError,
-      SLOT_WORK_UNIT_ID: fullInput.workUnitId,
-      SLOT_ATTEMPT_ID: fullInput.attemptId,
-      SLOT_PORTS_JSON: JSON.stringify(fullInput.ports),
-      SLOT_PREVIEW_URLS_JSON: JSON.stringify(fullInput.previewUrls),
+    // Golden bytes: the exact construction order and formatting of the retired
+    // bash writer (agent-slot.sh write_slot_registry) — required keys first,
+    // optionals in its fixed order, JSON.stringify(entry, null, 2) + newline.
+    const createdAt = '2026-08-24T00:00:00.000Z';
+    const goldenEntry: Record<string, unknown> = {
+      version: 1,
+      agentId: fullInput.agentId,
+      projectName: fullInput.projectName,
+      mode: fullInput.mode,
+      workDir: fullInput.workDir,
+      createdAt,
+      status: fullInput.status,
+      suffix: fullInput.suffix,
+      worktreePath: fullInput.worktreePath,
+      branch: fullInput.branch,
+      baseBranch: fullInput.baseBranch,
+      baseCommit: fullInput.baseCommit,
+      lastError: fullInput.lastError,
+      workUnitId: fullInput.workUnitId,
+      attemptId: fullInput.attemptId,
+      ports: fullInput.ports,
+      previewUrls: fullInput.previewUrls,
     };
-    execSync(
-      `bash -c 'SCRIPT_DIR="${harDir}"; source "${AGENT_SLOT}"; har_notify_control() { :; }; write_slot_registry'`,
-      { env, encoding: 'utf8' },
-    );
-    const bashBytes = fs.readFileSync(path.join(harDir, 'slots', 'agent-3.json'), 'utf8');
-    fs.rmSync(path.join(harDir, 'slots', 'agent-3.json'));
+    const goldenBytes = JSON.stringify(goldenEntry, null, 2) + '\n';
 
-    const bashCreatedAt = JSON.parse(bashBytes).createdAt as string;
-    writeSlotRegistry(repo, { ...fullInput, createdAt: bashCreatedAt, notifyControl: false });
+    writeSlotRegistry(repo, { ...fullInput, createdAt, notifyControl: false });
     const tsBytes = fs.readFileSync(path.join(harDir, 'slots', 'agent-3.json'), 'utf8');
 
-    expect(tsBytes).toBe(bashBytes);
+    expect(tsBytes).toBe(goldenBytes);
   });
 
   it('writes an entry readSlotRegistry accepts and preserves optional omissions', () => {

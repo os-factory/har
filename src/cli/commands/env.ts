@@ -33,6 +33,7 @@ import {
   teardownEnvironment,
 } from '../../core/run-service';
 import { listRuns, getRun } from '../../core/runs';
+import { runAgentOp } from '../../runtime';
 import { addWorkUnitLinks, parseWorkLinkSpec } from '../../core/work-units';
 import { resolveHarnessRoot } from '../../harness/manifest';
 import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
@@ -389,6 +390,23 @@ export const envCommand = {
               describe: 'Tear down without running verification (no validation is recorded)',
             }),
         handleComplete,
+      )
+      .command(
+        'setup-infra',
+        'Set up shared infrastructure for all agent slots (Docker services, template DB, or the iOS toolchain)',
+        (y: Argv) => y.option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
+        handleSetupInfra,
+      )
+      .command(
+        'agent <id> <command> [args..]',
+        'Per-slot operations against a running environment (status, logs, restart, psql, health, url, reset-db, slow-queries, exec, attach)',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .positional('command', { type: 'string', describe: 'Operation to run' })
+            .positional('args', { type: 'string', array: true, describe: 'Operation arguments' })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
+        handleAgent,
       )
       .command(
         'doctor',
@@ -1178,6 +1196,34 @@ export async function handleComplete(argv: {
   } else if (result.stderr) {
     error(result.stderr.trim());
   }
+  return finishCommand(result.code);
+}
+
+export async function handleSetupInfra(argv: { repo: string }): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const result = await runStage({
+    repoPath: repo,
+    kind: 'setup',
+    capture: false,
+    trigger: 'cli',
+  });
+  return finishCommand(result.code ?? (result.status === 'pass' ? 0 : 1));
+}
+
+export async function handleAgent(argv: {
+  id?: number;
+  command?: string;
+  args?: string[];
+  repo: string;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  const result = await runAgentOp({
+    repoPath: repo,
+    agentId,
+    command: argv.command ?? 'status',
+    args: argv.args,
+  });
   return finishCommand(result.code);
 }
 
