@@ -71,7 +71,6 @@ export function decodeOtlpProtobufJson(
     return decoder.toObject(message, {
       longs: String,
       enums: String,
-      // protobufjs ignores a converter function here and returns raw Buffers.
       bytes: String,
       defaults: true,
       arrays: true,
@@ -82,7 +81,6 @@ export function decodeOtlpProtobufJson(
   }
 }
 
-/** Hex form of an OTLP id — hex passes through, base64 and bytes convert, '' when neither. */
 export function normalizeOtelId(value: unknown, byteLength: number): string {
   const bytes =
     typeof value === 'string'
@@ -378,10 +376,6 @@ async function defaultAgentIdForRepo(repositoryId: string): Promise<number> {
   return active?.slotId ?? 1;
 }
 
-/**
- * Slot attribution outside a session worktree is a guess from the repo's live
- * slots, and that guess moves as slots come and go. First attribution wins.
- */
 async function pinnedAgentIdForSession(
   repositoryId: string,
   sessionKey: string,
