@@ -49,6 +49,8 @@ export const DescribeProjectOutputSchema = z.object({
       conflict: z.array(z.string()),
       extra: z.array(z.string()),
       unchanged: z.array(z.string()),
+      /** User-owned files on an ejected harness (#239) — present, never drift. */
+      ownedByUser: z.array(z.string()).optional(),
     })
     .nullable(),
 });

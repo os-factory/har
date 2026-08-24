@@ -428,7 +428,53 @@ milestone_asserts() {
       echo "    doctor green with hooks installed ✓"
       rm -rf "$FRESH/.har/hooks" "$hook_log"
 
-      echo "──> M3 asserts: eject/plugins (extend when #239/#240 land)"
+      echo "──> M3 asserts: explicit runtime ownership via eject (#239)"
+      if ! har "$FRESH" env eject --help >/dev/null 2>&1; then
+        echo "    SKIP: har env eject not available yet (#239 not landed in this build)"
+      else
+        # Eject on the fresh scaffold: vendored runtime + user-owned scripts,
+        # recorded in the manifest, doctor still green, adopt reverses it.
+        har "$FRESH" env eject --yes || fail "M3: har env eject failed"
+        [ -f "$FRESH/.har/runtime/har.cjs" ] || fail "M3: eject did not vendor .har/runtime/har.cjs"
+        grep -q 'runtime/har.cjs' "$FRESH/.har/launch.sh" \
+          || fail "M3: ejected launch.sh does not execute the vendored runtime"
+        if grep -q 'exec har env' "$FRESH/.har/launch.sh"; then
+          fail "M3: ejected launch.sh still delegates to an installed har"
+        fi
+        node -e '
+          const m = require(process.argv[1]);
+          if (m.ejected !== true || !m.ejectedVersion) { console.error("M3: manifest missing ejected/ejectedVersion"); process.exit(1); }
+        ' "$FRESH/.har/manifest.json" || fail "M3: eject not recorded in manifest.json"
+        echo "    eject vendors runtime, rewrites scripts, records the choice ✓"
+
+        har "$FRESH" env doctor >/dev/null 2>&1 || fail "M3: doctor red on an intact ejected harness"
+        echo "    doctor green on ejected harness ✓"
+
+        # Owned mode: an edited ejected script must NOT appear as drift.
+        echo '# fixture user tweak' >> "$FRESH/.har/launch.sh"
+        if har "$FRESH" env maintain 2>&1 | grep -q 'Drift (template changed).*launch\.sh'; then
+          fail "M3: edited ejected launch.sh still reported as upstream drift"
+        fi
+        echo "    ejected scripts are user-owned — no drift nagging ✓"
+
+        # Ejected scripts run the vendored runtime directly (no har on PATH).
+        (cd "$FRESH" && ./.har/preflight.sh 1 >/dev/null) \
+          || fail "M3: ejected ./.har/preflight.sh failed to run the vendored runtime"
+        echo "    ejected scripts execute the vendored runtime standalone ✓"
+
+        # Reversible: adopt restores managed shims and clears the record.
+        har "$FRESH" env adopt || fail "M3: har env adopt failed"
+        [ ! -d "$FRESH/.har/runtime" ] || fail "M3: adopt left .har/runtime/ behind"
+        grep -q 'exec har env launch' "$FRESH/.har/launch.sh" \
+          || fail "M3: adopt did not restore the managed launch.sh shim"
+        node -e '
+          const m = require(process.argv[1]);
+          if (m.ejected || m.ejectedVersion) { console.error("M3: adopt did not clear eject flags"); process.exit(1); }
+        ' "$FRESH/.har/manifest.json" || fail "M3: adopt did not clear the manifest record"
+        har "$FRESH" env doctor >/dev/null 2>&1 || fail "M3: doctor red after adopt"
+        echo "    adopt restores managed shims and clears the record ✓"
+      fi
+      echo "──> M3 asserts: plugins (extend when #240 lands)"
       ;;
     M4|M5)
       echo "──> $MILESTONE asserts: migration (extend when #241 lands)"

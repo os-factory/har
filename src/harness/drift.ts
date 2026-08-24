@@ -14,7 +14,7 @@ import {
 } from './manifest';
 import { detectAgentSlotEnvMismatch } from './stages';
 import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
-import { substituteTemplateTokens } from './template-tokens';
+import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 
 const CLI_EXPECTED_ABSENT = new Set([
   'ecosystem.agent.template.cjs',
@@ -54,6 +54,12 @@ export interface HarnessDriftResult {
   conflict: string[];
   extra: string[];
   unchanged: string[];
+  /**
+   * User-owned files never compared to upstream templates: on an ejected
+   * harness (#239), the runtime scripts and vendored runtime belong to the
+   * user and report no drift.
+   */
+  ownedByUser: string[];
   /** Port-allocation knobs from harness.env that the bundled template expects. */
   missingPortVars: string[];
   /** stages.json agentSlots disagree with HARNESS_AGENT_SLOT_* in harness.env. */
@@ -165,10 +171,11 @@ export function computeTemplateChecksums(
   const projectName = projectNameFor(resolved);
   const checksums: Record<string, string> = {};
   for (const [file, entry] of composeProfileTemplateMap(profile)) {
-    let content = readComposedTemplateContent(entry);
-    if (file === 'harness.env') {
-      content = substituteProjectName(content, projectName);
-    }
+    // Render generation-time tokens for every file — the comparison in
+    // compareHarnessToTemplate hashes rendered templates, so the recorded
+    // baseline must be rendered the same way or fresh shims (__HAR_VERSION__)
+    // report false upstream updates.
+    const content = substituteProjectName(readComposedTemplateContent(entry), projectName);
     checksums[harnessFileForTemplate(file)] = computeFileChecksum(content);
   }
   return checksums;
@@ -194,14 +201,26 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const conflict: string[] = [];
   const extra: string[] = [];
   const unchanged: string[] = [];
+  const ownedByUser: string[] = [];
+  // Ejected harness (#239): the runtime scripts are user-owned — a present
+  // script is never drift, only a missing one still is (the harness is broken).
+  const ejected = manifest?.ejected === true;
+  const userOwnedFiles = new Set<string>(ejected ? RUNTIME_SHIM_FILES : []);
 
   for (const file of templateFiles) {
     const harnessFile = harnessFileForTemplate(file);
     const harnessPath = path.join(harnessDir, harnessFile);
-    let templateContent = readComposedTemplateContent(composed.get(file)!);
-    if (file === 'harness.env') {
-      templateContent = substituteProjectName(templateContent, projectName);
+    if (userOwnedFiles.has(harnessFile) && fs.existsSync(harnessPath)) {
+      ownedByUser.push(harnessFile);
+      continue;
     }
+    // Render generation-time tokens (__PROJECT_NAME__, __HAR_VERSION__) so the
+    // comparison matches what the generator actually wrote — otherwise every
+    // fresh shim reports false drift against its own unrendered template.
+    const templateContent = substituteProjectName(
+      readComposedTemplateContent(composed.get(file)!),
+      projectName,
+    );
 
     if (!fs.existsSync(harnessPath)) {
       missing.push(harnessFile);
@@ -281,6 +300,7 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
     conflict,
     extra,
     unchanged,
+    ownedByUser,
     missingPortVars,
     agentSlotMismatch,
   };

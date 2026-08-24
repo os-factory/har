@@ -48,6 +48,10 @@ export const HarnessManifestSchema = z.object({
     .optional(),
   adaptationSummary: z.string().optional(),
   profile: z.enum(['default', 'cli', 'ios']).optional(),
+  /** `har env eject` (#239): the user owns the runtime scripts + .har/runtime/. */
+  ejected: z.boolean().optional(),
+  /** @osfactory/har version whose runtime was vendored at eject time. */
+  ejectedVersion: z.string().optional(),
   fileChecksums: z.record(z.string()).optional(),
   /**
    * Checksums of the composed bundled templates at last init/finalize —

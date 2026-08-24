@@ -241,6 +241,8 @@ Intentional holes (human-only, no MCP tool):
   agent must free its own slot with complete/teardown instead.
 - `har env add-stage --custom` — authoring a project stage is an adaptation task done in
   the checkout, not a tool call; agents edit `.har/stages.json` + `stages/` directly.
+- `har env eject` / `har env adopt` — taking (or returning) ownership of the runtime
+  scripts is a deliberate human policy decision with an interactive confirmation.
 - Hooks / commit-gate onboarding (`har hooks …`, init/maintain onboarding prompts) —
   installs git hooks and records user policy preferences; a policy decision for humans.
 - Onboarding/preferences, telemetry toggles, and portal login (`har onboard`,

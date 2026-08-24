@@ -117,7 +117,13 @@ describe('lifecycle hooks are user-owned (#238)', () => {
     fs.chmodSync(path.join(hooksDir, 'pre-launch.sh'), 0o755);
 
     const drift = compareHarnessToTemplate(repoPath);
-    const flagged = [...drift.missing, ...drift.checksumMismatch, ...drift.extra];
+    const flagged = [
+      ...drift.missing,
+      ...drift.userAdapted,
+      ...drift.upstreamUpdated,
+      ...drift.conflict,
+      ...drift.extra,
+    ];
     expect(flagged.filter((f) => f.includes('hooks'))).toEqual([]);
   });
 });
