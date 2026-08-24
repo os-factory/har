@@ -89,17 +89,17 @@ When upgrading `@osfactory/har` or adopting new harness standards:
 - Ensure `launch.sh` installs dependencies in fresh worktrees and resolves the project subdirectory inside the worktree (`git rev-parse --show-prefix`) for monorepos
 - If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENTS.md`, per-project pointer docs, and a single root Cursor rule
 - Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)
-- Align `launch.sh` / `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
-- Do **not** blindly overwrite customized `verify.sh`
+- Align `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
+- Verification customization lives in `stages.json` / `.har/stages/` — the top-level `*.sh` files are generated shims, safe to regenerate
 
 ## Step 3 — Refresh repo-root `AGENTS.md`
 
 If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENTS.md`:
 
 - Links to `.har/README.md` and `.har/CLAUDE.agent.md`
-- Preferred: HAR MCP tools or `har env …` (persists run history)
-- Fallback: `./.har/*` shell scripts (when CLI is not installed)
-- Run history rules (shell vs CLI/MCP, worktree vs `.har/runs/` location)
+- Commands: HAR MCP tools or `har env …`
+- Shell shims: `./.har/*.sh` — thin delegates to `har env`, same run records
+- Run history (worktree runs record to the main checkout `.har/runs/`)
 - Agent rules (ports, agent-cli.sh, isolation)
 - Project-specific notes
 

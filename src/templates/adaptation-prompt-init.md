@@ -190,8 +190,8 @@ If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 
 - Link to `.har/README.md` and `.har/CLAUDE.agent.md`
 - State plainly: **the harness is how you run this project** — to see the app live (manual testing, browser, screenshots), `launch` a slot; never hand-roll docker/dev-server startup, and never work around a failing harness command with ad-hoc setup (fix or report it instead)
-- Preferred commands: HAR MCP tools or `har env launch/verify/teardown` (persists run history)
-- Shell fallback: `./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh` (when CLI is not installed)
+- Commands: HAR MCP tools or `har env launch/verify/teardown`
+- Shell shims: `./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh` — same runtime and run records
 - Rules (no hardcoded ports, use `./.har/agent-cli.sh`, do not touch other agents' resources)
 - Project-specific notes (stack, credentials, definition of done)
 
@@ -209,10 +209,9 @@ If this repository contains **more than one project or `.har` harness** (check f
 
 Include a **Run history** subsection:
 
-- `./.har/*.sh` does not write run records
-- `har env …` and MCP write to `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json`
+- Every entry point (`./.har/*.sh` shims, `har env …`, MCP) writes the same run records to `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json`
 - With worktrees, code runs in the worktree but run JSON lives in the main checkout `.har/runs/`
-- Document MCP/CLI as the preferred agent interface; shell scripts as fallback
+- The `./.har/*.sh` shims forward to the same runtime — evidence records are identical from any surface
 
 ## Step 4 — Cleanup checklist (required)
 

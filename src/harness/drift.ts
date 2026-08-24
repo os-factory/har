@@ -14,6 +14,7 @@ import {
 } from './manifest';
 import { detectAgentSlotEnvMismatch } from './stages';
 import { composeProfileTemplateMap } from './profiles';
+import { substituteTemplateTokens } from './template-tokens';
 
 const CLI_EXPECTED_ABSENT = new Set([
   'ecosystem.agent.template.cjs',
@@ -118,11 +119,7 @@ export function missingPortDocumentationVars(
   return [...new Set(missing)];
 }
 
-function substituteProjectName(content: string, projectName: string): string {
-  return content
-    .replace(/__PROJECT_NAME__/g, projectName)
-    .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
-}
+const substituteProjectName = substituteTemplateTokens;
 
 export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const resolved = path.resolve(repoPath);

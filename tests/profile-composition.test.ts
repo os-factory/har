@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { compareHarnessToTemplate } from '../src/harness/drift';
+import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from '../src/harness/template-tokens';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 import {
   composeProfileTemplateMap,
@@ -57,10 +58,11 @@ describe('profile bundle composition', () => {
         const installedPath = path.join(harnessDir, entry.relPath);
         expect(fs.existsSync(installedPath)).toBe(true);
         let expected = fs.readFileSync(entry.sourcePath, 'utf8');
-        if (entry.relPath === 'harness.env') {
-          expected = expected
-            .replace(/__PROJECT_NAME__/g, projectName)
-            .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
+        if (
+          entry.relPath === 'harness.env' ||
+          (RUNTIME_SHIM_FILES as readonly string[]).includes(entry.relPath)
+        ) {
+          expected = substituteTemplateTokens(expected, projectName);
         }
         expect(fs.readFileSync(installedPath, 'utf8')).toBe(expected);
       }

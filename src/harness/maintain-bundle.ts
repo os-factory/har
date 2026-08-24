@@ -16,6 +16,7 @@ import {
   type PluginDriftResult,
 } from './plugin-drift';
 import { composeProfileTemplateMap } from './profiles';
+import { substituteTemplateTokens } from './template-tokens';
 import type { ValidationIssue, ValidationResult } from './validator';
 import { detectInstructionFiles } from './instruction-files';
 
@@ -71,11 +72,7 @@ export interface MaintainBundleResult {
   report: MaintainBundleReport;
 }
 
-function substituteProjectName(content: string, projectName: string): string {
-  return content
-    .replace(/__PROJECT_NAME__/g, projectName)
-    .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
-}
+const substituteProjectName = substituteTemplateTokens;
 
 function projectNameFromRepo(repoPath: string): string {
   return path.basename(repoPath).toLowerCase().replace(/[^a-z0-9]/g, '_');

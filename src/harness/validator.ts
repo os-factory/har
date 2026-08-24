@@ -17,15 +17,13 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
+// Required files are the configuration surface only (#235): the runtime lives
+// in the package and the generated *.sh files are optional thin shims —
+// deleting them costs nothing but the `./.har/<op>.sh` convenience entry.
 const REQUIRED_FILES_DEFAULT = [
   'README.md',
   'stages.json',
   'harness.env',
-  'setup-infra.sh',
-  'launch.sh',
-  'verify.sh',
-  'teardown.sh',
-  'agent-cli.sh',
   'docker-compose.agent.yml',
   'env.template',
   'ecosystem.agent.template.cjs',
@@ -36,18 +34,9 @@ const REQUIRED_FILES_CLI = REQUIRED_FILES_DEFAULT.filter(
   (file) => file !== 'ecosystem.agent.template.cjs' && file !== 'env.template',
 );
 
-const REQUIRED_FILES_IOS = [
-  'README.md',
-  'stages.json',
-  'harness.env',
-  'setup-infra.sh',
-  'launch.sh',
-  'verify.sh',
-  'teardown.sh',
-  'agent-cli.sh',
-  'docker-compose.agent.yml',
-  'CLAUDE.agent.md',
-];
+const REQUIRED_FILES_IOS = REQUIRED_FILES_DEFAULT.filter(
+  (file) => file !== 'ecosystem.agent.template.cjs' && file !== 'env.template',
+);
 
 function getRequiredFiles(repoPath: string): string[] {
   const manifest = readManifest(repoPath);
@@ -61,6 +50,7 @@ const SHELL_SCRIPTS = [
   'launch.sh',
   'verify.sh',
   'teardown.sh',
+  'preflight.sh',
   'agent-cli.sh',
   'attach.sh',
 ];
