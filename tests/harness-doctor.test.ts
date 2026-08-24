@@ -202,3 +202,44 @@ describe('har env doctor (#232)', () => {
     expect(text).toContain('Doctor: FAIL');
   });
 });
+
+describe('doctor lifecycle hooks check (#238)', () => {
+  it('passes silently with valid executable hooks', () => {
+    const repo = makeRepo();
+    const hooksDir = path.join(repo, '.har', 'hooks');
+    fs.mkdirSync(hooksDir, { recursive: true });
+    const hook = path.join(hooksDir, 'pre-launch.sh');
+    fs.writeFileSync(hook, '#!/usr/bin/env bash\ntrue\n');
+    fs.chmodSync(hook, 0o755);
+    const report = runDoctor(repo);
+    expect(report.findings.filter((f) => f.check === 'hooks')).toEqual([]);
+    expect(report.checks.find((c) => c.id === 'hooks')?.status).toBe('pass');
+  });
+
+  it('warns on a non-executable hook', () => {
+    const repo = makeRepo();
+    const hooksDir = path.join(repo, '.har', 'hooks');
+    fs.mkdirSync(hooksDir, { recursive: true });
+    fs.writeFileSync(path.join(hooksDir, 'pre-verify.sh'), '#!/usr/bin/env bash\ntrue\n');
+    fs.chmodSync(path.join(hooksDir, 'pre-verify.sh'), 0o644);
+    const report = runDoctor(repo);
+    const findings = report.findings.filter((f) => f.check === 'hooks');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe('warning');
+    expect(findings[0].message).toContain('not executable');
+    expect(report.ok).toBe(true); // warning, not error
+  });
+
+  it('warns on an unrecognized hook name', () => {
+    const repo = makeRepo();
+    const hooksDir = path.join(repo, '.har', 'hooks');
+    fs.mkdirSync(hooksDir, { recursive: true });
+    const hook = path.join(hooksDir, 'mid-launch.sh');
+    fs.writeFileSync(hook, '#!/usr/bin/env bash\ntrue\n');
+    fs.chmodSync(hook, 0o755);
+    const report = runDoctor(repo);
+    const findings = report.findings.filter((f) => f.check === 'hooks');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain('not a recognized lifecycle hook');
+  });
+});

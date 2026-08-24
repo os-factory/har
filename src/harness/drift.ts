@@ -246,6 +246,8 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   if (fs.existsSync(harnessDir)) {
     for (const file of fs.readdirSync(harnessDir)) {
       const full = path.join(harnessDir, file);
+      // Directories are skipped, which also keeps `.har/hooks/` (#238) out of
+      // drift entirely: hooks are user-owned, never compared to templates.
       if (!fs.statSync(full).isFile()) continue;
       if (
         file === 'manifest.json' ||

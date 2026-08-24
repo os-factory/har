@@ -69,6 +69,9 @@ export const HarnessEnvSchema = z.object({
   HARNESS_AGENT_SLOT_MIN: intString.optional(),
   HARNESS_AGENT_SLOT_MAX: intString.optional(),
 
+  // Lifecycle hooks (#238): what a failing post-* hook does ('warn' default)
+  HARNESS_HOOK_POST_FAILURE: z.enum(['warn', 'fail']).optional(),
+
   HARNESS_ECOSYSTEM: z.enum(HARNESS_ECOSYSTEMS).optional(),
   HARNESS_INSTALL_CMD: z.string().optional(),
   HARNESS_NODE_PACKAGE_MANAGER: z.enum(HARNESS_NODE_PACKAGE_MANAGERS).optional(),

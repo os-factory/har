@@ -31,6 +31,7 @@ import {
   HttpStatusFn,
 } from './process';
 import { pkgExec } from './node-pm';
+import { postHookFailureMode, runLifecycleHook } from './hooks';
 import { acquireSimulator, perSlotEnabled, releaseSimulator } from './xcode-sim';
 import { runSetupInfra } from './setup';
 
@@ -138,6 +139,22 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
   const appPorts = preflight.ports;
   if (pm === 'pm2' && appPorts) {
     log(`Ports: frontend=${appPorts.frontend} api=${appPorts.api} debug=${appPorts.debug}`);
+  }
+
+  // ── pre-launch hook (#238) — before infra/session, WORK_DIR is the repo root ─
+  const preLaunchHook = runLifecycleHook('pre-launch', {
+    harnessDir,
+    agentId,
+    workDir: repoRoot,
+    ports: appPorts ?? undefined,
+    exec: options.exec,
+    log,
+  });
+  if (preLaunchHook.ran && preLaunchHook.code !== 0) {
+    errorLine(
+      `ERROR: pre-launch hook failed (exit ${preLaunchHook.code}): ${preLaunchHook.file}`,
+    );
+    return { code: preLaunchHook.code || 1 };
   }
 
   // ── Shared infra (compose, template DB, simulator toolchain) ────────────────
@@ -382,6 +399,27 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
     }
 
     writeRegistry('active');
+
+    // ── post-launch hook (#238) — session is up; failure policy is config ──────
+    const postLaunchHook = runLifecycleHook('post-launch', {
+      harnessDir,
+      agentId,
+      workDir: session.workDir,
+      envFile: session.envFile,
+      ports: portsJson,
+      exec: options.exec,
+      log,
+    });
+    if (postLaunchHook.ran && postLaunchHook.code !== 0) {
+      if (postHookFailureMode(env) === 'fail') {
+        throw new Error(
+          `post-launch hook failed (exit ${postLaunchHook.code}): ${postLaunchHook.file}`,
+        );
+      }
+      errorLine(
+        `WARN: post-launch hook failed (exit ${postLaunchHook.code}): ${postLaunchHook.file} — continuing (HARNESS_HOOK_POST_FAILURE=warn)`,
+      );
+    }
 
     if (options.claude && pm === 'pm2') {
       const tmux = tmuxSessionName(projectName, agentId);
