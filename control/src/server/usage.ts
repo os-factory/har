@@ -89,12 +89,8 @@ function mergeModelBreakdown(
 export type UsageUpsertInput = AgentSessionUsage;
 
 /**
- * Max-merge upsert so OTEL and harvest never double-count cumulative counters.
- *
- * A harvest from a newer `harvestVersion` is the exception: it replaces the
- * stored counters outright, so a corrected — lower — total is not max-merged
- * away. Same-version rows keep max-merging, which is what stops a partial
- * re-read of a live session from lowering it.
+ * Max-merge upsert so OTEL and harvest never double-count cumulative counters,
+ * unless a newer `harvestVersion` supersedes the stored row.
  */
 export async function upsertSessionUsage(repositoryId: string, input: UsageUpsertInput) {
   const existing = await prisma.agentSessionUsage.findUnique({
@@ -175,8 +171,8 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     tokensCacheCreation,
     tokensTotal,
     costUsd,
-    // A superseding harvest owns the whole row: with no breakdown of its own the
-    // stored one must go, or the next merge reprices the old inflated models.
+    // Prisma reads `undefined` as "leave unchanged", so a superseding harvest
+    // with no breakdown has to clear the stored one explicitly.
     modelBreakdown: nextModelBreakdown
       ? (nextModelBreakdown as Prisma.InputJsonValue)
       : supersedes

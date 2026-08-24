@@ -5,11 +5,7 @@ import type { ReactNode } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PRE_DEDUPE_USAGE_HINT } from '@/lib/usage-models';
 
-/**
- * The one hover treatment for a figure harvested before the token-dedupe fix:
- * a marker that explains itself. A real button so it is keyboard-reachable —
- * a bare `title` is neither discoverable nor focusable.
- */
+/** The one hover treatment for a figure that was harvested pre-dedupe. */
 export function PreDedupeTip({ children }: { children?: ReactNode }) {
   return (
     <Tooltip>
