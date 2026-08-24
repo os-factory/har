@@ -15,7 +15,10 @@ Compare the current repo against the existing harness:
 - Root manifests, CI, Docker, README
 - New or changed test, lint, build, migrate, or seed commands
 - New services, ports, or environment variables
-- Review `.har/maintain/drift-report.json` (template drift, **missing port documentation vars**)
+- Review `.har/maintain/drift-report.json` (two-signal drift, **missing port documentation vars**).
+  Drift statuses: `upstream-updated` (bundled template moved since your last finalize — apply the diff),
+  `conflict` (template moved **and** the file was edited locally — merge, keep repo customizations),
+  `adapted` (local edits only — **no action**, never revert to stock; finalize blesses them).
 
 ## Step 2 — Update `.har/` files
 

@@ -22,7 +22,7 @@ import { detectInstructionFiles } from './instruction-files';
 
 export const MAINTAIN_DIR = 'maintain';
 
-export type MaintainActionKind = 'missing' | 'drift';
+export type MaintainActionKind = 'missing' | 'upstream-updated' | 'conflict';
 
 export interface MaintainAction {
   file: string;
@@ -53,6 +53,8 @@ export interface MaintainBundleReport {
   generatedAt: string;
   profile: HarnessProfile;
   actions: MaintainAction[];
+  /** User-adapted files that are current with upstream — informational, no action needed. */
+  adapted: string[];
   pluginDrift: PluginDriftResult[];
   pluginActions: PluginDriftAction[];
   stale: MaintainStaleFile[];
@@ -113,13 +115,13 @@ function actionHint(file: string, kind: MaintainActionKind): string {
     }
     return `Copy/adapt from maintain/templates/${file} into .har/${file}.`;
   }
-  if (file === 'verify.sh') {
-    return 'Merge template upgrades into .har/verify.sh — do not blind-overwrite repo-specific checks.';
+  if (kind === 'conflict') {
+    return `Upstream template AND your local edits both changed — read maintain/diffs/${file}.diff and merge carefully; keep repo-specific customizations.`;
   }
   if (file === 'harness.env') {
-    return 'Merge template changes; keep repo-specific commands and add any missing port vars.';
+    return 'Upstream template updated; merge changes — keep repo-specific values and add any missing port vars.';
   }
-  return `Read maintain/diffs/${file}.diff and merge into .har/${file}.`;
+  return `Upstream template updated since your last finalize — read maintain/diffs/${file}.diff and apply into .har/${file}.`;
 }
 
 function createUnifiedDiff(
@@ -160,19 +162,20 @@ function buildActions(
     });
   }
 
-  for (const file of drift.checksumMismatch) {
+  const upstreamAffected: Array<[string, MaintainActionKind]> = [
+    ...drift.upstreamUpdated.map((f): [string, MaintainActionKind] => [f, 'upstream-updated']),
+    ...drift.conflict.map((f): [string, MaintainActionKind] => [f, 'conflict']),
+  ];
+  for (const [file, kind] of upstreamAffected) {
     const installedPath = path.join(harnessDir, file);
-    const installedRel = `maintain/installed/${file}`;
-    const templateRel = `maintain/templates/${file}`;
-    const diffRel = `maintain/diffs/${file}.diff`;
 
     actions.push({
       file,
-      kind: 'drift',
-      template: templateRel,
-      installed: fs.existsSync(installedPath) ? installedRel : undefined,
-      diff: diffRel,
-      hint: actionHint(file, 'drift'),
+      kind,
+      template: `maintain/templates/${file}`,
+      installed: fs.existsSync(installedPath) ? `maintain/installed/${file}` : undefined,
+      diff: `maintain/diffs/${file}.diff`,
+      hint: actionHint(file, kind),
     });
   }
 
@@ -257,10 +260,19 @@ function buildReadme(report: MaintainBundleReport): string {
     }
   }
 
-  lines.push('', '## Drift actions', '');
+  lines.push(
+    '',
+    '## Drift actions',
+    '',
+    'Drift is two signals: **user-edited** (your file changed since the last finalize) and',
+    '**upstream-updated** (the bundled template changed since the last finalize). Only',
+    '`upstream-updated` and `conflict` (both signals) need action — files you adapted and',
+    'finalized are *not* drift.',
+    '',
+  );
 
   if (report.actions.length === 0) {
-    lines.push('No missing or drifted harness template files.');
+    lines.push('No missing files and no upstream template updates.');
   } else {
     lines.push('| File | Status | Reference |');
     lines.push('|------|--------|-----------|');
@@ -271,6 +283,17 @@ function buildReadme(report: MaintainBundleReport): string {
           : `diffs/${action.file}.diff`;
       lines.push(`| ${action.file} | ${action.kind} | ${ref} |`);
     }
+  }
+
+  if (report.adapted.length > 0) {
+    lines.push(
+      '',
+      '### Adapted files (current with upstream — no action)',
+      '',
+      ...report.adapted.map((f) => `- \`${f}\``),
+      '',
+      'These carry local edits since the last finalize. Run `har env maintain --finalize` to bless them as the new baseline.',
+    );
   }
 
   lines.push('', '## Plugin drift (installed verification plugins)', '');
@@ -378,7 +401,7 @@ function writeBundleArtifacts(
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  const affectedFiles = [...drift.missing, ...drift.checksumMismatch];
+  const affectedFiles = [...drift.missing, ...drift.upstreamUpdated, ...drift.conflict];
   for (const file of affectedFiles) {
     const templateContent = readBundledTemplateContent(repoPath, profile, file);
     writeFileSafe(path.join(bundleDir, 'templates', file), templateContent);
@@ -483,6 +506,7 @@ export function buildMaintainBundle(
     generatedAt: new Date().toISOString(),
     profile,
     actions: buildActions(repoPath, profile, drift),
+    adapted: [...drift.userAdapted].sort((a, b) => a.localeCompare(b)),
     pluginDrift,
     pluginActions,
     stale: buildStale(drift),
@@ -528,7 +552,16 @@ export function formatMaintainBundlePromptSection(report: MaintainBundleReport):
   }
 
   if (report.actions.length > 0) {
-    lines.push('### Drift actions', '', '| File | Status | Reference |', '|------|--------|-----------|');
+    lines.push(
+      '### Drift actions',
+      '',
+      'Two-signal drift: `upstream-updated` = the bundled template moved since your last finalize',
+      '(apply the diff); `conflict` = the template moved **and** you edited the file (merge, keep',
+      'repo-specific customizations); `missing` = a template file is absent from `.har/`.',
+      '',
+      '| File | Status | Reference |',
+      '|------|--------|-----------|',
+    );
     for (const action of report.actions) {
       const ref =
         action.kind === 'missing'
@@ -537,6 +570,18 @@ export function formatMaintainBundlePromptSection(report: MaintainBundleReport):
       lines.push(`| ${action.file} | ${action.kind} | ${ref} |`);
     }
     lines.push('');
+  }
+
+  if (report.adapted.length > 0) {
+    lines.push(
+      '### Adapted files (no action)',
+      '',
+      'Local edits since the last finalize, with no upstream template change. Do **not** revert these to',
+      'the stock template — finalize blesses them as the new baseline.',
+      '',
+      ...report.adapted.map((f) => `- \`${f}\``),
+      '',
+    );
   }
 
   if (report.pluginActions.length > 0) {

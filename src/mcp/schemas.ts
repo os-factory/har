@@ -44,7 +44,9 @@ export const DescribeProjectOutputSchema = z.object({
   harnessDrift: z
     .object({
       missing: z.array(z.string()),
-      checksumMismatch: z.array(z.string()),
+      userAdapted: z.array(z.string()),
+      upstreamUpdated: z.array(z.string()),
+      conflict: z.array(z.string()),
       extra: z.array(z.string()),
       unchanged: z.array(z.string()),
     })

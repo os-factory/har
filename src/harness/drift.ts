@@ -22,9 +22,36 @@ const CLI_EXPECTED_ABSENT = new Set([
   'attach.sh',
 ]);
 
+export type DriftFileStatus =
+  | 'unchanged'
+  | 'user-adapted'
+  | 'upstream-updated'
+  | 'conflict';
+
+/** Per-file cross product of the two drift signals (#237). */
+export interface DriftFileEntry {
+  file: string;
+  status: DriftFileStatus;
+  /** Signal 1 — installed file differs from fileChecksums recorded at last finalize. */
+  userEdited: boolean;
+  /**
+   * Signal 2 — bundled template differs from templateChecksums recorded at last
+   * finalize. `null` = no template baseline in the manifest (pre-#237 finalize);
+   * upstream updates cannot be detected until the next `maintain --finalize`.
+   */
+  upstreamUpdated: boolean | null;
+}
+
 export interface HarnessDriftResult {
+  /** Two-signal detail for every template-tracked file present in .har/. */
+  files: DriftFileEntry[];
   missing: string[];
-  checksumMismatch: string[];
+  /** User edited since last finalize; template unchanged. Informational, not an action. */
+  userAdapted: string[];
+  /** Template updated since last finalize; user did not touch the file. */
+  upstreamUpdated: string[];
+  /** Both signals fired — needs a real merge. */
+  conflict: string[];
   extra: string[];
   unchanged: string[];
   /** Port-allocation knobs from harness.env that the bundled template expects. */
@@ -121,19 +148,50 @@ export function missingPortDocumentationVars(
 
 const substituteProjectName = substituteTemplateTokens;
 
+function projectNameFor(resolvedRepoPath: string): string {
+  return path.basename(resolvedRepoPath).toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+/**
+ * Checksums of the composed bundled templates, keyed by installed file name
+ * (same key space as manifest fileChecksums). Recorded into the manifest at
+ * init/finalize as the baseline for the upstream-updated signal.
+ */
+export function computeTemplateChecksums(
+  repoPath: string,
+  profile: HarnessProfile,
+): Record<string, string> {
+  const resolved = path.resolve(repoPath);
+  const projectName = projectNameFor(resolved);
+  const checksums: Record<string, string> = {};
+  for (const [file, entry] of composeProfileTemplateMap(profile)) {
+    let content = readComposedTemplateContent(entry);
+    if (file === 'harness.env') {
+      content = substituteProjectName(content, projectName);
+    }
+    checksums[harnessFileForTemplate(file)] = computeFileChecksum(content);
+  }
+  return checksums;
+}
+
 export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const resolved = path.resolve(repoPath);
   const manifest = readManifest(resolved);
   const profile: HarnessProfile = manifest?.profile ?? 'default';
   const harnessDir = getHarnessDir(resolved);
-  const projectName = path.basename(resolved).toLowerCase().replace(/[^a-z0-9]/g, '_');
-  // Composed bundle set (shared kernel → runtime bundle → overlay). Drift keeps
-  // comparing top-level files only, matching the pre-composition behavior.
+  const projectName = projectNameFor(resolved);
+  // Composed bundle set (shared kernel → runtime bundle → overlay), including
+  // subdirectory entries (stages/…) — drift recurses into .har/stages/ (#237).
   const composed = composeProfileTemplateMap(profile);
-  const templateFiles = [...composed.keys()].filter((f) => !f.includes('/')).sort();
+  const templateFiles = [...composed.keys()].sort();
+  const fileBaseline = manifest?.fileChecksums;
+  const templateBaseline = manifest?.templateChecksums;
 
+  const files: DriftFileEntry[] = [];
   const missing: string[] = [];
-  const checksumMismatch: string[] = [];
+  const userAdapted: string[] = [];
+  const upstreamUpdated: string[] = [];
+  const conflict: string[] = [];
   const extra: string[] = [];
   const unchanged: string[] = [];
 
@@ -150,13 +208,39 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
       continue;
     }
 
-    const harnessChecksum = computeFileChecksum(fs.readFileSync(harnessPath, 'utf8'));
+    const installedChecksum = computeFileChecksum(fs.readFileSync(harnessPath, 'utf8'));
     const templateChecksum = computeFileChecksum(templateContent);
-    if (harnessChecksum === templateChecksum) {
-      unchanged.push(harnessFile);
-    } else {
-      checksumMismatch.push(harnessFile);
-    }
+    const recordedFile = fileBaseline?.[harnessFile];
+    const recordedTemplate = templateBaseline?.[harnessFile];
+
+    // Signal 1 — user-edited since last finalize. Without a recorded file
+    // checksum (no finalize yet), any divergence from the template counts.
+    const userEdited =
+      recordedFile !== undefined
+        ? installedChecksum !== recordedFile
+        : installedChecksum !== templateChecksum;
+
+    // Signal 2 — upstream template moved since last finalize. Without a
+    // recorded template baseline (pre-#237 manifest) upstream updates are
+    // undetectable: report `null`, never guess — a finalize-blessed adaptation
+    // must not resurface as drift noise.
+    const upstream: boolean | null =
+      recordedTemplate !== undefined ? templateChecksum !== recordedTemplate : null;
+
+    const status: DriftFileStatus =
+      userEdited && upstream
+        ? 'conflict'
+        : userEdited
+          ? 'user-adapted'
+          : upstream
+            ? 'upstream-updated'
+            : 'unchanged';
+
+    files.push({ file: harnessFile, status, userEdited, upstreamUpdated: upstream });
+    if (status === 'unchanged') unchanged.push(harnessFile);
+    else if (status === 'user-adapted') userAdapted.push(harnessFile);
+    else if (status === 'upstream-updated') upstreamUpdated.push(harnessFile);
+    else conflict.push(harnessFile);
   }
 
   if (fs.existsSync(harnessDir)) {
@@ -188,8 +272,11 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const agentSlotMismatch = detectAgentSlotEnvMismatch(resolved);
 
   return {
+    files,
     missing,
-    checksumMismatch,
+    userAdapted,
+    upstreamUpdated,
+    conflict,
     extra,
     unchanged,
     missingPortVars,

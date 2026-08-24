@@ -328,7 +328,60 @@ milestone_asserts() {
       echo "    shim verify writes validation records (commit gate satisfiable from any surface) ✓"
       ;;
     M3)
-      echo "──> M3 asserts: plugin/eject (extend when #239/#240 land)"
+      echo "──> M3 asserts: two-signal drift (#237)"
+      # Fresh 1.0 scaffold: adapt a file, finalize — drift must be zero.
+      echo "# repo-specific adaptation (M3 gate)" >> "$FRESH/.har/verify.sh"
+      har "$FRESH" env maintain --finalize --summary "M3 drift assert: adapted verify.sh" >/dev/null 2>&1 \
+        || fail "M3: maintain --finalize failed on fresh scaffold"
+      har "$FRESH" env maintain >/dev/null 2>&1 || true
+      node -e '
+        const fs = require("fs");
+        const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        if (r.actions.length !== 0) {
+          console.error("M3: freshly finalized harness reports drift actions:", r.actions.map(a=>`${a.file}(${a.kind})`).join(", "));
+          process.exit(1);
+        }
+        if (r.adapted.length !== 0) {
+          console.error("M3: finalize did not bless adapted files:", r.adapted.join(", "));
+          process.exit(1);
+        }
+      ' "$FRESH/.har/maintain/drift-report.json" \
+        || fail "M3: adapted+finalized harness is not drift-clean"
+      echo "    adapted + finalized harness reports zero drift ✓"
+
+      # Post-finalize user edit → adapted (informational), never an action.
+      echo "# post-finalize edit (M3 gate)" >> "$FRESH/.har/verify.sh"
+      har "$FRESH" env maintain >/dev/null 2>&1 || true
+      node -e '
+        const fs = require("fs");
+        const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        if (!r.adapted.includes("verify.sh")) { console.error("M3: post-finalize edit not reported as adapted"); process.exit(1); }
+        if (r.actions.some(a => a.file === "verify.sh")) { console.error("M3: user-adapted file raised a drift action"); process.exit(1); }
+      ' "$FRESH/.har/maintain/drift-report.json" \
+        || fail "M3: user-adapted signal wrong"
+      echo "    post-finalize edit → user-adapted, no action ✓"
+
+      # Upstream update on a user-adapted file → conflict (simulated by
+      # rewinding the recorded template baseline in the manifest).
+      node -e '
+        const fs = require("fs");
+        const p = process.argv[1];
+        const m = JSON.parse(fs.readFileSync(p, "utf8"));
+        m.templateChecksums["verify.sh"] = "0000000000000000";
+        fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
+      ' "$FRESH/.har/manifest.json"
+      har "$FRESH" env maintain >/dev/null 2>&1 || true
+      node -e '
+        const fs = require("fs");
+        const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const a = r.actions.find(a => a.file === "verify.sh");
+        if (!a || a.kind !== "conflict") { console.error("M3: upstream update on adapted file is not a conflict:", a && a.kind); process.exit(1); }
+      ' "$FRESH/.har/maintain/drift-report.json" \
+        || fail "M3: conflict signal wrong"
+      har "$FRESH" env maintain --finalize --summary "M3 drift assert: reset baseline" >/dev/null 2>&1 || true
+      echo "    upstream update on adapted file → conflict ✓"
+
+      echo "──> M3 asserts: hooks/eject/plugins (extend when #238/#239/#240 land)"
       ;;
     M4|M5)
       echo "──> $MILESTONE asserts: migration (extend when #241 lands)"
