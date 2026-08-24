@@ -1,3 +1,10 @@
+## [0.64.1](https://github.com/os-factory/har/compare/v0.64.0...v0.64.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* bill a repeated Claude message id once and count every slot transcript ([#279](https://github.com/os-factory/har/issues/279)) ([bf378e3](https://github.com/os-factory/har/commit/bf378e3c7545b73b98b9851ede0b285e95df4c6b))
+
 # [0.64.0](https://github.com/os-factory/har/compare/v0.63.0...v0.64.0) (2026-08-21)
 
 
