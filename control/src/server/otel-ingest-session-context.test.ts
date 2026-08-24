@@ -24,7 +24,6 @@ interface FakeSessionRow {
 const repos = [{ id: 'repo-1', path: '/home/user/project' }];
 let slots: FakeSlot[] = [];
 let sessionEvents: FakeSessionRow[] = [];
-let sessionUsages: FakeSessionRow[] = [];
 
 function findSessionRow(
   rows: FakeSessionRow[],
@@ -52,12 +51,6 @@ vi.mock('@/lib/db', () => ({
       findFirst: vi.fn(
         async ({ where }: { where: { repositoryId: string; sessionKey: string } }) =>
           findSessionRow(sessionEvents, where),
-      ),
-    },
-    agentSessionUsage: {
-      findFirst: vi.fn(
-        async ({ where }: { where: { repositoryId: string; sessionKey: string } }) =>
-          findSessionRow(sessionUsages, where),
       ),
     },
     agentSlot: {
@@ -106,7 +99,6 @@ describe('resolveSessionContext — Cursor on the main checkout', () => {
   beforeEach(() => {
     slots = [];
     sessionEvents = [];
-    sessionUsages = [];
   });
 
   it('attributes to the one active worktree when correlation is unambiguous', async () => {
@@ -230,20 +222,6 @@ describe('resolveSessionContext — Cursor on the main checkout', () => {
       agentId: 4,
       agentTool: 'claude_code',
     });
-  });
-
-  it('falls back to persisted usage when the session has no events yet', async () => {
-    slots = [makeSlot({ slotId: 3, workDir: '/home/user/worktrees/project-a', updatedAt: 9 })];
-    sessionUsages = [
-      { repositoryId: 'repo-1', sessionKey: 'session-uuid', agentId: 2, timestamp: 1 },
-    ];
-
-    const { context } = await resolveSessionContext(
-      {},
-      { 'gen_ai.client.workspace': '/home/user/project', 'session.id': 'session-uuid' },
-    );
-
-    expect(context).toMatchObject({ sessionKey: 'session-uuid', agentId: 2 });
   });
 
   it('does not let a pin override the slot whose worktree the session ran in', async () => {

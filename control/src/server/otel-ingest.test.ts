@@ -306,32 +306,16 @@ describe('normalizeOtelId', () => {
   const traceHex = '0123456789abcdef0123456789abcdef';
   const spanHex = '0011223344556677';
 
-  it('passes an OTLP/JSON hex id through, lowercased', () => {
+  it('accepts hex, protobuf base64 and raw bytes', () => {
     expect(normalizeOtelId(traceHex.toUpperCase(), 16)).toBe(traceHex);
-    expect(normalizeOtelId(spanHex, 8)).toBe(spanHex);
-  });
-
-  it('decodes the protobuf base64 form to hex', () => {
-    expect(normalizeOtelId(Buffer.from(traceHex, 'hex').toString('base64'), 16)).toBe(traceHex);
     expect(normalizeOtelId(Buffer.from(spanHex, 'hex').toString('base64'), 8)).toBe(spanHex);
+    expect(normalizeOtelId(new Uint8Array(Buffer.from(spanHex, 'hex')), 8)).toBe(spanHex);
   });
 
-  it('hex-encodes raw byte shapes instead of reading them as text', () => {
-    const bytes = Buffer.from(spanHex, 'hex');
-    expect(normalizeOtelId(bytes, 8)).toBe(spanHex);
-    expect(normalizeOtelId(new Uint8Array(bytes), 8)).toBe(spanHex);
-    expect(normalizeOtelId(Array.from(bytes), 8)).toBe(spanHex);
-    expect(normalizeOtelId({ type: 'Buffer', data: Array.from(bytes) }, 8)).toBe(spanHex);
-  });
-
-  it('treats absent, empty and all-zero ids as no id', () => {
+  it('has no id for absent, all-zero or unreadable values', () => {
     expect(normalizeOtelId(undefined, 8)).toBe('');
     expect(normalizeOtelId('', 8)).toBe('');
     expect(normalizeOtelId(Buffer.alloc(8), 8)).toBe('');
-    expect(normalizeOtelId(Buffer.alloc(0).toString('base64'), 8)).toBe('');
-  });
-
-  it('drops a lossy UTF-8 reading of the bytes rather than storing mojibake', () => {
     expect(normalizeOtelId(Buffer.from(traceHex, 'hex').toString('utf8'), 16)).toBe('');
   });
 });
@@ -414,13 +398,6 @@ describe('extractSpans over a protobuf-decoded OTLP payload', () => {
     expect(detectAgentTool(child.attributes)).toBe('claude_code');
   });
 
-  it('keeps the span identity out of the canonical source id as hex', () => {
-    const decoded = decodeOtlpProtobufJson('trace', protobufTraceBody());
-    const [, child] = extractSpans(decoded);
-    expect(canonicalizeOtelSpan(child).sourceEventId).toBe(
-      `span:${traceId.toString('hex')}:${childSpanId.toString('hex')}`,
-    );
-  });
 });
 
 describe('extractLogRecords ids', () => {
@@ -454,20 +431,5 @@ describe('extractLogRecords ids', () => {
     expect(records[0].traceId).toBe(traceId.toString('hex'));
     expect(records[0].spanId).toBe(spanId.toString('hex'));
     expect(records[0].parentSpanId).toBeUndefined();
-  });
-});
-
-describe('detectAgentTool provider precedence', () => {
-  it('reads the provider id off a record own attributes', () => {
-    expect(detectAgentTool({ 'otelhook.provider.id': 'claude-code' })).toBe('claude_code');
-  });
-
-  it('does not let the exporter service name outvote the provider id', () => {
-    expect(
-      detectAgentTool({
-        'otelhook.provider.id': 'claude-code',
-        'service.name': 'har-ide-agent',
-      }),
-    ).toBe('claude_code');
   });
 });

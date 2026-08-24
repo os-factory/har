@@ -71,8 +71,7 @@ export function decodeOtlpProtobufJson(
     return decoder.toObject(message, {
       longs: String,
       enums: String,
-      // protobufjs honours only String (base64) or Array here; a converter
-      // function is ignored and yields raw Buffers. normalizeOtelId re-hexes.
+      // protobufjs ignores a converter function here and returns raw Buffers.
       bytes: String,
       defaults: true,
       arrays: true,
@@ -83,36 +82,18 @@ export function decodeOtlpProtobufJson(
   }
 }
 
-const HEX_ONLY = /^[0-9a-f]+$/;
-
-function bytesToHexId(bytes: Uint8Array): string {
-  if (bytes.length === 0 || bytes.every((b) => b === 0)) return '';
-  return Buffer.from(bytes).toString('hex');
-}
-
-/**
- * OTLP trace/span ids are bytes; only their hex form survives JSON, a database
- * column or an id comparison. Accepts every shape a decoder can hand us —
- * protobuf base64, OTLP/JSON hex, Buffer, byte array — and drops anything else
- * rather than storing a lossy UTF-8 reading of the bytes.
- */
+/** Hex form of an OTLP id — hex passes through, base64 and bytes convert, '' when neither. */
 export function normalizeOtelId(value: unknown, byteLength: number): string {
-  if (value == null) return '';
-  if (typeof value === 'string') {
-    const lower = value.toLowerCase();
-    if (lower.length === byteLength * 2 && HEX_ONLY.test(lower)) return lower;
-    const decoded = Buffer.from(value, 'base64');
-    if (decoded.length === byteLength) return bytesToHexId(decoded);
-    if (lower.length % 2 === 0 && HEX_ONLY.test(lower)) return lower;
-    return '';
-  }
-  if (value instanceof Uint8Array) return bytesToHexId(value);
-  if (Array.isArray(value)) return bytesToHexId(Uint8Array.from(value as number[]));
-  if (typeof value === 'object') {
-    const data = (value as { data?: unknown }).data;
-    if (Array.isArray(data)) return bytesToHexId(Uint8Array.from(data as number[]));
-  }
-  return '';
+  const bytes =
+    typeof value === 'string'
+      ? /^[0-9a-f]{2,}$/i.test(value) && value.length === byteLength * 2
+        ? Buffer.from(value, 'hex')
+        : Buffer.from(value, 'base64')
+      : value instanceof Uint8Array
+        ? Buffer.from(value)
+        : null;
+  if (!bytes || bytes.length !== byteLength || bytes.every((b) => b === 0)) return '';
+  return bytes.toString('hex');
 }
 
 export interface AttrMap {
@@ -398,29 +379,20 @@ async function defaultAgentIdForRepo(repositoryId: string): Promise<number> {
 }
 
 /**
- * The agent id a session was already attributed to.
- *
- * Slot attribution for a workspace outside any session worktree is a guess from
- * the repo's live slots, and that guess moves as slots come and go — the same
- * session then splits across agent ids and renders as several partial streams.
- * The first attribution a session got wins for the rest of its life.
+ * Slot attribution outside a session worktree is a guess from the repo's live
+ * slots, and that guess moves as slots come and go. First attribution wins.
  */
 async function pinnedAgentIdForSession(
   repositoryId: string,
   sessionKey: string,
 ): Promise<number | undefined> {
   if (!sessionKey) return undefined;
-  const event = await prisma.agentSessionEvent.findFirst({
+  const first = await prisma.agentSessionEvent.findFirst({
     where: { repositoryId, sessionKey },
     orderBy: { timestamp: 'asc' },
     select: { agentId: true },
   });
-  if (event) return event.agentId;
-  const usage = await prisma.agentSessionUsage.findFirst({
-    where: { repositoryId, sessionKey },
-    select: { agentId: true },
-  });
-  return usage?.agentId;
+  return first?.agentId;
 }
 
 interface ActiveSlotAttribution {
