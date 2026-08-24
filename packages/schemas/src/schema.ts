@@ -732,6 +732,21 @@ export const AgentTrajectoryRecordSchema = AgentTrajectoryRecordV1Schema;
 export type AgentTrajectoryRecordV1 = z.infer<typeof AgentTrajectoryRecordV1Schema>;
 export type AgentTrajectoryRecord = AgentTrajectoryRecordV1;
 
+/**
+ * Version of the usage-harvest algorithm that produced a row.
+ *
+ * `0` means "harvested before the algorithm was versioned" — those rows
+ * double-billed a Claude message repeated across transcript records and read
+ * only one transcript per slot, so their totals run high and cannot be
+ * recomputed once the transcripts are gone. A row stamped with a newer version
+ * is authoritative over an older one and replaces it rather than max-merging
+ * against it (see mergePortalUsage / upsertSessionUsage).
+ */
+export const USAGE_HARVEST_VERSION = 1;
+
+/** Rows below this version predate the harvest fixes and read high. */
+export const PRE_DEDUPE_HARVEST_VERSION = 0;
+
 /** Per-session agent token/cost aggregates for Mission Control. */
 export const AgentSessionUsageSchema = z.object({
   sessionKey: z.string().min(1),
@@ -751,6 +766,7 @@ export const AgentSessionUsageSchema = z.object({
   costUsd: z.number().nonnegative().nullable().optional(),
   modelBreakdown: z.record(z.unknown()).optional(),
   sources: z.array(UsageSourceSchema).default([]),
+  harvestVersion: z.number().int().nonnegative().default(PRE_DEDUPE_HARVEST_VERSION),
   firstSeenAt: z.string(),
   lastSeenAt: z.string(),
 });

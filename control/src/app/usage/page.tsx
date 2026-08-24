@@ -1,5 +1,8 @@
+import { isPreDedupeUsage } from '@har/schemas';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UsageTable, type UsageRow } from '@/components/usage-table';
+import { PreDedupeTip } from '@/components/pre-dedupe-tip';
 import { formatCostUsd, formatTokens } from '@/lib/usage-models';
 import { listAllSessionUsage, summarizeUsageRows } from '@/server/usage';
 
@@ -19,8 +22,11 @@ export default async function UsagePage() {
     tokensTotal: Number(row.tokensTotal),
     costUsd: row.costUsd == null ? null : Number(row.costUsd),
     sources: row.sources,
+    preDedupe: isPreDedupeUsage(row),
     lastSeenAt: row.lastSeenAt,
   }));
+
+  const preDedupeCount = rows.filter((row) => row.preDedupe).length;
 
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
@@ -57,6 +63,13 @@ export default async function UsagePage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{formatTokens(summary.tokensTotal)}</p>
+            {preDedupeCount > 0 && (
+              <p className="text-xs text-muted-foreground">
+                <PreDedupeTip>
+                  {`includes ${preDedupeCount} of ${summary.sessionCount} sessions harvested pre-dedupe — reads high`}
+                </PreDedupeTip>
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>

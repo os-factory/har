@@ -81,6 +81,9 @@ model AgentSessionUsage {
   costUsd             Decimal?
   modelBreakdown      Json?
   sources             Json       @default("[]")
+  // Usage-harvest algorithm that produced this row; 0 = pre-dedupe, reads high
+  // and cannot be recomputed once the agent transcript is gone.
+  harvestVersion      Int        @default(0)
   firstSeenAt         DateTime
   lastSeenAt          DateTime
   updatedAt           DateTime   @updatedAt

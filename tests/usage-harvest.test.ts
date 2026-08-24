@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { harvestClaudeUsage, encodeClaudeProjectDir } from '../src/core/usage-harvest/claude';
+import { USAGE_HARVEST_VERSION } from '../src/harness/schema';
 import { harvestCodexUsage } from '../src/core/usage-harvest/codex';
 import {
   omitHarvestEventsWhenOtelPresent,
@@ -58,6 +59,7 @@ describe('usage harvest claude', () => {
     expect(usage!.tokensOutput).toBe(50);
     expect(usage!.costUsd).toBe(0.42);
     expect(usage!.sources).toEqual(['harvest']);
+    expect(usage!.harvestVersion).toBe(USAGE_HARVEST_VERSION);
   });
 
   it('rolls up a per-model breakdown from assistant messages', () => {
@@ -474,6 +476,7 @@ describe('omit harvest when otel present', () => {
         tokensCacheCreation: 0,
         tokensTotal: 15,
         sources: ['harvest' as const],
+        harvestVersion: USAGE_HARVEST_VERSION,
         firstSeenAt: '2026-01-01T00:00:00.000Z',
         lastSeenAt: '2026-01-01T00:00:00.000Z',
       },

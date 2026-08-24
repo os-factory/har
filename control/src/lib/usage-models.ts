@@ -42,6 +42,9 @@ export function formatCostUsd(value: number | null | undefined): string {
 }
 
 /** Compact token count for tables and summary cards. */
+export const PRE_DEDUPE_USAGE_HINT =
+  'Harvested before the token-dedupe fix: a repeated message was billed once per transcript record, so this total reads high. The transcript it came from is usually gone, so it cannot be recomputed.';
+
 export function formatTokens(n: number): string {
   if (!Number.isFinite(n)) return '—';
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
