@@ -107,6 +107,90 @@ describe('usage harvest claude', () => {
     });
   });
 
+  it('bills a repeated assistant message id once', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-3-dd44';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    const message = (id: string) => ({
+      type: 'assistant',
+      message: {
+        id,
+        role: 'assistant',
+        model: 'claude-opus-5',
+        usage: {
+          input_tokens: 10,
+          output_tokens: 100,
+          cache_read_input_tokens: 1000,
+          cache_creation_input_tokens: 50,
+        },
+      },
+    });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: workDir }),
+        JSON.stringify(message('msg_a')),
+        JSON.stringify(message('msg_a')),
+        JSON.stringify(message('msg_b')),
+        JSON.stringify(message('msg_b')),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestClaudeUsage({
+      agentId: 3,
+      workDir,
+      branch: 'main-abcd-har-agent-3-dd44',
+      suffix: 'dd44',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage).not.toBeNull();
+    expect(usage!.tokensInput).toBe(20);
+    expect(usage!.tokensOutput).toBe(200);
+    expect(usage!.tokensCacheRead).toBe(2000);
+    expect(usage!.tokensCacheCreation).toBe(100);
+    expect(usage!.tokensTotal).toBe(2320);
+    expect(usage!.modelBreakdown).toEqual({
+      'claude-opus-5': {
+        tokensInput: 20,
+        tokensOutput: 200,
+        tokensCacheRead: 2000,
+        tokensCacheCreation: 100,
+        tokensTotal: 2320,
+      },
+    });
+  });
+
+  it('counts every transcript in the slot, not just the newest', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-4-ee55';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    const message = (id: string, output: number) =>
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          id,
+          role: 'assistant',
+          model: 'claude-opus-5',
+          usage: { input_tokens: 1, output_tokens: output },
+        },
+      });
+    fs.writeFileSync(path.join(project, 'older.jsonl'), message('msg_old', 10) + '\n');
+    fs.writeFileSync(path.join(project, 'newer.jsonl'), message('msg_new', 70) + '\n');
+
+    const usage = harvestClaudeUsage({
+      agentId: 4,
+      workDir,
+      branch: 'main-abcd-har-agent-4-ee55',
+      suffix: 'ee55',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage).not.toBeNull();
+    expect(usage!.tokensOutput).toBe(80);
+    expect(usage!.tokensInput).toBe(2);
+  });
+
   it('does not harvest a parent cwd session into a child worktree slot', () => {
     const homeDir = '/home/antoine';
     const workDir = '/home/antoine/worktrees/main-abcd-har-agent-2-xy12';
@@ -246,6 +330,42 @@ describe('usage harvest claude', () => {
 
     fs.utimesSync(path.join(worktreeProject, 'worktree.jsonl'), 1000, 1000);
     fs.utimesSync(path.join(checkoutProject, 'checkout.jsonl'), 2000, 2000);
+
+    const usage = harvestClaudeUsage({
+      agentId: 1,
+      workDir: worktree,
+      worktreePath: worktree,
+      branch: 'main-2b19-har-agent-1-5wrz',
+      suffix: '5wrz',
+      repoPath,
+      includeRepoPathFallback: true,
+    });
+
+    expect(usage!.tokensOutput).toBe(7);
+  });
+
+  it('sums the slot own transcripts without adding the main-checkout fallback', () => {
+    const repoPath = '/home/user/Documents/Kerno/fecore';
+    const worktree = '/home/user/worktrees/main-2b19-har-agent-1-5wrz';
+    const message = (id: string, output: number) =>
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          id,
+          role: 'assistant',
+          model: 'claude-opus-5',
+          usage: { output_tokens: output },
+        },
+      });
+
+    const checkoutProject = path.join(tmp, encodeClaudeProjectDir(repoPath));
+    fs.mkdirSync(checkoutProject, { recursive: true });
+    fs.writeFileSync(path.join(checkoutProject, 'checkout.jsonl'), message('msg_c', 500) + '\n');
+
+    const worktreeProject = path.join(tmp, encodeClaudeProjectDir(worktree));
+    fs.mkdirSync(worktreeProject, { recursive: true });
+    fs.writeFileSync(path.join(worktreeProject, 'first.jsonl'), message('msg_1', 3) + '\n');
+    fs.writeFileSync(path.join(worktreeProject, 'second.jsonl'), message('msg_2', 4) + '\n');
 
     const usage = harvestClaudeUsage({
       agentId: 1,
