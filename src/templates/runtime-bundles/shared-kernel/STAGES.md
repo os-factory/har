@@ -38,20 +38,24 @@ Optional stage fields: `cwd` (working directory), `env` (extra env vars),
 ## Two ways to define a stage
 
 **Command stages** — the default for simple checks (`npm test`, `swiftlint`,
-`make check`). One JSON entry, zero files:
+`make check`). One JSON entry in `.har/stages.json`, zero files:
 
-```bash
-har env add-stage unit-tests-fast --custom --kind test --command "npm test" --verification
+```json
+{ "id": "unit-tests-fast", "kind": "test", "command": "npm test", "tier": "quick" }
 ```
+
+(add the id to `verificationStages` to run it during verify).
 
 **Script stages** — for anything that needs the slot's env, ports, or
-artifacts. Scaffold a contract-compliant skeleton:
+artifacts. Scaffold a project-owned plugin with a contract-compliant skeleton:
 
 ```bash
-har env add-stage db-integrity --custom --script --description "Check DB invariants"
+har plugin create db-integrity --description "Check DB invariants"
+har env add-plugin db-integrity
 ```
 
-then implement the TODO block in `.har/stages/db-integrity.sh`.
+then implement the TODO block in `.har/plugins/db-integrity/stages/db-integrity.sh`
+and reinstall with `har env add-plugin db-integrity --force`.
 
 ## The stage script contract
 
@@ -103,4 +107,7 @@ stack), or `har env add-plugin trivy` (dependency + IaC security scan, any stack
 or `har env add-plugin semgrep` (SAST, any stack)
 installs one. A
 plugin is just packaging: it copies files, merges `package.json` fragments,
-and registers stages through the exact same registry as `add-stage --custom`.
+and registers stages through the exact same registry as everything else.
+Project-owned plugins live in `.har/plugins/<id>/` (`har plugin create <id>`)
+and install from any of four sources — bundled, local, npm, or git — with the
+same format.

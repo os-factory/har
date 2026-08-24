@@ -6,7 +6,7 @@ import { DEFAULT_HAR_DIR } from './manifest';
 
 export const PluginLedgerEntrySchema = z.object({
   id: z.string().min(1),
-  source: z.enum(['bundled', 'path', 'npm', 'git']),
+  source: z.enum(['bundled', 'local', 'path', 'npm', 'git']),
   /** Original install spec (id, path, package, or git URL). */
   spec: z.string().min(1),
   /** Package/plugin version when known. */

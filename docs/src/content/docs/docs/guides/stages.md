@@ -38,23 +38,31 @@ Kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`, `teardown`, a
 
 ## Add a custom stage
 
-For a simple command:
+For a simple command, register a command stage directly in `.har/stages.json`
+(and list its id in `verificationStages`):
 
-```bash
-har env add-stage unit-tests-fast --custom --kind test \
-  --command "npm test" --verification
+```json
+{ "id": "unit-tests-fast", "kind": "test", "command": "npm test", "tier": "quick" }
 ```
 
-For a workflow that needs slot environment, ports, or artifacts:
+For a workflow that needs slot environment, ports, or artifacts, scaffold a
+project-owned plugin:
 
 ```bash
-har env add-stage db-integrity --custom --script \
-  --description "Check database invariants" --verification
+har plugin create db-integrity --description "Check database invariants"
+har env add-plugin db-integrity
 ```
 
-The script form scaffolds `.har/stages/db-integrity.sh` from HAR's normalized
-stage contract. Every generated harness includes the complete authoring guide at
+`har plugin create` scaffolds `.har/plugins/db-integrity/` — manifest, a stage
+script from HAR's normalized stage contract, and a README — and
+`har env add-plugin` installs it exactly like a bundled, npm, or git plugin.
+Every generated harness includes the complete authoring guide at
 `.har/STAGES.md`.
+
+:::note
+`har env add-stage <id> --custom` was removed in 1.0 — custom stages are local
+plugins (or plain `stages.json` entries for one-liners).
+:::
 
 ## Run a stage
 

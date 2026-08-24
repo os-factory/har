@@ -5,8 +5,6 @@ import { initHarness, maintainHarness, addPlugin } from '../../core/harness';
 import {
   listPluginIds,
 } from '../../harness/plugins';
-import { addCustomStage } from '../../harness/custom-stage';
-import type { HarnessStageKind } from '../../harness/schema';
 import { HarnessDriftResult } from '../../harness/drift';
 import type { MaintainBundleReport } from '../../harness/maintain-bundle';
 import {
@@ -213,13 +211,12 @@ export const envCommand = {
       )
       .command(
         'add-stage [template]',
-        `Register a custom stage (--custom), or install a plugin (deprecated alias for add-plugin)`,
+        `Install a plugin (deprecated alias for add-plugin); --custom was removed in 1.0 (use har plugin create)`,
         (y: Argv) =>
           y
             .positional('template', {
               type: 'string',
-              describe:
-                'Custom stage id with --custom, or a plugin id / path / npm / git spec as a deprecated alias',
+              describe: 'Plugin id / path / npm / git spec (deprecated alias for add-plugin)',
             })
             .option('list', {
               type: 'boolean',
@@ -229,30 +226,14 @@ export const envCommand = {
             .option('custom', {
               type: 'boolean',
               default: false,
-              describe: 'Register a custom stage instead of installing a plugin',
+              hidden: true,
+              describe: 'Removed in 1.0 — use: har plugin create <id>',
             })
-            .option('kind', {
-              type: 'string',
-              describe: 'Custom stage kind (setup, launch, verify, test, inspect, reset, teardown, custom)',
-            })
-            .option('command', {
-              type: 'string',
-              describe: 'Custom stage shell command ({agentId} is substituted), e.g. "npm test"',
-            })
-            .option('script', {
-              type: 'boolean',
-              default: false,
-              describe: 'Scaffold .har/stages/<id>.sh from the contract skeleton (see .har/STAGES.md)',
-            })
-            .option('description', {
-              type: 'string',
-              describe: 'Custom stage description shown in the registry and Mission Control',
-            })
-            .option('verification', {
-              type: 'boolean',
-              default: false,
-              describe: 'Include the custom stage in verify --full (stages.json verificationStages)',
-            })
+            .option('kind', { type: 'string', hidden: true })
+            .option('command', { type: 'string', hidden: true })
+            .option('script', { type: 'boolean', default: false, hidden: true })
+            .option('description', { type: 'string', hidden: true })
+            .option('verification', { type: 'boolean', default: false, hidden: true })
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
             .option('force', {
               type: 'boolean',
@@ -894,7 +875,7 @@ export async function handleAddPlugin(argv: {
   if (!argv.plugin) {
     error(
       `Missing plugin. Bundled: ${available.join(', ') || '(none)'}. ` +
-        `Or pass a path, npm package, or git URL. For a project-specific stage, use: har env add-stage <id> --custom`,
+        `Or pass a path, npm package, or git URL. For a project-owned plugin, scaffold one with: har plugin create <id>`,
     );
     return finishCommand(1);
   }
@@ -945,7 +926,6 @@ export async function handleAddStage(argv: {
   skipCi: boolean;
   withCi?: boolean;
 }): Promise<void> {
-  const repoPath = path.resolve(argv.repo);
   const available = listPluginIds();
 
   if (argv.list) {
@@ -957,51 +937,19 @@ export async function handleAddStage(argv: {
   }
 
   if (argv.custom) {
-    if (!argv.template) {
-      error(
-        'Missing stage id. Usage: har env add-stage <id> --custom (--command "npm test" | --script) [--kind test] [--verification]',
-      );
-      return finishCommand(1);
-    }
-
-    header('har env add-stage --custom');
-    info(`Repository: ${repoPath}`);
-    info(`Stage: ${argv.template}`);
-
-    try {
-      const result = addCustomStage(repoPath, {
-        id: argv.template,
-        kind: argv.kind as HarnessStageKind | undefined,
-        command: argv.command,
-        script: argv.script,
-        description: argv.description,
-        verification: argv.verification,
-        force: argv.force,
-      });
-
-      divider();
-      success(`Custom stage registered: ${result.stageId} (kind: ${result.kind}, ${result.mode})`);
-      for (const file of result.filesWritten) {
-        info(`  + ${file}`);
-      }
-      console.error('');
-      console.error('  Next steps:');
-      for (const step of result.nextSteps) {
-        console.error(`    ${step}`);
-      }
-      console.error('');
-      console.error('  Docs: .har/STAGES.md');
-      console.error('');
-    } catch (err: unknown) {
-      error((err as Error).message);
-      return finishCommand(1);
-    }
-    return;
+    const id = argv.template ?? '<id>';
+    error(
+      `har env add-stage --custom was removed in 1.0. Custom stages are local plugins now — run: har plugin create ${id}` +
+        (argv.command
+          ? `. For a one-liner like "${argv.command}", register a command stage directly in .har/stages.json instead (see .har/STAGES.md).`
+          : '. For a simple one-liner, register a command stage directly in .har/stages.json (see .har/STAGES.md).'),
+    );
+    return finishCommand(1);
   }
 
   if (!argv.template) {
     error(
-      `Unknown plugin: (missing). Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-specific stage, use: har env add-stage <id> --custom`,
+      `Unknown plugin: (missing). Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-owned plugin, scaffold one with: har plugin create <id>`,
     );
     return finishCommand(1);
   }

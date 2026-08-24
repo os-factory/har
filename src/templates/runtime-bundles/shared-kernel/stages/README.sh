@@ -5,7 +5,7 @@
 # command vs script stages, and how verificationStages controls verify --full.
 #
 # Scaffold a new one with:
-#   har env add-stage <id> --custom --script
+#   har plugin create <id>   # then: har env add-plugin <id>
 
 echo "Add stage scripts under .har/stages/ and register them in stages.json — see .har/STAGES.md." >&2
 exit 1

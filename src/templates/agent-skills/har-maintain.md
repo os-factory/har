@@ -14,7 +14,7 @@ This compares the harness against the current templates and repository, refreshe
 
 Read `.har/ADAPT-PROMPT.md` and execute its instructions now, in this session: reconcile `.har/` scripts (`launch.sh`, `verify.sh`, `setup-infra.sh`, `harness.env`, `stages.json`) and `AGENTS.md` with the repository's current stack, ports, and commands. Preserve intentional project-specific customizations — fix drift, don't blindly reset.
 
-Also check stage drift: compare the repository's current check commands (package.json scripts, Makefile, CI) against the stages registered in `.har/stages.json`. Register missing checks (`har env add-stage <id> --custom --command "..." --verification`), and remove or fix stages whose commands no longer exist. `.har/STAGES.md` documents the contract.
+Also check stage drift: compare the repository's current check commands (package.json scripts, Makefile, CI) against the stages registered in `.har/stages.json`. Register missing checks (add a command stage entry to `.har/stages.json` and list it in `verificationStages`; scaffold script-based checks with `har plugin create <id>` + `har env add-plugin <id>`), and remove or fix stages whose commands no longer exist. `.har/STAGES.md` documents the contract.
 
 ## 3. Finalize and prove it works
 

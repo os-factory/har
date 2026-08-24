@@ -271,7 +271,7 @@ export function runDoctor(repoPath: string): DoctorReport {
         severity: contractSeverity,
         file: 'stages.json',
         message: `verificationStages id \`${id}\` does not resolve to a registered runnable stage`,
-        remedy: `Register a stage with id \`${id}\` (har env add-stage ${id} --custom) or remove it from verificationStages`,
+        remedy: `Register a stage with id \`${id}\` (har plugin create ${id}, or a command stage in .har/stages.json) or remove it from verificationStages`,
       });
     }
   }

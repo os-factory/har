@@ -463,7 +463,7 @@ function writePluginBundleArtifacts(repoPath: string, bundleDir: string, report:
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    const templateContent = readTemplatePluginFile(action.pluginId, action.file);
+    const templateContent = readTemplatePluginFile(repoPath, action.pluginId, action.file);
     if (templateContent === null) continue;
 
     const templatePath = path.join(templatesDir, action.file);

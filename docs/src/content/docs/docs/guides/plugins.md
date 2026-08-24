@@ -194,22 +194,40 @@ Platform. Local runs are invisible to compliance platforms by design.
 
 Two paths — pick based on whether the check is project-private or reusable.
 
-### Custom stages (not plugins)
+### Command stages (not plugins)
 
-Project-specific checks (`npm test`, domain scripts) do **not** need a plugin:
+Project-specific one-liners (`npm test`, domain scripts) do **not** need a
+plugin — register a command stage directly in `.har/stages.json`:
 
-```bash
-har env add-stage unit-tests-fast --custom --kind test \
-  --command "npm test" --verification
+```json
+{ "id": "unit-tests-fast", "kind": "test", "command": "npm test", "tier": "quick" }
 ```
 
 See [Stages and artifacts](/docs/guides/stages/) and `.har/STAGES.md`.
+
+### Local plugins
+
+Anything bigger — a script that needs the slot's env, ports, or artifacts —
+is a **local plugin**, project-owned under `.har/plugins/<id>/`:
+
+```bash
+har plugin create db-integrity
+har env add-plugin db-integrity
+```
+
+The scaffold is a complete plugin (manifest, stage script, README, optional
+`package.fragment.json`), recorded in `.har/plugins.json` with source `local`.
+Publishing it later to npm or git requires zero format changes.
 
 ### Publish your own plugin
 
 HAR is open source. Anyone can ship a verification plugin without changing HAR core.
 
-**Start from the official boilerplate** (GitHub template + npm package layout):
+**Start from a local plugin** — `har plugin create <id>` scaffolds the exact
+publishable format in `.har/plugins/<id>/`; move it to its own repo or package
+when ready.
+
+**Or start from the official boilerplate** (GitHub template + npm package layout):
 
 - Repository: [os-factory/har-plugin](https://github.com/os-factory/har-plugin) (*Use this template*)
 - Agent guide (fit + examples): [AGENTS.md](https://github.com/os-factory/har-plugin/blob/main/AGENTS.md)

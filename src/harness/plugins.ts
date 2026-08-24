@@ -391,7 +391,7 @@ export function applyPlugin(
   options: ApplyPluginOptions = {},
 ): ApplyPluginResult {
   const spec = options.spec ?? pluginSpec;
-  const source = resolvePluginSource(spec);
+  const source = resolvePluginSource(spec, repoPath);
   try {
     return applyPluginFromDir(repoPath, source.dir, options, {
       source: source.kind,

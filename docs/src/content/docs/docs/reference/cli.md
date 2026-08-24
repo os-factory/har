@@ -47,7 +47,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `init` | Scaffold and adapt a new `.har/` |
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-plugin [plugin]` | Install a plugin (bundled id, path, npm, or git — registers stages) |
-| `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
+| `add-stage [id]` | Deprecated plugin alias for `add-plugin` (`--custom` removed in 1.0 — see `har plugin create`) |
 | `preflight <id>` | Check ports, processes, Docker, slot occupation, and untracked worktree paths |
 | `setup-infra` | Set up shared infrastructure (Docker services, template DB, or the iOS toolchain) |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
@@ -103,20 +103,20 @@ har env add-plugin semgrep [--force] [--with-ci]
 har env add-plugin ./my-plugin [--force]
 har env add-plugin @org/har-cypress [--force]
 har env add-plugin github:org/har-plugin [--force]
-har env add-stage <id> --custom --kind <kind>
-                       [--command <shell-command>|--script]
-                       [--description <text>] [--verification] [--force]
+har plugin create <id> [--kind <kind>] [--description <text>]
+                       [--package-fragment] [--force]
+har plugin list
 ```
 
 `add-plugin` installs a framework bundle that registers one or more stages
-(bundled id, local path, npm package, or git URL). Installs are recorded in
-`.har/plugins.json`. Bundled plugins are discovered from disk — no core enum
-edit is required to ship a new id. `add-stage --custom` registers a
-project-specific stage. `har env add-stage playwright` remains as a deprecated
-alias of `add-plugin playwright`.
-
-`--command` registers a direct command. `--script` scaffolds a contract-compliant
-`.har/stages/<id>.sh`; implement its TODO before verification can pass. See
+(bundled id, local plugin id, path, npm package, or git URL). Installs are
+recorded in `.har/plugins.json` with their source kind. Bundled plugins are
+discovered from disk — no core enum edit is required to ship a new id.
+`har plugin create` scaffolds a project-owned plugin at `.har/plugins/<id>/`
+(manifest, contract-compliant stage script, README); implement its TODO, then
+install it with `add-plugin <id>`. `har env add-stage playwright` remains as a
+deprecated alias of `add-plugin playwright`; `add-stage --custom` was removed
+in 1.0 — one-liner checks are plain command stages in `.har/stages.json`. See
 `.har/STAGES.md` in every generated harness and the [Plugins](/docs/guides/plugins/)
 guide.
 
