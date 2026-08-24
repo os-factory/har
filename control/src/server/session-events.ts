@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { AgentTrajectoryRecordSchema } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { boundTrajectoryPayload } from '@/lib/trajectory-privacy';
+import { clampPageLimit, createdAtKeyset } from '@/server/pagination';
 
 export interface SessionEventInput {
   sessionKey: string;
@@ -71,11 +72,17 @@ export async function listSessionEventsForSlot(repositoryId: string, agentId: nu
   });
 }
 
-export async function listSessionEventsForRepo(repositoryId: string) {
+const REPO_EVENTS_LIMIT = 1_000;
+const REPO_EVENTS_MAX_LIMIT = 5_000;
+
+export async function listSessionEventsForRepo(
+  repositoryId: string,
+  options: { since?: string | null; sinceId?: string | null; limit?: number } = {},
+) {
   return prisma.agentSessionEvent.findMany({
-    where: { repositoryId },
-    orderBy: { timestamp: 'desc' },
-    take: 200,
+    where: { repositoryId, ...createdAtKeyset(options) },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: clampPageLimit(options.limit, REPO_EVENTS_LIMIT, REPO_EVENTS_MAX_LIMIT),
   });
 }
 

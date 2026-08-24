@@ -111,6 +111,7 @@ model AgentSessionEvent {
 
   @@unique([repositoryId, sessionKey, agentTool, eventName, sequence])
   @@index([repositoryId, agentId, timestamp])
+  @@index([repositoryId, createdAt, id])
   @@index([timestamp])
 }
 
@@ -134,6 +135,7 @@ model AgentSessionSpan {
 
   @@unique([repositoryId, traceId, spanId])
   @@index([repositoryId, agentId, startTime])
+  @@index([repositoryId, createdAt, id])
 }
 
 model AgentTrajectoryRecord {
@@ -167,6 +169,7 @@ model AgentTrajectoryRecord {
   @@unique([repositoryId, source, sourceEventId, contentKey])
   @@index([repositoryId, agentId, sessionKey, agentTool, sequence, eventTimestamp, source])
   @@index([repositoryId, agentId, sessionKey, agentTool, createdAt])
+  @@index([repositoryId, createdAt, id])
 }
 
 model Run {

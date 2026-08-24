@@ -42,7 +42,13 @@ jest.mock('../src/core/usage-harvest', () => {
   };
 });
 jest.mock('../src/core/control-persisted-usage', () => ({
-  fetchPersistedPortalTelemetry: jest.fn(async () => ({ usage: [], events: [], maxSyncedAt: null })),
+  fetchPersistedPortalTelemetry: jest.fn(async () => ({
+    usage: [],
+    events: [],
+    maxSyncedAt: null,
+    failures: [],
+    truncated: [],
+  })),
 }));
 jest.mock('../src/core/portal-watermark', () => ({
   ...jest.requireActual('../src/core/portal-watermark'),
@@ -66,6 +72,8 @@ jest.mock('../src/core/control-persisted-trajectory', () => ({
     spans: [],
     recordsMaxSyncedAt: null,
     spansMaxSyncedAt: null,
+    failures: [],
+    truncated: [],
   })),
 }));
 jest.mock('../src/harness/manifest', () => ({
@@ -119,7 +127,7 @@ function resetPayloadMocks(): void {
   listValidationBindingsMock.mockReturnValue([]);
   harvestUsageForSlotMock.mockReturnValue([]);
   harvestEventsForSlotMock.mockReturnValue([]);
-  fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [], maxSyncedAt: null });
+  fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] });
   readPortalWatermarkMock.mockReset();
   readPortalWatermarkMock.mockReturnValue(null);
   writePortalWatermarkMock.mockReset();
@@ -676,6 +684,8 @@ describe('syncRepoWithControl — portal full payload', () => {
         },
       ],
       events: [],
+      failures: [],
+      truncated: [],
     });
     const fetchMock = mockFetch({ status: 200 });
 
@@ -728,6 +738,8 @@ describe('syncRepoWithControl — portal full payload', () => {
         },
       ],
       events: [],
+      failures: [],
+      truncated: [],
     });
     const fetchMock = mockFetch({ status: 200 });
 
@@ -758,6 +770,8 @@ describe('syncRepoWithControl — portal full payload', () => {
           source: 'harvest',
         },
       ],
+      failures: [],
+      truncated: [],
     });
     const fetchMock = mockFetch({ status: 200 });
 
@@ -821,6 +835,8 @@ describe('syncRepoWithControl — portal watermark', () => {
       usage: [],
       events: [],
       maxSyncedAt: '2026-01-09T00:00:00.000Z',
+      failures: [],
+      truncated: [],
     });
     mockFetch({ status: 200 });
 
@@ -842,6 +858,8 @@ describe('syncRepoWithControl — portal watermark', () => {
       usage: [],
       events: [],
       maxSyncedAt: '2026-01-09T00:00:00.000Z',
+      failures: [],
+      truncated: [],
     });
     mockFetch({ status: 200 });
 
@@ -860,7 +878,7 @@ describe('syncRepoWithControl — portal watermark', () => {
 
   it('does not advance the watermark when nothing new was sent', async () => {
     readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
-    fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [], maxSyncedAt: null });
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({ usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] });
     mockFetch({ status: 200 });
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
@@ -868,11 +886,51 @@ describe('syncRepoWithControl — portal watermark', () => {
     expect(writePortalWatermarkMock).not.toHaveBeenCalled();
   });
 
+  it('holds the watermark and warns when a telemetry channel could not be read', async () => {
+    readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [],
+      events: [],
+      maxSyncedAt: '2026-01-09T00:00:00.000Z',
+      failures: [{ channel: 'usage', reason: 'HTTP 500' }],
+      truncated: [],
+    });
+    mockFetch({ status: 200 });
+
+    const outcome = await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    expect(writePortalWatermarkMock).not.toHaveBeenCalled();
+    expect(outcome.warnings).toHaveLength(1);
+    expect(outcome.warnings[0]).toContain('usage (HTTP 500)');
+  });
+
+  it('reports a truncated read while still advancing what it did send', async () => {
+    fetchPersistedPortalTelemetryMock.mockResolvedValue({
+      usage: [],
+      events: [],
+      maxSyncedAt: '2026-01-09T00:00:00.000Z',
+      failures: [],
+      truncated: ['events'],
+    });
+    mockFetch({ status: 200 });
+
+    const outcome = await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    expect(writePortalWatermarkMock).toHaveBeenCalledWith(
+      '/repo/x',
+      'https://portal.example.com',
+      '2026-01-09T00:00:00.000Z',
+    );
+    expect(outcome.warnings[0]).toContain('page cap');
+  });
+
   it('does not advance the watermark on dry-run', async () => {
     fetchPersistedPortalTelemetryMock.mockResolvedValue({
       usage: [],
       events: [],
       maxSyncedAt: '2026-01-09T00:00:00.000Z',
+      failures: [],
+      truncated: [],
     });
     mockFetch({ status: 200 });
 
@@ -1027,6 +1085,8 @@ describe('syncRepoWithControl — attached destinations', () => {
       usage: [],
       events: [],
       maxSyncedAt: '2026-03-01T00:00:00.000Z',
+      failures: [],
+      truncated: [],
     });
     listRunsMock.mockReturnValue([
       {

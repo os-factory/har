@@ -137,7 +137,7 @@ describe('syncReposWithControl', () => {
 
   it('returns zeroes for an empty selection', async () => {
     const result = await syncReposWithControl({ repoPaths: [] });
-    expect(result).toEqual({ synced: 0, failed: 0, results: [] });
+    expect(result).toEqual({ synced: 0, failed: 0, incomplete: 0, results: [] });
   });
 
   it('makes no network calls in dry-run mode', async () => {

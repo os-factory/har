@@ -1,8 +1,11 @@
-import * as path from 'path';
 import type { AgentSessionEvent, AgentSessionUsage, AgentTool, UsageSource } from '../harness/schema';
 import { selectSince } from './portal-watermark';
-
-const FETCH_TIMEOUT_MS = 3000;
+import {
+  ChannelReadFailure,
+  readControlJson,
+  readControlPages,
+  resolveControlRepoId,
+} from './control-api-read';
 
 interface PersistedUsageRow {
   sessionKey: string;
@@ -26,7 +29,8 @@ interface PersistedUsageRow {
   updatedAt?: string | null;
 }
 
-interface PersistedEventRow {
+export interface PersistedEventRow {
+  id?: string;
   sessionKey: string;
   agentId: number;
   agentTool: string;
@@ -41,26 +45,6 @@ interface PersistedEventRow {
   workUnitId?: string | null;
   attemptId?: string | null;
   createdAt?: string | null;
-}
-
-async function getJson<T>(url: string): Promise<T | null> {
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
-async function resolveControlRepoId(apiUrl: string, repoPath: string): Promise<string | null> {
-  const repos = await getJson<{ id: string; path: string }[]>(`${apiUrl}/api/repos`);
-  if (!Array.isArray(repos)) return null;
-  const target = path.resolve(repoPath);
-  return repos.find((repo) => path.resolve(repo.path) === target)?.id ?? null;
 }
 
 function optionalString(value: string | null | undefined): string | undefined {
@@ -127,38 +111,65 @@ function maxTimestamp(a: string | null, b: string | null): string | null {
   return a > b ? a : b;
 }
 
+export interface PersistedPortalTelemetry {
+  usage: AgentSessionUsage[];
+  events: AgentSessionEvent[];
+  maxSyncedAt: string | null;
+  failures: ChannelReadFailure[];
+  truncated: string[];
+}
+
 /**
- * Best-effort read of persisted telemetry from a locally-reachable Mission
- * Control. Returns empty when the control API is unreachable or the repo is not
- * registered there, so a portal sync always falls back to the live-slot
- * harvest. Never throws.
- *
- * When `since` is set, only rows changed after it are returned — usage by its
- * cumulative `updatedAt` (a live session that gained tokens re-syncs even
- * though its event time looks old), events by their append-only `createdAt`.
- * `maxSyncedAt` is the newest timestamp among the returned rows, for advancing
- * the caller's watermark to the max actually sent.
+ * Usage is selected on its cumulative `updatedAt` — a live session that gained
+ * tokens re-syncs even though its event time looks old — and events on their
+ * append-only `createdAt`, which Mission Control also pages on.
  */
 export async function fetchPersistedPortalTelemetry(
   repoPath: string,
   apiUrl: string,
   options?: { since?: string | null },
-): Promise<{ usage: AgentSessionUsage[]; events: AgentSessionEvent[]; maxSyncedAt: string | null }> {
-  const repoId = await resolveControlRepoId(apiUrl, repoPath);
-  if (!repoId) return { usage: [], events: [], maxSyncedAt: null };
+): Promise<PersistedPortalTelemetry> {
+  const empty = { usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] };
+
+  const repo = await resolveControlRepoId(apiUrl, repoPath);
+  if (!repo.ok) {
+    return { ...empty, failures: [{ channel: 'repos', reason: repo.error }] };
+  }
+  if (!repo.data) return empty;
 
   const since = options?.since ?? null;
-  const [usageResponse, eventsResponse] = await Promise.all([
-    getJson<{ usage: PersistedUsageRow[] }>(`${apiUrl}/api/repos/${repoId}/usage`),
-    getJson<{ events: PersistedEventRow[] }>(`${apiUrl}/api/repos/${repoId}/events`),
+  const [usageRead, eventsRead] = await Promise.all([
+    readControlJson<{ usage?: PersistedUsageRow[] }>(`${apiUrl}/api/repos/${repo.data}/usage`),
+    readControlPages<PersistedEventRow>({
+      url: `${apiUrl}/api/repos/${repo.data}/events`,
+      since,
+      rows: (data) => (data as { events?: PersistedEventRow[] } | null)?.events ?? [],
+      cursor: (row) => ({ createdAt: row.createdAt, id: row.id }),
+    }),
   ]);
 
-  const usage = selectSince(usageResponse?.usage ?? [], since, (row) => row.updatedAt ?? row.lastSeenAt);
-  const events = selectSince(eventsResponse?.events ?? [], since, (row) => row.createdAt ?? row.timestamp);
+  const failures: ChannelReadFailure[] = [];
+  const truncated: string[] = [];
+  if (!usageRead.ok) failures.push({ channel: 'usage', reason: usageRead.error });
+  if (!eventsRead.ok) failures.push({ channel: 'events', reason: eventsRead.error });
+  else if (eventsRead.truncated) truncated.push('events');
+
+  const usage = selectSince(
+    usageRead.ok ? (usageRead.data?.usage ?? []) : [],
+    since,
+    (row) => row.updatedAt ?? row.lastSeenAt,
+  );
+  const events = selectSince(
+    eventsRead.ok ? eventsRead.rows : [],
+    since,
+    (row) => row.createdAt ?? row.timestamp,
+  );
 
   return {
     usage: usage.selected.map(normalizeUsage),
     events: events.selected.map(normalizeEvent),
     maxSyncedAt: maxTimestamp(usage.maxSyncedAt, events.maxSyncedAt),
+    failures,
+    truncated,
   };
 }

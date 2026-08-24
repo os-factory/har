@@ -3,6 +3,7 @@ import { Prisma, type AgentTrajectoryRecord } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { boundTrajectoryPayload, trajectoryPolicy } from '@/lib/trajectory-privacy';
+import { clampPageLimit, createdAtKeyset } from '@/server/pagination';
 import type {
   SerializedTrajectoryPage,
   SerializedTrajectoryRecord,
@@ -355,20 +356,12 @@ const REPO_TRAJECTORY_MAX_LIMIT = 5_000;
 
 export async function listTrajectoryForRepo(
   repositoryId: string,
-  options: { since?: string | null; limit?: number } = {},
+  options: { since?: string | null; sinceId?: string | null; limit?: number } = {},
 ): Promise<AgentTrajectoryRecord[]> {
-  const limit = Math.max(
-    1,
-    Math.min(options.limit ?? REPO_TRAJECTORY_LIMIT, REPO_TRAJECTORY_MAX_LIMIT),
-  );
-  const since = options.since ? new Date(options.since) : null;
   return prisma.agentTrajectoryRecord.findMany({
-    where: {
-      repositoryId,
-      ...(since && Number.isFinite(since.getTime()) ? { createdAt: { gt: since } } : {}),
-    },
+    where: { repositoryId, ...createdAtKeyset(options) },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    take: limit,
+    take: clampPageLimit(options.limit, REPO_TRAJECTORY_LIMIT, REPO_TRAJECTORY_MAX_LIMIT),
   });
 }
 
