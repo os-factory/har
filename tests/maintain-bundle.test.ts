@@ -38,7 +38,7 @@ describe('maintain bundle', () => {
     expect(fs.existsSync(path.join(bundleDir, 'validation.json'))).toBe(true);
   });
 
-  it('creates diffs for drifted files', () => {
+  it('reports user edits as adapted (no action) — two-signal drift (#237)', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-drift-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
     const launchPath = path.join(repoPath, '.har', 'launch.sh');
@@ -46,15 +46,42 @@ describe('maintain bundle', () => {
 
     const drift = compareHarnessToTemplate(repoPath);
     const validation = validateHarness(repoPath);
+    const { report } = buildMaintainBundle(repoPath, validation, drift);
+
+    // User edited, template unchanged → informational, never a drift action.
+    expect(report.actions.find((a) => a.file === 'launch.sh')).toBeUndefined();
+    expect(report.adapted).toContain('launch.sh');
+  });
+
+  it('creates diffs for upstream-updated and conflict files — two-signal drift (#237)', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-upstream-'));
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+
+    // Simulate "template moved since finalize" by rewinding the recorded
+    // template baseline for launch.sh (upstream-updated) and verify.sh
+    // (conflict: baseline rewound AND user edit).
+    const manifestPath = path.join(repoPath, '.har', 'manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    manifest.templateChecksums['launch.sh'] = '0000000000000000';
+    manifest.templateChecksums['verify.sh'] = '0000000000000000';
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+    const verifyPath = path.join(repoPath, '.har', 'verify.sh');
+    fs.writeFileSync(verifyPath, fs.readFileSync(verifyPath, 'utf8') + '\n# local edit\n');
+
+    const drift = compareHarnessToTemplate(repoPath);
+    expect(drift.upstreamUpdated).toContain('launch.sh');
+    expect(drift.conflict).toContain('verify.sh');
+
+    const validation = validateHarness(repoPath);
     const { bundleDir, report } = buildMaintainBundle(repoPath, validation, drift);
 
-    const launchAction = report.actions.find((a) => a.file === 'launch.sh');
-    expect(launchAction?.kind).toBe('drift');
+    expect(report.actions.find((a) => a.file === 'launch.sh')?.kind).toBe('upstream-updated');
+    expect(report.actions.find((a) => a.file === 'verify.sh')?.kind).toBe('conflict');
     expect(fs.existsSync(path.join(bundleDir, 'installed', 'launch.sh'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'templates', 'launch.sh'))).toBe(true);
-    expect(fs.existsSync(path.join(bundleDir, 'diffs', 'launch.sh.diff'))).toBe(true);
-    const diff = fs.readFileSync(path.join(bundleDir, 'diffs', 'launch.sh.diff'), 'utf8');
-    expect(diff).toContain('drift marker');
+    expect(fs.existsSync(path.join(bundleDir, 'diffs', 'verify.sh.diff'))).toBe(true);
+    const diff = fs.readFileSync(path.join(bundleDir, 'diffs', 'verify.sh.diff'), 'utf8');
+    expect(diff).toContain('local edit');
   });
 
   it('lists stale extra files', () => {
@@ -134,6 +161,7 @@ describe('adaptation prompts with maintain bundle', () => {
           hint: 'Add this file.',
         },
       ],
+      adapted: [],
       pluginDrift: [],
       pluginActions: [],
       stale: [{ file: 'legacy.sh', hint: 'Delete after merge.' }],

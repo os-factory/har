@@ -1475,8 +1475,16 @@ function printValidation(result: {
 }
 
 function printDrift(drift: HarnessDriftResult): void {
-  if (drift.checksumMismatch.length > 0) {
-    warn(`  Drift (template changed): ${drift.checksumMismatch.join(', ')}`);
+  if (drift.conflict.length > 0) {
+    warn(`  Conflict (upstream updated AND user edited — merge): ${drift.conflict.join(', ')}`);
+  }
+  if (drift.upstreamUpdated.length > 0) {
+    warn(`  Upstream template updates: ${drift.upstreamUpdated.join(', ')}`);
+  }
+  if (drift.userAdapted.length > 0) {
+    info(
+      `  Adapted locally (current with upstream — finalize to bless): ${drift.userAdapted.join(', ')}`,
+    );
   }
   if (drift.missing.length > 0) {
     warn(`  Missing from .har/: ${drift.missing.join(', ')}`);
@@ -1497,24 +1505,32 @@ function printDrift(drift: HarnessDriftResult): void {
     warn('  Canonical source is .har/stages.json — har env maintain --finalize syncs harness.env.');
   }
   if (
-    drift.checksumMismatch.length === 0 &&
+    drift.conflict.length === 0 &&
+    drift.upstreamUpdated.length === 0 &&
     drift.missing.length === 0 &&
     drift.extra.length === 0 &&
     drift.missingPortVars.length === 0 &&
     !drift.agentSlotMismatch
   ) {
-    success('  Harness matches bundled templates');
+    success(
+      drift.userAdapted.length > 0
+        ? '  No actionable drift (local adaptations are current with upstream)'
+        : '  Harness matches bundled templates',
+    );
   }
 }
 
 function printMaintainBundleSummary(report: MaintainBundleReport): void {
   const missing = report.actions.filter((a) => a.kind === 'missing').length;
-  const drifted = report.actions.filter((a) => a.kind === 'drift').length;
+  const upstream = report.actions.filter((a) => a.kind === 'upstream-updated').length;
+  const conflicts = report.actions.filter((a) => a.kind === 'conflict').length;
   const pluginMissing = report.pluginActions.filter((a) => a.kind === 'missing').length;
   const pluginDrifted = report.pluginActions.filter((a) => a.kind === 'drift').length;
   const stale = report.stale.length;
   info(`Maintenance bundle: .har/maintain/`);
-  info(`  Harness: ${missing} missing, ${drifted} drifted, ${stale} stale`);
+  info(
+    `  Harness: ${missing} missing, ${upstream} upstream-updated, ${conflicts} conflict(s), ${report.adapted.length} adapted (no action), ${stale} stale`,
+  );
   if (report.pluginDrift.length > 0) {
     info(
       `  Plugins (${report.pluginDrift.map((p) => p.pluginId).join(', ')}): ${pluginMissing} missing, ${pluginDrifted} drifted`,

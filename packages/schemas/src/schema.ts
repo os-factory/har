@@ -49,6 +49,12 @@ export const HarnessManifestSchema = z.object({
   adaptationSummary: z.string().optional(),
   profile: z.enum(['default', 'cli', 'ios']).optional(),
   fileChecksums: z.record(z.string()).optional(),
+  /**
+   * Checksums of the composed bundled templates at last init/finalize —
+   * baseline for the upstream-updated drift signal (#237). Keyed by installed
+   * file name, same key space as fileChecksums.
+   */
+  templateChecksums: z.record(z.string()).optional(),
   scaffoldedAgentFiles: z.array(ScaffoldedAgentFileSchema).optional(),
 });
 

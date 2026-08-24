@@ -95,7 +95,13 @@ describe('adaptation prompt is generated, not templated', () => {
     );
 
     const drift = compareHarnessToTemplate(repoPath);
-    const flagged = [...drift.missing, ...drift.checksumMismatch, ...drift.extra];
+    const flagged = [
+      ...drift.missing,
+      ...drift.userAdapted,
+      ...drift.upstreamUpdated,
+      ...drift.conflict,
+      ...drift.extra,
+    ];
     expect(flagged.filter((f) => f.startsWith('ADAPT-PROMPT'))).toEqual([]);
   });
 });

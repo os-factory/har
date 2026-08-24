@@ -42,6 +42,9 @@ export function computeFileChecksum(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
 }
 
+/** Subdirectories of .har/ whose files are part of the adaptation surface. */
+const CHECKSUM_SUBDIRS = ['stages'];
+
 export function computeHarnessChecksums(harnessDir: string): Record<string, string> {
   const checksums: Record<string, string> = {};
   if (!fs.existsSync(harnessDir)) return checksums;
@@ -51,6 +54,16 @@ export function computeHarnessChecksums(harnessDir: string): Record<string, stri
     const full = path.join(harnessDir, entry.name);
     checksums[entry.name] = computeFileChecksum(fs.readFileSync(full, 'utf8'));
   }
+
+  for (const subdir of CHECKSUM_SUBDIRS) {
+    const dir = path.join(harnessDir, subdir);
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const rel = `${subdir}/${entry.name}`;
+      checksums[rel] = computeFileChecksum(fs.readFileSync(path.join(dir, entry.name), 'utf8'));
+    }
+  }
   return checksums;
 }
 
@@ -59,6 +72,7 @@ export function createManifest(
   adaptationSummary?: string,
   stack?: HarnessManifest['stack'],
   profile?: HarnessManifest['profile'],
+  templateChecksums?: Record<string, string>,
 ): HarnessManifest {
   const now = new Date().toISOString();
   const harnessDir = getHarnessDir(repoPath);
@@ -71,12 +85,15 @@ export function createManifest(
     adaptationSummary,
     profile,
     fileChecksums: computeHarnessChecksums(harnessDir),
+    templateChecksums,
   };
 }
 
 export function updateManifest(
   existing: HarnessManifest,
-  updates: Partial<Pick<HarnessManifest, 'adaptationSummary' | 'stack' | 'fileChecksums'>>,
+  updates: Partial<
+    Pick<HarnessManifest, 'adaptationSummary' | 'stack' | 'fileChecksums' | 'templateChecksums'>
+  >,
 ): HarnessManifest {
   return {
     ...existing,

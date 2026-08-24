@@ -5,6 +5,7 @@ import { info, success } from '../utils/logging';
 import { resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
 import { HARNESS_GITIGNORE_TEMPLATE, writeHarnessGitignore } from './gitignore-template';
+import { computeTemplateChecksums } from './drift';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 import { ensurePluginLedgerScaffold } from './plugin-ledger';
 import {
@@ -134,6 +135,7 @@ export function scaffoldHarnessBoilerplate(
         : 'Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).',
     undefined,
     profile,
+    computeTemplateChecksums(repoPath, profile),
   );
   writeManifest(repoPath, manifest);
 
@@ -156,7 +158,14 @@ export function finalizeHarness(
   stack?: { language?: string; packageManager?: string; database?: string },
 ): void {
   const existing = readManifest(repoPath);
-  const manifest = createManifest(repoPath, adaptationSummary, stack, existing?.profile);
+  const profile = existing?.profile ?? 'default';
+  const manifest = createManifest(
+    repoPath,
+    adaptationSummary,
+    stack,
+    existing?.profile,
+    computeTemplateChecksums(repoPath, profile),
+  );
   writeManifest(repoPath, manifest);
   success('Harness adaptation complete.');
 }
