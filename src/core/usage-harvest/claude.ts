@@ -72,10 +72,8 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
   let costUsd: number | null = null;
   const modelBreakdown: Record<string, ModelUsageTotals> = {};
 
-  // One assistant message is written across several records — a text record, one
-  // per tool call — and every one of them repeats the same `usage`. Keyed by
-  // message id so a repeat is not a second charge; only records with no id at
-  // all are summed as they come.
+  // Claude Code repeats one message's `usage` on every record it splits that
+  // message across.
   const billed = new Map<string, NestedUsage>();
   const unkeyed: NestedUsage[] = [];
 
@@ -138,7 +136,6 @@ interface TranscriptMatch {
   filePath: string;
   records: unknown[];
   mtimeMs: number;
-  /** Matched the slot's own work dir, rather than the repo-path fallback. */
   primary: boolean;
 }
 
@@ -264,10 +261,8 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
     createdAt: slot.sessionCreatedAt,
   });
 
-  // Every transcript of the slot, not just the newest one: a slot is reused
-  // across sessions and each of them was a real charge. The repo-path fallback
-  // stays a fallback — main-checkout work is only this slot's when the slot has
-  // no transcript of its own, so the two tiers are never summed together.
+  // Main-checkout work is only this slot's when the slot has no transcript of its
+  // own, so the fallback tier is never summed with the primary one.
   const own = matches.filter((match) => match.primary);
   const usable = own.length > 0 ? own : matches;
   const usage = extractClaudeUsageFromRecords(usable.flatMap((match) => match.records));

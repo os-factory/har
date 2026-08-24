@@ -111,8 +111,6 @@ describe('usage harvest claude', () => {
     const workDir = '/home/user/worktrees/main-abcd-har-agent-3-dd44';
     const project = path.join(tmp, encodeClaudeProjectDir(workDir));
     fs.mkdirSync(project, { recursive: true });
-    // Claude Code writes one message across several records — a text record and
-    // one per tool call — each repeating the same usage.
     const message = (id: string) => ({
       type: 'assistant',
       message: {
