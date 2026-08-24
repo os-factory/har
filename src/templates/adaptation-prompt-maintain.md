@@ -4,7 +4,11 @@ Update the `.har/` harness in this repository to reflect current codebase change
 
 The harness already exists. Inspect what changed in the repo since the harness was last updated, then edit `.har/` files so coding agents can still run and verify the project correctly.
 
-**Do NOT** create a YAML config or JSON mapping file for runtime behavior. Put behavior directly in the harness scripts and templates.
+`.har/` is a **configuration surface** — the runtime machinery lives in the HAR
+package behind the `./.har/*.sh` shims. Reconcile through the contract only:
+config in `harness.env`, stages in `stages.json` / `.har/stages/`, hooks in
+`.har/hooks/`, plugins in `.har/plugins/`. Never patch the shims — `har env
+eject` is the sanctioned route to script ownership.
 
 {{MAINTAIN_BUNDLE_SECTION}}
 
@@ -27,10 +31,10 @@ Prefer targeted edits over full rewrites. Key files to review:
 ### `.har/README.md` (required)
 Keep this accurate — it is the harness index. Update whenever scripts, stages, or workflow change.
 
-### `.har/harness.env`, `verify.sh`, `provision-toolchain.sh`, `ecosystem.agent.template.cjs`, `CLAUDE.agent.md`
+### `.har/harness.env`, `stages.json`, `ecosystem.agent.template.cjs`, `CLAUDE.agent.md`
 Align commands and instructions with the current stack. Verify steps must use toolchain paths from `.env.agent.<id>` (`PYTHON_BIN`, `NPM_BIN`, `XCODEBUILD_BIN`, …) — never hardcoded venv or interpreter paths. `NPM_BIN` may be bun, pnpm, or yarn, so Node steps must use `${NPM_BIN:-npm} run <script>` and avoid npm-only flags such as `--prefix`. Replace stock ecosystem conventions that do not match the repository; do not leave npm/pytest/go/cargo/maven/gradle examples in place by accident.
 
-### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
+### `.har/env.template`, `docker-compose.agent.yml`
 Update only if infra changed.
 
 ### Readiness vs liveness regression check
@@ -55,10 +59,8 @@ Look specifically for drift introduced since the last adaptation:
   defaults from another file.
 - The dev server mode is fine for humans but blocks browser automation or agents
   with overlays/noisy HMR.
-- `verify.sh` became health-only and no longer checks the key workflow that makes
-  the slot usable.
-- `launch.sh` writes the slot registry only after fragile late steps; partial
-  launches must remain discoverable by verify/status/teardown.
+- `verificationStages` became health-only and no longer checks the key workflow
+  that makes the slot usable.
 
 Update `.har/CLAUDE.agent.md` with skipped setup steps, substitutes, credentials,
 and the repo-specific definition of "agent usable."
@@ -107,7 +109,7 @@ Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge uniq
 
 ## Rules
 
-1. Prefer targeted edits — keep working harness behavior where still valid
+1. Prefer targeted edits through the contract (config / stages / hooks / plugins) — keep working harness behavior where still valid; never edit the generated `*.sh` shims
 2. Always update `.har/README.md` when anything in the harness changes
 3. Reuse existing project commands from package.json, Makefile, CI, etc.
 4. Replace any remaining TODO placeholders

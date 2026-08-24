@@ -217,7 +217,8 @@ har env add-plugin db-integrity
 
 The scaffold is a complete plugin (manifest, stage script, README, optional
 `package.fragment.json`), recorded in `.har/plugins.json` with source `local`.
-Publishing it later to npm or git requires zero format changes.
+Publishing it later to npm or git requires zero format changes. Full guide:
+[Local plugins](/docs/guides/local-plugins/).
 
 ### Publish your own plugin
 

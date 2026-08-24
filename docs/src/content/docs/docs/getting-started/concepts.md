@@ -5,9 +5,12 @@ description: Harnesses, slots, worktrees, stages, runs, and validations.
 
 ## Harness
 
-The `.har/` directory is the repository's operating contract. Its shell scripts
-contain runtime behavior; `stages.json` describes discoverable operations and
-artifacts; Markdown files tell agents how to use the adapted workflow.
+The `.har/` directory is the repository's operating contract — a configuration
+surface, not a copy of HAR's runtime. `harness.env` holds schema-validated
+configuration; `stages.json` and `.har/stages/` define verification; `.har/hooks/`
+and `.har/plugins/` hold lifecycle and larger extensions; the `*.sh` files are
+thin shims over the packaged runtime; Markdown files tell agents how to use the
+adapted workflow.
 
 The project owns this directory. HAR can scaffold and maintain it, but teams can
 review and modify it like normal source code.

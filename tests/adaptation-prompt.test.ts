@@ -16,7 +16,9 @@ describe('adaptation prompts', () => {
     expect(defaultPrompt).toContain('Profile: default');
     expect(defaultPrompt).toContain('Docker');
     expect(defaultPrompt).toContain('HAR profiles');
-    expect(defaultPrompt).toContain('provision-toolchain.sh');
+    expect(defaultPrompt).toContain('Toolchain provisioning');
+    expect(defaultPrompt).toContain('never edit the generated `*.sh` shims');
+    expect(defaultPrompt).not.toContain('Cleanup checklist');
     expect(defaultPrompt).toContain('Port & shared services');
     expect(defaultPrompt).toContain('HARNESS_FE_BASE_PORT');
 

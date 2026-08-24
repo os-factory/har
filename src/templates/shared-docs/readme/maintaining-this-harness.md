@@ -6,6 +6,9 @@ When the project stack changes (new services, different test commands, new env v
 har env maintain
 ```
 
-The authoring agent updates scripts and this README. Review changes before committing.
+The authoring agent reconciles the config surface and this README. Review changes before committing.
 
-**Do not** put runtime behavior in YAML — edit the scripts directly.
+Customize through the contract — config (`harness.env`), stages (`stages.json` +
+`stages/`), hooks (`hooks/`), plugins (`plugins/`). The `*.sh` files are generated
+shims over the packaged runtime: don't edit them (`har env eject` exists for full
+ownership). `har env doctor` validates the result.
