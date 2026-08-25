@@ -4,7 +4,17 @@ Adapt the `.har/` harness in this repository so AI coding agents can run the pro
 
 Explore this repository, then edit files in `.har/` directly to make the harness runnable for this project.
 
-**Do NOT** create a YAML config or JSON mapping file for runtime behavior. Put behavior directly in the harness scripts and templates.
+`.har/` is a **configuration surface** — the runtime machinery lives in the HAR
+package behind the `./.har/*.sh` shims. Never edit the shims or invent new config
+files; every customization has a sanctioned home:
+
+| Customization | Home |
+|---------------|------|
+| Settings (app, services, ports, commands) | `harness.env` (schema-validated config) |
+| Verification steps | Registered stages in `stages.json` + `.har/stages/` |
+| Lifecycle side effects | Hooks in `.har/hooks/` |
+| Anything bigger | Plugins (`har env add-plugin`, `har plugin create` for local) |
+| Full runtime ownership (rare) | `har env eject` |
 
 ## HAR profiles (pick the right one at init)
 
@@ -56,7 +66,7 @@ Clear index of the harness: what each file does, quick start, architecture, how 
 ### `.har/harness.env`
 Primary app, ports, `HARNESS_INFRA_SERVICES`, migrate/seed commands, health check path.
 
-**Toolchain provisioning:** set `HARNESS_ECOSYSTEM` (`auto` detects from manifests) and optional `HARNESS_INSTALL_CMD`. Launch runs `provision-toolchain.sh`, writes resolved paths (`PYTHON_BIN`, `NODE_BIN`, `NPM_BIN`, `XCODEBUILD_BIN`, …) into `.env.agent.<id>`. Verify steps **must** use those paths — never hardcode venv or interpreter locations.
+**Toolchain provisioning:** set `HARNESS_ECOSYSTEM` (`auto` detects from manifests) and optional `HARNESS_INSTALL_CMD`. Launch provisions the toolchain and writes resolved paths (`PYTHON_BIN`, `NODE_BIN`, `NPM_BIN`, `XCODEBUILD_BIN`, …) into `.env.agent.<id>`. Verify steps **must** use those paths — never hardcode venv or interpreter locations.
 
 ### `.har/ecosystem.agent.template.cjs` (default profile only)
 PM2 processes for the primary application only, matching how it runs in dev. Skip entirely for the CLI profile.
@@ -114,17 +124,15 @@ scripts or document why no substitute is needed. In particular:
   bootstrap step for required tenants/users/settings, or document why schema-only
   is enough.
 - If the app has multiple databases, schemas, queues, object stores, search
-  indexes, or other per-slot state, provision all of them in `setup-infra.sh`
-  and `launch.sh`.
+  indexes, or other per-slot state, provision all of them: shared template
+  stores via `docker-compose.agent.yml` + config, per-slot state via
+  `HARNESS_DB_MIGRATE_CMD` / `HARNESS_DB_SEED_CMD` or a `post-launch.sh` hook.
 - If launch generates config, validate the nested keys the app actually reads
   against upstream examples/defaults, not only top-level keys.
 - If the dev server can block agents with overlays or noisy HMR failures,
   choose and document an agent-friendly asset mode.
 - Put Layer 3 checks in `verify --full`, a project-owned readiness script, or
   documented smoke URLs. Health alone is not sufficient for UI/auth apps.
-- Ensure `launch.sh` writes the slot registry before slow or fragile steps, runs
-  `provision-toolchain.sh` to install deps and record toolchain paths in
-  `.env.agent.<id>`, and `verify.sh` resolves env/work dir through `agent-slot.sh`.
 
 ### Optional Playwright stage
 If the user ran `har env add-plugin playwright` (or `@playwright/test` is in package.json):
@@ -156,8 +164,9 @@ lifecycle side effects.
 ### `.har/CLAUDE.agent.md`
 Detailed agent instructions: commands, credentials, architecture, definition of done.
 
-### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
-Adapt as needed for the project's infra.
+### `.har/env.template`, `docker-compose.agent.yml`
+Adapt as needed for the project's infra (`setup-infra.sh` is a shim — the
+services it starts come from these two files plus `HARNESS_INFRA_SERVICES`).
 
 ### Port allocation & shared services
 
@@ -175,7 +184,7 @@ Document and configure ports in `.har/harness.env` and `.har/README.md`. Use the
 
 Each shared service gets one lane in `HARNESS_INFRA_PORT_LANES`
 (`<lane>=<default>:<scan_start>-<scan_end>`): `db`, `minio`, `minio-console`,
-`browser`, `mailpit-web`, `mailpit-smtp`. setup-infra.sh tries the default
+`browser`, `mailpit-web`, `mailpit-smtp`. Infra setup tries the default
 first and scans the range on conflict.
 
 Onboarding may set an initial `agentSlots.max` in `.har/stages.json`. After you know the real stack cost, **re-tune** that limit for machine capacity (lighter stack → you can raise; heavy Docker/DB → lower). `har env maintain --finalize` syncs legacy `HARNESS_AGENT_SLOT_*` exports in `harness.env`.
@@ -190,7 +199,7 @@ Onboarding may set an initial `agentSlots.max` in `.har/stages.json`. After you 
 - [ ] Monorepos with `har control up`: document slot-1 conflict if the app port overlaps (e.g. Mission Control on 3847)
 
 ### Git worktree
-`launch.sh` creates an isolated session worktree at `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` by default (`HARNESS_USE_WORKTREE=true`) and records it in `.har/slots/agent-<id>.json`. Agents should commit from that worktree, not the main checkout.
+Launch creates an isolated session worktree at `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` by default (`HARNESS_USE_WORKTREE=true`) and records it in `.har/slots/agent-<id>.json`. Agents should commit from that worktree, not the main checkout.
 
 ## Step 3 — Update repo-root `AGENTS.md`
 
@@ -230,27 +239,23 @@ Include a **Run history** subsection:
 - With worktrees, code runs in the worktree but run JSON lives in the main checkout `.har/runs/`
 - The `./.har/*.sh` shims forward to the same runtime — evidence records are identical from any surface
 
-## Step 4 — Cleanup checklist (required)
+## Step 4 — Adaptation completeness (required)
 
-The boilerplate ships more than any single repository needs. Strip it down to strictly what this project uses — leftover template content confuses agents and rots. Verify each item:
+Before finishing, confirm the harness describes this project truthfully — do
+**not** go hunting for machinery to prune (the shims and packaged runtime are
+not yours to trim, and wholesale deletion just manufactures drift):
 
-- [ ] `docker-compose.agent.yml` contains ONLY services this project uses (menu entries and their volumes deleted); `HARNESS_INFRA_SERVICES` lists exactly those services
-- [ ] `env.template` has no env blocks for removed services (MinIO/S3, mailpit, headless browser, ...) and no vars the app never reads
-- [ ] `harness.env` has no leftover config for features not in use (e.g. `HARNESS_TEMPLATE_DB` and migrate/seed commands when there is no database)
-- [ ] Scripts (`launch.sh`, `setup-infra.sh`, `teardown.sh`, `agent-cli.sh`, `verify.sh`) contain no dead branches for services this project will never enable — prune, don't comment out
 - [ ] No `TODO` placeholders remain anywhere in `.har/`
-- [ ] Unused harness files are deleted (e.g. `attach.sh` when tmux isn't part of the workflow; CLI profile: `ecosystem.agent.template.cjs`, `env.template`)
-- [ ] `.har/README.md` file table lists exactly the files that exist — no more, no less
-- [ ] `.har/CLAUDE.agent.md` shows only real URLs/ports/credentials (e.g. drop the Frontend row for an API-only project) and project commands that actually run
-- [ ] If full seed/setup is skipped, `.har/` provides a minimal bootstrap or clearly documents why none is needed
+- [ ] `HARNESS_INFRA_SERVICES` lists exactly the services this project uses, each with a lane in `HARNESS_INFRA_PORT_LANES`
 - [ ] All per-slot data stores are provisioned, not just the primary database
-- [ ] `.har/CLAUDE.agent.md` defines what "agent usable" means for this repo: login/API smoke, credentials, required default data, and known skipped dev-setup steps
-- [ ] `.har/README.md` documents port allocation and shared-service model; `harness.env` has the port knobs for every enabled infra service
+- [ ] If full seed/setup is skipped, `.har/` provides a minimal bootstrap or documents why none is needed
+- [ ] `.har/CLAUDE.agent.md` defines what "agent usable" means for this repo (credentials, default data, smoke workflow) and shows only real URLs/ports/commands
+- [ ] `.har/README.md` documents port allocation and the shared-service model
 - [ ] No hardcoded default ports (`3000`, `15432`, `3847`, …) in app code, tests, or harness docs — use agent env / slot registry
 
 ## Rules
 
-1. Edit `.har/` files directly — no YAML runtime config
+1. Customize only through the contract: config in `harness.env`, stages in `stages.json` / `.har/stages/`, hooks in `.har/hooks/`, plugins in `.har/plugins/` — never edit the generated `*.sh` shims
 2. Always update `.har/README.md` to reflect current harness state
 3. Reuse existing project commands from package.json, Makefile, CI, etc.
 4. Replace all TODO placeholders

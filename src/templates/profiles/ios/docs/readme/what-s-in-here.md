@@ -1,21 +1,27 @@
 ## What's in here
 
+**Yours — the configuration surface** (edit freely; drift tracking records adaptations):
+
 | File | Purpose |
 |------|---------|
 | `README.md` | This file — index of the harness |
-| `manifest.json` | Generator metadata (version, profile, checksums) — do not edit |
-| `harness.env` | Shared config: Xcode scheme, simulator name, bundle ID, toolchain provisioning, infra flags |
-| `stages.json` | Machine-readable registry of runnable harness stages |
-| `stages/` | Optional custom stage scripts registered from `stages.json` |
-| `runs/` | Run history from every entry point — gitignored |
-| `artifacts/` | Stage outputs: test results, screenshots, logs |
-| `setup-infra.sh` | Check the toolchain; start optional Docker services |
-| `launch.sh` | Launch one agent slot — thin shim forwarding to `har env launch` |
-| `verify.sh` | Verification pipeline (build smoke by default; --full adds tests, lint, flows) |
-| `teardown.sh` | Tear down one agent slot (worktree + env file) |
-| `agent-cli.sh` | Inspect slot status, run xcodebuild commands, install/launch app |
+| `harness.env` | Schema-validated config: Xcode scheme, simulator name, bundle ID, toolchain provisioning, optional infra services |
+| `stages.json` | Registered stages, verification tiers, artifacts, slot limits, gate policy |
+| `stages/` | Project-owned stage scripts registered from `stages.json` |
+| `hooks/` | Optional lifecycle hooks (`pre-launch.sh`, `post-launch.sh`, `pre-verify.sh`, `pre-teardown.sh`, `post-teardown.sh`) |
+| `plugins/` | Optional local plugins (`har plugin create <id>`) |
 | `docker-compose.agent.yml` | Optional shared backend services |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
+| `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
+
+**Generated shims and state** (don't edit — `har env eject` for full ownership):
+
+| File | Purpose |
+|------|---------|
+| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
+| `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
+| `runs/` | Run history from every entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
+| `artifacts/` | Stage outputs: test results, screenshots, logs |
 
 No PM2 or web-port wiring in this profile — agents run xcodebuild commands directly in their worktree.
