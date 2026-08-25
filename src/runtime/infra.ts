@@ -114,12 +114,12 @@ export function runPg(tool: string, args: string[], options: PgOptions): { stdou
 // ── Persisted infra state (.har/state/infra.env) ─────────────────────────────
 
 export const INFRA_LANES = [
-  { stateVar: 'AGENT_DB_PORT', lane: 'db', fallback: 15432, composeService: 'db' },
-  { stateVar: 'AGENT_MINIO_PORT', lane: 'minio', fallback: 19000, composeService: 'minio' },
-  { stateVar: 'AGENT_MINIO_CONSOLE_PORT', lane: 'minio-console', fallback: 19050 },
-  { stateVar: 'AGENT_BROWSER_PORT', lane: 'browser', fallback: 13001, composeService: 'headless-browser' },
-  { stateVar: 'AGENT_MAILPIT_WEB_PORT', lane: 'mailpit-web', fallback: 18025, composeService: 'mailpit' },
-  { stateVar: 'AGENT_MAILPIT_SMTP_PORT', lane: 'mailpit-smtp', fallback: 11025 },
+  { stateVar: 'AGENT_DB_PORT', lane: 'db', fallback: 15432, composeService: 'db', ownerService: 'db' },
+  { stateVar: 'AGENT_MINIO_PORT', lane: 'minio', fallback: 19000, composeService: 'minio', ownerService: 'minio' },
+  { stateVar: 'AGENT_MINIO_CONSOLE_PORT', lane: 'minio-console', fallback: 19050, ownerService: 'minio' },
+  { stateVar: 'AGENT_BROWSER_PORT', lane: 'browser', fallback: 13001, composeService: 'headless-browser', ownerService: 'headless-browser' },
+  { stateVar: 'AGENT_MAILPIT_WEB_PORT', lane: 'mailpit-web', fallback: 18025, composeService: 'mailpit', ownerService: 'mailpit' },
+  { stateVar: 'AGENT_MAILPIT_SMTP_PORT', lane: 'mailpit-smtp', fallback: 11025, ownerService: 'mailpit' },
 ] as const;
 
 export type InfraStateVar = (typeof INFRA_LANES)[number]['stateVar'];
@@ -228,8 +228,21 @@ export function resolveInfraPorts(
   options: Omit<ResolveInfraPortOptions, 'env' | 'current'> = {},
 ): InfraPorts {
   const ports = {} as InfraPorts;
-  for (const { stateVar, lane, fallback, ...rest } of INFRA_LANES) {
+  for (const { stateVar, lane, fallback, ownerService, ...rest } of INFRA_LANES) {
     const composeService = 'composeService' in rest ? rest.composeService : undefined;
+    // A lane whose service is not in HARNESS_INFRA_SERVICES never binds a
+    // port — record its default without requiring the port to be free, so an
+    // occupied host port for an unused service cannot fail launch (#241).
+    if (!infraEnabled(env, ownerService)) {
+      let laneInfo: InfraPortLane | undefined;
+      try {
+        laneInfo = infraPortLane(env, lane);
+      } catch {
+        laneInfo = undefined;
+      }
+      ports[stateVar] = persisted[stateVar] ?? laneInfo?.defaultPort ?? fallback;
+      continue;
+    }
     ports[stateVar] = resolveInfraPort(lane, fallback, composeService, {
       env,
       current: persisted[stateVar],

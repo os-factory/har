@@ -497,8 +497,160 @@ milestone_asserts() {
       fi
       ;;
     M4|M5)
-      echo "──> $MILESTONE asserts: migration (extend when #241 lands)"
-      echo "    pending: maintain-driven migration of the pre-1.0 fixture harness"
+      echo "──> $MILESTONE asserts: pre-1.0 → 1.0 migration (#241)"
+      # The fixture clone ships a pre-1.0 adapted harness (vendored runtime
+      # bash, shell functions in harness.env, custom HARNESS_TEMPLATE_SQLITE
+      # key). Drive the full migration path on it: detect → prompt → apply →
+      # lift residue (this script plays the coding agent) → doctor → verify.
+      if ! har "$CLONE" env maintain --help 2>&1 | grep -q -- '--migrate'; then
+        echo "    SKIP: har env maintain --migrate not available yet (#241 not landed in this build)"
+      else
+        ensure_clone "$CLONE"   # reset to the pristine pre-1.0 shape
+        har "$CLONE" env cleanup >/dev/null 2>&1 || true
+        har "$CLONE" env teardown 1 >/dev/null 2>&1 || true
+
+        [ -f "$CLONE/.har/agent-slot.sh" ] || fail "M4: fixture clone lost its pre-1.0 shape (agent-slot.sh missing)"
+        grep -qE '^[a-zA-Z_][a-zA-Z0-9_]*\(\)' "$CLONE/.har/harness.env" \
+          || fail "M4: fixture harness.env carries no pre-1.0 shell functions"
+
+        # 1) Plain maintain: detect + prompt, but change NOTHING (compat window).
+        har "$CLONE" env maintain --yes >/dev/null 2>&1 || fail "M4: maintain failed on the pre-1.0 harness"
+        [ -f "$CLONE/.har/MIGRATE-PROMPT.md" ] || fail "M4: maintain wrote no MIGRATE-PROMPT.md"
+        [ -f "$CLONE/.har/migrate/plan.json" ] || fail "M4: maintain wrote no migration plan"
+        [ -f "$CLONE/.har/agent-slot.sh" ] || fail "M4: plain maintain deleted machinery — compat window violated"
+        if grep -q 'exec har env' "$CLONE/.har/launch.sh"; then
+          fail "M4: plain maintain rewrote launch.sh — compat window violated"
+        fi
+        grep -q 'HARNESS_TEMPLATE_SQLITE' "$CLONE/.har/MIGRATE-PROMPT.md" \
+          || fail "M4: MIGRATE prompt does not surface the custom HARNESS_TEMPLATE_SQLITE residue"
+        echo "    maintain detects pre-1.0, writes prompt+plan, changes nothing ✓"
+
+        # 2) Mechanical migration: shims in, machinery out, env pure, backups kept.
+        har "$CLONE" env maintain --migrate --yes >/dev/null 2>&1 || fail "M4: maintain --migrate failed"
+        local mig_script
+        for mig_script in launch.sh verify.sh teardown.sh setup-infra.sh; do
+          grep -q 'exec har env' "$CLONE/.har/$mig_script" \
+            || fail "M4: migrated .har/$mig_script is not a managed shim"
+        done
+        [ ! -f "$CLONE/.har/provision-toolchain.sh" ] || fail "M4: migration left runtime machinery .har/provision-toolchain.sh"
+        # agent-slot.sh is still sourced by the adapted stages/browser-e2e.sh:
+        # classify-and-lift keeps it (deleting would break the stage) and puts
+        # the rewrite on the prompt.
+        [ -f "$CLONE/.har/agent-slot.sh" ] \
+          || fail "M4: migration deleted agent-slot.sh while stages/browser-e2e.sh still sources it"
+        grep -q 'agent-slot.sh' "$CLONE/.har/MIGRATE-PROMPT.md" \
+          || fail "M4: retained machinery not surfaced in the MIGRATE prompt"
+        if grep -qE '^[a-zA-Z_][a-zA-Z0-9_]*\(\)' "$CLONE/.har/harness.env"; then
+          fail "M4: migrated harness.env still contains shell functions"
+        fi
+        [ -f "$CLONE/.har/migrate/backup/launch.sh" ] || fail "M4: migration kept no backup of launch.sh"
+        node -e '
+          const m = require(process.argv[1]);
+          if (m.runtimeVersion !== "1.0.0") { console.error("M4: manifest runtimeVersion not stamped:", m.runtimeVersion); process.exit(1); }
+          if (!m.migratedFrom) { console.error("M4: manifest migratedFrom not recorded"); process.exit(1); }
+        ' "$CLONE/.har/manifest.json" || fail "M4: migration not recorded in manifest.json"
+        echo "    mechanical migration: shims + pure config + backups + manifest stamp ✓"
+
+        # Custom verification ids whose commands lived in the vendored
+        # verify.sh case table must have been dropped from verificationStages
+        # (mechanically unresolvable) and surfaced as residue in the prompt.
+        node -e '
+          const fs = require("fs");
+          const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          const ids = r.verificationStages ?? [];
+          for (const id of ["node-build", "api-health", "ml-tests"]) {
+            if (ids.includes(id)) { console.error(`M4: unresolvable verification id ${id} survived migration`); process.exit(1); }
+          }
+        ' "$CLONE/.har/stages.json" || fail "M4: phantom verification ids not reconciled"
+        grep -q 'node-build' "$CLONE/.har/MIGRATE-PROMPT.md" \
+          || fail "M4: dropped verification ids not surfaced in the MIGRATE prompt"
+        echo "    unresolvable verification ids dropped + surfaced as residue ✓"
+
+        # 3a) Residue lift — play the coding agent: re-register the vendored
+        # verify.sh case-table checks as plain stages.json command stages
+        # (commands read from the backup; api-health stays dropped — the
+        # packaged runtime's health check covers HARNESS_HEALTH_CHECK_PATH).
+        node -e '
+          const fs = require("fs");
+          const p = process.argv[1];
+          const r = JSON.parse(fs.readFileSync(p, "utf8"));
+          const add = [
+            { id: "node-build", kind: "test", description: "Production build (lifted from pre-1.0 verify.sh)", command: "NODE_ENV=production ${NPM_BIN:-npm} run build", artifacts: [] },
+            { id: "ml-tests", kind: "test", description: "ML test suite (lifted from pre-1.0 verify.sh)", command: "${NPM_BIN:-npm} run test:ml", artifacts: [] },
+          ];
+          for (const st of add) {
+            if (!r.stages.some((s) => s.id === st.id)) r.stages.push(st);
+            if (!r.verificationStages.includes(st.id)) r.verificationStages.push(st.id);
+          }
+          fs.writeFileSync(p, JSON.stringify(r, null, 2) + "\n");
+        ' "$CLONE/.har/stages.json" || fail "M4: could not re-register lifted verification stages"
+        echo "    residue lift: vendored verify checks re-registered as command stages ✓"
+
+        # 3b) Residue lift — play the coding agent: rewrite browser-e2e.sh
+        # against the 1.0 stage surface (WORK_DIR/ENV_FILE/AGENT_ID exported by
+        # the verify runner), then delete the retained agent-slot.sh.
+        node -e '
+          const fs = require("fs");
+          const p = process.argv[1];
+          let c = fs.readFileSync(p, "utf8");
+          const lines = c.split("\n");
+          const start = lines.findIndex((l) => l.startsWith("ENV_FILE=\"$(resolve_agent_env_file"));
+          const end = lines.findIndex((l, i) => i > start && l.trim() === "}");
+          if (start < 0 || end < 0) { console.error("browser-e2e.sh resolve block not found"); process.exit(1); }
+          lines.splice(start, end - start + 1,
+            "ENV_FILE=\"${ENV_FILE:-$REPO_ROOT/.env.agent.${AGENT_ID}}\"",
+            "[ -f \"$ENV_FILE\" ] || { echo \"No .env.agent.${AGENT_ID} found — launch slot ${AGENT_ID} first.\" >&2; exit 1; }");
+          c = lines.join("\n");
+          c = c.replace(/^source "\$HARNESS_DIR\/agent-slot\.sh"$/m, ": # agent-slot.sh retired (1.0 migration)\nnow_ms() { date +%s%3N; }");
+          c = c.replace("validate_agent_id \"$AGENT_ID\"", "[[ \"$AGENT_ID\" =~ ^[0-9]+$ ]] || { echo \"invalid agent id: $AGENT_ID\" >&2; exit 2; }");
+          c = c.replace("WORK_DIR=\"$(resolve_agent_work_dir \"$ENV_FILE\")\"", "WORK_DIR=\"${WORK_DIR:-$(cd \"$(dirname \"$ENV_FILE\")\" && pwd)}\"");
+          fs.writeFileSync(p, c);
+        ' "$CLONE/.har/stages/browser-e2e.sh" || fail "M4: could not rewrite browser-e2e.sh off agent-slot.sh"
+        if grep -E '^[[:space:]]*source .*agent-slot\.sh' "$CLONE/.har/stages/browser-e2e.sh" | grep -qv '^[[:space:]]*#'; then
+          fail "M4: browser-e2e.sh still sources agent-slot.sh after the lift"
+        fi
+        rm -f "$CLONE/.har/agent-slot.sh"
+        echo "    residue lift: browser-e2e.sh rewritten to the 1.0 surface, agent-slot.sh deleted ✓"
+
+        # 3c) Residue lift — play the coding agent: the pre-1.0 launch.sh cloned
+        # a per-slot SQLite DB from the template; per MIGRATE-PROMPT.md that
+        # behavior belongs in a post-launch lifecycle hook.
+        [ -f "$CLONE/.har/state/template/cars.sqlite" ] \
+          || fail "M4: SQLite template missing — Mode 1 should have provisioned it"
+        mkdir -p "$CLONE/.har/hooks"
+        cat > "$CLONE/.har/hooks/post-launch.sh" <<'HOOK'
+#!/usr/bin/env bash
+# Lifted from the pre-1.0 vendored launch.sh (migration residue, #241):
+# per-slot SQLite database cloned from the shared template.
+set -euo pipefail
+TEMPLATE="$HAR_HARNESS_DIR/state/template/cars.sqlite"
+[ -f "$TEMPLATE" ] || { echo "post-launch: missing SQLite template $TEMPLATE" >&2; exit 1; }
+mkdir -p "$WORK_DIR/data"
+[ -f "$WORK_DIR/data/cars.sqlite" ] || cp "$TEMPLATE" "$WORK_DIR/data/cars.sqlite"
+HOOK
+        chmod +x "$CLONE/.har/hooks/post-launch.sh"
+
+        # 4) Doctor must be green on the migrated harness (1.0 contract enforced).
+        har "$CLONE" env doctor >/dev/null 2>&1 || fail "M4: doctor red on the migrated harness"
+        echo "    doctor green on migrated harness (1.0 contract) ✓"
+
+        # 5) The muscle memory keeps working: full lifecycle on the migrated
+        # harness, driven end-to-end through the 1.0 runtime + shims.
+        local mig_marker="$ART_DIR/.m4-migrate-start"; touch "$mig_marker"
+        har "$CLONE" env launch 1 || fail "M4: launch failed on the migrated harness"
+        har "$CLONE" env verify 1 --full || fail "M4: full verify failed on the migrated harness"
+        har "$CLONE" env complete 1 --skip-verify || fail "M4: complete failed on the migrated harness"
+        find "$CLONE/.har/validations" -name '*.json' -newer "$mig_marker" | grep -q . \
+          || fail "M4: full verify on the migrated harness wrote no validation record"
+        echo "    migrated harness: launch → full verify → complete, records written ✓"
+
+        # 6) Finalize records the migration and clears the migration artifacts.
+        har "$CLONE" env maintain --finalize --summary "M4 gate: migrated pre-1.0 fixture harness to 1.0" \
+          >/dev/null 2>&1 || fail "M4: maintain --finalize failed post-migration"
+        [ ! -d "$CLONE/.har/migrate" ] || fail "M4: finalize left .har/migrate/ behind"
+        [ ! -f "$CLONE/.har/MIGRATE-PROMPT.md" ] || fail "M4: finalize left MIGRATE-PROMPT.md behind"
+        echo "    finalize clears migration artifacts ✓"
+      fi
       ;;
     generic)
       : ;;

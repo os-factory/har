@@ -254,6 +254,23 @@ function harnessScriptIsLegacy(repoPath: string, scriptName: string): boolean {
  * custom commands, pre-1.0 harnesses with their own runtime bash) so they keep
  * running as scripts/shell.
  */
+const warnedLegacyScripts = new Set<string>();
+
+/**
+ * Compat-window deprecation (#241): loud, once per script per process — the
+ * vendored script keeps running (grandfathering, #234), never breaks.
+ */
+function warnLegacyRuntimeScript(repoPath: string, scriptName: string): void {
+  const key = `${path.resolve(repoPath)}:${scriptName}`;
+  if (warnedLegacyScripts.has(key)) return;
+  warnedLegacyScripts.add(key);
+  process.stderr.write(
+    `DEPRECATED: .har/${scriptName} carries the pre-1.0 vendored runtime — it keeps working ` +
+      'for now, but 1.0 runs the runtime from the package. Run `har env maintain` to generate ' +
+      'the migration prompt (.har/MIGRATE-PROMPT.md).\n',
+  );
+}
+
 async function runPackageRuntimeStage(
   repoPath: string,
   stage: HarnessStage,
@@ -261,7 +278,10 @@ async function runPackageRuntimeStage(
   capture: boolean,
 ): Promise<StageResult | undefined> {
   const legacyScript = RUNTIME_SCRIPT_FOR_KIND[stage.kind];
-  if (legacyScript && harnessScriptIsLegacy(repoPath, legacyScript)) return undefined;
+  if (legacyScript && harnessScriptIsLegacy(repoPath, legacyScript)) {
+    warnLegacyRuntimeScript(repoPath, legacyScript);
+    return undefined;
+  }
   const started = Date.now();
   const finish = (exitCode: number, stdout: string, stderr: string, previewUrls?: Record<string, string>) =>
     buildStageResult({

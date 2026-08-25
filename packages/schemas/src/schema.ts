@@ -48,6 +48,15 @@ export const HarnessManifestSchema = z.object({
     .optional(),
   adaptationSummary: z.string().optional(),
   profile: z.enum(['default', 'cli', 'ios']).optional(),
+  /**
+   * Harness runtime-contract version (#241) — the shape of the installed
+   * `.har/` surface (thin shims + pure config = '1.0.0'). Absent on pre-1.0
+   * harnesses; the migration registry (src/harness/migrations.ts) keys on it.
+   */
+  runtimeVersion: z.string().optional(),
+  /** Shape this harness was migrated from ('pre-1.0'), stamped at migration (#241). */
+  migratedFrom: z.string().optional(),
+  migratedAt: z.string().optional(),
   /** `har env eject` (#239): the user owns the runtime scripts + .har/runtime/. */
   ejected: z.boolean().optional(),
   /** @osfactory/har version whose runtime was vendored at eject time. */

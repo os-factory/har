@@ -74,7 +74,11 @@ function nodeSmokeCommand(repoPath: string): { id: string; command: string; desc
   if (scripts.build) {
     return {
       id: 'typecheck',
-      command: '${NPM_BIN:-npm} run build',
+      // NODE_ENV=production: verify exports the slot env file, whose
+      // NODE_ENV=development is meant for the dev server — framework builds
+      // (e.g. next build) break under it. Same pinning as the pre-1.0
+      // vendored node-build step.
+      command: 'NODE_ENV=production ${NPM_BIN:-npm} run build',
       description: 'Build smoke (no typecheck script; ecosystem quick smoke)',
     };
   }

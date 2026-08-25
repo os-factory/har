@@ -271,7 +271,8 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
       if (
         file === 'manifest.json' ||
         file === 'plugins.json' ||
-        file.startsWith('ADAPT-PROMPT')
+        file.startsWith('ADAPT-PROMPT') ||
+        file.startsWith('MIGRATE-PROMPT')
       ) {
         continue;
       }
