@@ -7,18 +7,21 @@
     "max": 5
   },
   "verificationStages": [
-    "check",
+    "typecheck",
     "site-health",
+    "unit-tests",
+    "lint",
     "drift",
     "build",
     "links",
+    "readiness",
     "browser-e2e"
   ],
   "stages": [
     {
       "id": "setup-infra",
       "kind": "setup",
-      "description": "Shared infrastructure (no-op for docs — no Docker services)",
+      "description": "Shared infrastructure (no-op for docs \u2014 no Docker services)",
       "command": "./.har/setup-infra.sh",
       "artifacts": []
     },
@@ -119,6 +122,78 @@
         }
       ],
       "requiresAgentId": true
+    },
+    {
+      "id": "typecheck",
+      "kind": "test",
+      "description": "Astro/content typecheck (astro check; pre-1.0 stage id: check)",
+      "command": "${NPM_BIN:-npm} run check",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "unit-tests",
+      "kind": "test",
+      "description": "Unit tests",
+      "command": "echo 'No test script configured; skipping.'",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "lint",
+      "kind": "test",
+      "description": "Lint",
+      "command": "echo 'No lint script configured; skipping.'",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "readiness",
+      "kind": "test",
+      "description": "Project readiness smoke (HARNESS_READINESS_CMD)",
+      "script": "stages/readiness.sh",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "site-health",
+      "kind": "test",
+      "tier": "quick",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "command": "curl -sf \"http://localhost:${FE_PORT:-${API_PORT}}${HARNESS_HEALTH_CHECK_PATH:-/}\" >/dev/null",
+      "description": "Site health check on the slot dev server"
+    },
+    {
+      "id": "drift",
+      "kind": "test",
+      "tier": "full",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "command": "${NPM_BIN:-npm} run drift",
+      "description": "Docs drift vs CLI/MCP/stage/profile/template/skill contracts"
+    },
+    {
+      "id": "build",
+      "kind": "test",
+      "tier": "full",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "command": "${NPM_BIN:-npm} run build",
+      "description": "Astro production build"
+    },
+    {
+      "id": "links",
+      "kind": "test",
+      "tier": "full",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "command": "if command -v lychee >/dev/null 2>&1; then ${NPM_BIN:-npm} run links; else echo \"lychee not on PATH; skipping links (CI installs it via docs.yml).\"; fi",
+      "description": "Link check (lychee)"
     }
   ],
   "commitGate": {

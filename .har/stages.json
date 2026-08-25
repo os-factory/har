@@ -1,24 +1,29 @@
 {
   "version": "1",
+  "artifactsDir": "artifacts",
+  "logsDir": "logs",
   "agentSlots": {
     "min": 1,
     "max": 5
   },
   "verificationStages": [
+    "typecheck",
+    "build",
+    "docs-check",
+    "docs-build",
+    "unit-tests",
+    "lint",
+    "readiness",
     "docs-drift",
     "fixture-e2e"
   ],
-  "commitGate": {
-    "enabled": true,
-    "mode": "block",
-    "scope": "worktrees"
-  },
   "stages": [
     {
       "id": "setup-infra",
       "kind": "setup",
       "description": "Optional shared Docker infrastructure",
-      "command": "./.har/setup-infra.sh"
+      "command": "./.har/setup-infra.sh",
+      "artifacts": []
     },
     {
       "id": "launch",
@@ -38,13 +43,15 @@
       "kind": "verify",
       "description": "Verification pipeline (quick: typecheck/build/docs; --full adds tests, lint, docs-drift)",
       "command": "./.har/verify.sh {agentId}",
-      "acceptsArgs": ["--full"],
       "artifacts": [
         {
           "path": ".har/artifacts",
           "kind": "directory",
           "description": "Optional verification outputs"
         }
+      ],
+      "acceptsArgs": [
+        "--full"
       ]
     },
     {
@@ -65,6 +72,7 @@
       "kind": "custom",
       "description": "Validate documentation against CLI, MCP, stage, profile, template, and skill contracts",
       "command": "(cd docs && ${NPM_BIN:-npm} run drift)",
+      "artifacts": [],
       "requiresAgentId": false,
       "group": "documentation"
     },
@@ -73,21 +81,90 @@
       "kind": "test",
       "description": "v1.0.0 milestone gate: run the built CLI end-to-end against a clone of the car-app example (skipped unless HAR_FIXTURE_E2E=1; HAR_FIXTURE_MILESTONE=M0..M5 adds milestone asserts)",
       "script": "stages/fixture-e2e.sh",
-      "requiresAgentId": true,
-      "group": "release-gate",
       "artifacts": [
         {
           "path": ".har/artifacts/fixture-e2e",
           "kind": "directory",
           "description": "Gate logs and fixture status snapshots"
         }
-      ]
+      ],
+      "requiresAgentId": true,
+      "group": "release-gate"
     },
     {
       "id": "teardown",
       "kind": "teardown",
       "description": "Remove worktree and env file for the slot",
-      "command": "./.har/teardown.sh {agentId}"
+      "command": "./.har/teardown.sh {agentId}",
+      "artifacts": []
+    },
+    {
+      "id": "typecheck",
+      "kind": "test",
+      "description": "Type check (ecosystem quick smoke)",
+      "command": "${NPM_BIN:-npm} run typecheck",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "unit-tests",
+      "kind": "test",
+      "description": "Unit tests",
+      "command": "${NPM_BIN:-npm} test",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "lint",
+      "kind": "test",
+      "description": "Lint",
+      "command": "${NPM_BIN:-npm} run lint",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "readiness",
+      "kind": "test",
+      "description": "Project readiness smoke (HARNESS_READINESS_CMD)",
+      "script": "stages/readiness.sh",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "build",
+      "kind": "test",
+      "tier": "quick",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "command": "${NPM_BIN:-npm} run build",
+      "description": "Build the CLI bundle"
+    },
+    {
+      "id": "docs-check",
+      "kind": "test",
+      "tier": "quick",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "command": "(cd docs && ${NPM_BIN:-npm} run check)",
+      "description": "Astro docs typecheck (astro check)"
+    },
+    {
+      "id": "docs-build",
+      "kind": "test",
+      "tier": "quick",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "command": "(cd docs && ${NPM_BIN:-npm} run build)",
+      "description": "Astro docs build"
     }
-  ]
+  ],
+  "commitGate": {
+    "enabled": true,
+    "mode": "block",
+    "scope": "worktrees"
+  }
 }

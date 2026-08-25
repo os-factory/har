@@ -59,6 +59,9 @@ export const LEGACY_MACHINERY_FILES = [
 const STOCK_ENV_FUNCTION_RE =
   /^(har_infra_enabled|har_pg|har_node_[a-z_]+|har_pkg_exec)$/;
 
+/** Constants the stock pre-1.0 helper block defined — machinery, not config. */
+const STOCK_ENV_HELPER_KEYS = new Set(['HAR_NODE_PACKAGE_MANAGERS']);
+
 /** Pre-1.0 shell function definitions (any name) in harness.env. */
 const ENV_FUNCTION_RE = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{?/;
 
@@ -119,6 +122,8 @@ export interface MigrationPlan {
   replaceWithShims: string[];
   /** Runtime machinery deleted (superseded by the package runtime). */
   deleteMachinery: string[];
+  /** Stock files new in the 1.0 surface, absent on disk — installed as-is. */
+  installMissing: string[];
   /** Machinery files edited since the last finalize (flagged, still deleted). */
   editedMachinery: string[];
   /**
@@ -266,6 +271,10 @@ export function migrateHarnessEnvContent(original: string): HarnessEnvMigration 
     const [, key, rawValue] = assign;
     const value = rawValue.replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
 
+    if (STOCK_ENV_HELPER_KEYS.has(key)) {
+      droppedShellLines++;
+      continue;
+    }
     if (key === 'HARNESS_INFRA_SERVICES') {
       hadServicesKey = true;
       services = [...new Set([...services, ...value.split(/\s+/).filter(Boolean)])];
@@ -397,10 +406,21 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
       if (entry.endsWith('.sh') || entry.endsWith('.mjs')) survivingScripts.push(path.join(dir, entry));
     }
   }
-  const referencedBy = (machineryFile: string): string[] =>
-    survivingScripts.filter((script) =>
-      fs.readFileSync(path.join(harnessDir, script), 'utf8').includes(path.basename(machineryFile)),
+  // A machinery file counts as referenced only when a surviving script actually
+  // loads or runs it (source/./bash/exec…) — a bare mention of the name (a log
+  // line, an assertion, a comment) must not retain superseded machinery.
+  const referencedBy = (machineryFile: string): string[] => {
+    const base = path.basename(machineryFile).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const loadRe = new RegExp(
+      `(?:\\bsource\\b|\\bbash\\b|\\bexec\\b|(?:^|[;&|(])\\s*\\.\\s)[^\\n#]*${base}`,
     );
+    return survivingScripts.filter((script) =>
+      fs
+        .readFileSync(path.join(harnessDir, script), 'utf8')
+        .split('\n')
+        .some((line) => !/^\s*#/.test(line) && loadRe.test(line)),
+    );
+  };
 
   const deleteMachinery: string[] = [];
   const editedMachinery: string[] = [];
@@ -463,6 +483,18 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
     }
   }
 
+  // Stock files the 1.0 profile ships that a pre-1.0 harness has never had
+  // (e.g. stages/readiness.sh) — without them drift reports them missing
+  // forever and default stages that need them are silently skipped.
+  const installMissing: string[] = [];
+  for (const file of composed.keys()) {
+    if ((RUNTIME_SHIM_FILES as readonly string[]).includes(file)) continue;
+    // gitignore.template is generator input (installed as .gitignore), not a
+    // harness file itself.
+    if (file === 'gitignore.template') continue;
+    if (!fs.existsSync(path.join(harnessDir, file))) installMissing.push(file);
+  }
+
   let phantomVerificationIds: string[] = [];
   try {
     phantomVerificationIds = findPhantomVerificationStageIds(readStageRegistry(resolved));
@@ -485,6 +517,7 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
     profile,
     replaceWithShims,
     deleteMachinery,
+    installMissing,
     editedMachinery,
     retainMachinery,
     env,
@@ -535,6 +568,19 @@ function applyPre10Plan(repoPath: string, plan?: MigrationPlan): AppliedMigratio
   if (fs.existsSync(libDir) && fs.readdirSync(libDir).length === 0) {
     fs.rmdirSync(libDir);
     deleted.push('lib/');
+  }
+
+  // 2b. Stock files new in the 1.0 surface — install, never overwrite.
+  for (const file of effective.installMissing ?? []) {
+    const source = composed.get(file);
+    if (!source) continue;
+    const dest = path.join(harnessDir, file);
+    if (fs.existsSync(dest)) continue;
+    const rendered = substituteTemplateTokens(readComposedTemplateContent(source), projectName);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, rendered);
+    if (/\.(sh|mjs)$/.test(file)) fs.chmodSync(dest, 0o755);
+    written.push(file);
   }
 
   // 3. verificationStages ids the registry cannot resolve (their commands

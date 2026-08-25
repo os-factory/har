@@ -630,6 +630,27 @@ mkdir -p "$WORK_DIR/data"
 HOOK
         chmod +x "$CLONE/.har/hooks/post-launch.sh"
 
+        if [ "$MILESTONE" = "M5" ]; then
+          # M5 (#242 dogfood) — migration polish found while migrating this
+          # repo's three harnesses:
+          # a) stock files new in the 1.0 surface are installed by --migrate
+          [ -f "$CLONE/.har/stages/readiness.sh" ] \
+            || fail "M5: migration did not install stages/readiness.sh"
+          [ -f "$CLONE/.har/lib/verify-runner.mjs" ] \
+            || fail "M5: migration did not install lib/verify-runner.mjs"
+          # b) HARNESS_ECOSYSTEM=auto resolves to real ecosystem defaults —
+          #    never the placeholder smoke
+          if grep -q 'No stock smoke for HARNESS_ECOSYSTEM' "$CLONE/.har/stages.json"; then
+            fail "M5: ecosystem defaults registered a placeholder smoke (auto not resolved)"
+          fi
+          # c) hooks receive harness.env config: guard the lifted post-launch
+          #    hook on a HARNESS_* key — if config were missing the hook would
+          #    exit 1, the per-slot DB never be cloned, and full verify fail.
+          sed -i '1a [ -n "${HARNESS_PROJECT_NAME:-}" ] || { echo "post-launch: harness.env config missing from hook env" >&2; exit 1; }' \
+            "$CLONE/.har/hooks/post-launch.sh"
+          echo "    M5: stock files installed + auto ecosystem resolved + hook config guard armed ✓"
+        fi
+
         # 4) Doctor must be green on the migrated harness (1.0 contract enforced).
         har "$CLONE" env doctor >/dev/null 2>&1 || fail "M4: doctor red on the migrated harness"
         echo "    doctor green on migrated harness (1.0 contract) ✓"

@@ -8,19 +8,14 @@
 # Prerequisite: ./.har/launch.sh <agent-id> (uses the session worktree as context)
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HARNESS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# 1.0 stage surface: the runner exports WORK_DIR, ENV_FILE, AGENT_ID and
+# HAR_HARNESS_DIR, with harness.env and the slot env file already sourced —
+# agent-slot.sh is retired (1.0 migration).
+HARNESS_DIR="${HAR_HARNESS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_ROOT="$(cd "$HARNESS_DIR/.." && pwd)"
-# agent-slot.sh expects SCRIPT_DIR to be .har/ (slot registry lives there)
-SCRIPT_DIR="$HARNESS_DIR"
 
-# shellcheck source=/dev/null
-source "$HARNESS_DIR/harness.env"
-# shellcheck source=/dev/null
-source "$HARNESS_DIR/agent-slot.sh"
-
-AGENT_ID="${1:?Usage: docker-build.sh <agent-id>}"
-validate_agent_id "$AGENT_ID"
+AGENT_ID="${1:-${AGENT_ID:?Usage: docker-build.sh <agent-id>}}"
+now_ms() { node -e 'process.stdout.write(String(Date.now()))'; }
 
 log() { echo "==> [docker-build agent-$AGENT_ID] $*" >&2; }
 
@@ -29,18 +24,8 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
-  echo "No .env.agent.${AGENT_ID} found." >&2
-  har_suggest_launch "$AGENT_ID" >&2
-  exit 1
-}
-
-set -a
-# shellcheck source=/dev/null
-source "$ENV_FILE"
-set +a
-
-WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
 # control/ is the app root; Dockerfile context is the monorepo root above it.
 MONOREPO_ROOT="$(cd "$WORK_DIR/.." && pwd)"
 DOCKERFILE="$MONOREPO_ROOT/control/Dockerfile"

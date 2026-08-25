@@ -2,6 +2,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { ExecFn } from './exec';
+import { parseHarnessEnvSource } from '../harness/schema';
+
+/** HARNESS_* config from <harnessDir>/harness.env (empty when absent). */
+function readHookHarnessEnv(harnessDir: string): Record<string, string> {
+  const envPath = path.join(harnessDir, 'harness.env');
+  if (!fs.existsSync(envPath)) return {};
+  try {
+    return parseHarnessEnvSource(fs.readFileSync(envPath, 'utf8')).values;
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Lifecycle hooks (#238): optional user-owned scripts in `.har/hooks/` the
@@ -58,11 +70,17 @@ export interface HookResult {
  * The env contract (v1) every hook receives:
  *   HAR_HOOK, HAR_HOOK_CONTRACT, AGENT_ID, HAR_HARNESS_DIR,
  *   WORK_DIR / ENV_FILE when the session has them,
- *   HAR_PORT_<NAME> for each allocated app port.
+ *   HAR_PORT_<NAME> for each allocated app port,
+ *   every HARNESS_* key from harness.env (pure config in 1.0 — hooks lifted
+ *   from the pre-1.0 scripts, which sourced it, keep reading their config).
  */
 export function hookEnv(hook: LifecycleHook, context: HookContext): NodeJS.ProcessEnv {
+  // harness.env wins over inherited process.env, matching the pre-1.0 scripts
+  // (which sourced it last) — a hook of a nested harness must see its own
+  // config, not values leaked from an enclosing harness's environment.
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    ...readHookHarnessEnv(context.harnessDir),
     HAR_HOOK: hook,
     HAR_HOOK_CONTRACT: HOOK_CONTRACT_VERSION,
     AGENT_ID: String(context.agentId),

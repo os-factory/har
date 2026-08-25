@@ -175,6 +175,14 @@ describe('versioned harness migrations (#241)', () => {
     expect(result.content).not.toMatch(/^export HARNESS_INFRA_POSTGRES=/m);
   });
 
+  it('migrateHarnessEnvContent drops stock helper constants (HAR_NODE_PACKAGE_MANAGERS)', () => {
+    const result = migrateHarnessEnvContent(
+      'HAR_NODE_PACKAGE_MANAGERS="npm bun pnpm yarn"\nexport HARNESS_PROJECT_NAME=proj\n',
+    );
+    expect(result.content).not.toContain('HAR_NODE_PACKAGE_MANAGERS');
+    expect(result.content).toContain('export HARNESS_PROJECT_NAME=proj');
+  });
+
   it('plain maintain detects, writes plan + MIGRATE prompt, changes nothing (compat window)', async () => {
     const vendoredLaunch = fs.readFileSync(har('launch.sh'), 'utf8');
     const result = await maintainHarness({ repoPath: proj() });

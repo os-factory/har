@@ -9,7 +9,8 @@ This repository uses a `.har/` agent harness. Follow this on every change.
 
 The harness is **how you run the project**, not only how you verify it. Launch a
 slot for live apps, browsers, and screenshots — never hand-roll docker/dev-server
-startup. If a harness command fails, fix the harness or surface the failure.
+startup. If a harness command fails, fix the harness or surface the failure. Customize
+only via the contract (`harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`, `.har/plugins/`) — never edit the generated `./.har/*.sh` shims.
 
 ## Before making changes
 
@@ -32,17 +33,17 @@ first. Commit early — teardown keeps the branch, not uncommitted work. Gitigno
 paths are ephemeral. With telemetry on, Mission Control derives session purpose from
 the first captured user prompt.
 
-## Harnesses in this repo
+<!-- Monorepo: if this repository contains multiple .har harnesses, list them here
+     and pick by the files you are changing. Example:
 
-Pick the harness that owns the files you are changing. See `AGENTS.md`.
+## Harnesses in this repo
 
 | Path | Runs | Use when changing |
 |------|------|-------------------|
-| `.har/` | `@osfactory/har` (typecheck, build, unit tests, lint) | `src/`, `packages/`, `tests/` |
-| `control/.har/` | Mission Control (Next.js + SQLite, browser-e2e) | `control/` |
-| `docs/.har/` | Docs / marketing site (Astro + Playwright screenshots) | `docs/` |
+| `.har/` | backend + frontend | `src/`, `packages/` |
+| `apps/admin/.har/` | admin dashboard | `apps/admin/` |
 
-Run harness commands from the directory that owns the harness (e.g. `cd docs`).
+Run harness commands from the directory that owns the harness (e.g. `cd apps/admin`). -->
 
 ## After making changes
 

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { HarnessStage, HarnessStageRegistry } from './schema';
 import { readHarnessEnv, readValidatedHarnessEnv } from './env';
+import { detectEcosystem } from '../runtime/provision';
 import { getHarnessDir } from './manifest';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
@@ -236,7 +237,10 @@ export function ensureEcosystemVerificationStages(repoPath: string): boolean {
   if (!validation || !validation.ok) return false;
 
   const env = readHarnessEnv(repoPath);
-  const ecosystem = env.HARNESS_ECOSYSTEM || 'none';
+  // 'auto' resolves the same way the runtime does (detectEcosystem) — the raw
+  // value has no stage table and would register a placeholder smoke instead of
+  // the detected ecosystem's defaults.
+  const ecosystem = detectEcosystem(repoPath, env);
   const defaults = deriveEcosystemDefaultStages(ecosystem, repoPath);
   const harnessDir = getHarnessDir(repoPath);
 
