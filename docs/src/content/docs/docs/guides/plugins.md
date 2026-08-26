@@ -48,6 +48,13 @@ Resolution order: path → git → bundled id → npm. The target must expose
 stage ids, timestamp). `har env maintain` uses the ledger when present, otherwise
 falls back to matching stage ids in `stages.json`.
 
+Every successful install also writes `.har/ADAPT-PROMPT-<id>.md` — a structured
+adaptation prompt for your coding agent (install dependencies with the repo's
+real package manager, adapt the scaffolded files, prove the stage green via full
+verify) — and offers to copy it to the clipboard, like `har env init` does.
+A `package.json` merge declares dependencies but does **not** install them; the
+prompt leads with the install command.
+
 ## Multi-stage plugins
 
 A plugin manifest may declare `stages: [...]` (preferred) or the legacy single

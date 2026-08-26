@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import type { Argv } from 'yargs';
 import { finishCommand } from '../finish-command';
@@ -930,6 +931,10 @@ export async function handleAddPlugin(argv: {
     console.error('');
     console.error(`  Docs: ${result.docsPath}`);
     console.error('');
+    // #195: hand the structured prompt to the coding agent, like init does.
+    info(`Adaptation prompt saved to ${result.adaptPromptPath}`);
+    const promptContent = fs.readFileSync(path.join(repoPath, result.adaptPromptPath), 'utf8');
+    await offerAdaptationPromptClipboard(promptContent, { fileLabel: result.adaptPromptPath });
   } catch (err: unknown) {
     error((err as Error).message);
     return finishCommand(1);

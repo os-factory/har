@@ -148,6 +148,7 @@ export function createLocalPlugin(
     nextSteps: [
       `Edit ${pluginDirRel}/stages/${id}.sh — replace the TODO block with the real check`,
       `Install it: har env add-plugin ${id}   (re-run with --force after changes)`,
+      `Installing writes .har/ADAPT-PROMPT-${id}.md — a ready adaptation prompt for your coding agent`,
       `Document what it checks in ${pluginDirRel}/README.md`,
       'Publishing later (npm/git) needs zero format changes — see the README',
     ],

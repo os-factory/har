@@ -677,6 +677,19 @@ HOOK
         [ ! -d "$CLONE/.har/migrate" ] || fail "M4: finalize left .har/migrate/ behind"
         [ ! -f "$CLONE/.har/MIGRATE-PROMPT.md" ] || fail "M4: finalize left MIGRATE-PROMPT.md behind"
         echo "    finalize clears migration artifacts ✓"
+
+        if [ "$MILESTONE" = "M5" ]; then
+          # e) #195: add-plugin leaves a structured adaptation prompt for the
+          #    coding agent. Runs after the lifecycle asserts so the extra
+          #    stage never joins the verified pipeline above.
+          har "$CLONE" env add-plugin gitleaks --force >/dev/null 2>&1 \
+            || fail "M5: add-plugin gitleaks failed on the migrated harness"
+          [ -f "$CLONE/.har/ADAPT-PROMPT-gitleaks.md" ] \
+            || fail "M5: add-plugin wrote no adaptation prompt (#195)"
+          grep -q 'Prove it green' "$CLONE/.har/ADAPT-PROMPT-gitleaks.md" \
+            || fail "M5: plugin adaptation prompt missing its verify section"
+          echo "    M5: add-plugin writes the agent adaptation prompt (#195) ✓"
+        fi
       fi
       ;;
     generic)

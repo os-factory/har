@@ -11,6 +11,7 @@ that lives in your repository under `.har/plugins/<id>/`.
 ```bash
 har plugin create db-integrity   # scaffold .har/plugins/db-integrity/
 har env add-plugin db-integrity  # install its stages into stages.json
+                                 # → writes .har/ADAPT-PROMPT-db-integrity.md for your agent
 ```
 
 ## What the scaffold contains

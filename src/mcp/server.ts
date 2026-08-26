@@ -398,6 +398,7 @@ export async function handleMcpToolCall(
         nextSteps: result.nextSteps,
         docsPath: result.docsPath,
         source: result.source,
+        adaptPromptPath: result.adaptPromptPath,
       });
     }
 
