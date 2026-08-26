@@ -52,7 +52,7 @@ describe('toGenaiPricesUsage', () => {
     });
   });
 
-  it('does not double-count cache read when input already includes it', () => {
+  it('sums disjoint buckets into the inclusive input parent', () => {
     expect(
       toGenaiPricesUsage({
         tokensInput: 1200,
@@ -60,10 +60,24 @@ describe('toGenaiPricesUsage', () => {
         tokensCacheCreation: 50,
       }),
     ).toEqual({
-      input_tokens: 1250,
+      input_tokens: 2250,
       output_tokens: 0,
       cache_read_tokens: 1000,
       cache_write_tokens: 50,
+    });
+  });
+
+  it('keeps uncached input whole when it exceeds cache reads', () => {
+    expect(
+      toGenaiPricesUsage({
+        tokensInput: 5000,
+        tokensCacheRead: 100,
+      }),
+    ).toEqual({
+      input_tokens: 5100,
+      output_tokens: 0,
+      cache_read_tokens: 100,
+      cache_write_tokens: 0,
     });
   });
 });

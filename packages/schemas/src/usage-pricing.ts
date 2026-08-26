@@ -33,7 +33,7 @@ function providerHint(agentTool: AgentTool): string | undefined {
 /**
  * Map HAR token buckets to genai-prices semantics.
  * genai-prices treats `input_tokens` as the inclusive parent; cache read/write are subsets.
- * Claude harvest reports disjoint buckets (uncached input vs cache creation).
+ * Every modelBreakdown producer reports disjoint buckets (uncached input vs cache).
  */
 export function toGenaiPricesUsage(totals: ModelUsageTotals): {
   input_tokens: number;
@@ -44,10 +44,8 @@ export function toGenaiPricesUsage(totals: ModelUsageTotals): {
   const rawInput = num(totals.tokensInput);
   const cacheRead = num(totals.tokensCacheRead);
   const cacheWrite = num(totals.tokensCacheCreation);
-  const uncached = rawInput >= cacheRead ? rawInput - cacheRead : rawInput;
-  const inclusiveInput = uncached + cacheRead + cacheWrite;
   return {
-    input_tokens: inclusiveInput,
+    input_tokens: rawInput + cacheRead + cacheWrite,
     output_tokens: num(totals.tokensOutput),
     cache_read_tokens: cacheRead,
     cache_write_tokens: cacheWrite,
