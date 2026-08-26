@@ -1,12 +1,16 @@
+import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import {
   canonicalizeOtelLogRecord,
   canonicalizeOtelSpan,
   canonicalSpanSequence,
+  decodeOtlpProtobufJson,
   detectAgentTool,
   extractLogRecords,
   extractPromptText,
   extractResponseText,
+  extractSpans,
+  normalizeOtelId,
   type AttrMap,
 } from './otel-ingest';
 
@@ -103,8 +107,8 @@ describe('canonical OTLP log facts', () => {
         scopeLogs: [{
           logRecords: [{
             eventName: 'sdk.log.name',
-            traceId: 'trace-1',
-            spanId: 'span-1',
+            traceId: '9f8e7d6c5b4a39281706f5e4d3c2b1a0',
+            spanId: '0a1b2c3d4e5f6071',
             timeUnixNano: '1786701600000000000',
             attributes: [
               { key: 'otelhook.event.id', value: { stringValue: 'evt-9' } },
@@ -134,7 +138,10 @@ describe('canonical OTLP log facts', () => {
       correlationId: 'tool-call-1',
       payload: { body: { stringValue: '{"ok":true}' } },
     });
-    expect(record).toMatchObject({ traceId: 'trace-1', spanId: 'span-1' });
+    expect(record).toMatchObject({
+      traceId: '9f8e7d6c5b4a39281706f5e4d3c2b1a0',
+      spanId: '0a1b2c3d4e5f6071',
+    });
   });
 
   it('keeps reasoning disclosure metadata without exposing a withheld body', () => {
@@ -292,5 +299,137 @@ describe('detectAgentTool', () => {
     expect(detectAgentTool({ 'otelhook.provider.id': 'claude-code' })).toBe('claude_code');
     expect(detectAgentTool({ 'otelhook.agent.name': 'claude-code' })).toBe('claude_code');
     expect(detectAgentTool({ 'gen_ai.client.name': 'cursor' })).toBe('cursor');
+  });
+});
+
+describe('normalizeOtelId', () => {
+  const traceHex = '0123456789abcdef0123456789abcdef';
+  const spanHex = '0011223344556677';
+
+  it('accepts hex, protobuf base64 and raw bytes', () => {
+    expect(normalizeOtelId(traceHex.toUpperCase(), 16)).toBe(traceHex);
+    expect(normalizeOtelId(Buffer.from(spanHex, 'hex').toString('base64'), 8)).toBe(spanHex);
+    expect(normalizeOtelId(new Uint8Array(Buffer.from(spanHex, 'hex')), 8)).toBe(spanHex);
+  });
+
+  it('has no id for absent, all-zero or unreadable values', () => {
+    expect(normalizeOtelId(undefined, 8)).toBe('');
+    expect(normalizeOtelId('', 8)).toBe('');
+    expect(normalizeOtelId(Buffer.alloc(8), 8)).toBe('');
+    expect(normalizeOtelId(Buffer.from(traceHex, 'hex').toString('utf8'), 16)).toBe('');
+  });
+});
+
+describe('extractSpans over a protobuf-decoded OTLP payload', () => {
+  const traceId = Buffer.from('bbb1a2c3d4e5f60718293a4b5c6d7e8f', 'hex');
+  const parentSpanId = Buffer.from('1122334455667788', 'hex');
+  const childSpanId = Buffer.from('99aabbccddeeff00', 'hex');
+
+  function protobufTraceBody(): Buffer {
+    const root = createRequire(import.meta.url)(
+      '@opentelemetry/otlp-transformer/build/src/generated/root.js',
+    ) as {
+      opentelemetry: {
+        proto: {
+          collector: {
+            trace: {
+              v1: {
+                ExportTraceServiceRequest: {
+                  fromObject: (value: unknown) => unknown;
+                  encode: (message: unknown) => { finish: () => Uint8Array };
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+    const request = root.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
+    const message = request.fromObject({
+      resourceSpans: [
+        {
+          resource: {
+            attributes: [{ key: 'service.name', value: { stringValue: 'har-ide-agent' } }],
+          },
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId,
+                  spanId: parentSpanId,
+                  name: 'prompt',
+                  attributes: [
+                    { key: 'otelhook.provider.id', value: { stringValue: 'claude-code' } },
+                  ],
+                },
+                {
+                  traceId,
+                  spanId: childSpanId,
+                  parentSpanId,
+                  name: 'tool Bash',
+                  attributes: [
+                    { key: 'otelhook.provider.id', value: { stringValue: 'claude-code' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    return Buffer.from(request.encode(message).finish());
+  }
+
+  it('yields hex ids and a child that links to its parent', () => {
+    const decoded = decodeOtlpProtobufJson('trace', protobufTraceBody());
+    const spans = extractSpans(decoded);
+
+    expect(spans).toHaveLength(2);
+    for (const span of spans) {
+      expect(span.traceId).toMatch(/^[0-9a-f]{32}$/);
+      expect(span.spanId).toMatch(/^[0-9a-f]{16}$/);
+    }
+
+    const [parent, child] = spans;
+    expect(parent.traceId).toBe(traceId.toString('hex'));
+    expect(parent.parentSpanId).toBeNull();
+    expect(child.parentSpanId).toBe(parent.spanId);
+    expect(child.attributes['otelhook.provider.id']).toBe('claude-code');
+    expect(detectAgentTool(child.attributes)).toBe('claude_code');
+  });
+
+});
+
+describe('extractLogRecords ids', () => {
+  it('hex-encodes the base64 ids a protobuf-decoded log record carries', () => {
+    const traceId = Buffer.from('aaaabbbbccccddddeeeeffff00001111', 'hex');
+    const spanId = Buffer.from('0f0e0d0c0b0a0908', 'hex');
+    const records = extractLogRecords({
+      resourceLogs: [
+        {
+          resource: { attributes: [] },
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: '1700000000000000000',
+                  traceId: traceId.toString('base64'),
+                  spanId: spanId.toString('base64'),
+                  parentSpanId: Buffer.alloc(8).toString('base64'),
+                  attributes: [
+                    { key: 'otelhook.provider.id', value: { stringValue: 'claude-code' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(records).toHaveLength(1);
+    expect(records[0].traceId).toBe(traceId.toString('hex'));
+    expect(records[0].spanId).toBe(spanId.toString('hex'));
+    expect(records[0].parentSpanId).toBeUndefined();
   });
 });
