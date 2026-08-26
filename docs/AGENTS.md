@@ -27,9 +27,14 @@ tests/               Playwright (frontend, api, a11y, visual-proof)
 <!-- har:agent-environment:start -->
 ## HAR / agent environment
 
-The harness is **how you run this site**. Launch a slot for `astro dev` on the
-slot port and Playwright before/after screenshots. Never hand-roll `astro dev`.
-If a harness command fails, fix the harness or report it.
+The harness is not just a verification gate — it is **how you run this project**.
+To see the app live (manual testing, browser sessions, screenshots, driving the UI),
+use `har env launch <id>` or `./.har/launch.sh <id>`. It already encodes database
+setup, ports, env vars, and process management — never hand-roll `docker` / dev-server
+startup, and never claim a task "can't be verified live" without launching a slot first.
+
+If a harness command fails, fix the harness (or report the failure) — do not quietly
+fall back to ad-hoc commands.
 
 ### Before making changes
 

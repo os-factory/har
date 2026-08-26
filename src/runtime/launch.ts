@@ -337,6 +337,19 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
       if (bootstrap.code !== 0) throw new Error(`minimal data bootstrap failed (${bootstrap.code})`);
     }
 
+    // Apply the database schema per slot (pre-1.0 launch.sh parity, idempotent)
+    // — otherwise schema drift after a code change surfaces as runtime 500s in
+    // the slot instead of a clear launch error. Runs from the work dir with the
+    // slot env sourced, so DATABASE_URL points at the slot's database.
+    if (pm !== 'simulator' && env.HARNESS_DB_MIGRATE_CMD && env.HARNESS_DB_MIGRATE_CMD !== 'true') {
+      log(`Applying database schema: ${env.HARNESS_DB_MIGRATE_CMD}`);
+      const migrate = exec('bash', [
+        '-c',
+        `cd ${JSON.stringify(session.workDir)} && set -a && . ${JSON.stringify(session.envFile)} && set +a && eval "$HARNESS_DB_MIGRATE_CMD"`,
+      ], { env: { ...process.env, ...env } });
+      if (migrate.code !== 0) throw new Error(`database migrate command failed (${migrate.code})`);
+    }
+
     // ── Per-profile app runtime ────────────────────────────────────────────────
     let simName = '';
     let simUdid = '';

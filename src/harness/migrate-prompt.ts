@@ -79,6 +79,11 @@ export function buildMigrationSection(
       `- Delete${applied ? 'd' : ''} vendored runtime machinery (now lives in the package): ${plan.deleteMachinery.map((f) => `\`${f}\``).join(', ')}`,
     );
   }
+  if ((plan.installMissing ?? []).length > 0) {
+    lines.push(
+      `- Install${applied ? 'ed' : ''} stock files new in the 1.0 surface: ${plan.installMissing.map((f) => `\`${f}\``).join(', ')}`,
+    );
+  }
   if (plan.retainMachinery.length > 0) {
     lines.push(
       `- ${applied ? 'Kept' : 'Keep'} (for now) machinery still sourced by your stage/hook scripts: ${plan.retainMachinery.map((f) => `\`${f}\``).join(', ')} — see the residue table`,

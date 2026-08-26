@@ -70,6 +70,14 @@ describe('lifecycle hooks (#238)', () => {
     expect(env.HAR_PORT_MINIO_CONSOLE).toBe('19001');
   });
 
+  it('hookEnv exposes harness.env config (HARNESS_* keys) to hooks', () => {
+    const { harnessDir } = makeRepo();
+    const env = hookEnv('post-launch', { harnessDir, agentId: 1 });
+    // Hooks lifted from pre-1.0 scripts (which sourced harness.env) keep
+    // reading their config.
+    expect(env.HARNESS_PROJECT_NAME).toBe('hooks-fixture');
+  });
+
   it('runs an existing hook through bash and reports its exit code', () => {
     const { harnessDir } = makeRepo();
     const file = writeHook(harnessDir, 'pre-launch', 'exit 7');
