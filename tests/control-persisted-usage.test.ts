@@ -4,7 +4,7 @@ type Route = { status: number; json?: unknown };
 
 function routedFetch(routes: Record<string, Route>): jest.Mock {
   const fn = jest.fn(async (url: string) => {
-    const path = url.replace('http://localhost:3847', '');
+    const path = url.replace('http://localhost:3847', '').split('?')[0];
     const route = routes[path] ?? { status: 404 };
     return {
       ok: route.status >= 200 && route.status < 300,
@@ -28,10 +28,16 @@ describe('fetchPersistedPortalTelemetry', () => {
   it('returns empty when Mission Control does not know the repo', async () => {
     routedFetch({ '/api/repos': { status: 200, json: [{ id: 'r1', path: '/other/repo' }] } });
     const result = await fetchPersistedPortalTelemetry('/repo/x', API);
-    expect(result).toEqual({ usage: [], events: [], maxSyncedAt: null });
+    expect(result).toEqual({
+      usage: [],
+      events: [],
+      maxSyncedAt: null,
+      failures: [],
+      truncated: [],
+    });
   });
 
-  it('returns empty (never throws) when the control API is unreachable', async () => {
+  it('reports the failure (never throws) when the control API is unreachable', async () => {
     const fn = jest.fn(async () => {
       throw new Error('ECONNREFUSED');
     });
@@ -40,6 +46,8 @@ describe('fetchPersistedPortalTelemetry', () => {
       usage: [],
       events: [],
       maxSyncedAt: null,
+      failures: [{ channel: 'repos', reason: 'ECONNREFUSED' }],
+      truncated: [],
     });
   });
 
@@ -181,6 +189,87 @@ describe('fetchPersistedPortalTelemetry', () => {
     expect(result.usage.map((u) => u.sessionKey)).toEqual(['grew']);
     expect(result.events.map((e) => e.sessionKey)).toEqual(['new-ev']);
     expect(result.maxSyncedAt).toBe('2026-01-05T00:00:00.000Z');
+  });
+
+  it('reports a failed channel instead of syncing it as empty', async () => {
+    routedFetch({
+      '/api/repos': { status: 200, json: [{ id: 'repo-1', path: '/repo/x' }] },
+      '/api/repos/repo-1/usage': { status: 500 },
+      '/api/repos/repo-1/events': {
+        status: 200,
+        json: { events: [eventRow('ev', '2026-01-04T00:00:00.000Z', '2026-01-01T00:00:00.000Z')] },
+      },
+    });
+
+    const result = await fetchPersistedPortalTelemetry('/repo/x', API);
+
+    expect(result.failures).toEqual([{ channel: 'usage', reason: 'HTTP 500' }]);
+    expect(result.usage).toEqual([]);
+    expect(result.events).toHaveLength(1);
+  });
+
+  it('retries a channel that fails on a cold first hit', async () => {
+    let usageHits = 0;
+    const fn = jest.fn(async (url: string) => {
+      const target = String(url);
+      if (target.endsWith('/api/repos')) {
+        return { ok: true, status: 200, json: async () => [{ id: 'repo-1', path: '/repo/x' }] };
+      }
+      if (target.includes('/usage')) {
+        usageHits += 1;
+        if (usageHits === 1) throw new Error('The operation was aborted due to timeout');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            usage: [usageRow('woke', '2026-01-05T00:00:00.000Z', '2026-01-05T00:00:00.000Z')],
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ events: [] }) };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fn;
+
+    const result = await fetchPersistedPortalTelemetry('/repo/x', API);
+
+    expect(usageHits).toBe(2);
+    expect(result.failures).toEqual([]);
+    expect(result.usage.map((row) => row.sessionKey)).toEqual(['woke']);
+  });
+
+  it('asks control for events after the watermark and walks the pages', async () => {
+    process.env.HAR_CONTROL_READ_PAGE_SIZE = '1';
+    const pages = [
+      [eventRow('first', '2026-01-03T00:00:00.000Z', '2026-01-01T00:00:00.000Z')],
+      [eventRow('second', '2026-01-04T00:00:00.000Z', '2026-01-01T00:00:00.000Z')],
+      [],
+    ];
+    const fn = jest.fn(async (url: string) => {
+      const target = String(url);
+      if (target.endsWith('/api/repos')) {
+        return { ok: true, status: 200, json: async () => [{ id: 'repo-1', path: '/repo/x' }] };
+      }
+      if (target.includes('/events')) {
+        return { ok: true, status: 200, json: async () => ({ events: pages.shift() ?? [] }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ usage: [] }) };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fn;
+
+    try {
+      const result = await fetchPersistedPortalTelemetry('/repo/x', API, {
+        since: '2026-01-02T00:00:00.000Z',
+      });
+
+      expect(result.events.map((event) => event.sessionKey)).toEqual(['first', 'second']);
+      expect(result.maxSyncedAt).toBe('2026-01-04T00:00:00.000Z');
+      const eventCalls = fn.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/events'));
+      expect(eventCalls[0]).toContain('since=2026-01-02T00%3A00%3A00.000Z');
+      expect(eventCalls[1]).toContain('since=2026-01-03T00%3A00%3A00.000Z');
+      expect(eventCalls[1]).toContain('sinceId=first');
+    } finally {
+      delete process.env.HAR_CONTROL_READ_PAGE_SIZE;
+    }
   });
 
   it('sends nothing when no row changed since the watermark', async () => {

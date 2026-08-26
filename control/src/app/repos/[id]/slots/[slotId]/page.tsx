@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { isPreDedupeUsage } from '@har/schemas';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SessionEventsTable } from '@/components/session-events-table';
@@ -9,6 +10,7 @@ import { ValidationPipeline } from '@/components/validation-pipeline';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { eventModel } from '@/lib/session-event-detail';
+import { PreDedupeTip } from '@/components/pre-dedupe-tip';
 import { formatModelId, formatCostUsd, modelTotalsFromBreakdown, modelsFromBreakdown, type UsageModelTotals } from '@/lib/usage-models';
 import { getRepository } from '@/server/repositories';
 import { listSessionEventsForSlot } from '@/server/session-events';
@@ -92,6 +94,8 @@ export default async function SlotDetailPage({
     },
   );
 
+  const preDedupeSessions = usageRows.filter((row) => isPreDedupeUsage(row)).length;
+
   return (
     <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
       <div>
@@ -144,6 +148,13 @@ export default async function SlotDetailPage({
               in {formatTokens(totals.tokensInput)} · out {formatTokens(totals.tokensOutput)} ·
               cache {formatTokens(totals.tokensCacheRead + totals.tokensCacheCreation)}
             </p>
+            {preDedupeSessions > 0 && (
+              <p className="text-xs text-muted-foreground">
+                <PreDedupeTip>
+                  {`${preDedupeSessions} session(s) harvested pre-dedupe — reads high`}
+                </PreDedupeTip>
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>

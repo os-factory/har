@@ -21,6 +21,7 @@ function usage(overrides: Partial<AgentSessionUsage> = {}): AgentSessionUsage {
     tokensCacheCreation: 0,
     tokensTotal: 0,
     sources: [],
+    harvestVersion: 0,
     firstSeenAt: '2026-01-01T00:00:00.000Z',
     lastSeenAt: '2026-01-01T00:00:00.000Z',
     ...overrides,

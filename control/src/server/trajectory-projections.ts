@@ -1,5 +1,5 @@
 import { Prisma, type AgentTrajectoryRecord } from '@prisma/client';
-import type { AgentSessionUsage } from '@har/schemas';
+import { USAGE_HARVEST_VERSION, type AgentSessionUsage } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { shouldPersistOtelUsage } from '@/server/otel-workspace';
 import { upsertSessionEvent } from '@/server/session-events';
@@ -57,6 +57,7 @@ export function usageFromTrajectoryRecord(
     tokensTotal: input + output + cacheRead + cacheCreate,
     costUsd: null,
     sources: [record.source === 'harvest' ? 'harvest' : 'otel'],
+    harvestVersion: USAGE_HARVEST_VERSION,
     firstSeenAt: record.eventTimestamp.toISOString(),
     lastSeenAt: record.eventTimestamp.toISOString(),
     modelBreakdown: model

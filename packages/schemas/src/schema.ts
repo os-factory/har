@@ -757,6 +757,12 @@ export const AgentTrajectoryRecordSchema = AgentTrajectoryRecordV1Schema;
 export type AgentTrajectoryRecordV1 = z.infer<typeof AgentTrajectoryRecordV1Schema>;
 export type AgentTrajectoryRecord = AgentTrajectoryRecordV1;
 
+/** Generation of the usage-harvest algorithm; a newer one supersedes an older. */
+export const USAGE_HARVEST_VERSION = 1;
+
+/** Harvested before the algorithm was versioned, so the totals read high. */
+export const PRE_DEDUPE_HARVEST_VERSION = 0;
+
 /** Per-session agent token/cost aggregates for Mission Control. */
 export const AgentSessionUsageSchema = z.object({
   sessionKey: z.string().min(1),
@@ -776,6 +782,7 @@ export const AgentSessionUsageSchema = z.object({
   costUsd: z.number().nonnegative().nullable().optional(),
   modelBreakdown: z.record(z.unknown()).optional(),
   sources: z.array(UsageSourceSchema).default([]),
+  harvestVersion: z.number().int().nonnegative().default(PRE_DEDUPE_HARVEST_VERSION),
   firstSeenAt: z.string(),
   lastSeenAt: z.string(),
 });

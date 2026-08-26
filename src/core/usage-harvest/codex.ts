@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { USAGE_HARVEST_VERSION } from '../../harness/schema';
 import type { AgentSessionUsage } from '../../harness/schema';
 import { buildSessionKey } from '../telemetry-env';
 import type { HarvestSlotContext } from './claude';
@@ -151,6 +152,7 @@ export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage |
     tokensTotal,
     costUsd: null,
     sources: ['harvest'],
+    harvestVersion: USAGE_HARVEST_VERSION,
     firstSeenAt: slot.sessionCreatedAt ?? now,
     lastSeenAt: now,
   };

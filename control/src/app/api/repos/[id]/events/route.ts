@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { SyncSessionEventsInputSchema } from '@har/schemas';
 import { listSessionEventsForRepo, syncSessionEvents } from '@/server/session-events';
+import { pageParams } from '@/server/pagination';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const events = await listSessionEventsForRepo(id);
+  const events = await listSessionEventsForRepo(id, pageParams(new URL(request.url)));
   return NextResponse.json({ events });
 }
 

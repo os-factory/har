@@ -174,6 +174,8 @@ describe('fetchPersistedTrajectory', () => {
       spans: [],
       recordsMaxSyncedAt: null,
       spansMaxSyncedAt: null,
+      failures: [],
+      truncated: [],
     });
   });
 
@@ -186,7 +188,7 @@ describe('fetchPersistedTrajectory', () => {
     expect(result.recordsMaxSyncedAt).toBeNull();
   });
 
-  it('returns empty instead of throwing when control is unreachable', async () => {
+  it('reports the failure instead of throwing when control is unreachable', async () => {
     (global as unknown as { fetch: unknown }).fetch = jest.fn(async () => {
       throw new Error('ECONNREFUSED');
     });
@@ -196,7 +198,132 @@ describe('fetchPersistedTrajectory', () => {
       spans: [],
       recordsMaxSyncedAt: null,
       spansMaxSyncedAt: null,
+      failures: [{ channel: 'repos', reason: 'ECONNREFUSED' }],
+      truncated: [],
     });
+  });
+
+  it('reports a failed channel without watermarking it, and keeps the other', async () => {
+    mockControl({ records: [ledgerRow()], spans: [spanRow()], trajectoryStatus: 500 });
+
+    const result = await fetchPersistedTrajectory('/repo/x', API, BOTH);
+
+    expect(result.failures).toEqual([{ channel: 'trajectory', reason: 'HTTP 500' }]);
+    expect(result.records).toEqual([]);
+    expect(result.recordsMaxSyncedAt).toBeNull();
+    expect(result.spans).toHaveLength(1);
+    expect(result.spansMaxSyncedAt).toBe('2026-01-04T00:00:00.000Z');
+  });
+
+  it('passes the watermark to control instead of filtering a capped page locally', async () => {
+    const fetchMock = mockControl({ spans: [spanRow()] });
+
+    await fetchPersistedTrajectory('/repo/x', API, {
+      records: false,
+      spans: { since: '2026-01-03T00:00:00.000Z' },
+    });
+
+    const spansCall = fetchMock.mock.calls.map(([url]) => String(url)).find((url) => url.includes('/spans'));
+    expect(spansCall).toContain('since=2026-01-03T00%3A00%3A00.000Z');
+    expect(spansCall).toContain('limit=');
+  });
+
+  it('walks spans forward page by page on a (createdAt, id) cursor', async () => {
+    process.env.HAR_CONTROL_READ_PAGE_SIZE = '2';
+    const pages = [
+      [
+        spanRow({ id: 's1', spanId: 'span-1', createdAt: '2026-01-01T00:00:00.000Z' }),
+        spanRow({ id: 's2', spanId: 'span-2', createdAt: '2026-01-01T00:00:00.000Z' }),
+      ],
+      [spanRow({ id: 's3', spanId: 'span-3', createdAt: '2026-01-02T00:00:00.000Z' })],
+    ];
+    const fetchMock = jest.fn(async (url: string) => {
+      const target = String(url);
+      if (target.includes('/api/repos') && !target.includes('/spans')) {
+        return { ok: true, status: 200, json: async () => [{ id: 'local-repo-1', path: '/repo/x' }] };
+      }
+      return { ok: true, status: 200, json: async () => ({ spans: pages.shift() ?? [] }) };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    try {
+      const result = await fetchPersistedTrajectory('/repo/x', API, {
+        records: false,
+        spans: { since: null },
+      });
+
+      expect(result.spans.map((span) => span.spanId)).toEqual(['span-1', 'span-2', 'span-3']);
+      expect(result.truncated).toEqual([]);
+      expect(result.spansMaxSyncedAt).toBe('2026-01-02T00:00:00.000Z');
+      const second = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/spans'))[1];
+      expect(second).toContain('since=2026-01-01T00%3A00%3A00.000Z');
+      expect(second).toContain('sinceId=s2');
+    } finally {
+      delete process.env.HAR_CONTROL_READ_PAGE_SIZE;
+    }
+  });
+
+  it('reports truncation when the page cap is reached with rows pending', async () => {
+    process.env.HAR_CONTROL_READ_PAGE_SIZE = '1';
+    let issued = 0;
+    const fetchMock = jest.fn(async (url: string) => {
+      const target = String(url);
+      if (target.includes('/api/repos') && !target.includes('/spans')) {
+        return { ok: true, status: 200, json: async () => [{ id: 'local-repo-1', path: '/repo/x' }] };
+      }
+      issued += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          spans: [
+            spanRow({
+              id: `s${issued}`,
+              spanId: `span-${issued}`,
+              createdAt: new Date(Date.UTC(2026, 0, issued)).toISOString(),
+            }),
+          ],
+        }),
+      };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    try {
+      const result = await fetchPersistedTrajectory('/repo/x', API, {
+        records: false,
+        spans: { since: null },
+      });
+
+      expect(result.spans).toHaveLength(20);
+      expect(result.truncated).toEqual(['spans']);
+      expect(result.spansMaxSyncedAt).toBe('2026-01-20T00:00:00.000Z');
+    } finally {
+      delete process.env.HAR_CONTROL_READ_PAGE_SIZE;
+    }
+  });
+
+  it('stops instead of looping when control ignores the cursor', async () => {
+    process.env.HAR_CONTROL_READ_PAGE_SIZE = '1';
+    const fetchMock = jest.fn(async (url: string) => {
+      const target = String(url);
+      if (target.includes('/api/repos') && !target.includes('/spans')) {
+        return { ok: true, status: 200, json: async () => [{ id: 'local-repo-1', path: '/repo/x' }] };
+      }
+      return { ok: true, status: 200, json: async () => ({ spans: [spanRow()] }) };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    try {
+      const result = await fetchPersistedTrajectory('/repo/x', API, {
+        records: false,
+        spans: { since: null },
+      });
+
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/spans'))).toHaveLength(2);
+      expect(result.truncated).toEqual([]);
+    } finally {
+      delete process.env.HAR_CONTROL_READ_PAGE_SIZE;
+    }
   });
 
   it('drops null span fields rather than forwarding them', async () => {

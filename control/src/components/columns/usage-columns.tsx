@@ -5,6 +5,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 
 import { Badge } from '@/components/ui/badge';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
+import { PreDedupeTip } from '@/components/pre-dedupe-tip';
 import { formatCostUsd, formatTokens } from '@/lib/usage-models';
 
 export interface UsageRow {
@@ -17,6 +18,7 @@ export interface UsageRow {
   tokensTotal: number;
   costUsd: number | null;
   sources: string[];
+  preDedupe: boolean;
   lastSeenAt: Date | string;
 }
 
@@ -80,7 +82,10 @@ export const usageColumns: ColumnDef<UsageRow>[] = [
     accessorKey: 'tokensTotal',
     header: 'Tokens',
     cell: ({ row }) => (
-      <span className="tabular-nums">{formatTokens(row.original.tokensTotal)}</span>
+      <span className="flex items-center gap-1 tabular-nums">
+        {row.original.preDedupe ? <PreDedupeTip /> : null}
+        {formatTokens(row.original.tokensTotal)}
+      </span>
     ),
   },
   {

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { USAGE_HARVEST_VERSION } from '../../harness/schema';
 import type { AgentSessionEvent, AgentSessionUsage } from '../../harness/schema';
 import { getTelemetrySignals } from '../telemetry-config';
 import { buildSessionKey } from '../telemetry-env';
@@ -294,6 +295,7 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
       ? { modelBreakdown: usage.modelBreakdown }
       : {}),
     sources: ['harvest'],
+    harvestVersion: USAGE_HARVEST_VERSION,
     firstSeenAt: slot.sessionCreatedAt ?? now,
     lastSeenAt: now,
   };

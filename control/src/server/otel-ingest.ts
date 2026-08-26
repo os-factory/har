@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import {
   AgentTrajectoryRecordSchema,
+  USAGE_HARVEST_VERSION,
   type AgentSessionUsage,
   type AgentTool,
 } from '@har/schemas';
@@ -60,7 +61,7 @@ function loadOtlpProtobufDecoder(
   }
 }
 
-function decodeOtlpProtobufJson(
+export function decodeOtlpProtobufJson(
   kind: 'trace' | 'logs' | 'metrics',
   body: Buffer,
 ): unknown | null {
@@ -71,7 +72,7 @@ function decodeOtlpProtobufJson(
     return decoder.toObject(message, {
       longs: String,
       enums: String,
-      bytes: (value: Uint8Array) => Buffer.from(value).toString('hex'),
+      bytes: String,
       defaults: true,
       arrays: true,
       objects: true,
@@ -79,6 +80,19 @@ function decodeOtlpProtobufJson(
   } catch {
     return null;
   }
+}
+
+export function normalizeOtelId(value: unknown, byteLength: number): string {
+  const bytes =
+    typeof value === 'string'
+      ? /^[0-9a-f]{2,}$/i.test(value) && value.length === byteLength * 2
+        ? Buffer.from(value, 'hex')
+        : Buffer.from(value, 'base64')
+      : value instanceof Uint8Array
+        ? Buffer.from(value)
+        : null;
+  if (!bytes || bytes.length !== byteLength || bytes.every((b) => b === 0)) return '';
+  return bytes.toString('hex');
 }
 
 export interface AttrMap {
@@ -363,6 +377,19 @@ async function defaultAgentIdForRepo(repositoryId: string): Promise<number> {
   return active?.slotId ?? 1;
 }
 
+async function pinnedAgentIdForSession(
+  repositoryId: string,
+  sessionKey: string,
+): Promise<number | undefined> {
+  if (!sessionKey) return undefined;
+  const first = await prisma.agentSessionEvent.findFirst({
+    where: { repositoryId, sessionKey },
+    orderBy: { timestamp: 'asc' },
+    select: { agentId: true },
+  });
+  return first?.agentId;
+}
+
 interface ActiveSlotAttribution {
   agentId: number;
   workDir?: string;
@@ -450,13 +477,15 @@ export async function resolveSessionContext(
     const byRepo = await resolveRepositoryByWorkspacePath(workspace);
     if (byRepo) {
       const activeSlot = await resolveUnambiguousActiveSlot(byRepo.repositoryId);
+      const sessionKey =
+        harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`;
       return {
         context: {
           repositoryId: byRepo.repositoryId,
-          sessionKey:
-            harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`,
+          sessionKey,
           agentId:
             explicitAgentId ??
+            (await pinnedAgentIdForSession(byRepo.repositoryId, sessionKey)) ??
             activeSlot?.agentId ??
             (await defaultAgentIdForRepo(byRepo.repositoryId)),
           agentTool: tool ?? 'cursor',
@@ -482,13 +511,15 @@ export async function resolveSessionContext(
     const byId = await resolveRepositoryByWorkspaceId(workspaceId);
     if (byId) {
       const activeSlot = await resolveUnambiguousActiveSlot(byId.repositoryId);
+      const sessionKey =
+        harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`;
       return {
         context: {
           repositoryId: byId.repositoryId,
-          sessionKey:
-            harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`,
+          sessionKey,
           agentId:
             explicitAgentId ??
+            (await pinnedAgentIdForSession(byId.repositoryId, sessionKey)) ??
             activeSlot?.agentId ??
             (await defaultAgentIdForRepo(byId.repositoryId)),
           agentTool: tool ?? 'cursor',
@@ -528,7 +559,10 @@ export async function resolveSessionContext(
       context: {
         repositoryId,
         sessionKey: harSessionKey,
-        agentId: explicitAgentId ?? 1,
+        agentId:
+          explicitAgentId ??
+          (await pinnedAgentIdForSession(repositoryId, harSessionKey)) ??
+          1,
         agentTool: tool,
         workDir: resource['har.work_dir']
           ? String(resource['har.work_dir'])
@@ -751,6 +785,7 @@ function emptyUsage(
     tokensTotal: 0,
     costUsd: null,
     sources: ['otel'],
+    harvestVersion: USAGE_HARVEST_VERSION,
     firstSeenAt: now,
     lastSeenAt: now,
   };
@@ -1018,15 +1053,10 @@ export function extractLogRecords(payload: unknown): ParsedLogRecord[] {
               attributes.sequence ??
               seq,
           ),
-          traceId: record.traceId || record.trace_id
-            ? String(record.traceId ?? record.trace_id)
-            : undefined,
-          spanId: record.spanId || record.span_id
-            ? String(record.spanId ?? record.span_id)
-            : undefined,
-          parentSpanId: record.parentSpanId || record.parent_span_id
-            ? String(record.parentSpanId ?? record.parent_span_id)
-            : undefined,
+          traceId: normalizeOtelId(record.traceId ?? record.trace_id, 16) || undefined,
+          spanId: normalizeOtelId(record.spanId ?? record.span_id, 8) || undefined,
+          parentSpanId:
+            normalizeOtelId(record.parentSpanId ?? record.parent_span_id, 8) || undefined,
         });
       }
     }
@@ -1286,7 +1316,7 @@ interface ParsedSpan {
   attributes: AttrMap;
 }
 
-function extractSpans(payload: unknown): ParsedSpan[] {
+export function extractSpans(payload: unknown): ParsedSpan[] {
   const out: ParsedSpan[] = [];
   if (!payload || typeof payload !== 'object') return out;
   const root = payload as {
@@ -1312,11 +1342,9 @@ function extractSpans(payload: unknown): ParsedSpan[] {
         const record = span as Record<string, unknown>;
         out.push({
           resource,
-          traceId: String(record.traceId ?? record.trace_id ?? ''),
-          spanId: String(record.spanId ?? record.span_id ?? ''),
-          parentSpanId: record.parentSpanId || record.parent_span_id
-            ? String(record.parentSpanId ?? record.parent_span_id)
-            : null,
+          traceId: normalizeOtelId(record.traceId ?? record.trace_id, 16),
+          spanId: normalizeOtelId(record.spanId ?? record.span_id, 8),
+          parentSpanId: normalizeOtelId(record.parentSpanId ?? record.parent_span_id, 8) || null,
           name: String(record.name ?? 'span'),
           startTime: otelTimeToDate(record.startTimeUnixNano ?? record.start_time_unix_nano),
           endTime: record.endTimeUnixNano || record.end_time_unix_nano

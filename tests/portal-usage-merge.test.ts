@@ -12,6 +12,7 @@ function usage(overrides: Partial<AgentSessionUsage> = {}): AgentSessionUsage {
     tokensCacheCreation: 0,
     tokensTotal: 0,
     sources: [],
+    harvestVersion: 0,
     firstSeenAt: '2026-01-01T00:00:00.000Z',
     lastSeenAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -111,6 +112,54 @@ describe('mergePortalUsage', () => {
       [usage({ costUsd: 1.25 })],
     );
     expect(merged[0].costUsd).toBe(1.25);
+  });
+
+  it('lets a newer harvest lower a persisted pre-dedupe row', () => {
+    const merged = mergePortalUsage(
+      [
+        usage({
+          tokensInput: 50,
+          tokensTotal: 100,
+          costUsd: 1.1,
+          modelBreakdown: { 'claude-opus-5': { tokensTotal: 100 } },
+          sources: ['harvest'],
+          harvestVersion: 1,
+        }),
+      ],
+      [
+        usage({
+          tokensInput: 100,
+          tokensTotal: 200,
+          costUsd: 2.2,
+          modelBreakdown: { 'claude-opus-5': { tokensTotal: 200 } },
+          sources: ['harvest'],
+          harvestVersion: 0,
+        }),
+      ],
+    );
+    expect(merged[0].tokensInput).toBe(50);
+    expect(merged[0].tokensTotal).toBe(100);
+    expect(merged[0].costUsd).toBe(1.1);
+    expect(merged[0].modelBreakdown).toEqual({ 'claude-opus-5': { tokensTotal: 100 } });
+    expect(merged[0].harvestVersion).toBe(1);
+  });
+
+  it('still refuses to lower a row at the same harvest version', () => {
+    const merged = mergePortalUsage(
+      [usage({ tokensTotal: 100, sources: ['harvest'], harvestVersion: 1 })],
+      [usage({ tokensTotal: 200, sources: ['harvest'], harvestVersion: 1 })],
+    );
+    expect(merged[0].tokensTotal).toBe(200);
+    expect(merged[0].harvestVersion).toBe(1);
+  });
+
+  it('max-merges instead of replacing when OTLP contributed to the row', () => {
+    const merged = mergePortalUsage(
+      [usage({ tokensTotal: 100, sources: ['harvest'], harvestVersion: 1 })],
+      [usage({ tokensTotal: 200, sources: ['harvest', 'otel'], harvestVersion: 0 })],
+    );
+    expect(merged[0].tokensTotal).toBe(200);
+    expect(merged[0].harvestVersion).toBe(0);
   });
 });
 
