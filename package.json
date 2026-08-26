@@ -1,6 +1,6 @@
 {
   "name": "@osfactory/har",
-  "version": "0.64.1",
+  "version": "0.64.2",
   "description": "HAR: open agent harness CLI and MCP server for coding agents, isolated worktrees, and software-factory workflows",
   "keywords": [
     "har",

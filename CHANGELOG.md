@@ -1,3 +1,12 @@
+## [0.64.2](https://github.com/os-factory/har/compare/v0.64.1...v0.64.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **control:** hex-encode OTLP trace ids and keep a session on one agent id ([#285](https://github.com/os-factory/har/issues/285)) ([5fc801e](https://github.com/os-factory/har/commit/5fc801e5ae1621494d592057c2d21f54651f300e))
+* **control:** stop dropping persisted telemetry silently and page the egress collections ([#284](https://github.com/os-factory/har/issues/284)) ([34c7d8f](https://github.com/os-factory/har/commit/34c7d8f1e54e41c7a5efa6a4bd3859fd62c67873))
+* let a corrected harvest lower the usage totals it already reported ([#286](https://github.com/os-factory/har/issues/286)) ([030c7a4](https://github.com/os-factory/har/commit/030c7a4db549d466f890329bb8648d73a45a864c))
+
 ## [0.64.1](https://github.com/os-factory/har/compare/v0.64.0...v0.64.1) (2026-08-24)
 
 
