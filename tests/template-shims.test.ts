@@ -88,10 +88,13 @@ describe('template runtime shims (#234/#235)', () => {
     }
   });
 
-  it('verify.sh keeps its JSON stdout contract', () => {
+  it('verify.sh forwards args verbatim — human output by default, --json opt-in', () => {
     const content = fs.readFileSync(path.join(kernel, 'verify.sh'), 'utf8');
     for (const line of content.split('\n')) {
-      if (line.trim().startsWith('exec ')) expect(line).toContain('--json');
+      if (line.trim().startsWith('exec ')) {
+        expect(line).toContain('"$@"');
+        expect(line).not.toContain('--json');
+      }
     }
   });
 

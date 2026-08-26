@@ -108,6 +108,11 @@ export function buildMigrationSection(
     if (env.commentedKeys.length > 0) {
       bits.push(`commented out custom keys (${env.commentedKeys.join(', ')})`);
     }
+    if (env.normalizedNoopCmds.length > 0) {
+      bits.push(
+        `normalized legacy \`true\` no-op command sentinels to \`""\` (${env.normalizedNoopCmds.join(', ')})`,
+      );
+    }
     lines.push(
       `- Rewr${applied ? 'ote' : 'ite'} \`harness.env\` as pure schema-valid config${bits.length > 0 ? `: ${bits.join('; ')}` : ''}`,
     );

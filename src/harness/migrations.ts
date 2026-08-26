@@ -111,6 +111,8 @@ export interface HarnessEnvMigration {
   droppedTriplets: string[];
   /** Unknown HARNESS_* keys commented out (schema would reject them). */
   commentedKeys: string[];
+  /** *_CMD keys whose legacy `true` no-op sentinel was normalized to "". */
+  normalizedNoopCmds: string[];
   droppedShellLines: number;
 }
 
@@ -229,6 +231,7 @@ export function migrateHarnessEnvContent(original: string): HarnessEnvMigration 
   const convertedFlags: string[] = [];
   const droppedTriplets: string[] = [];
   const commentedKeys: string[] = [];
+  const normalizedNoopCmds: string[] = [];
   const triplets: Record<string, { def?: number; start?: number; end?: number }> = {};
   let services: string[] = [];
   let hadServicesKey = false;
@@ -273,6 +276,14 @@ export function migrateHarnessEnvContent(original: string): HarnessEnvMigration 
 
     if (STOCK_ENV_HELPER_KEYS.has(key)) {
       droppedShellLines++;
+      continue;
+    }
+    // Pre-1.0 templates used the shell no-op `true` as the "not configured"
+    // placeholder for command values. The 1.0 convention is "" — the runtime
+    // runs whatever a *_CMD holds, with no sentinel special cases.
+    if (/^HARNESS_[A-Z0-9_]*CMD$/.test(key) && value === 'true') {
+      normalizedNoopCmds.push(key);
+      out.push(`export ${key}=""`);
       continue;
     }
     if (key === 'HARNESS_INFRA_SERVICES') {
@@ -347,6 +358,7 @@ export function migrateHarnessEnvContent(original: string): HarnessEnvMigration 
     portLanes: laneEntries.join(' '),
     droppedTriplets,
     commentedKeys,
+    normalizedNoopCmds,
     droppedShellLines,
   };
 }

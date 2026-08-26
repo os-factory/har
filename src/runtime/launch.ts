@@ -340,8 +340,10 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
     // Apply the database schema per slot (pre-1.0 launch.sh parity, idempotent)
     // — otherwise schema drift after a code change surfaces as runtime 500s in
     // the slot instead of a clear launch error. Runs from the work dir with the
-    // slot env sourced, so DATABASE_URL points at the slot's database.
-    if (pm !== 'simulator' && env.HARNESS_DB_MIGRATE_CMD && env.HARNESS_DB_MIGRATE_CMD !== 'true') {
+    // slot env sourced, so DATABASE_URL points at the slot's database. "" means
+    // not configured (the #241 migration normalizes the pre-1.0 `true` no-op
+    // sentinel away, so the runtime carries no sentinel special cases).
+    if (pm !== 'simulator' && env.HARNESS_DB_MIGRATE_CMD) {
       log(`Applying database schema: ${env.HARNESS_DB_MIGRATE_CMD}`);
       const migrate = exec('bash', [
         '-c',
