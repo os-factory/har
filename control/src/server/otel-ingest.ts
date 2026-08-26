@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import {
   AgentTrajectoryRecordSchema,
+  USAGE_HARVEST_VERSION,
   type AgentSessionUsage,
   type AgentTool,
 } from '@har/schemas';
@@ -784,6 +785,7 @@ function emptyUsage(
     tokensTotal: 0,
     costUsd: null,
     sources: ['otel'],
+    harvestVersion: USAGE_HARVEST_VERSION,
     firstSeenAt: now,
     lastSeenAt: now,
   };

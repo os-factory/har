@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client';
 import type { AgentSessionUsage, UsageSource } from '@har/schemas';
-import { enrichUsageWithPricing } from '@har/schemas';
+import {
+  enrichUsageWithPricing,
+  harvestSupersedes,
+  mergedHarvestVersion,
+  usageHarvestVersion,
+} from '@har/schemas';
 import { prisma } from '@/lib/db';
 
 function toBigInt(n: number | bigint | undefined | null): bigint {
@@ -83,7 +88,10 @@ function mergeModelBreakdown(
 
 export type UsageUpsertInput = AgentSessionUsage;
 
-/** Max-merge upsert so OTEL and harvest never double-count cumulative counters. */
+/**
+ * Max-merge upsert so OTEL and harvest never double-count cumulative counters,
+ * unless a newer `harvestVersion` supersedes the stored row.
+ */
 export async function upsertSessionUsage(repositoryId: string, input: UsageUpsertInput) {
   const existing = await prisma.agentSessionUsage.findUnique({
     where: {
@@ -95,20 +103,30 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     },
   });
 
-  const tokensInput = maxBigInt(toBigInt(existing?.tokensInput), toBigInt(input.tokensInput));
-  const tokensOutput = maxBigInt(toBigInt(existing?.tokensOutput), toBigInt(input.tokensOutput));
-  const tokensCacheRead = maxBigInt(
+  const existingAuthority = existing
+    ? { sources: toStringArray(existing.sources), harvestVersion: existing.harvestVersion }
+    : null;
+  const supersedes = harvestSupersedes(existingAuthority, input);
+
+  const merge = (a: bigint, b: bigint): bigint => (supersedes ? b : maxBigInt(a, b));
+
+  const tokensInput = merge(toBigInt(existing?.tokensInput), toBigInt(input.tokensInput));
+  const tokensOutput = merge(toBigInt(existing?.tokensOutput), toBigInt(input.tokensOutput));
+  const tokensCacheRead = merge(
     toBigInt(existing?.tokensCacheRead),
     toBigInt(input.tokensCacheRead),
   );
-  const tokensCacheCreation = maxBigInt(
+  const tokensCacheCreation = merge(
     toBigInt(existing?.tokensCacheCreation),
     toBigInt(input.tokensCacheCreation),
   );
-  const tokensTotal = maxBigInt(
+  const tokensTotal = merge(
     toBigInt(existing?.tokensTotal),
     toBigInt(input.tokensTotal) || tokensInput + tokensOutput + tokensCacheRead + tokensCacheCreation,
   );
+  const harvestVersion = supersedes
+    ? usageHarvestVersion(input)
+    : mergedHarvestVersion(existingAuthority, input);
   const firstSeenAt = existing
     ? new Date(
         Math.min(existing.firstSeenAt.getTime(), new Date(input.firstSeenAt).getTime()),
@@ -118,14 +136,20 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     ? new Date(Math.max(existing.lastSeenAt.getTime(), new Date(input.lastSeenAt).getTime()))
     : new Date(input.lastSeenAt);
 
-  const mergedModelBreakdown = mergeModelBreakdown(existing?.modelBreakdown, input.modelBreakdown);
-  const reportedCost = maxCost(existing?.costUsd, input.costUsd ?? null);
+  const mergedModelBreakdown = supersedes
+    ? mergeModelBreakdown(null, input.modelBreakdown)
+    : mergeModelBreakdown(existing?.modelBreakdown, input.modelBreakdown);
+  const reportedCost = supersedes
+    ? maxCost(null, input.costUsd ?? null)
+    : maxCost(existing?.costUsd, input.costUsd ?? null);
 
   const priced = enrichUsageWithPricing({
     agentTool: input.agentTool,
     costUsd: reportedCost == null ? null : Number(reportedCost),
     modelBreakdown: mergedModelBreakdown as AgentSessionUsage['modelBreakdown'],
   });
+
+  const nextModelBreakdown = priced.modelBreakdown ?? mergedModelBreakdown;
 
   const costUsd =
     priced.costUsd == null
@@ -147,8 +171,15 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     tokensCacheCreation,
     tokensTotal,
     costUsd,
-    modelBreakdown: (priced.modelBreakdown ?? mergedModelBreakdown) as Prisma.InputJsonValue | undefined,
+    // Prisma reads `undefined` as "leave unchanged", so a superseding harvest
+    // with no breakdown has to clear the stored one explicitly.
+    modelBreakdown: nextModelBreakdown
+      ? (nextModelBreakdown as Prisma.InputJsonValue)
+      : supersedes
+        ? Prisma.JsonNull
+        : undefined,
     sources: mergeSources(existing?.sources, input.sources ?? []),
+    harvestVersion,
     firstSeenAt,
     lastSeenAt,
   };

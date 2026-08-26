@@ -81,6 +81,8 @@ model AgentSessionUsage {
   costUsd             Decimal?
   modelBreakdown      Json?
   sources             Json       @default("[]")
+  // Harvest generation behind these counters; 0 = pre-dedupe, reads high.
+  harvestVersion      Int        @default(0)
   firstSeenAt         DateTime
   lastSeenAt          DateTime
   updatedAt           DateTime   @updatedAt

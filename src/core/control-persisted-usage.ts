@@ -24,6 +24,7 @@ interface PersistedUsageRow {
   costUsd?: number | null;
   modelBreakdown?: Record<string, unknown> | null;
   sources?: unknown;
+  harvestVersion?: number | null;
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt?: string | null;
@@ -78,6 +79,7 @@ function normalizeUsage(row: PersistedUsageRow): AgentSessionUsage {
     costUsd: row.costUsd == null ? null : Number(row.costUsd),
     ...(row.modelBreakdown ? { modelBreakdown: row.modelBreakdown } : {}),
     sources: toSources(row.sources),
+    harvestVersion: Number(row.harvestVersion ?? 0),
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
   };
