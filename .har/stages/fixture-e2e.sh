@@ -648,7 +648,13 @@ HOOK
           #    exit 1, the per-slot DB never be cloned, and full verify fail.
           sed -i '1a [ -n "${HARNESS_PROJECT_NAME:-}" ] || { echo "post-launch: harness.env config missing from hook env" >&2; exit 1; }' \
             "$CLONE/.har/hooks/post-launch.sh"
-          echo "    M5: stock files installed + auto ecosystem resolved + hook config guard armed ✓"
+          # d) #290: plugin templates ship on the 1.0 stage surface — a fresh
+          #    plugin install must not reference the retired machinery
+          if grep -rlE 'source "\$HARNESS_DIR/agent-slot\.sh"|provision-toolchain\.sh' \
+              "$REPO_ROOT/dist/templates/plugins" --include='*.sh' >/dev/null 2>&1; then
+            fail "M5: plugin templates still reference retired machinery (agent-slot.sh / provision-toolchain.sh)"
+          fi
+          echo "    M5: stock files installed + auto ecosystem resolved + hook config guard armed + plugin templates on the 1.0 surface ✓"
         fi
 
         # 4) Doctor must be green on the migrated harness (1.0 contract enforced).

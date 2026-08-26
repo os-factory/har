@@ -1,3 +1,4 @@
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -48,7 +49,43 @@ describe('template runtime shims (#234/#235)', () => {
     // Clear error when neither har nor node is available.
     expect(content).toMatch(/Error: cannot run the HAR runtime/);
     expect(content).not.toContain('node -e');
-    expect(content.split('\n').length).toBeLessThanOrEqual(25);
+    expect(content.split('\n').length).toBeLessThanOrEqual(60);
+  });
+
+  it.each([...RUNTIME_SHIM_FILES])('shared-kernel/%s refuses pre-1.0 runtime loops (#291)', (shim) => {
+    const content = fs.readFileSync(path.join(kernel, shim), 'utf8');
+    // Re-entry marker: env survives exec, so a pre-1.0 har that hands control
+    // back to the shim trips the guard on its first cycle instead of forking
+    // one node process per cycle forever.
+    expect(content).toContain('HAR_SHIM_REENTRY');
+    expect(content).toContain('exit 86');
+    // Version floor: har binaries older than the pinned major are skipped in
+    // favor of node_modules/.bin/har or the pinned npx fallback.
+    expect(content).toContain('har_runtime_compatible');
+  });
+
+  it('verify.sh cuts the exec loop against a pre-1.0 har (#291)', () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'har-shim-loop-'));
+    try {
+      scaffoldHarnessBoilerplate(repo, { profile: 'default' });
+      const shim = path.join(repo, '.har', 'verify.sh');
+      const bin = path.join(repo, 'fake-bin');
+      fs.mkdirSync(bin);
+      // A pre-1.0 har treats .har/verify.sh as authoritative and re-executes it.
+      fs.writeFileSync(
+        path.join(bin, 'har'),
+        `#!/usr/bin/env bash\nif [ "$1" = "--version" ]; then echo "${getHarPackageVersion()}"; exit 0; fi\nexec "${shim}" 1 --full\n`,
+        { mode: 0o755 },
+      );
+      const result = spawnSync(shim, ['1', '--full'], {
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(86);
+      expect(result.stderr).toContain('runtime loop detected');
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it('verify.sh keeps its JSON stdout contract', () => {
