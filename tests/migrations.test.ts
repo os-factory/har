@@ -175,6 +175,17 @@ describe('versioned harness migrations (#241)', () => {
     expect(result.content).not.toMatch(/^export HARNESS_INFRA_POSTGRES=/m);
   });
 
+  it('migrateHarnessEnvContent normalizes legacy `true` no-op command sentinels to ""', () => {
+    const result = migrateHarnessEnvContent(
+      'export HARNESS_DB_MIGRATE_CMD="true"\nexport HARNESS_DB_SEED_CMD=true\nexport HARNESS_READINESS_CMD="curl -f localhost"\n',
+    );
+    expect(result.normalizedNoopCmds).toEqual(['HARNESS_DB_MIGRATE_CMD', 'HARNESS_DB_SEED_CMD']);
+    expect(result.content).toContain('export HARNESS_DB_MIGRATE_CMD=""');
+    expect(result.content).toContain('export HARNESS_DB_SEED_CMD=""');
+    // Real commands pass through untouched — only the bare `true` sentinel is normalized.
+    expect(result.content).toContain('export HARNESS_READINESS_CMD="curl -f localhost"');
+  });
+
   it('migrateHarnessEnvContent drops stock helper constants (HAR_NODE_PACKAGE_MANAGERS)', () => {
     const result = migrateHarnessEnvContent(
       'HAR_NODE_PACKAGE_MANAGERS="npm bun pnpm yarn"\nexport HARNESS_PROJECT_NAME=proj\n',

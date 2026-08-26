@@ -54,7 +54,7 @@ export function resolveRuntimeBundleSource(): string | null {
 
 /**
  * The managed shim's delegate line (`exec har env launch "$@"`, `exec har env
- * verify "$@" --json`, …) is the arg-convention contract each script must
+ * verify "$@"`, …) is the arg-convention contract each script must
  * keep. Ejected scripts reuse it verbatim against the vendored runtime.
  */
 function shimDelegateArgs(templateContent: string): string | null {

@@ -59,7 +59,7 @@ describe('har env eject / adopt (#239)', () => {
       expect(fs.statSync(har(shim)).mode & 0o111).not.toBe(0);
     }
     // The delegate line keeps the managed shim's exact argument convention.
-    expect(fs.readFileSync(har('verify.sh'), 'utf8')).toContain('env verify "$@" --json');
+    expect(fs.readFileSync(har('verify.sh'), 'utf8')).toContain('env verify "$@"');
     expect(fs.readFileSync(har('launch.sh'), 'utf8')).toContain('env launch "$@"');
     expect(fs.readFileSync(har('agent-cli.sh'), 'utf8')).toContain('env agent "$@"');
 

@@ -15,22 +15,17 @@
 # See: ./.har/stages/SEMGREP.md for the full adaptation guide.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HARNESS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# 1.0 stage surface: the runner exports WORK_DIR, ENV_FILE, AGENT_ID and
+# HAR_HARNESS_DIR, with harness.env and the slot env file already sourced —
+# agent-slot.sh is retired (1.0 migration).
+HARNESS_DIR="${HAR_HARNESS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_ROOT="$(cd "$HARNESS_DIR/.." && pwd)"
-# agent-slot.sh expects SCRIPT_DIR to be .har/ (slot registry lives there)
-SCRIPT_DIR="$HARNESS_DIR"
 
-# shellcheck source=/dev/null
-source "$HARNESS_DIR/harness.env"
-# shellcheck source=/dev/null
-source "$HARNESS_DIR/agent-slot.sh"
-
-AGENT_ID="${1:?Usage: sast.sh <agent-id> [paths...]}"
-shift
+AGENT_ID="${1:-${AGENT_ID:?Usage: sast.sh <agent-id> [paths...]}}"
+[ "$#" -gt 0 ] && shift
 SCAN_PATHS=("$@")
 
-validate_agent_id "$AGENT_ID"
+now_ms() { node -e 'process.stdout.write(String(Date.now()))' 2>/dev/null || echo 0; }
 
 log() { echo "==> [semgrep agent-$AGENT_ID] $*" >&2; }
 
@@ -46,22 +41,11 @@ if ! command -v semgrep >/dev/null 2>&1; then
 fi
 
 # ── Resolve agent env ─────────────────────────────────────────────────────────
-ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
-  echo "No .env.agent.${AGENT_ID} found." >&2
-  har_suggest_launch "$AGENT_ID" >&2
-  exit 1
-}
-
-# .env.agent.<id> exports REPO_ROOT pointing at the worktree — keep the main
-# checkout path so artifacts land in the main repo root, not the worktree.
+# Artifacts land in the main repo root (where .har/ lives), not the worktree.
 MAIN_REPO_ROOT="$REPO_ROOT"
 
-set -a
-# shellcheck source=/dev/null
-source "$ENV_FILE"
-set +a
-
-WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
 
 # ── Artifact directory (main repo root, not the worktree) ─────────────────────
 ARTIFACT_DIR="$MAIN_REPO_ROOT/.har/artifacts/sast"

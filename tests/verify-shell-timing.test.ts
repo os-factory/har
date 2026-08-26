@@ -32,10 +32,10 @@ describe('stage scripts use portable timing', () => {
   });
 });
 
-describe('plugin template stage scripts set SCRIPT_DIR to .har/', () => {
-  // Plugin templates still resolve paths relative to the harness dir; this
-  // repo's own stage scripts are migrated to the 1.0 stage surface (WORK_DIR /
-  // ENV_FILE / AGENT_ID exported by the runner) and are covered above.
+describe('plugin template stage scripts follow the 1.0 stage surface', () => {
+  // The runner exports WORK_DIR, ENV_FILE, AGENT_ID and HAR_HARNESS_DIR with
+  // harness.env and the slot env file already sourced — agent-slot.sh is
+  // retired, so a fresh plugin install must not reference it (#290).
   const stagePaths = [
     'src/templates/plugins/playwright/.har/stages/browser-e2e.sh',
     'src/templates/plugins/rocketsim/.har/stages/rocketsim-flows.sh',
@@ -46,8 +46,18 @@ describe('plugin template stage scripts set SCRIPT_DIR to .har/', () => {
     'src/templates/plugins/custom-stage-skeleton.sh',
   ];
 
-  it.each(stagePaths)('%s reassigns SCRIPT_DIR to HARNESS_DIR', (relPath) => {
+  it.each(stagePaths)('%s uses the runner contract, not agent-slot.sh', (relPath) => {
     const script = fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
-    expect(script).toMatch(/HARNESS_DIR=.*\nREPO_ROOT=.*\n(?:#.*\n)*SCRIPT_DIR="\$HARNESS_DIR"/);
+    expect(script).not.toMatch(/source\s+"?\$HARNESS_DIR\/agent-slot\.sh/);
+    expect(script).not.toMatch(/provision-toolchain\.sh/);
+    expect(script).not.toMatch(
+      /\b(validate_agent_id|resolve_agent_env_file|resolve_agent_work_dir|har_suggest_launch)\b/,
+    );
+    expect(script).toContain(
+      'HARNESS_DIR="${HAR_HARNESS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"',
+    );
+    expect(script).toMatch(/ENV_FILE="\$\{ENV_FILE:\?/);
+    expect(script).toMatch(/WORK_DIR="\$\{WORK_DIR:\?/);
+    expect(script).toMatch(/AGENT_ID="\$\{1:-\$\{AGENT_ID:\?/);
   });
 });

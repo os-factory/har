@@ -122,6 +122,7 @@ export default defineConfig({
 					label: 'Project',
 					items: [
 						{ label: 'Architecture', slug: 'docs/project/architecture' },
+						{ label: 'The road to 1.0', slug: 'docs/project/road-to-1-0' },
 						{ label: 'Contributing', slug: 'docs/project/contributing' },
 						{ label: 'FAQ', slug: 'docs/project/faq' },
 					],

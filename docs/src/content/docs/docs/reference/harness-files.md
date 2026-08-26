@@ -39,7 +39,7 @@ records. Do not edit them — `har env doctor` flags patched shims, and
 | Path | Forwards to |
 | --- | --- |
 | `.har/launch.sh` | `har env launch` |
-| `.har/verify.sh` | `har env verify --json` |
+| `.har/verify.sh` | `har env verify` (pass `--json` for the structured result) |
 | `.har/teardown.sh` | `har env teardown` |
 | `.har/setup-infra.sh` | `har env setup-infra` |
 | `.har/preflight.sh` | `har env preflight` |
