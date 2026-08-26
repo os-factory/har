@@ -31,7 +31,13 @@ jest.mock('../src/core/usage-harvest', () => {
   };
 });
 jest.mock('../src/core/control-persisted-usage', () => ({
-  fetchPersistedPortalTelemetry: jest.fn(async () => ({ usage: [], events: [], maxSyncedAt: null })),
+  fetchPersistedPortalTelemetry: jest.fn(async () => ({
+    usage: [],
+    events: [],
+    maxSyncedAt: null,
+    failures: [],
+    truncated: [],
+  })),
 }));
 jest.mock('../src/core/control-persisted-trajectory', () => ({
   fetchPersistedTrajectory: jest.fn(),
@@ -151,6 +157,8 @@ beforeEach(() => {
     spans: [SPAN],
     recordsMaxSyncedAt: '2026-01-02T00:00:00.000Z',
     spansMaxSyncedAt: '2026-01-03T00:00:00.000Z',
+    failures: [],
+    truncated: [],
   });
 });
 
@@ -206,6 +214,8 @@ describe('trajectory forwarding', () => {
       spans: [SPAN],
       recordsMaxSyncedAt: null,
       spansMaxSyncedAt: '2026-01-03T00:00:00.000Z',
+      failures: [],
+      truncated: [],
     });
     const fetchMock = mockFetch();
 
@@ -251,7 +261,9 @@ describe('trajectory forwarding', () => {
   it('keeps the records watermark when the portal has no trajectory endpoint', async () => {
     const fetchMock = mockFetch({ '/api/trajectory': 404 });
 
-    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).resolves.toBeUndefined();
+    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).resolves.toEqual({
+      warnings: [],
+    });
 
     expect(portalCall(fetchMock, '/api/trajectory')).toBeDefined();
     expect(writePortalWatermarkMock).not.toHaveBeenCalledWith(

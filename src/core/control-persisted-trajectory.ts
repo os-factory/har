@@ -1,11 +1,14 @@
-import * as path from 'path';
 import type { AgentTrajectoryRecord } from '../harness/schema';
 import { AgentTrajectoryRecordSchema } from '../harness/schema';
 import { selectSince } from './portal-watermark';
-
-const FETCH_TIMEOUT_MS = 5000;
+import {
+  ChannelReadFailure,
+  readControlPages,
+  resolveControlRepoId,
+} from './control-api-read';
 
 export interface PersistedSpanRow {
+  id?: string;
   sessionKey: string;
   agentId: number;
   agentTool: string;
@@ -34,26 +37,6 @@ export interface PortalSpan {
   startTime: string;
   endTime?: string;
   attributes?: Record<string, unknown>;
-}
-
-async function getJson<T>(url: string): Promise<T | null> {
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
-async function resolveControlRepoId(apiUrl: string, repoPath: string): Promise<string | null> {
-  const repos = await getJson<{ id: string; path: string }[]>(`${apiUrl}/api/repos`);
-  if (!Array.isArray(repos)) return null;
-  const target = path.resolve(repoPath);
-  return repos.find((repo) => path.resolve(repo.path) === target)?.id ?? null;
 }
 
 function optional<T>(value: T | null | undefined): T | undefined {
@@ -116,11 +99,15 @@ export interface PersistedTrajectoryRequest {
   spans: { since: string | null } | false;
 }
 
+type TrajectoryRow = Record<string, unknown> & { id?: string; createdAt?: string };
+
 export interface PersistedTrajectory {
   records: AgentTrajectoryRecord[];
   spans: PortalSpan[];
   recordsMaxSyncedAt: string | null;
   spansMaxSyncedAt: string | null;
+  failures: ChannelReadFailure[];
+  truncated: string[];
 }
 
 export async function fetchPersistedTrajectory(
@@ -133,30 +120,51 @@ export async function fetchPersistedTrajectory(
     spans: [],
     recordsMaxSyncedAt: null,
     spansMaxSyncedAt: null,
+    failures: [],
+    truncated: [],
   };
   if (!request.records && !request.spans) return empty;
 
-  const repoId = await resolveControlRepoId(apiUrl, repoPath);
-  if (!repoId) return empty;
+  const repo = await resolveControlRepoId(apiUrl, repoPath);
+  if (!repo.ok) return { ...empty, failures: [{ channel: 'repos', reason: repo.error }] };
+  if (!repo.data) return empty;
 
-  const [trajectoryResponse, spansResponse] = await Promise.all([
+  const [trajectoryRead, spansRead] = await Promise.all([
     request.records
-      ? getJson<{ records: (Record<string, unknown> & { createdAt?: string })[] }>(
-          `${apiUrl}/api/repos/${repoId}/trajectory`,
-        )
+      ? readControlPages<TrajectoryRow>({
+          url: `${apiUrl}/api/repos/${repo.data}/trajectory`,
+          since: request.records.since,
+          rows: (data) => (data as { records?: TrajectoryRow[] } | null)?.records ?? [],
+          cursor: (row) => ({ createdAt: row.createdAt, id: row.id }),
+        })
       : null,
     request.spans
-      ? getJson<{ spans: PersistedSpanRow[] }>(`${apiUrl}/api/repos/${repoId}/spans`)
+      ? readControlPages<PersistedSpanRow>({
+          url: `${apiUrl}/api/repos/${repo.data}/spans`,
+          since: request.spans.since,
+          rows: (data) => (data as { spans?: PersistedSpanRow[] } | null)?.spans ?? [],
+          cursor: (row) => ({ createdAt: row.createdAt, id: row.id }),
+        })
       : null,
   ]);
 
+  const failures: ChannelReadFailure[] = [];
+  const truncated: string[] = [];
+  if (trajectoryRead && !trajectoryRead.ok) {
+    failures.push({ channel: 'trajectory', reason: trajectoryRead.error });
+  } else if (trajectoryRead?.ok && trajectoryRead.truncated) {
+    truncated.push('trajectory');
+  }
+  if (spansRead && !spansRead.ok) failures.push({ channel: 'spans', reason: spansRead.error });
+  else if (spansRead?.ok && spansRead.truncated) truncated.push('spans');
+
   const trajectory = selectSince(
-    trajectoryResponse?.records ?? [],
+    trajectoryRead?.ok ? trajectoryRead.rows : [],
     request.records ? request.records.since : null,
     (row) => row.createdAt ?? null,
   );
   const spans = selectSince(
-    spansResponse?.spans ?? [],
+    spansRead?.ok ? spansRead.rows : [],
     request.spans ? request.spans.since : null,
     (row) => row.createdAt ?? null,
   );
@@ -169,5 +177,7 @@ export async function fetchPersistedTrajectory(
     spans: spans.selected.map(toPortalSpan),
     recordsMaxSyncedAt: trajectory.maxSyncedAt,
     spansMaxSyncedAt: spans.maxSyncedAt,
+    failures,
+    truncated,
   };
 }

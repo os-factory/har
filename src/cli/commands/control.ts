@@ -589,7 +589,7 @@ async function handleSync(argv: {
     }
   }
 
-  const { synced, failed, results } = await syncReposWithControl({
+  const { synced, failed, incomplete, results } = await syncReposWithControl({
     repoPaths,
     apiUrl: argv.apiUrl,
     dryRun: argv.dryRun,
@@ -599,7 +599,9 @@ async function handleSync(argv: {
   });
 
   if (argv.json) {
-    process.stdout.write(JSON.stringify({ ok: failed === 0, synced, failed, results }, null, 2) + '\n');
+    process.stdout.write(
+      JSON.stringify({ ok: failed === 0, synced, failed, incomplete, results }, null, 2) + '\n',
+    );
     if (failed > 0) return finishCommand(1);
     return;
   }
@@ -609,22 +611,32 @@ async function handleSync(argv: {
       for (const target of result.targets) {
         const record = findPortalTargetRecord(target.alias);
         const label = record ? displayPortalTargetLabel(record) : target.alias;
-        if (target.ok) {
-          success(`Synced ${result.repoPath} → ${label}`);
-        } else {
+        if (!target.ok) {
           warn(`Failed ${result.repoPath} → ${label}: ${target.error}`);
+        } else if (target.warnings && target.warnings.length > 0) {
+          warn(`Synced ${result.repoPath} → ${label} — incomplete`);
+        } else {
+          success(`Synced ${result.repoPath} → ${label}`);
         }
       }
       continue;
     }
-    if (result.ok) {
-      success(`Synced ${result.repoPath}`);
-    } else {
+    if (!result.ok) {
       warn(`Failed ${result.repoPath}: ${result.error}`);
+    } else if (result.warnings && result.warnings.length > 0) {
+      warn(`Synced ${result.repoPath} — incomplete`);
+    } else {
+      success(`Synced ${result.repoPath}`);
     }
   }
-  if (synced > 0) {
-    success(`Synced ${synced} ${synced === 1 ? 'repository' : 'repositories'}`);
+  if (synced > incomplete) {
+    const complete = synced - incomplete;
+    success(`Synced ${complete} ${complete === 1 ? 'repository' : 'repositories'}`);
+  }
+  if (incomplete > 0) {
+    warn(
+      `${incomplete} ${incomplete === 1 ? 'repository' : 'repositories'} synced with incomplete telemetry — see the warnings above`,
+    );
   }
   if (failed > 0) {
     warn(`${failed} ${failed === 1 ? 'repository' : 'repositories'} could not be synced`);
