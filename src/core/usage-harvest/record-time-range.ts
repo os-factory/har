@@ -12,7 +12,7 @@ function recordTimestamp(record: unknown): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** Metadata records carry no timestamp, so scan for the extremes. */
+/** Metadata records carry no timestamp, so scan for the extremes */
 export function recordTimeRange(records: unknown[]): RecordTimeRange | null {
   let first: number | null = null;
   let last: number | null = null;
