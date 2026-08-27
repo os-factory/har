@@ -55,6 +55,15 @@ export const LEGACY_MACHINERY_FILES = [
   'lib/node-pm.sh',
 ] as const;
 
+/**
+ * Docs 1.0 no longer generates (#301). `CLAUDE.agent.md` duplicated the AGENTS.md
+ * workflow behind a vendor-specific name and was never rendered per slot (its
+ * `${AGENT_ID}` placeholders stayed literal); its unique sections now compose
+ * into `.har/README.md`. An installed copy is backed up and reported as residue
+ * rather than deleted — users adapt these with real project knowledge.
+ */
+export const RETIRED_DOC_FILES = ['CLAUDE.agent.md'] as const;
+
 /** Helper functions pre-1.0 templates shipped inside harness.env / lib/. */
 const STOCK_ENV_FUNCTION_RE =
   /^(har_infra_enabled|har_pg|har_node_[a-z_]+|har_pkg_exec)$/;
@@ -128,6 +137,8 @@ export interface MigrationPlan {
   installMissing: string[];
   /** Machinery files edited since the last finalize (flagged, still deleted). */
   editedMachinery: string[];
+  /** Docs 1.0 retired that are still installed — backed up, lifted by the agent (#301). */
+  retireDocs: string[];
   /**
    * Machinery still referenced by surviving user-owned scripts (stage scripts,
    * hooks) — retained instead of deleted so those scripts keep working, and
@@ -447,6 +458,21 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
     );
   };
 
+  const retireDocs: string[] = [];
+  for (const doc of RETIRED_DOC_FILES) {
+    if (!fs.existsSync(path.join(harnessDir, doc))) continue;
+    retireDocs.push(doc);
+    residue.push({
+      source: doc,
+      backup: backupRel(doc),
+      target: 'review',
+      reason:
+        '1.0 does not generate this file — the harness workflow lives in AGENTS.md and the harness detail in `.har/README.md`. Move any project-specific content (readiness/agent-usable definition, credentials and default data, project commands, architecture notes) into `.har/README.md`, then delete `.har/' +
+        doc +
+        '`.',
+    });
+  }
+
   const deleteMachinery: string[] = [];
   const editedMachinery: string[] = [];
   const retainMachinery: string[] = [];
@@ -542,6 +568,7 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
     profile,
     replaceWithShims,
     deleteMachinery,
+    retireDocs,
     installMissing,
     editedMachinery,
     retainMachinery,
@@ -589,6 +616,13 @@ function applyPre10Plan(repoPath: string, plan?: MigrationPlan): AppliedMigratio
     fs.rmSync(path.join(harnessDir, file), { force: true });
     deleted.push(file);
   }
+  // 2a. Retired docs (#301): backed up, left on disk. The prompt tells the agent
+  // to lift project-specific content into README.md and then delete the file —
+  // yanking a doc the user wrote out from under them mid-migration is worse.
+  for (const doc of effective.retireDocs ?? []) {
+    backup(doc);
+  }
+
   const libDir = path.join(harnessDir, 'lib');
   if (fs.existsSync(libDir) && fs.readdirSync(libDir).length === 0) {
     fs.rmdirSync(libDir);

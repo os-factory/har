@@ -12,7 +12,7 @@ HAR work directory: {{work_dir}}
 
 You are running inside the HAR session worktree. All file edits must stay in this work directory.
 
-1. Prefer reading `AGENTS.md` and `.har/CLAUDE.agent.md` if present for slot URLs and definition of done.
+1. Prefer reading `AGENTS.md` and `.har/README.md` if present for slot URLs and definition of done.
 2. Use `har env status 1` or `./.har/agent-cli.sh 1 status` if you need slot details.
 3. Fix the issue with the smallest correct production-quality change.
 4. Before finishing, run `har env verify 1` (quick verify). If it fails, fix harness or code issues and retry.

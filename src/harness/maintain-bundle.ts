@@ -222,14 +222,14 @@ export function buildInstructionFileNotes(repoPath: string): InstructionFileMain
       kind: 'claude_md_pointer',
       path: 'CLAUDE.md',
       message:
-        'Keep CLAUDE.md as a thin pointer to AGENTS.md (do not duplicate the full HAR workflow).',
+        'Keep CLAUDE.md as the `@AGENTS.md` import — no workflow content of its own. Existing project-specific notes stay; the import goes on top.',
     });
   } else {
     notes.push({
       kind: 'claude_md_pointer',
       path: 'CLAUDE.md',
       message:
-        'Optional: add a thin CLAUDE.md pointer → AGENTS.md when Claude Code is used on this repo.',
+        'Optional: add a CLAUDE.md containing `@AGENTS.md` when Claude Code is used on this repo.',
     });
   }
 

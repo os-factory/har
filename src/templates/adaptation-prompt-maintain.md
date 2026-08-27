@@ -31,7 +31,7 @@ Prefer targeted edits over full rewrites. Key files to review:
 ### `.har/README.md` (required)
 Keep this accurate — it is the harness index. Update whenever scripts, stages, or workflow change.
 
-### `.har/harness.env`, `stages.json`, `ecosystem.agent.template.cjs`, `CLAUDE.agent.md`
+### `.har/harness.env`, `stages.json`, `ecosystem.agent.template.cjs`, `README.md`
 Align commands and instructions with the current stack. Verify steps must use toolchain paths from `.env.agent.<id>` (`PYTHON_BIN`, `NPM_BIN`, `XCODEBUILD_BIN`, …) — never hardcoded venv or interpreter paths. `NPM_BIN` may be bun, pnpm, or yarn, so Node steps must use `${NPM_BIN:-npm} run <script>` and avoid npm-only flags such as `--prefix`. Replace stock ecosystem conventions that do not match the repository; do not leave npm/pytest/go/cargo/maven/gradle examples in place by accident.
 
 ### `.har/env.template`, `docker-compose.agent.yml`
@@ -62,7 +62,7 @@ Look specifically for drift introduced since the last adaptation:
 - `verificationStages` became health-only and no longer checks the key workflow
   that makes the slot usable.
 
-Update `.har/CLAUDE.agent.md` with skipped setup steps, substitutes, credentials,
+Update `.har/README.md` with skipped setup steps, substitutes, credentials,
 and the repo-specific definition of "agent usable."
 
 ### Custom lifecycle behavior — `.har/hooks/`
@@ -96,7 +96,7 @@ come back here afterwards. Two standing rules:
 
 If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENTS.md`:
 
-- Links to `.har/README.md` and `.har/CLAUDE.agent.md`
+- Links to `.har/README.md`
 - Commands: HAR MCP tools or `har env …`
 - Shell shims: `./.har/*.sh` — thin delegates to `har env`, same run records
 - Run history (worktree runs record to the main checkout `.har/runs/`)
@@ -105,7 +105,7 @@ If harness commands, rules, or workflow changed, update the **HAR / agent enviro
 
 If `AGENTS.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
 
-Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Keep `CLAUDE.md` as a thin pointer to `AGENTS.md`.
+Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Keep `CLAUDE.md` as the line `@AGENTS.md`.
 
 ## Rules
 

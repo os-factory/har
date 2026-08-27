@@ -1,79 +1,14 @@
 ---
-description: HAR harness workflow — read before change, verify before done
+description: HAR harness workflow — read AGENTS.md before changing anything
 alwaysApply: true
 ---
 
 # HAR Harness Workflow
 
-This repository uses a `.har/` agent harness. Follow this on every change.
+This repository uses a `.har/` agent harness. **Read [`AGENTS.md`](../../AGENTS.md)
+and follow it** — it is the single source of truth for the harness workflow
+(launch a slot first, edit only in the work dir, full verify before done, stop at
+handoff). `.har/README.md` has the harness detail.
 
-The harness is **how you run the project**, not only how you verify it. Launch a
-slot for live apps, browsers, and screenshots — never hand-roll docker/dev-server
-startup. If a harness command fails, fix the harness or surface the failure. Customize
-only via the contract (`harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`, `.har/plugins/`) — never edit the generated `./.har/*.sh` shims.
-
-## Before making changes
-
-1. On the **main checkout**, switch to the intended base (usually `main`) — launch
-   creates a worktree from that HEAD.
-2. **Launch first** — MCP `har_launch_environment` / `har env launch 1`. Use the
-   returned **work dir** for ALL edits (never the main checkout). Path looks like
-   `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>` (see `.har/slots/agent-<id>.json`).
-   **Bind tracker work** when the task names an issue or ticket — short `--work-id`
-   (e.g. `widget-123`) plus `--work-source` / `--work-url` / `--work-title`. Skip for ad-hoc work.
-3. Read `AGENTS.md`, `.har/README.md`, `.har/stages.json`, then
-   `.har/CLAUDE.agent.md` (slot URLs / definition of done).
-4. Hot-reload usually applies; if not, `./.har/agent-cli.sh <id> restart` (no-op on
-   cli/ios profiles without managed processes).
-
-**Occupied slots always block.** Run `complete` / `teardown`, then `launch`. Resume
-failed/starting launches with `--resume` / `recover`. Prefer a free slot (2+) over
-sharing slot 1 across unrelated chats. Check `har_get_status` / `har env status`
-first. Commit early — teardown keeps the branch, not uncommitted work. Gitignored
-paths are ephemeral. With telemetry on, Mission Control derives session purpose from
-the first captured user prompt.
-
-<!-- Monorepo: if this repository contains multiple .har harnesses, list them here
-     and pick by the files you are changing. Example:
-
-## Harnesses in this repo
-
-| Path | Runs | Use when changing |
-|------|------|-------------------|
-| `.har/` | backend + frontend | `src/`, `packages/` |
-| `apps/admin/.har/` | admin dashboard | `apps/admin/` |
-
-Run harness commands from the directory that owns the harness (e.g. `cd apps/admin`). -->
-
-## After making changes
-
-Prefer MCP → CLI → shell. Quick verify for the loop; **full verify before done**.
-
-- MCP: `har_run_verification` / `full: true`; finish with `har_complete_environment`
-  (propose; wait for approval) or `har_teardown_environment`
-- CLI: `har env verify 1`, `har env verify 1 --full`, `complete 1`, `teardown 1`
-- Shell: `./.har/verify.sh 1`, `./.har/verify.sh 1 --full`, `./.har/teardown.sh 1`
-
-Commit in the session worktree. Run JSON stays in the main checkout `.har/runs/`.
-UI changes with Playwright: update specs under `tests/` (full verify includes browser-e2e).
-
-## Definition of done
-
-- Full verify passes; edits only in the session worktree; tests cover new behavior;
-  changes committed; show preview URLs; then **session handoff** (below).
-
-## Session handoff (required)
-
-After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-<id>.json`), and preview URLs. Wait — never autonomously
-complete, teardown, push, or open a PR. **Default (1 is the default):** when
-`gh`/GitHub MCP is available, recommend **Complete + open a PR** — push → open
-PR → `har env complete` / `har_complete_environment` (branch kept). Still needs
-approval. Alternatives: **Complete only**, or **Something else**. Without PR
-tooling, recommend **Complete only** and give the session branch for a manual push.
-
-## Commit gate
-
-Full verify records a tree hash under `.har/validations/`. With `har hooks install`,
-commits must match a passing full verify. Re-verify after any edit; `git add -A`.
-Do not bypass (`--no-verify`, `HAR_SKIP_GATE=1`).
+This rule exists only to guarantee that instruction reaches every Cursor session;
+it deliberately does not restate the workflow, so there is one copy to keep current.

@@ -10,7 +10,7 @@ description: The safe lifecycle for parallel coding tasks.
 3. On the **main checkout**, switch to the branch you want as the session base
    (usually `main`) — every launch creates a worktree from that HEAD.
 4. Launch once and record the returned work directory.
-5. Read `.har/CLAUDE.agent.md` in that worktree for resolved URLs and the
+5. Read `.har/README.md` in that worktree for resolved URLs and the
    repository-specific definition of done.
 
 ```bash

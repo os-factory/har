@@ -127,4 +127,4 @@ squashed instead, the squash message must carry the `BREAKING CHANGE:` footer.
 - Never print a repo's remote URL (`git remote -v`) in logs — remotes can embed
   credentials.
 - One HAR slot per concurrent fork; occupied slots always block.
-- All the usual dogfood rules from `.har/CLAUDE.agent.md` apply.
+- All the usual dogfood rules from `.har/README.md` apply.

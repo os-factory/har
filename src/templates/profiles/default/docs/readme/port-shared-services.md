@@ -12,7 +12,7 @@
 | Mailpit | Per machine | `HARNESS_MAILPIT_*_PORT_DEFAULT` | Scan configured ranges |
 | Headless browser | Per machine | `HARNESS_BROWSER_PORT_DEFAULT` | Scan configured ranges |
 
-Resolved ports may differ from the formula when something else is already bound. Always use `./.har/agent-cli.sh <id>` or read `.har/slots/agent-<id>.json` — never hardcode `3010`, `15432`, etc. in app code or tests.
+Resolved ports may differ from the formula when something else is already bound. Always use `har env agent <id>` or read `.har/slots/agent-<id>.json` — never hardcode `3010`, `15432`, etc. in app code or tests.
 
 ### Shared vs per-slot
 
@@ -24,18 +24,18 @@ Resolved ports may differ from the formula when something else is already bound.
 | Primary application | One PM2 ecosystem per slot (isolated ports) | `HARNESS_PRIMARY_APP`, `ecosystem.agent.template.cjs` |
 | Internal supporting services | Shared across all slots | `docker-compose.agent.yml` or `ecosystem.shared.config.cjs` |
 
-Shared infra starts once via `./.har/setup-infra.sh` (also run automatically by `launch.sh`). Per-slot databases are cloned in `launch.sh`.
+Shared infra starts once via `har env setup-infra` (also run automatically by `har env launch`). Per-slot databases are cloned in `har env launch`.
 
 ### Do not
 
 - Hardcode default ports (`3000`, `15432`, `3847`, …) in application code, tests, or agent docs — read from `.env.agent.<id>`, `agent-cli.sh`, or the slot registry
-- Run raw `docker compose` for harness infrastructure — use `setup-infra.sh` / `launch.sh` so ports are scanned and persisted in `.har/state/infra.env`
+- Run raw `docker compose` for harness infrastructure — use `har env setup-infra` / `har env launch` so ports are scanned and persisted in `.har/state/infra.env`
 
 ### Primary app vs shared services
 
 Each slot runs **only the primary application** (`HARNESS_PRIMARY_APP` in `harness.env`) — the app agents modify. Everything else runs **once**, shared by all slots on fixed ports:
 
-- **External dependencies** (Postgres, Redis, mail, ...): services in `docker-compose.agent.yml`, enabled via the `HARNESS_INFRA_SERVICES` list in `harness.env`, started by `setup-infra.sh`.
-- **Internal supporting services** (other services of a monolith/monorepo the agent depends on but does not change): either compose services in `docker-compose.agent.yml`, or PM2 processes in an optional `.har/ecosystem.shared.config.cjs` (named `har-shared-<name>`, started by `setup-infra.sh`).
+- **External dependencies** (Postgres, Redis, mail, ...): services in `docker-compose.agent.yml`, enabled via the `HARNESS_INFRA_SERVICES` list in `harness.env`, started by `har env setup-infra`.
+- **Internal supporting services** (other services of a monolith/monorepo the agent depends on but does not change): either compose services in `docker-compose.agent.yml`, or PM2 processes in an optional `.har/ecosystem.shared.config.cjs` (named `har-shared-<name>`, started by `har env setup-infra`).
 
 Isolation still applies where it matters: each slot gets its own database (`agent_<id>`, cloned from the template DB), ports, and git worktree.

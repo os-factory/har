@@ -1,6 +1,6 @@
 ## Verification contract
 
-Steps in `verify.sh` are **project-specific examples** — adapt them to your stack.
+Steps in `har env verify` are **project-specific examples** — adapt them to your stack.
 The table describes each tier's intent, not a fixed command list.
 
 | Mode | Command | Typical steps |

@@ -27,7 +27,6 @@ const REQUIRED_FILES_DEFAULT = [
   'docker-compose.agent.yml',
   'env.template',
   'ecosystem.agent.template.cjs',
-  'CLAUDE.agent.md',
 ];
 
 const REQUIRED_FILES_CLI = REQUIRED_FILES_DEFAULT.filter(

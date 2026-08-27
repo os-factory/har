@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { copyDirRecursive } from '../utils/file-ops';
 import { info, success } from '../utils/logging';
-import { resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
 import { HARNESS_GITIGNORE_TEMPLATE, writeHarnessGitignore } from './gitignore-template';
 import { computeTemplateChecksums } from './drift';
@@ -33,24 +32,6 @@ export interface ScaffoldResult {
   harnessDir: string;
   projectName: string;
   bundles: string[];
-}
-
-/**
- * @deprecated CLAUDE.md is created by handleInstructionFiles when Claude is selected.
- * Kept for tests that assert the template still resolves.
- */
-export function scaffoldClaudeMd(repoPath: string, projectName: string, force: boolean): void {
-  const templatePath = resolveTemplateFile('CLAUDE.md.template');
-  if (!templatePath) return;
-
-  const dest = path.join(repoPath, 'CLAUDE.md');
-  if (fs.existsSync(dest) && !force) return;
-
-  const displayName = projectName.replace(/_/g, ' ');
-  const content = fs
-    .readFileSync(templatePath, 'utf8')
-    .replace(/__PROJECT_DISPLAY_NAME__/g, displayName);
-  fs.writeFileSync(dest, content);
 }
 
 /**
@@ -85,7 +66,7 @@ export function scaffoldHarnessBoilerplate(
     copyDirRecursive(bundleDir, harnessDir);
   }
 
-  // Assembled docs (#236): README.md / CLAUDE.agent.md are rendered from
+  // Assembled docs (#236): README.md is rendered from
   // shared sections + profile blocks, not copied from a bundle.
   for (const docName of Object.keys(profileManifest.docs)) {
     fs.writeFileSync(path.join(harnessDir, docName), renderProfileDoc(profile, docName));

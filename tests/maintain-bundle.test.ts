@@ -100,8 +100,8 @@ describe('maintain bundle', () => {
   it('maintainHarness builds bundle even when a required config file is missing', async () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-harness-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
-    // CLAUDE.agent.md is part of the required config surface (#235); shims are not.
-    fs.unlinkSync(path.join(repoPath, '.har', 'CLAUDE.agent.md'));
+    // README.md is part of the required config surface (#235/#301); shims are not.
+    fs.unlinkSync(path.join(repoPath, '.har', 'README.md'));
     fs.unlinkSync(path.join(repoPath, '.har', 'launch.sh'));
 
     const result = await maintainHarness({ repoPath, finalize: false });

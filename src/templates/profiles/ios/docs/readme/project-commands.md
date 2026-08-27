@@ -2,10 +2,10 @@
 
 Target **this slot's** simulator, never `booted` — another agent's device may also
 be booted. `HARNESS_IOS_DESTINATION` and `HARNESS_SIMULATOR_UDID` come from
-`.env.agent.${AGENT_ID}`.
+`.env.agent.<id>`.
 
 ```bash
-source .env.agent.${AGENT_ID}
+source .env.agent.<id>
 
 # Build
 xcodebuild build -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" CODE_SIGNING_ALLOWED=NO
@@ -14,8 +14,8 @@ xcodebuild build -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" CODE_SIGN
 xcodebuild test -scheme MyApp -destination "$HARNESS_IOS_DESTINATION"
 
 # Install and launch on this slot's device
-./.har/agent-cli.sh ${AGENT_ID} install path/to/MyApp.app
-./.har/agent-cli.sh ${AGENT_ID} launch-app
+har env agent <id> install path/to/MyApp.app
+har env agent <id> launch-app
 ```
 
 Adapt for your scheme — see `.har/harness.env`.

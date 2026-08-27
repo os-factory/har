@@ -3,7 +3,7 @@
 Adapt this section for the repository. A passing health check means the process
 is alive; it does not automatically mean an agent can use the app.
 
-- **Health**: `./.har/agent-cli.sh ${AGENT_ID} health`
+- **Health**: `har env agent <id> health`
 - **Agent-usable smoke**: document the login/API/UI workflow agents should try,
   or wire it into `HARNESS_READINESS_CMD` / full verify.
 - **Credentials/default data**: document any test users, tenants, projects, or

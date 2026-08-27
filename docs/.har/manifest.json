@@ -2,14 +2,13 @@
   "version": "1",
   "runtimeVersion": "1.0.0",
   "outputDir": ".har",
-  "createdAt": "2026-08-27T12:44:46.144Z",
-  "updatedAt": "2026-08-27T12:44:46.144Z",
-  "adaptationSummary": "Migrated attach.sh to the managed 1.0 shim and refreshed the harness README for the 1.0 surface (#297, #299)",
+  "createdAt": "2026-08-27T13:49:53.453Z",
+  "updatedAt": "2026-08-27T13:49:53.453Z",
+  "adaptationSummary": "Instruction surface collapsed to AGENTS.md (#301): CLAUDE.agent.md lifted into this README, CLAUDE.md is @AGENTS.md",
   "profile": "default",
   "fileChecksums": {
     ".gitignore": "3d63903a846622b1",
-    "CLAUDE.agent.md": "0ddc8fec8baba753",
-    "README.md": "58d394207804a0a5",
+    "README.md": "4744f0d918e05115",
     "STAGES.md": "20d2acc493f94095",
     "agent-cli.sh": "e3d19b19735e7833",
     "attach.sh": "aea3b8d9ab9f52d5",
@@ -51,7 +50,6 @@
     "harness.env": "3550d37d5464459d",
     "justfile": "e7c1048680a7a28c",
     "stages.json": "d8dbfe8458467f1f",
-    "README.md": "7efd324ac2eba9f7",
-    "CLAUDE.agent.md": "b6880710546295a8"
+    "README.md": "fc4cdedbe5404a4c"
   }
 }

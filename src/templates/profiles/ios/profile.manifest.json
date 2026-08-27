@@ -1,9 +1,15 @@
 {
   "id": "ios",
-  "description": "iOS — shared kernel + Xcode/Simulator overlay (simulator runtime lives in the package)",
+  "description": "iOS \u2014 shared kernel + Xcode/Simulator overlay (simulator runtime lives in the package)",
   "bundles": [
-    { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
-    { "id": "runtime-ios", "path": "har-boilerplate-ios" }
+    {
+      "id": "shared-kernel",
+      "path": "runtime-bundles/shared-kernel"
+    },
+    {
+      "id": "runtime-ios",
+      "path": "har-boilerplate-ios"
+    }
   ],
   "capabilities": {
     "processManager": "simulator",
@@ -45,21 +51,18 @@
       "intro",
       "what-s-in-here",
       "quick-start",
+      "environment",
       "user-flow-validation",
       "verification-contract",
+      "definition-of-done",
+      "readiness",
+      "project-commands",
+      "user-flow-validation-rocketsim",
       "configuration",
       "simulators",
       "port-shared-services-ios-profile",
+      "do-not",
       "session-lifecycle"
-    ],
-    "CLAUDE.agent.md": [
-      "intro",
-      "environment",
-      "readiness",
-      "definition-of-done",
-      "project-commands",
-      "user-flow-validation-rocketsim",
-      "do-not"
     ]
   }
 }

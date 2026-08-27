@@ -11,7 +11,7 @@
 | `hooks/` | Optional lifecycle hooks (`pre-launch.sh`, `post-launch.sh`, `pre-verify.sh`, `pre-teardown.sh`, `post-teardown.sh`) |
 | `plugins/` | Optional local plugins (`har plugin create <id>`) |
 | `docker-compose.agent.yml` | Optional shared backend services |
-| `CLAUDE.agent.md` | Detailed instructions for coding agents |
+| `.har/README.md` | Detailed instructions for coding agents |
 | `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
@@ -19,7 +19,7 @@
 
 | File | Purpose |
 |------|---------|
-| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
+| `har env launch` / `har env verify` / `har env teardown` / `har env setup-infra` / `preflight.sh` / `agent-cli.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
 | `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
 | `runs/` | Run history from every entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
 | `artifacts/` | Stage outputs: test results, screenshots, logs |

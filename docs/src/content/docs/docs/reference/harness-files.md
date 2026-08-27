@@ -25,7 +25,7 @@ records your adaptations and `har env maintain` preserves them across upgrades
 | `.har/docker-compose.agent.yml` | Optional shared Docker services |
 | `.har/README.md` | Human index and adapted operating guide |
 | `.har/STAGES.md` | Stage registry, script-contract, and verification guide |
-| `.har/CLAUDE.agent.md` | Detailed coding-agent workflow and definition of done |
+
 | `.har/justfile` | Optional `just` shortcuts |
 
 ## Generated shims and managed files

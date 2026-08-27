@@ -20,7 +20,6 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `hooks/` | Optional lifecycle hooks (`pre-launch.sh`, `post-launch.sh`, `pre-verify.sh`, `pre-teardown.sh`, `post-teardown.sh`) |
 | `plugins/` | Optional local plugins (`har plugin create <id>`) |
 | `docker-compose.agent.yml` | Shared infrastructure containers (services listed in `HARNESS_INFRA_SERVICES`) |
-| `CLAUDE.agent.md` | Detailed instructions for coding agents |
 | `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
@@ -53,15 +52,9 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
 
-**Shell shims** (identical behavior and run records; handy with no CLI installed):
-
-```bash
-./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
-./.har/launch.sh 1
-./.har/verify.sh 1             # quick: typecheck + build + docs check/build
-./.har/verify.sh 1 --full      # + unit tests, lint, docs-drift
-./.har/teardown.sh 1
-```
+`./.har/*.sh` exist as compatibility shims over the same runtime — generated,
+never edited, and not the way to drive the harness. Take explicit ownership of
+them with `har env eject`.
 
 Read **`stages.json`** and **`verificationStages`**. Browser E2E (Playwright) lives in [`control/.har/`](../control/.har/) — not this CLI harness.
 
@@ -76,7 +69,7 @@ Steps in `verify.sh` are adapted for **@osfactory/har** — typecheck, build, do
 
 This CLI harness has no runtime server — full verify is static analysis and tests only. A slot is **agent usable** when typecheck, build, docs check/build, unit tests, lint, and `docs-drift` pass. Mission Control dogfooding uses `control/.har/`; the docs site uses `docs/.har/`.
 
-Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when working in the repo root.
+Use `har env launch 1 --no-worktree` only when working in the repo root.
 
 ## Run history
 
@@ -88,11 +81,11 @@ With worktree slots, tests run in the worktree; run JSON lives in the main repo.
 
 ## For coding agents
 
-**Start here:** read [`AGENTS.md`](../AGENTS.md) at the repo root for a short pointer, then [`.har/CLAUDE.agent.md`](./CLAUDE.agent.md) for full instructions.
+**Start here:** read [`AGENTS.md`](../AGENTS.md) at the repo root for the workflow, then this file for the harness detail.
 
 Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.har/*.sh` only when the CLI is not installed.
 
-Work in the isolated git worktree created by launch. Use `./.har/agent-cli.sh <id> exec ...` to run ad-hoc project commands in that work dir.
+Work in the isolated git worktree created by launch. Use `har env agent <id> exec ...` to run ad-hoc project commands in that work dir.
 
 When the project needs Postgres, Redis, or similar, add the service to `docker-compose.agent.yml`, list it in `HARNESS_INFRA_SERVICES` in `harness.env`, and use `setup-infra.sh` — never run raw `docker compose` for shared infra.
 
@@ -120,6 +113,84 @@ This profile has **no PM2 app ports** — agents run project commands directly i
 
 - Hardcode `15432` or other default infra ports in tests — read `AGENT_DB_PORT` from `.env.agent.<id>` or `har_pg`
 - Run raw `docker compose` for harness infrastructure — use `setup-infra.sh`
+
+## Environment
+
+| | |
+|--|--|
+| **Agent ID** | <id> |
+| **Work dir** | Fresh session worktree per launch — see launch output or `.har/slots/agent-<id>.json` |
+| **Infra** | None for this repo (`HARNESS_INFRA_SERVICES` is empty) |
+
+**Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. An occupied slot always blocks a new launch — run `har env teardown <id>` (or `complete <id>`) first, then launch again.
+
+```bash
+har env agent <id> status
+har env agent <id> url
+```
+
+## Readiness / agent usable
+
+This CLI harness has **no runtime server** — agents validate through static analysis and tests. A slot is **agent usable** when:
+
+- The worktree has Node deps (root + `docs/`) from toolchain provisioning (`HARNESS_ECOSYSTEM` / `HARNESS_INSTALL_CMD`) and `.har/hooks/post-launch.sh`
+- Quick verify passes: typecheck, build, docs check/build
+- Full verify also passes unit tests, lint, and `docs-drift`
+
+No `HARNESS_READINESS_CMD` is configured. Infra is unused (`HARNESS_INFRA_SERVICES` is empty).
+
+For Mission Control (Next.js + SQLite) or the docs site (Astro), launch `control/.har/` or `docs/.har/` instead.
+
+## Definition of done
+
+- [ ] Full verification returns `"status": "pass"` (`har env verify <id> --full`, MCP `har_run_verification` with `full: true`, or `har env verify <id> --full`)
+- [ ] The slot is agent-usable: typecheck, build, docs check/build, unit tests, lint, and `docs-drift` all pass
+- [ ] Full verify runs every registered stage in `stages.json` `verificationStages` (`docs-drift`)
+- [ ] New behavior has automated test coverage
+- [ ] Changes committed **in the session worktree** with a clear message
+- [ ] Present session handoff (summary, branch, preview URLs) and **wait for user** before `complete`, push, or PR
+- [ ] On user approval of the default: push + open PR (when `gh`/GitHub MCP available), then `har env complete <id>` (or MCP `har_complete_environment`) — full verify + validation + teardown, branch kept
+
+### Session handoff
+
+After full verify and commit, stop and propose next steps. Never autonomously run
+`complete`, `teardown`, `git push`, or open a PR. **Default recommendation:** when
+`gh` or GitHub MCP is available, complete the slot **and** open a PR (push → PR →
+`har env complete` / `har_complete_environment`). Offer complete-only or something
+else as alternatives. If PR tooling is unavailable, recommend complete and report
+the session branch for a manual push. Prefer `complete` over bare `teardown` when
+the work succeeded. See `.cursor/rules/har-workflow.mdc` for the handoff shape.
+
+Quick loop: MCP `har_run_verification`, `har env verify <id>`, or `har env verify <id>`
+
+Stages are the harness's single vocabulary for checks — interact through the registry (`har_run_stage`, `verify`), not stack-specific tooling. Authoring guide: `.har/STAGES.md`.
+
+## Project commands
+
+Run in the session work dir (or via `har env agent <id> exec`):
+
+```bash
+har env agent <id> exec npm test
+har env agent <id> exec npm run typecheck
+har env agent <id> exec npm run build
+har env agent <id> exec sh -c 'cd docs && npm run check'
+har env agent <id> exec sh -c 'cd docs && npm run drift'
+```
+
+Harness control-plane commands (MCP / `har env`) target the main repo checkout; project commands run in your work dir.
+
+After changing `src/templates/`: `npm run build`, then test with a linked `har` install or `har env init --force --profile cli` on a fixture.
+
+## Do not
+
+- Work around a failing harness command with ad-hoc setup — fix the harness or report the failure
+- Edit `.env.agent.<id>` by hand
+- Edit the main checkout — all edits go under the session work dir
+- Run ad-hoc `npm test` from the repo root — use MCP/`har env verify` or `har env agent <id> exec`
+
+## Architecture notes
+
+See `AGENTS.md` for layer boundaries (`cli/` → `core/` → `harness/`). Put template changes in `src/templates/` and run `npm run build` before testing a linked `har` install.
 
 ## Maintaining this harness
 

@@ -29,8 +29,9 @@ describe('iOS verification stage code signing', () => {
     expect(unitTests).not.toContain('CODE_SIGNING');
   });
 
-  it('keeps the agent doc xcodebuild examples in step with the stage commands', () => {
-    const doc = renderProfileDoc('ios', 'CLAUDE.agent.md');
+  it('keeps the harness doc xcodebuild examples in step with the stage commands', () => {
+    // #301: the agent doc is retired; its project-commands section composes into README.md.
+    const doc = renderProfileDoc('ios', 'README.md');
     const examples = doc.split('\n').filter((line) => line.startsWith('xcodebuild '));
     const build = examples.filter((line) => line.includes('xcodebuild build'));
     const test = examples.filter((line) => line.includes('xcodebuild test'));
