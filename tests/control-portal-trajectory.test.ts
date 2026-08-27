@@ -60,6 +60,7 @@ jest.mock('../src/core/portal-targets', () => {
 jest.mock('../src/core/telemetry-config', () => ({
   isTelemetryEnabled: jest.fn(() => true),
   isPortalTrajectoryEnabled: jest.fn(() => true),
+  getTelemetrySignals: jest.fn(() => ({ metrics: true, logs: true, prompts: true, traces: true })),
   readTelemetryPreference: jest.fn(() => ({
     enabled: true,
     signals: { metrics: true, logs: true, prompts: true, traces: true },
