@@ -1,0 +1,161 @@
+{
+  "contractVersion": 1,
+  "id": "v1-milestone",
+  "title": "HAR v1.0.0 milestone line",
+  "description": "Execute one milestone of the HAR 1.0.0 refactor: wave of parallel subagents, one issue per isolated slot, stacked PRs onto v1, fixture-e2e gate, human handoff. Instance of the factory-line template — not the primitive.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    },
+    {
+      "id": "v1-milestone",
+      "role": "station",
+      "install": "repo:.claude/skills/v1-milestone"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "github",
+      "why": "Epic #225 and sub-issues are the traveler; PRs are how stations land on v1.",
+      "required": true
+    }
+  ],
+  "plugins": ["playwright"],
+  "stations": [
+    {
+      "id": "M0",
+      "title": "Foundations + 0.x patches",
+      "description": "Bundle composition, double-truths, surface bugs, single-source helpers. Plus triaged 0.x bugs.",
+      "work": {
+        "source": "github",
+        "ids": ["226", "227", "228", "229", "196", "197", "198", "195"],
+        "optional": false
+      },
+      "waves": [
+        [
+          { "workId": "228" },
+          { "workId": "196" },
+          { "workId": "197" },
+          { "workId": "198" },
+          { "workId": "195" }
+        ],
+        [{ "workId": "226" }],
+        [{ "workId": "227" }, { "workId": "229" }]
+      ]
+    },
+    {
+      "id": "M1",
+      "title": "Contract",
+      "description": "Schema'd harness.env, verification-as-data, doctor, CLI/MCP parity.",
+      "work": {
+        "source": "github",
+        "ids": ["230", "231", "232", "233"],
+        "optional": false
+      },
+      "waves": [
+        [{ "workId": "230" }, { "workId": "233" }],
+        [{ "workId": "231" }],
+        [{ "workId": "232" }]
+      ]
+    },
+    {
+      "id": "M2",
+      "title": "Runtime into the package",
+      "description": "TS runtime, shims, profiles as data. #234 splits into module forks plus one integration fork.",
+      "work": {
+        "source": "github",
+        "ids": ["234", "235", "236"],
+        "optional": false
+      },
+      "waves": [
+        [
+          { "workId": "234", "title": "ports/preflight fork" },
+          { "workId": "234", "title": "worktree+launch fork" },
+          { "workId": "234", "title": "provisioning fork" },
+          { "workId": "234", "title": "infra fork" },
+          { "workId": "234", "title": "slot-registry fork" },
+          { "workId": "234", "title": "integration fork" }
+        ],
+        [{ "workId": "235" }, { "workId": "236" }]
+      ]
+    },
+    {
+      "id": "M3",
+      "title": "Adaptation & extensibility",
+      "description": "Two-signal drift, hooks, eject, local plugins.",
+      "work": {
+        "source": "github",
+        "ids": ["237", "238", "239", "240"],
+        "optional": false
+      },
+      "waves": [
+        [
+          { "workId": "237" },
+          { "workId": "238" },
+          { "workId": "239" },
+          { "workId": "240" }
+        ],
+        [{ "workId": "237", "title": "integration pass" }]
+      ]
+    },
+    {
+      "id": "M4",
+      "title": "Migration & docs",
+      "description": "Versioned migrations + docs rewrite.",
+      "work": {
+        "source": "github",
+        "ids": ["241", "243"],
+        "optional": false
+      },
+      "waves": [[{ "workId": "241" }, { "workId": "243" }]]
+    },
+    {
+      "id": "M5",
+      "title": "Release gate",
+      "description": "Dogfood the three harnesses, then the v1 → main release PR. Sequential; ends in handoff for the 1.0.0 decision.",
+      "work": {
+        "source": "github",
+        "ids": ["242"],
+        "optional": false
+      }
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": "HAR_FIXTURE_E2E",
+    "stages": [
+      {
+        "id": "fixture-e2e",
+        "fromStation": "M0",
+        "tier": "full",
+        "note": "Prototype lives in .har/stages/fixture-e2e.sh. Product intent: every later station still runs earlier asserts. The bash case is a per-milestone arm approximation — Phase 2 should tag stages, not copy the case. Two modes: adapted car-app harness + fresh env init. Fixture source is never modified; remotes scrubbed."
+      }
+    ]
+  },
+  "extraStages": [
+    {
+      "id": "fixture-e2e",
+      "kind": "test",
+      "tier": "full",
+      "description": "Built CLI vs a clone of a real default-profile repo (Playwright). Opt-in via HAR_FIXTURE_E2E=1."
+    }
+  ],
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "Antoine's review. 1.0.0 is cut only by the M5 v1 → main PR he approves — merge commit, not squash, so semantic-release reads feat!:/feat:/fix: commits."
+  },
+  "traveler": {
+    "kind": "github-issue-comment",
+    "ref": "225",
+    "note": "This repo squash-merges, which drops per-commit BREAKING CHANGE: footers. The ledger comment on #225 is the durable record. Report progress as issue comments and epic checkboxes — do not duplicate the plan into files."
+  },
+  "prototypeNotes": [
+    "GitHub issues are this line's work source, not the definition of a station.",
+    "Stacked PRs onto a long-lived v1 branch are how this repo resolved file conflicts. Other lines may not PR at all.",
+    "car-app as the fixture and HAR_FIXTURE_MILESTONE=M0..M5 are this gate's jig, not a required fixture.",
+    "One issue ≈ one PR ≈ one slot was a good default for #225; do not treat it as a law.",
+    "The bash milestone_asserts case is the working prototype of the ratchet, not the product schema."
+  ]
+}

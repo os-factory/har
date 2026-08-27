@@ -5,6 +5,12 @@ description: Factory line for adding a new HAR verification plugin (like playwri
 
 # New HAR plugin factory line
 
+> **Instance of the [factory-line](../factory-line/SKILL.md) template.**
+> Program data: [`new-plugin.line.json`](../factory-line/examples/new-plugin.line.json).
+> Stations here are sequential phases, not GitHub issues. The product is a
+> plugin, not a runtime migration — that is why this line exists as a second
+> instance.
+
 Ship a new verification plugin `<id>` for framework `<framework>` end-to-end:
 research → template → registration → local validation → real-repo validation → PR.
 
