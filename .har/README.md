@@ -8,33 +8,41 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 
 ## What's in here
 
+**Yours — the configuration surface** (edit freely; drift tracking records adaptations):
+
 | File | Purpose |
 |------|---------|
 | `README.md` | This file — index of the harness |
-| `manifest.json` | Generator metadata (version, profile, checksums) — do not edit |
-| `harness.env` | Shared config: worktree default, `HARNESS_INFRA_SERVICES`, toolchain provisioning (`HARNESS_ECOSYSTEM`, `HARNESS_INSTALL_CMD`), migrate/seed commands |
-| `stages.json` | Machine-readable registry of runnable harness stages |
-| `stages/` | Optional custom stage scripts registered from `stages.json` |
+| `harness.env` | Schema-validated config: worktree default, `HARNESS_INFRA_SERVICES`, toolchain provisioning (`HARNESS_ECOSYSTEM`, `HARNESS_INSTALL_CMD`), migrate/seed commands |
+| `stages.json` | Registered stages, verification tiers, artifacts, slot limits, gate policy |
+| `stages/` | Project-owned stage scripts registered from `stages.json` |
 | `stages/fixture-e2e.sh` | v1.0.0 milestone gate — built CLI vs a car-app fixture clone (opt-in via `HAR_FIXTURE_E2E=1`; see `.claude/skills/v1-milestone/`) |
-| `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
-| `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
-| `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
-| `setup-infra.sh` | Start optional Docker Compose stack + template database |
-| `launch.sh` | Launch one agent slot (git worktree by default, toolchain provisioning, env file) |
-| `provision-toolchain.sh` | Install deps (root + `docs/`) and write toolchain paths (`NODE_BIN`, `NPM_BIN`, …) to `.env.agent.<id>` |
-| `verify.sh` | Verification pipeline (quick: typecheck/build/docs; --full adds tests, lint, docs-drift) |
-| `preflight.sh` | Occupied-slot gate before launch |
-| `teardown.sh` | Tear down one agent slot (worktree + env file) |
-| `agent-cli.sh` | Inspect slot status, run commands in the work dir |
+| `hooks/` | Optional lifecycle hooks (`pre-launch.sh`, `post-launch.sh`, `pre-verify.sh`, `pre-teardown.sh`, `post-teardown.sh`) |
+| `plugins/` | Optional local plugins (`har plugin create <id>`) |
 | `docker-compose.agent.yml` | Shared infrastructure containers (services listed in `HARNESS_INFRA_SERVICES`) |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
+| `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
-No PM2 or `ecosystem.agent.template.cjs` in this profile — agents run project commands directly in their worktree.
+**Generated shims and state** (don't edit — `har env eject` for full ownership):
+
+| File | Purpose |
+|------|---------|
+| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
+| `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
+| `runs/` | Run history from **every** entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
+| `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
+
+Since 1.0 the runtime lives in the `@osfactory/har` package, not here — there is no
+`agent-slot.sh`, `provision-toolchain.sh`, `simulator.sh`, or `lib/`. Toolchain
+provisioning is config (`HARNESS_ECOSYSTEM`, `HARNESS_INSTALL_CMD`) plus
+`hooks/post-launch.sh`.
+
+No PM2, `attach.sh`, or `ecosystem.agent.template.cjs` in this profile — agents run project commands directly in their worktree.
 
 ## Quick start
 
-**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+**har CLI or MCP** (structured output, tracker binding):
 
 ```bash
 har env launch 1
@@ -45,7 +53,7 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
 
-**Shell fallback** (no CLI/MCP installed):
+**Shell shims** (identical behavior and run records; handy with no CLI installed):
 
 ```bash
 ./.har/setup-infra.sh          # when HARNESS_INFRA_SERVICES is non-empty
@@ -72,10 +80,9 @@ Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only 
 
 ## Run history
 
-| Entry point | Writes `.har/runs/`? |
-|-------------|------------------------|
-| `./.har/*.sh` | No |
-| `har env …` / MCP | Yes — main checkout `.har/runs/YYYY-MM-DD/` |
+Every entry point — `./.har/*.sh`, `har env …`, MCP — runs the same packaged
+runtime and writes the same records under the main checkout
+`.har/runs/YYYY-MM-DD/`. The shims delegate; they do not record less.
 
 With worktree slots, tests run in the worktree; run JSON lives in the main repo. See `workDir` in each record.
 

@@ -14,7 +14,7 @@ import {
 } from './manifest';
 import type { HarnessProfile } from './profiles';
 import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
-import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
+import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 import { computeTemplateChecksums } from './drift';
 import { readStageRegistry, writeStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
@@ -206,7 +206,7 @@ export function isPre10Harness(repoPath: string): boolean {
   for (const file of LEGACY_MACHINERY_FILES) {
     if (fs.existsSync(path.join(harnessDir, file))) return true;
   }
-  for (const script of RUNTIME_SHIM_FILES) {
+  for (const script of MANAGED_SHIM_FILES) {
     if (scriptIsVendored(harnessDir, script)) return true;
   }
   const envPath = path.join(harnessDir, 'harness.env');
@@ -387,7 +387,7 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
   const replaceWithShims: string[] = [];
   const residue: MigrationResidueItem[] = [];
 
-  for (const script of RUNTIME_SHIM_FILES) {
+  for (const script of MANAGED_SHIM_FILES) {
     if (!composed.has(script)) continue;
     if (!scriptIsVendored(harnessDir, script) && fs.existsSync(path.join(harnessDir, script))) {
       continue; // already a shim (or ejected — excluded upstream)
@@ -410,6 +410,8 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
   }
 
   // User-owned scripts that survive migration and may source machinery.
+  // Anything the migration is about to overwrite with a shim does NOT survive,
+  // so it must not retain machinery on its own behalf.
   const survivingScripts: string[] = [];
   for (const dir of ['stages', 'hooks']) {
     const full = path.join(harnessDir, dir);
@@ -417,6 +419,17 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
     for (const entry of fs.readdirSync(full)) {
       if (entry.endsWith('.sh') || entry.endsWith('.mjs')) survivingScripts.push(path.join(dir, entry));
     }
+  }
+  // Scripts sitting at the harness root count too (#297): a vendored attach.sh
+  // sourcing agent-slot.sh was invisible here, so the migration happily deleted
+  // the file it depended on. Only unmanaged leftovers reach this list — managed
+  // shims are regenerated, not preserved.
+  for (const entry of fs.readdirSync(harnessDir)) {
+    if (!entry.endsWith('.sh')) continue;
+    if ((MANAGED_SHIM_FILES as readonly string[]).includes(entry)) continue;
+    if ((LEGACY_MACHINERY_FILES as readonly string[]).includes(entry)) continue;
+    if (!fs.statSync(path.join(harnessDir, entry)).isFile()) continue;
+    survivingScripts.push(entry);
   }
   // A machinery file counts as referenced only when a surviving script actually
   // loads or runs it (source/./bash/exec…) — a bare mention of the name (a log
@@ -500,7 +513,7 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
   // forever and default stages that need them are silently skipped.
   const installMissing: string[] = [];
   for (const file of composed.keys()) {
-    if ((RUNTIME_SHIM_FILES as readonly string[]).includes(file)) continue;
+    if ((MANAGED_SHIM_FILES as readonly string[]).includes(file)) continue;
     // gitignore.template is generator input (installed as .gitignore), not a
     // harness file itself.
     if (file === 'gitignore.template') continue;

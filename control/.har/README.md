@@ -8,33 +8,39 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 
 ## What's in here
 
+**Yours — the configuration surface** (edit freely; drift tracking records adaptations):
+
 | File | Purpose |
 |------|---------|
 | `README.md` | This file — index of the harness |
-| `manifest.json` | Generator metadata (version, checksums) — do not edit |
-| `harness.env` | Shared config: primary app, ports, agent slot limits, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
-| `stages.json` | Machine-readable registry of runnable harness stages |
-| `stages/` | Optional custom stage scripts registered from `stages.json` |
-| `runs/` | Run history from `har env` / MCP only — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignore) |
-| `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
-| `agent-slot.sh` | Shared agent-id validation (reads limits from `harness.env`) |
-| `setup-infra.sh` | Start optional shared Docker infra (unused — Mission Control uses embedded SQLite) |
-| `launch.sh` | Launch one agent slot (worktree, toolchain, PM2 processes) |
-| `provision-toolchain.sh` | Install deps (`control/`, monorepo root, `@har/schemas`) and write `NODE_BIN` / `NPM_BIN` to `.env.agent.<id>` |
-| `verify.sh` | Verification pipeline (typecheck, tests, health) |
-| `teardown.sh` | Tear down one agent slot |
-| `agent-cli.sh` | Manage a running agent (status, logs, sqlite, health) |
-| `attach.sh` | Attach to agent tmux session |
-| `env.template` | Per-agent env vars (expanded by `launch.sh`) |
-| `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded by `launch.sh`) |
-| `ecosystem.shared.config.cjs` | Optional — shared app services started once by `setup-infra.sh` (not used by Control today) |
+| `harness.env` | Schema-validated config: primary app, ports, agent slot limits, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
+| `stages.json` | Registered stages, verification tiers, artifacts, slot limits, gate policy |
+| `stages/` | Project-owned stage scripts (`api-health.sh`, `browser-e2e.sh`, `docker-build.sh`, `readiness.sh`) |
+| `hooks/` | Lifecycle hooks — `pre-teardown.sh` drops the slot's SQLite store |
+| `plugins/` | Optional local plugins (`har plugin create <id>`) |
+| `env.template` | Per-agent env vars (expanded into `.env.agent.<id>` at launch) |
+| `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded at launch) |
 | `docker-compose.agent.yml` | Empty stub — no shared Docker services (SQLite per slot) |
 | `CLAUDE.agent.md` | Detailed instructions for coding agents |
+| `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
+
+**Generated shims and state** (don't edit — `har env eject` for full ownership):
+
+| File | Purpose |
+|------|---------|
+| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` / `attach.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
+| `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
+| `runs/` | Run history from **every** entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
+| `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
+
+Since 1.0 the runtime lives in the `@osfactory/har` package, not here — there is no
+`agent-slot.sh`, `provision-toolchain.sh`, or `lib/`. Toolchain provisioning is
+config (`HARNESS_ECOSYSTEM`, `HARNESS_INSTALL_CMD`); per-slot cleanup is a hook.
 
 ## Quick start
 
-**Preferred — har CLI or MCP** (persists run history under `.har/runs/`):
+**har CLI or MCP** (structured output, tracker binding):
 
 ```bash
 cd control
@@ -46,7 +52,7 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment` (run from `control/` or point MCP at this harness).
 
-**Shell fallback** (no CLI/MCP installed):
+**Shell shims** (identical behavior and run records; handy with no CLI installed):
 
 ```bash
 cd control
@@ -71,10 +77,9 @@ The `docker-build` stage builds `control/Dockerfile` against the session worktre
 
 ## Run history
 
-| Entry point | Writes `.har/runs/`? |
-|-------------|------------------------|
-| `./.har/*.sh` | No — same scripts, no run record |
-| `har env …` / MCP | Yes — under main checkout `control/.har/runs/YYYY-MM-DD/` |
+Every entry point — `./.har/*.sh`, `har env …`, MCP — runs the same packaged
+runtime and writes the same records under the main checkout
+`control/.har/runs/YYYY-MM-DD/`. The shims delegate; they do not record less.
 
 With git worktree slots, verification runs code in the worktree but run JSON stays in the main repo `.har/runs/`. Each record includes `workDir` when a slot is active.
 
@@ -84,7 +89,7 @@ With git worktree slots, verification runs code in the worktree but run JSON sta
 2. Read this file and `stages.json`
 3. After `launch`, read `.har/CLAUDE.agent.md` for slot URLs and definition of done
 
-Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.har/*.sh` only when the CLI is not installed.
+Prefer HAR MCP tools or `har env …` for launch, verify, and teardown — richer output, not richer records. The `./.har/*.sh` shims are equivalent.
 
 Always use `./.har/agent-cli.sh <id> ...` — never hardcoded ports.
 

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { compareHarnessToTemplate } from '../src/harness/drift';
-import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from '../src/harness/template-tokens';
+import { MANAGED_SHIM_FILES, substituteTemplateTokens } from '../src/harness/template-tokens';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 import {
   composeProfileTemplateMap,
@@ -61,7 +61,7 @@ describe('profile bundle composition', () => {
         let expected = readComposedTemplateContent(entry);
         if (
           entry.relPath === 'harness.env' ||
-          (RUNTIME_SHIM_FILES as readonly string[]).includes(entry.relPath)
+          (MANAGED_SHIM_FILES as readonly string[]).includes(entry.relPath)
         ) {
           expected = substituteTemplateTokens(expected, projectName);
         }

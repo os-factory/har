@@ -121,12 +121,61 @@ describe('template runtime shims (#234/#235)', () => {
     }
   });
 
-  it('pm2 attach.sh delegates to har env agent attach', () => {
+  // #298: the floor used to compare only the major, so every 0.x binary
+  // passed it — including a pre-1.0 har that would exec straight back into
+  // this shim. Run the real bash so the comparison is tested, not its shape.
+  describe('har_runtime_compatible version floor (#298)', () => {
+    /** Extract the rendered function and ask bash whether `reported` clears `pinned`. */
+    const accepts = (pinned: string, reported: string): boolean => {
+      const shim = fs.readFileSync(path.join(kernel, 'launch.sh'), 'utf8');
+      const fn = shim.match(/^har_runtime_compatible\(\) \{[\s\S]*?^\}$/m);
+      expect(fn).not.toBeNull();
+      const script = [
+        'set -uo pipefail',
+        fn![0].replace(/__HAR_VERSION__/g, pinned),
+        `fake() { printf '%s\\n' "${reported}"; }`,
+        'har_runtime_compatible fake && echo YES || echo NO',
+      ].join('\n');
+      const out = spawnSync('bash', ['-c', script], { encoding: 'utf8' });
+      expect(out.status).toBe(0);
+      return out.stdout.trim().endsWith('YES');
+    };
+
+    it.each([
+      ['1.0.0', '1.0.0', true],
+      ['1.0.0', '1.0.1', true],
+      ['1.0.0', '1.2.0', true],
+      ['1.0.0', '2.0.0', true],
+      ['1.0.0', 'v1.0.0', true],
+      // The regression: a pre-1.0 binary must not clear a 1.0 floor.
+      ['1.0.0', '0.64.1', false],
+      ['1.0.0', '0.99.99', false],
+      // Same major still ordered correctly.
+      ['0.64.1', '0.64.0', false],
+      ['0.64.1', '0.64.2', true],
+      // Unparseable output is unusable, never "compatible".
+      ['1.0.0', '', false],
+      ['1.0.0', 'har version unknown', false],
+    ])('pinned %s vs reported %s -> %s', (pinned, reported, expected) => {
+      expect(accepts(pinned as string, reported as string)).toBe(expected);
+    });
+  });
+
+  // attach.sh is a managed shim like the other six (#297) — same guard, same
+  // version floor, same pinned npx fallback. It delegates through `$1` rather
+  // than a named var so `har env eject` can lift the exec line verbatim.
+  it('pm2 attach.sh is a full managed shim, not a bare delegate', () => {
     const content = fs.readFileSync(
       path.join(templates, 'runtime-bundles', 'pm2-runtime', 'attach.sh'),
       'utf8',
     );
-    expect(content).toContain('har env agent "$AGENT_ID" attach');
+    expect(content).toContain('exec har env agent "${1:?Usage: attach.sh <agent-id>}" attach');
+    expect(content).toContain('HAR_SHIM_GUARD="attach@${REPO_ROOT}"');
+    expect(content).toContain('har_runtime_compatible');
+    expect(content).toContain('exit 86');
+    expect(content).toContain('npx --yes @osfactory/har@__HAR_VERSION__');
+    // It must never source the retired runtime bash it used to depend on.
+    expect(content).not.toContain('agent-slot.sh');
     expect(content).not.toContain('node -e');
   });
 });

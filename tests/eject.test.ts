@@ -12,7 +12,7 @@ import {
 } from '../src/harness/eject';
 import { scaffoldHarnessBoilerplate } from '../src/harness/generator';
 import { readManifest } from '../src/harness/manifest';
-import { RUNTIME_SHIM_FILES } from '../src/harness/template-tokens';
+import { MANAGED_SHIM_FILES } from '../src/harness/template-tokens';
 
 /**
  * #239 acceptance: ejecting is a deliberate, recorded, reversible choice.
@@ -48,8 +48,8 @@ describe('har env eject / adopt (#239)', () => {
     expect(fs.existsSync(har(EJECTED_RUNTIME_DIR, EJECTED_RUNTIME_BUNDLE))).toBe(true);
     expect(fs.existsSync(har(EJECTED_RUNTIME_DIR, 'README.md'))).toBe(true);
 
-    expect(result.scripts.sort()).toEqual([...RUNTIME_SHIM_FILES].sort());
-    for (const shim of RUNTIME_SHIM_FILES) {
+    expect(result.scripts.sort()).toEqual([...MANAGED_SHIM_FILES].sort());
+    for (const shim of MANAGED_SHIM_FILES) {
       const content = fs.readFileSync(har(shim), 'utf8');
       expect(content).toContain(`runtime/${EJECTED_RUNTIME_BUNDLE}`);
       expect(content).toContain('EJECTED runtime');
@@ -79,8 +79,8 @@ describe('har env eject / adopt (#239)', () => {
     fs.appendFileSync(har('launch.sh'), '\n# my custom pre-launch tweak\n');
 
     const drift = compareHarnessToTemplate(proj());
-    expect(drift.ownedByUser.sort()).toEqual([...RUNTIME_SHIM_FILES].sort());
-    for (const shim of RUNTIME_SHIM_FILES) {
+    expect(drift.ownedByUser.sort()).toEqual([...MANAGED_SHIM_FILES].sort());
+    for (const shim of MANAGED_SHIM_FILES) {
       expect(drift.userAdapted).not.toContain(shim);
       expect(drift.upstreamUpdated).not.toContain(shim);
       expect(drift.conflict).not.toContain(shim);
@@ -141,9 +141,9 @@ describe('har env eject / adopt (#239)', () => {
     ejectHarness(proj());
     const result = adoptHarness(proj());
 
-    expect(result.scripts.sort()).toEqual([...RUNTIME_SHIM_FILES].sort());
+    expect(result.scripts.sort()).toEqual([...MANAGED_SHIM_FILES].sort());
     expect(fs.existsSync(har(EJECTED_RUNTIME_DIR))).toBe(false);
-    for (const shim of RUNTIME_SHIM_FILES) {
+    for (const shim of MANAGED_SHIM_FILES) {
       const content = fs.readFileSync(har(shim), 'utf8');
       expect(content).toContain('exec har env');
       expect(content).toContain(`npx --yes @osfactory/har@${getHarPackageVersion()}`);
@@ -159,7 +159,7 @@ describe('har env eject / adopt (#239)', () => {
 
     const drift = compareHarnessToTemplate(proj());
     expect(drift.ownedByUser).toEqual([]);
-    for (const shim of RUNTIME_SHIM_FILES) {
+    for (const shim of MANAGED_SHIM_FILES) {
       expect(drift.userAdapted).not.toContain(shim);
       expect(drift.upstreamUpdated).not.toContain(shim);
       expect(drift.conflict).not.toContain(shim);

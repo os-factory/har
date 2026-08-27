@@ -59,6 +59,11 @@ describe('versioned harness migrations (#241)', () => {
     );
     fs.writeFileSync(har('verify.sh'), '#!/usr/bin/env bash\n# vendored verify pipeline\nrun_quick_smoke\n');
     fs.writeFileSync(har('agent-slot.sh'), '#!/usr/bin/env bash\necho slot machinery\n');
+    // The default profile ships attach.sh, and pre-1.0 it sourced agent-slot.sh (#297).
+    fs.writeFileSync(
+      har('attach.sh'),
+      '#!/usr/bin/env bash\nsource "$SCRIPT_DIR/harness.env"\nsource "$SCRIPT_DIR/agent-slot.sh"\nexec tmux attach -t "$(har_tmux_session "$1")"\n',
+    );
     fs.writeFileSync(har('provision-toolchain.sh'), '#!/usr/bin/env bash\necho provision\n');
     fs.mkdirSync(har('lib'), { recursive: true });
     fs.writeFileSync(har('lib', 'infra.sh'), 'har_infra_enabled() { return 1; }\n');
@@ -120,6 +125,66 @@ describe('versioned harness migrations (#241)', () => {
     expect(verifyResidue?.target).toBe('stage');
     const launchResidue = plan.residue.find((r) => r.source === 'launch.sh');
     expect(launchResidue?.target).toBe('hook');
+  });
+
+  // #297: attach.sh was absent from the shim surface, so migration left the
+  // vendored copy in place *and* deleted the agent-slot.sh it sourced.
+  it('migrates a vendored attach.sh instead of orphaning it', async () => {
+    expect(PRE_1_0_MIGRATION.plan(proj()).replaceWithShims).toContain('attach.sh');
+
+    await maintainHarness({ repoPath: proj(), migrate: true });
+
+    const attach = fs.readFileSync(har('attach.sh'), 'utf8');
+    expect(attach).toContain('exec har env agent');
+    expect(attach).not.toContain('agent-slot.sh');
+    expect(fs.existsSync(har('agent-slot.sh'))).toBe(false);
+    // The pre-1.0 copy is recoverable until finalize.
+    expect(fs.existsSync(har('migrate', 'backup', 'attach.sh'))).toBe(true);
+  });
+
+  // A harness whose only vendored leftover is attach.sh must still be offered
+  // the migration — isPre10Harness used to ask about six scripts, not seven.
+  it('detects a harness whose only vendored script is attach.sh', () => {
+    const clean = path.join(repo, 'attach-only');
+    scaffoldHarnessBoilerplate(clean, { profile: 'default' });
+    expect(isPre10Harness(clean)).toBe(false);
+    fs.writeFileSync(
+      path.join(clean, '.har', 'attach.sh'),
+      '#!/usr/bin/env bash\nsource "$SCRIPT_DIR/agent-slot.sh"\n',
+    );
+    expect(isPre10Harness(clean)).toBe(true);
+  });
+
+  // Machinery must never be deleted out from under a script that survives the
+  // migration, wherever that script lives in .har/ (#297).
+  it('retains machinery still sourced by a surviving harness-root script', () => {
+    fs.writeFileSync(
+      har('my-helper.sh'),
+      '#!/usr/bin/env bash\nsource "$SCRIPT_DIR/agent-slot.sh"\necho custom\n',
+    );
+    const plan = PRE_1_0_MIGRATION.plan(proj());
+    expect(plan.retainMachinery).toContain('agent-slot.sh');
+    expect(plan.deleteMachinery).not.toContain('agent-slot.sh');
+    const residue = plan.residue.find((r) => r.source === 'agent-slot.sh');
+    expect(residue?.reason).toContain('my-helper.sh');
+  });
+
+  // The contract check that would have caught the broken dogfood harness.
+  it('doctor fails when a surviving script loads retired machinery', async () => {
+    await maintainHarness({ repoPath: proj(), migrate: true });
+    expect(runDoctor(proj()).ok).toBe(true);
+
+    fs.mkdirSync(har('stages'), { recursive: true });
+    fs.writeFileSync(
+      har('stages', 'legacy.sh'),
+      '#!/usr/bin/env bash\nsource "$HAR_HARNESS_DIR/agent-slot.sh"\n',
+    );
+    const report = runDoctor(proj());
+    expect(report.ok).toBe(false);
+    const finding = report.findings.find((f) => f.check === 'retired-machinery');
+    expect(finding?.severity).toBe('error');
+    expect(finding?.file).toBe('stages/legacy.sh');
+    expect(finding?.message).toContain('agent-slot.sh');
   });
 
   it('drops verificationStages ids the registry cannot resolve and surfaces them as residue', async () => {

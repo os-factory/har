@@ -4,11 +4,12 @@ import { listSlotRegistryEntries } from '../core/slot-registry';
 import { EJECTED_RUNTIME_BUNDLE, EJECTED_RUNTIME_DIR } from './eject';
 import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
-import { RUNTIME_SHIM_FILES } from './template-tokens';
+import { MANAGED_SHIM_FILES } from './template-tokens';
 import { HarnessStage, HarnessStageRegistry, PortLane } from './schema';
 import { readStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
+import { LEGACY_MACHINERY_FILES } from './migrations';
 
 /**
  * `har env doctor` — harness contract validation (#232).
@@ -27,6 +28,7 @@ export type DoctorCheckId =
   | 'port-lanes'
   | 'slot-registry'
   | 'hooks'
+  | 'retired-machinery'
   | 'ejected-runtime';
 
 export type DoctorContract = '1.0' | 'pre-1.0' | 'none';
@@ -63,6 +65,28 @@ export interface DoctorReport {
   findings: DoctorFinding[];
 }
 
+/**
+ * Every shell script inside .har/ that a user could run or that runs during a
+ * lifecycle op: harness-root scripts plus stages/ and hooks/. Paths are
+ * relative to the harness dir.
+ */
+function listHarnessShellScripts(harnessDir: string): string[] {
+  const out: string[] = [];
+  const push = (dir: string, prefix: string) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir).sort()) {
+      if (!entry.endsWith('.sh')) continue;
+      const full = path.join(dir, entry);
+      if (!fs.statSync(full).isFile()) continue;
+      out.push(prefix ? `${prefix}/${entry}` : entry);
+    }
+  };
+  push(harnessDir, '');
+  push(path.join(harnessDir, 'stages'), 'stages');
+  push(path.join(harnessDir, 'hooks'), 'hooks');
+  return out;
+}
+
 const CHECK_LABELS: Record<DoctorCheckId, string> = {
   'harness-env': 'harness.env schema',
   'stages-registry': 'stages.json registry',
@@ -72,6 +96,7 @@ const CHECK_LABELS: Record<DoctorCheckId, string> = {
   'port-lanes': 'infra port lanes',
   'slot-registry': 'slot registry worktrees',
   hooks: 'lifecycle hooks (.har/hooks)',
+  'retired-machinery': 'no references to retired runtime machinery',
   'ejected-runtime': 'ejected runtime (user-owned)',
 };
 
@@ -322,7 +347,7 @@ export function runDoctor(repoPath: string): DoctorReport {
         remedy: 'Restore it from git, re-run `har env eject`, or return to managed shims with `har env adopt`',
       });
     }
-    for (const shim of RUNTIME_SHIM_FILES) {
+    for (const shim of MANAGED_SHIM_FILES) {
       const shimPath = path.join(harnessDir, shim);
       if (!fs.existsSync(shimPath)) continue; // missing lifecycle scripts are caught above
       if (!(fs.statSync(shimPath).mode & 0o111)) {
@@ -378,6 +403,41 @@ export function runDoctor(repoPath: string): DoctorReport {
           remedy: `chmod +x .har/hooks/${file}`,
         });
       }
+    }
+  }
+
+  // 9. Retired machinery references (#297): the 1.0 migration deletes the
+  // pre-1.0 runtime bash, so any surviving script that still sources it is a
+  // script that will fail the moment someone runs it. This is exactly how a
+  // vendored attach.sh shipped broken through the #242 dogfood migration —
+  // nothing in the contract asked the question.
+  for (const rel of listHarnessShellScripts(harnessDir)) {
+    const full = path.join(harnessDir, rel);
+    let content: string;
+    try {
+      content = fs.readFileSync(full, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const machinery of LEGACY_MACHINERY_FILES) {
+      if (fs.existsSync(path.join(harnessDir, machinery))) continue; // still present — not retired here
+      const base = machinery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const loadRe = new RegExp(
+        `(?:\\bsource\\b|\\bbash\\b|\\bexec\\b|(?:^|[;&|(])\\s*\\.\\s)[^\\n#]*${base}`,
+      );
+      const lines = content.split('\n');
+      const idx = lines.findIndex((line) => !/^\s*#/.test(line) && loadRe.test(line));
+      if (idx === -1) continue;
+      findings.push({
+        check: 'retired-machinery',
+        severity: 'error',
+        file: rel,
+        line: idx + 1,
+        message: `${rel} loads .har/${machinery}, which 1.0 retired and this harness no longer has`,
+        remedy:
+          'Rewrite the script against the 1.0 stage surface (WORK_DIR, ENV_FILE, AGENT_ID and the slot env file are already exported), or run `har env maintain --migrate` to regenerate a managed shim',
+      });
+      break; // one finding per script is enough to act on
     }
   }
 
