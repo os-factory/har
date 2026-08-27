@@ -5,7 +5,7 @@ Objectives:
 2. The launch stage must create an isolated worktree per agent slot and start the primary web app with all required local dependencies (database migrated/seeded, redis, mail, etc. via setup-infra — not documented as manual steps).
 3. The verify stage must run the repo's normal fast checks: typecheck/lint/unit tests relevant to frontend changes.
 4. Full verify must also run Playwright browser-e2e through the HAR browser-e2e stage.
-5. The harness must document preview URLs, credentials, seed data, and troubleshooting in .har/CLAUDE.agent.md.
+5. The harness must document preview URLs, credentials, seed data, and troubleshooting in .har/README.md.
 
 Explore first:
 - README, package manifests, docker compose, CI, existing e2e setup, dev scripts, env examples.

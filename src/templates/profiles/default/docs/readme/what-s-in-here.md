@@ -14,7 +14,7 @@
 | `ecosystem.agent.template.cjs` | PM2 processes for the **primary app only** (expanded at launch) |
 | `ecosystem.shared.config.cjs` | Optional — shared app services started once with the infra (only when the repo has supporting services) |
 | `docker-compose.agent.yml` | Shared infrastructure containers (services listed in `HARNESS_INFRA_SERVICES`) |
-| `CLAUDE.agent.md` | Detailed instructions for coding agents |
+| `.har/README.md` | Detailed instructions for coding agents |
 | `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
@@ -22,7 +22,7 @@
 
 | File | Purpose |
 |------|---------|
-| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` / `attach.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
+| `har env launch` / `har env verify` / `har env teardown` / `har env setup-infra` / `preflight.sh` / `agent-cli.sh` / `attach.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
 | `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
 | `runs/` | Run history from every entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |

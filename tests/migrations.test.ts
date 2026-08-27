@@ -169,6 +169,31 @@ describe('versioned harness migrations (#241)', () => {
     expect(residue?.reason).toContain('my-helper.sh');
   });
 
+  // #301: CLAUDE.agent.md is no longer generated. Users adapt theirs with real
+  // project knowledge, so migration backs it up and asks the agent to lift it —
+  // never deletes it silently.
+  it('reports a retired CLAUDE.agent.md as residue and backs it up', async () => {
+    fs.writeFileSync(har('CLAUDE.agent.md'), '# Agent 1\n\nOur credentials: seed@example.com\n');
+
+    const plan = PRE_1_0_MIGRATION.plan(proj());
+    expect(plan.retireDocs).toContain('CLAUDE.agent.md');
+    const residue = plan.residue.find((r) => r.source === 'CLAUDE.agent.md');
+    expect(residue?.reason).toContain('.har/README.md');
+
+    await maintainHarness({ repoPath: proj(), migrate: true });
+
+    expect(fs.readFileSync(har('migrate', 'backup', 'CLAUDE.agent.md'), 'utf8')).toContain(
+      'seed@example.com',
+    );
+    // Left on disk for the lift — the prompt tells the agent to delete it after.
+    expect(fs.existsSync(har('CLAUDE.agent.md'))).toBe(true);
+    expect(fs.readFileSync(har(MIGRATE_PROMPT_FILE), 'utf8')).toContain('CLAUDE.agent.md');
+  });
+
+  it('a harness without CLAUDE.agent.md reports no retired docs', () => {
+    expect(PRE_1_0_MIGRATION.plan(proj()).retireDocs).toEqual([]);
+  });
+
   // The contract check that would have caught the broken dogfood harness.
   it('doctor fails when a surviving script loads retired machinery', async () => {
     await maintainHarness({ repoPath: proj(), migrate: true });

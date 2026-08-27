@@ -108,7 +108,7 @@ export function listProfileBundleIds(profile: string): string[] {
   return readProfileManifest(profile).bundles.map((b) => b.id);
 }
 
-/** "README.md" → "readme", "CLAUDE.agent.md" → "claude-agent" */
+/** "README.md" → "readme" */
 function docSectionDir(docName: string): string {
   return docName
     .replace(/\.md$/i, '')
@@ -118,7 +118,7 @@ function docSectionDir(docName: string): string {
 }
 
 /**
- * Assemble a generated doc (README.md / CLAUDE.agent.md) for a profile from
+ * Assemble a generated doc (README.md) for a profile from
  * ordered sections — profile override first, shared-docs fallback (#236).
  */
 export function renderProfileDoc(
@@ -178,7 +178,7 @@ function walkTemplateFiles(dir: string, prefix = ''): string[] {
 /**
  * Composed template view for a profile: relPath → winning source, applying
  * bundle order (later bundles overwrite earlier ones — same rule as scaffold),
- * plus the assembled docs (README.md / CLAUDE.agent.md) as rendered entries.
+ * plus the assembled docs (README.md) as rendered entries.
  * Drift/maintain must resolve template content through this map, never through
  * a single overlay dir: bundle-provided files no longer exist in the overlays.
  */

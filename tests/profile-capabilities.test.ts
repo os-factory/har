@@ -35,9 +35,8 @@ describe('profile capability manifests (#236)', () => {
     const manifest = readProfileManifest(profile);
     expect(manifest.capabilities.defaultStages.length).toBeGreaterThan(0);
     expect(manifest.capabilities.defaultEnvKeys.length).toBeGreaterThan(0);
-    expect(Object.keys(manifest.docs)).toEqual(
-      expect.arrayContaining(['README.md', 'CLAUDE.agent.md']),
-    );
+    // #301: README.md is the only generated doc — CLAUDE.agent.md is retired.
+    expect(Object.keys(manifest.docs)).toEqual(['README.md']);
   });
 
   it.each([...HARNESS_PROFILES])(
@@ -117,16 +116,17 @@ describe('capability resolution precedence', () => {
 });
 
 describe('assembled profile docs', () => {
-  it.each([...HARNESS_PROFILES])('%s: scaffold writes assembled README + agent doc', (profile) => {
+  it.each([...HARNESS_PROFILES])('%s: scaffold writes the assembled README', (profile) => {
     const repo = tmpDir(`har-docs-${profile}-`);
     scaffoldHarnessBoilerplate(repo, { profile });
     const readme = fs.readFileSync(path.join(repo, '.har', 'README.md'), 'utf8');
-    const agentDoc = fs.readFileSync(path.join(repo, '.har', 'CLAUDE.agent.md'), 'utf8');
     expect(readme).toBe(renderProfileDoc(profile, 'README.md'));
-    expect(agentDoc).toBe(renderProfileDoc(profile, 'CLAUDE.agent.md'));
     expect(readme).toContain('# .har — Agent Harness');
     expect(readme).toContain('## Session lifecycle');
-    expect(agentDoc).toContain('Development Environment');
+    // #301: the retired agent doc's unique sections now live in the README.
+    expect(readme).toContain('## Definition of done');
+    expect(readme).toContain('## Do not');
+    expect(fs.existsSync(path.join(repo, '.har', 'CLAUDE.agent.md'))).toBe(false);
   });
 
   it('shared sections render identically across profiles', () => {
@@ -142,11 +142,9 @@ describe('assembled profile docs', () => {
     }
   });
 
-  it('profile overrides beat shared sections (ios agent-doc intro)', () => {
-    expect(renderProfileDoc('ios', 'CLAUDE.agent.md')).toContain('iOS Development Environment');
-    expect(renderProfileDoc('default', 'CLAUDE.agent.md')).not.toContain(
-      'iOS Development Environment',
-    );
+  it('profile overrides beat shared sections (ios README intro)', () => {
+    expect(renderProfileDoc('ios', 'README.md')).toContain('iOS');
+    expect(renderProfileDoc('ios', 'README.md')).not.toBe(renderProfileDoc('default', 'README.md'));
   });
 });
 

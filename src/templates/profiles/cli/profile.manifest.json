@@ -1,9 +1,15 @@
 {
   "id": "cli",
-  "description": "CLI/library — shared kernel + CLI overlay (no PM2)",
+  "description": "CLI/library \u2014 shared kernel + CLI overlay (no PM2)",
   "bundles": [
-    { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
-    { "id": "runtime-cli", "path": "har-boilerplate-cli" }
+    {
+      "id": "shared-kernel",
+      "path": "runtime-bundles/shared-kernel"
+    },
+    {
+      "id": "runtime-cli",
+      "path": "har-boilerplate-cli"
+    }
   ],
   "capabilities": {
     "processManager": "none",
@@ -44,20 +50,17 @@
       "intro",
       "what-s-in-here",
       "quick-start",
+      "environment",
       "verification-contract",
+      "definition-of-done",
+      "readiness",
       "run-history",
       "for-coding-agents",
+      "project-commands",
       "port-shared-services-cli-profile",
+      "do-not",
       "maintaining-this-harness",
       "session-lifecycle"
-    ],
-    "CLAUDE.agent.md": [
-      "intro",
-      "environment",
-      "readiness",
-      "definition-of-done",
-      "project-commands",
-      "do-not"
     ]
   }
 }

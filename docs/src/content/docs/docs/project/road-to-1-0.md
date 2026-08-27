@@ -37,7 +37,7 @@ either **yours** or **managed**, and the boundary is explicit:
 | `harness.env` — pure schema-validated config | Six 35-line shims (`launch.sh`, `verify.sh`, …) that `exec har env <kind>` |
 | `stages.json` + `stages/*.sh` — registered verification stages | Stock stage helpers (`readiness.sh`, `lib/verify-runner.mjs`) |
 | `hooks/*.sh` — lifecycle side effects | `manifest.json` — versions, migration history, drift checksums |
-| Infra templates (compose, PM2 ecosystem) | Docs and agent guidance (`README.md`, `STAGES.md`, `CLAUDE.agent.md`) |
+| Infra templates (compose, PM2 ecosystem) | Docs and agent guidance (`README.md`, `STAGES.md`) |
 
 Customization has exactly five sanctioned homes: config values, registered
 stages, lifecycle hooks, plugins (including local ones via `har plugin create`),

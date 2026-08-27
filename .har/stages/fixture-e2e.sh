@@ -113,9 +113,42 @@ fresh_init_mode() {
   local f
   for f in launch.sh verify.sh teardown.sh setup-infra.sh \
            agent-cli.sh harness.env stages.json \
-           manifest.json README.md CLAUDE.agent.md; do
+           manifest.json README.md; do
     [ -f "$FRESH/.har/$f" ] || fail "init did not produce .har/$f"
   done
+  # #301: the instruction surface is AGENTS.md; the harness detail is README.md.
+  [ ! -f "$FRESH/.har/CLAUDE.agent.md" ] || fail "init produced retired .har/CLAUDE.agent.md"
+  # CLAUDE.md is managed only when Claude is a selected agent target, so drive
+  # that path explicitly rather than inferring it from a file the fixture may
+  # already ship. The fixture's own CLAUDE.md is hand-written, so this also
+  # proves HAR preserves user content and only prepends the import (#301).
+  local claude_before claude_after
+  claude_before="$(cat "$FRESH/CLAUDE.md" 2>/dev/null || true)"
+  har "$FRESH" env maintain --yes --agents claude --no-cursor-rule >/dev/null 2>&1 \
+    || fail "maintain --agents claude failed on the fresh harness"
+  [ -f "$FRESH/CLAUDE.md" ] || fail "maintain --agents claude did not write CLAUDE.md"
+  claude_after="$(cat "$FRESH/CLAUDE.md")"
+  [ "$(grep -m1 -v '^[[:space:]]*$' "$FRESH/CLAUDE.md" | tr -d '[:space:]')" = "@AGENTS.md" ] \
+    || fail "CLAUDE.md does not lead with the @AGENTS.md import (#301)"
+  if [ -n "$claude_before" ]; then
+    printf '%s' "$claude_before" | while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      grep -qF "$line" "$FRESH/CLAUDE.md" || fail "CLAUDE.md lost pre-existing content: $line"
+    done
+  fi
+  # Idempotent: a second pass must not stack imports.
+  har "$FRESH" env maintain --yes --agents claude --no-cursor-rule >/dev/null 2>&1 \
+    || fail "second maintain --agents claude failed"
+  [ "$(cat "$FRESH/CLAUDE.md")" = "$claude_after" ] \
+    || fail "CLAUDE.md is not idempotent across maintain runs (#301)"
+  [ "$(grep -c '^@AGENTS\.md$' "$FRESH/CLAUDE.md")" = "1" ] \
+    || fail "CLAUDE.md accumulated duplicate @AGENTS.md imports"
+  grep -q 'har:agent-environment:start' "$FRESH/AGENTS.md" \
+    || fail "init did not write the managed AGENTS.md block"
+  if sed -n '/har:agent-environment:start/,/har:agent-environment:end/p' "$FRESH/AGENTS.md" \
+      | grep -qE '\./\.har/[a-z-]+\.sh'; then
+    fail "AGENTS.md block teaches the shell surface on a managed (non-ejected) harness (#301)"
+  fi
 
   echo "==> har env launch 1 (fresh harness)"
   har "$FRESH" env launch 1 || fail "launch failed on fresh harness"

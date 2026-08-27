@@ -50,5 +50,6 @@ Record the migration and clean up the migration artifacts (`.har/migrate/`, this
 1. Never edit `.har/manifest.json` by hand — it is managed by the har CLI.
 2. Do not delete `.har/migrate/backup/` until finalize — it is the only copy of the pre-1.0 adaptations.
 3. Keep `stages.json` stage ids stable — run records and Mission Control reference them.
-4. Update `.har/README.md` and `.har/CLAUDE.agent.md` if commands or workflow notes changed.
+4. Update `.har/README.md` if commands or workflow notes changed — 1.0 does not
+   generate `.har/CLAUDE.agent.md`; its content belongs there.
 5. Commit the migrated harness (shims, `harness.env`, `stages.json`, `.har/hooks/`) once verified — `.har/migrate/` and this prompt are transient and stay untracked.

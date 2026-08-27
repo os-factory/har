@@ -1,16 +1,27 @@
 {
   "id": "default",
-  "description": "Web app — shared kernel + PM2 runtime + Docker infra",
+  "description": "Web app \u2014 shared kernel + PM2 runtime + Docker infra",
   "bundles": [
-    { "id": "shared-kernel", "path": "runtime-bundles/shared-kernel" },
-    { "id": "pm2-runtime", "path": "runtime-bundles/pm2-runtime" },
-    { "id": "runtime-default", "path": "har-boilerplate" }
+    {
+      "id": "shared-kernel",
+      "path": "runtime-bundles/shared-kernel"
+    },
+    {
+      "id": "pm2-runtime",
+      "path": "runtime-bundles/pm2-runtime"
+    },
+    {
+      "id": "runtime-default",
+      "path": "har-boilerplate"
+    }
   ],
   "capabilities": {
     "processManager": "pm2",
     "appPortLanes": true,
     "infra": {
-      "defaultServices": ["db"],
+      "defaultServices": [
+        "db"
+      ],
       "portLanes": "db=15432:15432-15499 minio=19000:19000-19049 minio-console=19050:19050-19099 browser=13001:13001-13099 mailpit-web=18025:18025-18099 mailpit-smtp=11025:11025-11099"
     },
     "defaultStages": [
@@ -49,22 +60,19 @@
       "intro",
       "what-s-in-here",
       "quick-start",
+      "environment",
       "verification-contract",
+      "definition-of-done",
+      "readiness",
       "readiness-layers",
       "run-history",
       "for-coding-agents",
+      "project-commands",
       "architecture",
       "port-shared-services",
+      "do-not",
       "maintaining-this-harness",
       "session-lifecycle"
-    ],
-    "CLAUDE.agent.md": [
-      "intro",
-      "environment",
-      "readiness",
-      "definition-of-done",
-      "project-commands",
-      "do-not"
     ]
   }
 }

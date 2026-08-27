@@ -1630,9 +1630,9 @@ function printNextSteps(): void {
   console.error('  Read:         .har/README.md');
   console.error('  Adapt:        paste clipboard / prompt above into your coding agent');
   console.error('  Prompt file:  .har/ADAPT-PROMPT.md');
-  console.error('  Setup infra:  ./.har/setup-infra.sh   # when Docker infra is enabled');
-  console.error('  Launch:       har env launch 1        # preferred; or ./.har/launch.sh 1');
-  console.error('  Verify:       har env verify 1         # preferred; or ./.har/verify.sh 1');
+  console.error('  Setup infra:  har env setup-infra      # when Docker infra is enabled');
+  console.error('  Launch:       har env launch 1');
+  console.error('  Verify:       har env verify 1 --full');
   console.error('  Maintain:     har env maintain');
   console.error('  MCP server:   har mcp');
   console.error('');

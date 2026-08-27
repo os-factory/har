@@ -161,8 +161,9 @@ are user-owned: never drift-checked; `har env doctor` only validates names and
 executability. Use registered stages for verification steps; use hooks for
 lifecycle side effects.
 
-### `.har/CLAUDE.agent.md`
-Detailed agent instructions: commands, credentials, architecture, definition of done.
+### `.har/README.md`
+The harness reference agents read: slot environment, readiness / what "agent
+usable" means here, definition of done, project commands, architecture.
 
 ### `.har/env.template`, `docker-compose.agent.yml`
 Adapt as needed for the project's infra (`setup-infra.sh` is a shim — the
@@ -195,7 +196,7 @@ Onboarding may set an initial `agentSlots.max` in `.har/stages.json`. After you 
 - [ ] For each service in `HARNESS_INFRA_SERVICES`, a matching lane exists in `HARNESS_INFRA_PORT_LANES` in `harness.env`
 - [ ] `.har/README.md` has a **Port & shared services** section (allocation table, shared vs per-slot, do-not rules)
 - [ ] App code and tests read ports from `.env.agent.<id>` / `agent-cli.sh` / slot registry — no hardcoded `3000`, `15432`, `3847`, etc.
-- [ ] `env.template` and `CLAUDE.agent.md` show resolved ports via variables, not literals
+- [ ] `env.template` and `.har/README.md` show resolved ports via variables, not literals
 - [ ] Monorepos with `har control up`: document slot-1 conflict if the app port overlaps (e.g. Mission Control on 3847)
 
 ### Git worktree
@@ -214,7 +215,7 @@ If **`har env init` already created `AGENTS.md`**, refresh the **HAR / agent env
 
 If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 
-- Link to `.har/README.md` and `.har/CLAUDE.agent.md`
+- Link to `.har/README.md`
 - State plainly: **the harness is how you run this project** — to see the app live (manual testing, browser, screenshots), `launch` a slot; never hand-roll docker/dev-server startup, and never work around a failing harness command with ad-hoc setup (fix or report it instead)
 - Commands: HAR MCP tools or `har env launch/verify/teardown`
 - Shell shims: `./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh` — same runtime and run records
@@ -223,7 +224,7 @@ If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 
 If **`AGENTS.md` already exists** (project-owned), add or update a concise **HAR / agent environment** section — do not replace unrelated content.
 
-Keep **`CLAUDE.md`** as a thin pointer to `AGENTS.md` (Claude Code auto-loads `CLAUDE.md`). Do not paste the full harness workflow into `CLAUDE.md`.
+Keep **`CLAUDE.md`** as the line `@AGENTS.md` (Claude Code auto-loads `CLAUDE.md` and follows the import). Never paste the harness workflow into it — `AGENTS.md` is the single instruction file.
 
 ### Monorepos / multiple harnesses
 
@@ -249,7 +250,7 @@ not yours to trim, and wholesale deletion just manufactures drift):
 - [ ] `HARNESS_INFRA_SERVICES` lists exactly the services this project uses, each with a lane in `HARNESS_INFRA_PORT_LANES`
 - [ ] All per-slot data stores are provisioned, not just the primary database
 - [ ] If full seed/setup is skipped, `.har/` provides a minimal bootstrap or documents why none is needed
-- [ ] `.har/CLAUDE.agent.md` defines what "agent usable" means for this repo (credentials, default data, smoke workflow) and shows only real URLs/ports/commands
+- [ ] `.har/README.md` defines what "agent usable" means for this repo (credentials, default data, smoke workflow) and shows only real URLs/ports/commands
 - [ ] `.har/README.md` documents port allocation and the shared-service model
 - [ ] No hardcoded default ports (`3000`, `15432`, `3847`, …) in app code, tests, or harness docs — use agent env / slot registry
 

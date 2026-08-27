@@ -12,7 +12,7 @@ store, nothing carried over from the previous session.
 | `HARNESS_SIMULATOR_NAME` | The model to create — `iPhone 16`, `iPhone 17 Pro`, `iPad Air 11-inch (M2)`. Empty means the newest model of the family. See `xcrun simctl list devicetypes`. |
 | `HARNESS_SIMULATOR_FAMILY` | `auto` (read from the name) \| `iPhone` \| `iPad`. An iPad is only created when this resolves to iPad. |
 | `HARNESS_SIMULATOR_UDID` | Run every slot on one existing device instead. Slots then share it — for one-off debugging. |
-| `HARNESS_SIMULATOR_SHARED` | `true` restores one shared simulator for all slots, booted by `setup-infra.sh`. |
+| `HARNESS_SIMULATOR_SHARED` | `true` restores one shared simulator for all slots, booted by `har env setup-infra`. |
 
 The runtime is the newest installed iOS that supports the model — a model retired
 from recent runtimes still resolves against an older one. When nothing matches,
@@ -42,4 +42,4 @@ blaming a sandbox.
 The device lands in `.env.agent.<id>` as `HARNESS_SIMULATOR_UDID`,
 `HARNESS_SIMULATOR_DEVICE_NAME` and `HARNESS_IOS_DESTINATION` — the model stays in
 `HARNESS_SIMULATOR_NAME`, so the two never mean the same thing in one place; what a slot holds is tracked in `.har/simulators/`.
-Use `./.har/agent-cli.sh <id> simulator` to see it.
+Use `har env agent <id> simulator` to see it.

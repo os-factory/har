@@ -1,6 +1,6 @@
 ## Verification contract
 
-Steps in `verify.sh` are **project-specific examples** — adapt them to your stack
+Steps in `har env verify` are **project-specific examples** — adapt them to your stack
 during `har env init` / `har env maintain` / benchmark setup. The table describes
 each tier's intent, not a fixed command list.
 
@@ -19,4 +19,4 @@ harness skips slow local-dev setup, document the skipped steps and add a minimal
 bootstrap/readiness check when agents need default data, credentials, or an
 authenticated workflow.
 
-Use `har env launch 1 --no-worktree` or `./.har/launch.sh 1 --no-worktree` only when working in the repo root.
+Use `har env launch 1 --no-worktree` only when working in the repo root.

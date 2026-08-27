@@ -2,13 +2,13 @@
 
 | | |
 |--|--|
-| **Agent ID** | ${AGENT_ID} |
-| **Work dir** | Fresh session worktree per launch — see the launch output or `.har/slots/agent-${AGENT_ID}.json` |
-| **Simulator** | Created for this slot at launch — `HARNESS_SIMULATOR_UDID` in `.env.agent.${AGENT_ID}` |
+| **Agent ID** | <id> |
+| **Work dir** | Fresh session worktree per launch — see the launch output or `.har/slots/agent-<id>.json` |
+| **Simulator** | Created for this slot at launch — `HARNESS_SIMULATOR_UDID` in `.env.agent.<id>` |
 | **Scheme** | Configured in `.har/harness.env` — `HARNESS_XCODE_SCHEME` |
 
 **Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. An occupied slot always blocks a new launch — run `har env teardown <id>` (or `complete <id>`) first, then launch again.
 
 ```bash
-./.har/agent-cli.sh ${AGENT_ID} status
+har env agent <id> status
 ```

@@ -35,17 +35,17 @@ describe('cursor-rule', () => {
     const rulePath = getCursorRulePath(tmpDir);
     expect(cursorRuleExists(tmpDir)).toBe(true);
     const content = fs.readFileSync(rulePath, 'utf8');
+    // #301: the rule is a pointer, not a second copy of the workflow. Its only
+    // job is to guarantee AGENTS.md reaches every Cursor session.
     expect(content).toContain('alwaysApply: true');
-    expect(content).toContain('har env verify 1 --full');
-    expect(content).toContain('har_run_verification');
     expect(content).toContain('HAR Harness Workflow');
-    expect(content).toContain('session handoff');
-    expect(content).toContain('har_complete_environment');
-    expect(content).toContain('Occupied slots always block');
-    expect(content).toContain('Session handoff (required)');
-    expect(content).toContain('Complete + open a PR');
-    expect(content).toContain('1 is the default');
-    expect(content).toContain('Complete only');
+    expect(content).toContain('AGENTS.md');
+    expect(content).toContain('.har/README.md');
+    // The workflow itself must NOT be restated here.
+    expect(content).not.toContain('har_run_verification');
+    expect(content).not.toContain('Occupied slots always block');
+    expect(content.split('\n').length).toBeLessThan(25);
+    expect(content).not.toContain('Complete only');
     expect(content).not.toContain('harproject.dev');
     expect(content).not.toContain('har env restart');
     expect(content).not.toContain('confirmReplace');

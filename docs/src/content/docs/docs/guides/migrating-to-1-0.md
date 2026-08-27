@@ -133,7 +133,7 @@ env file is sourced for you.
 ### Docs are not migrated for you
 
 The migration rewrites scripts and config; it does not rewrite prose. Re-read
-your own `.har/README.md`, `.har/CLAUDE.agent.md`, and any repo-level
+your own `.har/README.md` and any repo-level
 `AGENTS.md`, and fix anything that still describes the pre-1.0 world — file
 tables listing deleted machinery, and especially **the old claim that
 `./.har/*.sh` writes no run history**. In 1.0 the shims delegate to the same

@@ -22,7 +22,7 @@ import / build); it does not need to pass the repo's full test suite.
 | Topic | Benchmark rule |
 |-------|----------------|
 | `launch.sh` / `agent-slot.sh` | **Do not edit** — runner owns worktrees and slot registry |
-| Allowed edits | `harness.env`, `verify.sh` (especially quick-mode smoke steps), `CLAUDE.agent.md`, `README.md`, repo-root `AGENTS.md` |
+| Allowed edits | `harness.env`, `verify.sh` (especially quick-mode smoke steps), `README.md`, repo-root `AGENTS.md` |
 | During setup | Do **not** run `har env launch`, `./.har/launch.sh`, `./.har/teardown.sh`, or `./.har/verify.sh` |
 | Quick verify | Language-agnostic smoke only — not full pytest/Django runtests/Sphinx graphs |
 | Full verify | Optional stricter checks (`--full`); not required for the pre-fix gate |
