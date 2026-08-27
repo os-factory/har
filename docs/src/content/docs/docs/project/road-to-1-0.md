@@ -6,7 +6,9 @@ description: Why .har/ became a configuration surface, what broke on the way, an
 HAR 1.0.0 changes one thing, and everything follows from it: **`.har/` stops being
 a vendored copy of HAR's runtime and becomes a configuration surface.** This post
 explains why we did it, what actually broke while dogfooding the migration on
-HAR's own repository, and the lessons that ended up encoded in the product.
+HAR's own repository, and the lessons that ended up encoded in the product. How
+we ran the work itself — stations, a ratchet, a gate on a real clone — is a
+separate piece: [The factory line](/blog/the-factory-line/).
 
 ## The problem we shipped ourselves
 
@@ -115,3 +117,7 @@ remaining: zero. Same story on the other two harnesses, and
 
 If you're on a pre-1.0 harness, the [migration guide](/docs/guides/migrating-to-1-0/)
 walks the same path we took — and `har env maintain` will hand you the prompt.
+
+The configuration surface is this page. [The factory line](/blog/the-factory-line/)
+is the method: why the unit of work is a station, how the gate only ever adds
+assertions, and what it missed because nobody thought to ask.
