@@ -1,3 +1,11 @@
+## [0.64.3](https://github.com/os-factory/har/compare/v0.64.2...v0.64.3) (2026-08-27)
+
+
+### Bug Fixes
+
+* count a result record's cache reads once and stop summing it with nested usage ([#294](https://github.com/os-factory/har/issues/294)) ([64a3bcd](https://github.com/os-factory/har/commit/64a3bcdab9787240b4ab3a885d6e873fe15aa7d8))
+* derive usage seen timestamps from the transcript, not the sync clock ([#295](https://github.com/os-factory/har/issues/295)) ([6dd180c](https://github.com/os-factory/har/commit/6dd180c8ca80a60df53cdf3ef24404c517e4a6bc))
+
 ## [0.64.2](https://github.com/os-factory/har/compare/v0.64.1...v0.64.2) (2026-08-26)
 
 
