@@ -21,7 +21,7 @@
 
 This CLI harness has **no runtime server** — agents validate through static analysis and tests. A slot is **agent usable** when:
 
-- The worktree has Node deps (root + `docs/`) from `provision-toolchain.sh`
+- The worktree has Node deps (root + `docs/`) from toolchain provisioning (`HARNESS_ECOSYSTEM` / `HARNESS_INSTALL_CMD`) and `.har/hooks/post-launch.sh`
 - Quick verify passes: typecheck, build, docs check/build
 - Full verify also passes unit tests, lint, and `docs-drift`
 

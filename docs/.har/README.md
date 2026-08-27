@@ -16,28 +16,36 @@ This is one of **three** harnesses in the monorepo — see the root
 
 ## What's in here
 
+**Yours — the configuration surface** (edit freely; drift tracking records adaptations):
+
 | File | Purpose |
 |------|---------|
 | `README.md` | This file — index of the harness |
-| `manifest.json` | Generator metadata (version, checksums) — do not edit |
 | `harness.env` | Primary app, ports, empty infra list, readiness smoke |
 | `stages.json` | Stage registry + `verificationStages` + agent slot limits |
-| `stages/` | `browser-e2e.sh`, `capture-screenshots.sh`, Playwright docs |
-| `runs/` | Run history from `har env` / MCP (gitignore) |
-| `artifacts/` | Reports, traces, **before/after screenshots** (gitignore) |
-| `agent-slot.sh` | Shared agent-id validation |
-| `setup-infra.sh` | No-op when `HARNESS_INFRA_SERVICES` is empty (default) |
-| `launch.sh` | Worktree + toolchain + PM2 + baseline screenshots |
-| `provision-toolchain.sh` | `npm install` + write `NODE_BIN` / `NPM_BIN` |
-| `verify.sh` | Quick: check + health · Full: drift, build, links, e2e |
-| `teardown.sh` | Tear down one agent slot |
-| `agent-cli.sh` | status / logs / health / url |
-| `attach.sh` | Attach to optional agent tmux session |
-| `env.template` | Per-agent env (expanded by `launch.sh`) |
+| `stages/` | `browser-e2e.sh`, `capture-screenshots.sh`, `api-health.sh`, `readiness.sh`, Playwright docs |
+| `hooks/` | Lifecycle hooks — `post-launch.sh` installs docs deps |
+| `plugins/` | Optional local plugins (`har plugin create <id>`) |
+| `env.template` | Per-agent env (expanded into `.env.agent.<id>` at launch) |
 | `ecosystem.agent.template.cjs` | PM2: `astro dev` for the primary app only |
 | `docker-compose.agent.yml` | Empty — no shared Docker services |
 | `CLAUDE.agent.md` | Slot URLs, screenshot handoff, definition of done |
+| `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
+
+**Generated shims and state** (don't edit — `har env eject` for full ownership):
+
+| File | Purpose |
+|------|---------|
+| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` / `attach.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
+| `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
+| `runs/` | Run history from **every** entry point (gitignored) |
+| `artifacts/` | Reports, traces, **before/after screenshots** (gitignored) |
+
+Since 1.0 the runtime lives in the `@osfactory/har` package, not here — there is no
+`agent-slot.sh`, `provision-toolchain.sh`, or `lib/`. Worktree setup, toolchain
+provisioning, PM2 and baseline screenshots are the packaged launch runtime plus
+`hooks/post-launch.sh`.
 
 ## Quick start
 
@@ -96,10 +104,9 @@ still runs `astro build` and link checks.
 
 ## Run history
 
-| Entry point | Writes `.har/runs/`? |
-|-------------|------------------------|
-| `./.har/*.sh` | No |
-| `har env …` / MCP | Yes — under `docs/.har/runs/YYYY-MM-DD/` |
+Every entry point — `./.har/*.sh`, `har env …`, MCP — runs the same packaged
+runtime and writes the same records under the main checkout
+`docs/.har/runs/YYYY-MM-DD/`. The shims delegate; they do not record less.
 
 With worktree slots, code runs in the worktree; run JSON stays in the main
 checkout `docs/.har/runs/`.

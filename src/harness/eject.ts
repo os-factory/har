@@ -4,7 +4,7 @@ import { getHarPackageVersion } from '../core/package-version';
 import { computeHarnessChecksums, getHarnessDir, readManifest, writeManifest } from './manifest';
 import type { HarnessProfile } from './profiles';
 import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
-import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
+import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 
 /**
  * `har env eject` (#239) — explicit runtime ownership for power users.
@@ -135,7 +135,7 @@ export function ejectHarness(repoPath: string): EjectResult {
   fs.writeFileSync(path.join(runtimeDir, 'README.md'), RUNTIME_README(version));
 
   const scripts: string[] = [];
-  for (const shim of RUNTIME_SHIM_FILES) {
+  for (const shim of MANAGED_SHIM_FILES) {
     const source = composed.get(shim);
     if (!source) continue;
     const templateContent = readComposedTemplateContent(source);
@@ -175,7 +175,7 @@ export function adoptHarness(repoPath: string): AdoptResult {
   const projectName = path.basename(resolved).toLowerCase().replace(/[^a-z0-9]/g, '_');
 
   const scripts: string[] = [];
-  for (const shim of RUNTIME_SHIM_FILES) {
+  for (const shim of MANAGED_SHIM_FILES) {
     const source = composed.get(shim);
     if (!source) continue;
     const rendered = substituteTemplateTokens(readComposedTemplateContent(source), projectName);

@@ -17,7 +17,7 @@ import {
 } from './profiles';
 import { validateHarnessEnvSource } from './schema';
 import { syncAgentSlotsToHarnessEnv } from './stages';
-import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
+import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 
 export type { HarnessProfile };
 export { HARNESS_PROFILES } from './profiles';
@@ -100,7 +100,7 @@ export function scaffoldHarnessBoilerplate(
 
   // Render template tokens into the generated files: harness.env gets the
   // project name; the runtime shims get the pinned package version (#235).
-  for (const shim of RUNTIME_SHIM_FILES) {
+  for (const shim of MANAGED_SHIM_FILES) {
     const shimPath = path.join(harnessDir, shim);
     if (!fs.existsSync(shimPath)) continue;
     const rendered = substituteTemplateTokens(fs.readFileSync(shimPath, 'utf8'), projectName);

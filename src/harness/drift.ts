@@ -14,7 +14,7 @@ import {
 } from './manifest';
 import { detectAgentSlotEnvMismatch } from './stages';
 import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
-import { RUNTIME_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
+import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 
 const CLI_EXPECTED_ABSENT = new Set([
   'ecosystem.agent.template.cjs',
@@ -205,7 +205,7 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   // Ejected harness (#239): the runtime scripts are user-owned — a present
   // script is never drift, only a missing one still is (the harness is broken).
   const ejected = manifest?.ejected === true;
-  const userOwnedFiles = new Set<string>(ejected ? RUNTIME_SHIM_FILES : []);
+  const userOwnedFiles = new Set<string>(ejected ? MANAGED_SHIM_FILES : []);
 
   for (const file of templateFiles) {
     const harnessFile = harnessFileForTemplate(file);

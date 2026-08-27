@@ -109,21 +109,27 @@ Default recommendation is complete + open a PR when tooling is available (still
 requires approval); never run `complete`, push, or PR autonomously.
 
 Configure Cursor MCP from [`.cursor/mcp.json.example`](.cursor/mcp.json.example)
-(see [CONTRIBUTING.md](./CONTRIBUTING.md)). Prefer MCP or `har env …` over
-`./.har/*.sh` so run history is persisted. Use
-`har env launch 1 --no-worktree` only when you must use the repo root checkout.
+(see [CONTRIBUTING.md](./CONTRIBUTING.md)). All three surfaces are equivalent in
+1.0 — prefer MCP or `har env …` for the richer structured output, not because
+the shims lose anything. Use `har env launch 1 --no-worktree` only when you must
+use the repo root checkout.
 
 ## Run history
 
+Since 1.0 the `./.har/*.sh` scripts are thin shims over the packaged runtime, so
+**every entry point executes the same code and writes the same records**:
+
 | Entry point | Writes `.har/runs/`? |
 |-------------|------------------------|
-| `./.har/*.sh` | No — same behavior, no run record |
+| `./.har/*.sh` | Yes — shims delegate to `har env …` |
 | `har env launch/verify/...` | Yes |
 | MCP `har_run_*` | Yes |
 
 Run records are stored under the **main checkout** `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (local date/time). With worktree slots, tests run in the worktree but run JSON stays in the main repo; each record includes a `workDir` field.
 
-Use MCP or `har env verify` by default — they persist run history. Use `./.har/*.sh` only when the CLI is not installed.
+The commit gate is therefore satisfiable from any surface. Prefer MCP or
+`har env …` for structured output and tracker binding — not because the shims
+record less.
 
 If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `har env` commands (MCP config already points at the main checkout).
 
@@ -315,7 +321,7 @@ har env verify 1 --full         # + unit tests, lint, docs-drift — required be
 har env complete 1              # full verify + validation + teardown; branch kept
 ```
 
-Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cursor). Shell fallback: `./.har/verify.sh 1 --full` then `./.har/teardown.sh 1` (no validation record — prefer CLI/MCP `complete` when available).
+Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cursor). Shell equivalent: `./.har/verify.sh 1 --full` then `./.har/teardown.sh 1` — the shims write the same validation records, but `complete` (CLI/MCP) is still preferred over bare `teardown` because it closes the work attempt.
 
 Do not end the session without a handoff prompt. Never autonomously run `complete`, push, or open a PR. The default handoff recommendation is complete + PR when tooling is available.
 

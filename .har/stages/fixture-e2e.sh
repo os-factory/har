@@ -654,7 +654,30 @@ HOOK
               "$REPO_ROOT/dist/templates/plugins" --include='*.sh' >/dev/null 2>&1; then
             fail "M5: plugin templates still reference retired machinery (agent-slot.sh / provision-toolchain.sh)"
           fi
-          echo "    M5: stock files installed + auto ecosystem resolved + hook config guard armed + plugin templates on the 1.0 surface ✓"
+          # e) #297: no surviving script may load machinery the migration
+          #    deleted. attach.sh was the live case — it stayed vendored while
+          #    agent-slot.sh was removed underneath it. Scan only the LIVE
+          #    surface (harness root, stages/, hooks/, local plugins): the
+          #    transient ledgers .har/migrate/backup/ and .har/maintain/ keep
+          #    pre-1.0 snapshots on purpose and must still contain those lines.
+          local stale_loader=""
+          local candidate
+          while IFS= read -r candidate; do
+            [ -n "$candidate" ] || continue
+            if grep -vE '^[[:space:]]*#' "$candidate" \
+                | grep -qE '(source|\.|bash|exec)[^#]*(agent-slot|provision-toolchain|simulator)\.sh'; then
+              stale_loader="$candidate"
+              break
+            fi
+          done < <(
+            find "$CLONE/.har" -maxdepth 1 -name '*.sh' -type f 2>/dev/null
+            find "$CLONE/.har/stages" "$CLONE/.har/hooks" -maxdepth 1 -name '*.sh' -type f 2>/dev/null
+            find "$CLONE/.har/plugins" -maxdepth 3 -name '*.sh' -type f 2>/dev/null
+          )
+          if [ -n "$stale_loader" ]; then
+            fail "M5: ${stale_loader#$CLONE/} still loads retired runtime machinery (#297)"
+          fi
+          echo "    M5: stock files installed + auto ecosystem resolved + hook config guard armed + plugin templates on the 1.0 surface + no retired-machinery loads ✓"
         fi
 
         # 4) Doctor must be green on the migrated harness (1.0 contract enforced).
