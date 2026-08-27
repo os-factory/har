@@ -67,7 +67,7 @@ describe('toGenaiPricesUsage', () => {
     });
   });
 
-  it('keeps uncached input whole when it exceeds cache reads', () => {
+  it('keeps uncached input tokens whole when it exceeds cache reads', () => {
     expect(
       toGenaiPricesUsage({
         tokensInput: 5000,
