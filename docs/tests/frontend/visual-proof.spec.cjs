@@ -74,4 +74,24 @@ test.describe('Visual proof screenshots', () => {
     const file = await capturePageScreenshot(page, testInfo, 'teams');
     expect(file).toBeTruthy();
   });
+
+  test('blog index full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.goto('/blog/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toContainText('Notes from the line.');
+    await page.locator('.blog-index-list').waitFor({ state: 'visible' });
+    await page.waitForTimeout(800);
+    const file = await capturePageScreenshot(page, testInfo, 'blog-index');
+    expect(file).toBeTruthy();
+  });
+
+  test('factory-line article full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.goto('/blog/the-factory-line/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toContainText('The factory line');
+    await page.locator('.blog-prose').waitFor({ state: 'visible' });
+    await page.waitForTimeout(800);
+    const file = await capturePageScreenshot(page, testInfo, 'blog-the-factory-line');
+    expect(file).toBeTruthy();
+  });
 });

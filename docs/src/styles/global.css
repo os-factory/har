@@ -497,3 +497,51 @@ body { transition: background-color .25s ease, color .25s ease; }
 
 /* Dark-stroke logos (e.g. Gitleaks) need inverting on the dark theme. */
 :root[data-theme="dark"] .logo-invert-dark { filter: invert(1); }
+
+/* Journal — long-form on the marketing tokens (serif body, mono chrome). */
+.blog-hero { padding: 130px 0 64px; }
+.blog-hero .hero-copy,
+.blog-article-head { max-width: 720px; }
+.blog-hero h1 { font-family: var(--serif); font-weight: 400; letter-spacing: -.02em; max-width: none; }
+.blog-back { display: inline-block; margin-bottom: 18px; font-size: 13.5px; color: var(--muted); }
+.blog-back:hover { color: var(--text); }
+.blog-article-date { margin: 22px 0 0; font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: var(--muted); }
+.blog-index-section { padding: 48px 0 80px; }
+.blog-article-section { padding: 0; }
+.blog-index-list { list-style: none; margin: 0; padding: 0; max-width: 720px; }
+.blog-post-card { display: grid; gap: 12px; padding: 36px 0; }
+.blog-index-list li + li { border-top: 1px solid var(--theme-border); }
+.blog-post-meta { display: flex; flex-wrap: wrap; gap: 10px 16px; font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.blog-post-card h2 { margin: 0; font-family: var(--serif); font-size: clamp(28px, 3.2vw, 36px); font-weight: 400; letter-spacing: -.02em; line-height: 1.2; }
+.blog-post-card p { margin: 0; max-width: 640px; color: var(--muted); font-size: 16px; line-height: 1.65; }
+.blog-post-read { font-family: var(--mono); font-size: 13px; color: var(--text); }
+.blog-post-card:hover h2 { color: var(--accent); }
+:root[data-theme="dark"] .blog-post-card:hover h2 { color: var(--accent-bright); }
+
+.blog-prose { max-width: 720px; padding: 56px 0 80px; font-family: var(--serif); font-size: 19px; line-height: 1.75; color: var(--text); }
+.blog-prose > *:first-child { margin-top: 0; }
+.blog-prose h2 { margin: 2.4em 0 0.7em; font-family: var(--sans); font-size: 22px; font-weight: 650; letter-spacing: -.02em; line-height: 1.25; }
+.blog-prose h3 { margin: 1.8em 0 0.55em; font-family: var(--sans); font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+.blog-prose p { margin: 0 0 1.15em; }
+.blog-prose a { color: var(--text); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.blog-prose a:hover { color: var(--accent); }
+:root[data-theme="dark"] .blog-prose a:hover { color: var(--accent-bright); }
+.blog-prose code { font-family: var(--mono); font-size: .78em; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--muted) 15%, transparent); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.blog-prose pre { padding: 16px 18px; overflow-x: auto; border: 1px solid var(--theme-border); border-radius: 5px; background: var(--theme-surface-raised); font-size: 14px; line-height: 1.6; }
+.blog-prose pre code { padding: 0; background: none; font-size: inherit; }
+.blog-prose ul, .blog-prose ol { margin: 0 0 1.15em; padding-left: 1.25em; }
+.blog-prose li { margin: 0.35em 0; }
+.blog-prose li::marker { color: var(--muted); }
+.blog-prose strong { font-weight: 600; }
+.blog-prose em { font-style: italic; }
+.blog-prose blockquote { margin: 1.4em 0; padding: 0 0 0 1em; border-left: 2px solid var(--theme-border); color: var(--muted); }
+.blog-prose table { width: 100%; margin: 1.4em 0 1.8em; border-collapse: collapse; font-family: var(--sans); font-size: 14.5px; line-height: 1.55; }
+.blog-prose th, .blog-prose td { padding: 12px 14px; text-align: left; vertical-align: top; border: 1px solid var(--theme-border); }
+.blog-prose th { font-family: var(--mono); font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--theme-surface-raised); }
+.blog-prose td:first-child { width: 52%; }
+@media (max-width: 760px) {
+  .blog-hero { padding: 120px 0 48px; }
+  .blog-prose { font-size: 17.5px; padding: 36px 0 64px; }
+  .blog-prose table { display: block; overflow-x: auto; }
+  .blog-post-card { padding: 36px 0; }
+}
