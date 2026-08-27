@@ -127,14 +127,17 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
   const harvestVersion = supersedes
     ? usageHarvestVersion(input)
     : mergedHarvestVersion(existingAuthority, input);
-  const firstSeenAt = existing
-    ? new Date(
-        Math.min(existing.firstSeenAt.getTime(), new Date(input.firstSeenAt).getTime()),
-      )
-    : new Date(input.firstSeenAt);
-  const lastSeenAt = existing
-    ? new Date(Math.max(existing.lastSeenAt.getTime(), new Date(input.lastSeenAt).getTime()))
-    : new Date(input.lastSeenAt);
+  // A superseding harvest recomputes the window, so it may also lower it.
+  const firstSeenAt =
+    existing && !supersedes
+      ? new Date(
+          Math.min(existing.firstSeenAt.getTime(), new Date(input.firstSeenAt).getTime()),
+        )
+      : new Date(input.firstSeenAt);
+  const lastSeenAt =
+    existing && !supersedes
+      ? new Date(Math.max(existing.lastSeenAt.getTime(), new Date(input.lastSeenAt).getTime()))
+      : new Date(input.lastSeenAt);
 
   const mergedModelBreakdown = supersedes
     ? mergeModelBreakdown(null, input.modelBreakdown)

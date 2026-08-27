@@ -167,6 +167,45 @@ describe('upsertSessionUsage', () => {
     });
   });
 
+  it('replaces a seen window the superseded row stamped with sync time', async () => {
+    findUnique.mockResolvedValue(
+      storedRow({
+        firstSeenAt: new Date('2026-01-01T00:00:00.000Z'),
+        lastSeenAt: new Date('2026-06-01T00:00:00.000Z'),
+      }),
+    );
+    await upsertSessionUsage(
+      'repo-1',
+      harvestInput({
+        firstSeenAt: '2026-01-02T09:00:00.000Z',
+        lastSeenAt: '2026-01-02T10:00:00.000Z',
+      }),
+    );
+    const fields = writtenFields();
+    expect(fields.firstSeenAt.toISOString()).toBe('2026-01-02T09:00:00.000Z');
+    expect(fields.lastSeenAt.toISOString()).toBe('2026-01-02T10:00:00.000Z');
+  });
+
+  it('widens the seen window on a same-version merge', async () => {
+    findUnique.mockResolvedValue(
+      storedRow({
+        harvestVersion: 1,
+        firstSeenAt: new Date('2026-01-01T00:00:00.000Z'),
+        lastSeenAt: new Date('2026-01-01T12:00:00.000Z'),
+      }),
+    );
+    await upsertSessionUsage(
+      'repo-1',
+      harvestInput({
+        firstSeenAt: '2025-12-31T00:00:00.000Z',
+        lastSeenAt: '2026-01-03T00:00:00.000Z',
+      }),
+    );
+    const fields = writtenFields();
+    expect(fields.firstSeenAt.toISOString()).toBe('2025-12-31T00:00:00.000Z');
+    expect(fields.lastSeenAt.toISOString()).toBe('2026-01-03T00:00:00.000Z');
+  });
+
   it('stamps the incoming version on a session it has never seen', async () => {
     findUnique.mockResolvedValue(null);
     await upsertSessionUsage('repo-1', harvestInput());

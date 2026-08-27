@@ -460,6 +460,117 @@ describe('usage harvest claude', () => {
 
     expect(usage!.tokensOutput).toBe(7);
   });
+  it('takes the seen window from the transcript records, not the harvest time', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-4-tt11';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'summary', leafUuid: 'abc' }),
+        JSON.stringify({ type: 'user', cwd: workDir, timestamp: '2026-02-01T09:30:00.000Z' }),
+        JSON.stringify({
+          type: 'assistant',
+          timestamp: '2026-02-01T11:45:00.000Z',
+          message: { role: 'assistant', model: 'claude-opus-5', usage: { output_tokens: 20 } },
+        }),
+        JSON.stringify({ type: 'mode', mode: 'default' }),
+        JSON.stringify({
+          type: 'result',
+          timestamp: '2026-02-01T10:00:00.000Z',
+          usage: { input_tokens: 40, output_tokens: 20 },
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestClaudeUsage({
+      agentId: 4,
+      workDir,
+      branch: 'main-abcd-har-agent-4-tt11',
+      suffix: 'tt11',
+      sessionCreatedAt: '2026-01-15T00:00:00.000Z',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage!.firstSeenAt).toBe('2026-02-01T09:30:00.000Z');
+    expect(usage!.lastSeenAt).toBe('2026-02-01T11:45:00.000Z');
+  });
+
+  it('reports the same window on a re-harvest of an unchanged transcript', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-5-rr22';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: workDir, timestamp: '2026-02-01T09:30:00.000Z' }),
+        JSON.stringify({
+          type: 'result',
+          timestamp: '2026-02-01T10:00:00.000Z',
+          usage: { input_tokens: 40, output_tokens: 20 },
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const slot = {
+      agentId: 5,
+      workDir,
+      branch: 'main-abcd-har-agent-5-rr22',
+      suffix: 'rr22',
+      repoPath: '/home/user/repo',
+    };
+
+    expect(harvestClaudeUsage(slot)).toEqual(harvestClaudeUsage(slot));
+  });
+
+  it('spans the window across every transcript the slot owns', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-6-ss33';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    const transcript = (at: string) =>
+      [
+        JSON.stringify({ type: 'user', cwd: workDir, timestamp: at }),
+        JSON.stringify({ type: 'result', timestamp: at, usage: { output_tokens: 5 } }),
+      ].join('\n') + '\n';
+    fs.writeFileSync(path.join(project, 'a.jsonl'), transcript('2026-03-02T08:00:00.000Z'));
+    fs.writeFileSync(path.join(project, 'b.jsonl'), transcript('2026-03-01T08:00:00.000Z'));
+
+    const usage = harvestClaudeUsage({
+      agentId: 6,
+      workDir,
+      branch: 'main-abcd-har-agent-6-ss33',
+      suffix: 'ss33',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage!.firstSeenAt).toBe('2026-03-01T08:00:00.000Z');
+    expect(usage!.lastSeenAt).toBe('2026-03-02T08:00:00.000Z');
+  });
+
+  it('falls back to the slot creation time when no record is timestamped', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-7-uu44';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: workDir }),
+        JSON.stringify({ type: 'result', usage: { input_tokens: 10, output_tokens: 5 } }),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestClaudeUsage({
+      agentId: 7,
+      workDir,
+      branch: 'main-abcd-har-agent-7-uu44',
+      suffix: 'uu44',
+      sessionCreatedAt: '2026-01-15T00:00:00.000Z',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage!.firstSeenAt).toBe('2026-01-15T00:00:00.000Z');
+    expect(Date.parse(usage!.lastSeenAt)).toBeGreaterThan(Date.parse('2026-01-15T00:00:00.000Z'));
+  });
 });
 
 describe('workspace path match', () => {
@@ -539,6 +650,33 @@ describe('usage harvest codex', () => {
         repoPath: '/home/alice/project',
       }),
     ).toBeNull();
+  });
+  it('takes the seen window from the rollout records', () => {
+    const workDir = '/tmp/wt-codex-window';
+    const sessionDir = path.join(tmp, '2026');
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionDir, 's.jsonl'),
+      [
+        JSON.stringify({ cwd: workDir, timestamp: '2026-04-01T07:00:00.000Z' }),
+        JSON.stringify({
+          timestamp: '2026-04-01T07:40:00.000Z',
+          usage: { input_tokens: 10, output_tokens: 5 },
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestCodexUsage({
+      agentId: 2,
+      workDir,
+      branch: 'main-xxxx-har-agent-2-abcd',
+      suffix: 'abcd',
+      sessionCreatedAt: '2026-03-01T00:00:00.000Z',
+      repoPath: '/repo',
+    });
+
+    expect(usage!.firstSeenAt).toBe('2026-04-01T07:00:00.000Z');
+    expect(usage!.lastSeenAt).toBe('2026-04-01T07:40:00.000Z');
   });
 });
 

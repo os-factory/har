@@ -733,7 +733,7 @@ export type AgentTrajectoryRecordV1 = z.infer<typeof AgentTrajectoryRecordV1Sche
 export type AgentTrajectoryRecord = AgentTrajectoryRecordV1;
 
 /** Generation of the usage-harvest algorithm; a newer one supersedes an older. */
-export const USAGE_HARVEST_VERSION = 1;
+export const USAGE_HARVEST_VERSION = 2;
 
 /** Harvested before the algorithm was versioned, so the totals read high. */
 export const PRE_DEDUPE_HARVEST_VERSION = 0;

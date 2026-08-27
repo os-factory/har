@@ -6,6 +6,7 @@ import type { AgentSessionEvent, AgentSessionUsage } from '../../harness/schema'
 import { getTelemetrySignals } from '../telemetry-config';
 import { buildSessionKey } from '../telemetry-env';
 import { workspaceMatchesTarget } from '../workspace-path-match';
+import { recordTimeRange } from './record-time-range';
 
 export interface HarvestSlotContext {
   agentId: number;
@@ -286,7 +287,8 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
   // own, so the fallback tier is never summed with the primary one.
   const own = matches.filter((match) => match.primary);
   const usable = own.length > 0 ? own : matches;
-  const usage = extractClaudeUsageFromRecords(usable.flatMap((match) => match.records));
+  const records = usable.flatMap((match) => match.records);
+  const usage = extractClaudeUsageFromRecords(records);
   if (
     usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead === 0 &&
     (usage.costUsd == null || usage.costUsd === 0)
@@ -295,6 +297,7 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
   }
 
   const now = new Date().toISOString();
+  const seen = recordTimeRange(records);
   const tokensTotal =
     usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
 
@@ -316,8 +319,8 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
       : {}),
     sources: ['harvest'],
     harvestVersion: USAGE_HARVEST_VERSION,
-    firstSeenAt: slot.sessionCreatedAt ?? now,
-    lastSeenAt: now,
+    firstSeenAt: seen?.firstAt ?? slot.sessionCreatedAt ?? now,
+    lastSeenAt: seen?.lastAt ?? now,
   };
 }
 

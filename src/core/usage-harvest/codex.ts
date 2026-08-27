@@ -6,6 +6,7 @@ import type { AgentSessionUsage } from '../../harness/schema';
 import { buildSessionKey } from '../telemetry-env';
 import type { HarvestSlotContext } from './claude';
 import { workspaceMatchesTarget } from '../workspace-path-match';
+import { recordTimeRange, type RecordTimeRange } from './record-time-range';
 
 function codexSessionsRoot(): string {
   return process.env.HAR_CODEX_SESSIONS_DIR
@@ -43,6 +44,7 @@ function extractCodexTokens(records: unknown[]): {
   tokensOutput: number;
   tokensCacheRead: number;
   cwd?: string;
+  seen: RecordTimeRange | null;
 } {
   let tokensInput = 0;
   let tokensOutput = 0;
@@ -86,7 +88,7 @@ function extractCodexTokens(records: unknown[]): {
     }
   }
 
-  return { tokensInput, tokensOutput, tokensCacheRead, cwd };
+  return { tokensInput, tokensOutput, tokensCacheRead, cwd, seen: recordTimeRange(records) };
 }
 
 export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage | null {
@@ -108,7 +110,12 @@ export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage |
     createdAt: slot.sessionCreatedAt,
   });
 
-  type CodexTokens = { tokensInput: number; tokensOutput: number; tokensCacheRead: number };
+  type CodexTokens = {
+    tokensInput: number;
+    tokensOutput: number;
+    tokensCacheRead: number;
+    seen: RecordTimeRange | null;
+  };
   let bestPrimary: CodexTokens | null = null;
   let bestPrimaryMtime = 0;
   let bestFallback: CodexTokens | null = null;
@@ -153,7 +160,7 @@ export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage |
     costUsd: null,
     sources: ['harvest'],
     harvestVersion: USAGE_HARVEST_VERSION,
-    firstSeenAt: slot.sessionCreatedAt ?? now,
-    lastSeenAt: now,
+    firstSeenAt: best.seen?.firstAt ?? slot.sessionCreatedAt ?? now,
+    lastSeenAt: best.seen?.lastAt ?? now,
   };
 }
