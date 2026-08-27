@@ -70,8 +70,13 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
   let tokensOutput = 0;
   let tokensCacheRead = 0;
   let tokensCacheCreation = 0;
-  let costUsd: number | null = null;
   const modelBreakdown: Record<string, ModelUsageTotals> = {};
+
+  let resultInput = 0;
+  let resultOutput = 0;
+  let resultCacheRead = 0;
+  let resultCacheCreation = 0;
+  let resultCostUsd: number | null = null;
 
   // Claude Code repeats one message's `usage` on every record it splits that
   // message across.
@@ -83,12 +88,13 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
     const payload = record as Record<string, unknown>;
     if (payload.type === 'result') {
       const usage = (payload.usage ?? {}) as Record<string, unknown>;
-      tokensInput =
-        Number(usage.input_tokens ?? 0) + Number(usage.cache_read_input_tokens ?? 0);
-      tokensOutput = Number(usage.output_tokens ?? 0);
-      tokensCacheRead = Number(usage.cache_read_input_tokens ?? 0);
-      tokensCacheCreation = Number(usage.cache_creation_input_tokens ?? 0);
-      if (payload.total_cost_usd != null) costUsd = Number(payload.total_cost_usd);
+      resultInput += Number(usage.input_tokens ?? 0);
+      resultOutput += Number(usage.output_tokens ?? 0);
+      resultCacheRead += Number(usage.cache_read_input_tokens ?? 0);
+      resultCacheCreation += Number(usage.cache_creation_input_tokens ?? 0);
+      if (payload.total_cost_usd != null) {
+        resultCostUsd = (resultCostUsd ?? 0) + Number(payload.total_cost_usd);
+      }
     }
     // Some transcripts nest usage on message/assistant events — collect when present.
     const message = payload.message as
@@ -130,7 +136,21 @@ function extractClaudeUsageFromRecords(records: unknown[]): {
     }
   }
 
-  return { tokensInput, tokensOutput, tokensCacheRead, tokensCacheCreation, costUsd, modelBreakdown };
+  const resultTotal = resultInput + resultOutput + resultCacheRead + resultCacheCreation;
+  if (resultTotal > 0) {
+    tokensInput = resultInput;
+    tokensOutput = resultOutput;
+    tokensCacheRead = resultCacheRead;
+    tokensCacheCreation = resultCacheCreation;
+  }
+  return {
+    tokensInput,
+    tokensOutput,
+    tokensCacheRead,
+    tokensCacheCreation,
+    costUsd: resultCostUsd,
+    modelBreakdown,
+  };
 }
 
 interface TranscriptMatch {

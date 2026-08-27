@@ -56,7 +56,11 @@ describe('usage harvest claude', () => {
 
     expect(usage).not.toBeNull();
     expect(usage!.agentTool).toBe('claude_code');
+    expect(usage!.tokensInput).toBe(100);
     expect(usage!.tokensOutput).toBe(50);
+    expect(usage!.tokensCacheRead).toBe(20);
+    expect(usage!.tokensCacheCreation).toBe(5);
+    expect(usage!.tokensTotal).toBe(175);
     expect(usage!.costUsd).toBe(0.42);
     expect(usage!.sources).toEqual(['harvest']);
     expect(usage!.harvestVersion).toBe(USAGE_HARVEST_VERSION);
@@ -98,6 +102,10 @@ describe('usage harvest claude', () => {
     });
 
     expect(usage).not.toBeNull();
+    expect(usage!.tokensInput).toBe(30);
+    expect(usage!.tokensOutput).toBe(10);
+    expect(usage!.tokensCacheRead).toBe(4);
+    expect(usage!.tokensTotal).toBe(44);
     expect(usage!.modelBreakdown).toEqual({
       'claude-opus-4-8': {
         tokensInput: 30,
@@ -107,6 +115,77 @@ describe('usage harvest claude', () => {
         tokensTotal: 44,
       },
     });
+  });
+
+  it('sums repeated result records instead of overwriting them', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-5-ff66';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    const result = (input: number, output: number, cost: number) =>
+      JSON.stringify({
+        type: 'result',
+        usage: { input_tokens: input, output_tokens: output, cache_read_input_tokens: 1 },
+        total_cost_usd: cost,
+      });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: workDir }),
+        result(10, 5, 0.1),
+        result(20, 7, 0.2),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestClaudeUsage({
+      agentId: 5,
+      workDir,
+      branch: 'main-abcd-har-agent-5-ff66',
+      suffix: 'ff66',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage).not.toBeNull();
+    expect(usage!.tokensInput).toBe(30);
+    expect(usage!.tokensOutput).toBe(12);
+    expect(usage!.tokensCacheRead).toBe(2);
+    expect(usage!.tokensTotal).toBe(44);
+    expect(usage!.costUsd).toBeCloseTo(0.3);
+  });
+
+  it('falls back to nested usage when the result record carries no tokens', () => {
+    const workDir = '/home/user/worktrees/main-abcd-har-agent-6-gg77';
+    const project = path.join(tmp, encodeClaudeProjectDir(workDir));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({ type: 'user', cwd: workDir }),
+        JSON.stringify({
+          type: 'assistant',
+          message: {
+            id: 'msg_1',
+            role: 'assistant',
+            model: 'claude-opus-5',
+            usage: { input_tokens: 8, output_tokens: 3, cache_read_input_tokens: 40 },
+          },
+        }),
+        JSON.stringify({ type: 'result', subtype: 'error_during_execution', usage: {} }),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestClaudeUsage({
+      agentId: 6,
+      workDir,
+      branch: 'main-abcd-har-agent-6-gg77',
+      suffix: 'gg77',
+      repoPath: '/home/user/repo',
+    });
+
+    expect(usage).not.toBeNull();
+    expect(usage!.tokensInput).toBe(8);
+    expect(usage!.tokensOutput).toBe(3);
+    expect(usage!.tokensCacheRead).toBe(40);
+    expect(usage!.tokensTotal).toBe(51);
   });
 
   it('bills a repeated assistant message id once', () => {
