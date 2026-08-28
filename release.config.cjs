@@ -5,6 +5,12 @@ module.exports = {
     [
       '@semantic-release/commit-analyzer',
       {
+        // conventionalcommits, not the default angular preset (#311): angular
+        // does not understand the `!` breaking marker — `feat!: x` analyzed to
+        // `null` there, so it bumped nothing AND never reached the changelog.
+        // AGENTS.md / CONTRIBUTING.md document `feat!:` as a major; this is
+        // what makes that true.
+        preset: 'conventionalcommits',
         releaseRules: [
           { scope: 'benchmark', release: false },
           { scope: 'ci', release: false },
@@ -14,7 +20,12 @@ module.exports = {
         ],
       },
     ],
-    '@semantic-release/release-notes-generator',
+    [
+      '@semantic-release/release-notes-generator',
+      // Must match the analyzer's preset, or breaking commits are versioned
+      // correctly but still omitted from the notes (#311).
+      { preset: 'conventionalcommits' },
+    ],
     [
       '@semantic-release/changelog',
       {
