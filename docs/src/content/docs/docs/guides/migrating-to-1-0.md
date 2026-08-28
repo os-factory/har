@@ -9,6 +9,8 @@ yours — config, stages, hooks, plugins, docs — behind thin shims. The migrat
 is designed so **muscle memory never breaks**: `./.har/verify.sh 1 --full`,
 `har env launch 1`, and the MCP tools work the same before, during, and after.
 
+What changed in the release, in short: [HAR 1.0.0](/blog/har-1-0-0/).
+
 ## Nothing breaks on upgrade day
 
 Upgrading `@osfactory/har` does not brick an old harness. Pre-1.0 vendored

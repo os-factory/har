@@ -22,11 +22,21 @@ function screenshotDir() {
  * Full-page screenshots taken from the top would otherwise capture empty gaps.
  */
 async function preparePageForScreenshot(page) {
-  await page.evaluate(() => {
-    document.querySelectorAll('.reveal').forEach((element) => {
-      element.classList.add('is-visible');
+  await page.waitForLoadState('domcontentloaded');
+  try {
+    await page.evaluate(() => {
+      document.querySelectorAll('.reveal').forEach((element) => {
+        element.classList.add('is-visible');
+      });
     });
-  });
+  } catch {
+    await page.waitForLoadState('load');
+    await page.evaluate(() => {
+      document.querySelectorAll('.reveal').forEach((element) => {
+        element.classList.add('is-visible');
+      });
+    });
+  }
   // Match .reveal transition duration in global.css.
   await page.waitForTimeout(750);
 }

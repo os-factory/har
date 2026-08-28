@@ -1,0 +1,23 @@
+---
+import { MIGRATION_PROMPT } from '../data/migration-prompt';
+---
+<aside class="migration-callout" aria-labelledby="migration-callout-title">
+  <div class="migration-callout-copy">
+    <p class="migration-callout-kicker">HAR 1.0.0</p>
+    <h2 id="migration-callout-title"><a href="/docs/guides/migrating-to-1-0/">Migrate an existing harness</a></h2>
+    <p>
+      The <a href="/docs/guides/migrating-to-1-0/">1.0.0 migration documentation</a> covers the
+      mechanical <code>har env maintain</code> flow. Copy this prompt into Cursor, Claude, or Codex
+      to run it against your repo.
+    </p>
+  </div>
+  <button
+    type="button"
+    class="migration-copy"
+    data-copy={MIGRATION_PROMPT}
+    data-copy-event="migration_prompt_copied"
+    aria-label="Copy v1.0.0 migration prompt"
+  >
+    <span data-copy-label>Copy prompt</span>
+  </button>
+</aside>

@@ -1,0 +1,12 @@
+---
+interface Props {
+  href: string;
+}
+
+const { href } = Astro.props;
+---
+<a class="release-banner" href={href}>
+  <strong>v1.0.0 is here</strong>
+  <span class="release-banner-copy">Read the announcement</span>
+  <span aria-hidden="true">→</span>
+</a>
