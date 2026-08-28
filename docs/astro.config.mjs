@@ -37,6 +37,8 @@ const redirects = Object.fromEntries(
 // The docs landing was consolidated into the Introduction; send /docs there.
 redirects['/docs'] = '/docs/getting-started/introduction/';
 redirects['/enterprise'] = '/teams/';
+redirects['/docs/project/road-to-1-0'] = '/blog/har-1-0-0/';
+redirects['/docs/project/road-to-1-0/'] = '/blog/har-1-0-0/';
 
 export default defineConfig({
 	site: 'https://harproject.dev',
@@ -122,7 +124,7 @@ export default defineConfig({
 					label: 'Project',
 					items: [
 						{ label: 'Architecture', slug: 'docs/project/architecture' },
-						{ label: 'The road to 1.0', slug: 'docs/project/road-to-1-0' },
+						{ label: 'HAR 1.0.0', link: '/blog/har-1-0-0/' },
 						{ label: 'Contributing', slug: 'docs/project/contributing' },
 						{ label: 'FAQ', slug: 'docs/project/faq' },
 					],

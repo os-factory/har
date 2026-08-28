@@ -66,11 +66,13 @@ document.querySelectorAll('.reveal').forEach((element) => {
 for (const copyButton of document.querySelectorAll<HTMLElement>('[data-copy]')) {
   copyButton.addEventListener('click', async () => {
     const label = copyButton.querySelector<HTMLElement>('[data-copy-label]');
+    const originalLabel = label?.textContent ?? 'Copy';
+    const eventName = copyButton.dataset.copyEvent ?? 'install_command_copied';
     try {
       await navigator.clipboard.writeText(copyButton.dataset.copy ?? '');
-      window.posthog?.capture('install_command_copied');
+      window.posthog?.capture(eventName);
       if (label) label.textContent = 'Copied';
-      window.setTimeout(() => { if (label) label.textContent = 'Copy'; }, 1500);
+      window.setTimeout(() => { if (label) label.textContent = originalLabel; }, 1500);
     } catch {
       if (label) label.textContent = 'Select';
     }

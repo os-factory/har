@@ -25,6 +25,7 @@ test.describe('Visual proof screenshots', () => {
     await expect(page.locator('h1')).toContainText(
       'The open harness for multi-agent coding workflows',
     );
+    await expect(page.getByRole('link', { name: /v1\.0\.0 is here/i })).toBeVisible();
     await page.locator('.hero').waitFor({ state: 'visible' });
     // Let reveal animations settle so shots are stable.
     await page.waitForTimeout(800);
@@ -85,10 +86,22 @@ test.describe('Visual proof screenshots', () => {
     expect(file).toBeTruthy();
   });
 
+  test('1.0.0 announcement full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.goto('/blog/har-1-0-0/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toContainText('HAR 1.0.0');
+    await expect(page.getByRole('button', { name: /Copy v1\.0\.0 migration prompt/i })).toBeVisible();
+    await page.locator('.blog-prose').waitFor({ state: 'visible' });
+    await page.waitForTimeout(800);
+    const file = await capturePageScreenshot(page, testInfo, 'blog-har-1-0-0');
+    expect(file).toBeTruthy();
+  });
+
   test('factory-line article full-page shot', async ({ page }, testInfo) => {
     test.setTimeout(90_000);
     await page.goto('/blog/the-factory-line/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('h1')).toContainText('The factory line');
+    await expect(page.getByRole('button', { name: /Copy v1\.0\.0 migration prompt/i })).toHaveCount(0);
     await page.locator('.blog-prose').waitFor({ state: 'visible' });
     await page.waitForTimeout(800);
     const file = await capturePageScreenshot(page, testInfo, 'blog-the-factory-line');

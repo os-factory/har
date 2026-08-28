@@ -1,6 +1,7 @@
 ---
 import BlogLayout from '../../layouts/BlogLayout.astro';
 import Footer from '../../components/Footer.astro';
+import MigrationPrompt from '../../components/MigrationPrompt.astro';
 import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -27,8 +28,7 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 >
 <section class="hero blueprint-surface blog-hero blog-hero-article">
 <div class="container">
-<header class="blog-article-head reveal">
-<a class="blog-back" href="/blog/">← Journal</a>
+<header class="blog-article-head">
 <div class="eyebrow"><span class="eyebrow-dot"></span> {post.data.kicker ?? 'Journal'}</div>
 <h1>{post.data.title}</h1>
 <p class="hero-lede">{post.data.description}</p>
@@ -41,7 +41,8 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 <div class="page-frame">
 <section class="section blog-article-section">
 <div class="container">
-<article class="blog-prose reveal">
+<article class="blog-prose">
+{post.data.migrationPrompt && <MigrationPrompt />}
 <Content />
 </article>
 </div>

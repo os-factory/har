@@ -12,6 +12,9 @@ test.describe('Frontend smoke', () => {
       'src',
       /ghbtns\.com\/github-btn\.html\?user=os-factory&repo=har/,
     );
+    const banner = page.getByRole('link', { name: /v1\.0\.0 is here/i });
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveAttribute('href', '/blog/har-1-0-0/');
     await expect(page.locator('meta[name="description"]')).toHaveAttribute(
       'content',
       /agent harness/i,

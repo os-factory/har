@@ -7,9 +7,9 @@ kicker: Method
 
 A harness is a manufacturing word. It is a jig: something that holds a unit in a known state so you can measure it. HAR already named that. Shipping 1.0.0 was the rest of the factory — stations in sequence, identical workstations, a QA gate on a real unit, a traveler that survives the merge policy, and a human on the andon cord.
 
-Two skills in this repository already call themselves a factory line: `v1-milestone`, which ran the 1.0.0 refactor, and `new-plugin`, which ships a verification plugin from research to a pull request. Those are unrelated jobs. They converged on the same shape. That is evidence the metaphor is load-bearing, not a slide.
+What 1.0.0 *is* — `.har/` as a configuration surface, what broke, how to migrate — is [HAR 1.0.0](/blog/har-1-0-0/). This piece is the method we used to get there.
 
-The [road to 1.0](/docs/project/road-to-1-0/) is the configuration-surface story — why `.har/` stopped being a vendored copy of the runtime. This piece is the method we used to get there.
+Two skills in this repository already call themselves a factory line: `v1-milestone`, which ran the 1.0.0 refactor, and `new-plugin`, which ships a verification plugin from research to a pull request. Those are unrelated jobs. They converged on the same shape. That is evidence the metaphor is load-bearing, not a slide.
 
 ## Where the analogy holds — and where it breaks
 
@@ -66,7 +66,7 @@ The session contract in this repository says the same thing in tooling language 
 
 ## What the line caught, and what it missed
 
-The line caught a lot. Dogfooding the migration on this repository's three real harnesses found six flow bugs and two release blockers before users would have. The [road to 1.0](/docs/project/road-to-1-0/) covers that catch. This section is about the misses — defects that showed up in a pre-release review after six green milestones.
+Dogfooding the migration on this repository's three real harnesses found six flow bugs and two release blockers before users would have. Those are now assertions. This section is about the misses — defects that showed up in a pre-release review after six green milestones.
 
 **[#291](https://github.com/os-factory/har/issues/291) — a stale global `har` and the 1.0 shims.** Pre-1.0 `har` treats `.har/verify.sh` as the implementation and executes it. The 1.0 shim `exec`s back into `har`. A pre-1.0 binary executes the script again. One new process per cycle, forever. We measured 2,306 node processes and a load average of 215. It took the machine down twice. The fix is a re-entry guard (exit 86) and a version floor that skips binaries older than the harness's pinned runtime. The gate never asked "what if the `har` on `PATH` is from last month?"
 

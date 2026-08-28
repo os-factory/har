@@ -3,6 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import HeroFlow from '../components/HeroFlow.astro';
+import AnnouncementBanner from '../components/AnnouncementBanner.astro';
 import { formatHeroRunTotal } from '../lib/hero-stage-meta';
 import { plugins } from '../data/plugins';
 
@@ -11,9 +12,10 @@ const heroRunTotal = formatHeroRunTotal();
 <BaseLayout
   title="HAR — Open agent harness (CLI + MCP) for coding agents"
   description="HAR is an open-source agent harness — CLI and MCP server — for multi-agent coding workflows. Isolated worktrees, deterministic verification, and software-factory observability for Claude Code, Cursor, and Codex."
-  bodyClass="home-page"
+  bodyClass="home-page has-release-banner"
   canonicalPath="/"
 >
+  <AnnouncementBanner href="/blog/har-1-0-0/" />
   <Header active="home" />
   <main>
 <section class="hero blueprint-surface">

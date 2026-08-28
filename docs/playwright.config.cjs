@@ -58,7 +58,7 @@ module.exports = defineConfig({
       name: 'frontend',
       testDir: './tests/frontend',
       testIgnore: ['**/visual-proof.spec.cjs'],
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], permissions: ['clipboard-read', 'clipboard-write'] },
     },
     {
       name: 'visual-proof',
