@@ -123,7 +123,7 @@ describe('harness drift detection', () => {
     expect(legacy.generatorVersion).toBe('0.5.0');
   });
 
-  it('flags missing port documentation vars when harness.env lacks infra scan knobs', () => {
+  it('flags a missing port lane when harness.env declares neither lanes nor legacy triplets', () => {
     const missing = missingPortDocumentationVars('default', {
       HARNESS_FE_BASE_PORT: '3000',
       HARNESS_API_BASE_PORT: '8000',
@@ -131,13 +131,21 @@ describe('harness drift detection', () => {
       HARNESS_INFRA_SERVICES: 'db',
       HARNESS_DB_PORT_DEFAULT: '15432',
     });
-    expect(missing).toEqual([
-      'HARNESS_DB_PORT_SCAN_START',
-      'HARNESS_DB_PORT_SCAN_END',
-    ]);
+    expect(missing).toEqual(['HARNESS_INFRA_PORT_LANES:db']);
   });
 
-  it('requires infra port vars only for enabled compose services', () => {
+  it('accepts a HARNESS_INFRA_PORT_LANES declaration in place of legacy triplets', () => {
+    const missing = missingPortDocumentationVars('default', {
+      HARNESS_FE_BASE_PORT: '3000',
+      HARNESS_API_BASE_PORT: '8000',
+      HARNESS_PORT_STEP: '10',
+      HARNESS_INFRA_SERVICES: 'db',
+      HARNESS_INFRA_PORT_LANES: 'db=15432:15432-15499',
+    });
+    expect(missing).toEqual([]);
+  });
+
+  it('requires infra port lanes only for enabled compose services', () => {
     const missing = missingPortDocumentationVars('cli', {
       HARNESS_PORT_STEP: '10',
       HARNESS_INFRA_SERVICES: 'db minio',
@@ -145,7 +153,8 @@ describe('harness drift detection', () => {
       HARNESS_DB_PORT_SCAN_START: '15432',
       HARNESS_DB_PORT_SCAN_END: '15499',
     });
-    expect(missing).toContain('HARNESS_MINIO_PORT_DEFAULT');
-    expect(missing).not.toContain('HARNESS_DB_PORT_DEFAULT');
+    expect(missing).toContain('HARNESS_INFRA_PORT_LANES:minio');
+    expect(missing).toContain('HARNESS_INFRA_PORT_LANES:minio-console');
+    expect(missing).not.toContain('HARNESS_INFRA_PORT_LANES:db');
   });
 });

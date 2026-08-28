@@ -82,5 +82,7 @@ Any MCP client can discover HAR's generic tools for initialization, preflight,
 launch, recovery, stages, verification, status, logs, completion, teardown,
 artifacts, runs, and Mission Control.
 
-MCP is the preferred interface in agents because it returns structured results and
-persists run history without requiring the model to interpret shell output.
+MCP is the preferred interface in agents because it returns structured results
+the model does not have to parse. Run history is identical on every surface —
+the `./.har/*.sh` shims, `har env …`, and MCP all run the same packaged runtime
+and write the same records.

@@ -6,7 +6,7 @@ import { resolveTemplateFile } from '../src/utils/paths';
 const tmpDirs: string[] = [];
 
 function scaffoldEcosystemConfig(agentId = 1): { dir: string; configPath: string } {
-  const templatePath = resolveTemplateFile('har-boilerplate/ecosystem.agent.template.cjs');
+  const templatePath = resolveTemplateFile('runtime-bundles/pm2-runtime/ecosystem.agent.template.cjs');
   if (!templatePath) {
     throw new Error('ecosystem.agent.template.cjs template not found');
   }

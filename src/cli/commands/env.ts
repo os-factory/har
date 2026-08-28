@@ -1,12 +1,12 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import type { Argv } from 'yargs';
 import { finishCommand } from '../finish-command';
 import { initHarness, maintainHarness, addPlugin } from '../../core/harness';
+import type { MaintainMigrationInfo } from '../../core/harness';
 import {
   listPluginIds,
 } from '../../harness/plugins';
-import { addCustomStage } from '../../harness/custom-stage';
-import type { HarnessStageKind } from '../../harness/schema';
 import { HarnessDriftResult } from '../../harness/drift';
 import type { MaintainBundleReport } from '../../harness/maintain-bundle';
 import {
@@ -23,17 +23,21 @@ import {
 } from '../../harness/instruction-files';
 import {
   completeEnvironment,
+  getEnvironmentLogs,
   getEnvironmentStatus,
   launchEnvironment,
+  listArtifacts,
   preflightEnvironment,
+  runStage,
   runVerification,
   teardownEnvironment,
 } from '../../core/run-service';
-import { checkLaunchGuard } from '../../core/slot-launch-guard';
 import { listRuns, getRun } from '../../core/runs';
+import { runAgentOp } from '../../runtime';
 import { addWorkUnitLinks, parseWorkLinkSpec } from '../../core/work-units';
 import { resolveHarnessRoot } from '../../harness/manifest';
-import { collectEnvironmentStatus } from '../../core/slot-status';
+import { adoptHarness, ejectHarness } from '../../harness/eject';
+import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
 import {
   confirmCleanupSelection,
   discoverCleanupCandidates,
@@ -56,6 +60,8 @@ import {
   LAUNCH_RESUME_DESCRIBE,
 } from '../help-text';
 
+// Operation × surface matrix (CLI ↔ MCP) is documented in AGENTS.md — keep it
+// current when adding or removing a subcommand here or a tool in mcp/server.ts.
 const workLinkOptions = (y: Argv) =>
   y
     .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
@@ -142,6 +148,12 @@ export const envCommand = {
               default: false,
               describe: 'Record the completed manual adaptation in .har/manifest.json (updates file checksums)',
             })
+            .option('migrate', {
+              type: 'boolean',
+              default: false,
+              describe:
+                'Apply the pending mechanical migration steps (pre-1.0 → 1.0; backups in .har/migrate/backup/)',
+            })
             .option('summary', {
               type: 'string',
               describe: 'Adaptation summary to store in the manifest (--finalize only)',
@@ -194,20 +206,25 @@ export const envCommand = {
             })
             .option('skip-ci', {
               type: 'boolean',
+              default: true,
+              describe:
+                'Do not copy optional CI workflow files (default; pass --with-ci to include them)',
+            })
+            .option('with-ci', {
+              type: 'boolean',
               default: false,
-              describe: 'Do not copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
+              describe: 'Copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
             }),
         handleAddPlugin,
       )
       .command(
         'add-stage [template]',
-        `Register a custom stage (--custom), or install a plugin (deprecated alias for add-plugin)`,
+        `Install a plugin (deprecated alias for add-plugin); --custom was removed in 1.0 (use har plugin create)`,
         (y: Argv) =>
           y
             .positional('template', {
               type: 'string',
-              describe:
-                'Custom stage id with --custom, or a plugin id / path / npm / git spec as a deprecated alias',
+              describe: 'Plugin id / path / npm / git spec (deprecated alias for add-plugin)',
             })
             .option('list', {
               type: 'boolean',
@@ -217,30 +234,14 @@ export const envCommand = {
             .option('custom', {
               type: 'boolean',
               default: false,
-              describe: 'Register a custom stage instead of installing a plugin',
+              hidden: true,
+              describe: 'Removed in 1.0 — use: har plugin create <id>',
             })
-            .option('kind', {
-              type: 'string',
-              describe: 'Custom stage kind (setup, launch, verify, test, inspect, reset, teardown, custom)',
-            })
-            .option('command', {
-              type: 'string',
-              describe: 'Custom stage shell command ({agentId} is substituted), e.g. "npm test"',
-            })
-            .option('script', {
-              type: 'boolean',
-              default: false,
-              describe: 'Scaffold .har/stages/<id>.sh from the contract skeleton (see .har/STAGES.md)',
-            })
-            .option('description', {
-              type: 'string',
-              describe: 'Custom stage description shown in the registry and Mission Control',
-            })
-            .option('verification', {
-              type: 'boolean',
-              default: false,
-              describe: 'Include the custom stage in verify --full (stages.json verificationStages)',
-            })
+            .option('kind', { type: 'string', hidden: true })
+            .option('command', { type: 'string', hidden: true })
+            .option('script', { type: 'boolean', default: false, hidden: true })
+            .option('description', { type: 'string', hidden: true })
+            .option('verification', { type: 'boolean', default: false, hidden: true })
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
             .option('force', {
               type: 'boolean',
@@ -249,8 +250,14 @@ export const envCommand = {
             })
             .option('skip-ci', {
               type: 'boolean',
+              default: true,
+              describe:
+                'Do not copy optional CI workflow files (default; pass --with-ci to include them)',
+            })
+            .option('with-ci', {
+              type: 'boolean',
               default: false,
-              describe: 'Do not copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
+              describe: 'Copy optional CI workflow files (e.g. .github/workflows/playwright.yml)',
             }),
         handleAddStage,
       )
@@ -375,6 +382,52 @@ export const envCommand = {
         handleComplete,
       )
       .command(
+        'setup-infra',
+        'Set up shared infrastructure for all agent slots (Docker services, template DB, or the iOS toolchain)',
+        (y: Argv) => y.option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
+        handleSetupInfra,
+      )
+      .command(
+        'agent <id> <command> [args..]',
+        'Per-slot operations against a running environment (status, logs, restart, psql, health, url, reset-db, slow-queries, exec, attach)',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .positional('command', { type: 'string', describe: 'Operation to run' })
+            .positional('args', { type: 'string', array: true, describe: 'Operation arguments' })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
+        handleAgent,
+      )
+      .command(
+        'doctor',
+        'Validate the harness contract: harness.env schema, stages.json, stage scripts, verification ids, port lanes, slot registry',
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output (exit 0 pass, 1 errors)' }),
+        handleDoctor,
+      )
+      .command(
+        'eject',
+        'Vendor the HAR runtime into .har/ and own the scripts yourself (reversible: har env adopt)',
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('yes', {
+              alias: 'y',
+              type: 'boolean',
+              default: false,
+              describe: 'Skip the confirmation prompt',
+            }),
+        handleEject,
+      )
+      .command(
+        'adopt',
+        'Return an ejected harness to managed shims (removes .har/runtime/, keeps your config)',
+        (y: Argv) => y.option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
+        handleAdopt,
+      )
+      .command(
         'status',
         'Show status of all running agents',
         (y: Argv) =>
@@ -382,6 +435,38 @@ export const envCommand = {
             .option('repo', { type: 'string', default: '.' })
             .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
         handleStatus,
+      )
+      .command(
+        'logs <id> [service]',
+        'Show recent logs for an agent slot (optionally one service)',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .positional('service', { type: 'string', describe: 'Limit logs to one service' })
+            .option('repo', { type: 'string', default: '.' }),
+        handleLogs,
+      )
+      .command(
+        'run-stage <id> <stage> [args..]',
+        'Run one registered harness stage by id for an agent slot',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
+            .positional('stage', { type: 'string', describe: 'Stage id from .har/stages.json' })
+            .positional('args', { type: 'string', array: true, describe: 'Extra arguments passed to the stage' })
+            .option('repo', { type: 'string', default: '.' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
+        handleRunStage,
+      )
+      .command(
+        'artifacts',
+        'List result JSON, screenshots, traces, and reports under .har/artifacts/',
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.' })
+            .option('stage', { type: 'string', describe: 'Filter by stage id' })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' }),
+        handleArtifacts,
       )
       .command(
         'cleanup',
@@ -462,7 +547,7 @@ export const envCommand = {
       )
       .demandCommand(
         1,
-        'Please specify a subcommand: init, maintain, add-stage, launch, recover, verify, complete, teardown, status, cleanup, runs',
+        'Please specify a subcommand: init, maintain, add-plugin, add-stage, launch, recover, verify, complete, teardown, doctor, eject, adopt, status, logs, run-stage, artifacts, cleanup, runs',
       )
       .epilog(HAR_ENV_EPILOG),
   handler: () => {},
@@ -543,6 +628,7 @@ export async function handleMaintain(argv: {
   verbose: boolean;
   yes: boolean;
   finalize: boolean;
+  migrate?: boolean;
   summary?: string;
   /** Tri-state from yargs: unset | --cursor-rule | --no-cursor-rule */
   cursorRule?: boolean;
@@ -563,13 +649,31 @@ export async function handleMaintain(argv: {
       repoPath,
       verbose: argv.verbose,
       finalize: argv.finalize,
+      migrate: argv.migrate,
       summary: argv.summary,
     });
+
+    if (result.migration) {
+      printMigrationSummary(result.migration);
+    } else if (argv.migrate) {
+      info('No pending migration — the harness is already on the 1.0 shape.');
+    }
 
     divider();
     info('Validating harness...');
     printValidation(result.validation);
     printDrift(result.drift);
+
+    // Doctor runs automatically on every maintain (#232).
+    if (result.doctor.ok) {
+      const summary = summarizeDoctorReport(result.doctor);
+      info(summary ? `Doctor: PASS (${summary})` : 'Doctor: PASS');
+    } else {
+      warn('Doctor: FAIL — harness contract is broken:');
+      for (const line of formatDoctorReport(result.doctor).split('\n')) {
+        info(line);
+      }
+    }
 
     if (result.bundle) {
       printMaintainBundleSummary(result.bundle.report);
@@ -585,14 +689,23 @@ export async function handleMaintain(argv: {
       if (!result.validation.pass) {
         warn('Harness has validation errors — fix them before running --finalize.');
       }
-      await emitManualAdaptationPrompt(
-        repoPath,
-        'maintain',
-        'default',
-        result.bundle?.report,
-        argv.yes,
-      );
-      info('After your coding agent finishes adapting, record it with: har env maintain --finalize');
+      if (result.migration) {
+        info('Migration prompt for your coding agent (also saved to .har/MIGRATE-PROMPT.md):');
+        printAdaptationPrompt(result.migration.prompt);
+        await offerAdaptationPromptClipboard(result.migration.prompt, { autoYes: argv.yes });
+        info(
+          'After your coding agent finishes the migration, record it with: har env maintain --finalize',
+        );
+      } else {
+        await emitManualAdaptationPrompt(
+          repoPath,
+          'maintain',
+          'default',
+          result.bundle?.report,
+          argv.yes,
+        );
+        info('After your coding agent finishes adapting, record it with: har env maintain --finalize');
+      }
     }
 
     divider();
@@ -772,6 +885,7 @@ export async function handleAddPlugin(argv: {
   repo: string;
   force: boolean;
   skipCi: boolean;
+  withCi?: boolean;
 }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
   const available = listPluginIds();
@@ -786,7 +900,7 @@ export async function handleAddPlugin(argv: {
   if (!argv.plugin) {
     error(
       `Missing plugin. Bundled: ${available.join(', ') || '(none)'}. ` +
-        `Or pass a path, npm package, or git URL. For a project-specific stage, use: har env add-stage <id> --custom`,
+        `Or pass a path, npm package, or git URL. For a project-owned plugin, scaffold one with: har plugin create <id>`,
     );
     return finishCommand(1);
   }
@@ -798,7 +912,8 @@ export async function handleAddPlugin(argv: {
   try {
     const result = addPlugin(repoPath, argv.plugin, {
       force: argv.force,
-      skipCi: argv.skipCi,
+      // --with-ci wins over the skip-ci default: CI workflows are opt-in.
+      skipCi: argv.withCi ? false : argv.skipCi,
       spec: argv.plugin,
     });
 
@@ -816,6 +931,10 @@ export async function handleAddPlugin(argv: {
     console.error('');
     console.error(`  Docs: ${result.docsPath}`);
     console.error('');
+    // #195: hand the structured prompt to the coding agent, like init does.
+    info(`Adaptation prompt saved to ${result.adaptPromptPath}`);
+    const promptContent = fs.readFileSync(path.join(repoPath, result.adaptPromptPath), 'utf8');
+    await offerAdaptationPromptClipboard(promptContent, { fileLabel: result.adaptPromptPath });
   } catch (err: unknown) {
     error((err as Error).message);
     return finishCommand(1);
@@ -834,8 +953,8 @@ export async function handleAddStage(argv: {
   repo: string;
   force: boolean;
   skipCi: boolean;
+  withCi?: boolean;
 }): Promise<void> {
-  const repoPath = path.resolve(argv.repo);
   const available = listPluginIds();
 
   if (argv.list) {
@@ -847,51 +966,19 @@ export async function handleAddStage(argv: {
   }
 
   if (argv.custom) {
-    if (!argv.template) {
-      error(
-        'Missing stage id. Usage: har env add-stage <id> --custom (--command "npm test" | --script) [--kind test] [--verification]',
-      );
-      return finishCommand(1);
-    }
-
-    header('har env add-stage --custom');
-    info(`Repository: ${repoPath}`);
-    info(`Stage: ${argv.template}`);
-
-    try {
-      const result = addCustomStage(repoPath, {
-        id: argv.template,
-        kind: argv.kind as HarnessStageKind | undefined,
-        command: argv.command,
-        script: argv.script,
-        description: argv.description,
-        verification: argv.verification,
-        force: argv.force,
-      });
-
-      divider();
-      success(`Custom stage registered: ${result.stageId} (kind: ${result.kind}, ${result.mode})`);
-      for (const file of result.filesWritten) {
-        info(`  + ${file}`);
-      }
-      console.error('');
-      console.error('  Next steps:');
-      for (const step of result.nextSteps) {
-        console.error(`    ${step}`);
-      }
-      console.error('');
-      console.error('  Docs: .har/STAGES.md');
-      console.error('');
-    } catch (err: unknown) {
-      error((err as Error).message);
-      return finishCommand(1);
-    }
-    return;
+    const id = argv.template ?? '<id>';
+    error(
+      `har env add-stage --custom was removed in 1.0. Custom stages are local plugins now — run: har plugin create ${id}` +
+        (argv.command
+          ? `. For a one-liner like "${argv.command}", register a command stage directly in .har/stages.json instead (see .har/STAGES.md).`
+          : '. For a simple one-liner, register a command stage directly in .har/stages.json (see .har/STAGES.md).'),
+    );
+    return finishCommand(1);
   }
 
   if (!argv.template) {
     error(
-      `Unknown plugin: (missing). Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-specific stage, use: har env add-stage <id> --custom`,
+      `Unknown plugin: (missing). Available: ${available.join(', ')}. Prefer: har env add-plugin <id>. For a project-owned plugin, scaffold one with: har plugin create <id>`,
     );
     return finishCommand(1);
   }
@@ -905,6 +992,7 @@ export async function handleAddStage(argv: {
     repo: argv.repo,
     force: argv.force,
     skipCi: argv.skipCi,
+    withCi: argv.withCi,
   });
 }
 
@@ -947,17 +1035,8 @@ export async function handleLaunch(argv: {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
 
-  if (!argv.resume) {
-    const guard = checkLaunchGuard(repo, agentId, { worktree: argv.worktree });
-    if (!guard.allowed && guard.blocked) {
-      error(guard.reason ?? `Slot ${agentId} is occupied.`);
-      return finishCommand(2);
-    }
-    for (const warning of guard.readiness?.warnings ?? []) {
-      warn(warning);
-    }
-  }
-
+  // The launch guard runs exactly once, inside run-service (also on --resume);
+  // this layer only renders the outcome.
   const result = await launchEnvironment({
     repoPath: repo,
     agentId,
@@ -975,6 +1054,9 @@ export async function handleLaunch(argv: {
   if (result.blocked) {
     error(result.stderr || 'Launch blocked: slot is occupied.');
     return finishCommand(result.code || 2);
+  }
+  for (const warning of result.warnings ?? []) {
+    warn(warning);
   }
   if (result.code === 0 && result.workDir) {
     if (result.stderr) {
@@ -1115,20 +1197,207 @@ export async function handleComplete(argv: {
   return finishCommand(result.code);
 }
 
+export async function handleSetupInfra(argv: { repo: string }): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const result = await runStage({
+    repoPath: repo,
+    kind: 'setup',
+    capture: false,
+    trigger: 'cli',
+  });
+  return finishCommand(result.code ?? (result.status === 'pass' ? 0 : 1));
+}
+
+export async function handleAgent(argv: {
+  id?: number;
+  command?: string;
+  args?: string[];
+  repo: string;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  const result = await runAgentOp({
+    repoPath: repo,
+    agentId,
+    command: argv.command ?? 'status',
+    args: argv.args,
+  });
+  return finishCommand(result.code);
+}
+
+export async function handleDoctor(argv: { repo: string; json?: boolean }): Promise<void> {
+  const repoPath = path.resolve(argv.repo);
+  const report = runDoctor(repoPath);
+
+  if (argv.json) {
+    console.log(JSON.stringify(report, null, 2));
+    return finishCommand(report.ok ? 0 : 1);
+  }
+
+  header('har env doctor');
+  info(`Repository: ${repoPath}`);
+  divider();
+  for (const line of formatDoctorReport(report).split('\n')) {
+    info(line);
+  }
+  divider();
+  if (report.ok) {
+    success('Harness contract is healthy.');
+  } else {
+    error('Harness contract is broken — fix the errors above.');
+  }
+  return finishCommand(report.ok ? 0 : 1);
+}
+
+async function confirm(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false;
+  const readline = await import('readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  const answer = await new Promise<string>((resolve) => rl.question(question, resolve));
+  rl.close();
+  return /^y(es)?$/i.test(answer.trim());
+}
+
+export async function handleEject(argv: { repo: string; yes: boolean }): Promise<void> {
+  const repoPath = resolveHarnessRoot(path.resolve(argv.repo));
+
+  header('har env eject');
+  warn('This vendors the complete HAR runtime into .har/runtime/ and rewrites the');
+  warn('.har/*.sh scripts to execute it directly — from then on YOU OWN those files:');
+  warn('  • har env maintain will no longer update them (no upstream drift reports)');
+  warn('  • upstream fixes and features reach you only by re-ejecting or adopting');
+  warn('  • support covers issues reproducible with managed shims; changes you make');
+  warn('    to the ejected runtime are yours to maintain');
+  warn('Config files (harness.env, stages.json, stages/, hooks, docs) stay managed.');
+  info('Reversible anytime: `har env adopt` (or `har env init --force`).');
+
+  if (!argv.yes) {
+    const ok = await confirm('Eject the runtime and own the scripts yourself? [y/N] ');
+    if (!ok) {
+      info('Aborted — nothing changed. Pass --yes to skip this prompt.');
+      return finishCommand(1);
+    }
+  }
+
+  try {
+    const result = ejectHarness(repoPath);
+    success(`Ejected @osfactory/har@${result.version} → .har/runtime/`);
+    info(`  Rewritten as user-owned: ${result.scripts.map((s) => `.har/${s}`).join(', ')}`);
+    info('  Recorded in .har/manifest.json (ejected: true) — commit .har/ to keep it.');
+    info('  Return to managed shims anytime: har env adopt');
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
+  return finishCommand(0);
+}
+
+export async function handleAdopt(argv: { repo: string }): Promise<void> {
+  const repoPath = resolveHarnessRoot(path.resolve(argv.repo));
+  try {
+    const result = adoptHarness(repoPath);
+    success('Returned to managed shims — .har/runtime/ removed, eject flag cleared.');
+    info(`  Regenerated: ${result.scripts.map((s) => `.har/${s}`).join(', ')}`);
+    info('  Config surface files (harness.env, stages.json, stages/, docs) were not touched.');
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
+  return finishCommand(0);
+}
+
 export async function handleStatus(argv: { repo: string; json?: boolean }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 
+  // One status implementation for text, --json, and MCP: the structured
+  // collector inside getEnvironmentStatus. Status is a pure read (no run records).
+  const result = await getEnvironmentStatus({
+    repoPath,
+    capture: false,
+  });
+
   if (argv.json) {
-    const status = collectEnvironmentStatus(repoPath);
-    const output = EnvironmentStatusSchema.parse(status);
+    const output = EnvironmentStatusSchema.parse(result.status);
     process.stdout.write(JSON.stringify(output, null, 2) + '\n');
     return;
   }
 
-  await getEnvironmentStatus({
-    repoPath,
-    capture: false,
+  if (result.stdout) process.stdout.write(result.stdout);
+}
+
+export async function handleLogs(argv: {
+  id?: number;
+  repo: string;
+  service?: string;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  const result = await getEnvironmentLogs({
+    repoPath: repo,
+    agentId,
+    service: argv.service,
   });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  return finishCommand(result.code);
+}
+
+export async function handleRunStage(argv: {
+  id?: number;
+  stage?: string;
+  repo: string;
+  args?: string[];
+  json?: boolean;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  const agentId = validateAgentId(argv.id, repo);
+  if (!argv.stage) {
+    error('Missing stage id. Usage: har env run-stage <id> <stage> [args..]');
+    return finishCommand(1);
+  }
+
+  try {
+    const result = await runStage({
+      repoPath: repo,
+      stageId: argv.stage,
+      agentId,
+      args: argv.args,
+      capture: Boolean(argv.json),
+    });
+    if (argv.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    }
+    const code = result.code ?? (result.status === 'pass' ? 0 : 1);
+    return finishCommand(code);
+  } catch (err: unknown) {
+    error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
+}
+
+export async function handleArtifacts(argv: {
+  repo: string;
+  stage?: string;
+  json?: boolean;
+}): Promise<void> {
+  const artifacts = listArtifacts({
+    repoPath: path.resolve(argv.repo),
+    stageId: argv.stage,
+  });
+
+  if (argv.json) {
+    process.stdout.write(JSON.stringify({ artifacts }, null, 2) + '\n');
+    return;
+  }
+
+  header('har env artifacts');
+  if (artifacts.length === 0) {
+    info('No artifacts found under .har/artifacts/');
+    return;
+  }
+  for (const artifact of artifacts) {
+    info(`${artifact.relativePath}  (${artifact.sizeBytes} bytes, ${artifact.modifiedAt})`);
+  }
 }
 
 export async function handleCleanup(argv: {
@@ -1261,8 +1530,19 @@ function printValidation(result: {
 }
 
 function printDrift(drift: HarnessDriftResult): void {
-  if (drift.checksumMismatch.length > 0) {
-    warn(`  Drift (template changed): ${drift.checksumMismatch.join(', ')}`);
+  if (drift.ownedByUser.length > 0) {
+    info(`  User-owned (ejected, never drift-checked): ${drift.ownedByUser.join(', ')}`);
+  }
+  if (drift.conflict.length > 0) {
+    warn(`  Conflict (upstream updated AND user edited — merge): ${drift.conflict.join(', ')}`);
+  }
+  if (drift.upstreamUpdated.length > 0) {
+    warn(`  Upstream template updates: ${drift.upstreamUpdated.join(', ')}`);
+  }
+  if (drift.userAdapted.length > 0) {
+    info(
+      `  Adapted locally (current with upstream — finalize to bless): ${drift.userAdapted.join(', ')}`,
+    );
   }
   if (drift.missing.length > 0) {
     warn(`  Missing from .har/: ${drift.missing.join(', ')}`);
@@ -1283,24 +1563,32 @@ function printDrift(drift: HarnessDriftResult): void {
     warn('  Canonical source is .har/stages.json — har env maintain --finalize syncs harness.env.');
   }
   if (
-    drift.checksumMismatch.length === 0 &&
+    drift.conflict.length === 0 &&
+    drift.upstreamUpdated.length === 0 &&
     drift.missing.length === 0 &&
     drift.extra.length === 0 &&
     drift.missingPortVars.length === 0 &&
     !drift.agentSlotMismatch
   ) {
-    success('  Harness matches bundled templates');
+    success(
+      drift.userAdapted.length > 0
+        ? '  No actionable drift (local adaptations are current with upstream)'
+        : '  Harness matches bundled templates',
+    );
   }
 }
 
 function printMaintainBundleSummary(report: MaintainBundleReport): void {
   const missing = report.actions.filter((a) => a.kind === 'missing').length;
-  const drifted = report.actions.filter((a) => a.kind === 'drift').length;
+  const upstream = report.actions.filter((a) => a.kind === 'upstream-updated').length;
+  const conflicts = report.actions.filter((a) => a.kind === 'conflict').length;
   const pluginMissing = report.pluginActions.filter((a) => a.kind === 'missing').length;
   const pluginDrifted = report.pluginActions.filter((a) => a.kind === 'drift').length;
   const stale = report.stale.length;
   info(`Maintenance bundle: .har/maintain/`);
-  info(`  Harness: ${missing} missing, ${drifted} drifted, ${stale} stale`);
+  info(
+    `  Harness: ${missing} missing, ${upstream} upstream-updated, ${conflicts} conflict(s), ${report.adapted.length} adapted (no action), ${stale} stale`,
+  );
   if (report.pluginDrift.length > 0) {
     info(
       `  Plugins (${report.pluginDrift.map((p) => p.pluginId).join(', ')}): ${pluginMissing} missing, ${pluginDrifted} drifted`,
@@ -1311,14 +1599,40 @@ function printMaintainBundleSummary(report: MaintainBundleReport): void {
   }
 }
 
+/** Loud pre-1.0 → 1.0 migration report (#241). */
+function printMigrationSummary(migration: MaintainMigrationInfo): void {
+  divider();
+  if (migration.applied) {
+    const applied = migration.appliedResult;
+    success(`Migration applied: ${migration.title}`);
+    if (applied) {
+      if (applied.written.length > 0) info(`  Rewritten: ${applied.written.join(', ')}`);
+      if (applied.deleted.length > 0) info(`  Removed:   ${applied.deleted.join(', ')}`);
+      info(`  Backups:   .har/migrate/backup/`);
+    }
+    info(`  Manifest stamped runtimeVersion=${migration.to}`);
+    if (migration.plan.residue.length > 0) {
+      warn(
+        `  ${migration.plan.residue.length} adapted item(s) need lifting into config/stages/hooks/plugins — see .har/MIGRATE-PROMPT.md`,
+      );
+    }
+  } else {
+    warn(`PRE-1.0 HARNESS DETECTED — migration available: ${migration.title}`);
+    warn('  Your vendored .har/*.sh scripts keep working for now (deprecated, compat window).');
+    info(`  Plan:    .har/migrate/plan.json`);
+    info(`  Prompt:  .har/MIGRATE-PROMPT.md (paste into your coding agent)`);
+    info(`  Apply mechanical steps: har env maintain --migrate`);
+  }
+}
+
 function printNextSteps(): void {
   console.error('');
   console.error('  Read:         .har/README.md');
   console.error('  Adapt:        paste clipboard / prompt above into your coding agent');
   console.error('  Prompt file:  .har/ADAPT-PROMPT.md');
-  console.error('  Setup infra:  ./.har/setup-infra.sh   # when Docker infra is enabled');
-  console.error('  Launch:       har env launch 1        # preferred; or ./.har/launch.sh 1');
-  console.error('  Verify:       har env verify 1         # preferred; or ./.har/verify.sh 1');
+  console.error('  Setup infra:  har env setup-infra      # when Docker infra is enabled');
+  console.error('  Launch:       har env launch 1');
+  console.error('  Verify:       har env verify 1 --full');
   console.error('  Maintain:     har env maintain');
   console.error('  MCP server:   har mcp');
   console.error('');

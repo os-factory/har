@@ -11,6 +11,16 @@ import {
 } from '../harness/maintain-bundle';
 import { readManifest, getHarnessDir } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages, syncAgentSlotsToHarnessEnv } from '../harness/stages';
+import { ensureEcosystemVerificationStages } from '../harness/verification';
+import { DoctorReport, runDoctor } from '../harness/doctor';
+import {
+  AppliedMigration,
+  MigrationPlan,
+  pendingMigrations,
+  removeMigrationArtifacts,
+  writeMigrationPlan,
+} from '../harness/migrations';
+import { buildMigrationPrompt, writeMigrationPrompt } from '../harness/migrate-prompt';
 import {
   applyPlugin,
   ApplyPluginOptions,
@@ -37,12 +47,32 @@ export interface MaintainHarnessOptions {
   verbose?: boolean;
   finalize?: boolean;
   summary?: string;
+  /** Apply the pending mechanical migration steps (#241). */
+  migrate?: boolean;
+}
+
+/** Pre-1.0 → 1.0 migration state surfaced by maintain (#241). */
+export interface MaintainMigrationInfo {
+  migrationId: string;
+  to: string;
+  title: string;
+  /** True when `--migrate` ran the mechanical steps this invocation. */
+  applied: boolean;
+  plan: MigrationPlan;
+  appliedResult?: AppliedMigration;
+  /** Absolute path of the generated .har/MIGRATE-PROMPT.md. */
+  promptPath: string;
+  prompt: string;
 }
 
 export interface MaintainHarnessResult {
   validation: ValidationResult;
   drift: HarnessDriftResult;
+  /** Contract validation (#232) — runs automatically on every maintain. */
+  doctor: DoctorReport;
   bundle?: MaintainBundleResult;
+  /** Set when the harness has (or just applied) a pending shape migration (#241). */
+  migration?: MaintainMigrationInfo;
 }
 
 export interface ProjectDescription {
@@ -105,6 +135,7 @@ export async function initHarness(options: InitHarnessOptions): Promise<InitHarn
     profile: options.profile,
   });
   syncAgentSlotsToHarnessEnv(repoPath);
+  ensureEcosystemVerificationStages(repoPath);
 
   const validation = validateHarness(repoPath);
   let smoke: ValidationResult | undefined;
@@ -127,6 +158,46 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     throw new Error('No .har/ found. Run "har env init" first.');
   }
 
+  // Versioned migrations (#241): a pre-1.0 harness is detected on every
+  // maintain. Plain maintain only plans + writes the MIGRATE prompt (compat
+  // window — nothing changes); `--migrate` applies the mechanical steps with
+  // backups under .har/migrate/backup/.
+  let migration: MaintainMigrationInfo | undefined;
+  const pending = pendingMigrations(repoPath);
+  if (pending.length > 0 && !options.finalize) {
+    const next = pending[0];
+    if (options.migrate) {
+      const applied = next.apply(repoPath);
+      const prompt = buildMigrationPrompt(applied.plan, applied);
+      const promptPath = writeMigrationPrompt(repoPath, prompt);
+      migration = {
+        migrationId: next.id,
+        to: next.to,
+        title: next.title,
+        applied: true,
+        plan: applied.plan,
+        appliedResult: applied,
+        promptPath,
+        prompt,
+      };
+    } else {
+      const plan = next.plan(repoPath);
+      writeMigrationPlan(repoPath, plan);
+      const prompt = buildMigrationPrompt(plan, null);
+      const promptPath = writeMigrationPrompt(repoPath, prompt);
+      migration = {
+        migrationId: next.id,
+        to: next.to,
+        title: next.title,
+        applied: false,
+        plan,
+        promptPath,
+        prompt,
+      };
+    }
+  }
+
+  ensureEcosystemVerificationStages(repoPath);
   const drift = compareHarnessToTemplate(repoPath);
   const validation = validateHarness(repoPath);
 
@@ -143,9 +214,16 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
       existing?.stack,
     );
     removeMaintainBundle(repoPath);
+    // Migration artifacts (backups, plan, prompt) are kept until the harness
+    // is actually on the 1.0 shape — finalize on a still-pre-1.0 harness must
+    // not destroy the only copy of the vendored scripts.
+    if (pendingMigrations(repoPath).length === 0) {
+      removeMigrationArtifacts(repoPath);
+    }
     return {
       validation,
       drift: compareHarnessToTemplate(repoPath),
+      doctor: runDoctor(repoPath),
     };
   }
 
@@ -154,7 +232,9 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   return {
     validation,
     drift,
+    doctor: runDoctor(repoPath),
     bundle,
+    migration,
   };
 }
 

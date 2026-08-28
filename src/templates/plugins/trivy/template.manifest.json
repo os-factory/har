@@ -2,9 +2,6 @@
   "id": "trivy",
   "stageId": "vuln-scan",
   "verificationStages": [
-    "typecheck",
-    "unit-tests",
-    "lint",
     "vuln-scan"
   ],
   "stage": {
@@ -23,15 +20,30 @@
         "path": ".har/artifacts/vuln-scan/report.json",
         "kind": "report"
       }
-    ]
+    ],
+    "tier": "full"
   },
   "files": [
-    { "src": ".har/stages/vuln-scan.sh", "dest": ".har/stages/vuln-scan.sh", "executable": true },
-    { "src": ".har/stages/TRIVY.md",     "dest": ".har/stages/TRIVY.md" },
-    { "src": ".trivyignore",             "dest": ".trivyignore" }
+    {
+      "src": ".har/stages/vuln-scan.sh",
+      "dest": ".har/stages/vuln-scan.sh",
+      "executable": true
+    },
+    {
+      "src": ".har/stages/TRIVY.md",
+      "dest": ".har/stages/TRIVY.md"
+    },
+    {
+      "src": ".trivyignore",
+      "dest": ".trivyignore"
+    }
   ],
   "optionalFiles": [
-    { "src": ".github/workflows/trivy.yml", "dest": ".github/workflows/trivy.yml", "skipFlag": "skipCi" }
+    {
+      "src": ".github/workflows/trivy.yml",
+      "dest": ".github/workflows/trivy.yml",
+      "skipFlag": "skipCi"
+    }
   ],
   "nextSteps": [
     "Install trivy: brew install trivy (or https://trivy.dev/latest/getting-started/installation/)",

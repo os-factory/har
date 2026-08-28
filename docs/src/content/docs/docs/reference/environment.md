@@ -104,11 +104,13 @@ registry and environment. Consumers should never assume the default remains free
 | `HARNESS_DB_MIGRATE_CMD` | Idempotent schema command |
 | `HARNESS_DB_SEED_CMD` | Template seed command |
 | `HARNESS_DB_MINIMAL_BOOTSTRAP_CMD` | Optional small per-slot bootstrap |
-| `HARNESS_DB_PORT_DEFAULT` | Preferred shared Postgres host port |
-| `HARNESS_DB_PORT_SCAN_START` / `END` | Conflict fallback range |
+| `HARNESS_INFRA_PORT_LANES` | Port lane per service: `<lane>=<default>:<scan_start>-<scan_end>` |
 
-Generated web profiles include the same default/scan pattern for optional MinIO,
-browser, Mailpit web, and Mailpit SMTP ports.
+Generated web profiles declare lanes for `db`, `minio`, `minio-console`,
+`browser`, `mailpit-web`, and `mailpit-smtp`. setup-infra.sh tries each lane's
+default first and scans its range on conflict. (Pre-1.0
+`HARNESS_<SERVICE>_PORT_DEFAULT/_SCAN_*` triplets are still honored as a
+fallback.)
 
 ## Verification
 

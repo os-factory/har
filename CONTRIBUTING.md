@@ -406,7 +406,7 @@ Releases are cut automatically when PRs merge to `main`. [semantic-release](http
 |---------------|---------|
 | `fix:` | Patch |
 | `feat:` | Minor |
-| `feat!:` or `BREAKING CHANGE:` footer | Major |
+| `feat!:` / `fix!:` (`!` on any type) or a `BREAKING CHANGE:` footer | Major |
 | `chore:`, `docs:`, `test:`, `refactor:`, `ci:` | No release |
 | `feat(benchmark):`, `*(ci):`, `docs(*):` | No release (type/scope rules in [release.config.cjs](release.config.cjs): types `ci` + `docs`, scopes `ci` + `benchmark`) |
 
@@ -421,5 +421,13 @@ BREAKING CHANGE: run records now require runId v2 fields
 ```
 
 Use scopes when helpful (`feat(cli):`, `fix(control):`). Squash-merge PR titles should follow the same format — they become the commit on `main`.
+
+> **Put `!` in the title, not only a footer.** The repo squash-merges, and a
+> squash keeps the PR title but discards the individual commit bodies — so a
+> `BREAKING CHANGE:` footer written in a commit body does not survive to `main`.
+> Seven `feat!:` commits reached `v1` with their footers stripped this way
+> (#311). The `!` in the squash-merge title always survives, and since the
+> analyzer uses the `conventionalcommits` preset it is sufficient on its own.
+
 
 Maintainer release mechanics (npm, Docker Hub, secrets, version coupling): [RELEASING.md](./RELEASING.md).

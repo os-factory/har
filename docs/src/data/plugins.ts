@@ -51,7 +51,7 @@ export const plugins: PluginEntry[] = [
       'Playwright configuration wired to the slot’s computed BASE_URL and ports.',
       'Frontend, API health, and accessibility smoke specs as a starting point.',
       'Pinned `devDependencies` and npm scripts merged into `package.json`.',
-      'A GitHub Actions workflow from the official Playwright recipe (skip with `--skip-ci`).',
+      'A GitHub Actions workflow from the official Playwright recipe (opt in with `--with-ci`).',
     ],
     requirements: ['Node.js project (the plugin merges `package.json`)', 'Browsers via `npx playwright install`'],
     artifacts:
@@ -153,7 +153,7 @@ export const plugins: PluginEntry[] = [
     installs: [
       'A `secrets-scan` test stage registered in `.har/stages.json` and added to `verificationStages`.',
       'A root `.gitleaks.toml` extending the default ruleset with harness allowlists (skipped if your repo already has one).',
-      'A GitHub Actions workflow using the official `gitleaks/gitleaks-action` (skip with `--skip-ci`).',
+      'A GitHub Actions workflow using the official `gitleaks/gitleaks-action` (opt in with `--with-ci`).',
     ],
     requirements: [
       'The `gitleaks` binary (`brew install gitleaks` or a release binary) — the stage fails fast with an install hint when missing',
@@ -190,7 +190,7 @@ export const plugins: PluginEntry[] = [
     installs: [
       'A `vuln-scan` test stage registered in `.har/stages.json` and added to `verificationStages`.',
       'A `.trivyignore` scaffold for documented suppressions that travel with the change batch.',
-      'A GitHub Actions workflow that uploads SARIF to GitHub code scanning (skip with `--skip-ci`).',
+      'A GitHub Actions workflow that uploads SARIF to GitHub code scanning (opt in with `--with-ci`).',
     ],
     requirements: [
       'The `trivy` binary (`brew install trivy`) — the stage fails fast with an install hint when missing',
@@ -227,7 +227,7 @@ export const plugins: PluginEntry[] = [
     installs: [
       'A `sast` test stage registered in `.har/stages.json` and added to `verificationStages`.',
       'An adaptation guide at `.har/stages/SEMGREP.md` covering rulesets and noise tuning.',
-      'A GitHub Actions workflow running the official `semgrep ci` recipe (skip with `--skip-ci`).',
+      'A GitHub Actions workflow running the official `semgrep ci` recipe (opt in with `--with-ci`).',
     ],
     requirements: [
       'The `semgrep` CLI (`pipx install semgrep`) — the stage fails fast with an install hint when missing',

@@ -43,11 +43,16 @@ drive TypeScript, input validation, MCP JSON Schema, and tests.
 
 ## Open extension points
 
-- project-owned scripts can implement any stack or workflow;
-- `stages.json` can register any generic operation;
-- **plugins** (`har env add-plugin`) add optional framework bundles without hardcoding APIs — discovered from disk or installed from path/npm/git; they compile to generic stages; agents only talk to the stage registry;
+The project-facing surface is the [customization contract](/docs/guides/customization/):
+
+- `harness.env` carries schema-validated project configuration;
+- `stages.json` can register any generic operation (command stages or project-owned scripts in `.har/stages/`);
+- **hooks** (`.har/hooks/`) run user-owned scripts at lifecycle points;
+- **plugins** (`har env add-plugin`) add optional framework bundles without hardcoding APIs — discovered from disk or installed from local (`.har/plugins/`), path, npm, or git sources; they compile to generic stages; agents only talk to the stage registry;
 - **profiles** are ordered runtime bundles (`templates/profiles/<id>/`); stack capabilities are detected from marker files, not profile enums;
-- executor injection allows local or remote execution.
+- executor injection allows local or remote execution;
+- `har env eject` vendors the runtime for teams that want full script ownership
+  (see `docs/architecture/decisions/0002-shim-runtime.md`).
 
 Plugins are first-class installable bundles. A remote community marketplace can wait
 until there is a concrete external publisher.

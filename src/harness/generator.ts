@@ -2,37 +2,24 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { copyDirRecursive } from '../utils/file-ops';
 import { info, success } from '../utils/logging';
-import { resolveTemplatesDir, resolveTemplateFile } from '../utils/paths';
 import { ensureRootGitignorePatterns } from '../core/gitignore';
-import { writeHarnessGitignore } from './gitignore-template';
+import { HARNESS_GITIGNORE_TEMPLATE, writeHarnessGitignore } from './gitignore-template';
+import { computeTemplateChecksums } from './drift';
 import { createManifest, writeManifest, DEFAULT_HAR_DIR, readManifest } from './manifest';
 import { ensurePluginLedgerScaffold } from './plugin-ledger';
 import {
   HarnessProfile,
-  PROFILE_DIRS,
+  composeProfileTemplateMap,
   readProfileManifest,
+  renderProfileDoc,
   resolveProfileBundleDir,
 } from './profiles';
+import { validateHarnessEnvSource } from './schema';
 import { syncAgentSlotsToHarnessEnv } from './stages';
+import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 
 export type { HarnessProfile };
-export { PROFILE_DIRS, HARNESS_PROFILES } from './profiles';
-
-/** Files not used by the CLI profile — removed after scaffold so init leaves no dead SaaS/PM2 assets. */
-const CLI_PRUNE_FILES = [
-  'ecosystem.agent.template.cjs',
-  'env.template',
-  'attach.sh',
-] as const;
-
-function pruneCliProfile(harnessDir: string): void {
-  for (const file of CLI_PRUNE_FILES) {
-    const filePath = path.join(harnessDir, file);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  }
-}
+export { HARNESS_PROFILES } from './profiles';
 
 export { DEFAULT_HAR_DIR };
 
@@ -45,24 +32,6 @@ export interface ScaffoldResult {
   harnessDir: string;
   projectName: string;
   bundles: string[];
-}
-
-/**
- * @deprecated CLAUDE.md is created by handleInstructionFiles when Claude is selected.
- * Kept for tests that assert the template still resolves.
- */
-export function scaffoldClaudeMd(repoPath: string, projectName: string, force: boolean): void {
-  const templatePath = resolveTemplateFile('CLAUDE.md.template');
-  if (!templatePath) return;
-
-  const dest = path.join(repoPath, 'CLAUDE.md');
-  if (fs.existsSync(dest) && !force) return;
-
-  const displayName = projectName.replace(/_/g, ' ');
-  const content = fs
-    .readFileSync(templatePath, 'utf8')
-    .replace(/__PROJECT_DISPLAY_NAME__/g, displayName);
-  fs.writeFileSync(dest, content);
 }
 
 /**
@@ -79,18 +48,10 @@ export function scaffoldHarnessBoilerplate(
   const profileManifest = readProfileManifest(profile);
   const bundleIds = profileManifest.bundles.map((b) => b.id);
 
-  // Primary overlay dir — used for .gitignore template and maintain/drift baseline
-  const primaryOverlay = PROFILE_DIRS[profile];
-  const boilerplateDir = path.join(resolveTemplatesDir(), primaryOverlay);
-
   if (fs.existsSync(harnessDir) && !options.force) {
     throw new Error(
       '.har/ already exists. Use --force to overwrite or run "har env maintain" to update in place.',
     );
-  }
-
-  if (!fs.existsSync(boilerplateDir)) {
-    throw new Error(`Boilerplate template not found at ${boilerplateDir}`);
   }
 
   if (options.force && fs.existsSync(harnessDir)) {
@@ -105,21 +66,45 @@ export function scaffoldHarnessBoilerplate(
     copyDirRecursive(bundleDir, harnessDir);
   }
 
-  writeHarnessGitignore(harnessDir, boilerplateDir);
+  // Assembled docs (#236): README.md is rendered from
+  // shared sections + profile blocks, not copied from a bundle.
+  for (const docName of Object.keys(profileManifest.docs)) {
+    fs.writeFileSync(path.join(harnessDir, docName), renderProfileDoc(profile, docName));
+  }
 
-  if (profile === 'cli') {
-    pruneCliProfile(harnessDir);
+  const gitignoreSource = composeProfileTemplateMap(profile).get(HARNESS_GITIGNORE_TEMPLATE);
+  if (gitignoreSource) {
+    writeHarnessGitignore(harnessDir, path.dirname(gitignoreSource.sourcePath));
   }
 
   syncAgentSlotsToHarnessEnv(repoPath);
 
+  // Render template tokens into the generated files: harness.env gets the
+  // project name; the runtime shims get the pinned package version (#235).
+  for (const shim of MANAGED_SHIM_FILES) {
+    const shimPath = path.join(harnessDir, shim);
+    if (!fs.existsSync(shimPath)) continue;
+    const rendered = substituteTemplateTokens(fs.readFileSync(shimPath, 'utf8'), projectName);
+    fs.writeFileSync(shimPath, rendered);
+  }
+
   const harnessEnvPath = path.join(harnessDir, 'harness.env');
   if (fs.existsSync(harnessEnvPath)) {
     let content = fs.readFileSync(harnessEnvPath, 'utf8');
-    content = content
-      .replace(/__PROJECT_NAME__/g, projectName)
-      .replace(/template___PROJECT_NAME__/g, `template_${projectName}`);
+    content = substituteTemplateTokens(content, projectName);
     fs.writeFileSync(harnessEnvPath, content);
+
+    // The generated file must honor the 1.0 contract: pure KEY=value config
+    // that validates against HarnessEnvSchema. A failure here is template
+    // drift in the package itself, not a user error.
+    const validation = validateHarnessEnvSource(content);
+    if (!validation.ok) {
+      const details = validation.issues
+        .filter((i) => i.severity === 'error')
+        .map((i) => (i.line !== undefined ? `line ${i.line}: ${i.message}` : i.message))
+        .join('\n  ');
+      throw new Error(`Generated harness.env violates HarnessEnvSchema:\n  ${details}`);
+    }
   }
 
   const manifest = createManifest(
@@ -131,6 +116,7 @@ export function scaffoldHarnessBoilerplate(
         : 'Boilerplate copied — adapt with your coding agent (see .har/ADAPT-PROMPT.md).',
     undefined,
     profile,
+    computeTemplateChecksums(repoPath, profile),
   );
   writeManifest(repoPath, manifest);
 
@@ -153,7 +139,14 @@ export function finalizeHarness(
   stack?: { language?: string; packageManager?: string; database?: string },
 ): void {
   const existing = readManifest(repoPath);
-  const manifest = createManifest(repoPath, adaptationSummary, stack, existing?.profile);
+  const profile = existing?.profile ?? 'default';
+  const manifest = createManifest(
+    repoPath,
+    adaptationSummary,
+    stack,
+    existing?.profile,
+    computeTemplateChecksums(repoPath, profile),
+  );
   writeManifest(repoPath, manifest);
   success('Harness adaptation complete.');
 }

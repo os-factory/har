@@ -94,20 +94,25 @@ export default defineConfig({
 					label: 'Guides',
 					items: [
 						{ label: 'Agent workflow', slug: 'docs/guides/agent-workflow' },
+						{ label: 'Customization contract', slug: 'docs/guides/customization' },
 						{ label: 'Profiles & configuration', slug: 'docs/guides/profiles' },
 						{ label: 'Stages & artifacts', slug: 'docs/guides/stages' },
 						{ label: 'Plugins', slug: 'docs/guides/plugins' },
+						{ label: 'Local plugins', slug: 'docs/guides/local-plugins' },
 						{ label: 'Agent integrations', slug: 'docs/guides/agent-integrations' },
 						{ label: 'Skill-pack compatibility', slug: 'docs/guides/skill-pack-compatibility' },
 						{ label: 'Verification & commit gate', slug: 'docs/guides/verification' },
 						{ label: 'Mission Control', slug: 'docs/guides/mission-control' },
+						{ label: 'Eject', slug: 'docs/guides/eject' },
 						{ label: 'Upgrade a harness', slug: 'docs/guides/upgrading' },
+						{ label: 'Migrating to 1.0', slug: 'docs/guides/migrating-to-1-0' },
 					],
 				},
 				{
 					label: 'Reference',
 					items: [
 						{ label: 'CLI', slug: 'docs/reference/cli' },
+						{ label: 'Doctor', slug: 'docs/reference/doctor' },
 						{ label: 'MCP tools', slug: 'docs/reference/mcp' },
 						{ label: 'Harness files', slug: 'docs/reference/harness-files' },
 						{ label: 'Environment variables', slug: 'docs/reference/environment' },
@@ -117,6 +122,7 @@ export default defineConfig({
 					label: 'Project',
 					items: [
 						{ label: 'Architecture', slug: 'docs/project/architecture' },
+						{ label: 'The road to 1.0', slug: 'docs/project/road-to-1-0' },
 						{ label: 'Contributing', slug: 'docs/project/contributing' },
 						{ label: 'FAQ', slug: 'docs/project/faq' },
 					],

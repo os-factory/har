@@ -18,34 +18,19 @@
 # the after (and before, when present) screenshot paths in the session handoff.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HARNESS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# 1.0 stage surface: the runner exports WORK_DIR, ENV_FILE, AGENT_ID and
+# HAR_HARNESS_DIR, with harness.env and the slot env file already sourced —
+# agent-slot.sh is retired (1.0 migration).
+HARNESS_DIR="${HAR_HARNESS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_ROOT="$(cd "$HARNESS_DIR/.." && pwd)"
-# agent-slot.sh expects SCRIPT_DIR to be .har/ (slot registry lives there)
-SCRIPT_DIR="$HARNESS_DIR"
 
-# shellcheck source=/dev/null
-source "$HARNESS_DIR/harness.env"
-# shellcheck source=/dev/null
-source "$HARNESS_DIR/agent-slot.sh"
-
-AGENT_ID="${1:?Usage: browser-e2e.sh <agent-id>}"
-validate_agent_id "$AGENT_ID"
+AGENT_ID="${1:-${AGENT_ID:?Usage: browser-e2e.sh <agent-id>}}"
+now_ms() { node -e 'process.stdout.write(String(Date.now()))'; }
 
 log() { echo "==> [browser-e2e agent-$AGENT_ID] $*" >&2; }
 
-ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
-  echo "No .env.agent.${AGENT_ID} found." >&2
-  har_suggest_launch "$AGENT_ID" >&2
-  exit 1
-}
-
-set -a
-# shellcheck source=/dev/null
-source "$ENV_FILE"
-set +a
-
-WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
 FE_PORT="${FE_PORT:-$(( HARNESS_FE_BASE_PORT + AGENT_ID * ${HARNESS_PORT_STEP:-10} ))}"
 API_PORT="${API_PORT:-$FE_PORT}"
 

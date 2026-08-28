@@ -28,8 +28,9 @@ Stages are registered in `.har/stages.json`:
 
 A stage has an `id`, `kind`, and either `script` (relative to `.har/`) or `command`.
 Other fields are `description`, `cwd`, `env`, `resultPath`, `requiresAgentId`,
-`group`, `acceptsArgs`, and `artifacts`. `{agentId}` is expanded in commands at
-execution.
+`group`, `acceptsArgs`, `tier`, and `artifacts`. `{agentId}` is expanded in
+commands at execution. `tier` (`"quick"` or `"full"`, default `"full"`) controls
+whether a verification stage runs on every `har env verify` or only on `--full`.
 
 Kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`, `teardown`, and
 `custom`. Artifact kinds are `file`, `directory`, `log`, `report`, `screenshot`,
@@ -37,23 +38,31 @@ Kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`, `teardown`, a
 
 ## Add a custom stage
 
-For a simple command:
+For a simple command, register a command stage directly in `.har/stages.json`
+(and list its id in `verificationStages`):
 
-```bash
-har env add-stage unit-tests-fast --custom --kind test \
-  --command "npm test" --verification
+```json
+{ "id": "unit-tests-fast", "kind": "test", "command": "npm test", "tier": "quick" }
 ```
 
-For a workflow that needs slot environment, ports, or artifacts:
+For a workflow that needs slot environment, ports, or artifacts, scaffold a
+project-owned plugin:
 
 ```bash
-har env add-stage db-integrity --custom --script \
-  --description "Check database invariants" --verification
+har plugin create db-integrity --description "Check database invariants"
+har env add-plugin db-integrity
 ```
 
-The script form scaffolds `.har/stages/db-integrity.sh` from HAR's normalized
-stage contract. Every generated harness includes the complete authoring guide at
+`har plugin create` scaffolds `.har/plugins/db-integrity/` — manifest, a stage
+script from HAR's normalized stage contract, and a README — and
+`har env add-plugin` installs it exactly like a bundled, npm, or git plugin.
+Every generated harness includes the complete authoring guide at
 `.har/STAGES.md`.
+
+:::note
+`har env add-stage <id> --custom` was removed in 1.0 — custom stages are local
+plugins (or plain `stages.json` entries for one-liners).
+:::
 
 ## Run a stage
 
@@ -82,10 +91,15 @@ Repositories may declare the stage ids that constitute verification:
 }
 ```
 
-Full verification runs registered `test` and `custom` stages listed in
-`verificationStages`. Lifecycle and `verify` stages are never nested into
-verification. IDs without a registered stage remain inline steps owned by
-`.har/verify.sh`. Mission Control uses the same list to render the expected pipeline.
+`verificationStages` is the pipeline: every id must resolve to a registered
+`test` or `custom` stage, and the list order is the execution order. Quick
+verification (`har env verify <id>`) runs the stages marked `tier: "quick"`;
+`--full` runs the whole list. The ecosystem defaults (`typecheck`, `unit-tests`,
+`lint`, `readiness`, and `api-health` on web profiles) are ordinary registered
+stages written at init from `HARNESS_ECOSYSTEM` — there are no inline steps.
+Unresolvable ids are reported by validation and skipped with a warning at run
+time. Lifecycle and `verify` stages are never nested into verification. Mission
+Control uses the same list to render the expected pipeline.
 
 ## Install plugins
 

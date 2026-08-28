@@ -50,17 +50,19 @@ If `.har/` already exists, stop and suggest `/har-maintain` instead.
 
 ## 5. Perform the adaptation yourself
 
-`har env init` prints an adaptation prompt and writes it to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor `.har/` scripts (`launch.sh`, `verify.sh`, `setup-infra.sh`, `harness.env`, `stages.json`) and `AGENTS.md` to this repository's real stack, ports, and commands.
+`har env init` prints an adaptation prompt and writes it to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor the harness configuration surface (`harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`, `docker-compose.agent.yml`, `env.template`) and `AGENTS.md` to this repository's real stack, ports, and commands. The `./.har/*.sh` files are generated shims over the packaged runtime — never edit them.
 
 ## 6. Register the project's checks as stages
 
 Convert the repository's real check commands (test, lint, typecheck, whatever CI runs) into registered stages so they run in `verify --full` and are visible to every agent. Read `.har/STAGES.md` for the contract, then:
 
-```bash
-har env add-stage unit-tests --custom --kind test --command "npm test" --verification
+```json
+{ "id": "unit-tests", "kind": "test", "command": "npm test", "tier": "quick" }
 ```
 
-- Use `--command` for one-liner checks; use `--script` when a check needs the slot's env, ports, or artifacts (then implement the scaffolded `.har/stages/<id>.sh`).
+(add the entry to `.har/stages.json` `stages` and its id to `verificationStages`).
+
+- Use a command stage for one-liner checks; when a check needs the slot's env, ports, or artifacts, scaffold a project-owned plugin: `har plugin create <id>`, implement `.har/plugins/<id>/stages/<id>.sh`, then `har env add-plugin <id>`.
 - Rich integrations ship as **plugins**: `har env add-plugin --list`, then e.g. `har env add-plugin playwright` (web) or `har env add-plugin rocketsim` (iOS). Plugins install stages; agents only talk to the stage registry.
 
 ## 7. Prove the harness works

@@ -5,17 +5,20 @@ import { readPluginLedger } from './plugin-ledger';
 import {
   listPluginIds,
   PluginId,
+  PluginManifest,
   primaryStageId,
   readPluginManifest,
   readPluginManifestFromDir,
 } from './plugins';
-import { resolvePluginSource, cleanupResolvedPlugin } from './plugin-resolve';
+import { LOCAL_PLUGINS_DIR } from './plugin-resolve';
 import { readStageRegistry } from './stages';
 import { resolveTemplatesDir } from '../utils/paths';
 
 export interface PluginDriftResult {
   pluginId: PluginId;
   stageId: string;
+  /** Baseline the installed files are compared against. Local plugins are project-owned. */
+  baseline: 'bundled' | 'local';
   missing: string[];
   checksumMismatch: string[];
   unchanged: string[];
@@ -66,40 +69,50 @@ export function detectInstalledPlugins(repoPath: string): PluginId[] {
   return installed.sort();
 }
 
-function pluginTemplatePath(pluginId: PluginId, srcRel: string): string {
-  return path.join(resolveTemplatesDir(), 'plugins', pluginId, srcRel);
+interface PluginBaseline {
+  kind: 'bundled' | 'local';
+  dir: string;
+  manifest: PluginManifest;
 }
 
-function resolvePluginTemplateDir(repoPath: string, pluginId: PluginId): string | null {
-  const ledger = readPluginLedger(repoPath);
+/**
+ * Resolve the baseline the installed plugin files are compared against:
+ * `.har/plugins/<id>/` for local (project-owned) plugins per the ledger,
+ * the bundled template dir otherwise. npm/git/path plugins have no stable
+ * local baseline and are skipped by drift.
+ */
+function resolvePluginBaseline(repoPath: string, pluginId: PluginId): PluginBaseline | null {
+  const resolved = path.resolve(repoPath);
+  const ledger = readPluginLedger(resolved);
   const entry = ledger?.plugins.find((p) => p.id === pluginId);
-  if (entry && entry.source !== 'bundled') {
-    try {
-      const source = resolvePluginSource(entry.spec);
-      // For non-bundled, we only keep the dir for the duration of the caller's compare —
-      // callers using readBundledPluginFile for non-bundled need the dir.
-      // Prefer bundled templates when available for drift (stable baseline).
-      cleanupResolvedPlugin(source);
-    } catch {
-      // fall through to bundled
+  if (entry?.source === 'local') {
+    const localDir = path.join(resolved, LOCAL_PLUGINS_DIR, pluginId);
+    if (fs.existsSync(path.join(localDir, 'template.manifest.json'))) {
+      return { kind: 'local', dir: localDir, manifest: readPluginManifestFromDir(localDir) };
     }
+    return null;
   }
   const bundled = path.join(resolveTemplatesDir(), 'plugins', pluginId);
   if (fs.existsSync(path.join(bundled, 'template.manifest.json'))) {
-    return bundled;
+    return { kind: 'bundled', dir: bundled, manifest: readPluginManifestFromDir(bundled) };
   }
   return null;
 }
 
-function readBundledPluginFile(pluginId: PluginId, srcRel: string): string {
-  return fs.readFileSync(pluginTemplatePath(pluginId, srcRel), 'utf8');
+function requireBaseline(repoPath: string, pluginId: PluginId): PluginBaseline {
+  const baseline = resolvePluginBaseline(repoPath, pluginId);
+  if (!baseline) {
+    throw new Error(`No drift baseline for plugin ${pluginId} (not bundled or local)`);
+  }
+  return baseline;
 }
 
-function listPluginDestPaths(pluginId: PluginId, repoPath: string): string[] {
-  const templateDir = resolvePluginTemplateDir(repoPath, pluginId);
-  const manifest = templateDir
-    ? readPluginManifestFromDir(templateDir)
-    : readPluginManifest(pluginId);
+function readBaselineFile(baseline: PluginBaseline, srcRel: string): string {
+  return fs.readFileSync(path.join(baseline.dir, srcRel), 'utf8');
+}
+
+function listPluginDestPaths(baseline: PluginBaseline, repoPath: string): string[] {
+  const manifest = baseline.manifest;
   const paths = manifest.files.map((file) => file.dest);
 
   if (manifest.optionalFiles) {
@@ -119,8 +132,8 @@ function listPluginDestPaths(pluginId: PluginId, repoPath: string): string[] {
   return paths.sort();
 }
 
-function manifestEntryForDest(pluginId: PluginId, dest: string) {
-  const manifest = readPluginManifest(pluginId);
+function manifestEntryForDest(baseline: PluginBaseline, dest: string) {
+  const manifest = baseline.manifest;
   return [...manifest.files, ...(manifest.optionalFiles ?? [])].find((file) => file.dest === dest);
 }
 
@@ -157,16 +170,20 @@ function pluginKeysMatch(installedContent: string, fragmentContent: string): boo
   return true;
 }
 
-export function readTemplatePluginFile(pluginId: PluginId, dest: string): string | null {
-  const entry = manifestEntryForDest(pluginId, dest);
+export function readTemplatePluginFile(
+  repoPath: string,
+  pluginId: PluginId,
+  dest: string,
+): string | null {
+  const baseline = requireBaseline(repoPath, pluginId);
+  const entry = manifestEntryForDest(baseline, dest);
   if (entry) {
-    return readBundledPluginFile(pluginId, entry.src);
+    return readBaselineFile(baseline, entry.src);
   }
 
-  const manifest = readPluginManifest(pluginId);
-  const fragmentRel = manifest.merge?.[dest];
+  const fragmentRel = baseline.manifest.merge?.[dest];
   if (fragmentRel) {
-    const fragment = JSON.parse(readBundledPluginFile(pluginId, fragmentRel)) as Record<
+    const fragment = JSON.parse(readBaselineFile(baseline, fragmentRel)) as Record<
       string,
       unknown
     >;
@@ -181,16 +198,28 @@ export function readInstalledPluginFile(repoPath: string, pluginId: PluginId, de
   if (!fs.existsSync(installedPath)) return null;
 
   const content = fs.readFileSync(installedPath, 'utf8');
-  const manifest = readPluginManifest(pluginId);
-  const fragmentRel = manifest.merge?.[dest];
+  const baseline = requireBaseline(repoPath, pluginId);
+  const fragmentRel = baseline.manifest.merge?.[dest];
   if (fragmentRel) {
-    return extractPackageFragment(content, readBundledPluginFile(pluginId, fragmentRel));
+    return extractPackageFragment(content, readBaselineFile(baseline, fragmentRel));
   }
 
   return content;
 }
 
-function pluginActionHint(pluginId: PluginId, dest: string, kind: 'missing' | 'drift'): string {
+function pluginActionHint(
+  pluginId: PluginId,
+  dest: string,
+  kind: 'missing' | 'drift',
+  baseline: 'bundled' | 'local',
+): string {
+  if (baseline === 'local') {
+    // Project-owned: the source of truth is .har/plugins/<id>/ in this repo.
+    if (kind === 'missing') {
+      return `Reinstall from the project-owned source: har env add-plugin ${pluginId} --force (source: ${LOCAL_PLUGINS_DIR}/${pluginId}/)`;
+    }
+    return `Installed copy diverged from ${LOCAL_PLUGINS_DIR}/${pluginId}/ — update the plugin source or reinstall: har env add-plugin ${pluginId} --force`;
+  }
   if (kind === 'missing') {
     return `Copy/adapt from maintain/plugins/${pluginId}/templates/${dest} or run: har env add-plugin ${pluginId} --force`;
   }
@@ -201,16 +230,17 @@ function pluginActionHint(pluginId: PluginId, dest: string, kind: 'missing' | 'd
 }
 
 export function comparePluginToTemplate(repoPath: string, pluginId: PluginId): PluginDriftResult {
-  const manifest = readPluginManifest(pluginId);
   const resolved = path.resolve(repoPath);
-  const destPaths = listPluginDestPaths(pluginId, resolved);
+  const baseline = requireBaseline(resolved, pluginId);
+  const manifest = baseline.manifest;
+  const destPaths = listPluginDestPaths(baseline, resolved);
 
   const missing: string[] = [];
   const checksumMismatch: string[] = [];
   const unchanged: string[] = [];
 
   for (const dest of destPaths) {
-    const templateContent = readTemplatePluginFile(pluginId, dest);
+    const templateContent = readTemplatePluginFile(resolved, pluginId, dest);
     if (templateContent === null) continue;
 
     const installedContent = readInstalledPluginFile(resolved, pluginId, dest);
@@ -225,7 +255,7 @@ export function comparePluginToTemplate(repoPath: string, pluginId: PluginId): P
       const installedRaw = fs.readFileSync(installedPath, 'utf8');
       if (
         fragmentRel &&
-        pluginKeysMatch(installedRaw, readBundledPluginFile(pluginId, fragmentRel))
+        pluginKeysMatch(installedRaw, readBaselineFile(baseline, fragmentRel))
       ) {
         unchanged.push(dest);
       } else if (
@@ -248,6 +278,7 @@ export function comparePluginToTemplate(repoPath: string, pluginId: PluginId): P
   return {
     pluginId,
     stageId: primaryStageId(manifest),
+    baseline: baseline.kind,
     missing,
     checksumMismatch,
     unchanged,
@@ -256,11 +287,7 @@ export function comparePluginToTemplate(repoPath: string, pluginId: PluginId): P
 
 export function compareInstalledPluginsToTemplate(repoPath: string): PluginDriftResult[] {
   return detectInstalledPlugins(repoPath)
-    .filter((pluginId) => {
-      // Drift comparison needs a bundled template baseline
-      const bundled = path.join(resolveTemplatesDir(), 'plugins', pluginId, 'template.manifest.json');
-      return fs.existsSync(bundled);
-    })
+    .filter((pluginId) => resolvePluginBaseline(repoPath, pluginId) !== null)
     .map((pluginId) => comparePluginToTemplate(repoPath, pluginId));
 }
 
@@ -277,7 +304,7 @@ export function buildPluginDriftActions(
         file,
         kind: 'missing',
         template: `maintain/plugins/${drift.pluginId}/templates/${file}`,
-        hint: pluginActionHint(drift.pluginId, file, 'missing'),
+        hint: pluginActionHint(drift.pluginId, file, 'missing', drift.baseline),
       });
     }
     for (const file of drift.checksumMismatch) {
@@ -288,7 +315,7 @@ export function buildPluginDriftActions(
         template: `maintain/plugins/${drift.pluginId}/templates/${file}`,
         installed: `maintain/plugins/${drift.pluginId}/installed/${file}`,
         diff: `maintain/plugins/${drift.pluginId}/diffs/${file}.diff`,
-        hint: pluginActionHint(drift.pluginId, file, 'drift'),
+        hint: pluginActionHint(drift.pluginId, file, 'drift', drift.baseline),
       });
     }
   }

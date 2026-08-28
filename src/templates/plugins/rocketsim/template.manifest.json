@@ -2,9 +2,6 @@
   "id": "rocketsim",
   "stageId": "rocketsim-flows",
   "verificationStages": [
-    "build",
-    "unit-tests",
-    "lint",
     "rocketsim-flows"
   ],
   "stage": {
@@ -19,13 +16,28 @@
         "kind": "directory",
         "description": "Screenshots, per-flow results, and run summary"
       }
-    ]
+    ],
+    "tier": "full"
   },
   "files": [
-    { "src": ".har/stages/rocketsim-flows.sh", "dest": ".har/stages/rocketsim-flows.sh", "executable": true },
-    { "src": ".har/stages/ROCKETSIM.md",       "dest": ".har/stages/ROCKETSIM.md" },
-    { "src": "flows/README.md",                "dest": "flows/README.md" },
-    { "src": "flows/example-smoke.sh",         "dest": "flows/example-smoke.sh", "executable": true }
+    {
+      "src": ".har/stages/rocketsim-flows.sh",
+      "dest": ".har/stages/rocketsim-flows.sh",
+      "executable": true
+    },
+    {
+      "src": ".har/stages/ROCKETSIM.md",
+      "dest": ".har/stages/ROCKETSIM.md"
+    },
+    {
+      "src": "flows/README.md",
+      "dest": "flows/README.md"
+    },
+    {
+      "src": "flows/example-smoke.sh",
+      "dest": "flows/example-smoke.sh",
+      "executable": true
+    }
   ],
   "nextSteps": [
     "rocketsim doctor",

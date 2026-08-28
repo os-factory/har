@@ -38,32 +38,36 @@ Optional stage fields: `cwd` (working directory), `env` (extra env vars),
 ## Two ways to define a stage
 
 **Command stages** — the default for simple checks (`npm test`, `swiftlint`,
-`make check`). One JSON entry, zero files:
+`make check`). One JSON entry in `.har/stages.json`, zero files:
 
-```bash
-har env add-stage unit-tests-fast --custom --kind test --command "npm test" --verification
+```json
+{ "id": "unit-tests-fast", "kind": "test", "command": "npm test", "tier": "quick" }
 ```
+
+(add the id to `verificationStages` to run it during verify).
 
 **Script stages** — for anything that needs the slot's env, ports, or
-artifacts. Scaffold a contract-compliant skeleton:
+artifacts. Scaffold a project-owned plugin with a contract-compliant skeleton:
 
 ```bash
-har env add-stage db-integrity --custom --script --description "Check DB invariants"
+har plugin create db-integrity --description "Check DB invariants"
+har env add-plugin db-integrity
 ```
 
-then implement the TODO block in `.har/stages/db-integrity.sh`.
+then implement the TODO block in `.har/plugins/db-integrity/stages/db-integrity.sh`
+and reinstall with `har env add-plugin db-integrity --force`.
 
 ## The stage script contract
 
 Every script under `.har/stages/` must:
 
-1. Source `harness.env` and `agent-slot.sh` from `.har/`. Before sourcing,
-   set `SCRIPT_DIR` to the `.har/` directory (not `stages/`) — `agent-slot.sh`
-   resolves the slot registry via `$SCRIPT_DIR/slots/...`.
-2. Take the agent slot id as `$1` (validate with `validate_agent_id`); extra
-   args may follow.
-3. Load the slot env via `resolve_agent_env_file` and run checks from the
-   agent's work dir (`resolve_agent_work_dir`).
+1. Assume the 1.0 stage surface: the runner exports `WORK_DIR`, `ENV_FILE`,
+   `AGENT_ID` and `HAR_HARNESS_DIR`, with `harness.env` and the slot env file
+   already sourced. Never source `agent-slot.sh` — it is retired in 1.0.
+2. Take the agent slot id as `$1`, falling back to the exported `AGENT_ID`
+   (`AGENT_ID="${1:-${AGENT_ID:?...}}"`); extra args may follow.
+3. Guard the runner contract with `${ENV_FILE:?...}` / `${WORK_DIR:?...}`
+   (pointing at `./.har/launch.sh <id>`) and run checks from `$WORK_DIR`.
 4. Write artifacts (reports, screenshots, logs) under `.har/artifacts/<id>/`.
 5. Print **only** the normalized JSON result object on stdout
    (`status`, `stageId`, `agent_id`, `total_ms`, …); log progress to stderr.
@@ -73,10 +77,17 @@ The scaffolded skeleton implements all of this — replace its TODO block.
 
 ## Verification membership
 
-Listing a stage id in `verificationStages` is what includes it in
-`har env verify <id> --full`. Ids that match a registered stage run via their
-script/command; ids without a registry entry (e.g. `typecheck`, `api-health`)
-are inline steps owned by `.har/verify.sh`. Lifecycle kinds
+`verificationStages` is the single namespace for the verification pipeline:
+every id listed must resolve to a registered stage of kind `test` or `custom`,
+and the list order is the execution order. There are no inline steps — the
+ecosystem defaults (`typecheck`, `unit-tests`, `lint`, `readiness`, and
+`api-health` on web profiles) are ordinary registered stages, written at init
+from `HARNESS_ECOSYSTEM`.
+
+Each stage may declare `"tier": "quick" | "full"` (default `full`). Plain
+`har env verify <id>` runs the `quick`-tier stages; `--full` runs the whole
+list. Unresolvable ids are reported by validation (and `har env doctor`) and
+skipped with a warning at run time. Lifecycle kinds
 (`setup`/`launch`/`reset`/`teardown`/`inspect`) and `verify` itself never run
 as part of verification, even if listed.
 
@@ -96,4 +107,7 @@ stack), or `har env add-plugin trivy` (dependency + IaC security scan, any stack
 or `har env add-plugin semgrep` (SAST, any stack)
 installs one. A
 plugin is just packaging: it copies files, merges `package.json` fragments,
-and registers stages through the exact same registry as `add-stage --custom`.
+and registers stages through the exact same registry as everything else.
+Project-owned plugins live in `.har/plugins/<id>/` (`har plugin create <id>`)
+and install from any of four sources — bundled, local, npm, or git — with the
+same format.

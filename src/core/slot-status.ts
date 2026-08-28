@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { readHarnessEnv } from '../harness/env';
-import { readManifest, resolveHarnessRoot } from '../harness/manifest';
+import { getHarnessDir, readManifest, resolveHarnessRoot } from '../harness/manifest';
 import {
   AgentSlotHarnessUsage,
   AgentSlotStatus,
@@ -15,6 +15,7 @@ import { getAgentSlotIds } from '../harness/stages';
 import { computePreviewUrls } from './local-executor';
 import { listRuns, resolveAgentWorkDir } from './runs';
 import { readSlotRegistry } from './slot-registry';
+import { allocateAppPorts } from './slot-ports';
 import { inspectSlotReadiness, scanUntrackedWorktreePaths } from './slot-preflight';
 import { packageRunner } from '../utils/package-runner';
 
@@ -82,6 +83,111 @@ function discoverSessionWorktreePath(harnessRoot: string, agentId: number): stri
     );
 
   return matches.sort()[0];
+}
+
+/** "unknown" | "clean" | "dirty (N changed)" — mirrors the bash slot_dirty_summary. */
+export function slotDirtySummary(worktreePath: string | undefined): string {
+  if (!worktreePath || !fs.existsSync(worktreePath)) return 'unknown';
+  const porcelain = runGit(worktreePath, 'status --porcelain');
+  if (!porcelain) return 'clean';
+  const count = porcelain.split('\n').filter(Boolean).length;
+  return `dirty (${count} changed)`;
+}
+
+/**
+ * Resolve .env.agent.<id> — registry work dir first, then the repo root, then
+ * legacy and randomized session worktree fallbacks (the retired bash
+ * resolve_agent_env_file, in the same order).
+ */
+export function resolveAgentEnvFile(harnessRoot: string, agentId: number): string | undefined {
+  const session = readSlotRegistry(harnessRoot, agentId);
+  if (session?.workDir) {
+    const inWorkDir = path.join(session.workDir, `.env.agent.${agentId}`);
+    if (fs.existsSync(inWorkDir)) return inWorkDir;
+  }
+
+  const env = readHarnessEnv(harnessRoot);
+  const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);
+  // Worktrees are repo-rooted — if the project lives in a subdirectory
+  // (monorepo), the env file sits under that prefix inside the worktree.
+  const relPrefix = gitPrefix(harnessRoot);
+
+  for (const candidate of [
+    path.join(harnessRoot, `.env.agent.${agentId}`),
+    path.join(os.homedir(), 'worktrees', `${projectName}-agent-${agentId}`, relPrefix, `.env.agent.${agentId}`),
+  ]) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  const worktreesRoot = path.join(os.homedir(), 'worktrees');
+  if (!fs.existsSync(worktreesRoot)) return undefined;
+  const suffix = `-har-agent-${agentId}-`;
+  for (const name of fs.readdirSync(worktreesRoot).sort()) {
+    if (!name.includes(suffix)) continue;
+    const candidateDir = path.join(worktreesRoot, name);
+    const candidate = path.join(candidateDir, relPrefix, `.env.agent.${agentId}`);
+    if (!fs.existsSync(candidate)) continue;
+    if (!sameGitCheckout(harnessRoot, candidateDir)) continue;
+    return candidate;
+  }
+  return undefined;
+}
+
+export interface AgentSlotPorts {
+  frontend?: number;
+  api?: number;
+  debug?: number;
+  db?: number;
+}
+
+function parseEnvFilePorts(envFile: string): AgentSlotPorts {
+  const values: Record<string, string> = {};
+  for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
+    const match = line.match(/^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    values[match[1]] = match[2].replace(/^["']|["']$/g, '');
+  }
+  const num = (raw: string | undefined) => {
+    const value = Number(raw);
+    return raw !== undefined && raw !== '' && Number.isFinite(value) ? value : undefined;
+  };
+  return {
+    frontend: num(values.FE_PORT),
+    api: num(values.API_PORT ?? values.PORT),
+    debug: num(values.DEBUG_PORT),
+    db: num(values.PGPORT ?? values.DB_PORT),
+  };
+}
+
+/**
+ * Persisted app/infra ports for a slot: .env.agent.<id> first, then the slot
+ * registry, then a fresh allocation (the retired bash load_agent_ports).
+ */
+export function loadAgentPorts(harnessRoot: string, agentId: number): AgentSlotPorts {
+  const envFile = resolveAgentEnvFile(harnessRoot, agentId);
+  if (envFile) return parseEnvFilePorts(envFile);
+
+  const session = readSlotRegistry(harnessRoot, agentId);
+  if (session?.ports && Object.keys(session.ports).length > 0) {
+    const { frontend, api, debug, db } = session.ports;
+    return { frontend, api, debug, db };
+  }
+
+  const env = readHarnessEnv(harnessRoot);
+  const allocated = allocateAppPorts(harnessRoot, agentId);
+  const infraEnv = path.join(getHarnessDir(harnessRoot), 'state', 'infra.env');
+  const infraState: Record<string, string> = {};
+  if (fs.existsSync(infraEnv)) {
+    for (const line of fs.readFileSync(infraEnv, 'utf8').split('\n')) {
+      const match = line.match(/^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/);
+      if (match) infraState[match[1]] = match[2].replace(/^["']|["']$/g, '');
+    }
+  }
+  const db = Number(
+    infraState.AGENT_DB_PORT ?? env.HARNESS_DB_PORT_DEFAULT ?? 15432,
+  );
+  if ('error' in allocated) return { db };
+  return { frontend: allocated.frontend, api: allocated.api, debug: allocated.debug, db };
 }
 
 interface WorktreeDrift {
@@ -292,6 +398,57 @@ function collectSlotStatus(
     resumeHint,
     ...drift,
   };
+}
+
+/**
+ * Text rendering over the structured status — the single status source for the
+ * CLI text view, `--json`, and MCP. Deliberately omits gitRemote: remote URLs
+ * can embed credentials and must never reach logs.
+ */
+export function renderEnvironmentStatusText(status: EnvironmentStatus): string {
+  const lines: string[] = [];
+  lines.push(`Harness: ${status.harnessRoot}${status.profile ? ` (profile: ${status.profile})` : ''}`);
+
+  for (const slot of status.slots) {
+    const state = slot.active ? (slot.sessionStatus ?? 'active') : 'free';
+    lines.push(`Agent ${slot.agentId}: ${state}`);
+    if (slot.branch) {
+      const drift = [
+        slot.dirty ? 'dirty' : undefined,
+        slot.ahead ? `ahead ${slot.ahead}` : undefined,
+        slot.stale ? `stale (base behind main by ${slot.behind})` : undefined,
+        slot.detachedHead ? 'detached HEAD' : undefined,
+      ].filter(Boolean);
+      lines.push(`  branch:      ${slot.branch}${drift.length ? ` [${drift.join(', ')}]` : ''}`);
+    }
+    if (slot.workDir) lines.push(`  work dir:    ${slot.workDir}`);
+    if (slot.previewUrls && Object.keys(slot.previewUrls).length > 0) {
+      lines.push(
+        `  preview:     ${Object.entries(slot.previewUrls)
+          .map(([label, url]) => `${label}=${url}`)
+          .join(' ')}`,
+      );
+    }
+    if (slot.workUnitId) {
+      lines.push(`  work unit:   ${slot.workUnitId}${slot.attemptId ? ` (attempt ${slot.attemptId})` : ''}`);
+    }
+    if (slot.lastRunAt) {
+      lines.push(`  last run:    ${slot.lastRunAt} (${slot.harnessUsage})`);
+    }
+    if (slot.lastVerifyStatus) {
+      lines.push(`  last verify: ${slot.lastVerifyStatus}`);
+    }
+    if (slot.pm2Issue) lines.push(`  pm2:         ${slot.pm2Issue}`);
+    if (slot.lastError) lines.push(`  last error:  ${slot.lastError}`);
+    if (slot.resumeHint) lines.push(`  resume:      ${slot.resumeHint}`);
+    if (slot.readiness && !slot.readiness.canLaunch && !slot.active) {
+      for (const blocker of slot.readiness.blockers) {
+        lines.push(`  blocker:     ${blocker}`);
+      }
+    }
+  }
+
+  return lines.join('\n') + '\n';
 }
 
 export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {

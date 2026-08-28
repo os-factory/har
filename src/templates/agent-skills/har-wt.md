@@ -43,7 +43,7 @@ completion to HAR.
 - The main checkout must stay clean (`git status` there shows no changes from you).
 - Edits hot-reload in the running slot; use `./.har/agent-cli.sh <id> restart` if a change doesn't take.
 - Commit early and often on the session branch — teardown keeps the branch, not uncommitted work.
-- After launch, read `.har/CLAUDE.agent.md` in the worktree for slot URLs and the definition of done.
+- After launch, read `.har/README.md` in the worktree for slot URLs and the definition of done.
 
 ## 4. Verify through the harness
 

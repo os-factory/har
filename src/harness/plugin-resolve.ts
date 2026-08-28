@@ -4,7 +4,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { resolveTemplatesDir } from '../utils/paths';
 
-export type PluginSourceKind = 'bundled' | 'path' | 'npm' | 'git';
+export type PluginSourceKind = 'bundled' | 'local' | 'path' | 'npm' | 'git';
+
+/** Conventional in-repo home for project-owned plugins. */
+export const LOCAL_PLUGINS_DIR = '.har/plugins';
 
 export interface ResolvedPluginSource {
   id: string;
@@ -83,7 +86,13 @@ function expandHome(p: string): string {
   return p;
 }
 
-function resolvePathSpec(spec: string): ResolvedPluginSource {
+/** Whether `dir` lives inside the repo's `.har/plugins/` home. */
+function isLocalPluginDir(dir: string, repoPath: string): boolean {
+  const localRoot = path.resolve(repoPath, LOCAL_PLUGINS_DIR);
+  return path.dirname(dir) === localRoot;
+}
+
+function resolvePathSpec(spec: string, repoPath: string): ResolvedPluginSource {
   const raw = spec.startsWith('file:') ? spec.slice('file:'.length) : spec;
   const dir = path.resolve(expandHome(raw));
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
@@ -95,12 +104,17 @@ function resolvePathSpec(spec: string): ResolvedPluginSource {
   const id = readManifestId(dir) ?? path.basename(dir);
   return {
     id,
-    kind: 'path',
+    kind: isLocalPluginDir(dir, repoPath) ? 'local' : 'path',
     dir,
     spec,
     version: readPackageVersion(dir),
     cleanupDirs: [],
   };
+}
+
+function resolveLocalDir(pluginId: string, repoPath: string): string | null {
+  const dir = path.resolve(repoPath, LOCAL_PLUGINS_DIR, pluginId);
+  return hasManifest(dir) ? dir : null;
 }
 
 function makeTempDir(prefix: string): string {
@@ -222,18 +236,19 @@ function resolveGitSpec(spec: string): ResolvedPluginSource {
  *
  * Spec forms:
  * - bundled id: `playwright`
+ * - local plugin id (scaffolded by `har plugin create`): resolves `.har/plugins/<id>/`
  * - local path: `./my-plugin`, `/abs/path`, `file:…`, `~/…`
  * - npm package: `@org/har-cypress`, `har-plugin-foo@1.0.0`
  * - git: `github:org/repo`, `git+https://…`, `https://….git`
  */
-export function resolvePluginSource(spec: string): ResolvedPluginSource {
+export function resolvePluginSource(spec: string, repoPath = '.'): ResolvedPluginSource {
   const trimmed = spec.trim();
   if (!trimmed) {
     throw new Error('Plugin spec is empty');
   }
 
   if (looksLikePath(trimmed)) {
-    return resolvePathSpec(trimmed);
+    return resolvePathSpec(trimmed, repoPath);
   }
 
   if (looksLikeGit(trimmed)) {
@@ -253,6 +268,19 @@ export function resolvePluginSource(spec: string): ResolvedPluginSource {
     };
   }
 
+  // Bare id matching a project-owned plugin under .har/plugins/<id>
+  const local = resolveLocalDir(trimmed, repoPath);
+  if (local) {
+    return {
+      id: readManifestId(local) ?? trimmed,
+      kind: 'local',
+      dir: local,
+      spec: trimmed,
+      version: readPackageVersion(local),
+      cleanupDirs: [],
+    };
+  }
+
   // Bare id that isn't bundled — if it looks like an npm package name, try npm
   if (looksLikeNpm(trimmed) && (trimmed.includes('@') || trimmed.includes('/'))) {
     return resolveNpmSpec(trimmed);
@@ -263,20 +291,43 @@ export function resolvePluginSource(spec: string): ResolvedPluginSource {
     try {
       return resolveNpmSpec(trimmed);
     } catch (npmErr) {
-      const available = listBundledPluginIds();
       const npmMessage = npmErr instanceof Error ? npmErr.message : String(npmErr);
       throw new Error(
-        `Unknown plugin: ${trimmed}. Bundled: ${available.join(', ') || '(none)'}. ` +
+        `Unknown plugin: ${trimmed}. ${knownPluginsHint(repoPath)} ` +
           `Or pass a path, npm package, or git URL. (${npmMessage})`,
       );
     }
   }
 
-  const available = listBundledPluginIds();
   throw new Error(
-    `Unknown plugin: ${trimmed}. Bundled: ${available.join(', ') || '(none)'}. ` +
+    `Unknown plugin: ${trimmed}. ${knownPluginsHint(repoPath)} ` +
       `Or pass a path (./plugin), npm package (@org/pkg), or git URL (github:org/repo).`,
   );
+}
+
+function knownPluginsHint(repoPath: string): string {
+  const bundled = listBundledPluginIds();
+  const local = listLocalPluginIds(repoPath);
+  const parts = [`Bundled: ${bundled.join(', ') || '(none)'}.`];
+  if (local.length > 0) {
+    parts.push(`Local (.har/plugins/): ${local.join(', ')}.`);
+  } else {
+    parts.push('Scaffold a project-owned one with: har plugin create <id>.');
+  }
+  return parts.join(' ');
+}
+
+/** List project-owned plugin ids under <repo>/.har/plugins/<id>/template.manifest.json */
+export function listLocalPluginIds(repoPath = '.'): string[] {
+  const root = path.resolve(repoPath, LOCAL_PLUGINS_DIR);
+  if (!fs.existsSync(root)) return [];
+
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => hasManifest(path.join(root, name)))
+    .sort();
 }
 
 /** List plugin ids discovered under templates/plugins/<id>/template.manifest.json */

@@ -48,7 +48,26 @@ export const HarnessManifestSchema = z.object({
     .optional(),
   adaptationSummary: z.string().optional(),
   profile: z.enum(['default', 'cli', 'ios']).optional(),
+  /**
+   * Harness runtime-contract version (#241) — the shape of the installed
+   * `.har/` surface (thin shims + pure config = '1.0.0'). Absent on pre-1.0
+   * harnesses; the migration registry (src/harness/migrations.ts) keys on it.
+   */
+  runtimeVersion: z.string().optional(),
+  /** Shape this harness was migrated from ('pre-1.0'), stamped at migration (#241). */
+  migratedFrom: z.string().optional(),
+  migratedAt: z.string().optional(),
+  /** `har env eject` (#239): the user owns the runtime scripts + .har/runtime/. */
+  ejected: z.boolean().optional(),
+  /** @osfactory/har version whose runtime was vendored at eject time. */
+  ejectedVersion: z.string().optional(),
   fileChecksums: z.record(z.string()).optional(),
+  /**
+   * Checksums of the composed bundled templates at last init/finalize —
+   * baseline for the upstream-updated drift signal (#237). Keyed by installed
+   * file name, same key space as fileChecksums.
+   */
+  templateChecksums: z.record(z.string()).optional(),
   scaffoldedAgentFiles: z.array(ScaffoldedAgentFileSchema).optional(),
 });
 
@@ -99,6 +118,12 @@ export const HarnessStageSchema = z
     requiresAgentId: z.boolean().optional(),
     group: z.string().optional(),
     acceptsArgs: z.array(z.string()).optional(),
+    /**
+     * Verification tier: 'quick' stages run on every verify; 'full' stages
+     * only on --full. Absent means 'full'. Only meaningful for stages listed
+     * in verificationStages.
+     */
+    tier: z.enum(['quick', 'full']).optional(),
   })
   .passthrough();
 

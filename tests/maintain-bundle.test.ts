@@ -19,24 +19,26 @@ describe('maintain bundle', () => {
   it('creates templates for missing required files', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-missing-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
-    fs.unlinkSync(path.join(repoPath, '.har', 'provision-toolchain.sh'));
+    fs.unlinkSync(path.join(repoPath, '.har', 'launch.sh'));
 
     const drift = compareHarnessToTemplate(repoPath);
     const validation = validateHarness(repoPath);
-    expect(validation.pass).toBe(false);
+    // #235: shims are not required files — deleting launch.sh keeps validation
+    // green (the runtime lives in the package); drift still restores it.
+    expect(validation.pass).toBe(true);
 
     const { bundleDir, report } = buildMaintainBundle(repoPath, validation, drift);
 
-    expect(report.actions.some((a) => a.file === 'provision-toolchain.sh' && a.kind === 'missing')).toBe(
+    expect(report.actions.some((a) => a.file === 'launch.sh' && a.kind === 'missing')).toBe(
       true,
     );
-    expect(fs.existsSync(path.join(bundleDir, 'templates', 'provision-toolchain.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(bundleDir, 'templates', 'launch.sh'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'README.md'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'drift-report.json'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'validation.json'))).toBe(true);
   });
 
-  it('creates diffs for drifted files', () => {
+  it('reports user edits as adapted (no action) — two-signal drift (#237)', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-drift-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
     const launchPath = path.join(repoPath, '.har', 'launch.sh');
@@ -44,15 +46,42 @@ describe('maintain bundle', () => {
 
     const drift = compareHarnessToTemplate(repoPath);
     const validation = validateHarness(repoPath);
+    const { report } = buildMaintainBundle(repoPath, validation, drift);
+
+    // User edited, template unchanged → informational, never a drift action.
+    expect(report.actions.find((a) => a.file === 'launch.sh')).toBeUndefined();
+    expect(report.adapted).toContain('launch.sh');
+  });
+
+  it('creates diffs for upstream-updated and conflict files — two-signal drift (#237)', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-upstream-'));
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+
+    // Simulate "template moved since finalize" by rewinding the recorded
+    // template baseline for launch.sh (upstream-updated) and verify.sh
+    // (conflict: baseline rewound AND user edit).
+    const manifestPath = path.join(repoPath, '.har', 'manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    manifest.templateChecksums['launch.sh'] = '0000000000000000';
+    manifest.templateChecksums['verify.sh'] = '0000000000000000';
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+    const verifyPath = path.join(repoPath, '.har', 'verify.sh');
+    fs.writeFileSync(verifyPath, fs.readFileSync(verifyPath, 'utf8') + '\n# local edit\n');
+
+    const drift = compareHarnessToTemplate(repoPath);
+    expect(drift.upstreamUpdated).toContain('launch.sh');
+    expect(drift.conflict).toContain('verify.sh');
+
+    const validation = validateHarness(repoPath);
     const { bundleDir, report } = buildMaintainBundle(repoPath, validation, drift);
 
-    const launchAction = report.actions.find((a) => a.file === 'launch.sh');
-    expect(launchAction?.kind).toBe('drift');
+    expect(report.actions.find((a) => a.file === 'launch.sh')?.kind).toBe('upstream-updated');
+    expect(report.actions.find((a) => a.file === 'verify.sh')?.kind).toBe('conflict');
     expect(fs.existsSync(path.join(bundleDir, 'installed', 'launch.sh'))).toBe(true);
     expect(fs.existsSync(path.join(bundleDir, 'templates', 'launch.sh'))).toBe(true);
-    expect(fs.existsSync(path.join(bundleDir, 'diffs', 'launch.sh.diff'))).toBe(true);
-    const diff = fs.readFileSync(path.join(bundleDir, 'diffs', 'launch.sh.diff'), 'utf8');
-    expect(diff).toContain('drift marker');
+    expect(fs.existsSync(path.join(bundleDir, 'diffs', 'verify.sh.diff'))).toBe(true);
+    const diff = fs.readFileSync(path.join(bundleDir, 'diffs', 'verify.sh.diff'), 'utf8');
+    expect(diff).toContain('local edit');
   });
 
   it('lists stale extra files', () => {
@@ -68,16 +97,18 @@ describe('maintain bundle', () => {
     expect(fs.existsSync(path.join(bundleDir, 'stale', 'MANIFEST.md'))).toBe(true);
   });
 
-  it('maintainHarness builds bundle even when validation fails', async () => {
+  it('maintainHarness builds bundle even when a required config file is missing', async () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-harness-'));
     scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
-    fs.unlinkSync(path.join(repoPath, '.har', 'provision-toolchain.sh'));
+    // README.md is part of the required config surface (#235/#301); shims are not.
+    fs.unlinkSync(path.join(repoPath, '.har', 'README.md'));
+    fs.unlinkSync(path.join(repoPath, '.har', 'launch.sh'));
 
     const result = await maintainHarness({ repoPath, finalize: false });
 
     expect(result.validation.pass).toBe(false);
     expect(result.bundle).toBeDefined();
-    expect(fs.existsSync(path.join(repoPath, '.har', MAINTAIN_DIR, 'templates', 'provision-toolchain.sh'))).toBe(
+    expect(fs.existsSync(path.join(repoPath, '.har', MAINTAIN_DIR, 'templates', 'launch.sh'))).toBe(
       true,
     );
   });
@@ -113,7 +144,10 @@ describe('adaptation prompts with maintain bundle', () => {
     expect(maintainPrompt).toContain('.har/maintain/');
     expect(maintainPrompt).toContain('Do **not** read files from the globally installed har package');
     expect(maintainPrompt).not.toContain('{{MAINTAIN_BUNDLE_SECTION}}');
-    expect(maintainPrompt).toContain('Generator 0.5.0');
+    // Platform upgrades are the migration registry now (#241), not prose.
+    expect(maintainPrompt).toContain('migration registry');
+    expect(maintainPrompt).toContain('MIGRATE-PROMPT.md');
+    expect(maintainPrompt).not.toContain('Generator 0.5.0');
     expect(maintainPrompt).toContain('AGENTS.md');
   });
 
@@ -124,12 +158,13 @@ describe('adaptation prompts with maintain bundle', () => {
       profile: 'default',
       actions: [
         {
-          file: 'provision-toolchain.sh',
+          file: 'launch.sh',
           kind: 'missing',
           template: 'maintain/templates/provision-toolchain.sh',
           hint: 'Add this file.',
         },
       ],
+      adapted: [],
       pluginDrift: [],
       pluginActions: [],
       stale: [{ file: 'legacy.sh', hint: 'Delete after merge.' }],
@@ -144,18 +179,18 @@ describe('adaptation prompts with maintain bundle', () => {
       ],
       validation: {
         pass: false,
-        errors: [{ file: 'provision-toolchain.sh', message: 'Required file missing', severity: 'error' }],
+        errors: [{ file: 'launch.sh', message: 'Required file missing', severity: 'error' }],
         warnings: [],
       },
     });
 
     expect(maintainPrompt).not.toEqual(initPrompt);
-    expect(maintainPrompt).toContain('provision-toolchain.sh');
+    expect(maintainPrompt).toContain('launch.sh');
     expect(maintainPrompt).toContain('legacy.sh');
     expect(maintainPrompt).toContain('HARNESS_DB_PORT_DEFAULT');
     expect(maintainPrompt).toContain('Validation blockers');
     expect(maintainPrompt).toContain('Agent instruction files');
     expect(maintainPrompt).toContain('AGENT.md');
-    expect(maintainPrompt).toContain('Generator 0.5.0');
+    expect(maintainPrompt).toContain('migration registry');
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  EnvironmentStatusSchema,
   HAR_AGENT_SLOT_MIN,
   HarnessManifestSchema,
   HarnessStageSchema,
@@ -43,9 +44,13 @@ export const DescribeProjectOutputSchema = z.object({
   harnessDrift: z
     .object({
       missing: z.array(z.string()),
-      checksumMismatch: z.array(z.string()),
+      userAdapted: z.array(z.string()),
+      upstreamUpdated: z.array(z.string()),
+      conflict: z.array(z.string()),
       extra: z.array(z.string()),
       unchanged: z.array(z.string()),
+      /** User-owned files on an ejected harness (#239) — present, never drift. */
+      ownedByUser: z.array(z.string()).optional(),
     })
     .nullable(),
 });
@@ -93,6 +98,10 @@ export const AddWorkUnitLinkInputSchema = z.object({
 });
 
 export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
+  warnings: z
+    .array(z.string())
+    .optional()
+    .describe('Advisory readiness warnings — never block the launch'),
   previewUrls: z.record(z.string()).optional(),
   workDir: z
     .string()
@@ -186,6 +195,36 @@ export const ListArtifactsOutputSchema = z.object({
 });
 
 export const EnvironmentRunOutputSchema = ShellRunOutputSchema;
+
+/** Structured status is the source; text views render on top of it. */
+export const GetStatusOutputSchema = EnvironmentStatusSchema;
+
+export const MaintainHarnessInputSchema = z.object({
+  repo: z.string().default('.'),
+  finalize: z
+    .boolean()
+    .default(false)
+    .describe('Record the completed manual adaptation in .har/manifest.json'),
+  summary: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .describe('Adaptation summary stored in the manifest (finalize only)'),
+});
+
+export const AddPluginInputSchema = z.object({
+  repo: z.string().default('.'),
+  plugin: z
+    .string()
+    .min(1)
+    .describe('Bundled plugin id, local path (./plugin), npm package (@org/pkg), or git URL'),
+  force: z.boolean().default(false).describe('Overwrite existing plugin files and stage entry'),
+  withCi: z
+    .boolean()
+    .default(false)
+    .describe('Also copy optional CI workflow files (skipped by default)'),
+});
 
 export const ListRunsInputSchema = z.object({
   repo: z.string().default('.'),

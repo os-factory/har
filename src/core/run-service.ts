@@ -10,10 +10,13 @@ import {
   bindValidationToAttempt,
   createWorkAttempt,
   decideWorkUnitOutcome,
+  findWorkUnit,
   upsertWorkUnit,
 } from './work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
-import { getAgentSlotIds, resolveStage } from '../harness/stages';
+import { runDoctor, summarizeDoctorReport } from '../harness/doctor';
+import { resolveStage } from '../harness/stages';
+import { collectEnvironmentStatus, renderEnvironmentStatusText } from './slot-status';
 import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
@@ -26,6 +29,7 @@ import * as path from 'path';
 import {
   ArtifactEntry,
   EnvironmentRunResult,
+  EnvironmentStatusRunResult,
   ExecutionContext,
   LaunchOptions,
   LogsOptions,
@@ -188,11 +192,30 @@ export class RunService {
       };
     }
 
+    // Doctor contract validation runs before every launch (#232) so a broken
+    // adaptation is caught here, not mid-session. Pre-1.0 harnesses degrade
+    // contract findings to warnings inside runDoctor, so only real breakage
+    // (corrupt stages.json, missing stage scripts, phantom ids) blocks.
+    const doctor = runDoctor(resolveHarnessRoot(options.repoPath));
+    if (!doctor.ok) {
+      const errors = doctor.findings
+        .filter((f) => f.severity === 'error')
+        .map((f) => `${f.file ? `[${f.file}] ` : ''}${f.message}${f.remedy ? `\n  → ${f.remedy}` : ''}`);
+      return {
+        code: 2,
+        stdout: '',
+        stderr: `Launch blocked by harness doctor:\n${errors.join('\n')}\nRun \`har env doctor\` for the full report.\n`,
+        blocked: true,
+      };
+    }
+
     // Readiness warnings are advisory, but a launch that passes the guard is the
     // moment they matter most — they must not be dropped with the guard result.
     let launchBanner = (guard.readiness?.warnings ?? [])
       .map((warning) => `WARN: ${warning}\n`)
       .join('');
+    const doctorSummary = summarizeDoctorReport(doctor);
+    if (doctorSummary) launchBanner += `WARN: ${doctorSummary}\n`;
     if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
       const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
       if (ensured.message) {
@@ -263,7 +286,7 @@ export class RunService {
         workUnitId,
         attemptId,
       },
-      trigger: 'cli',
+      trigger: options.trigger ?? 'cli',
     });
     const envResult = toEnvironmentRunResult(result);
     if (envResult.code === 0) {
@@ -315,6 +338,11 @@ export class RunService {
       }
       if (launchBanner) {
         envResult.stderr = `${launchBanner}${envResult.stderr ?? ''}`;
+      }
+      // Structured copy of the readiness warnings so surfaces can render them
+      // without scraping WARN: lines out of stderr.
+      if (guard.readiness?.warnings?.length) {
+        envResult.warnings = guard.readiness.warnings;
       }
     }
     return envResult;
@@ -404,6 +432,11 @@ export class RunService {
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
   }): Promise<EnvironmentRunResult> {
+    // Captured before teardown clears the slot registry — the attempt binding
+    // is gone afterwards.
+    const harnessRoot = resolveHarnessRoot(options.repoPath);
+    const session = readSlotRegistry(harnessRoot, options.agentId);
+
     const result = await this.runStage({
       repoPath: options.repoPath,
       kind: 'teardown',
@@ -412,7 +445,27 @@ export class RunService {
       capture: options.capture ?? false,
       trigger: options.trigger ?? 'cli',
     });
-    return toEnvironmentRunResult(result);
+    const envResult = toEnvironmentRunResult(result);
+
+    // Teardown is the only exit besides `complete`; close the open attempt so
+    // work units don't linger as in-flight forever. `complete` records its
+    // 'completed' outcome before tearing down, so an existing outcome wins.
+    if (envResult.code === 0 && session?.workUnitId) {
+      try {
+        const workUnit = findWorkUnit(harnessRoot, session.workUnitId);
+        if (workUnit && !workUnit.outcome) {
+          decideWorkUnitOutcome(harnessRoot, session.workUnitId, {
+            decision: 'abandoned',
+            decidedAt: new Date().toISOString(),
+            attemptId: session.attemptId,
+            reason: 'Session torn down without completion.',
+          });
+        }
+      } catch {
+        // Outcome bookkeeping must not fail an otherwise successful teardown.
+      }
+    }
+    return envResult;
   }
 
   /**
@@ -505,47 +558,33 @@ export class RunService {
     };
   }
 
+  /**
+   * Status is a pure read with one implementation: the structured collector is
+   * the source, text is rendered on top. No run records are written on any
+   * surface (CLI text, CLI --json, MCP) — the policy is identical by design.
+   */
   async getEnvironmentStatus(options: {
     repoPath: string;
     agentId?: number;
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
-  }): Promise<EnvironmentRunResult> {
-    const capture = options.capture ?? true;
-
+  }): Promise<EnvironmentStatusRunResult> {
     if (options.agentId !== undefined) {
       validateAgentId(options.agentId, options.repoPath);
-      const result = await this.runStage({
-        repoPath: options.repoPath,
-        stageId: 'status',
-        agentId: options.agentId,
-        args: ['status'],
-        capture,
-        trigger: options.trigger ?? 'cli',
-      });
-      return toEnvironmentRunResult(result);
     }
 
-    let combinedStdout = '';
-    let combinedStderr = '';
-    let exitCode = 0;
+    const full = collectEnvironmentStatus(options.repoPath);
+    const status =
+      options.agentId !== undefined
+        ? { ...full, slots: full.slots.filter((slot) => slot.agentId === options.agentId) }
+        : full;
 
-    for (const id of getAgentSlotIds(options.repoPath)) {
-      const result = await this.runStage({
-        repoPath: options.repoPath,
-        stageId: 'status',
-        agentId: id,
-        args: ['status'],
-        capture,
-        trigger: options.trigger ?? 'cli',
-      });
-      const shell = extractShellOutput(result);
-      combinedStdout += shell.stdout;
-      combinedStderr += shell.stderr;
-      if (shell.code !== 0) exitCode = shell.code;
-    }
-
-    return { code: exitCode, stdout: combinedStdout, stderr: combinedStderr };
+    return {
+      code: 0,
+      stdout: renderEnvironmentStatusText(status),
+      stderr: '',
+      status,
+    };
   }
 
   async getEnvironmentLogs(options: LogsOptions & { trigger?: ExecutionContext['trigger'] }): Promise<EnvironmentRunResult> {
@@ -584,6 +623,7 @@ export { computePreviewUrls, readHarnessEnv } from './local-executor';
 export type {
   ArtifactEntry,
   EnvironmentRunResult,
+  EnvironmentStatusRunResult,
   LaunchOptions,
   LogsOptions,
   PreflightOptions,

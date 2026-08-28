@@ -12,6 +12,8 @@ AGENT.md.proposed
 AGENT.md.proposed.meta.json
 maintain/
 ADAPT-PROMPT.md
+migrate/
+MIGRATE-PROMPT.md
 slots/
 simulators/
 

@@ -1,161 +1,35 @@
 #!/usr/bin/env bash
-# Progressive verification pipeline for an agent environment.
-# Outputs JSON to stdout (machine contract), human-readable progress to stderr.
-# Passing steps omit `output`. `har env verify` streams progress only.
-#
-# Usage: ./.har/verify.sh <agent-id> [--full]
+# Verification pipeline (stages.json verificationStages; quick by default, --full for the whole list).
+# The runtime lives in the HAR package (#234) — this file only forwards to it.
+# Usage: ./.har/verify.sh <agent-id> [--full] [--json]   (human output; pass --json for the structured result)
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/harness.env"
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/agent-slot.sh"
-
-AGENT_ID="${1:?Usage: verify.sh <agent-id> [--full]}"
-FULL=""
-
-for arg in "${@:2}"; do
-  [ "$arg" = "--full" ] && FULL=1
-done
-
-validate_agent_id "$AGENT_ID"
-
-API_PORT=$(( HARNESS_API_BASE_PORT + AGENT_ID * ${HARNESS_PORT_STEP:-10} ))
-
-ENV_FILE="$(resolve_agent_env_file "$AGENT_ID" "$REPO_ROOT")" || {
-  echo "No .env.agent.${AGENT_ID} found." >&2
-  har_suggest_launch "$AGENT_ID" >&2
-  exit 1
+# Loop guard (#291): a pre-1.0 har does not own this runtime kind in the
+# package — it executes this script as authoritative, which would exec back
+# into har forever (one node process per cycle). Trip on re-entry for this
+# harness root, and skip har binaries older than the pinned runtime's major.
+HAR_SHIM_GUARD="verify@${REPO_ROOT}"
+case ":${HAR_SHIM_REENTRY:-}:" in *":${HAR_SHIM_GUARD}:"*)
+  echo "Error: runtime loop detected — the har CLI that ran this shim delegated back into it." >&2
+  echo "  The har runtime handling this repo is older than the harness contract (pinned: @osfactory/har@0.64.1)." >&2
+  echo "  Fix: npm i -g @osfactory/har@latest    # or in this repo: npm i -D @osfactory/har" >&2
+  exit 86
+  ;;
+esac
+export HAR_SHIM_REENTRY="${HAR_SHIM_REENTRY:-}:${HAR_SHIM_GUARD}"
+har_runtime_compatible() {
+  local v pinned="0.64.1"
+  v="$("$1" --version 2>/dev/null | head -n1)" || return 1
+  [ "${v%%.*}" -ge "${pinned%%.*}" ] 2>/dev/null
 }
-
-set -a
-# shellcheck source=/dev/null
-source "$ENV_FILE"
-set +a
-
-WORK_DIR="$(resolve_agent_work_dir "$ENV_FILE")"
-API_PORT="${API_PORT:-$(( HARNESS_API_BASE_PORT + AGENT_ID * ${HARNESS_PORT_STEP:-10} ))}"
-
-echo "==> Verifying agent ${AGENT_ID} (work dir: ${WORK_DIR})..." >&2
-REG_FILE="$(slot_registry_file "$AGENT_ID")"
-echo "    Work dir: ${WORK_DIR}" >&2
-echo "    Env file: ${ENV_FILE}" >&2
-if [ -f "$REG_FILE" ]; then
-  echo "    Registry: ${REG_FILE}" >&2
-else
-  echo "    Registry: missing (${REG_FILE})" >&2
+if command -v har >/dev/null 2>&1 && har_runtime_compatible har; then
+  exec har env verify "$@"
+elif [ -x "$REPO_ROOT/node_modules/.bin/har" ] && har_runtime_compatible "$REPO_ROOT/node_modules/.bin/har"; then
+  exec "$REPO_ROOT/node_modules/.bin/har" env verify "$@"
+elif command -v npx >/dev/null 2>&1; then
+  exec npx --yes @osfactory/har@0.64.1 env verify "$@"
 fi
-
-OVERALL_PASS=true
-START_TOTAL=$(now_ms)
-RESULTS_JSON="[]"
-
-run_step() {
-  local name="$1"
-  local cmd="$2"
-  local start end elapsed exit_code output
-
-  printf "  → %-40s" "$name..." >&2
-  start=$(now_ms)
-
-  set +e
-  output=$(cd "$WORK_DIR" && set -a && . "$ENV_FILE" && set +a && eval "$cmd" 2>&1)
-  exit_code=$?
-  set -e
-
-  end=$(now_ms)
-  elapsed=$(( end - start ))
-
-  local pass_bool
-  if [ "$exit_code" = "0" ]; then
-    echo "✓ (${elapsed}ms)" >&2
-    pass_bool="true"
-  else
-    echo "✗ (${elapsed}ms)" >&2
-    echo "$output" | head -30 | sed 's/^/    /' >&2
-    pass_bool="false"
-    OVERALL_PASS=false
-  fi
-
-  record_step_result "$name" "$pass_bool" "$elapsed" "$output"
-
-  if [ "$pass_bool" = "false" ] && [ -z "$FULL" ]; then
-    return 1
-  fi
-}
-
-run_http_step() {
-  local name="$1"
-  local url="$2"
-  local start end elapsed exit_code output
-
-  printf "  → %-40s" "$name..." >&2
-  start=$(now_ms)
-
-  set +e
-  output=$(curl -sf "$url" 2>&1)
-  exit_code=$?
-  set -e
-
-  end=$(now_ms)
-  elapsed=$(( end - start ))
-
-  local pass_bool
-  if [ "$exit_code" = "0" ]; then
-    echo "✓ (${elapsed}ms)" >&2
-    pass_bool="true"
-  else
-    echo "✗ (${elapsed}ms)" >&2
-    pass_bool="false"
-    OVERALL_PASS=false
-  fi
-
-  record_step_result "$name" "$pass_bool" "$elapsed" "$output"
-
-  if [ "$pass_bool" = "false" ] && [ -z "$FULL" ]; then
-    return 1
-  fi
-}
-
-# ── Verification stages ─────────────────────────────────────────────────────
-# Edit this section directly — do not use a separate config file.
-
-run_step "typecheck" '${NPM_BIN:-npm} run typecheck' || { [ -z "$FULL" ] && true; }
-run_step "unit-tests" '${NPM_BIN:-npm} test' || { [ -z "$FULL" ] && true; }
-run_http_step "api-health" "http://localhost:${API_PORT}${HARNESS_HEALTH_CHECK_PATH}" || { [ -z "$FULL" ] && true; }
-
-if [ -n "$FULL" ]; then
-  run_step "lint" '${NPM_BIN:-npm} run lint' || true
-  run_step "readiness" "run_readiness_if_configured \"$AGENT_ID\"" || true
-  # Registered verification stages from .har/stages.json (see .har/STAGES.md).
-  # Every stage listed in verificationStages with a registered script/command
-  # runs here -- plugins and custom stages alike.
-  while IFS=$'\t' read -r STAGE_ID STAGE_CMD; do
-    [ -n "$STAGE_ID" ] || continue
-    run_step "$STAGE_ID" "$STAGE_CMD" || true
-  done < <(list_registered_verification_stage_commands "$SCRIPT_DIR" "$AGENT_ID")
-fi
-
-# ── Output results ────────────────────────────────────────────────────────────
-
-END_TOTAL=$(now_ms)
-TOTAL_MS=$(( END_TOTAL - START_TOTAL ))
-
-node -e "
-const results = $RESULTS_JSON;
-const overall = results.length > 0 && results.every(r => r.pass);
-const out = {
-  status: overall ? 'pass' : 'fail',
-  agent_id: $AGENT_ID,
-  total_ms: $TOTAL_MS,
-  stages: results,
-};
-process.stdout.write(JSON.stringify(out, null, 2) + '\n');
-" 2>/dev/null || echo "{\"status\":\"fail\",\"agent_id\":${AGENT_ID},\"stages\":[]}"
-
-if [ "$OVERALL_PASS" = "false" ]; then
-  exit 1
-fi
+echo "Error: cannot run the HAR runtime — 'har' is not on PATH and Node.js (npx) is unavailable." >&2
+echo "  Install Node.js, then: npm i -D @osfactory/har   # or: npx @osfactory/har@0.64.1 env verify" >&2
+exit 127

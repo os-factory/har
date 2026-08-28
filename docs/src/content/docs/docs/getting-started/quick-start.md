@@ -102,9 +102,12 @@ the runtime and worktree, and keeps the session branch for a pull request.
 If you only need cleanup, use `har env teardown 1`. It also keeps the branch unless
 you explicitly pass `--delete-branch`.
 
-## Shell fallback
+## Shell shims
 
-The generated scripts remain directly usable without a global CLI:
+The generated scripts remain directly usable without a global CLI — each is a
+thin shim that forwards to `har env` (resolving `har` on PATH, then
+`node_modules/.bin/har`, then `npx @osfactory/har` pinned to the version that
+generated it):
 
 ```bash
 ./.har/setup-infra.sh
@@ -113,4 +116,4 @@ The generated scripts remain directly usable without a global CLI:
 ./.har/teardown.sh 1
 ```
 
-Direct scripts do not create persisted `.har/runs/` records; CLI and MCP execution do.
+Because the shims run the same packaged runtime, they write the same `.har/runs/` records, validations, and telemetry as CLI and MCP execution.

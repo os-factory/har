@@ -47,14 +47,22 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `init` | Scaffold and adapt a new `.har/` |
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-plugin [plugin]` | Install a plugin (bundled id, path, npm, or git — registers stages) |
-| `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
+| `add-stage [id]` | Deprecated plugin alias for `add-plugin` (`--custom` removed in 1.0 — see `har plugin create`) |
 | `preflight <id>` | Check ports, processes, Docker, slot occupation, and untracked worktree paths |
+| `setup-infra` | Set up shared infrastructure (Docker services, template DB, or the iOS toolchain) |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
 | `complete <id>` | Full verify, record validation, teardown, keep branch |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
+| `doctor` | Validate the harness contract (schema, stages, scripts, port lanes) |
+| `eject` | Vendor the runtime into `.har/runtime/` and own the scripts yourself |
+| `adopt` | Return an ejected harness to managed shims |
 | `status` | Inspect all slots |
+| `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
+| `agent <id> <command>` | Per-slot ops: `status`, `logs`, `restart`, `psql`, `health`, `url`, `reset-db`, `slow-queries`, `exec`, `attach` |
+| `run-stage <id> <stage> [args..]` | Run one registered harness stage by id |
+| `artifacts` | List result files under `.har/artifacts/` |
 | `cleanup` | Discover stale sessions and orphan worktrees across registered repos |
 | `runs list` | List persisted run records |
 | `runs get <runId>` | Return one run record |
@@ -86,29 +94,29 @@ har env maintain [--yes] [--finalize]
 
 ```bash
 har env add-plugin --list
-har env add-plugin playwright [--force] [--skip-ci]
+har env add-plugin playwright [--force] [--with-ci]
 har env add-plugin rocketsim [--force]
-har env add-plugin kerno [--force] [--skip-ci]
-har env add-plugin gitleaks [--force] [--skip-ci]
-har env add-plugin trivy [--force] [--skip-ci]
-har env add-plugin semgrep [--force] [--skip-ci]
+har env add-plugin kerno [--force] [--with-ci]
+har env add-plugin gitleaks [--force] [--with-ci]
+har env add-plugin trivy [--force] [--with-ci]
+har env add-plugin semgrep [--force] [--with-ci]
 har env add-plugin ./my-plugin [--force]
 har env add-plugin @org/har-cypress [--force]
 har env add-plugin github:org/har-plugin [--force]
-har env add-stage <id> --custom --kind <kind>
-                       [--command <shell-command>|--script]
-                       [--description <text>] [--verification] [--force]
+har plugin create <id> [--kind <kind>] [--description <text>]
+                       [--package-fragment] [--force]
+har plugin list
 ```
 
 `add-plugin` installs a framework bundle that registers one or more stages
-(bundled id, local path, npm package, or git URL). Installs are recorded in
-`.har/plugins.json`. Bundled plugins are discovered from disk — no core enum
-edit is required to ship a new id. `add-stage --custom` registers a
-project-specific stage. `har env add-stage playwright` remains as a deprecated
-alias of `add-plugin playwright`.
-
-`--command` registers a direct command. `--script` scaffolds a contract-compliant
-`.har/stages/<id>.sh`; implement its TODO before verification can pass. See
+(bundled id, local plugin id, path, npm package, or git URL). Installs are
+recorded in `.har/plugins.json` with their source kind. Bundled plugins are
+discovered from disk — no core enum edit is required to ship a new id.
+`har plugin create` scaffolds a project-owned plugin at `.har/plugins/<id>/`
+(manifest, contract-compliant stage script, README); implement its TODO, then
+install it with `add-plugin <id>`. `har env add-stage playwright` remains as a
+deprecated alias of `add-plugin playwright`; `add-stage --custom` was removed
+in 1.0 — one-liner checks are plain command stages in `.har/stages.json`. See
 `.har/STAGES.md` in every generated harness and the [Plugins](/docs/guides/plugins/)
 guide.
 
@@ -162,16 +170,68 @@ duplicates step logs already shown. Use `--json` when a script needs the
 structured result. Passing steps omit `output`; failed steps keep a truncated
 excerpt. MCP `har_run_verification` returns the same slim shape.
 
+### Doctor
+
+```bash
+har env doctor [--json]
+```
+
+`doctor` validates the harness contract and exits `0` on pass, `1` on errors
+(so it slots into CI): `harness.env` against the schema, `stages.json` against
+the registry schema, every registered stage's script/command file exists and is
+executable, the lifecycle stages (launch/verify/teardown) resolve,
+`verificationStages` ids resolve to registered stages, infra port lanes are
+coherent (no overlaps, defaults inside scan ranges), and slot registry entries
+point at existing worktrees. Every finding carries a remedy. Doctor also runs
+automatically inside `har env maintain` and before every `launch` — a broken
+adaptation blocks the launch instead of failing mid-session. Pre-1.0 harnesses
+report contract findings as warnings until they migrate. On an ejected
+harness, doctor additionally checks the vendored runtime exists and the
+user-owned scripts are executable. MCP twin: `har_doctor`.
+
+### Eject and adopt
+
+```bash
+har env eject [--yes]
+har env adopt
+```
+
+`eject` is the explicit, supported path for power users who want to own the
+runtime scripts: it vendors the complete HAR runtime bundle into
+`.har/runtime/` and rewrites the `.har/*.sh` scripts to execute it directly
+with node — no `har` on PATH, no npx fallback. The choice is recorded in
+`.har/manifest.json` (`ejected`, `ejectedVersion`). From then on those files
+are user-owned: `maintain` reports no upstream drift for them, and upstream
+fixes reach them only by re-ejecting. Support covers issues reproducible with
+the managed shims; changes made to an ejected runtime are yours to maintain.
+Config surface files (`harness.env`, `stages.json`, `stages/`, docs) stay
+managed either way.
+
+`adopt` reverses it: regenerates the managed shims, removes `.har/runtime/`,
+and clears the manifest record, preserving the config surface. Both commands
+are deliberately CLI-only (no MCP twin) — runtime ownership is a human policy
+decision with an interactive confirmation (`--yes` for automation).
+
 ### Status and runs
 
 ```bash
 har env status [--json]
+har env logs 1 [service]
+har env run-stage 1 <stage> [args..] [--json]
+har env artifacts [--stage <id>] [--json]
 har env cleanup [--dry-run] [--yes] [--repo <path>]
                 [--keep repo:agentId,/path/to/worktree]
                 [--stale 7] [--orphans] [--include-review] [--json]
 har env runs list [--stage <id>] [--limit 50] [--json]
 har env runs get <uuid> [--json]
 ```
+
+`status` has one implementation on every surface: the structured collector
+behind `--json` is the source, the text view is rendered on top, and MCP
+`har_get_status` returns the same object. Status is a pure read — it writes no
+run records. `run-stage` executes any stage registered in `.har/stages.json`
+(the CLI twin of MCP `har_run_stage`); `artifacts` is the twin of
+`har_list_artifacts`.
 
 `cleanup` scans every repo in `~/.har/repos.json` (plus `--repo` when set),
 classifies active slots and orphan directories under `~/worktrees`, and runs
