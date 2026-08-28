@@ -247,11 +247,11 @@ HAR session branches are derived from whatever base you launch from (`docs-…-h
 |---------------|---------|
 | `fix:` | Patch |
 | `feat:` | Minor |
-| `feat!:` or `BREAKING CHANGE:` footer | Major |
+| `feat!:` / `fix!:` (`!` on any type) or a `BREAKING CHANGE:` footer | Major |
 | `chore:`, `docs:`, `test:`, `refactor:`, `ci:` | No release |
 | `feat(benchmark):`, `*(ci):`, `docs(*):` | No release ([release.config.cjs](./release.config.cjs) rules) |
 
-Explicit analyzer rules in [release.config.cjs](./release.config.cjs): type `ci`, type `docs`, scope `ci`, and scope `benchmark` all set `release: false`. Prefer type `ci:` / `docs:` for those-only PRs — not `feat(docs):` or `fix(docs):` (type `feat`/`fix` still releases unless the scope is `ci` or `benchmark`). Squash-merge PR titles must follow the same format.
+Explicit analyzer rules in [release.config.cjs](./release.config.cjs): type `ci`, type `docs`, scope `ci`, and scope `benchmark` all set `release: false`. The analyzer uses the `conventionalcommits` preset so `!` alone marks a breaking change (#311) — put it in the **squash-merge title**, since a squash drops `BREAKING CHANGE:` footers written in commit bodies. Prefer type `ci:` / `docs:` for those-only PRs — not `feat(docs):` or `fix(docs):` (type `feat`/`fix` still releases unless the scope is `ci` or `benchmark`). Squash-merge PR titles must follow the same format.
 
 ### What actually skips CI jobs
 
