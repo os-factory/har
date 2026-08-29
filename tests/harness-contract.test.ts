@@ -115,13 +115,13 @@ describe('harness stage contract', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(repoPath, '.har', 'manifest.json'), 'utf8'));
     expect(manifest.profile).toBe('cli');
 
-    const verifyScript = fs.readFileSync(path.join(repoPath, '.har', 'verify.sh'), 'utf8');
-    // #234: verify.sh delegates to har env verify, which runs the stage-registry runner.
-    expect(verifyScript).toContain('exec har env verify');
-    expect(verifyScript).not.toContain('run_quick_smoke');
-    expect(verifyScript).not.toContain("echo 'TODO:");
+    expect(fs.existsSync(path.join(repoPath, '.har', 'verify.sh'))).toBe(false);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'launch.sh'))).toBe(false);
 
     const registry = readStageRegistry(repoPath);
+    const verifyStage = registry.stages.find((stage) => stage.id === 'verify');
+    expect(verifyStage?.kind).toBe('verify');
+    expect(verifyStage?.command).toBeUndefined();
     expect(registry.agentSlots).toEqual({ min: 1, max: 3 });
 
     const gitignore = fs.readFileSync(path.join(repoPath, '.gitignore'), 'utf8');

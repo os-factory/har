@@ -50,8 +50,8 @@ evidence. See `.har/stages/SEMGREP.md` for the full story.
 
 ```bash
 pipx install semgrep
-./.har/launch.sh 1
+har env launch 1
 ./.har/stages/sast.sh 1
 # reports: .har/artifacts/sast/semgrep.json (+ .sarif, scan.log)
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```

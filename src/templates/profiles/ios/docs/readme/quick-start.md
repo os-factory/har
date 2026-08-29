@@ -11,6 +11,5 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
 
-`./.har/*.sh` exist as compatibility shims over the same runtime — generated,
-never edited, and not the way to drive the harness. Take explicit ownership of
-them with `har env eject`.
+CLI and MCP are the only entry points. `har env eject` vendors the runtime into
+`.har/runtime/` for offline ownership (`node .har/runtime/har.cjs env …`).

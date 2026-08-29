@@ -12,7 +12,7 @@
 #   TRIVY_CACHE_DIR         vulnerability DB cache (default: ~/.cache/trivy —
 #                           shared across slots so the DB downloads once)
 #
-# Prerequisite: ./.har/launch.sh <agent-id>
+# Prerequisite: har env launch <agent-id>
 # See: ./.har/stages/TRIVY.md for the full adaptation guide.
 set -euo pipefail
 
@@ -39,8 +39,8 @@ if ! command -v trivy >/dev/null 2>&1; then
 fi
 
 # ── Resolve agent env ─────────────────────────────────────────────────────────
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 SEVERITY="${HARNESS_TRIVY_SEVERITY:-HIGH,CRITICAL}"

@@ -24,7 +24,7 @@ harness or report it; do not fall back to ad-hoc commands.
 
 Occupied slots always block: `complete` / `teardown`, then launch. Customize the
 harness only through `harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`
-and `.har/plugins/` — the generated `.har/*.sh` shims are not an editing surface.
+and `.har/plugins/` — there is no generated `.har/*.sh` entry-point surface.
 
 Full detail — slot environment, readiness, definition of done, project commands,
 commit gate: [`.har/README.md`](.har/README.md) and [`.har/stages.json`](.har/stages.json).
@@ -63,26 +63,22 @@ requires approval); never run `complete`, push, or PR autonomously.
 
 Configure Cursor MCP from [`.cursor/mcp.json.example`](.cursor/mcp.json.example)
 (see [CONTRIBUTING.md](./CONTRIBUTING.md)). All three surfaces are equivalent in
-1.0 — prefer MCP or `har env …` for the richer structured output, not because
-the shims lose anything. Use `har env launch 1 --no-worktree` only when you must
-use the repo root checkout.
+1.0 — prefer MCP or `har env …` for the richer structured output. Use
+`har env launch 1 --no-worktree` only when you must use the repo root checkout.
 
 ## Run history
 
-Since 1.0 the `./.har/*.sh` scripts are thin shims over the packaged runtime, so
-**every entry point executes the same code and writes the same records**:
+CLI and MCP execute the same packaged runtime and write the same records:
 
 | Entry point | Writes `.har/runs/`? |
 |-------------|------------------------|
-| `./.har/*.sh` | Yes — shims delegate to `har env …` |
 | `har env launch/verify/...` | Yes |
 | MCP `har_run_*` | Yes |
 
 Run records are stored under the **main checkout** `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (local date/time). With worktree slots, tests run in the worktree but run JSON stays in the main repo; each record includes a `workDir` field.
 
-The commit gate is therefore satisfiable from any surface. Prefer MCP or
-`har env …` for structured output and tracker binding — not because the shims
-record less.
+The commit gate is therefore satisfiable from either surface. Prefer MCP or
+`har env …` for structured output and tracker binding.
 
 If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `har env` commands (MCP config already points at the main checkout).
 

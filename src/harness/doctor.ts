@@ -4,7 +4,7 @@ import { listSlotRegistryEntries } from '../core/slot-registry';
 import { EJECTED_RUNTIME_BUNDLE, EJECTED_RUNTIME_DIR } from './eject';
 import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
-import { MANAGED_SHIM_FILES } from './template-tokens';
+import { PACKAGE_RUNTIME_KINDS, stagePointsAtLifecycleShim } from './lifecycle-shims';
 import { HarnessStage, HarnessStageRegistry, PortLane } from './schema';
 import { readStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
@@ -116,11 +116,14 @@ function detectContract(harnessDir: string): DoctorContract {
 }
 
 /**
- * Resolve the file a stage executes, when it names one. Command stages that
- * run arbitrary shell (e.g. `npm test`) resolve to null and are not
- * file-checked.
+ * Resolve the file a stage executes, when it names one. Kind-dispatched
+ * lifecycle stages and command stages that run arbitrary shell (e.g. `npm test`)
+ * resolve to null and are not file-checked.
  */
 function resolveStageFile(harnessDir: string, stage: HarnessStage): string | null {
+  if (PACKAGE_RUNTIME_KINDS.has(stage.kind) && (!stage.command && !stage.script || stagePointsAtLifecycleShim(stage))) {
+    return null;
+  }
   if (stage.script) return path.join(harnessDir, stage.script);
   if (stage.command) {
     const first = stage.command.trim().split(/\s+/)[0];
@@ -330,8 +333,8 @@ export function runDoctor(repoPath: string): DoctorReport {
     }
   }
 
-  // 7. Ejected runtime (#239): the vendored runtime the user-owned scripts
-  // execute must exist and the scripts must be executable. Not ejected → skip.
+  // 7. Ejected runtime (#239 / #314): the vendored bundle must exist.
+  // Invocation is `har env …` or `node .har/runtime/har.cjs env …`.
   const manifest = readManifest(repoPath);
   if (!manifest?.ejected) {
     skipped.add('ejected-runtime');
@@ -344,21 +347,8 @@ export function runDoctor(repoPath: string): DoctorReport {
         severity: 'error',
         file: runtimeRel,
         message: `Harness is ejected but the vendored runtime .har/${runtimeRel} is missing`,
-        remedy: 'Restore it from git, re-run `har env eject`, or return to managed shims with `har env adopt`',
+        remedy: 'Restore it from git, re-run `har env eject`, or return to the packaged runtime with `har env adopt`',
       });
-    }
-    for (const shim of MANAGED_SHIM_FILES) {
-      const shimPath = path.join(harnessDir, shim);
-      if (!fs.existsSync(shimPath)) continue; // missing lifecycle scripts are caught above
-      if (!(fs.statSync(shimPath).mode & 0o111)) {
-        findings.push({
-          check: 'ejected-runtime',
-          severity: 'warning',
-          file: shim,
-          message: `Ejected script ${shim} is not executable`,
-          remedy: `chmod +x .har/${shim}`,
-        });
-      }
     }
   }
 
@@ -435,7 +425,7 @@ export function runDoctor(repoPath: string): DoctorReport {
         line: idx + 1,
         message: `${rel} loads .har/${machinery}, which 1.0 retired and this harness no longer has`,
         remedy:
-          'Rewrite the script against the 1.0 stage surface (WORK_DIR, ENV_FILE, AGENT_ID and the slot env file are already exported), or run `har env maintain --migrate` to regenerate a managed shim',
+          'Rewrite the script against the 1.0 stage surface (WORK_DIR, ENV_FILE, AGENT_ID and the slot env file are already exported), or run `har env maintain --migrate`',
       });
       break; // one finding per script is enough to act on
     }

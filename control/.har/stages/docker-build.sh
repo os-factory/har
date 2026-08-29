@@ -5,7 +5,7 @@
 # Outputs JSON to stdout, human-readable progress to stderr.
 #
 # Usage: ./.har/stages/docker-build.sh <agent-id>
-# Prerequisite: ./.har/launch.sh <agent-id> (uses the session worktree as context)
+# Prerequisite: har env launch <agent-id> (uses the session worktree as context)
 set -euo pipefail
 
 # 1.0 stage surface: the runner exports WORK_DIR, ENV_FILE, AGENT_ID and
@@ -24,8 +24,8 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 # control/ is the app root; Dockerfile context is the monorepo root above it.
 MONOREPO_ROOT="$(cd "$WORK_DIR/.." && pwd)"
 DOCKERFILE="$MONOREPO_ROOT/control/Dockerfile"

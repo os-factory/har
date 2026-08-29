@@ -6,8 +6,8 @@ not a fixed command list.
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | Stock ecosystem smoke + health (stops early on failure) |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | Stock conventional tests/lint, optional readiness smoke + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
+| Quick | `har env verify <id>` | Stock ecosystem smoke + health (stops early on failure) |
+| Full | `har env verify <id> --full` | Stock conventional tests/lint, optional readiness smoke + **`browser-e2e`** when `.har/stages/browser-e2e.sh` exists |
 
 The stock commands are deliberately generic conventions keyed by
 `HARNESS_ECOSYSTEM`. Replace them with the repository's real commands during

@@ -32,11 +32,10 @@ This is one of **three** harnesses in the monorepo — see the root
 | `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
-**Generated shims and state** (don't edit — `har env eject` for full ownership):
+**Generated state** (don't edit — `har env eject` vendors `.har/runtime/`):
 
 | File | Purpose |
 |------|---------|
-| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` / `attach.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
 | `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
 | `runs/` | Run history from **every** entry point (gitignored) |
 | `artifacts/` | Reports, traces, **before/after screenshots** (gitignored) |
@@ -58,9 +57,8 @@ har env verify 1 --full
 har env teardown 1
 ```
 
-`./.har/*.sh` exist as compatibility shims over the same runtime — generated,
-never edited, and not the way to drive the harness. Take explicit ownership of
-them with `har env eject`.
+CLI and MCP are the only entry points. `har env eject` vendors the runtime into
+`.har/runtime/` for offline ownership (`node .har/runtime/har.cjs env …`).
 
 ## Verification contract
 
@@ -84,9 +82,9 @@ handoff (not the main checkout — see below). See `stages/PLAYWRIGHT.md`.
 
 | Layer | Docs site meaning | Where |
 |-------|-------------------|-------|
-| Infra ready | No Docker — `setup-infra.sh` is a no-op | `HARNESS_INFRA_SERVICES=""` |
+| Infra ready | No Docker — `har env setup-infra` is a no-op | `HARNESS_INFRA_SERVICES=""` |
 | Slot data ready | No per-slot DB / buckets | N/A |
-| Process ready | `astro dev` up; `GET /` returns 200 | `launch.sh`, `verify.sh` |
+| Process ready | `astro dev` up; `GET /` returns 200 | `har env launch`, `har env verify` |
 | Agent usable | Landing hero HTML present; Playwright smoke + screenshots | `HARNESS_READINESS_CMD`, `browser-e2e` |
 
 No seed/bootstrap is required — the site is static content + Astro.
@@ -97,7 +95,7 @@ still runs `astro build` and link checks.
 
 ## Run history
 
-Every entry point — `./.har/*.sh`, `har env …`, MCP — runs the same packaged
+Every entry point — `har env …`, MCP — runs the same packaged
 runtime and writes the same records under the main checkout
 `docs/.har/runs/YYYY-MM-DD/`. The shims delegate; they do not record less.
 

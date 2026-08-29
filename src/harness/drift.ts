@@ -14,7 +14,7 @@ import {
 } from './manifest';
 import { detectAgentSlotEnvMismatch } from './stages';
 import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
-import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
+import { substituteTemplateTokens } from './template-tokens';
 
 const CLI_EXPECTED_ABSENT = new Set([
   'ecosystem.agent.template.cjs',
@@ -56,8 +56,8 @@ export interface HarnessDriftResult {
   unchanged: string[];
   /**
    * User-owned files never compared to upstream templates: on an ejected
-   * harness (#239), the runtime scripts and vendored runtime belong to the
-   * user and report no drift.
+   * harness (#239), the vendored runtime belongs to the user and reports no
+   * drift. Lifecycle wrappers are not generated (#314).
    */
   ownedByUser: string[];
   /** Port-allocation knobs from harness.env that the bundled template expects. */
@@ -202,10 +202,10 @@ export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const extra: string[] = [];
   const unchanged: string[] = [];
   const ownedByUser: string[] = [];
-  // Ejected harness (#239): the runtime scripts are user-owned — a present
-  // script is never drift, only a missing one still is (the harness is broken).
+  // Ejected harness (#239 / #314): the vendored runtime is user-owned.
+  // Lifecycle wrappers are not generated, so they are never in the template map.
   const ejected = manifest?.ejected === true;
-  const userOwnedFiles = new Set<string>(ejected ? MANAGED_SHIM_FILES : []);
+  const userOwnedFiles = new Set<string>(ejected ? ['runtime/har.cjs', 'runtime/README.md'] : []);
 
   for (const file of templateFiles) {
     const harnessFile = harnessFileForTemplate(file);

@@ -49,20 +49,20 @@ jest.mock('../src/runtime', () => {
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
 
 describe('core run delegation', () => {
-  it('delegates launch to .har/launch.sh', async () => {
+  it('delegates launch to the package runtime', async () => {
     const result = await launchEnvironment({ repoPath: FIXTURE, agentId: 1, capture: true });
     expect(result.code).toBe(0);
     expect(result.previewUrls?.api).toBe('http://localhost:8010');
   });
 
-  it('delegates verify to .har/verify.sh and parses JSON', async () => {
+  it('delegates verify to the package runtime and parses JSON', async () => {
     const result = await runVerification({ repoPath: FIXTURE, agentId: 1, capture: true });
     expect(result.code).toBe(0);
     expect(result.verification?.status).toBe('pass');
     expect(result.verification?.agent_id).toBe(1);
   });
 
-  it('delegates teardown and status to harness scripts', async () => {
+  it('delegates teardown and status to the package runtime', async () => {
     const teardown = await teardownEnvironment({ repoPath: FIXTURE, agentId: 1, capture: true });
     expect(teardown.code).toBe(0);
 
@@ -70,7 +70,7 @@ describe('core run delegation', () => {
     expect(status.stdout).toContain('Agent 1');
   });
 
-  it('delegates logs to agent-cli.sh', async () => {
+  it('delegates logs to the package runtime', async () => {
     const logs = await getEnvironmentLogs({ repoPath: FIXTURE, agentId: 2 });
     expect(logs.stdout).toContain('log line');
   });

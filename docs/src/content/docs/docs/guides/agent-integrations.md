@@ -84,5 +84,4 @@ artifacts, runs, and Mission Control.
 
 MCP is the preferred interface in agents because it returns structured results
 the model does not have to parse. Run history is identical on every surface —
-the `./.har/*.sh` shims, `har env …`, and MCP all run the same packaged runtime
-and write the same records.
+`har env …` and MCP run the same packaged runtime and write the same records.

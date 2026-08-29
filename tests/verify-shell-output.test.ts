@@ -1,26 +1,28 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { MANAGED_SHIM_FILES } from '../src/harness/template-tokens';
 
-// The vendored bash verify pipeline (agent-slot.sh: run_step/record_step_result/
-// escape_step_output) is retired — the packaged runtime is the single
-// implementation (#234) and this repo's three harnesses are migrated (#242).
-// The lifecycle entry points must be managed shims that forward to `har env`.
-
-describe('harness lifecycle scripts are managed shims (1.0)', () => {
+describe('harness lifecycle wrappers are absent (1.0 / #314)', () => {
   const harnesses = ['.har', 'control/.har', 'docs/.har'];
-  const shims = ['launch.sh', 'verify.sh', 'teardown.sh', 'setup-infra.sh', 'preflight.sh', 'agent-cli.sh'];
 
-  it.each(harnesses.flatMap((h) => shims.map((s) => `${h}/${s}`)))(
-    '%s forwards to har env with an npx fallback',
+  it.each(harnesses.flatMap((h) => MANAGED_SHIM_FILES.map((s) => `${h}/${s}`)))(
+    '%s is not present',
     (relPath) => {
-      const script = fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
-      expect(script).toContain('exec har env');
-      expect(script).toContain('npx --yes @osfactory/har@');
-      // No vendored pipeline internals survive in the shims.
-      expect(script).not.toContain('record_step_result');
-      expect(script).not.toContain('agent-slot.sh');
+      expect(fs.existsSync(path.join(__dirname, '..', relPath))).toBe(false);
     },
   );
+
+  it.each(harnesses)('%s lifecycle stages dispatch by kind', (harness) => {
+    const registry = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', harness, 'stages.json'), 'utf8'),
+    );
+    for (const stage of registry.stages) {
+      if (['launch', 'verify', 'teardown', 'setup', 'inspect'].includes(stage.kind)) {
+        expect(stage.command).toBeUndefined();
+        expect(stage.script).toBeUndefined();
+      }
+    }
+  });
 
   it.each(harnesses)('%s carries no vendored runtime machinery', (harness) => {
     for (const gone of ['agent-slot.sh', 'provision-toolchain.sh', 'simulator.sh']) {

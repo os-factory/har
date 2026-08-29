@@ -13,7 +13,7 @@ har env verify 1 --full --json   # structured result only
 
 Quick verification should be fast enough for iteration. Full verification is the
 repository's completion contract. The exact commands are adapted in
-`.har/verify.sh`; typical full checks include unit tests, lint, readiness, browser
+`.har/stages.json`; typical full checks include unit tests, lint, readiness, browser
 E2E, and project-specific stages.
 
 `har env verify` streams progress to stderr. It does not dump the per-step JSON

@@ -48,8 +48,8 @@ REPORT_PATH="$ARTIFACT_DIR/report.json"
 SCAN_LOG="$ARTIFACT_DIR/gitleaks.log"
 
 # ── Resolve agent env ─────────────────────────────────────────────────────────
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 
 GITLEAKS_VERSION="$(gitleaks version 2>/dev/null | head -1 || echo unknown)"
 log "gitleaks ${GITLEAKS_VERSION} — ${MODE} scan of $WORK_DIR"

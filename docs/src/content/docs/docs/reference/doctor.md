@@ -26,7 +26,7 @@ Exit code is non-zero when any check fails, so doctor slots directly into CI.
 | Infra port lanes | Every service in `HARNESS_INFRA_SERVICES` has a lane in `HARNESS_INFRA_PORT_LANES` |
 | Slot registry worktrees | Registered active sessions point at worktrees that still exist |
 | Lifecycle hooks | Files in `.har/hooks/` use known hook names and are executable (content is user-owned, never inspected) |
-| Ejected runtime | On an [ejected](/docs/guides/eject/) harness: the vendored runtime exists and scripts point at it |
+| Ejected runtime | On an [ejected](/docs/guides/eject/) harness: the vendored runtime exists |
 
 Doctor detects the harness contract generation: on a pre-1.0 harness (legacy
 shell functions or port triplets in `harness.env`) it reports the old shape and

@@ -2,7 +2,7 @@
 # Capture full-page screenshots for an agent slot (before or after UI work).
 #
 # Usage: ./.har/stages/capture-screenshots.sh <agent-id> [before|after]
-# Prerequisite: ./.har/launch.sh <agent-id> (site must be healthy)
+# Prerequisite: har env launch <agent-id> (site must be healthy)
 #
 # Writes PNGs under:
 #   .har/artifacts/browser-e2e/screenshots/<phase>/
@@ -29,8 +29,8 @@ now_ms() { node -e 'process.stdout.write(String(Date.now()))'; }
 
 log() { echo "==> [screenshots agent-$AGENT_ID $PHASE] $*" >&2; }
 
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 FE_PORT="${FE_PORT:-$(( HARNESS_FE_BASE_PORT + AGENT_ID * ${HARNESS_PORT_STEP:-10} ))}"
 
 export BASE_URL="${BASE_URL:-http://localhost:${FE_PORT}}"

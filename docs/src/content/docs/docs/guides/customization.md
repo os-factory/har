@@ -5,7 +5,7 @@ description: The four sanctioned ways to make a harness yours — config, stages
 
 `.har/` is a configuration surface. The machinery — worktrees, ports, toolchain
 provisioning, the slot registry, the verification runner — lives once, in the
-HAR package, behind thin `./.har/*.sh` shims. What the repository owns is its
+HAR package. CLI and MCP are the only entry points. What the repository owns is its
 **behavior**, and every kind of behavior has exactly one sanctioned home:
 
 | You want to change… | Put it in | Docs |

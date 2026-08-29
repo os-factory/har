@@ -79,18 +79,18 @@ jobs:
 
       - name: Launch Mission Control harness
         working-directory: control
-        run: ./.har/launch.sh 1 --no-worktree
+        run: har env launch 1 --no-worktree
 
       - name: Verify Mission Control (full)
         working-directory: control
         env:
           CI: true
-        run: ./.har/verify.sh 1 --full
+        run: har env verify 1 --full
 
       - name: Teardown Mission Control harness
         if: always()
         working-directory: control
-        run: ./.har/teardown.sh 1
+        run: har env teardown 1
 
   release:
     needs: verify

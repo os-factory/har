@@ -199,7 +199,7 @@ export function inspectSlotReadiness(
       code: 'foreign_pm2',
       message: `Foreign PM2 processes match agent ${agentId}: ${names}`,
       remediation:
-        'Stop the other harness session (./.har/teardown.sh in that repo) or use a different agent slot.',
+        'Stop the other harness session (`har env teardown` in that repo) or use a different agent slot.',
       details: { processes: foreign.processes },
     });
     remediations.push(`Inspect with: ${packageRunner()} pm2 jlist | grep agent-${agentId}`);

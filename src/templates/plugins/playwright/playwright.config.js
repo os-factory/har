@@ -4,14 +4,14 @@
 // -------------------
 // - Stage id: `browser-e2e` (`.har/stages/browser-e2e.sh`, registered in `stages.json`).
 // - Runs automatically on FULL verify only — not on quick verify:
-//     ./.har/verify.sh <id> --full
+//     har env verify <id> --full
 //     har env verify <id> --full
 //     har env complete <id>          # always full; required before declaring done
 // - Quick verify (`verify.sh <id>`) stops at typecheck / unit tests / api-health.
 //
 // Prerequisites
 // -------------
-// 1. Launch a slot first:     ./.har/launch.sh <id>
+// 1. Launch a slot first:     har env launch <id>
 // 2. Install browsers once:     npx playwright install chromium
 //
 // Environment (injected by browser-e2e.sh — never hardcode slot ports in specs)

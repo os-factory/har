@@ -41,7 +41,7 @@
   ],
   "nextSteps": [
     "rocketsim doctor",
-    "./.har/launch.sh 1",
+    "har env launch 1",
     "Build and install your app on the simulator",
     "./.har/stages/rocketsim-flows.sh 1",
     "Open .har/artifacts/rocketsim-flows/ for screenshots and per-flow results",

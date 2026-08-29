@@ -29,11 +29,10 @@ verification stages (`stages.json` + `.har/stages/`), lifecycle hooks
 more reviewable than a vendored copy of HAR's runtime ever was — and it is what
 `har env doctor` validates and drift tracking protects.
 
-The `./.har/*.sh` scripts are thin shims over the packaged runtime, so every
-surface (shell, CLI, MCP) runs the same code and writes the same run records.
-Teams that want to own the runtime itself can take it explicitly with
-`har env eject` — full script ownership, clearly recorded, instead of a silently
-degraded fork.
+CLI and MCP are the only entry points: both run the same packaged runtime and
+write the same run records. Teams that want to own the runtime itself can take
+it explicitly with `har env eject` — the vendored bundle lives in
+`.har/runtime/`, invoked as `node .har/runtime/har.cjs env …`.
 
 ## Why use worktrees?
 
@@ -42,8 +41,8 @@ branch, and let teardown remove runtime state without deleting reviewable work.
 
 ## Can a human use HAR?
 
-Yes. CLI commands and generated scripts are first-class human interfaces. MCP adds
-structured agent access to the same core.
+Yes. CLI commands are a first-class human interface. MCP adds structured
+agent access to the same core.
 
 ## What is included in the open-source core?
 

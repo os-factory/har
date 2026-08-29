@@ -10,12 +10,12 @@ Mission Control specs live under `tests/`:
 
 ## Run
 
-After `./.har/launch.sh <id>`:
+After `har env launch <id>`:
 
 ```bash
 ./.har/stages/browser-e2e.sh <id>
 # or included in:
-./.har/verify.sh <id> --full
+har env verify <id> --full
 ```
 
 ## New UI features

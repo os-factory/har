@@ -23,11 +23,10 @@ Generated and maintained by [`har`](https://github.com/os-factory/har). Run `har
 | `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
-**Generated shims and state** (don't edit — `har env eject` for full ownership):
+**Generated state** (don't edit — `har env eject` vendors `.har/runtime/`):
 
 | File | Purpose |
 |------|---------|
-| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
 | `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
 | `runs/` | Run history from **every** entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
@@ -52,20 +51,19 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment`.
 
-`./.har/*.sh` exist as compatibility shims over the same runtime — generated,
-never edited, and not the way to drive the harness. Take explicit ownership of
-them with `har env eject`.
+CLI and MCP are the only entry points. `har env eject` vendors the runtime into
+`.har/runtime/` for offline ownership (`node .har/runtime/har.cjs env …`).
 
 Read **`stages.json`** and **`verificationStages`**. Browser E2E (Playwright) lives in [`control/.har/`](../control/.har/) — not this CLI harness.
 
 ## Verification contract
 
-Steps in `verify.sh` are adapted for **@osfactory/har** — typecheck, build, docs site checks, and (full mode) unit tests, lint, and registered stages.
+Verification is adapted for **@osfactory/har** — typecheck, build, docs site checks, and (full mode) unit tests, lint, and registered stages.
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | Typecheck, build, docs check/build |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + unit tests, lint, readiness, `docs-drift` |
+| Quick | `har env verify <id>` | Typecheck, build, docs check/build |
+| Full | `har env verify <id> --full` | + unit tests, lint, readiness, `docs-drift` |
 
 This CLI harness has no runtime server — full verify is static analysis and tests only. A slot is **agent usable** when typecheck, build, docs check/build, unit tests, lint, and `docs-drift` pass. Mission Control dogfooding uses `control/.har/`; the docs site uses `docs/.har/`.
 
@@ -73,9 +71,9 @@ Use `har env launch 1 --no-worktree` only when working in the repo root.
 
 ## Run history
 
-Every entry point — `./.har/*.sh`, `har env …`, MCP — runs the same packaged
+Every entry point — `har env …`, MCP — runs the same packaged
 runtime and writes the same records under the main checkout
-`.har/runs/YYYY-MM-DD/`. The shims delegate; they do not record less.
+`.har/runs/YYYY-MM-DD/`.
 
 With worktree slots, tests run in the worktree; run JSON lives in the main repo. See `workDir` in each record.
 
@@ -83,11 +81,11 @@ With worktree slots, tests run in the worktree; run JSON lives in the main repo.
 
 **Start here:** read [`AGENTS.md`](../AGENTS.md) at the repo root for the workflow, then this file for the harness detail.
 
-Prefer HAR MCP tools or `har env …` for launch, verify, and teardown. Use `./.har/*.sh` only when the CLI is not installed.
+Prefer HAR MCP tools or `har env …` for launch, verify, and teardown.
 
 Work in the isolated git worktree created by launch. Use `har env agent <id> exec ...` to run ad-hoc project commands in that work dir.
 
-When the project needs Postgres, Redis, or similar, add the service to `docker-compose.agent.yml`, list it in `HARNESS_INFRA_SERVICES` in `harness.env`, and use `setup-infra.sh` — never run raw `docker compose` for shared infra.
+When the project needs Postgres, Redis, or similar, add the service to `docker-compose.agent.yml`, list it in `HARNESS_INFRA_SERVICES` in `harness.env`, and use `har env setup-infra` — never run raw `docker compose` for shared infra.
 
 ## Port & shared services (CLI profile)
 
@@ -106,13 +104,13 @@ This profile has **no PM2 app ports** — agents run project commands directly i
 | Resource | Model | Configuration |
 |----------|-------|---------------|
 | Postgres / Redis / mail / … | One shared container on a scanned host port | `HARNESS_INFRA_SERVICES` + matching vars in `harness.env` |
-| Per-slot databases | Cloned from template DB when `db` is enabled | `launch.sh` |
+| Per-slot databases | Cloned from template DB when `db` is enabled | `har env launch` |
 | Application code | Isolated git worktree per slot | `HARNESS_USE_WORKTREE=true` |
 
 ### Do not
 
 - Hardcode `15432` or other default infra ports in tests — read `AGENT_DB_PORT` from `.env.agent.<id>` or `har_pg`
-- Run raw `docker compose` for harness infrastructure — use `setup-infra.sh`
+- Run raw `docker compose` for harness infrastructure — use `har env setup-infra`
 
 ## Environment
 

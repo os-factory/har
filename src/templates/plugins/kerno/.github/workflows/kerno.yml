@@ -30,7 +30,7 @@ jobs:
       - name: Install Kerno CLI
         run: npm install -g @kerno/cli
       # - name: Start the app (adapt for your stack) and migrate/seed its database
-      #   run: ./.har/launch.sh 1 && <start your app in the slot>
+      #   run: har env launch 1 && <start your app in the slot>
       # - name: Bind a Kerno agent to this checkout
       #   run: kerno init
       # - name: Run backend validation

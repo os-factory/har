@@ -11,7 +11,7 @@
 #   .har/harness.env to pin rulesets. Registry configs (auto, p/...) need
 #   network access and send pseudonymized metrics to semgrep.dev.
 #
-# Prerequisite: ./.har/launch.sh <agent-id> AND the semgrep CLI installed
+# Prerequisite: har env launch <agent-id> AND the semgrep CLI installed
 # See: ./.har/stages/SEMGREP.md for the full adaptation guide.
 set -euo pipefail
 
@@ -44,8 +44,8 @@ fi
 # Artifacts land in the main repo root (where .har/ lives), not the worktree.
 MAIN_REPO_ROOT="$REPO_ROOT"
 
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 
 # ── Artifact directory (main repo root, not the worktree) ─────────────────────
 ARTIFACT_DIR="$MAIN_REPO_ROOT/.har/artifacts/sast"

@@ -16,7 +16,7 @@ har env status        # or ./.har/agent-cli.sh 1 status
 ## 2. Launch — BEFORE editing any file
 
 ```bash
-har env launch <id>   # or ./.har/launch.sh <id>
+har env launch <id>
 ```
 
 Launch creates a fresh session worktree from HEAD and prints its **work dir** (also recorded in `.har/slots/agent-<id>.json`, path like `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`). If a previous launch failed partway, retry with `--resume` instead of starting fresh.

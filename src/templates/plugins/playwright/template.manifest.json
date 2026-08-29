@@ -67,7 +67,7 @@
   "nextSteps": [
     "npm install",
     "npx playwright install",
-    "./.har/launch.sh 1",
+    "har env launch 1",
     "./.har/stages/browser-e2e.sh 1",
     "npx playwright show-report .har/artifacts/browser-e2e/playwright-report"
   ],

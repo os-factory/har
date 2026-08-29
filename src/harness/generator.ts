@@ -16,7 +16,8 @@ import {
 } from './profiles';
 import { validateHarnessEnvSource } from './schema';
 import { syncAgentSlotsToHarnessEnv } from './stages';
-import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
+import { retireLifecycleShims } from './lifecycle-shims';
+import { substituteTemplateTokens } from './template-tokens';
 
 export type { HarnessProfile };
 export { HARNESS_PROFILES } from './profiles';
@@ -79,14 +80,9 @@ export function scaffoldHarnessBoilerplate(
 
   syncAgentSlotsToHarnessEnv(repoPath);
 
-  // Render template tokens into the generated files: harness.env gets the
-  // project name; the runtime shims get the pinned package version (#235).
-  for (const shim of MANAGED_SHIM_FILES) {
-    const shimPath = path.join(harnessDir, shim);
-    if (!fs.existsSync(shimPath)) continue;
-    const rendered = substituteTemplateTokens(fs.readFileSync(shimPath, 'utf8'), projectName);
-    fs.writeFileSync(shimPath, rendered);
-  }
+  // #314: lifecycle wrappers are not an entry point — drop any that a bundle
+  // still copied, and strip stages.json commands that pointed at them.
+  retireLifecycleShims(repoPath);
 
   const harnessEnvPath = path.join(harnessDir, 'harness.env');
   if (fs.existsSync(harnessEnvPath)) {

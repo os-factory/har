@@ -111,7 +111,7 @@ fi
 ./.har/stages/rocketsim-flows.sh 1 example-smoke
 
 # Included in full verify
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```
 
 Screenshots and per-flow logs are saved under `.har/artifacts/rocketsim-flows/`.

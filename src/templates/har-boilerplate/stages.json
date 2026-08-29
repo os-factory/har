@@ -13,14 +13,12 @@
     {
       "id": "setup-infra",
       "kind": "setup",
-      "description": "Shared infrastructure (Docker, template DB)",
-      "command": "./.har/setup-infra.sh"
+      "description": "Shared infrastructure (Docker, template DB)"
     },
     {
       "id": "launch",
       "kind": "launch",
       "description": "Launch an isolated agent environment slot",
-      "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
           "path": ".env.agent.{agentId}",
@@ -33,7 +31,6 @@
       "id": "verify",
       "kind": "verify",
       "description": "Verification pipeline: runs stages.json verificationStages in order (tier \"quick\" by default; --full runs the whole list)",
-      "command": "./.har/verify.sh {agentId}",
       "acceptsArgs": [
         "--full"
       ],
@@ -49,7 +46,6 @@
       "id": "status",
       "kind": "inspect",
       "description": "Inspect a running agent environment slot",
-      "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
           "path": ".har/logs",
@@ -61,14 +57,12 @@
     {
       "id": "logs",
       "kind": "inspect",
-      "description": "Read recent logs for an agent slot",
-      "command": "./.har/agent-cli.sh {agentId} logs"
+      "description": "Read recent logs for an agent slot"
     },
     {
       "id": "teardown",
       "kind": "teardown",
-      "description": "Stop processes and release agent slot resources",
-      "command": "./.har/teardown.sh {agentId}"
+      "description": "Stop processes and release agent slot resources"
     },
     {
       "id": "typecheck",

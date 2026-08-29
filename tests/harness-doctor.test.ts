@@ -23,11 +23,6 @@ function makeRepo(): string {
   const harnessDir = path.join(repo, '.har');
   fs.mkdirSync(path.join(harnessDir, 'stages'), { recursive: true });
   fs.writeFileSync(path.join(harnessDir, 'harness.env'), HARNESS_ENV_1_0);
-  for (const script of ['launch.sh', 'verify.sh', 'teardown.sh']) {
-    const file = path.join(harnessDir, script);
-    fs.writeFileSync(file, '#!/usr/bin/env bash\ntrue\n');
-    fs.chmodSync(file, 0o755);
-  }
   const stageScript = path.join(harnessDir, 'stages', 'unit-tests.sh');
   fs.writeFileSync(stageScript, '#!/usr/bin/env bash\ntrue\n');
   fs.chmodSync(stageScript, 0o755);
@@ -36,9 +31,9 @@ function makeRepo(): string {
     agentSlots: { min: 1, max: 3 },
     verificationStages: ['typecheck', 'unit-tests'],
     stages: [
-      { id: 'launch', kind: 'launch', command: './.har/launch.sh {agentId}' },
-      { id: 'verify', kind: 'verify', command: './.har/verify.sh {agentId}' },
-      { id: 'teardown', kind: 'teardown', command: './.har/teardown.sh {agentId}' },
+      { id: 'launch', kind: 'launch' },
+      { id: 'verify', kind: 'verify' },
+      { id: 'teardown', kind: 'teardown' },
       { id: 'typecheck', kind: 'test', tier: 'quick', command: 'npm run typecheck' },
       { id: 'unit-tests', kind: 'test', tier: 'full', script: 'stages/unit-tests.sh' },
     ],

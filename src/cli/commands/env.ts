@@ -409,7 +409,7 @@ export const envCommand = {
       )
       .command(
         'eject',
-        'Vendor the HAR runtime into .har/ and own the scripts yourself (reversible: har env adopt)',
+        'Vendor the HAR runtime into .har/runtime/ (reversible: har env adopt)',
         (y: Argv) =>
           y
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
@@ -423,7 +423,7 @@ export const envCommand = {
       )
       .command(
         'adopt',
-        'Return an ejected harness to managed shims (removes .har/runtime/, keeps your config)',
+        'Return an ejected harness to the packaged runtime (removes .har/runtime/, keeps your config)',
         (y: Argv) => y.option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
         handleAdopt,
       )
@@ -1262,17 +1262,18 @@ export async function handleEject(argv: { repo: string; yes: boolean }): Promise
   const repoPath = resolveHarnessRoot(path.resolve(argv.repo));
 
   header('har env eject');
-  warn('This vendors the complete HAR runtime into .har/runtime/ and rewrites the');
-  warn('.har/*.sh scripts to execute it directly — from then on YOU OWN those files:');
-  warn('  • har env maintain will no longer update them (no upstream drift reports)');
+  warn('This vendors the complete HAR runtime into .har/runtime/ — from then on');
+  warn('YOU OWN that directory:');
+  warn('  • drive it with `har env …` or `node .har/runtime/har.cjs env …`');
+  warn('  • har env maintain will no longer update it (no upstream drift reports)');
   warn('  • upstream fixes and features reach you only by re-ejecting or adopting');
-  warn('  • support covers issues reproducible with managed shims; changes you make');
-  warn('    to the ejected runtime are yours to maintain');
+  warn('  • support covers issues reproducible with the packaged runtime; changes');
+  warn('    you make to the ejected runtime are yours to maintain');
   warn('Config files (harness.env, stages.json, stages/, hooks, docs) stay managed.');
   info('Reversible anytime: `har env adopt` (or `har env init --force`).');
 
   if (!argv.yes) {
-    const ok = await confirm('Eject the runtime and own the scripts yourself? [y/N] ');
+    const ok = await confirm('Eject the runtime into .har/runtime/? [y/N] ');
     if (!ok) {
       info('Aborted — nothing changed. Pass --yes to skip this prompt.');
       return finishCommand(1);
@@ -1282,9 +1283,9 @@ export async function handleEject(argv: { repo: string; yes: boolean }): Promise
   try {
     const result = ejectHarness(repoPath);
     success(`Ejected @osfactory/har@${result.version} → .har/runtime/`);
-    info(`  Rewritten as user-owned: ${result.scripts.map((s) => `.har/${s}`).join(', ')}`);
+    info('  Invocation: har env …  or  node .har/runtime/har.cjs env …');
     info('  Recorded in .har/manifest.json (ejected: true) — commit .har/ to keep it.');
-    info('  Return to managed shims anytime: har env adopt');
+    info('  Return to the packaged runtime anytime: har env adopt');
   } catch (err) {
     error(err instanceof Error ? err.message : String(err));
     return finishCommand(1);
@@ -1296,8 +1297,10 @@ export async function handleAdopt(argv: { repo: string }): Promise<void> {
   const repoPath = resolveHarnessRoot(path.resolve(argv.repo));
   try {
     const result = adoptHarness(repoPath);
-    success('Returned to managed shims — .har/runtime/ removed, eject flag cleared.');
-    info(`  Regenerated: ${result.scripts.map((s) => `.har/${s}`).join(', ')}`);
+    success('Returned to the packaged runtime — .har/runtime/ removed, eject flag cleared.');
+    if (result.scripts.length > 0) {
+      info(`  Pruned leftover wrappers: ${result.scripts.map((s) => `.har/${s}`).join(', ')}`);
+    }
     info('  Config surface files (harness.env, stages.json, stages/, docs) were not touched.');
   } catch (err) {
     error(err instanceof Error ? err.message : String(err));

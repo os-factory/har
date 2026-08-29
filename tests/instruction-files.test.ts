@@ -149,7 +149,7 @@ describe('instruction-files', () => {
 
   it('an ejected harness gets the shell surface documented', () => {
     const section = loadHarAgentsSectionFromTemplate({ ejected: true });
-    expect(section).toContain('./.har/launch.sh <id>');
+    expect(section).toContain('node .har/runtime/har.cjs env');
     expect(section).toContain('har env adopt');
     expect(section.endsWith(HAR_SECTION_END)).toBe(true);
   });

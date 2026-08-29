@@ -34,26 +34,26 @@ describe('two-signal drift (#237)', () => {
 
   it('adapted-then-finalized harness with no upstream changes reports zero drift', () => {
     const repoPath = scaffoldRepo('har-two-signal-adapted-');
-    const verifyPath = path.join(repoPath, '.har', 'verify.sh');
-    fs.writeFileSync(verifyPath, fs.readFileSync(verifyPath, 'utf8') + '\n# repo-specific check\n');
+    const readmePath = path.join(repoPath, '.har', 'README.md');
+    fs.writeFileSync(readmePath, fs.readFileSync(readmePath, 'utf8') + '\n# repo-specific check\n');
 
-    finalizeHarness(repoPath, 'Adapted verify.sh for repo-specific checks');
+    finalizeHarness(repoPath, 'Adapted README.md for repo-specific notes');
     const drift = compareHarnessToTemplate(repoPath);
 
     expect(drift.userAdapted).toEqual([]);
     expect(drift.upstreamUpdated).toEqual([]);
     expect(drift.conflict).toEqual([]);
-    const entry = drift.files.find((f) => f.file === 'verify.sh');
+    const entry = drift.files.find((f) => f.file === 'README.md');
     expect(entry?.status).toBe('unchanged');
   });
 
   it('post-finalize user edit reports user-adapted, not upstream drift', () => {
     const repoPath = scaffoldRepo('har-two-signal-edit-');
-    const verifyPath = path.join(repoPath, '.har', 'verify.sh');
-    fs.writeFileSync(verifyPath, fs.readFileSync(verifyPath, 'utf8') + '\n# later edit\n');
+    const readmePath = path.join(repoPath, '.har', 'README.md');
+    fs.writeFileSync(readmePath, fs.readFileSync(readmePath, 'utf8') + '\n# later edit\n');
 
     const drift = compareHarnessToTemplate(repoPath);
-    const entry = drift.files.find((f) => f.file === 'verify.sh');
+    const entry = drift.files.find((f) => f.file === 'README.md');
     expect(entry?.status).toBe('user-adapted');
     expect(entry?.userEdited).toBe(true);
     expect(entry?.upstreamUpdated).toBe(false);
@@ -63,14 +63,14 @@ describe('two-signal drift (#237)', () => {
     const repoPath = scaffoldRepo('har-two-signal-conflict-');
     const manifestPath = path.join(repoPath, '.har', 'manifest.json');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    manifest.templateChecksums['verify.sh'] = '0000000000000000';
+    manifest.templateChecksums['README.md'] = '0000000000000000';
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-    const verifyPath = path.join(repoPath, '.har', 'verify.sh');
-    fs.writeFileSync(verifyPath, fs.readFileSync(verifyPath, 'utf8') + '\n# local edit\n');
+    const readmePath = path.join(repoPath, '.har', 'README.md');
+    fs.writeFileSync(readmePath, fs.readFileSync(readmePath, 'utf8') + '\n# local edit\n');
 
     const drift = compareHarnessToTemplate(repoPath);
-    expect(drift.conflict).toContain('verify.sh');
-    const entry = drift.files.find((f) => f.file === 'verify.sh');
+    expect(drift.conflict).toContain('README.md');
+    const entry = drift.files.find((f) => f.file === 'README.md');
     expect(entry?.userEdited).toBe(true);
     expect(entry?.upstreamUpdated).toBe(true);
   });
@@ -102,14 +102,14 @@ describe('two-signal drift (#237)', () => {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     delete manifest.templateChecksums;
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-    const verifyPath = path.join(repoPath, '.har', 'verify.sh');
-    fs.writeFileSync(verifyPath, fs.readFileSync(verifyPath, 'utf8') + '\n# local edit\n');
+    const readmePath = path.join(repoPath, '.har', 'README.md');
+    fs.writeFileSync(readmePath, fs.readFileSync(readmePath, 'utf8') + '\n# local edit\n');
 
     const drift = compareHarnessToTemplate(repoPath);
-    const edited = drift.files.find((f) => f.file === 'verify.sh');
+    const edited = drift.files.find((f) => f.file === 'README.md');
     expect(edited?.status).toBe('user-adapted');
     expect(edited?.upstreamUpdated).toBeNull();
-    const untouched = drift.files.find((f) => f.file === 'launch.sh');
+    const untouched = drift.files.find((f) => f.file === 'harness.env');
     expect(untouched?.status).toBe('unchanged');
     expect(untouched?.upstreamUpdated).toBeNull();
     expect(drift.conflict).toEqual([]);
