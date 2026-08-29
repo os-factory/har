@@ -16,7 +16,7 @@ jest.mock('os', () => ({
   homedir: jest.fn(() => jest.requireActual('os').homedir()),
 }));
 
-const SKILL_IDS = ['setup-har', 'har-wt', 'har-maintain'];
+const SKILL_IDS = ['setup-har', 'har-wt', 'har-maintain', 'factory-line'];
 
 function writeHarnessManifest(repoPath: string): void {
   fs.mkdirSync(path.join(repoPath, '.har'), { recursive: true });
@@ -47,9 +47,9 @@ describe('agent-skills', () => {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 
-  it('renders all three skills for each target', () => {
+  it('renders all managed skills for each target', () => {
     const files = renderSkillFiles(['claude', 'cursor', 'codex']);
-    expect(files).toHaveLength(9);
+    expect(files).toHaveLength(SKILL_IDS.length * 3);
 
     for (const id of SKILL_IDS) {
       const claude = files.find((f) => f.agent === 'claude' && f.skill === id);
@@ -65,6 +65,9 @@ describe('agent-skills', () => {
       expect(codex?.scope).toBe('global');
       expect(codex?.relPath).toContain('.codex/prompts/');
     }
+
+    const factoryCodex = files.find((f) => f.agent === 'codex' && f.skill === 'factory-line');
+    expect(factoryCodex?.relPath).toContain('har-factory-line.md');
   });
 
   it('setup-har and har-maintain are user-invocable only; har-wt is model-invocable', () => {
@@ -74,29 +77,34 @@ describe('agent-skills', () => {
     expect(byId('har-maintain')).toContain('disable-model-invocation: true');
     expect(byId('har-wt')).not.toContain('disable-model-invocation');
     expect(byId('har-wt')).toContain('BEFORE making any code change');
+    expect(byId('factory-line')).not.toContain('disable-model-invocation');
+    expect(byId('factory-line')).toContain('cumulative gate');
   });
 
   it('scaffolds files, records them in the harness manifest, and is idempotent', () => {
     writeHarnessManifest(tmpDir);
 
     const first = scaffoldAgentSkills(tmpDir, ['claude', 'cursor']);
-    expect(first.written).toHaveLength(6);
+    expect(first.written).toHaveLength(SKILL_IDS.length * 2);
     expect(first.skipped).toHaveLength(0);
     expect(fs.existsSync(path.join(tmpDir, '.claude', 'skills', 'har-wt', 'SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.claude', 'skills', 'factory-line', 'SKILL.md'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, '.cursor', 'commands', 'setup-har.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.cursor', 'commands', 'factory-line.md'))).toBe(true);
 
     const manifest = readManifest(tmpDir);
-    expect(manifest?.scaffoldedAgentFiles).toHaveLength(6);
+    expect(manifest?.scaffoldedAgentFiles).toHaveLength(SKILL_IDS.length * 2);
 
     const second = scaffoldAgentSkills(tmpDir, ['claude', 'cursor']);
-    expect(second.written).toHaveLength(6);
-    expect(readManifest(tmpDir)?.scaffoldedAgentFiles).toHaveLength(6);
+    expect(second.written).toHaveLength(SKILL_IDS.length * 2);
+    expect(readManifest(tmpDir)?.scaffoldedAgentFiles).toHaveLength(SKILL_IDS.length * 2);
   });
 
   it('writes codex prompts globally under ~/.codex/prompts', () => {
     scaffoldAgentSkills(tmpDir, ['codex']);
     expect(fs.existsSync(path.join(tmpHome, '.codex', 'prompts', 'har-wt.md'))).toBe(true);
     expect(fs.existsSync(path.join(tmpHome, '.codex', 'prompts', 'har-setup.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpHome, '.codex', 'prompts', 'har-factory-line.md'))).toBe(true);
   });
 
   it('skips user-modified files unless forced', () => {
@@ -121,9 +129,10 @@ describe('agent-skills', () => {
     fs.writeFileSync(modified, '# user replaced this\n');
 
     const removed = removeAgentSkills(tmpDir, ['claude']);
-    expect(removed).toHaveLength(2);
+    expect(removed).toHaveLength(SKILL_IDS.length - 1);
     expect(fs.existsSync(modified)).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, '.claude', 'skills', 'har-wt', 'SKILL.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, '.claude', 'skills', 'factory-line', 'SKILL.md'))).toBe(false);
     expect(readManifest(tmpDir)?.scaffoldedAgentFiles).toHaveLength(0);
   });
 

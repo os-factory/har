@@ -38,7 +38,7 @@ function resolveTargets(argv: TargetsArgv, repoPath: string): ReturnType<typeof 
 
 export const agentsCommand = {
   command: 'agents <subcommand>',
-  describe: 'Manage scaffolded agent skills (/setup-har, /har-wt, /har-maintain)',
+  describe: 'Manage scaffolded agent skills (/setup-har, /har-wt, /har-maintain, /factory-line)',
   builder: (yargs: Argv) =>
     yargs
       .command(

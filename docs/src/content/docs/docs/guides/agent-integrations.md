@@ -17,20 +17,21 @@ found, and shows where HAR instructions will be installed after you confirm targ
 | `AGENTS.md` | Canonical shared HAR workflow section (always created/updated — Codex auto-loads this) |
 | `CLAUDE.md` | Thin Claude Code pointer → `AGENTS.md` (when Claude is confirmed) |
 | `.cursor/rules/har-workflow.mdc` | Always-on Cursor injection (when Cursor is confirmed) |
-| Skills / prompts | `/setup-har`, `/har-wt`, `/har-maintain` for confirmed agents |
+| Skills / prompts | `/setup-har`, `/har-wt`, `/har-maintain`, `/factory-line` for confirmed agents |
 
 Legacy `AGENT.md` is migrated into `AGENTS.md` and removed. Existing project-owned
 `AGENTS.md` content is preserved; HAR only upserts a marked HAR section.
 
 ## Managed workflows
 
-HAR provides three workflows:
+HAR provides four workflows:
 
 | Workflow | Purpose |
 | --- | --- |
 | `/setup-har` | Install HAR, choose a profile, initialize, adapt, prove, and commit a harness |
 | `/har-wt` | Launch a slot, work only in its worktree, and verify the task |
 | `/har-maintain` | inspect drift, apply maintenance updates, finalize, and re-verify |
+| `/factory-line` | Run one station of a declared multi-station program (`*.line.json`) |
 
 Targets are auto-detected during `init` and `maintain`, or selected explicitly:
 

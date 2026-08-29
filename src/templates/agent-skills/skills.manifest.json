@@ -43,6 +43,19 @@
       },
       "cursor": { "command": true },
       "codex": { "promptName": "har-maintain" }
+    },
+    {
+      "id": "factory-line",
+      "body": "factory-line.md",
+      "title": "Run one station of a factory line",
+      "claude": {
+        "frontmatter": {
+          "name": "factory-line",
+          "description": "Execute one station of a declared multi-station program (*.line.json): parallel HAR slots, cumulative gate, human handoff. Use when asked to run a factory line, the next station, or a milestone program."
+        }
+      },
+      "cursor": { "command": true },
+      "codex": { "promptName": "har-factory-line" }
     }
   ]
 }
