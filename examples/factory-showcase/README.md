@@ -17,7 +17,7 @@ profile:
 git init
 git add .
 git commit -m "chore: seed showcase"
-har env init --profile cli
+har onboard --yes --profile cli --no-control --no-plugins
 # Adapt verify.sh so full verification runs: npm test
 git add .har
 git commit -m "chore: add HAR harness"

@@ -199,13 +199,12 @@ Top-level command groups (see `har <cmd> --help`):
 ```bash
 cd /path/to/your-project
 har onboard --yes --no-control --no-plugins
-# or: har env init
 ```
 
 For CLI/library repos:
 
 ```bash
-har env init --profile cli
+har onboard --yes --profile cli --no-control --no-plugins
 ```
 
 Paste `.har/ADAPT-PROMPT.md` into your coding agent to adapt the scaffold.
@@ -249,7 +248,7 @@ See [`control/AGENTS.md`](./control/AGENTS.md).
 ```bash
 cp -r tests/fixtures/go-gin-pg /tmp/har-test
 cd /tmp/har-test
-har env init
+har env init --force
 ```
 
 ### After init — run the harness

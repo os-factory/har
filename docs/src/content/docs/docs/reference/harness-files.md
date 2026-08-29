@@ -41,7 +41,7 @@ for offline ownership (`node .har/runtime/har.cjs env …`).
 
 ## Repo-root agent instruction files
 
-Installed during `har onboard` / `har env init` (and refreshed on maintain):
+Installed during `har onboard` (and refreshed on maintain):
 
 | Path | Purpose |
 | --- | --- |

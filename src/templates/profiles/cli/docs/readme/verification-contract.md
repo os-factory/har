@@ -1,7 +1,7 @@
 ## Verification contract
 
 Steps in `har env verify` are **project-specific examples** — adapt them to your stack
-during `har env init` / `har env maintain` / benchmark setup. The table describes
+during scaffold / `har env maintain` / benchmark setup. The table describes
 each tier's intent, not a fixed command list.
 
 | Mode | Command | Typical steps |

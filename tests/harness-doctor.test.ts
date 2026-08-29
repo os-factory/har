@@ -190,7 +190,7 @@ describe('har env doctor (#232)', () => {
     const report = runDoctor(repo);
     expect(report.ok).toBe(false);
     expect(report.contract).toBe('none');
-    expect(report.findings[0].remedy).toContain('har env init');
+    expect(report.findings[0].remedy).toContain('har onboard');
   });
 
   it('renders a readable report with remedies', () => {

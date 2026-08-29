@@ -281,7 +281,7 @@ function patchStageRegistry(
 
 function assertHarnessPresent(repoPath: string): void {
   if (!harnessExists(repoPath)) {
-    throw new Error('No .har/ harness found. Run "har env init" first.');
+    throw new Error('No .har/ harness found. Run "har onboard" first.');
   }
 }
 

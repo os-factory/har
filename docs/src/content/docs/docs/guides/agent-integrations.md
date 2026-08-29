@@ -8,7 +8,7 @@ same repository-owned harness.
 
 ## Project instruction files
 
-During `har onboard` / `har env init`, HAR detects existing entrypoints (`AGENTS.md`,
+During `har onboard`, HAR detects existing entrypoints (`AGENTS.md`,
 legacy `AGENT.md`, `CLAUDE.md`, `.cursor/`, `.claude/`, `~/.codex`), prints what it
 found, and shows where HAR instructions will be installed after you confirm targets:
 
@@ -77,6 +77,8 @@ This writes a repository guard script and a `PreToolUse` entry in
 `HAR_SKIP_WT_GUARD=1` bypass is intended for deliberate human use.
 
 ## MCP
+
+Agents scaffold a new harness with `har_init_harness` — not `har onboard`.
 
 Any MCP client can discover HAR's generic tools for initialization, preflight,
 launch, recovery, stages, verification, status, logs, completion, teardown,

@@ -96,7 +96,7 @@ describe('har plugin create (local plugins)', () => {
     expect(() => createLocalPlugin(repoPath, { id: 'dup', force: true })).not.toThrow();
 
     const bare = makeTempRepo('har-plugin-create-noharness');
-    expect(() => createLocalPlugin(bare, { id: 'x' })).toThrow(/har env init/);
+    expect(() => createLocalPlugin(bare, { id: 'x' })).toThrow(/har onboard/);
   });
 
   it('resolves and installs a local plugin by bare id with ledger source "local"', () => {

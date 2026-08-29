@@ -24,7 +24,7 @@ Stop it with `har control down`.
 
 ## Register and sync
 
-`har env init` remembers a repository for synchronization. You can also register
+Onboarding a repository remembers it for synchronization. You can also register
 one explicitly:
 
 ```bash

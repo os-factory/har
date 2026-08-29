@@ -156,7 +156,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   const harnessDir = getHarnessDir(repoPath);
 
   if (!fs.existsSync(harnessDir)) {
-    throw new Error('No .har/ found. Run "har env init" first.');
+    throw new Error('No .har/ found. Run "har onboard" first.');
   }
 
   // Versioned migrations (#241): a pre-1.0 harness is detected on every
