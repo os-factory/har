@@ -11,7 +11,7 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_describe_project` | `repo` | Manifest, stack hints, scripts, stages, and slot limits |
-| `har_init_harness` | `repo`, `force`, `smoke`, `profile` (`default` \| `cli` \| `ios`) | Scaffold and validation result, plus a `docker` block (`cliInstalled`, `daemonRunning`, `version`, `warning`) — Docker is required for Mission Control and harness infra |
+| `har_init_harness` | `repo`, `force`, `smoke`, `profile` (`default` \| `cli` \| `ios`) | Agent scaffold path (do not run `har onboard`). Returns the scaffold and validation result, plus a `docker` block (`cliInstalled`, `daemonRunning`, `version`, `warning`) — Docker is required for Mission Control and harness infra |
 | `har_maintain` | `repo`, optional `finalize`, `summary` | Validation issues, template drift, and the maintenance bundle report; `finalize: true` records a completed manual adaptation in `.har/manifest.json` |
 | `har_add_plugin` | `plugin` (bundled id, path, npm package, or git URL), optional `force`, `withCi` | Registered stage ids, files written, warnings, and next steps |
 

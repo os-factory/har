@@ -374,7 +374,7 @@ describe('plugins', () => {
       JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
     );
 
-    expect(() => applyPlugin(repoPath, 'playwright')).toThrow(/har env init/);
+    expect(() => applyPlugin(repoPath, 'playwright')).toThrow(/har onboard/);
   });
 
   it('CLI add-plugin applies playwright plugin', () => {

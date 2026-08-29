@@ -162,7 +162,7 @@ export function runDoctor(repoPath: string): DoctorReport {
           severity: 'error',
           file: '.har',
           message: 'Harness directory .har/ not found',
-          remedy: 'Run `har env init` to scaffold the harness',
+          remedy: 'Run `har onboard` to scaffold the harness',
         },
       ],
     };

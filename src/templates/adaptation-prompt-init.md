@@ -16,9 +16,9 @@ files; every customization has a sanctioned home:
 | Anything bigger | Plugins (`har env add-plugin`, `har plugin create` for local) |
 | Full runtime ownership (rare) | `har env eject` |
 
-## HAR profiles (pick the right one at init)
+## HAR profiles (pick the right one at scaffold)
 
-`har env init` scaffolds from one of three boilerplate profiles — **choose the profile that matches this repository**:
+The scaffold comes from one of three boilerplate profiles — **choose the profile that matches this repository**:
 
 | Profile | Best for | What you get |
 |---------|----------|--------------|
@@ -26,11 +26,7 @@ files; every customization has a sanctioned home:
 | `cli` | **CLI tools, libraries, test-suite repos** (typical SWE-bench) | Git worktree by default, no PM2; optional Docker for databases; run project commands in isolation |
 | `ios` | **Mobile iOS / Swift** | xcodebuild + iOS Simulator; scheme/project/simulator in `harness.env` |
 
-```bash
-har env init                  # default (SaaS/web)
-har env init --profile cli    # libraries / CLI / polyglot test repos
-har env init --profile ios    # iOS apps
-```
+If you must re-scaffold (destructive): `har env init --force --profile default|cli|ios`.
 
 Do **not** disable worktrees, rewrite launch into repo-root-only mode, or pick the wrong profile unless the project truly requires it.
 
@@ -211,7 +207,7 @@ Coding agents discover the harness through two files:
 
 Do **not** create `AGENT.md` (singular) — that legacy name is obsolete. If `AGENT.md` exists, merge any unique notes into `AGENTS.md` and delete `AGENT.md`.
 
-If **`har env init` already created `AGENTS.md`**, refresh the **HAR / agent environment** section and fill in **Project-specific notes** — do not wipe unrelated content.
+If **the scaffold already created `AGENTS.md`**, refresh the **HAR / agent environment** section and fill in **Project-specific notes** — do not wipe unrelated content.
 
 If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 

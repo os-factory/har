@@ -42,15 +42,15 @@ Tell the user which profile you picked and why before continuing.
 
 ## 4. Initialize the harness
 
-```bash
-har env init --profile <profile>   # omit --profile for default
-```
+Call `har_init_harness` with the chosen `profile` (`default`, `cli`, or `ios`).
+Do not run `har onboard` (that wizard is for humans) and do not advertise
+`har env init` as the first-run command.
 
 If `.har/` already exists, stop and suggest `/har-maintain` instead.
 
 ## 5. Perform the adaptation yourself
 
-`har env init` prints an adaptation prompt and writes it to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor the harness configuration surface (`harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`, `docker-compose.agent.yml`, `env.template`) and `AGENTS.md` to this repository's real stack, ports, and commands. The `./.har/*.sh` files are generated shims over the packaged runtime — never edit them.
+`har_init_harness` writes an adaptation prompt to `.har/ADAPT-PROMPT.md`. Read that file and **execute its instructions yourself, now, in this session** — tailor the harness configuration surface (`harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`, `docker-compose.agent.yml`, `env.template`) and `AGENTS.md` to this repository's real stack, ports, and commands. The `./.har/*.sh` files are generated shims over the packaged runtime — never edit them.
 
 ## 6. Register the project's checks as stages
 

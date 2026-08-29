@@ -48,7 +48,7 @@ records. Do not edit them — `har env doctor` flags patched shims, and
 
 ## Repo-root agent instruction files
 
-Installed during `har onboard` / `har env init` (and refreshed on maintain):
+Installed during `har onboard` (and refreshed on maintain):
 
 | Path | Purpose |
 | --- | --- |

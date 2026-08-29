@@ -7,7 +7,7 @@ description: Install framework-specific verification bundles that register stage
 
 | Concept | What it is | Command |
 |---|---|---|
-| **Profile** | Ordered runtime bundles composing a stack scaffold (`default`, `cli`, `ios`) | `har env init --profile …` |
+| **Profile** | Ordered runtime bundles composing a stack scaffold (`default`, `cli`, `ios`) | `har onboard --profile …` |
 | **Stage** | Runtime operation in `.har/stages.json` | `har_run_stage`, `har env verify` |
 | **Plugin** | Installable bundle that *registers* one or more stages | `har env add-plugin …` |
 
@@ -51,7 +51,7 @@ falls back to matching stage ids in `stages.json`.
 Every successful install also writes `.har/ADAPT-PROMPT-<id>.md` — a structured
 adaptation prompt for your coding agent (install dependencies with the repo's
 real package manager, adapt the scaffolded files, prove the stage green via full
-verify) — and offers to copy it to the clipboard, like `har env init` does.
+verify) — and offers to copy it to the clipboard, like `har onboard` does.
 A `package.json` merge declares dependencies but does **not** install them; the
 prompt leads with the install command.
 

@@ -45,7 +45,7 @@ export function createLocalPlugin(
 ): CreateLocalPluginResult {
   const resolved = path.resolve(repoPath);
   if (!harnessExists(resolved)) {
-    throw new Error('No .har/ harness found. Run "har env init" first.');
+    throw new Error('No .har/ harness found. Run "har onboard" first.');
   }
 
   const id = options.id.trim();

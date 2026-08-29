@@ -85,7 +85,7 @@ export const envCommand = {
     yargs
       .command(
         'init',
-        'Copy harness boilerplate into .har/',
+        'Mechanical scaffold of .har/ (fixtures / --force). Humans use har onboard.',
         (y: Argv) =>
           y
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })

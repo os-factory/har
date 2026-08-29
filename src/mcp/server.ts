@@ -320,7 +320,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_control_up',
     description:
-      'Start local Mission Control (a single self-contained Docker container backed by SQLite) and sync all harness repositories that were initialized with har env init.',
+      'Start local Mission Control (a single self-contained Docker container backed by SQLite) and sync all harness repositories that were scaffolded with har onboard or har_init_harness.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       detach: { type: 'boolean', description: 'Run the container in detached mode (default true)' },

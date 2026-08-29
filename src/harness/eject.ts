@@ -109,7 +109,7 @@ export function ejectHarness(repoPath: string): EjectResult {
   const harnessDir = getHarnessDir(resolved);
   const manifest = readManifest(resolved);
   if (!manifest) {
-    throw new Error('No .har/manifest.json found. Run "har env init" first.');
+    throw new Error('No .har/manifest.json found. Run "har onboard" first.');
   }
   if (manifest.ejected) {
     throw new Error(
@@ -164,7 +164,7 @@ export function adoptHarness(repoPath: string): AdoptResult {
   const harnessDir = getHarnessDir(resolved);
   const manifest = readManifest(resolved);
   if (!manifest) {
-    throw new Error('No .har/manifest.json found. Run "har env init" first.');
+    throw new Error('No .har/manifest.json found. Run "har onboard" first.');
   }
   if (!manifest.ejected) {
     throw new Error('Harness is not ejected — the managed shims are already in place.');

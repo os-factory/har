@@ -29,11 +29,10 @@ Onboarding probes Docker first (`docker --version` + `docker info`). Docker is
 required — Mission Control runs as a container and harness infra uses Docker
 Compose — so a missing CLI or stopped daemon is warned about, reported in the
 summary, and Mission Control is not started by default until Docker works.
-`har env init` prints the same warning.
 
 `--yes` accepts defaults (telemetry on, start Mission Control when Docker is
-available, no plugins) without prompts. Prefer this over hand-rolling `preferences` + `env init` + `telemetry`
-+ `control up` for new repositories.
+available, no plugins) without prompts. This is the first-run command for a
+new repository — do not substitute `har env init` in user-facing copy.
 
 `--agent-slots <n>` sets how many agents may run in parallel (`1`–`10`), written to
 `.har/stages.json` as `agentSlots.max`. Interactive onboarding asks this when the
@@ -44,7 +43,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 
 | Command | Purpose |
 | --- | --- |
-| `init` | Scaffold and adapt a new `.har/` |
+| `init` | Mechanical scaffold of `.har/` (fixtures / `--force`). Humans use `har onboard`. |
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-plugin [plugin]` | Install a plugin (bundled id, path, npm, or git — registers stages) |
 | `add-stage [id]` | Deprecated plugin alias for `add-plugin` (`--custom` removed in 1.0 — see `har plugin create`) |
@@ -68,6 +67,10 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `runs get <runId>` | Return one run record |
 
 ### Initialization
+
+First-time humans should run `har onboard`. `har env init` is the mechanical
+scaffold (same `initHarness` core as onboard and `har_init_harness`) — use it
+for fixtures and `--force` wipes, not as the advertised first-run command.
 
 ```bash
 har env init [--profile default|cli|ios] [--yes]

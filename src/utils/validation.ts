@@ -7,7 +7,7 @@ export function requireHarnessDir(repoPath: string): string {
   const harnessDir = getHarnessDir(repoPath);
 
   if (!fs.existsSync(harnessDir)) {
-    throw new Error('No .har/ directory found. Run "har env init" first.');
+    throw new Error('No .har/ directory found. Run "har onboard" first.');
   }
   return harnessDir;
 }
@@ -47,7 +47,7 @@ export function getHarnessScript(repoPath: string, scriptName: string): string {
   const harnessDir = requireHarnessDir(repoPath);
   const script = path.join(harnessDir, scriptName);
   if (!fs.existsSync(script)) {
-    throw new Error(`No ${scriptName} found in .har/. Run "har env init" first.`);
+    throw new Error(`No ${scriptName} found in .har/. Run "har onboard" first.`);
   }
   return script;
 }

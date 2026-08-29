@@ -99,7 +99,7 @@ Do not use `har env init --force` on an adapted harness — it wipes customizati
 
 ### Cursor rule
 
-`har env init` and `har env maintain` optionally scaffold `.cursor/rules/har-workflow.mdc` in the target repo — a Cursor rule that injects the harness read-before-change / verify-before-done workflow into every agent session.
+`har onboard`, `har_init_harness`, and `har env maintain` optionally scaffold `.cursor/rules/har-workflow.mdc` in the target repo — a Cursor rule that injects the harness read-before-change / verify-before-done workflow into every agent session.
 
 ```bash
 har env maintain --cursor-rule     # force-write without prompting
@@ -184,6 +184,10 @@ intentional hole. Both surfaces delegate to the same `core/run-service.ts` /
 (`collectEnvironmentStatus`) with text rendered on top, the launch guard runs
 exactly once inside `run-service`, and status is a pure read (no run records) on
 every surface.
+
+First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
+`har env init` is the mechanical CLI primitive (fixtures, `--force`) — same
+`initHarness` core. There is no `har_onboard` MCP tool.
 
 | Operation | CLI | MCP |
 |---|---|---|
