@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/os-factory/har/compare/v1.0.0...v1.1.0) (2026-08-29)
+
+### Features
+
+* stop generating lifecycle .sh shims ([#314](https://github.com/os-factory/har/issues/314)) ([#321](https://github.com/os-factory/har/issues/321)) ([215819a](https://github.com/os-factory/har/commit/215819a7801e0ef6d003aa4038f390163573d22f))
+
 ## [1.0.0](https://github.com/os-factory/har/compare/v0.64.3...v1.0.0) (2026-08-28)
 
 ### ⚠ BREAKING CHANGES
