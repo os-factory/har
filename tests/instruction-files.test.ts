@@ -57,7 +57,7 @@ describe('instruction-files', () => {
     const content = fs.readFileSync(path.join(repoPath, AGENTS_MD), 'utf8');
     expect(content).toContain(HAR_SECTION_START);
     expect(content).toContain('Launch first');
-    expect(content).toContain('/factory-line');
+    expect(content).not.toContain('/factory-line');
   });
 
   it('appends HAR section to existing AGENTS.md without wiping content', () => {
