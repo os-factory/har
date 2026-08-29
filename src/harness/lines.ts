@@ -38,6 +38,8 @@ export interface ApplyLineResult {
   adaptPromptPath: string;
   /** Station ids in order, for the handoff summary. */
   stationIds: string[];
+  /** First station whose cumulative gate is non-empty — what to run next. */
+  firstGatedStationId: string;
 }
 
 /** Repo-relative home of an installed line. */
@@ -267,12 +269,19 @@ function applyLineFromDir(
     installedAt: new Date().toISOString(),
   });
 
+  // Point at the first station that actually has gate stages — suggesting the
+  // first station runs an empty gate and reads like the install did nothing.
+  const firstGatedStation =
+    program.stations.find((station) =>
+      program.gate.stages.some((stage) => stage.fromStation === station.id),
+    )?.id ?? program.stations[0].id;
+
   const nextSteps =
     manifest.nextSteps.length > 0
       ? manifest.nextSteps
       : [
           `har line status ${manifest.id}`,
-          `har line gate ${program.stations[0].id} --line ${manifest.id}`,
+          `har line gate ${firstGatedStation} --line ${manifest.id}`,
           `Adapt the program: ${lineProgramPathRel(manifest.id)}`,
         ];
 
@@ -287,6 +296,7 @@ function applyLineFromDir(
     docsPath: manifest.docsPath,
     source: meta.source,
     stationIds: program.stations.map((s) => s.id),
+    firstGatedStationId: firstGatedStation,
   };
 
   const promptAbsPath = writeLineAdaptationPrompt(

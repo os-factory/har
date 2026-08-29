@@ -83,7 +83,9 @@ function handleLineAdd(argv: {
     divider();
     console.error('');
     console.error('  verificationStages unchanged — line gate stages are opt-in.');
-    console.error(`  Run the gate with: har line gate ${result.stationIds[0]} --line ${result.lineId}`);
+    console.error(
+      `  Run the gate with: har line gate ${result.firstGatedStationId} --line ${result.lineId}`,
+    );
     console.error('');
     console.error('  Next steps:');
     for (const step of result.nextSteps) {

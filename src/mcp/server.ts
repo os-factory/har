@@ -745,6 +745,7 @@ export async function handleMcpToolCall(
         lineId: result.lineId,
         title: result.title,
         stationIds: result.stationIds,
+        firstGatedStationId: result.firstGatedStationId,
         stageIds: result.stageIds,
         filesWritten: result.filesWritten,
         warnings: result.warnings,
