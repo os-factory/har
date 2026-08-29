@@ -255,7 +255,7 @@ export async function handleAgentSkills(options: AgentSkillsScaffoldOptions): Pr
     const shouldPrompt = !options.autoYes && !(mode === 'maintain' && alreadyScaffolded);
     if (shouldPrompt) {
       const accepted = await askYesNo(
-        `Scaffold agent skills (/setup-har, /har-wt, /har-maintain) for: ${targets.join(', ')}? [Y/n]`,
+        `Scaffold agent skills (/setup-har, /har-wt, /har-maintain, /factory-line) for: ${targets.join(', ')}? [Y/n]`,
       );
       if (!accepted) {
         info('Skipped agent skills');

@@ -21,6 +21,7 @@ harness or report it; do not fall back to ad-hoc commands.
    `har env verify <id> --full`. Commit in the session worktree.
 3. **Stop at handoff** — report summary, session branch and preview URLs, then
    wait. Never autonomously `complete`, `teardown`, push, or open a PR.
+4. **Factory line** — if a `*.line.json` exists, `/factory-line` (one slot per agent; grow-only gate; hand off).
 
 Occupied slots always block: `complete` / `teardown`, then launch. Customize the
 harness only through `harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`
