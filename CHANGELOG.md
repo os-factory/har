@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/os-factory/har/compare/v1.1.0...v1.2.0) (2026-08-29)
+
+### Features
+
+* ship factory-line as a managed agent skill ([#319](https://github.com/os-factory/har/issues/319)) ([#320](https://github.com/os-factory/har/issues/320)) ([d29f4d2](https://github.com/os-factory/har/commit/d29f4d2452261a6ea9736825c24d9d4a2fb8a6e3))
+
 ## [1.1.0](https://github.com/os-factory/har/compare/v1.0.0...v1.1.0) (2026-08-29)
 
 ### Features
