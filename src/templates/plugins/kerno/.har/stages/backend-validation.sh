@@ -4,7 +4,7 @@
 # via the local Kerno agent's REST API. Outputs JSON to stdout, progress to stderr.
 #
 # Usage: ./.har/stages/backend-validation.sh <agent-id>
-# Prerequisite: ./.har/launch.sh <agent-id>, the app running in the slot, AND a Kerno
+# Prerequisite: har env launch <agent-id>, the app running in the slot, AND a Kerno
 #   agent started with `kerno init` in THIS worktree (Kerno allows ONE agent per machine).
 # See: ./.har/stages/KERNO.md for the full setup + adaptation guide.
 set -euo pipefail
@@ -76,8 +76,8 @@ fi
 trap cleanup EXIT
 
 # ── Resolve agent env + slot target ───────────────────────────────────────────
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 
 # SUT URL: prefer an explicit override, then the app's own SITE_URL (both the default
 # web profile and single-port apps like Next.js set SITE_URL to the running app), then a

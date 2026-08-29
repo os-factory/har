@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Verification runner: executes the stages.json verification plan.
-// Invoked by .har/verify.sh after it sources harness.env and the agent env
+// Invoked by `har env verify` after it sources harness.env and the agent env
 // file (so the full slot environment is inherited). Replaces the bash
 // run_step/run_http_step/RESULTS_JSON plumbing: step names may contain any
 // characters, no result is ever silently dropped, and stage env vars are

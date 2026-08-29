@@ -18,7 +18,7 @@ Adapt:
 - .har/scripts/bootstrap-template-db.sh (or equivalent): apply migrations + seed to the template DB automatically (no manual migrate steps).
 - .har/env.template: only environment variables this app actually reads.
 - .har/ecosystem.agent.template.cjs or launch scripts: start the primary app per slot.
-- .har/verify.sh: real checks, with quick vs --full behavior.
+- .har/stages.json: real checks, with quick vs --full behavior.
 - .har/stages/browser-e2e.sh and tests/: make smoke/API/a11y tests meaningful for this app.
 - AGENTS.md and .har/README.md: explain that HAR is the canonical run/verify path, including **first-time infra setup** (Docker services + template DB migrate/seed) so the app is fully testable without manual steps.
 

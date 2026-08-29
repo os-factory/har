@@ -22,14 +22,12 @@
       "id": "setup-infra",
       "kind": "setup",
       "description": "Shared infrastructure (no-op for docs \u2014 no Docker services)",
-      "command": "./.har/setup-infra.sh",
       "artifacts": []
     },
     {
       "id": "launch",
       "kind": "launch",
       "description": "Launch an isolated Astro docs slot (worktree + PM2 + before screenshots)",
-      "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
           "path": ".env.agent.{agentId}",
@@ -47,7 +45,6 @@
       "id": "verify",
       "kind": "verify",
       "description": "Verification pipeline (quick: check + health; --full: drift, build, links, browser-e2e with after screenshots)",
-      "command": "./.har/verify.sh {agentId}",
       "artifacts": [
         {
           "path": ".har/artifacts",
@@ -63,7 +60,6 @@
       "id": "status",
       "kind": "inspect",
       "description": "Inspect a running agent environment slot",
-      "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
           "path": ".har/logs",
@@ -76,14 +72,12 @@
       "id": "logs",
       "kind": "inspect",
       "description": "Read recent logs for an agent slot",
-      "command": "./.har/agent-cli.sh {agentId} logs",
       "artifacts": []
     },
     {
       "id": "teardown",
       "kind": "teardown",
       "description": "Stop processes and release agent slot resources",
-      "command": "./.har/teardown.sh {agentId}",
       "artifacts": []
     },
     {

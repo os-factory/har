@@ -5,8 +5,8 @@ Adapt the `.har/` harness in this repository so AI coding agents can run the pro
 Explore this repository, then edit files in `.har/` directly to make the harness runnable for this project.
 
 `.har/` is a **configuration surface** — the runtime machinery lives in the HAR
-package behind the `./.har/*.sh` shims. Never edit the shims or invent new config
-files; every customization has a sanctioned home:
+package. CLI and MCP are the only entry points. Never add lifecycle wrappers
+or invent new config files; every customization has a sanctioned home:
 
 | Customization | Home |
 |---------------|------|
@@ -55,8 +55,8 @@ Replace all TODO placeholders. Key files:
 Identify the **primary application** — the ONE app coding agents will modify and run per-slot. Everything else is shared and runs once for all slots:
 
 1. **Primary app** → set `HARNESS_PRIMARY_APP` in `harness.env`; wire ONLY its dev processes into `ecosystem.agent.template.cjs` (a primary app may still need several processes, e.g. api + frontend of the same app).
-2. **External dependencies** (database, cache, queue, mail, ...) → keep/add them as services in `docker-compose.agent.yml`, delete the menu entries the project doesn't use, and list the needed ones in `HARNESS_INFRA_SERVICES` (e.g. `"db redis"`). They start once via `setup-infra.sh` on fixed ports and serve every slot.
-3. **Internal supporting services** (a monolith/monorepo's other services the agent depends on but is not changing) → do NOT start them per-slot. Run them once and shared: as compose services in `docker-compose.agent.yml`, or as PM2 processes in `.har/ecosystem.shared.config.cjs` (processes named `har-shared-<name>`, started automatically by `setup-infra.sh` when the file exists). Point the primary app at them through `env.template`.
+2. **External dependencies** (database, cache, queue, mail, ...) → keep/add them as services in `docker-compose.agent.yml`, delete the menu entries the project doesn't use, and list the needed ones in `HARNESS_INFRA_SERVICES` (e.g. `"db redis"`). They start once via `har env setup-infra` on fixed ports and serve every slot.
+3. **Internal supporting services** (a monolith/monorepo's other services the agent depends on but is not changing) → do NOT start them per-slot. Run them once and shared: as compose services in `docker-compose.agent.yml`, or as PM2 processes in `.har/ecosystem.shared.config.cjs` (processes named `har-shared-<name>`, started automatically by `har env setup-infra` when the file exists). Point the primary app at them through `env.template`.
 
 Simple single-app repos need none of the extra machinery: one primary app, usually one `db` in `HARNESS_INFRA_SERVICES`, no shared ecosystem file.
 
@@ -76,8 +76,8 @@ Verification is data: `.har/stages.json` lists the pipeline in
 `verificationStages` (execution order), and every id resolves to a registered
 stage with `"tier": "quick" | "full"`. Adapt verification by editing the stage
 entries — commands, tiers, order — or adding stage scripts (see
-`.har/STAGES.md`). **Never edit `.har/verify.sh`**; it is a thin iterator that
-runs the registry. The scaffolded defaults (`typecheck`, `unit-tests`, `lint`,
+`.har/STAGES.md`). Do not add lifecycle wrappers — `har env verify` runs the
+registry. The scaffolded defaults (`typecheck`, `unit-tests`, `lint`,
 `readiness`, plus `api-health` on web profiles) are derived from
 `HARNESS_ECOSYSTEM` — a starting point, not the repo's final contract. Replace
 conventions that do not match this project. Use toolchain variables from
@@ -166,8 +166,8 @@ The harness reference agents read: slot environment, readiness / what "agent
 usable" means here, definition of done, project commands, architecture.
 
 ### `.har/env.template`, `docker-compose.agent.yml`
-Adapt as needed for the project's infra (`setup-infra.sh` is a shim — the
-services it starts come from these two files plus `HARNESS_INFRA_SERVICES`).
+Adapt as needed for the project's infra (`har env setup-infra` starts
+services from these two files plus `HARNESS_INFRA_SERVICES`).
 
 ### Port allocation & shared services
 
@@ -218,8 +218,7 @@ If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 - Link to `.har/README.md`
 - State plainly: **the harness is how you run this project** — to see the app live (manual testing, browser, screenshots), `launch` a slot; never hand-roll docker/dev-server startup, and never work around a failing harness command with ad-hoc setup (fix or report it instead)
 - Commands: HAR MCP tools or `har env launch/verify/teardown`
-- Shell shims: `./.har/launch.sh`, `./.har/verify.sh`, `./.har/teardown.sh` — same runtime and run records
-- Rules (no hardcoded ports, use `./.har/agent-cli.sh`, do not touch other agents' resources)
+- Rules (no hardcoded ports, use `har env agent <id> …`, do not touch other agents' resources)
 - Project-specific notes (stack, credentials, definition of done)
 
 If **`AGENTS.md` already exists** (project-owned), add or update a concise **HAR / agent environment** section — do not replace unrelated content.
@@ -236,14 +235,14 @@ If this repository contains **more than one project or `.har` harness** (check f
 
 Include a **Run history** subsection:
 
-- Every entry point (`./.har/*.sh` shims, `har env …`, MCP) writes the same run records to `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json`
+- Every entry point (`har env …`, MCP) writes the same run records to `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json`
 - With worktrees, code runs in the worktree but run JSON lives in the main checkout `.har/runs/`
-- The `./.har/*.sh` shims forward to the same runtime — evidence records are identical from any surface
+- CLI and MCP are the only entry points — evidence records are identical from either surface
 
 ## Step 4 — Adaptation completeness (required)
 
 Before finishing, confirm the harness describes this project truthfully — do
-**not** go hunting for machinery to prune (the shims and packaged runtime are
+**not** go hunting for machinery to prune (the packaged runtime is
 not yours to trim, and wholesale deletion just manufactures drift):
 
 - [ ] No `TODO` placeholders remain anywhere in `.har/`
@@ -256,10 +255,10 @@ not yours to trim, and wholesale deletion just manufactures drift):
 
 ## Rules
 
-1. Customize only through the contract: config in `harness.env`, stages in `stages.json` / `.har/stages/`, hooks in `.har/hooks/`, plugins in `.har/plugins/` — never edit the generated `*.sh` shims
+1. Customize only through the contract: config in `harness.env`, stages in `stages.json` / `.har/stages/`, hooks in `.har/hooks/`, plugins in `.har/plugins/` — never add lifecycle `.sh` wrappers
 2. Always update `.har/README.md` to reflect current harness state
 3. Reuse existing project commands from package.json, Makefile, CI, etc.
 4. Replace all TODO placeholders
 5. Do not edit `.har/manifest.json` — managed by the har CLI
 
-When finished, summarize what you changed, confirm verification commands (`har env verify 1 --full` or `./.har/verify.sh 1 --full`) are correct for this stack, and record the adaptation with `har env maintain --finalize --summary "<what changed>"`.
+When finished, summarize what you changed, confirm verification commands (`har env verify 1 --full`) are correct for this stack, and record the adaptation with `har env maintain --finalize --summary "<what changed>"`.

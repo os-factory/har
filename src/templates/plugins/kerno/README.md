@@ -55,13 +55,13 @@ kerno init                       # run inside the slot worktree
 ls .kerno/scenarios/endpoints/
 
 # 4. Launch the slot and start your app
-./.har/launch.sh 1
+har env launch 1
 
 # 5. Run backend validation
 ./.har/stages/backend-validation.sh 1
 
 # 6. Validate everything
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```
 
 Per-endpoint run responses and verdicts land in `.har/artifacts/backend-validation/`.

@@ -15,6 +15,7 @@ import {
 import type { HarnessProfile } from './profiles';
 import { composeProfileTemplateMap, readComposedTemplateContent } from './profiles';
 import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
+import { stripLifecycleShimCommands } from './lifecycle-shims';
 import { computeTemplateChecksums } from './drift';
 import { readStageRegistry, writeStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
@@ -129,8 +130,8 @@ export interface MigrationPlan {
   id: string;
   to: string;
   profile: HarnessProfile;
-  /** Lifecycle entry scripts replaced by managed shims. */
-  replaceWithShims: string[];
+  /** Lifecycle entry scripts deleted (CLI/MCP are the only entry points). */
+  deleteLifecycleScripts: string[];
   /** Runtime machinery deleted (superseded by the package runtime). */
   deleteMachinery: string[];
   /** Stock files new in the 1.0 surface, absent on disk — installed as-is. */
@@ -395,16 +396,13 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
   const composed = composeProfileTemplateMap(profile);
   const fileBaseline = manifest?.fileChecksums ?? {};
 
-  const replaceWithShims: string[] = [];
+  const deleteLifecycleScripts: string[] = [];
   const residue: MigrationResidueItem[] = [];
 
   for (const script of MANAGED_SHIM_FILES) {
-    if (!composed.has(script)) continue;
-    if (!scriptIsVendored(harnessDir, script) && fs.existsSync(path.join(harnessDir, script))) {
-      continue; // already a shim (or ejected — excluded upstream)
-    }
-    replaceWithShims.push(script);
-    if (fs.existsSync(path.join(harnessDir, script))) {
+    if (!fs.existsSync(path.join(harnessDir, script))) continue;
+    deleteLifecycleScripts.push(script);
+    if (scriptIsVendored(harnessDir, script)) {
       const target = SCRIPT_RESIDUE_TARGET[script] ?? 'review';
       residue.push({
         source: script,
@@ -412,10 +410,10 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
         target,
         reason:
           target === 'stage'
-            ? 'Vendored verify pipeline replaced by the managed shim — project-specific verification steps belong in stages.json / .har/stages/ (bigger checks: a local plugin).'
+            ? 'Vendored verify pipeline deleted — project-specific verification steps belong in stages.json / .har/stages/ (bigger checks: a local plugin). Drive verify with `har env verify`.'
             : target === 'hook'
-              ? 'Vendored script replaced by the managed shim — project-specific launch/teardown/infra behavior belongs in .har/hooks/ lifecycle hooks.'
-              : 'Vendored script replaced by the managed shim — review the backup for project-specific behavior worth keeping.',
+              ? 'Vendored script deleted — project-specific launch/teardown/infra behavior belongs in .har/hooks/ lifecycle hooks. Drive the slot with `har env launch` / `har env teardown`.'
+              : 'Vendored script deleted — review the backup for project-specific behavior worth keeping. Invocation is `har env …`.',
       });
     }
   }
@@ -433,8 +431,7 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
   }
   // Scripts sitting at the harness root count too (#297): a vendored attach.sh
   // sourcing agent-slot.sh was invisible here, so the migration happily deleted
-  // the file it depended on. Only unmanaged leftovers reach this list — managed
-  // shims are regenerated, not preserved.
+  // the file it depended on. Lifecycle wrappers are deleted, not preserved.
   for (const entry of fs.readdirSync(harnessDir)) {
     if (!entry.endsWith('.sh')) continue;
     if ((MANAGED_SHIM_FILES as readonly string[]).includes(entry)) continue;
@@ -566,7 +563,7 @@ function buildPre10Plan(repoPath: string): MigrationPlan {
     id: 'config-surface',
     to: HARNESS_RUNTIME_VERSION,
     profile,
-    replaceWithShims,
+    deleteLifecycleScripts,
     deleteMachinery,
     retireDocs,
     installMissing,
@@ -598,16 +595,15 @@ function applyPre10Plan(repoPath: string, plan?: MigrationPlan): AppliedMigratio
   const projectName = path.basename(resolved).toLowerCase().replace(/[^a-z0-9]/g, '_');
   const composed = composeProfileTemplateMap(effective.profile);
 
-  // 1. Vendored lifecycle scripts → managed shims (arg conventions preserved).
-  for (const script of effective.replaceWithShims) {
-    const source = composed.get(script);
-    if (!source) continue;
+  // 1. Vendored (or leftover managed) lifecycle wrappers → gone (#314).
+  // CLI and MCP are the only entry points; stages dispatch by kind.
+  for (const script of effective.deleteLifecycleScripts) {
     backup(script);
-    const rendered = substituteTemplateTokens(readComposedTemplateContent(source), projectName);
-    const dest = path.join(harnessDir, script);
-    fs.writeFileSync(dest, rendered);
-    fs.chmodSync(dest, 0o755);
-    written.push(script);
+    fs.rmSync(path.join(harnessDir, script), { force: true });
+    deleted.push(script);
+  }
+  if (stripLifecycleShimCommands(resolved)) {
+    written.push('stages.json');
   }
 
   // 2. Runtime machinery → gone (the package runtime is the single implementation).

@@ -97,7 +97,7 @@ export function buildVerifyPlan(
   if (!envFile) {
     throw new VerifyPlanError(`No .env.agent.${agentId} found.`, [
       `  Launch: har env launch ${agentId}     # or har_launch_environment (MCP)`,
-      `  Fallback: ./.har/launch.sh ${agentId}  # when har CLI/MCP unavailable`,
+      `  Fallback: npx @osfactory/har env launch ${agentId}  # when har is not on PATH`,
     ]);
   }
 

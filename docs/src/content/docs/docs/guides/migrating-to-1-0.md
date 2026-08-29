@@ -5,9 +5,8 @@ description: Upgrade a pre-1.0 harness to the 1.0 configuration surface without 
 
 HAR 1.0 moves the harness machinery out of `.har/` and into the package. A
 pre-1.0 harness carries ~20 vendored files; a 1.0 harness keeps only what is
-yours — config, stages, hooks, plugins, docs — behind thin shims. The migration
-is designed so **muscle memory never breaks**: `./.har/verify.sh 1 --full`,
-`har env launch 1`, and the MCP tools work the same before, during, and after.
+yours — config, stages, hooks, plugins, docs. CLI and MCP are the only entry
+points: `har env launch 1`, `har env verify 1 --full`, and the MCP tools.
 
 What changed in the release, in short: [HAR 1.0.0](/blog/har-1-0-0/).
 
@@ -29,8 +28,8 @@ migration:
 
 1. **Mechanical steps run as code.** Every installed file is classified using
    the manifest checksums:
-   - **Stock** (never edited) — replaced silently: runtime scripts become
-     shims, `harness.env` boilerplate becomes schema'd config.
+   - **Stock** (never edited) — replaced silently: lifecycle wrappers are
+     deleted, `harness.env` boilerplate becomes schema'd config.
    - **Adapted** (you edited it) — nothing is overwritten; the customization
      is lifted into the [contract](/docs/guides/customization/) or handed to
      you in the prompt. Machinery still sourced by a surviving script (e.g. a
@@ -68,14 +67,12 @@ migration:
 
 If the harness is heavily customized and not worth lifting yet, the migration
 offers **eject**: you keep working scripts and full ownership, and can adopt
-the managed shims later.
+the packaged runtime later.
 
 ## What 1.0 deliberately does not break
 
-- `./.har/launch.sh 1` / `verify.sh 1 --full` / `teardown.sh 1` argument
-  conventions — shims stay CLI-compatible.
 - `har env …` commands and MCP tool contracts.
-- `stages.json` stage entries and existing slot registries.
+- `stages.json` stage entries (lifecycle stages dispatch by `kind`) and existing slot registries.
 
 What it does retire: vendored-script internals, `add-stage --custom`,
 `harness.env` shell functions, and single-signal drift (see
@@ -94,13 +91,12 @@ to confirm the result, and to spot the leftovers it cannot decide for you.
 .har/simulator.sh
 ```
 
-**Should be a thin shim** — each of these is ~35 lines ending in
-`exec har env …`, and nothing else:
+**Should be gone** — lifecycle wrappers are not an entry point:
 
 ```
 .har/launch.sh   .har/verify.sh    .har/teardown.sh
 .har/preflight.sh .har/agent-cli.sh .har/setup-infra.sh
-.har/attach.sh    # pm2 profiles only
+.har/attach.sh
 ```
 
 **Should be yours** — `harness.env`, `stages.json`, `stages/`, `hooks/`,
@@ -138,24 +134,15 @@ The migration rewrites scripts and config; it does not rewrite prose. Re-read
 your own `.har/README.md` and any repo-level
 `AGENTS.md`, and fix anything that still describes the pre-1.0 world — file
 tables listing deleted machinery, and especially **the old claim that
-`./.har/*.sh` writes no run history**. In 1.0 the shims delegate to the same
-runtime, so every entry point writes the same run and validation records and the
-commit gate is satisfiable from any surface. Agents read these files as
-instructions; a stale table sends them down a path that no longer exists.
+`./.har/*.sh` is an entry point**. CLI and MCP write the same run and
+validation records; the commit gate is satisfiable from either surface.
+Agents read these files as instructions; a stale table sends them down a
+path that no longer exists.
 
 ### Keep a stale global `har` from fighting your harness
 
-The shims resolve `har` from `PATH` first. If that `har` is older than the
-version your harness pins, it does not own these runtime kinds — it executes the
-shim as authoritative, which execs back into `har`, and so on. The shims refuse
-to take part (exit `86`) rather than fork-bomb the machine:
-
-```
-Error: runtime loop detected — the har CLI that ran this shim delegated back into it.
-```
-
-The fix is to upgrade the resolved binary — `npm i -g @osfactory/har@latest`, or
-`npm i -D @osfactory/har` in the repo. In CI, install or build the runtime and
-put it on `PATH` **before** invoking any `./.har/*.sh` step; otherwise the shims
-fall through to `npx @osfactory/har@<pinned>` and you are testing against
-whatever that resolves to rather than the version you meant.
+If the `har` on `PATH` is older than the version your harness pins, upgrade
+it — `npm i -g @osfactory/har@latest`, or `npm i -D @osfactory/har` in the
+repo. In CI, install or build the runtime and put it on `PATH` **before**
+invoking `har env …`; otherwise you are testing against whatever
+`npx @osfactory/har@<pinned>` resolves to rather than the version you meant.

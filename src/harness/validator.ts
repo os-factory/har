@@ -17,9 +17,8 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
-// Required files are the configuration surface only (#235): the runtime lives
-// in the package and the generated *.sh files are optional thin shims —
-// deleting them costs nothing but the `./.har/<op>.sh` convenience entry.
+// Required files are the configuration surface only (#235 / #314): the runtime
+// lives in the package. Lifecycle wrappers are not generated.
 const REQUIRED_FILES_DEFAULT = [
   'README.md',
   'stages.json',

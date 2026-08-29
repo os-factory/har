@@ -3,7 +3,7 @@
 # Outputs JSON to stdout, human-readable progress to stderr.
 #
 # Usage: ./.har/stages/browser-e2e.sh <agent-id>
-# Prerequisite: ./.har/launch.sh <agent-id>
+# Prerequisite: har env launch <agent-id>
 #
 # Screenshot contract
 # -------------------
@@ -29,8 +29,8 @@ now_ms() { node -e 'process.stdout.write(String(Date.now()))'; }
 
 log() { echo "==> [browser-e2e agent-$AGENT_ID] $*" >&2; }
 
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 FE_PORT="${FE_PORT:-$(( HARNESS_FE_BASE_PORT + AGENT_ID * ${HARNESS_PORT_STEP:-10} ))}"
 API_PORT="${API_PORT:-$FE_PORT}"
 

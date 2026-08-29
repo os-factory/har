@@ -69,9 +69,9 @@ export function buildMigrationSection(
   }
 
   lines.push(`What the mechanical migration ${applied ? 'did' : 'will do'}:`, '');
-  if (plan.replaceWithShims.length > 0) {
+  if (plan.deleteLifecycleScripts.length > 0) {
     lines.push(
-      `- Replace${applied ? 'd' : ''} with managed shims (same argument conventions): ${plan.replaceWithShims.map((f) => `\`${f}\``).join(', ')}`,
+      `- Delete${applied ? 'd' : ''} lifecycle wrappers (drive the harness with \`har env …\`): ${plan.deleteLifecycleScripts.map((f) => `\`${f}\``).join(', ')}`,
     );
   }
   if (plan.deleteMachinery.length > 0) {

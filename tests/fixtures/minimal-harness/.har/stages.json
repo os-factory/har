@@ -12,34 +12,29 @@
       "id": "launch",
       "kind": "launch",
       "description": "Launch agent slot",
-      "script": "launch.sh",
       "requiresAgentId": true
     },
     {
       "id": "verify",
       "kind": "verify",
       "description": "Run verification",
-      "script": "verify.sh",
       "requiresAgentId": true
     },
     {
       "id": "teardown",
       "kind": "teardown",
       "description": "Tear down agent slot",
-      "script": "teardown.sh",
       "requiresAgentId": true
     },
     {
       "id": "status",
       "kind": "inspect",
-      "description": "Inspect agent slot",
-      "command": "./.har/agent-cli.sh {agentId} status"
+      "description": "Inspect agent slot"
     },
     {
       "id": "logs",
       "kind": "inspect",
-      "description": "Read agent logs",
-      "command": "./.har/agent-cli.sh {agentId} logs"
+      "description": "Read agent logs"
     },
     {
       "id": "smoke",

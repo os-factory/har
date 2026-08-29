@@ -9,7 +9,7 @@ In 1.0 the harness machinery lives once, in the `@osfactory/har` package. `.har/
 - **hooks** — `.har/hooks/{pre-launch,post-launch,pre-verify,pre-teardown,post-teardown}.sh` (custom lifecycle behavior)
 - **plugins** — `.har/plugins/<id>/` local plugins for anything bigger (`har plugin create <id>`)
 
-The `./.har/*.sh` entry points become thin shims (`exec har env … "$@"` with a pinned `npx` fallback), so every surface — raw scripts, `har env`, MCP tools — writes the same run/validation records. Your muscle memory (`./.har/launch.sh 1`, `./.har/verify.sh 1 --full`, `har env launch 1`) keeps working before, during, and after.
+Lifecycle wrappers under `.har/` are deleted. Drive the harness with `har env …` or MCP — both write the same run/validation records. Project-owned `stages/*.sh` and `hooks/*.sh` stay.
 
 {{MIGRATION_SECTION}}
 
@@ -35,7 +35,7 @@ If the backups show deep patches to the machinery itself (not just config/stages
 2. `har env maintain` — drift report should show only files you deliberately adapted.
 3. Full verify on **every configured agent slot** that is in use; at minimum:
    - `har env launch 1`
-   - `har env verify 1 --full` (or `./.har/verify.sh 1 --full` — same records either way)
+   - `har env verify 1 --full`
    - `har env complete 1` (or `har env teardown 1`)
 4. Exercise anything you lifted into hooks/stages (e.g. per-slot data stores exist in the work dir, custom checks run in `--full`).
 

@@ -111,10 +111,11 @@ fresh_init_mode() {
   har "$FRESH" env init --yes --profile default || fail "init failed on fresh clone"
 
   local f
-  for f in launch.sh verify.sh teardown.sh setup-infra.sh \
-           agent-cli.sh harness.env stages.json \
-           manifest.json README.md; do
+  for f in harness.env stages.json manifest.json README.md; do
     [ -f "$FRESH/.har/$f" ] || fail "init did not produce .har/$f"
+  done
+  for f in launch.sh verify.sh teardown.sh setup-infra.sh agent-cli.sh preflight.sh attach.sh; do
+    [ ! -f "$FRESH/.har/$f" ] || fail "init wrote retired lifecycle wrapper .har/$f (#314)"
   done
   # #301: the instruction surface is AGENTS.md; the harness detail is README.md.
   [ ! -f "$FRESH/.har/CLAUDE.agent.md" ] || fail "init produced retired .har/CLAUDE.agent.md"
@@ -168,7 +169,7 @@ milestone_asserts() {
       local count
       count=$(find "$FRESH/.har" -maxdepth 1 -type f | wc -l)
       echo "    fresh .har/ top-level files: $count"
-      [ "$count" -ge 12 ] || fail "M0: fresh scaffold suspiciously small ($count files)"
+      [ "$count" -ge 8 ] || fail "M0: fresh scaffold suspiciously small ($count files)"
       ;;
     M1)
       echo "──> M1 asserts: harness.env pure-config contract (#230)"
@@ -210,13 +211,9 @@ milestone_asserts() {
         }
         if (!(reg.stages ?? []).some((s) => s.tier === "quick")) { console.error("M1: no quick-tier stage registered"); process.exit(1); }
       ' "$FRESH/.har/stages.json" || fail "M1: fresh scaffold verificationStages namespace not fully resolvable/tiered"
-      # Pre-#234 verify.sh exec'd the runner itself; post-#234 it delegates via har env verify.
-      grep -qE 'lib/verify-runner\.mjs|exec har env verify|har" env verify' "$FRESH/.har/verify.sh" \
-        || fail "M1: fresh scaffold verify.sh does not delegate to the stage-registry runner"
-      if grep -q 'run_quick_smoke' "$FRESH/.har/verify.sh"; then
-        fail "M1: fresh scaffold verify.sh still carries inline ecosystem case tables"
-      fi
-      echo "    verificationStages fully resolvable, tiered, runner-delegated ✓"
+      # #314: lifecycle wrappers are not generated — verify dispatches by kind.
+      [ ! -f "$FRESH/.har/verify.sh" ] || fail "M1: fresh scaffold still wrote verify.sh (#314)"
+      echo "    verificationStages fully resolvable, tiered, no verify.sh wrapper ✓"
 
       echo "──> M1 asserts: doctor contract checks (#232)"
       har "$CLONE" env doctor >/dev/null 2>&1 \
@@ -287,85 +284,47 @@ milestone_asserts() {
       done
       echo "    no runtime bash in fresh scaffold ✓"
 
-      local shim lines
-      for shim in launch.sh verify.sh teardown.sh setup-infra.sh agent-cli.sh preflight.sh; do
-        [ -f "$FRESH/.har/$shim" ] || fail "M2: fresh scaffold missing .har/$shim"
-        grep -q 'exec har env\|node_modules/.bin/har' "$FRESH/.har/$shim" \
-          || fail "M2: .har/$shim does not delegate to har env"
-        if grep -q 'node -e' "$FRESH/.har/$shim"; then
-          fail "M2: .har/$shim carries embedded node programs"
-        fi
-        lines=$(wc -l < "$FRESH/.har/$shim")
-        [ "$lines" -le 25 ] || fail "M2: .har/$shim is $lines lines — business logic belongs in the package"
+      local retired
+      for retired in launch.sh verify.sh teardown.sh setup-infra.sh agent-cli.sh preflight.sh attach.sh; do
+        [ ! -f "$FRESH/.har/$retired" ] || fail "M2: fresh scaffold still ships retired wrapper .har/$retired (#314)"
       done
-      echo "    generated .har/*.sh are thin delegates ✓"
+      echo "    no lifecycle wrappers in fresh scaffold ✓"
 
-      # Direct shim execution reaches the packaged runtime (full record parity is #235).
+      # Record parity: launch → verify → teardown through CLI writes run records.
       local bindir="$ART_DIR/bin"
       mkdir -p "$bindir"
       printf '#!/usr/bin/env bash\nexec node "%s" "$@"\n' "$HAR_CLI" > "$bindir/har"
       chmod +x "$bindir/har"
-      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/preflight.sh 1 >/dev/null) \
-        || fail "M2: direct ./.har/preflight.sh execution failed"
-      echo "    direct shim execution works ✓"
-
-      echo "──> M2 asserts: thin shims with pinned npx fallback (#235)"
-      # Fresh shims pin the generating package version for a deterministic npx fallback.
-      local pkg_version
-      pkg_version="$(node -p "require('$REPO_ROOT/package.json').version")"
-      for shim in launch.sh verify.sh teardown.sh setup-infra.sh agent-cli.sh preflight.sh; do
-        grep -q "npx --yes @osfactory/har@${pkg_version} " "$FRESH/.har/$shim" \
-          || fail "M2: .har/$shim lacks the pinned npx fallback (@${pkg_version})"
-        if grep -q '__HAR_VERSION__' "$FRESH/.har/$shim"; then
-          fail "M2: .har/$shim still carries the unrendered __HAR_VERSION__ token"
-        fi
-      done
-      echo "    shims pin npx fallback to @osfactory/har@${pkg_version} ✓"
-
-      # Record parity: a launch → verify → teardown cycle driven ONLY through
-      # the generated shims must leave the same evidence records as har env.
-      # Runs on FRESH — the 1.0 scaffold with shims; CLONE keeps its pre-1.0
-      # scripts (no records) until #241 migrates it.
-      local shim_marker="$ART_DIR/.m2-shim-start"; touch "$shim_marker"
-      "$bindir/har" --version >/dev/null 2>&1 || true
+      local cli_marker="$ART_DIR/.m2-cli-start"; touch "$cli_marker"
       (cd "$FRESH" && "$bindir/har" env teardown 1 >/dev/null 2>&1) || true
-      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/launch.sh 1 >/dev/null) \
-        || fail "M2: direct ./.har/launch.sh execution failed on fresh scaffold"
-      # The fresh scaffold is unadapted, so quick verify may report failures —
-      # the parity claim is that the shim surface records the run either way.
-      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/verify.sh 1 >/dev/null) || true
-      (cd "$FRESH" && PATH="$bindir:$PATH" ./.har/teardown.sh 1 --delete-branch >/dev/null) \
-        || fail "M2: direct ./.har/teardown.sh execution failed on fresh scaffold"
+      (cd "$FRESH" && "$bindir/har" env launch 1 >/dev/null) \
+        || fail "M2: har env launch failed on fresh scaffold"
+      (cd "$FRESH" && "$bindir/har" env verify 1 >/dev/null) || true
+      (cd "$FRESH" && "$bindir/har" env teardown 1 --delete-branch >/dev/null) \
+        || fail "M2: har env teardown failed on fresh scaffold"
       local kind
       for kind in launch verify teardown; do
-        find "$FRESH/.har/runs" -name "*_${kind}_*.json" -newer "$shim_marker" 2>/dev/null | grep -q . \
-          || fail "M2: shim-driven ${kind} wrote no run record — entry points are not parity"
+        find "$FRESH/.har/runs" -name "*_${kind}_*.json" -newer "$cli_marker" 2>/dev/null | grep -q . \
+          || fail "M2: CLI-driven ${kind} wrote no run record"
       done
-      echo "    shim-driven launch/verify/teardown all write run records ✓"
+      echo "    CLI-driven launch/verify/teardown all write run records ✓"
 
-      # Commit gate satisfiable from the shim surface: on the ADAPTED clone
-      # (where quick verify passes), a shim verify must produce a validation
-      # record. CLONE's own verify.sh is pre-1.0 bash until #241 — stand in
-      # the generated shim, exactly what migration will install.
-      cp "$FRESH/.har/verify.sh" "$CLONE/.har/verify.sh"
       (cd "$CLONE" && "$bindir/har" env launch 1 >/dev/null 2>&1) \
-        || fail "M2: launch on adapted clone failed for shim-verify parity check"
-      # --full: the pre-1.0 clone's stages.json has no quick-tier stages yet
-      # (#241 migrates it); full resolves its verificationStages list.
-      (cd "$CLONE" && PATH="$bindir:$PATH" ./.har/verify.sh 1 --full >/dev/null) \
-        || fail "M2: shim verify failed on the adapted clone"
-      find "$CLONE/.har/validations" -name '*.json' -newer "$shim_marker" 2>/dev/null | grep -q . \
-        || fail "M2: shim verify wrote no validation record — commit gate not satisfiable from the shim surface"
+        || fail "M2: launch on adapted clone failed for verify parity check"
+      (cd "$CLONE" && "$bindir/har" env verify 1 --full >/dev/null) \
+        || fail "M2: har env verify failed on the adapted clone"
+      find "$CLONE/.har/validations" -name '*.json' -newer "$cli_marker" 2>/dev/null | grep -q . \
+        || fail "M2: CLI verify wrote no validation record — commit gate not satisfiable"
       (cd "$CLONE" && "$bindir/har" env teardown 1 >/dev/null 2>&1) || true
-      git -C "$CLONE" checkout -- .har/verify.sh 2>/dev/null || true
-      echo "    shim verify writes validation records (commit gate satisfiable from any surface) ✓"
+      echo "    CLI verify writes validation records (commit gate satisfiable) ✓"
       ;;
     M3)
       echo "──> M3 asserts: two-signal drift (#237)"
       # Fresh 1.0 scaffold: adapt a file, finalize — drift must be zero.
-      echo "# repo-specific adaptation (M3 gate)" >> "$FRESH/.har/verify.sh"
+      echo "# repo-specific adaptation (M3 gate)" >> "$FRESH/.har/README.md"
       har "$FRESH" env maintain --finalize --summary "M3 drift assert: adapted verify.sh" >/dev/null 2>&1 \
         || fail "M3: maintain --finalize failed on fresh scaffold"
+      # (adapted README.md — lifecycle wrappers are not generated)
       har "$FRESH" env maintain >/dev/null 2>&1 || true
       node -e '
         const fs = require("fs");
@@ -383,13 +342,13 @@ milestone_asserts() {
       echo "    adapted + finalized harness reports zero drift ✓"
 
       # Post-finalize user edit → adapted (informational), never an action.
-      echo "# post-finalize edit (M3 gate)" >> "$FRESH/.har/verify.sh"
+      echo "# post-finalize edit (M3 gate)" >> "$FRESH/.har/README.md"
       har "$FRESH" env maintain >/dev/null 2>&1 || true
       node -e '
         const fs = require("fs");
         const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-        if (!r.adapted.includes("verify.sh")) { console.error("M3: post-finalize edit not reported as adapted"); process.exit(1); }
-        if (r.actions.some(a => a.file === "verify.sh")) { console.error("M3: user-adapted file raised a drift action"); process.exit(1); }
+        if (!r.adapted.includes("README.md")) { console.error("M3: post-finalize edit not reported as adapted"); process.exit(1); }
+        if (r.actions.some(a => a.file === "README.md")) { console.error("M3: user-adapted file raised a drift action"); process.exit(1); }
       ' "$FRESH/.har/maintain/drift-report.json" \
         || fail "M3: user-adapted signal wrong"
       echo "    post-finalize edit → user-adapted, no action ✓"
@@ -400,14 +359,14 @@ milestone_asserts() {
         const fs = require("fs");
         const p = process.argv[1];
         const m = JSON.parse(fs.readFileSync(p, "utf8"));
-        m.templateChecksums["verify.sh"] = "0000000000000000";
+        m.templateChecksums["README.md"] = "0000000000000000";
         fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
       ' "$FRESH/.har/manifest.json"
       har "$FRESH" env maintain >/dev/null 2>&1 || true
       node -e '
         const fs = require("fs");
         const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-        const a = r.actions.find(a => a.file === "verify.sh");
+        const a = r.actions.find(a => a.file === "README.md");
         if (!a || a.kind !== "conflict") { console.error("M3: upstream update on adapted file is not a conflict:", a && a.kind); process.exit(1); }
       ' "$FRESH/.har/maintain/drift-report.json" \
         || fail "M3: conflict signal wrong"
@@ -469,43 +428,31 @@ milestone_asserts() {
         # recorded in the manifest, doctor still green, adopt reverses it.
         har "$FRESH" env eject --yes || fail "M3: har env eject failed"
         [ -f "$FRESH/.har/runtime/har.cjs" ] || fail "M3: eject did not vendor .har/runtime/har.cjs"
-        grep -q 'runtime/har.cjs' "$FRESH/.har/launch.sh" \
-          || fail "M3: ejected launch.sh does not execute the vendored runtime"
-        if grep -q 'exec har env' "$FRESH/.har/launch.sh"; then
-          fail "M3: ejected launch.sh still delegates to an installed har"
-        fi
+        [ ! -f "$FRESH/.har/launch.sh" ] || fail "M3: eject wrote a launch.sh wrapper (#314)"
         node -e '
           const m = require(process.argv[1]);
           if (m.ejected !== true || !m.ejectedVersion) { console.error("M3: manifest missing ejected/ejectedVersion"); process.exit(1); }
         ' "$FRESH/.har/manifest.json" || fail "M3: eject not recorded in manifest.json"
-        echo "    eject vendors runtime, rewrites scripts, records the choice ✓"
+        echo "    eject vendors runtime (no wrappers) and records the choice ✓"
 
         har "$FRESH" env doctor >/dev/null 2>&1 || fail "M3: doctor red on an intact ejected harness"
         echo "    doctor green on ejected harness ✓"
 
-        # Owned mode: an edited ejected script must NOT appear as drift.
-        echo '# fixture user tweak' >> "$FRESH/.har/launch.sh"
-        if har "$FRESH" env maintain 2>&1 | grep -q 'Drift (template changed).*launch\.sh'; then
-          fail "M3: edited ejected launch.sh still reported as upstream drift"
-        fi
-        echo "    ejected scripts are user-owned — no drift nagging ✓"
+        # Offline invocation: the vendored bundle is executable with node.
+        (cd "$FRESH" && node .har/runtime/har.cjs env --help >/dev/null) \
+          || fail "M3: node .har/runtime/har.cjs env --help failed"
+        echo "    ejected runtime is invocable via node .har/runtime/har.cjs ✓"
 
-        # Ejected scripts run the vendored runtime directly (no har on PATH).
-        (cd "$FRESH" && ./.har/preflight.sh 1 >/dev/null) \
-          || fail "M3: ejected ./.har/preflight.sh failed to run the vendored runtime"
-        echo "    ejected scripts execute the vendored runtime standalone ✓"
-
-        # Reversible: adopt restores managed shims and clears the record.
+        # Reversible: adopt removes the vendored runtime and clears the record.
         har "$FRESH" env adopt || fail "M3: har env adopt failed"
         [ ! -d "$FRESH/.har/runtime" ] || fail "M3: adopt left .har/runtime/ behind"
-        grep -q 'exec har env launch' "$FRESH/.har/launch.sh" \
-          || fail "M3: adopt did not restore the managed launch.sh shim"
+        [ ! -f "$FRESH/.har/launch.sh" ] || fail "M3: adopt restored a launch.sh wrapper (#314)"
         node -e '
           const m = require(process.argv[1]);
           if (m.ejected || m.ejectedVersion) { console.error("M3: adopt did not clear eject flags"); process.exit(1); }
         ' "$FRESH/.har/manifest.json" || fail "M3: adopt did not clear the manifest record"
         har "$FRESH" env doctor >/dev/null 2>&1 || fail "M3: doctor red after adopt"
-        echo "    adopt restores managed shims and clears the record ✓"
+        echo "    adopt removes the vendored runtime and clears the record ✓"
       fi
       echo "──> M3 asserts: local plugins (#240)"
       # #240 — local plugins: create → install → stage resolves in the registry
@@ -558,12 +505,12 @@ milestone_asserts() {
           || fail "M4: MIGRATE prompt does not surface the custom HARNESS_TEMPLATE_SQLITE residue"
         echo "    maintain detects pre-1.0, writes prompt+plan, changes nothing ✓"
 
-        # 2) Mechanical migration: shims in, machinery out, env pure, backups kept.
+        # 2) Mechanical migration: lifecycle wrappers deleted, machinery out, env pure.
         har "$CLONE" env maintain --migrate --yes >/dev/null 2>&1 || fail "M4: maintain --migrate failed"
         local mig_script
         for mig_script in launch.sh verify.sh teardown.sh setup-infra.sh; do
-          grep -q 'exec har env' "$CLONE/.har/$mig_script" \
-            || fail "M4: migrated .har/$mig_script is not a managed shim"
+          [ ! -f "$CLONE/.har/$mig_script" ] \
+            || fail "M4: migration left lifecycle wrapper .har/$mig_script (#314)"
         done
         [ ! -f "$CLONE/.har/provision-toolchain.sh" ] || fail "M4: migration left runtime machinery .har/provision-toolchain.sh"
         # agent-slot.sh is still sourced by the adapted stages/browser-e2e.sh:

@@ -11,7 +11,8 @@ describe('stage registry parsing', () => {
   });
 
   it('resolves stage by id and kind', () => {
-    expect(resolveStage(FIXTURE, { id: 'launch' })?.script).toBe('launch.sh');
+    expect(resolveStage(FIXTURE, { id: 'launch' })?.kind).toBe('launch');
+    expect(resolveStage(FIXTURE, { id: 'launch' })?.command).toBeUndefined();
     expect(resolveStage(FIXTURE, { kind: 'verify' })?.id).toBe('verify');
   });
 

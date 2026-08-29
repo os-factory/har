@@ -43,7 +43,7 @@
   ],
   "nextSteps": [
     "pipx install semgrep   # or: pip install semgrep / brew install semgrep",
-    "./.har/launch.sh 1",
+    "har env launch 1",
     "./.har/stages/sast.sh 1",
     "Open .har/artifacts/sast/ for the JSON and SARIF reports",
     "Read .har/stages/SEMGREP.md to pin rulesets (HARNESS_SEMGREP_CONFIG) or add local rules",

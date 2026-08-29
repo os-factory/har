@@ -22,14 +22,12 @@
       "id": "setup-infra",
       "kind": "setup",
       "description": "Optional shared Docker infrastructure",
-      "command": "./.har/setup-infra.sh",
       "artifacts": []
     },
     {
       "id": "launch",
       "kind": "launch",
       "description": "Prepare agent slot (git worktree, deps, env file)",
-      "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
           "path": ".env.agent.{agentId}",
@@ -42,7 +40,6 @@
       "id": "verify",
       "kind": "verify",
       "description": "Verification pipeline (quick: typecheck/build/docs; --full adds tests, lint, docs-drift)",
-      "command": "./.har/verify.sh {agentId}",
       "artifacts": [
         {
           "path": ".har/artifacts",
@@ -58,7 +55,6 @@
       "id": "status",
       "kind": "inspect",
       "description": "Inspect agent slot status and worktree path",
-      "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
           "path": ".har/logs",
@@ -95,7 +91,6 @@
       "id": "teardown",
       "kind": "teardown",
       "description": "Remove worktree and env file for the slot",
-      "command": "./.har/teardown.sh {agentId}",
       "artifacts": []
     },
     {

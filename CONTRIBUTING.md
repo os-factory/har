@@ -69,7 +69,7 @@ Canonical schemas live in [`packages/schemas/src/schema.ts`](packages/schemas/sr
 | Concept | Meaning | Primary code |
 |---------|---------|--------------|
 | **Slot** | Numbered agent environment (1..N) with its own ports/env | [`src/core/slot-registry.ts`](src/core/slot-registry.ts) |
-| **Session worktree** | Isolated git worktree created on `launch`; all edits go here | [`src/core/run-service.ts`](src/core/run-service.ts) + `.har/launch.sh` |
+| **Session worktree** | Isolated git worktree created on `launch`; all edits go here | [`src/core/run-service.ts`](src/core/run-service.ts) |
 | **Stage** | Project-defined runnable step (`launch`, `verify`, `test`, …) | [`src/harness/stages.ts`](src/harness/stages.ts) |
 | **Validation** | Tree-hash record written after a passing full verify | [`src/core/validations.ts`](src/core/validations.ts) |
 | **Commit gate** | Git hooks that block commits unless the staged tree matches a validation | [`src/core/hooks.ts`](src/core/hooks.ts) |
@@ -87,7 +87,7 @@ Run harness commands from the directory that owns the harness (e.g. `cd control`
 
 ### Required loop
 
-1. **Launch before editing** — `har env launch 1` (or `./.har/launch.sh 1`). Launch creates a fresh session worktree and prints its **work dir**.
+1. **Launch before editing** — `har env launch 1`. Launch creates a fresh session worktree and prints its **work dir**.
 2. **Edit only in that work dir** — never in the main checkout. Changes there hot-reload for running slots when applicable.
 3. **Verify through the harness** — `har env verify 1` (fast) then `har env verify 1 --full` before declaring done.
 4. **Commit in the session worktree** — if the commit gate is installed, commits that do not match a passing full-verify validation are blocked.
@@ -101,7 +101,7 @@ har env verify 1 --full
 har env complete 1
 ```
 
-Shell fallback when the CLI is not installed: `./.har/launch.sh 1`, `./.har/verify.sh 1 --full`, `./.har/teardown.sh 1`.
+When the CLI is not installed: `npx @osfactory/har env launch 1`, `npx @osfactory/har env verify 1 --full`, `npx @osfactory/har env teardown 1`.
 
 In Cursor, prefer MCP tools (`har_launch_environment`, `har_run_verification`, `har_complete_environment`) once [`.cursor/mcp.json`](.cursor/mcp.json.example) points at your checkout.
 
@@ -262,7 +262,7 @@ har env teardown 1
 har env status
 ```
 
-Shell fallback: `./.har/setup-infra.sh`, `./.har/launch.sh 1`, `./.har/verify.sh 1`, `./.har/teardown.sh 1`.
+When the CLI is not installed: `npx @osfactory/har env setup-infra`, `npx @osfactory/har env launch 1`, `npx @osfactory/har env verify 1`, `npx @osfactory/har env teardown 1`.
 
 ## Upgrading HAR
 

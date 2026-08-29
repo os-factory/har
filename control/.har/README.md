@@ -24,11 +24,10 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
-**Generated shims and state** (don't edit — `har env eject` for full ownership):
+**Generated state** (don't edit — `har env eject` vendors `.har/runtime/`):
 
 | File | Purpose |
 |------|---------|
-| `launch.sh` / `verify.sh` / `teardown.sh` / `setup-infra.sh` / `preflight.sh` / `agent-cli.sh` / `attach.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
 | `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
 | `runs/` | Run history from **every** entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
 | `artifacts/` | Stage outputs: reports, traces, screenshots, logs |
@@ -51,9 +50,8 @@ har env teardown 1
 
 In Cursor with HAR MCP configured: use `har_launch_environment`, `har_run_verification`, and `har_teardown_environment` (run from `control/` or point MCP at this harness).
 
-`./.har/*.sh` exist as compatibility shims over the same runtime — generated,
-never edited, and not the way to drive the harness. Take explicit ownership of
-them with `har env eject`.
+CLI and MCP are the only entry points. `har env eject` vendors the runtime into
+`.har/runtime/` for offline ownership (`node .har/runtime/har.cjs env …`).
 
 Read **`stages.json`** for registered stages and **`verificationStages`** for the expected pass set.
 
@@ -61,15 +59,15 @@ Read **`stages.json`** for registered stages and **`verificationStages`** for th
 
 | Mode | Command | Typical steps |
 |------|---------|---------------|
-| Quick | `har env verify <id>` or `verify.sh <id>` | typecheck, unit tests, api-health |
-| Full | `har env verify <id> --full` or `verify.sh <id> --full` | + lint + optional readiness smoke + **`browser-e2e`** + **`docker-build`** (when those stage scripts exist) |
+| Quick | `har env verify <id>` | typecheck, unit tests, api-health |
+| Full | `har env verify <id> --full` | + lint + optional readiness smoke + **`browser-e2e`** + **`docker-build`** (when those stage scripts exist) |
 
 Install Playwright plugin: `har env add-plugin playwright` (optional). UI changes should add or update specs under `tests/`.
 The `docker-build` stage builds `control/Dockerfile` against the session worktree (no push; native platform), then smoke-boots the image and waits for `/api/health`. That catches first-boot failures (for example a broken Prisma CLI / missing wasm) that a build-only check would miss. PR CI runs this via the `control` job's full verify.
 
 ## Run history
 
-Every entry point — `./.har/*.sh`, `har env …`, MCP — runs the same packaged
+Every entry point — `har env …`, MCP — runs the same packaged
 runtime and writes the same records under the main checkout
 `control/.har/runs/YYYY-MM-DD/`. The shims delegate; they do not record less.
 
@@ -81,13 +79,13 @@ With git worktree slots, verification runs code in the worktree but run JSON sta
 2. Read this file and `stages.json`
 3. After `launch`, this file has the slot URLs and definition of done
 
-Prefer HAR MCP tools or `har env …` for launch, verify, and teardown — richer output, not richer records. The `./.har/*.sh` shims are equivalent.
+Prefer HAR MCP tools or `har env …` for launch, verify, and teardown.
 
 Always use `har env agent <id>` — never hardcoded ports.
 
 ## Architecture
 
-Each agent slot gets isolated app ports. Defaults follow `BASE + (AGENT_ID × HARNESS_PORT_STEP)`; when a default is busy, `launch.sh` scans the slot lane and writes resolved ports to `.env.agent.<id>` and `.har/slots/agent-<id>.json`.
+Each agent slot gets isolated app ports. Defaults follow `BASE + (AGENT_ID × HARNESS_PORT_STEP)`; when a default is busy, `har env launch` scans the slot lane and writes resolved ports to `.env.agent.<id>` and `.har/slots/agent-<id>.json`.
 
 Configure how many slots your machine can run in parallel in `.har/stages.json` (`agentSlots`). Bash scripts and the CLI read that first; `harness.env` keeps legacy `HARNESS_AGENT_SLOT_*` exports in sync via `har env maintain --finalize`.
 
@@ -117,7 +115,7 @@ These are **different ways to run Mission Control** and they **conflict on port 
 | `har control up` | Docker image `theosfactory/har-control` | **3847** (UI/API) |
 | `cd control && har env launch 1` | Harness slot with PM2 + per-slot SQLite | **3847** for slot 1 |
 
-Do not run both at once. Before launching harness slot 1, run `har control down` if the control container is up. `launch.sh` preflight also detects a Mission Control container bound to the slot port and fails with a clear message.
+Do not run both at once. Before launching harness slot 1, run `har control down` if the control container is up. `har env launch` preflight also detects a Mission Control container bound to the slot port and fails with a clear message.
 
 For day-to-day agent work on Mission Control itself, use the **harness** (`cd control && har env launch 1`). Use `har control up` when you want the published Docker image without a worktree slot.
 
@@ -131,7 +129,7 @@ For day-to-day agent work on Mission Control itself, use the **harness** (`cd co
 ### Do not
 
 - Hardcode `3847` in app code, Playwright specs, or docs — read from agent env / slot registry
-- Run raw `docker compose` for harness infrastructure — use `setup-infra.sh` / `launch.sh`
+- Run raw `docker compose` for harness infrastructure — use `har env setup-infra` / `har env launch`
 
 ### Primary app vs shared services
 
@@ -141,7 +139,7 @@ database. `docker-compose.agent.yml` is a stub for a future service if one is ne
 
 ### Database
 
-Each slot gets its own SQLite file at `prisma/agent_<id>.db`. `launch.sh` runs
+Each slot gets its own SQLite file at `prisma/agent_<id>.db`. `har env launch` runs
 `HARNESS_DB_MIGRATE_CMD` (`prisma db push`) against that file on every launch
 (idempotent), so schema changes are applied before the slot starts serving.
 
@@ -150,7 +148,7 @@ from a fresh worktree (monorepo `file:` link).
 
 ### Port safety
 
-`launch.sh` and `har env preflight` refuse to start when a slot's allocated ports are held by a
+`har env launch` and `har env preflight` refuse to start when a slot's allocated ports are held by a
 foreign process. **`har control up`** (Docker `control-app-1` on port 3847) is detected explicitly:
 
 - If the default port is busy but another port in the slot lane is free, launch proceeds on the
@@ -226,7 +224,7 @@ npm run test:e2e          # Playwright only
 - Hand-roll docker/dev-server startup — `launch` is how you run the app (manual testing, browser, screenshots included)
 - Work around a failing harness command with ad-hoc setup — fix the harness or report the failure
 - Hardcode ports — use agent env / `agent-cli.sh url`
-- Run raw `docker compose` for shared harness infra — use `setup-infra.sh`
+- Run raw `docker compose` for shared harness infra — use `har env setup-infra`
 - Edit `.env.agent.<id>` or PM2 ecosystem files by hand
 - Skip `launch` before `verify` (server must be running for health and e2e)
 - Edit the main checkout — all edits go under the session work dir

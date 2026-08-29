@@ -63,7 +63,7 @@ Every script under `.har/stages/` must:
 2. Take the agent slot id as `$1`, falling back to the exported `AGENT_ID`
    (`AGENT_ID="${1:-${AGENT_ID:?...}}"`); extra args may follow.
 3. Guard the runner contract with `${ENV_FILE:?...}` / `${WORK_DIR:?...}`
-   (pointing at `./.har/launch.sh <id>`) and run checks from `$WORK_DIR`.
+   (pointing at `har env launch <id>`) and run checks from `$WORK_DIR`.
 4. Write artifacts (reports, screenshots, logs) under `.har/artifacts/<id>/`.
 5. Print **only** the normalized JSON result object on stdout
    (`status`, `stageId`, `agent_id`, `total_ms`, …); log progress to stderr.
@@ -76,7 +76,7 @@ The scaffolded skeleton implements all of this — replace its TODO block.
 Listing a stage id in `verificationStages` is what includes it in
 `har env verify <id> --full`. Ids that match a registered stage run via their
 script/command; ids without a registry entry (e.g. `typecheck`, `api-health`)
-are inline steps owned by `.har/verify.sh`. Lifecycle kinds
+are inline steps owned by `har env verify`. Lifecycle kinds
 (`setup`/`launch`/`reset`/`teardown`/`inspect`) and `verify` itself never run
 as part of verification, even if listed.
 

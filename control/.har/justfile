@@ -2,38 +2,37 @@
 
 set shell := ["bash", "-cu"]
 
+repo := justfile_directory() + "/.."
+
 setup:
-    ./setup-infra.sh
+    har env setup-infra --repo {{repo}}
 
 launch id:
-    ./launch.sh {{id}}
+    har env launch {{id}} --repo {{repo}}
 
 teardown id:
-    ./teardown.sh {{id}}
+    har env teardown {{id}} --repo {{repo}}
 
 verify id:
-    ./verify.sh {{id}}
+    har env verify {{id}} --repo {{repo}}
 
 verify-full id:
-    ./verify.sh {{id}} --full
+    har env verify {{id}} --full --repo {{repo}}
 
 status:
-    #!/usr/bin/env bash
-    for id in 1 2 3 4 5; do
-        ./agent-cli.sh "$id" status 2>/dev/null || true
-    done
+    har env status --repo {{repo}}
 
 launch-all count:
     #!/usr/bin/env bash
     for id in $(seq 1 {{count}}); do
-        ./launch.sh "$id"
+        har env launch "$id" --repo "{{repo}}"
     done
 
 teardown-all:
     #!/usr/bin/env bash
     for id in 1 2 3 4 5; do
-        ./teardown.sh "$id" 2>/dev/null || true
+        har env teardown "$id" --repo "{{repo}}" 2>/dev/null || true
     done
 
 cli id cmd *args:
-    ./agent-cli.sh {{id}} {{cmd}} {{args}}
+    har env agent {{id}} {{cmd}} {{args}} --repo {{repo}}

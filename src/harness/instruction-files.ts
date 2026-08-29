@@ -251,23 +251,18 @@ export function formatInstallPlan(
 }
 
 /**
- * The shell surface is documented in the agent instructions ONLY for an ejected
- * harness (#301). For a managed harness `.har/*.sh` are compatibility shims —
- * teaching them gives an agent a second way to drive the harness and invites
- * editing generated files. After `har env eject` the scripts are the user's and
- * are a legitimate entry point, so the block gains them.
+ * Ejected harnesses vendor the runtime; invocation is still CLI/MCP (or
+ * `node .har/runtime/har.cjs env …` with no `har` install). No wrapper scripts.
  */
 const HAR_EJECTED_SHELL_SECTION = `
 ### Ejected harness
 
-This harness is **ejected** (\`har env eject\`): \`.har/*.sh\` are yours and execute
-the vendored runtime in \`.har/runtime/\` directly, so they work with no \`har\`
-install present.
+This harness is **ejected** (\`har env eject\`): the runtime is vendored in
+\`.har/runtime/\`. Drive it with \`har env …\` or
+\`node .har/runtime/har.cjs env …\` (no \`har\` install required).
 
-- \`./.har/launch.sh <id>\` · \`./.har/verify.sh <id> --full\` · \`./.har/teardown.sh <id>\`
-
-You own these files — HAR will not update them. Return to managed shims with
-\`har env adopt\`.
+You own \`.har/runtime/\` — HAR will not update it. Return to the packaged
+runtime with \`har env adopt\`.
 `;
 
 /** Extract the marked HAR section body from the AGENTS.md template (including markers). */

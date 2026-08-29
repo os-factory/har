@@ -47,7 +47,7 @@
   ],
   "nextSteps": [
     "Install trivy: brew install trivy (or https://trivy.dev/latest/getting-started/installation/)",
-    "./.har/launch.sh 1",
+    "har env launch 1",
     "./.har/stages/vuln-scan.sh 1",
     "Open .har/artifacts/vuln-scan/summary.txt for findings",
     "Tune HARNESS_TRIVY_SEVERITY / HARNESS_TRIVY_SCANNERS in .har/harness.env — read .har/stages/TRIVY.md"

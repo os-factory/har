@@ -67,7 +67,7 @@ Every script under `.har/stages/` must:
 2. Take the agent slot id as `$1`, falling back to the exported `AGENT_ID`
    (`AGENT_ID="${1:-${AGENT_ID:?...}}"`); extra args may follow.
 3. Guard the runner contract with `${ENV_FILE:?...}` / `${WORK_DIR:?...}`
-   (pointing at `./.har/launch.sh <id>`) and run checks from `$WORK_DIR`.
+   (pointing at `har env launch <id>`) and run checks from `$WORK_DIR`.
 4. Write artifacts (reports, screenshots, logs) under `.har/artifacts/<id>/`.
 5. Print **only** the normalized JSON result object on stdout
    (`status`, `stageId`, `agent_id`, `total_ms`, …); log progress to stderr.

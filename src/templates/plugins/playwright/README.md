@@ -7,7 +7,7 @@ This plugin was added by `har env add-plugin playwright`. It registers a `browse
 ```bash
 npm install
 npx playwright install
-./.har/launch.sh 1
+har env launch 1
 ./.har/stages/browser-e2e.sh 1
 ```
 

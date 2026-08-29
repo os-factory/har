@@ -14,7 +14,7 @@ runs it automatically once it is listed in `verificationStages`.
 ./.har/stages/sast.sh 1 src/ lib/auth.py
 
 # Included in full verify
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```
 
 Reports land under `.har/artifacts/sast/` in the **main repo root** (not the worktree):

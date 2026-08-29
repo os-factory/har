@@ -49,7 +49,7 @@
     "npm install -g @kerno/cli",
     "kerno init                       # bind the single Kerno agent to THIS worktree",
     "Ask your Kerno agent to generate a scenario suite (or ensure .kerno/scenarios/ is committed)",
-    "./.har/launch.sh 1               # then start your app in the slot",
+    "har env launch 1               # then start your app in the slot",
     "./.har/stages/backend-validation.sh 1",
     "Open .har/artifacts/backend-validation/ for verdicts and per-endpoint run responses"
   ],

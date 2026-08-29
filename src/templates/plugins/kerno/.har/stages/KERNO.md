@@ -47,7 +47,7 @@ concurrently across slots.
 
 ## Configuration the stage reads
 
-All values come from the slot's `.env.agent.<id>` (written by `launch.sh`) and `~/.kerno/agent.port`:
+All values come from the slot's `.env.agent.<id>` (written by `har env launch`) and `~/.kerno/agent.port`:
 
 | Value | Source | Used for |
 |-------|--------|----------|
@@ -101,7 +101,7 @@ Under `.har/artifacts/backend-validation/`:
 ./.har/stages/backend-validation.sh 1
 
 # As part of full verify
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```
 
 ## Adapting per repo

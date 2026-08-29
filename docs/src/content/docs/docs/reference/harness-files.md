@@ -28,22 +28,15 @@ records your adaptations and `har env maintain` preserves them across upgrades
 
 | `.har/justfile` | Optional `just` shortcuts |
 
-## Generated shims and managed files
+## Managed files
 
-The `*.sh` entry points are thin shims: each resolves the packaged runtime
-(`har` on PATH → repo-local `node_modules/.bin/har` → `npx @osfactory/har@<pinned>`)
-and forwards to the same `har env` command. Every surface writes the same run
-records. Do not edit them — `har env doctor` flags patched shims, and
-[`har env eject`](/docs/guides/eject/) is the sanctioned way to take ownership:
+CLI and MCP are the only entry points. Lifecycle stages in `stages.json`
+dispatch by `kind` — there are no generated `.har/*.sh` wrappers.
+[`har env eject`](/docs/guides/eject/) vendors the runtime into `.har/runtime/`
+for offline ownership (`node .har/runtime/har.cjs env …`).
 
-| Path | Forwards to |
+| Path | Purpose |
 | --- | --- |
-| `.har/launch.sh` | `har env launch` |
-| `.har/verify.sh` | `har env verify` (pass `--json` for the structured result) |
-| `.har/teardown.sh` | `har env teardown` |
-| `.har/setup-infra.sh` | `har env setup-infra` |
-| `.har/preflight.sh` | `har env preflight` |
-| `.har/agent-cli.sh` | `har env agent` helpers (status, logs, health, exec, db) |
 | `.har/manifest.json` | CLI-managed: runtime version, profile, checksums (never hand-edit) |
 
 ## Repo-root agent instruction files

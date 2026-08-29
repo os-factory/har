@@ -137,6 +137,15 @@ function resolveStageScriptPath(repoPath: string, stage: HarnessStage): string {
     return stageScript;
   }
 
+  // Pre-1.0 vendored lifecycle scripts remain until `--migrate` deletes them.
+  // After #314, stages.json dispatches by kind and may have no command/script.
+  const fallback =
+    stage.kind === 'inspect' ? 'agent-cli.sh' : RUNTIME_SCRIPT_FOR_KIND[stage.kind];
+  if (fallback) {
+    const fallbackPath = path.join(harnessDir, fallback);
+    if (fs.existsSync(fallbackPath)) return fallbackPath;
+  }
+
   throw new Error(
     `Stage "${stage.id}" has no runnable script. Add script to stages.json, create .har/stages/${stage.id}.sh, or run verification via har_run_verification.`,
   );
@@ -219,7 +228,7 @@ function makeSink(stream: NodeJS.WriteStream, live: boolean): { write: (line: st
   };
 }
 
-/** Stage command tail after `./.har/agent-cli.sh {agentId}` (or empty when not an agent-cli stage). */
+/** Stage command tail after a leftover `./.har/agent-cli.sh {agentId}` command. */
 function agentCliOp(stage: HarnessStage): string[] | undefined {
   const target = stage.command ?? stage.script ?? '';
   if (!/agent-cli\.sh/.test(target)) return undefined;
@@ -227,6 +236,16 @@ function agentCliOp(stage: HarnessStage): string[] | undefined {
   const scriptIndex = tokens.findIndex((token) => token.includes('agent-cli.sh'));
   if (scriptIndex < 0) return [];
   return tokens.slice(scriptIndex + 1).filter((token) => token !== '{agentId}');
+}
+
+/** Inspect stages dispatch by id (status, logs, …) when no custom command is set. */
+function inspectOp(stage: HarnessStage): string[] | undefined {
+  const fromShim = agentCliOp(stage);
+  if (fromShim !== undefined) return fromShim;
+  if (stage.kind === 'inspect' && !stage.command && !stage.script) {
+    return [stage.id];
+  }
+  return undefined;
 }
 
 const RUNTIME_SCRIPT_FOR_KIND: Partial<Record<string, string>> = {
@@ -278,7 +297,13 @@ async function runPackageRuntimeStage(
   capture: boolean,
 ): Promise<StageResult | undefined> {
   const legacyScript = RUNTIME_SCRIPT_FOR_KIND[stage.kind];
-  if (legacyScript && harnessScriptIsLegacy(repoPath, legacyScript)) {
+  // A leftover vendored file is authoritative only while stages.json still
+  // points at it. Kind-only entries (#314) dispatch through the package.
+  if (
+    legacyScript &&
+    (stage.command || stage.script) &&
+    harnessScriptIsLegacy(repoPath, legacyScript)
+  ) {
     warnLegacyRuntimeScript(repoPath, legacyScript);
     return undefined;
   }
@@ -367,8 +392,14 @@ async function runPackageRuntimeStage(
     });
   }
 
-  const op = agentCliOp(stage);
-  if (op !== undefined && harnessScriptIsLegacy(repoPath, 'agent-cli.sh')) return undefined;
+  const op = inspectOp(stage);
+  if (
+    op !== undefined &&
+    (stage.command || stage.script) &&
+    harnessScriptIsLegacy(repoPath, 'agent-cli.sh')
+  ) {
+    return undefined;
+  }
   if (op !== undefined && options.agentId !== undefined) {
     const command = op[0] ?? options.args?.[0] ?? 'status';
     const args = op.length > 0 ? [...op.slice(1), ...(options.args ?? [])] : (options.args ?? []).slice(1);
@@ -405,8 +436,8 @@ export class LocalScriptExecutor implements StageExecutor {
 
     const capture = options.capture ?? ctx.capture ?? true;
 
-    // The runtime kinds (#234) run in the package — never through generated
-    // scripts, which are now argument-preserving delegates back into har.
+    // The runtime kinds (#234 / #314) run in the package — dispatch by kind,
+    // never through generated lifecycle wrappers.
     const runtimeResult = await runPackageRuntimeStage(repoPath, stage, options, capture);
     if (runtimeResult) return runtimeResult;
 

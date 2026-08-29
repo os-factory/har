@@ -15,11 +15,10 @@
 | `STAGES.md` | Stage registry and script-contract guide |
 | `justfile` | Optional shortcuts (requires `just`) |
 
-**Generated shims and state** (don't edit — `har env eject` for full ownership):
+**Generated state** (don't edit — `har env eject` vendors `.har/runtime/`):
 
 | File | Purpose |
 |------|---------|
-| `har env launch` / `har env verify` / `har env teardown` / `har env setup-infra` / `preflight.sh` / `agent-cli.sh` | Thin shims forwarding to the packaged runtime (`har env …`); same run records on every surface |
 | `manifest.json` | Runtime version, profile, checksums — managed by the har CLI |
 | `runs/` | Run history from every entry point — `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (gitignored) |
 | `artifacts/` | Stage outputs: test results, screenshots, logs |

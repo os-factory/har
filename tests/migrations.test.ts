@@ -109,8 +109,8 @@ describe('versioned harness migrations (#241)', () => {
 
   it('plan classifies scripts, machinery, and env residue', () => {
     const plan = PRE_1_0_MIGRATION.plan(proj());
-    expect(plan.replaceWithShims).toContain('launch.sh');
-    expect(plan.replaceWithShims).toContain('verify.sh');
+    expect(plan.deleteLifecycleScripts).toContain('launch.sh');
+    expect(plan.deleteLifecycleScripts).toContain('verify.sh');
     expect(plan.deleteMachinery).toEqual(
       expect.arrayContaining(['agent-slot.sh', 'provision-toolchain.sh', 'lib/infra.sh']),
     );
@@ -130,13 +130,11 @@ describe('versioned harness migrations (#241)', () => {
   // #297: attach.sh was absent from the shim surface, so migration left the
   // vendored copy in place *and* deleted the agent-slot.sh it sourced.
   it('migrates a vendored attach.sh instead of orphaning it', async () => {
-    expect(PRE_1_0_MIGRATION.plan(proj()).replaceWithShims).toContain('attach.sh');
+    expect(PRE_1_0_MIGRATION.plan(proj()).deleteLifecycleScripts).toContain('attach.sh');
 
     await maintainHarness({ repoPath: proj(), migrate: true });
 
-    const attach = fs.readFileSync(har('attach.sh'), 'utf8');
-    expect(attach).toContain('exec har env agent');
-    expect(attach).not.toContain('agent-slot.sh');
+    expect(fs.existsSync(har('attach.sh'))).toBe(false);
     expect(fs.existsSync(har('agent-slot.sh'))).toBe(false);
     // The pre-1.0 copy is recoverable until finalize.
     expect(fs.existsSync(har('migrate', 'backup', 'attach.sh'))).toBe(true);
@@ -303,9 +301,9 @@ describe('versioned harness migrations (#241)', () => {
     const result = await maintainHarness({ repoPath: proj(), migrate: true });
     expect(result.migration?.applied).toBe(true);
 
-    // Shims in place, machinery gone, env pure.
-    expect(fs.readFileSync(har('launch.sh'), 'utf8')).toContain('exec har env launch');
-    expect(fs.readFileSync(har('verify.sh'), 'utf8')).toContain('exec har env verify');
+    // Lifecycle wrappers deleted, machinery gone, env pure.
+    expect(fs.existsSync(har('launch.sh'))).toBe(false);
+    expect(fs.existsSync(har('verify.sh'))).toBe(false);
     expect(fs.existsSync(har('agent-slot.sh'))).toBe(false);
     expect(fs.existsSync(har('provision-toolchain.sh'))).toBe(false);
     // lib/infra.sh is machinery; lib/ itself may stay (1.0 still ships verify-runner.mjs).

@@ -145,7 +145,6 @@ function formatOccupiedSlot(
       'This session failed partway through launch. Resume without a new launch:',
       `  har env launch ${slot.agentId} --resume`,
       `  har env recover ${slot.agentId}`,
-      `  ./.har/launch.sh ${slot.agentId} --resume`,
       '',
     );
   } else {

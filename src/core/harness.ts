@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { scaffoldHarnessBoilerplate, finalizeHarness, ScaffoldOptions } from '../harness/generator';
+import { retireLifecycleShims } from '../harness/lifecycle-shims';
 import { finalizeAgentsMdInstructionFiles } from '../harness/agent-md';
 import { validateHarness, smokeTestHarness, ValidationResult } from '../harness/validator';
 import { compareHarnessToTemplate, HarnessDriftResult } from '../harness/drift';
@@ -196,6 +197,10 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
       };
     }
   }
+
+  // #314: leftover managed/ejected lifecycle wrappers are not an entry point.
+  // Safe on pre-1.0: vendored runtime bash is not managed-shim content.
+  retireLifecycleShims(repoPath);
 
   ensureEcosystemVerificationStages(repoPath);
   const drift = compareHarnessToTemplate(repoPath);

@@ -31,12 +31,12 @@ handoff so the user can see the completed work.
 
 ## Run
 
-After `./.har/launch.sh <id>`:
+After `har env launch <id>`:
 
 ```bash
 ./.har/stages/browser-e2e.sh <id>
 # included in:
-./.har/verify.sh <id> --full
+har env verify <id> --full
 ```
 
 Never hardcode ports — `BASE_URL` comes from the slot env / `browser-e2e.sh`.

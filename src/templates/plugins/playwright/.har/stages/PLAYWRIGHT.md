@@ -10,12 +10,12 @@ Adapt specs under `tests/` for your application. Full verification (`verify --fu
 
 ## Run
 
-After `./.har/launch.sh <id>`:
+After `har env launch <id>`:
 
 ```bash
 ./.har/stages/browser-e2e.sh <id>
 # included in:
-./.har/verify.sh <id> --full
+har env verify <id> --full
 ```
 
 Adapt selectors and paths in the scaffold specs during harness adaptation.

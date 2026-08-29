@@ -31,7 +31,7 @@ stage entries in `.har/stages.json`. Never edit the shims.
 ## Prove it green
 
 ```bash
-har env launch 1                # or ./.har/launch.sh 1
+har env launch 1
 har env verify 1 --full         # must pass INCLUDING {{STAGE_IDS}}
 ```
 

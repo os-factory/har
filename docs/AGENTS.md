@@ -42,7 +42,7 @@ harness or report it; do not fall back to ad-hoc commands.
 
 Occupied slots always block: `complete` / `teardown`, then launch. Customize the
 harness only through `harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`
-and `.har/plugins/` — the generated `.har/*.sh` shims are not an editing surface.
+and `.har/plugins/` — there is no generated `.har/*.sh` entry-point surface.
 
 Full detail — slot environment, readiness, definition of done, project commands,
 commit gate: [`.har/README.md`](.har/README.md) and [`.har/stages.json`](.har/stages.json).

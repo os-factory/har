@@ -6,7 +6,7 @@
 # Usage: ./.har/stages/rocketsim-flows.sh <agent-id> [flow-name]
 #   flow-name (optional): run only flows/<flow-name>.sh instead of all flows
 #
-# Prerequisite: ./.har/launch.sh <agent-id> AND app installed+running on simulator
+# Prerequisite: har env launch <agent-id> AND app installed+running on simulator
 # See: ./.har/stages/ROCKETSIM.md for the full authoring guide.
 set -euo pipefail
 
@@ -38,8 +38,8 @@ if ! rocketsim doctor --quiet 2>/dev/null; then
 fi
 
 # ── Resolve agent env ─────────────────────────────────────────────────────────
-ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
-WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run ./.har/launch.sh ${AGENT_ID} first}"
+ENV_FILE="${ENV_FILE:?No slot env for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
+WORK_DIR="${WORK_DIR:?No slot work dir for agent ${AGENT_ID} — run har env launch ${AGENT_ID} first}"
 
 # ── Discover flows ─────────────────────────────────────────────────────────────
 FLOWS_DIR="$WORK_DIR/flows"

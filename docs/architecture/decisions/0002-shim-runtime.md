@@ -1,6 +1,6 @@
 # ADR 0002: Raw-script surface as an interface over the canonical core
 
-- Status: Accepted
+- Status: Superseded by #314 (CLI and MCP are the only entry points; lifecycle wrappers are not generated)
 - Date: 2026-08-24
 - Extends: [ADR 0001](./0001-work-identity.md) (HAR owns execution and proof)
 - Supersedes: the pre-1.0 stance that `.har/` shell scripts *are* the runtime

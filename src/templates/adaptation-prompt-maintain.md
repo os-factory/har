@@ -81,7 +81,7 @@ scripts for a lifecycle side effect, move that code into a hook.
 Platform-shape upgrades are **code, not a checklist**: the har CLI carries a
 versioned migration registry keyed on the manifest's `runtimeVersion`.
 `har env maintain` detects an old harness shape, writes `.har/MIGRATE-PROMPT.md`,
-and `har env maintain --migrate` applies the mechanical steps (shims, pure-config
+and `har env maintain --migrate` applies the mechanical steps (delete leftover wrappers, pure-config
 `harness.env` with `HARNESS_INFRA_SERVICES` / `HARNESS_INFRA_PORT_LANES`
 conversions, machinery removal) with backups under `.har/migrate/backup/`.
 

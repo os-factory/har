@@ -468,8 +468,8 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
       log('  Edits under the work dir hot-reload in the running slot;');
       log(`  use har env agent ${agentId} restart if a change doesn't take.`);
     }
-    log(`  Verify:    ./.har/verify.sh ${agentId}`);
-    log(`  Teardown:  ./.har/teardown.sh ${agentId}   (keeps the branch)`);
+    log(`  Verify:    har env verify ${agentId}`);
+    log(`  Teardown:  har env teardown ${agentId}   (keeps the branch)`);
 
     return {
       code: 0,
@@ -500,7 +500,7 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
     }
     log(`  Work dir:  ${session.workDir}`);
     log(`  Env file:  ${session.envFile}`);
-    log(`  Recovery:  har env launch ${agentId} --resume  # or ./.har/launch.sh ${agentId} --resume`);
+    log(`  Recovery:  har env launch ${agentId} --resume`);
     errorLine(`ERROR: ${message}`);
     return { code: 1 };
   }

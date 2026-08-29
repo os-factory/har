@@ -31,7 +31,7 @@ The benchmark runner validates readiness **after** your edits — do not launch 
 - Do **not** edit `launch.sh` or `agent-slot.sh` (repo bootstrap only)
 - Do **not** run full test suites or replicate SWE-bench grading
 - Do **not** use evaluator-only fields (`FAIL_TO_PASS`, `PASS_TO_PASS`, gold patch)
-- Do **not** run `har env init`, `har env launch`, `./.har/launch.sh`, `./.har/teardown.sh`, or `./.har/verify.sh`
+- Do **not** run `har env init`, `har env launch`, `har env launch`, `har env teardown`, or `har env verify`
 - Do **not** overwrite repo-generic defaults in `.har-cache/` — task overlays are per-run only
 
 ## Task overlay

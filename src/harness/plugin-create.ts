@@ -100,9 +100,9 @@ export function createLocalPlugin(
     ...(options.packageFragment ? { merge: { 'package.json': 'package.fragment.json' } } : {}),
     nextSteps: [
       `Edit ${pluginDirRel}/stages/${id}.sh — replace the TODO block with the real check`,
-      './.har/launch.sh 1',
+      'har env launch 1',
       `./.har/stages/${id}.sh 1`,
-      './.har/verify.sh 1 --full   # runs it as part of full verification',
+      'har env verify 1 --full   # runs it as part of full verification',
     ],
     docsPath: `${pluginDirRel}/README.md`,
   });

@@ -17,14 +17,12 @@ What it does:
 
 - Vendors the packaged runtime (the same bundle `har` itself runs) into
   `.har/runtime/har.cjs`.
-- Rewrites the `.har/*.sh` scripts to execute that vendored runtime directly
-  with `node` — no `har` on PATH required, no npx network fallback. Argument
-  conventions (`./.har/launch.sh 1`, `./.har/verify.sh 1 --full`) are
-  unchanged.
+- Does **not** write wrapper scripts. Invocation is `har env …` or
+  `node .har/runtime/har.cjs env …` (no `har` on PATH required).
 - Records the ejection in `.har/manifest.json`.
 
-From that point the scripts and vendored runtime are **user-owned**: drift and
-`har env maintain` stop comparing them to upstream templates. `har env doctor`
+From that point the vendored runtime is **user-owned**: drift and
+`har env maintain` stop comparing it to upstream templates. `har env doctor`
 keeps validating the contract (env schema, stage registry, slot registry) and
 reports the ejected runtime as user-owned rather than flagging it as damage.
 
@@ -40,8 +38,8 @@ stages, hooks, and plugins keep working as before — the contract is the same.
 har env adopt
 ```
 
-restores managed shims and removes `.har/runtime/` (as does
-`har env init --force`). Nothing about your config surface is touched.
+removes `.har/runtime/` (as does `har env init --force`) and returns you to
+the packaged runtime. Nothing about your config surface is touched.
 
 ## When to eject
 

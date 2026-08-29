@@ -6,9 +6,9 @@ import { writeFileSafe } from '../utils/file-ops';
 
 const MANIFEST_VERSION = '1';
 /**
- * Runtime-contract version of the generated harness shape (#241): thin shims
- * + pure config. Stamped at init/finalize/migration; the migration registry
- * (migrations.ts) keys on it.
+ * Runtime-contract version of the generated harness shape (#241 / #314):
+ * config surface only — no lifecycle wrappers. Stamped at init/finalize/
+ * migration; the migration registry (migrations.ts) keys on it.
  */
 export const HARNESS_RUNTIME_VERSION = '1.0.0';
 export const DEFAULT_HAR_DIR = '.har';

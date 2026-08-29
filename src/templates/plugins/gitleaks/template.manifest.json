@@ -43,7 +43,7 @@
   ],
   "nextSteps": [
     "Install gitleaks: brew install gitleaks — or a release binary from https://github.com/gitleaks/gitleaks/releases",
-    "./.har/launch.sh 1",
+    "har env launch 1",
     "./.har/stages/secrets-scan.sh 1",
     "Open .har/artifacts/secrets-scan/report.json for findings (secrets are redacted)",
     "Tune allowlists in .gitleaks.toml — read .har/stages/GITLEAKS.md for the adaptation guide"

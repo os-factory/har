@@ -111,7 +111,7 @@ function staleFileHint(file: string): string {
 function actionHint(file: string, kind: MaintainActionKind): string {
   if (kind === 'missing') {
     if (file === 'provision-toolchain.sh') {
-      return 'Add this file and ensure launch.sh calls it to provision the toolchain.';
+      return 'Add this file and ensure a post-launch hook (or HARNESS_INSTALL_CMD) provisions the toolchain.';
     }
     return `Copy/adapt from maintain/templates/${file} into .har/${file}.`;
   }

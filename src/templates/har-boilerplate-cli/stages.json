@@ -13,14 +13,12 @@
     {
       "id": "setup-infra",
       "kind": "setup",
-      "description": "Optional shared Docker infrastructure",
-      "command": "./.har/setup-infra.sh"
+      "description": "Optional shared Docker infrastructure"
     },
     {
       "id": "launch",
       "kind": "launch",
       "description": "Prepare agent slot (git worktree, deps, env file)",
-      "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
           "path": ".env.agent.{agentId}",
@@ -33,7 +31,6 @@
       "id": "verify",
       "kind": "verify",
       "description": "Verification pipeline: runs stages.json verificationStages in order (tier \"quick\" by default; --full runs the whole list)",
-      "command": "./.har/verify.sh {agentId}",
       "acceptsArgs": [
         "--full"
       ],
@@ -49,7 +46,6 @@
       "id": "status",
       "kind": "inspect",
       "description": "Inspect agent slot status and worktree path",
-      "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
           "path": ".har/logs",
@@ -61,8 +57,7 @@
     {
       "id": "teardown",
       "kind": "teardown",
-      "description": "Remove worktree and env file for the slot",
-      "command": "./.har/teardown.sh {agentId}"
+      "description": "Remove worktree and env file for the slot"
     },
     {
       "id": "typecheck",
