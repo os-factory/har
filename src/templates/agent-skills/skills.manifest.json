@@ -13,8 +13,12 @@
           "allowed-tools": "Bash(har *) Bash(npm *) Bash(git *) Bash(docker *) Read Grep Glob Edit Write"
         }
       },
-      "cursor": { "command": true },
-      "codex": { "promptName": "har-setup" }
+      "cursor": {
+        "command": true
+      },
+      "codex": {
+        "promptName": "har-setup"
+      }
     },
     {
       "id": "har-wt",
@@ -26,8 +30,12 @@
           "description": "Use BEFORE making any code change in this repository. Launches a har harness slot, which creates an isolated git session worktree — all edits must happen there, never in the main checkout — and verifies the work through the harness when done."
         }
       },
-      "cursor": { "command": true },
-      "codex": { "promptName": "har-wt" }
+      "cursor": {
+        "command": true
+      },
+      "codex": {
+        "promptName": "har-wt"
+      }
     },
     {
       "id": "har-maintain",
@@ -41,8 +49,12 @@
           "allowed-tools": "Bash(har *) Bash(git *) Read Grep Glob Edit Write"
         }
       },
-      "cursor": { "command": true },
-      "codex": { "promptName": "har-maintain" }
+      "cursor": {
+        "command": true
+      },
+      "codex": {
+        "promptName": "har-maintain"
+      }
     },
     {
       "id": "factory-line",
@@ -51,11 +63,15 @@
       "claude": {
         "frontmatter": {
           "name": "factory-line",
-          "description": "Execute one station of a declared multi-station program (*.line.json): parallel HAR slots, cumulative gate, human handoff. Use when asked to run a factory line, the next station, or a milestone program."
+          "description": "Execute one station of an installed factory line (har line status / .har/lines/<id>/line.json): parallel HAR slots, cumulative gate via har line gate, human handoff. Use when asked to run a factory line, the next station, or a milestone program."
         }
       },
-      "cursor": { "command": true },
-      "codex": { "promptName": "har-factory-line" }
+      "cursor": {
+        "command": true
+      },
+      "codex": {
+        "promptName": "har-factory-line"
+      }
     }
   ]
 }

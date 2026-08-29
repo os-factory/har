@@ -25,6 +25,10 @@ describe('HAR MCP tool schemas', () => {
       'har_list_runs',
       'har_get_run',
       'har_control_up',
+      'har_line_create',
+      'har_add_line',
+      'har_line_status',
+      'har_run_line_gate',
     ]);
     expect(names).not.toContain('run_playwright');
   });

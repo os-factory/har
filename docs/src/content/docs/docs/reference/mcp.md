@@ -60,6 +60,24 @@ Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
 | `har_list_runs` | optional `stageId`, `limit` | Persisted run records |
 | `har_get_run` | `runId` | One normalized run record |
 
+## Factory lines
+
+A **factory line** is a multi-station program with a cumulative gate. Line
+stages are registered in `.har/stages.json` but are **never** added to
+`verificationStages` — `har_run_verification` is unaffected by installing one.
+Verification plugins (which *do* join verify) use `har_add_plugin` instead.
+
+| Tool | Inputs | Result |
+| --- | --- | --- |
+| `har_line_create` | `id`, optional `title`, `description`, `stations`, `gateStage`, `optInEnv`, `force` | Scaffolds `.har/lines/<id>/` (manifest, program, gate stage, README) and returns files written and next steps |
+| `har_add_line` | `line` (local id, path, npm package, or git URL), optional `force` | Installed line id, stations, registered stage ids, files written, program path, adaptation prompt path, and `verificationStagesUnchanged: true` |
+| `har_line_status` | optional `line` | Stations with cumulative gate progress from run records, slots in flight, and any stage that leaked onto the verify plan. A pure read — writes no run records |
+| `har_run_line_gate` | `station`, optional `line`, `agentId`, `force` | Per-stage results for every gate stage tagged at that station or earlier |
+
+`har_add_line` refuses a verification-plugin bundle, and `har_add_plugin`
+refuses a line bundle — the two apply paths are deliberately not
+interchangeable.
+
 ## Mission Control
 
 | Tool | Inputs | Result |

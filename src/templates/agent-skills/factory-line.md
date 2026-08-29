@@ -4,9 +4,10 @@ Execute **one station** of a declared multi-station program:
 
 sync → wave plan → parallel HAR slots → cumulative gate → human handoff.
 
-The program lives in a **line template** (a `*.line.json` the user points at,
-or `.har/line.json` when that file exists). This workflow is the orchestrator.
-Station-specific how-to lives in other skills the template lists.
+The program lives in an **installed line bundle**, not in this workflow. Find
+it with `har line status` — installed lines live at `.har/lines/<id>/line.json`
+and are recorded in `.har/lines.json`. This workflow is the orchestrator;
+station-specific how-to lives in other skills the program lists.
 
 HAR already has the primitives — work units, isolated slots, stages, plugins,
 validation records. A line is composition plus a manifest. Do not invent a
@@ -19,9 +20,10 @@ This workflow is the same on Claude Code (`/factory-line`), Cursor
 
 Resolve these before doing anything (ask only if not inferable):
 
-1. **Line file** — path to a `*.line.json`. If the repo has no line file and
-   the user did not name one, stop and say so. Do not invent GitHub issue
-   numbers or a fixture repo.
+1. **Line** — run `har line status` (or MCP `har_line_status`). One installed
+   line: use it. Several: ask which. **None installed**: stop and offer
+   `har line create <id>` or `har line add <spec>` — do not invent GitHub
+   issue numbers, a fixture repo, or a program of your own.
 2. **Station id** — default: the first station whose bound work is not all
    done / whose gate has not passed.
 3. **Slot budget** — `har env status` first. One slot per concurrent agent.
@@ -29,7 +31,7 @@ Resolve these before doing anything (ask only if not inferable):
 
 ## Contract (minimum)
 
-A line file is JSON with `contractVersion: 1`. Required:
+A line program is JSON with `contractVersion: 1`. Required:
 
 - `id`, `stations[]` (ordered; each has `id` + `title`)
 - `gate.cumulative` must be `true`
@@ -56,7 +58,9 @@ does not declare them, do not do them.
 
 ## 0. Load and preflight
 
-1. Read the line file. Confirm `gate.cumulative` and `handoff.autonomousShip`.
+1. `har line status [id]` — read the program it names. Confirm
+   `gate.cumulative` and `handoff.autonomousShip`. `har line status` already
+   reports which stations are green and which is next.
 2. Skills and MCP: confirm required ones are present. Missing optional:
    skip those steps and say so. Do not install third-party packs yourself.
 3. Print: line id, station id, waves, slot plan, and every gate stage whose
@@ -83,8 +87,16 @@ For each wave, one subagent per group, in parallel. Each:
 
 ## 3. Gate
 
-Run every gate stage whose `fromStation` ≤ current station. If
-`gate.optInEnv` is set, export it as `1` so the opt-in jig actually runs.
+```bash
+har line gate <station> --line <id> --agent <slot>
+```
+
+That runs every gate stage whose `fromStation` ≤ this station — the cumulative
+set, from data. Add `--force` when the program sets `gate.optInEnv` and you
+want the opt-in jig to run anyway.
+
+Line gate stages are **not** part of `har env verify --full`, by design. Run
+both: full verify for the harness contract, `har line gate` for the station.
 
 Red gate → fix, re-run. Never hand off a red gate. Never bypass
 (`HAR_SKIP_GATE`, `--no-verify`).

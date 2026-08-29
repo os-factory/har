@@ -1,6 +1,6 @@
 ---
 name: factory-line
-description: Factory line for executing one station of a declared multi-station program — load a line template, plan parallel work into isolated HAR slots, run the cumulative gate, and hand off for human review. Use when asked to "run a factory line", "run the next station", "execute a milestone program", or when a repo has a line template (*.line.json) and you need to advance it. Not limited to the HAR v1.0.0 migration.
+description: Factory line for executing one station of a declared multi-station program — read the installed line bundle (har line status), plan parallel work into isolated HAR slots, run the cumulative gate with har line gate, and hand off for human review. Use when asked to "run a factory line", "run the next station", "execute a milestone program", or when a repo has an installed line and you need to advance it. Not limited to the HAR v1.0.0 migration.
 ---
 
 # Factory line
@@ -9,9 +9,15 @@ Execute **one station** of a declared program end-to-end:
 
 sync → wave plan → parallel slots → cumulative gate → human handoff.
 
-The program lives in a **line template** (`*.line.json`), not in this skill.
-This skill is the orchestrator. Station-specific how-to lives in other skills
-the template lists.
+The program lives in an **installed line bundle**, not in this skill. Find it
+with `har line status`: installed lines live at `.har/lines/<id>/line.json` and
+are recorded in `.har/lines.json`. This skill is the orchestrator;
+station-specific how-to lives in other skills the program lists.
+
+`*.line.json` files under `examples/` are **authoring templates**, not the
+installed program. Read one to learn the shape or to seed a new bundle
+(`har line create <id>`); do not run a station off a loose file when a line is
+installed.
 
 **HAR already has the primitives.** Work units, isolated slots, stages with
 quick/full tiers, validation records, the commit gate, plugins, Mission Control.
@@ -25,9 +31,12 @@ Instances: [examples/](./examples/).
 
 Resolve these before doing anything (ask only if not inferable):
 
-1. **Line file** — path to a `*.line.json`. Examples in this folder:
-   `examples/v1-milestone.line.json`, `examples/new-plugin.line.json`,
-   `examples/docs-milestone.line.json`.
+1. **Line** — run `har line status` (or MCP `har_line_status`). One installed
+   line: use it. Several: ask which. **None installed**: stop and offer
+   `har line create <id>` (scaffold) or `har line add <spec>` (install a
+   published bundle, e.g. `github:os-factory/har-line`). Authoring templates
+   live in `examples/`: `v1-milestone.line.json`, `new-plugin.line.json`,
+   `docs-milestone.line.json` — seeds, not installed programs.
 2. **Station id** — default: the first station whose bound work is not all
    closed / whose gate has not passed. Must be an id in `stations[]`.
 3. **Slot budget** — how many concurrent HAR slots you may occupy (check
@@ -52,8 +61,10 @@ template does not declare them, do not do them:
 
 ## Phase 0 — Load and preflight
 
-1. Read the line file. Confirm `contractVersion`, `gate.cumulative === true`,
-   `handoff.autonomousShip === false`.
+1. `har line status [id]` and read the program it names
+   (`.har/lines/<id>/line.json`). Confirm `contractVersion`,
+   `gate.cumulative === true`, `handoff.autonomousShip === false`. The status
+   output already reports which stations are green and which is next.
 2. **Skills.** For each root `skills[]` entry, confirm the skill is present
    (repo path or the agent's skill list). HAR does not install third-party
    packs — if `install` is an upstream URL, tell the user how to install it.
@@ -99,9 +110,18 @@ starts the next wave.
 
 From a slot launched off the integrated result of this station:
 
-Run every gate stage whose `fromStation` ≤ current station, at the listed
-`tier`. If `gate.optInEnv` is set, export it as `1` for this run so the
-opt-in gate actually executes.
+```bash
+har line gate <station> --line <id> --agent <slot>
+```
+
+That runs every gate stage whose `fromStation` ≤ current station — the
+cumulative set, from data, through the normal stage runner. Pass `--force`
+when the program sets `gate.optInEnv` and you want the opt-in jig to run
+anyway.
+
+Line gate stages are deliberately **not** part of `har env verify --full`.
+Run both: full verify for the harness contract, `har line gate` for the
+station.
 
 Red gate → fix in-station, re-run. Never hand off a red gate. Never bypass
 (`HAR_SKIP_GATE`, `--no-verify`).

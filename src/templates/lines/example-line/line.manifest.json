@@ -1,0 +1,37 @@
+{
+  "kind": "line",
+  "id": "example-line",
+  "title": "Example factory line",
+  "program": "line.json",
+  "files": [
+    {
+      "src": "stages/example-gate.sh",
+      "dest": ".har/stages/example-gate.sh",
+      "executable": true
+    }
+  ],
+  "stages": [
+    {
+      "id": "example-gate",
+      "kind": "test",
+      "description": "Line-owned gate for example-line — registered, never on verify",
+      "script": "stages/example-gate.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/example-gate",
+          "kind": "directory",
+          "description": "Artifacts for the example-gate stage"
+        }
+      ],
+      "tier": "full"
+    }
+  ],
+  "nextSteps": [
+    "Edit .har/lines/example-line/line.json — rename the line and describe your stations",
+    "Edit .har/stages/example-gate.sh — replace the TODO with the real gate",
+    "har line status example-line",
+    "har line gate S2 --line example-line"
+  ],
+  "docsPath": ".har/lines/example-line/README.md"
+}
