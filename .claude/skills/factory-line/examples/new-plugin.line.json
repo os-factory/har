@@ -1,0 +1,113 @@
+{
+  "contractVersion": 1,
+  "id": "new-plugin",
+  "title": "New HAR verification plugin",
+  "description": "Ship a verification plugin for any framework: research docs, build the template, register it everywhere, validate on a real repository, open a PR. Second instance of the factory-line template — proves the contract is not the v1 migration in disguise.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    },
+    {
+      "id": "new-plugin",
+      "role": "station",
+      "install": "repo:.claude/skills/new-plugin"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "github",
+      "why": "Open the plugin PR after handoff approval. Not required to research or build.",
+      "required": false
+    }
+  ],
+  "plugins": [],
+  "stations": [
+    {
+      "id": "inputs",
+      "title": "Establish inputs",
+      "description": "Plugin id, framework, stage id (what it does, not the brand), validation repo."
+    },
+    {
+      "id": "research",
+      "title": "Research the framework",
+      "description": "Headless CLI, config, artifacts, install, CI recipe, exit codes. Read both existing plugins first.",
+      "skills": ["new-plugin"]
+    },
+    {
+      "id": "launch",
+      "title": "Launch a HAR session",
+      "description": "This repo dogfoods HAR. Launch the cli-profile slot before editing.",
+      "work": {
+        "source": "github",
+        "ids": [],
+        "optional": true
+      }
+    },
+    {
+      "id": "template",
+      "title": "Build the template",
+      "description": "src/templates/plugins/<id>/ with template.manifest.json, stage script, docs, optional package fragment and CI workflow."
+    },
+    {
+      "id": "register",
+      "title": "Register everywhere",
+      "description": "Tests, docs, landing card, plugins.ts catalog, adaptation prompt, boilerplate STAGES.md. No PLUGIN_IDS enum — discovery is from disk after build."
+    },
+    {
+      "id": "validate",
+      "title": "Validate locally, then on a real repository",
+      "description": "Scratch fixture for add-plugin, then a repo that genuinely uses the framework. Stage must pass and write artifacts."
+    },
+    {
+      "id": "handoff",
+      "title": "Full verify and hand off",
+      "description": "har env verify --full, then wait. PR only after approval."
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": null,
+    "stages": [
+      {
+        "id": "typecheck",
+        "fromStation": "template",
+        "tier": "quick"
+      },
+      {
+        "id": "unit-tests",
+        "fromStation": "register",
+        "tier": "full",
+        "note": "Must include applies <id> plugin, onboarding ids, verify-shell-timing."
+      },
+      {
+        "id": "lint",
+        "fromStation": "handoff",
+        "tier": "full"
+      }
+    ]
+  },
+  "extraStages": [
+    {
+      "id": "<stage-id>",
+      "kind": "test",
+      "tier": "full",
+      "description": "The plugin's own stage, installed into the target repo by add-plugin. Validated on a real repository in the validate station — not mocked."
+    }
+  ],
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "Session handoff, then approval before push/PR/complete. Commit title feat: add <framework> plugin (this is an intended minor)."
+  },
+  "traveler": {
+    "kind": "pull-request-body",
+    "note": "PR body carries what the plugin installs, the registration checklist, and validation evidence (real repo, artifacts, anything not executable here)."
+  },
+  "prototypeNotes": [
+    "Stations here are sequential phases, not GitHub issues and not stacked PRs.",
+    "The product of this line is a plugin template, not a HAR runtime migration.",
+    "Never add stack-specific MCP tools or core stages — plugins install generic stage kinds.",
+    "Real-repo validation is this line's jig. It is not car-app and not fixture-e2e."
+  ]
+}

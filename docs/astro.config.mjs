@@ -103,6 +103,7 @@ export default defineConfig({
 						{ label: 'Local plugins', slug: 'docs/guides/local-plugins' },
 						{ label: 'Agent integrations', slug: 'docs/guides/agent-integrations' },
 						{ label: 'Skill-pack compatibility', slug: 'docs/guides/skill-pack-compatibility' },
+						{ label: 'Factory lines', slug: 'docs/guides/factory-lines' },
 						{ label: 'Verification & commit gate', slug: 'docs/guides/verification' },
 						{ label: 'Mission Control', slug: 'docs/guides/mission-control' },
 						{ label: 'Eject', slug: 'docs/guides/eject' },

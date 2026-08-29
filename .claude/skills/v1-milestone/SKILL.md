@@ -5,6 +5,12 @@ description: Factory line for executing one milestone of the HAR v1.0.0 refactor
 
 # HAR v1.0.0 milestone factory line
 
+> **Instance of the [factory-line](../factory-line/SKILL.md) template.**
+> Program data: [`v1-milestone.line.json`](../factory-line/examples/v1-milestone.line.json).
+> This skill stays the executable playbook for the 1.0.0 run. Stacked PRs,
+> GitHub-issue stations, and the car-app jig are *this line's* tactics — not
+> the primitive. To run a different program, copy a line file, not this skill.
+
 Execute one milestone of the v1.0.0 refactor end-to-end:
 sync → wave plan → parallel implementation → stacked PRs → gate → handoff.
 

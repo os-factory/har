@@ -129,3 +129,9 @@ har env teardown 2
 
 Branch deletion is a separate, explicit operation. Prefer `complete` when the
 task succeeded and you want a validation record.
+
+## Factory lines
+
+For a multi-station program (parallel slots, cumulative gate, human handoff)
+declare a line template instead of forking a skill. See
+[Factory lines](/docs/guides/factory-lines/).
