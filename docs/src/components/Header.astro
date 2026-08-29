@@ -18,7 +18,7 @@ const { active = 'home', solid = false } = Astro.props;
         <a href="/docs">Docs</a>
         <a href="/blog/" class:list={{ active: active === 'blog' }} aria-current={active === 'blog' ? 'page' : undefined}>Blog</a>
         <a href="/plugins/" class:list={{ active: active === 'plugins' }} aria-current={active === 'plugins' ? 'page' : undefined}>Plugins</a>
-        <a href="/teams/" class:list={{ active: active === 'teams' }} aria-current={active === 'teams' ? 'page' : undefined}>Teams</a>
+        <a href="https://harhq.com/" target="_blank" rel="noopener noreferrer">Teams</a>
       </nav>
       <div class="nav-actions">
         <iframe
@@ -40,7 +40,7 @@ const { active = 'home', solid = false } = Astro.props;
     <a href="/docs">Documentation</a>
     <a href="/blog/">Blog</a>
     <a href="/plugins/">Plugins</a>
-    <a href="/teams/">Teams</a>
+    <a href="https://harhq.com/" target="_blank" rel="noopener noreferrer">Teams</a>
     <a href="https://github.com/os-factory/har">Star on GitHub</a>
   </div>
 </header>
