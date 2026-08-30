@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/os-factory/har/compare/v1.2.0...v1.3.0) (2026-08-30)
+
+### Features
+
+* har line — install factory lines as bundles that never widen verify ([#304](https://github.com/os-factory/har/issues/304), [#322](https://github.com/os-factory/har/issues/322)) ([#323](https://github.com/os-factory/har/issues/323)) ([0d2c6fd](https://github.com/os-factory/har/commit/0d2c6fd6b4f2379ecc64600bb7f32b182a18d7c1))
+
 ## [1.2.0](https://github.com/os-factory/har/compare/v1.1.0...v1.2.0) (2026-08-29)
 
 ### Features
