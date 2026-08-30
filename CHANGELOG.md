@@ -1,3 +1,10 @@
+## [1.4.0](https://github.com/os-factory/har/compare/v1.3.0...v1.4.0) (2026-08-30)
+
+### Features
+
+* **control:** scope slot identity to an occupancy, and gate it with a line ([#316](https://github.com/os-factory/har/issues/316)) ([#325](https://github.com/os-factory/har/issues/325)) ([0bea653](https://github.com/os-factory/har/commit/0bea6536afc3a2414ddde077883df6352ac697c5))
+* skip re-verify on complete unless the tree changed ([#327](https://github.com/os-factory/har/issues/327)) ([200c189](https://github.com/os-factory/har/commit/200c189f7c8a203dfe74642e9d07575f93da7361))
+
 ## [1.3.0](https://github.com/os-factory/har/compare/v1.2.0...v1.3.0) (2026-08-30)
 
 ### Features
