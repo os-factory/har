@@ -9,6 +9,7 @@ function record(overrides: Partial<AgentTrajectoryRecord> = {}): AgentTrajectory
   return {
     id: 'row-1',
     repositoryId: 'repo-1',
+    occupancyKey: null,
     version: 1,
     source: 'otel',
     sourceEventId: 'evt-1',

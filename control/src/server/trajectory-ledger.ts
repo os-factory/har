@@ -212,6 +212,7 @@ export async function appendTrajectoryRecord(
         correlationId: input.correlationId,
         workUnitId: input.workUnitId,
         attemptId: input.attemptId,
+        occupancyKey: input.occupancyKey,
       },
     });
     await projectTrajectoryRecord(record);
@@ -301,10 +302,14 @@ export function serializeTrajectoryPage(page: TrajectoryPage): SerializedTraject
 export async function listTrajectoryStreams(
   repositoryId: string,
   agentId: number,
+  occupancyKey?: string | null,
 ): Promise<TrajectoryStream[]> {
+  // #316: streams belong to an occupancy, not to a slot number. Listing by bare
+  // agentId returns every stream that ever used this workstation, so slot 1
+  // after a relaunch still showed the previous session's trajectory.
   const groups = await prisma.agentTrajectoryRecord.groupBy({
     by: ['sessionKey', 'agentTool'],
-    where: { repositoryId, agentId },
+    where: { repositoryId, agentId, ...(occupancyKey ? { occupancyKey } : {}) },
     _max: { eventTimestamp: true },
   });
   return groups.flatMap((group) => group._max.eventTimestamp
@@ -324,8 +329,9 @@ export async function getSlotTrajectoryData(
   repositoryId: string,
   agentId: number,
   limit = 100,
+  occupancyKey?: string | null,
 ): Promise<SlotTrajectoryData> {
-  const streams = await listTrajectoryStreams(repositoryId, agentId);
+  const streams = await listTrajectoryStreams(repositoryId, agentId, occupancyKey);
   const latest = streams[0];
   if (!latest) {
     return {

@@ -750,6 +750,8 @@ export const AgentTrajectoryRecordV1Schema = z
     correlationId: z.string().optional(),
     workUnitId: WorkUnitIdSchema.optional(),
     attemptId: WorkAttemptIdSchema.optional(),
+    /** One occupancy of a slot (#316) — records are scoped to it, not to slot id. */
+    occupancyKey: z.string().min(1).optional(),
   })
   .passthrough();
 
@@ -774,6 +776,8 @@ export const AgentSessionUsageSchema = z.object({
   suffix: z.string().optional(),
   workUnitId: WorkUnitIdSchema.optional(),
   attemptId: WorkAttemptIdSchema.optional(),
+  /** One occupancy of a slot (#316) — usage is scoped to it, not to slot id. */
+  occupancyKey: z.string().min(1).optional(),
   tokensInput: z.number().nonnegative().default(0),
   tokensOutput: z.number().nonnegative().default(0),
   tokensCacheRead: z.number().nonnegative().default(0),

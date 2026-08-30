@@ -263,6 +263,7 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
   suffix?: string;
   workUnitId?: string;
   attemptId?: string;
+  occupancyKey?: string;
 } | null> {
   if (!workspace) return null;
   const normalized = normalizePath(workspace);
@@ -282,6 +283,7 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
       suffix: true,
       workUnitId: true,
       attemptId: true,
+      occupancyKey: true,
     },
   });
 
@@ -302,6 +304,7 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
     suffix: match.suffix ?? undefined,
     workUnitId: match.workUnitId ?? undefined,
     attemptId: match.attemptId ?? undefined,
+    occupancyKey: match.occupancyKey ?? undefined,
   };
 }
 
@@ -315,6 +318,8 @@ export interface ResolvedSessionContext {
   suffix?: string;
   workUnitId?: string;
   attemptId?: string;
+  /** One occupancy of the slot (#316) — null when the slot is idle/unknown. */
+  occupancyKey?: string;
 }
 
 async function resolveRepositoryByWorkspacePath(
@@ -397,6 +402,7 @@ interface ActiveSlotAttribution {
   suffix?: string;
   workUnitId?: string;
   attemptId?: string;
+  occupancyKey?: string;
 }
 
 /**
@@ -423,6 +429,7 @@ async function resolveUnambiguousActiveSlot(
       suffix: true,
       workUnitId: true,
       attemptId: true,
+      occupancyKey: true,
     },
   });
   if (active.length !== 1) return null;
@@ -434,6 +441,7 @@ async function resolveUnambiguousActiveSlot(
     suffix: slot.suffix ?? undefined,
     workUnitId: slot.workUnitId ?? undefined,
     attemptId: slot.attemptId ?? undefined,
+    occupancyKey: slot.occupancyKey ?? undefined,
   };
 }
 
@@ -459,10 +467,16 @@ export async function resolveSessionContext(
   if (workspace) {
     const byWs = await resolveSlotByWorkspace(workspace);
     if (byWs) {
+      // #316: the matched slot's own key wins over `har.session_key`. That
+      // resource attribute is written once per launch and survives the
+      // occupancy that wrote it (Claude Code also reuses `session.id` across
+      // a resume), so preferring it merged a new worktree's events into the
+      // previous session. The workspace match is live evidence; the attribute
+      // is not.
       return {
         context: {
           repositoryId: byWs.repositoryId,
-          sessionKey: harSessionKey || byWs.sessionKey || providerSessionId,
+          sessionKey: byWs.sessionKey || harSessionKey || providerSessionId,
           agentId: explicitAgentId ?? byWs.agentId,
           agentTool: tool ?? 'cursor',
           workDir: byWs.workDir ?? workspace,
@@ -470,6 +484,7 @@ export async function resolveSessionContext(
           suffix: byWs.suffix,
           workUnitId: byWs.workUnitId,
           attemptId: byWs.attemptId,
+          occupancyKey: byWs.occupancyKey,
         },
       };
     }
@@ -502,6 +517,7 @@ export async function resolveSessionContext(
           attemptId:
             activeSlot?.attemptId ??
             (resource['har.attempt_id'] ? String(resource['har.attempt_id']) : undefined),
+          occupancyKey: activeSlot?.occupancyKey,
         },
       };
     }
@@ -532,6 +548,7 @@ export async function resolveSessionContext(
             (resource['har.suffix'] ? String(resource['har.suffix']) : undefined),
           workUnitId: activeSlot?.workUnitId,
           attemptId: activeSlot?.attemptId,
+          occupancyKey: activeSlot?.occupancyKey,
         },
       };
     }
@@ -773,7 +790,7 @@ function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap)
 
 function emptyUsage(
   base: Pick<AgentSessionUsage, 'sessionKey' | 'agentId' | 'agentTool' | 'workDir' | 'branch' | 'suffix'> &
-    Partial<Pick<AgentSessionUsage, 'workUnitId' | 'attemptId'>>,
+    Partial<Pick<AgentSessionUsage, 'workUnitId' | 'attemptId' | 'occupancyKey'>>,
 ): AgentSessionUsage {
   const now = new Date().toISOString();
   return {
@@ -886,6 +903,7 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
       suffix: context.suffix,
       workUnitId: context.workUnitId,
       attemptId: context.attemptId,
+      occupancyKey: context.occupancyKey,
     });
 
     for (const point of group.points) {
@@ -1270,6 +1288,7 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
         correlationId: canonical.correlationId,
         workUnitId: context.workUnitId,
         attemptId: context.attemptId,
+        occupancyKey: context.occupancyKey,
       }),
     );
 
@@ -1408,6 +1427,7 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
         parentSpanId: span.parentSpanId ?? undefined,
         workUnitId: context.workUnitId,
         attemptId: context.attemptId,
+        occupancyKey: context.occupancyKey,
       }),
     );
 
