@@ -26,6 +26,7 @@ freed.
 | `S1` | Trajectory/usage for occupancy B are not listed under occupancy A of the same slot | mocked prisma |
 | `S2` | `complete` → `launch` writes a new session key; ingest does not prefer a stale `har.session_key` once the worktree changed | mocked prisma |
 | `S3` | Two real occupancies of slot 1, real CLI, real database, isolated `HOME` | Docker |
+| `S3` | The same boundary with a **real Claude Code CLI** against a scripted mock | sandbox `HOME` |
 
 ## Run it
 
@@ -45,10 +46,22 @@ laptop those survive teardown, and the usage harvest can re-attach them to the
 next occupancy of the same slot. A green run there can mean "the machine was
 clean" rather than "the invariant holds". A sandbox `HOME` removes that reading.
 
-The jig is modelled on
+S3 has two stages. `occupancy-lab` drives the cycle against a real Mission
+Control database inside a container. `occupancy-agent-lab` goes further and runs
+the **real `claude` CLI twice** — once per occupancy — against a scripted
+Anthropic mock, so the transcripts, session ids and work attempts are the ones a
+real session produces. Nothing reaches a real model: `ANTHROPIC_BASE_URL` points
+at the local mock.
+
+The jig (mock server, isolation env) is copied from
 [os-factory/otel-hook](https://github.com/os-factory/otel-hook)
 `har-plugins/agent-lab`. Copy the jig, not the package — publishing
 `@osfactory/agent-lab` waits until a second repo wants the same install.
+
+`occupancy-agent-lab` needs a `claude` binary on PATH (or `CLAUDE_BIN`); the
+Docker lab and the unit stations do not. It fails loudly rather than skipping,
+because a gate stage that quietly passes when its tool is missing is worse than
+no stage at all.
 
 ## Not on verify
 

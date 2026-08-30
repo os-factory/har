@@ -37,6 +37,26 @@
     {
       "src": "README.md",
       "dest": ".har/lines/occupancy-identity/README.md"
+    },
+    {
+      "src": "stages/occupancy-agent-lab.sh",
+      "dest": ".har/stages/occupancy-agent-lab.sh",
+      "executable": true
+    },
+    {
+      "src": "lab/agent/run-agent-lab.mjs",
+      "dest": ".har/lines/occupancy-identity/lab/agent/run-agent-lab.mjs",
+      "executable": true
+    },
+    {
+      "src": "lab/agent/mock-anthropic.mjs",
+      "dest": ".har/lines/occupancy-identity/lab/agent/mock-anthropic.mjs",
+      "executable": false
+    },
+    {
+      "src": "lab/agent/scenario.json",
+      "dest": ".har/lines/occupancy-identity/lab/agent/scenario.json",
+      "executable": false
     }
   ],
   "stages": [
@@ -96,6 +116,21 @@
           "path": ".har/artifacts/occupancy-lab",
           "kind": "directory",
           "description": "Lab report and container log"
+        }
+      ],
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-agent-lab",
+      "kind": "test",
+      "description": "S3 \u2014 two real Claude Code sessions across an occupancy boundary, mocked LLM, sandbox HOME",
+      "script": "stages/occupancy-agent-lab.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-agent-lab",
+          "kind": "directory",
+          "description": "Agent lab report and log"
         }
       ],
       "tier": "full"

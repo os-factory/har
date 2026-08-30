@@ -92,6 +92,11 @@
         "id": "occupancy-lab",
         "fromStation": "S3",
         "tier": "full"
+      },
+      {
+        "id": "occupancy-agent-lab",
+        "fromStation": "S3",
+        "tier": "full"
       }
     ]
   },
@@ -119,6 +124,12 @@
       "kind": "test",
       "tier": "full",
       "description": "Docker sandbox occupancy lab \u2014 never on verify"
+    },
+    {
+      "id": "occupancy-agent-lab",
+      "kind": "test",
+      "tier": "full",
+      "description": "Real Claude Code CLI vs a scripted mock across an occupancy boundary"
     }
   ],
   "handoff": {
@@ -132,6 +143,7 @@
   },
   "prototypeNotes": [
     "S3's jig is modelled on os-factory/otel-hook har-plugins/agent-lab (isolated HOME, scripted mock, real CLI). Keep it local until a second repo needs the same install \u2014 do not publish @osfactory/agent-lab yet.",
-    "Stations map to vitest describe blocks named S0..S3; that is this instance's tactic, not part of the contract."
+    "Stations map to vitest describe blocks named S0..S3; that is this instance's tactic, not part of the contract.",
+    "The agent lab needs a `claude` binary on PATH; the Docker lab and the unit stations do not. That is instance detail, not contract."
   ]
 }

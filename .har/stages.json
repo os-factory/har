@@ -215,6 +215,21 @@
       ],
       "requiresAgentId": true,
       "tier": "full"
+    },
+    {
+      "id": "occupancy-agent-lab",
+      "kind": "test",
+      "description": "S3 — two real Claude Code sessions across an occupancy boundary, mocked LLM, sandbox HOME",
+      "script": "stages/occupancy-agent-lab.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-agent-lab",
+          "kind": "directory",
+          "description": "Agent lab report and log"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
     }
   ],
   "commitGate": {

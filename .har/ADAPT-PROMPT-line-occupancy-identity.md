@@ -12,6 +12,7 @@ stations plus a cumulative gate. It is not a verification plugin:
 - `occupancy-s1` — registered, **not** in `verificationStages`
 - `occupancy-s2` — registered, **not** in `verificationStages`
 - `occupancy-lab` — registered, **not** in `verificationStages`
+- `occupancy-agent-lab` — registered, **not** in `verificationStages`
 
 `verificationStages` was **not** modified. Default `har env verify --full`
 takes exactly as long as it did before this install. This line has no opt-in env var — `har line gate` runs its stages on demand.
@@ -34,6 +35,7 @@ station**. Adding a station must never drop an earlier station's stages.
 | `occupancy-s1` | `S1` | full |
 | `occupancy-s2` | `S2` | full |
 | `occupancy-lab` | `S3` | full |
+| `occupancy-agent-lab` | `S3` | full |
 
 Run it with:
 
