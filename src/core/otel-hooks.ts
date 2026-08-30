@@ -8,6 +8,27 @@ import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
 export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.2.0';
 
+/**
+ * Budgets for the hooks HAR installs into agent settings (#328).
+ *
+ * A telemetry hook must never cost the user a turn. Hooks fire on session
+ * start, every prompt, before and after every tool call, and on stop — so an
+ * export that blocks compounds across a single turn. Without an explicit
+ * per-hook timeout the agent falls back to its own generous default, and an
+ * unreachable Mission Control stalls the session before its first model
+ * request, indistinguishable from a broken API.
+ *
+ * The export budget is deliberately well inside the per-hook ceiling, so the
+ * hook returns on its own rather than being killed by the agent. It is also
+ * kept small in absolute terms: six or more hooks fire per turn, so every
+ * second here is paid several times over whenever the collector is down. A
+ * local Mission Control answers in milliseconds, so this costs nothing in the
+ * normal case.
+ */
+export const HOOK_TIMEOUT_SECONDS = 10;
+const HOOK_EXPORT_TIMEOUT_MS = 1500;
+const HOOK_FLUSH_TIMEOUT_MS = 500;
+
 /** Providers HAR registers with `otel-hook setup --provider`. */
 export const OTEL_HOOKS_PROVIDERS = [
   { id: 'cursor', label: 'cursor' },
@@ -176,11 +197,22 @@ export function writeOtelHooksWrapper(
   const stateDir = getOtelHooksStateDir(hooksHome);
   const script = `#!/usr/bin/env bash
 # Managed by har telemetry — invokes @osfactory/otel-hook with HAR config.
-set -euo pipefail
-exec "${otelHookCommand}" run \\
+#
+# Two rules for this wrapper (#328):
+#   1. Bounded. Export and flush budgets keep it well inside the per-hook
+#      timeout the agent enforces, so an unreachable Mission Control costs
+#      milliseconds instead of stalling the session.
+#   2. Silent about its own failures. Dropped telemetry must never fail an
+#      agent turn, so the exit status is always 0 — a non-zero hook exit can
+#      block a tool call.
+set -uo pipefail
+"${otelHookCommand}" run \\
   --config-file "${configPath}" \\
   --state-dir "${stateDir}" \\
-  "$@"
+  --timeout-ms ${HOOK_EXPORT_TIMEOUT_MS} \\
+  --flush-timeout-ms ${HOOK_FLUSH_TIMEOUT_MS} \\
+  "$@" || true
+exit 0
 `;
   fs.writeFileSync(wrapperPath, script, { mode: 0o755 });
   try {
@@ -318,27 +350,42 @@ export const LEGACY_CURSOR_ONLY_HOOK_EVENTS = [
   'subagentStop',
 ] as const;
 
+/**
+ * Argv for `otel-hook setup`, split out so the hook budget is testable without
+ * spawning the installer.
+ */
+export function buildOtelHookSetupArgs(
+  providerId: OtelHooksProviderId,
+  hookCommand: string,
+): string[] {
+  return [
+    'setup',
+    '--provider',
+    providerId,
+    '--scope',
+    'global',
+    '--hook-command',
+    hookCommand,
+    '--managed-marker',
+    'otel-hook',
+    // Written into each generated hook entry so the agent bounds it (#328).
+    // Without this the agent falls back to its own default and an unreachable
+    // collector stalls the session before its first model request.
+    '--timeout-seconds',
+    String(HOOK_TIMEOUT_SECONDS),
+  ];
+}
+
 function runSetupProvider(
   providerId: OtelHooksProviderId,
   otelHookCommand: string,
   wrapperPath: string,
 ): { ok: boolean; detail: string } {
   const hookCommand = `${wrapperPath} --provider ${providerId}`;
-  const result = spawnSync(
-    otelHookCommand,
-    [
-      'setup',
-      '--provider',
-      providerId,
-      '--scope',
-      'global',
-      '--hook-command',
-      hookCommand,
-      '--managed-marker',
-      'otel-hook',
-    ],
-    { encoding: 'utf8', timeout: 60_000 },
-  );
+  const result = spawnSync(otelHookCommand, buildOtelHookSetupArgs(providerId, hookCommand), {
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
   if (result.status === 0) {
     return { ok: true, detail: `setup --provider ${providerId}` };
   }
