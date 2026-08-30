@@ -280,7 +280,8 @@ har env verify 1                # typecheck + build + docs check/build
 har env verify 1 --full         # + unit tests, lint, docs-drift — required before declaring done
 # then: session handoff → wait for user → on approval of default (complete + PR):
 # push + open PR, then:
-har env complete 1              # full verify + validation + teardown; branch kept
+har env complete 1              # reuse last passing full validation + teardown; branch kept
+# har env complete 1 --verify   # re-run full verify first if the tree may have changed
 ```
 
 Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cursor). Prefer `complete` over bare `teardown` — it closes the work attempt.

@@ -147,7 +147,7 @@ For Mission Control (Next.js + SQLite) or the docs site (Astro), launch `control
 - [ ] New behavior has automated test coverage
 - [ ] Changes committed **in the session worktree** with a clear message
 - [ ] Present session handoff (summary, branch, preview URLs) and **wait for user** before `complete`, push, or PR
-- [ ] On user approval of the default: push + open PR (when `gh`/GitHub MCP available), then `har env complete <id>` (or MCP `har_complete_environment`) — full verify + validation + teardown, branch kept
+- [ ] On user approval of the default: push + open PR (when `gh`/GitHub MCP available), then `har env complete <id>` (or MCP `har_complete_environment`) — reuse last passing full validation + teardown, branch kept. Pass `--verify` / `verify: true` if the tree may have changed.
 
 ### Session handoff
 
@@ -219,6 +219,7 @@ never in the main checkout.
   or open a PR (`--delete-branch` to drop it).
 - If launch fails after creating a worktree/env file, resume with
   `har env launch <id> --resume` or `har env recover <id>`.
-- `har env complete <id>` finishes a session: full verify (recorded as a validation),
-  then teardown — branch kept.
+- `har env complete <id>` finishes a session: reuses the last matching passing
+  full validation, then teardown — branch kept. Pass `--verify` to re-run full
+  verify if the tree may have changed.
 - `--no-worktree` runs the slot from the repo root instead (single-agent mode).

@@ -15,6 +15,7 @@ never in the main checkout.
   or open a PR (`--delete-branch` to drop it).
 - If launch fails after creating a worktree/env file, the registry records `status: failed`.
   Resume it instead of starting fresh: `har env launch <id> --resume` or `har env recover <id>`.
-- `har env complete <id>` finishes a session: full verify (recorded as a validation),
-  then teardown — branch kept.
+- `har env complete <id>` finishes a session: reuses the last matching passing
+  full validation, then teardown — branch kept. Pass `--verify` to re-run full
+  verify if the tree may have changed.
 - `--no-worktree` runs the slot from the repo root instead (single-agent mode).

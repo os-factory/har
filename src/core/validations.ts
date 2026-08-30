@@ -120,6 +120,23 @@ export function findValidation(
 }
 
 /**
+ * Last passing full validation whose tree hash matches the current worktree.
+ * Used by `complete` to reuse verify-before-done proof instead of re-running.
+ */
+export function findPassingFullValidation(input: {
+  checkoutDir: string;
+  harnessRoot?: string;
+}): ValidationRecord | undefined {
+  if (!isCheckoutRoot(input.checkoutDir)) return undefined;
+  const { treeHash } = computeWorktreeSnapshot(input.checkoutDir);
+  const record =
+    findValidation(input.checkoutDir, treeHash) ??
+    (input.harnessRoot ? findValidation(input.harnessRoot, treeHash) : undefined);
+  if (record?.status === 'pass' && record.full) return record;
+  return undefined;
+}
+
+/**
  * Associate a commit with the validation for its tree. Updates the checkout
  * copy and mirrors to the harness root recorded on the validation itself.
  */

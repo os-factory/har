@@ -52,7 +52,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
-| `complete <id>` | Full verify, record validation, teardown, keep branch |
+| `complete <id>` | Reuse last matching full validation, teardown, keep branch (`--verify` to re-run) |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
 | `doctor` | Validate the harness contract (schema, stages, scripts, port lanes) |
 | `eject` | Vendor the runtime into `.har/runtime/` for offline ownership |
@@ -167,9 +167,13 @@ launch. The same warning appears in `har env status --json`, MCP launch
 
 ```bash
 har env verify 1 [--full] [--json]
-har env complete 1 [--skip-verify]
+har env complete 1 [--verify]
 har env teardown 1 [--delete-branch]
 ```
+
+`complete` reuses the last passing full validation for the current tree. Pass
+`--verify` to re-run full verification if the worktree may have changed.
+`--skip-verify` is a deprecated no-op (skip is the default).
 
 Default verify output is the live progress lines on stderr (and a one-line
 summary). It does **not** reprint the machine JSON contract — that blob

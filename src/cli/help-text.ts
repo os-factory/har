@@ -8,12 +8,12 @@ Typical agent workflow:
   har env launch <id>            # new session from the main checkout's HEAD
   # …edit only under the printed work dir…
   har env verify <id> --full
-  har env complete <id>          # done: verify + free the slot (branch kept for PR)
+  har env complete <id>          # done: reuse last full validation + free the slot (branch kept for PR)
 
 Slot lifecycle (do not confuse these):
   launch     start a NEW session (worktree from $REPO_ROOT HEAD)
   recover    resume a failed/partial launch (keeps the existing worktree)
-  complete   finish successfully: full verify, then teardown (frees the slot)
+  complete   finish successfully: reuse last matching full validation, then teardown (frees the slot)
   teardown   abandon / free the slot without a completion validation
 
 Occupied slots always block a new launch:
@@ -30,7 +30,7 @@ export const HAR_ENV_EPILOG = `Environment lifecycle:
   launch <id>      fresh session worktree from the main checkout's current HEAD
   recover <id>     alias for launch --resume (failed/starting only)
   verify <id>      run checks (--full before declaring done)
-  complete <id>    full verify + teardown; keeps branch for push/PR (frees slot)
+  complete <id>    reuse last full validation + teardown; --verify to re-run; keeps branch (frees slot)
   teardown <id>    free the slot without recording a completion validation
 
 Occupied slots:

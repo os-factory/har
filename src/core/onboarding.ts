@@ -75,7 +75,7 @@ export const ONBOARDING_GUIDE_STEPS: readonly { title: string; body: string }[] 
     body: [
       'Quick:  har env verify <id>',
       'Done:   har env verify <id> --full   then   har env complete <id>',
-      '`complete` records a validation, frees the slot, and keeps the session branch for a PR.',
+      '`complete` reuses the last matching full validation, frees the slot, and keeps the session branch for a PR. Pass --verify if the tree changed.',
     ].join('\n'),
   },
   {

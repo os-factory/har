@@ -57,7 +57,8 @@ Do not substitute ad-hoc test commands for harness verification. Any edit after 
 ## 5. Finish
 
 ```bash
-har env complete <id>   # full verify + validation record + teardown, keeps the session branch
+har env complete <id>   # reuse last passing full validation + teardown, keeps the session branch
+har env complete <id> --verify   # re-run full verify first if the tree may have changed
 ```
 
 Report to the user: verification result, the session branch name (so they can push / open a PR), and the slot preview URLs if the app is running.

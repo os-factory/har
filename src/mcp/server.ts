@@ -287,14 +287,20 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_complete_environment',
     description:
-      'Finish a session when the work is done: runs full verification (recorded as a validation of the worktree tree hash), tears the slot down, and KEEPS the session branch so the user can push it and open a PR.',
+      'Finish a session when the work is done: reuses the last passing full validation for the current worktree (or re-runs verify when verify=true), tears the slot down, and KEEPS the session branch so the user can push it and open a PR.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
+        verify: {
+          type: 'boolean',
+          description:
+            'Re-run full verification before teardown when the tree may have changed since the last passing --full',
+        },
         skipVerify: {
           type: 'boolean',
-          description: 'Tear down without running verification (no validation is recorded)',
+          description:
+            'Deprecated. Complete already skips re-verification by default. Pass verify=true to re-run.',
         },
       },
       ['agentId'],
@@ -657,6 +663,7 @@ export async function handleMcpToolCall(
       const result = await completeEnvironment({
         repoPath: repo,
         agentId,
+        verify: input.verify,
         skipVerify: input.skipVerify,
         capture: true,
         trigger: 'mcp',

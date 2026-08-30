@@ -253,4 +253,4 @@ HEAD at `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`, with work dir under
 
 - Occupied slots block — `complete` / `teardown`, then `launch`
 - `teardown` keeps the session branch
-- `har env complete <id>` = full verify + validation + teardown (branch kept)
+- `har env complete <id>` = reuse last passing full validation + teardown (branch kept); `--verify` to re-run

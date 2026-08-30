@@ -80,8 +80,18 @@ required validation against the intended state.
 
 ## Completion
 
-`har env complete 1` performs full verification before teardown and keeps the
-session branch. It is the simplest reliable end-of-task operation.
+`har env complete 1` reuses the last passing **full** validation whose tree hash
+matches the current worktree, then tears the slot down and keeps the session
+branch. Verify-before-done already recorded that proof — complete does not
+re-run the suite by default.
 
-`--skip-verify` exists for explicit cleanup, but it records no validation and should
-not be used to claim a completed task.
+If the tree changed after that verify (or there is no matching passing full
+validation), complete refuses and tells you to re-run:
+
+```bash
+har env complete 1 --verify
+```
+
+`--verify` is the previous default: full verification, record validation, then
+teardown. Use `har env teardown 1` for cleanup without claiming completion.
+`--skip-verify` is a deprecated no-op; skip is already the default.

@@ -30,7 +30,7 @@ issue, Bitbucket). Omit work metadata for ad-hoc work with no tracker identity.
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
 | `har_get_status` | optional `agentId` | Structured slot status (same source as `har env status --json`): worktree, branch, dirty state, readiness, last run/verify. A pure read — writes no run records |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |
-| `har_complete_environment` | `agentId`, `skipVerify` | Validation, teardown, and retained branch |
+| `har_complete_environment` | `agentId`, optional `verify` | Reuse last matching full validation (or re-run when `verify=true`), teardown, and retained branch |
 | `har_teardown_environment` | `agentId`, `deleteBranch` | Teardown result |
 
 Every launch creates a new session from the main checkout's current HEAD.

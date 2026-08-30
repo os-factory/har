@@ -91,7 +91,7 @@ Run harness commands from the directory that owns the harness (e.g. `cd control`
 2. **Edit only in that work dir** — never in the main checkout. Changes there hot-reload for running slots when applicable.
 3. **Verify through the harness** — `har env verify 1` (fast) then `har env verify 1 --full` before declaring done.
 4. **Commit in the session worktree** — if the commit gate is installed, commits that do not match a passing full-verify validation are blocked.
-5. **Complete or teardown when finished** — `har env complete 1` (full verify + validation + teardown) or `har env teardown 1`. The session **branch is kept** so you can push a PR.
+5. **Complete or teardown when finished** — `har env complete 1` (reuse last passing full validation + teardown; `--verify` to re-run) or `har env teardown 1`. The session **branch is kept** so you can push a PR.
 
 ```bash
 har env launch 1

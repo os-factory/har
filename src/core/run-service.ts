@@ -5,7 +5,11 @@ import { createRun, finishRun, resolveAgentWorkDir } from './runs';
 import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
 import { checkLaunchGuard } from './slot-launch-guard';
 import { formatPreflightReport, inspectSlotReadiness } from './slot-preflight';
-import { recordValidation, resolveValidationCheckoutDir } from './validations';
+import {
+  findPassingFullValidation,
+  recordValidation,
+  resolveValidationCheckoutDir,
+} from './validations';
 import {
   bindValidationToAttempt,
   createWorkAttempt,
@@ -469,13 +473,16 @@ export class RunService {
   }
 
   /**
-   * Finish a session: full verification (recorded as a validation keyed by the
-   * worktree tree hash), then teardown. The session branch is kept so the user
-   * can push it and open a PR.
+   * Finish a session: reuse the last matching passing full validation (or
+   * re-run verify when asked), then teardown. The session branch is kept so
+   * the user can push it and open a PR.
    */
   async completeEnvironment(options: {
     repoPath: string;
     agentId: number;
+    /** Re-run full verification. Wins over `skipVerify`. */
+    verify?: boolean;
+    /** @deprecated Default is already skip. Only `false` still forces a re-run. */
     skipVerify?: boolean;
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
@@ -490,9 +497,12 @@ export class RunService {
       };
     }
 
+    const runVerify = shouldReverifyOnComplete(options);
     let verification: VerificationResult | null | undefined;
     let validation: import('../harness/schema').ValidationRecord | undefined;
-    if (!options.skipVerify) {
+    let reusedValidation = false;
+
+    if (runVerify) {
       const verify = await this.runVerification({
         repoPath: options.repoPath,
         agentId: options.agentId,
@@ -507,17 +517,31 @@ export class RunService {
           ...verify,
           stderr:
             verify.stderr +
-            '\nVerification failed — session NOT completed. Fix the failures and rerun, or complete with skipVerify.',
+            '\nVerification failed — session NOT completed. Fix the failures and rerun `complete --verify`, or use teardown to free the slot without claiming completion.',
         };
       }
+    } else {
+      const checkoutDir = resolveValidationCheckoutDir({
+        worktreePath: session.worktreePath,
+        workDir: session.workDir,
+        harnessRoot,
+      });
+      validation = findPassingFullValidation({ checkoutDir, harnessRoot });
+      if (!validation) {
+        return {
+          code: 1,
+          stdout: '',
+          stderr:
+            'No passing full validation matches the current worktree. ' +
+            'The tree may have changed since the last `har env verify --full`. ' +
+            `Re-run verification with: har env complete ${options.agentId} --verify\n` +
+            `Or free the slot without claiming completion: har env teardown ${options.agentId}`,
+        };
+      }
+      reusedValidation = true;
     }
 
-    if (
-      session.workUnitId &&
-      session.attemptId &&
-      !options.skipVerify &&
-      !validation
-    ) {
+    if (session.workUnitId && session.attemptId && runVerify && !validation) {
       return {
         code: 1,
         stdout: '',
@@ -545,12 +569,16 @@ export class RunService {
     });
     if (teardown.code !== 0) return { ...teardown, verification };
 
+    const reusedNote =
+      reusedValidation && validation
+        ? `Reused passing full validation ${validation.validationId} for tree ${validation.treeHash}.\n`
+        : '';
     const branchNote = session.branch
       ? `Branch kept: ${session.branch} — push it with: git push -u origin ${session.branch}\n`
       : '';
     return {
       ...teardown,
-      stdout: teardown.stdout + branchNote,
+      stdout: teardown.stdout + reusedNote + branchNote,
       branch: session.branch,
       workDir: session.workDir,
       worktreePath: session.worktreePath,
@@ -600,6 +628,15 @@ export class RunService {
     });
     return toEnvironmentRunResult(result);
   }
+}
+
+/** `verify: true` or explicit `skipVerify: false` re-runs full verification. */
+export function shouldReverifyOnComplete(options: {
+  verify?: boolean;
+  skipVerify?: boolean;
+}): boolean {
+  if (options.verify === true) return true;
+  return options.skipVerify === false;
 }
 
 const defaultRunService = new RunService();

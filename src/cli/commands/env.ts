@@ -369,15 +369,21 @@ export const envCommand = {
       )
       .command(
         'complete <id>',
-        'Finish a session: full verify (recorded as validation), teardown, keep the branch for a PR',
+        'Finish a session: reuse the last matching full validation, teardown, keep the branch for a PR',
         (y: Argv) =>
           y
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
             .option('repo', { type: 'string', default: '.' })
-            .option('skip-verify', {
+            .option('verify', {
               type: 'boolean',
               default: false,
-              describe: 'Tear down without running verification (no validation is recorded)',
+              describe:
+                'Re-run full verification before teardown (use when the tree may have changed since the last passing --full)',
+            })
+            .option('skip-verify', {
+              type: 'boolean',
+              hidden: true,
+              describe: 'Deprecated no-op: complete already skips re-verification by default',
             }),
         handleComplete,
       )
@@ -1174,13 +1180,15 @@ export async function handleTeardown(argv: {
 export async function handleComplete(argv: {
   id?: number;
   repo: string;
-  skipVerify: boolean;
+  verify?: boolean;
+  skipVerify?: boolean;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
   const result = await completeEnvironment({
     repoPath: repo,
     agentId,
+    verify: argv.verify,
     skipVerify: argv.skipVerify,
     capture: false,
   });

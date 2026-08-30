@@ -137,10 +137,18 @@ export const PreflightEnvironmentOutputSchema = ShellRunOutputSchema.extend({
 export const CompleteEnvironmentInputSchema = z.object({
   repo: z.string().default('.'),
   agentId: agentIdSchema,
+  verify: z
+    .boolean()
+    .optional()
+    .describe(
+      'Re-run full verification before teardown when the tree may have changed since the last passing --full',
+    ),
   skipVerify: z
     .boolean()
-    .default(false)
-    .describe('Tear down without running verification (no validation is recorded)'),
+    .optional()
+    .describe(
+      'Deprecated. Complete already skips re-verification by default. Pass verify=true to re-run; skipVerify=false still forces a re-run.',
+    ),
 });
 
 export const CompleteEnvironmentOutputSchema = ShellRunOutputSchema.extend({
