@@ -154,7 +154,26 @@ The two bundle kinds are deliberately not interchangeable:
 - `har env doctor` fails when a line stage appears in `verificationStages` —
   so a hand edit is caught before the next launch.
 
+## The board
+
+Mission Control draws every installed line at `/repos/<id>/lines`: stations in
+order, the cumulative gate, which workstations are in use, and the latest gate
+run per stage. It reads the same ledger and program `har line status` reads, so
+the two always agree.
+
+It is a **view**. The board never runs a stage, installs a bundle, or edits a
+tracker — `har line gate`, `har line add`, and the adaptation prompt own those,
+and the handoff stays human. A repo with a harness and no line gets an empty
+state pointing at the CLI, not an install button.
+
+One thing the board is careful about: line gate stages are **absent from
+`verificationStages` by design**, so it never draws them as missing verify
+stages. It says so explicitly instead — and turns the leak case (a line stage
+that *has* reached the verify plan) into a visible error, matching
+`har env doctor`.
+
 ## Next
 
-Mission Control gets a line board over `.har/lines.json` and `har line status`
-([#305](https://github.com/os-factory/har/issues/305)).
+The second real line is [#316](https://github.com/os-factory/har/issues/316) —
+slot occupancy identity, whose S3 station is a Docker lab that must never join
+routine verification.
