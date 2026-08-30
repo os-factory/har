@@ -119,6 +119,28 @@ Historical repositories remain compatible: runs, validations, and slots without
 work metadata continue to appear under Operations and repository detail. They are
 not guessed into work units.
 
+## Factory lines
+
+Repository detail links to **Factory lines** (`/repos/<id>/lines`): a board over
+the [factory lines](/docs/guides/factory-lines/) installed in that repository.
+It shows stations in order, the cumulative gate and which of its stages are
+green, the workstations currently in use, and the skills, MCP servers and
+plugins each line declares.
+
+The board reads the repository's own `.har/lines.json` and program — the same
+source `har line status` reads — so the dashboard and the CLI always agree. It
+is read-only: installing or adapting a line is `har line add` plus the
+adaptation prompt that install writes, and running a gate is
+`har line gate <station>`.
+
+Line gate stages are absent from `verificationStages` by design, so the board
+never lists them among verification stages. It says so on the card, and flags
+the reverse case — a line stage that has leaked onto the verify plan — as an
+error, matching `har env doctor`.
+
+A repository with a harness and no line bundle gets an empty state naming the
+CLI, not an install button.
+
 ## Operations: runtime and infrastructure
 
 The repository overview summarizes registered projects, total runs, active slots,
