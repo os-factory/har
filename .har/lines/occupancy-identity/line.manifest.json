@@ -1,0 +1,145 @@
+{
+  "kind": "line",
+  "id": "occupancy-identity",
+  "title": "Slot occupancy identity",
+  "program": "line.json",
+  "files": [
+    {
+      "src": "stages/occupancy-s0.sh",
+      "dest": ".har/stages/occupancy-s0.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/occupancy-s1.sh",
+      "dest": ".har/stages/occupancy-s1.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/occupancy-s2.sh",
+      "dest": ".har/stages/occupancy-s2.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/occupancy-lab.sh",
+      "dest": ".har/stages/occupancy-lab.sh",
+      "executable": true
+    },
+    {
+      "src": "lab/Dockerfile",
+      "dest": ".har/lines/occupancy-identity/lab/Dockerfile",
+      "executable": false
+    },
+    {
+      "src": "lab/run-lab.mjs",
+      "dest": ".har/lines/occupancy-identity/lab/run-lab.mjs",
+      "executable": true
+    },
+    {
+      "src": "README.md",
+      "dest": ".har/lines/occupancy-identity/README.md"
+    },
+    {
+      "src": "stages/occupancy-agent-lab.sh",
+      "dest": ".har/stages/occupancy-agent-lab.sh",
+      "executable": true
+    },
+    {
+      "src": "lab/agent/run-agent-lab.mjs",
+      "dest": ".har/lines/occupancy-identity/lab/agent/run-agent-lab.mjs",
+      "executable": true
+    },
+    {
+      "src": "lab/agent/mock-anthropic.mjs",
+      "dest": ".har/lines/occupancy-identity/lab/agent/mock-anthropic.mjs",
+      "executable": false
+    },
+    {
+      "src": "lab/agent/scenario.json",
+      "dest": ".har/lines/occupancy-identity/lab/agent/scenario.json",
+      "executable": false
+    }
+  ],
+  "stages": [
+    {
+      "id": "occupancy-s0",
+      "kind": "test",
+      "description": "S0 \u2014 a relaunched slot does not keep the previous occupancy",
+      "script": "stages/occupancy-s0.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s0",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s0"
+        }
+      ],
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-s1",
+      "kind": "test",
+      "description": "S1 \u2014 trajectory and usage are scoped to the occupancy, not the slot id",
+      "script": "stages/occupancy-s1.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s1",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s1"
+        }
+      ],
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-s2",
+      "kind": "test",
+      "description": "S2 \u2014 ingest does not merge a new occupancy into the previous session",
+      "script": "stages/occupancy-s2.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s2",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s2"
+        }
+      ],
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-lab",
+      "kind": "test",
+      "description": "S3 \u2014 two real occupancies of one slot in a sandbox HOME (Docker)",
+      "script": "stages/occupancy-lab.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-lab",
+          "kind": "directory",
+          "description": "Lab report and container log"
+        }
+      ],
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-agent-lab",
+      "kind": "test",
+      "description": "S3 \u2014 two real Claude Code sessions across an occupancy boundary, mocked LLM, sandbox HOME",
+      "script": "stages/occupancy-agent-lab.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-agent-lab",
+          "kind": "directory",
+          "description": "Agent lab report and log"
+        }
+      ],
+      "tier": "full"
+    }
+  ],
+  "nextSteps": [
+    "har line status occupancy-identity",
+    "har line gate S2 --line occupancy-identity   # unit stations, no Docker",
+    "har line gate S3 --line occupancy-identity   # adds the sandbox lab"
+  ],
+  "docsPath": ".har/lines/occupancy-identity/README.md"
+}

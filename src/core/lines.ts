@@ -266,6 +266,20 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
   const registry = readStageRegistry(repoPath);
   const registeredIds = new Set(registry.stages.map((s) => s.id));
 
+  // Stages that need a slot fail deep inside the runner with a bare "invalid
+  // agent slot id"; say which stages and what to pass instead.
+  if (options.agentId === undefined) {
+    const needSlot = required
+      .filter((stage) => registry.stages.find((s) => s.id === stage.id)?.requiresAgentId)
+      .map((stage) => stage.id);
+    if (needSlot.length > 0) {
+      throw new Error(
+        `Gate stage(s) ${needSlot.join(', ')} run in an agent slot — pass --agent <id> ` +
+          `(har line gate ${options.station} --line ${lineId} --agent 1).`,
+      );
+    }
+  }
+
   const results: LineGateStageResult[] = [];
   let pass = true;
 

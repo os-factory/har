@@ -49,6 +49,9 @@ model AgentSlot {
   baseCommit       String?
   sessionCreatedAt DateTime?
   purpose          String?
+  // One occupancy of this workstation (#316). A slot number is reused; an
+  // occupancy is not. Null when the slot is idle.
+  occupancyKey     String?
   workUnitId       String?
   attemptId        String?
   detachedHead     Boolean?
@@ -71,6 +74,7 @@ model AgentSessionUsage {
   workDir             String?
   branch              String?
   suffix              String?
+  occupancyKey        String?
   workUnitId          String?
   attemptId           String?
   tokensInput         BigInt     @default(0)
@@ -89,6 +93,7 @@ model AgentSessionUsage {
 
   @@unique([repositoryId, sessionKey, agentTool])
   @@index([repositoryId, agentId])
+  @@index([repositoryId, agentId, occupancyKey])
   @@index([lastSeenAt])
 }
 
@@ -164,11 +169,13 @@ model AgentTrajectoryRecord {
   generationId      String?
   toolCallId        String?
   correlationId     String?
+  occupancyKey      String?
   workUnitId        String?
   attemptId         String?
   createdAt         DateTime   @default(now())
 
   @@unique([repositoryId, source, sourceEventId, contentKey])
+  @@index([repositoryId, agentId, occupancyKey])
   @@index([repositoryId, agentId, sessionKey, agentTool, sequence, eventTimestamp, source])
   @@index([repositoryId, agentId, sessionKey, agentTool, createdAt])
   @@index([repositoryId, createdAt, id])

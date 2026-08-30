@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
+import { isNewOccupancy } from '@/server/occupancy';
 import { cleanupSessionWorktrees } from '@/server/worktree-cleanup';
 
 function toJson(value: unknown) {
@@ -231,11 +232,25 @@ export async function syncSlots(repositoryId: string, input: unknown) {
   for (const slot of slots) {
     const parsed = AgentSlotStatusSchema.parse(slot);
     const fields = buildAgentSlotSyncFields(parsed);
+
+    // #316: a slot number is a workstation, an occupancy is one session in it.
+    // `purpose` is OTEL-derived so it is never synced from the harness — but it
+    // belongs to an occupancy. Without this, `complete` then `launch` on the
+    // same slot keeps describing the previous agent's task. Cleared on any
+    // occupancy change (including → idle); the next occupancy's first prompt
+    // sets it again.
+    const existing = await prisma.agentSlot.findUnique({
+      where: { repositoryId_slotId: { repositoryId, slotId: parsed.agentId } },
+      select: { occupancyKey: true },
+    });
+    const occupancyChanged = isNewOccupancy(existing?.occupancyKey, fields.occupancyKey);
+
     // Prisma JSON columns need DbNull for SQL NULL (plain `null` is rejected).
     const data = {
       ...fields,
       previewUrls:
         fields.previewUrls === null ? Prisma.DbNull : fields.previewUrls,
+      ...(occupancyChanged ? { purpose: null } : {}),
     };
     await prisma.agentSlot.upsert({
       where: { repositoryId_slotId: { repositoryId, slotId: parsed.agentId } },

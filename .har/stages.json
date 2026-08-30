@@ -132,29 +132,104 @@
     {
       "id": "build",
       "kind": "test",
-      "tier": "quick",
-      "requiresAgentId": true,
-      "artifacts": [],
+      "description": "Build the CLI bundle",
       "command": "${NPM_BIN:-npm} run build",
-      "description": "Build the CLI bundle"
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
     },
     {
       "id": "docs-check",
       "kind": "test",
-      "tier": "quick",
-      "requiresAgentId": true,
-      "artifacts": [],
+      "description": "Astro docs typecheck (astro check)",
       "command": "(cd docs && ${NPM_BIN:-npm} run check)",
-      "description": "Astro docs typecheck (astro check)"
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
     },
     {
       "id": "docs-build",
       "kind": "test",
-      "tier": "quick",
-      "requiresAgentId": true,
-      "artifacts": [],
+      "description": "Astro docs build",
       "command": "(cd docs && ${NPM_BIN:-npm} run build)",
-      "description": "Astro docs build"
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "occupancy-s0",
+      "kind": "test",
+      "description": "S0 — a relaunched slot does not keep the previous occupancy",
+      "script": "stages/occupancy-s0.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s0",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s0"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-s1",
+      "kind": "test",
+      "description": "S1 — trajectory and usage are scoped to the occupancy, not the slot id",
+      "script": "stages/occupancy-s1.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s1",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s1"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-s2",
+      "kind": "test",
+      "description": "S2 — ingest does not merge a new occupancy into the previous session",
+      "script": "stages/occupancy-s2.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s2",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s2"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-lab",
+      "kind": "test",
+      "description": "S3 — two real occupancies of one slot in a sandbox HOME (Docker)",
+      "script": "stages/occupancy-lab.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-lab",
+          "kind": "directory",
+          "description": "Lab report and container log"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-agent-lab",
+      "kind": "test",
+      "description": "S3 — two real Claude Code sessions across an occupancy boundary, mocked LLM, sandbox HOME",
+      "script": "stages/occupancy-agent-lab.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-agent-lab",
+          "kind": "directory",
+          "description": "Agent lab report and log"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
     }
   ],
   "commitGate": {
