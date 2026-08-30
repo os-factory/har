@@ -187,6 +187,23 @@ har telemetry off             # clear hooks OTLP export + stop MC auto-start; ke
 ```
 
 Preference is stored in `~/.har/telemetry.json`. Override with `HAR_TELEMETRY=0|1`.
+### Hooks never cost you a turn
+
+Hooks fire on session start, every prompt, before and after every tool call,
+and on stop — six or more times per turn. Telemetry that blocks would therefore
+be paid several times over on every single turn, so the registration HAR writes
+is bounded on both sides:
+
+- Each generated hook entry carries an explicit `timeout` (10s), instead of the
+  agent's much longer default.
+- The wrapper caps the export itself (1.5s) and the flush (0.5s), and always
+  exits 0. A dropped telemetry event must never fail a tool call.
+
+The practical consequence: if Mission Control is not running, a turn costs a
+fraction of a second per hook rather than stalling. `har telemetry status` warns
+when hooks are installed and the collector is unreachable, since that
+combination is pure cost.
+
 Hooks config lives at `~/.har/otel-hooks/otel_config.json` (`HAR_OTEL_HOOKS_HOME` to override).
 The package itself is installed under `~/.har/otel-hooks/node_modules` (pinned
 `@osfactory/otel-hook`).
