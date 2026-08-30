@@ -196,7 +196,7 @@ A task is complete only when:
 - [ ] Changes are committed **in the session worktree** with a clear message
 - [ ] The user got the app URL (the slot URL (`har env agent <id> url`)) to test themselves
 - [ ] Present session handoff (summary, branch, preview URLs) and **wait for user** before `complete`, push, or PR
-- [ ] On user approval of the default: push + open PR (when `gh`/GitHub MCP available), then `har env complete <id>` (or MCP `har_complete_environment`) — full verify + validation + teardown, branch kept
+- [ ] On user approval of the default: push + open PR (when `gh`/GitHub MCP available), then `har env complete <id>` (or MCP `har_complete_environment`) — reuse last passing full validation + teardown, branch kept. Pass `--verify` / `verify: true` if the tree may have changed.
 
 ### Session handoff
 
@@ -256,6 +256,7 @@ never in the main checkout.
   main checkout to your intended base first.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
-- `har env complete <id>` finishes a session: full verify (recorded as a validation),
-  then teardown — branch kept.
+- `har env complete <id>` finishes a session: reuses the last matching passing
+  full validation, then teardown — branch kept. Pass `--verify` to re-run full
+  verify if the tree may have changed.
 - `--no-worktree` runs the slot from the repo root instead (single-agent mode).

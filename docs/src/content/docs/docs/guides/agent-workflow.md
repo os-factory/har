@@ -92,7 +92,8 @@ when `gh` or GitHub MCP is available; it still requires explicit user approval
 
 1. **Complete + open a PR** (recommended when PR tooling is available) — push the
    session branch, open the PR, then `har env complete <id>` / MCP
-   `har_complete_environment` (full verify + validation + teardown; **branch kept**).
+   `har_complete_environment` (reuse last passing full validation + teardown; **branch kept**).
+   Pass `--verify` / `verify: true` if the tree may have changed after that verify.
 2. **Complete only** — same finish without a PR. Prefer `complete` over bare
    `teardown` when the work succeeded.
 3. **Something else** — keep the slot running, more changes, or push only.

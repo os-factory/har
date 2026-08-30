@@ -6,7 +6,7 @@
 - [ ] New behavior has automated test coverage (unit tests via XCTest)
 - [ ] Changes committed **in the session worktree** with a clear message
 - [ ] Present session handoff (summary, branch, preview URLs) and **wait for user** before `complete`, push, or PR
-- [ ] On user approval of the default: push + open PR (when `gh`/GitHub MCP available), then `har env complete <id>` (or MCP `har_complete_environment`) — full verify + validation + teardown, branch kept
+- [ ] On user approval of the default: push + open PR (when `gh`/GitHub MCP available), then `har env complete <id>` (or MCP `har_complete_environment`) — reuse last passing full validation + teardown, branch kept. Pass `--verify` / `verify: true` if the tree may have changed.
 
 ### Session handoff
 

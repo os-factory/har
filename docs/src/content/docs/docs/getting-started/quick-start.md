@@ -88,8 +88,9 @@ for approval before finishing. Then:
 har env complete 1
 ```
 
-`complete` runs full verification, records the exact validated tree hash, removes
-the runtime and worktree, and keeps the session branch for a pull request.
+`complete` reuses the last passing full validation for the current tree, removes
+the runtime and worktree, and keeps the session branch for a pull request. Pass
+`--verify` if the tree may have changed since that verify.
 
 If you only need cleanup, use `har env teardown 1`. It also keeps the branch unless
 you explicitly pass `--delete-branch`.
