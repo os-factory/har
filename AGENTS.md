@@ -147,6 +147,11 @@ These are non-negotiable. Do not introduce imports that violate them.
 | MCP tool handler or JSON Schema | `src/mcp/server.ts`, `schemas.ts` |
 | Files copied into target `.har/` | `src/templates/har-boilerplate/` |
 | Optional verification plugins | `src/templates/plugins/` (applied via `har env add-plugin`) |
+| Factory line schemas (program + bundle manifest) | `packages/schemas/src/line.ts` |
+| Line apply / scaffold / ledger | `src/harness/lines.ts`, `line-create.ts`, `line-ledger.ts` |
+| Line status + cumulative gate orchestration | `src/core/lines.ts` |
+| Bundle install channels shared by plugins and lines | `src/harness/bundle-resolve.ts` |
+| Bundled example line (seed for `os-factory/har-line`) | `src/templates/lines/example-line/` |
 | Generic shell/path/logging helper | `src/utils/` |
 
 When unsure: put domain logic in `harness/` or `core/`, never in an adapter.
@@ -169,6 +174,7 @@ naming plugins ≠ shipping a marketplace.
 
 - **`StageExecutor`** (`src/core/types.ts`) — swap local vs cloud execution by injecting a different executor into `RunService`. `local-executor.ts` is the current implementation.
 - **Project-owned stages** — runtime behavior lives in the target repo's `.har/` scripts and `stages.json`, not as hardcoded tool APIs in core.
+- **Factory lines** — installable *programs* (`har line add <id|path|npm|git>`), resolved through the same channels as plugins (`bundle-resolve.ts`) but with an apply path that registers stages and **never** touches `verificationStages`. `har line gate <station>` runs the cumulative set through `RunService`; there is no second stage runner. Poka-yoke both ways: `add-plugin` refuses `kind: line`, `line add` refuses a plugin manifest, and `doctor` fails if a line stage reaches the verify plan.
 - **Plugins** — optional bundles applied with `har env add-plugin <id|path|npm|git>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). Discovered from `src/templates/plugins/*/template.manifest.json` (no closed enum). Installs are recorded in `.har/plugins.json`. They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`. Philosophy: *plugins install stages; agents only talk to the stage registry.*
 - **Profiles** — ordered runtime bundles (`src/templates/profiles/<id>/profile.manifest.json`), not forked logic in core. Stack capabilities (PM2, Simulator, ports) are detected via `src/harness/capabilities.ts` marker files.
 
@@ -193,6 +199,7 @@ First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
 | doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
 | complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
 | runs / work links | `har env runs list\|get`, `work-link` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link` |
+| factory lines | `har line create\|add\|status\|gate\|list` | `har_line_create`, `har_add_line`, `har_line_status`, `har_run_line_gate` |
 | Mission Control | `har control up` | `har_control_up` |
 
 Intentional holes (human-only, no MCP tool):
@@ -212,6 +219,8 @@ Intentional holes (human-only, no MCP tool):
 
 - Orchestration logic in `mcp/server.ts` or `cli/commands/` — adapters delegate to `core/`
 - Stack-specific stages or MCP tools in core (Playwright, Cypress, migrations, etc.)
+- Implementing line apply by calling `applyPlugin` / `patchStageRegistry` — those exist to widen `verificationStages`; a line must never
+- Adding a line's gate stages to `verificationStages` (that is a verification plugin, not a line)
 - `harness/` importing from `core/` — keeps the contract layer independent
 - Domain types or HAR concepts in `utils/`
 - Deep barrel re-exports inside `src/` — prefer explicit imports; public surface is `run-service.ts` / `run.ts`

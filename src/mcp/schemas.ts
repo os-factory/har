@@ -258,3 +258,47 @@ export const ControlUpOutputSchema = z.object({
 });
 
 export { StageResultSchema };
+
+/** Factory lines (#304) — same core as `har line …`, mirrored on MCP. */
+export const CreateLineInputSchema = z.object({
+  repo: z.string().default('.'),
+  id: z.string().min(1).describe('Line id (lowercase slug, e.g. onboarding-line)'),
+  title: z.string().min(1).optional().describe('Human-readable line title'),
+  description: z.string().min(1).max(2000).optional(),
+  stations: z.array(z.string().min(1)).optional().describe('Station ids in order (default: S1, S2)'),
+  gateStage: z
+    .boolean()
+    .default(true)
+    .describe('Scaffold one registered-but-off-verify gate stage'),
+  optInEnv: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Env var that must be "1" for the gate to run (e.g. HAR_FIXTURE_E2E)'),
+  force: z.boolean().default(false),
+});
+
+export const AddLineInputSchema = z.object({
+  repo: z.string().default('.'),
+  line: z
+    .string()
+    .min(1)
+    .describe('Line id, local path (./line), npm package (@org/pkg), or git URL (github:org/repo)'),
+  force: z.boolean().default(false).describe('Overwrite existing line files and stage entries'),
+});
+
+export const LineStatusInputSchema = z.object({
+  repo: z.string().default('.'),
+  line: z.string().min(1).optional().describe('Line id (default: every installed line)'),
+});
+
+export const RunLineGateInputSchema = z.object({
+  repo: z.string().default('.'),
+  station: z.string().min(1).describe('Station id whose cumulative gate should run'),
+  line: z.string().min(1).optional().describe('Line id when more than one is installed'),
+  agentId: z.number().int().optional().describe('Agent slot to run the stages in'),
+  force: z
+    .boolean()
+    .default(false)
+    .describe('Run even when the program declares an opt-in env var that is not set'),
+});

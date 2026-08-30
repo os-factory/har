@@ -123,6 +123,10 @@ in 1.0 — one-liner checks are plain command stages in `.har/stages.json`. See
 `.har/STAGES.md` in every generated harness and the [Plugins](/docs/guides/plugins/)
 guide.
 
+A **factory line** is the other bundle kind: it registers stages but never adds
+them to `verificationStages`. `add-plugin` refuses a line bundle and points at
+`har line add` — see [`har line`](#har-line).
+
 ### Launch and recovery
 
 ```bash
@@ -240,6 +244,48 @@ run records. `run-stage` executes any stage registered in `.har/stages.json`
 classifies active slots and orphan directories under `~/worktrees`, and runs
 full harness teardown for approved rows. Use `--dry-run` to preview the plan;
 pin live sessions with `--keep har-portal:4` or a worktree path.
+
+## `har line`
+
+```bash
+har line create <id> [--stations S1,S2,S3] [--title <text>]
+                     [--description <text>] [--opt-in-env <VAR>]
+                     [--no-gate-stage] [--force]
+har line add <id|./path|@org/pkg|github:org/repo> [--force]
+har line status [id] [--json]
+har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
+har line list
+```
+
+A **factory line** is a program: an ordered set of stations plus a cumulative
+gate. It composes what HAR already has — work units, slots, stages, plugins,
+skills, MCP — and is installed through the same channels as a plugin (path →
+git → bundled id → npm).
+
+The difference is the apply path. Installing a line registers its stages in
+`.har/stages.json` and records the install in `.har/lines.json`, but **never**
+touches `verificationStages`. Default `har env verify --full` takes exactly as
+long as it did before. Line gate stages run on demand:
+
+```bash
+har line gate S2 --line my-line
+```
+
+`gate.stages[].fromStation` is the ratchet: a stage tagged at a station is
+required at that station **and every later one**, so growing a line can never
+drop an earlier station's checks.
+
+`har line create` scaffolds a publishable bundle at `.har/lines/<id>/`
+(`line.manifest.json`, `line.json`, an off-verify gate stage, README);
+`har line add <id>` installs it. Publishing to git or npm later needs no format
+change.
+
+Poka-yoke runs both ways: `har env add-plugin` refuses a line bundle, and
+`har line add` refuses a verification-plugin manifest. If a check should gate
+*every* verify, it is a plugin, not a line. `har env doctor` fails if a line
+stage ever appears in `verificationStages`.
+
+See the [Factory lines](/docs/guides/factory-lines/) guide.
 
 ## `har agents`
 

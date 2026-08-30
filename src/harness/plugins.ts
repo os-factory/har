@@ -4,15 +4,17 @@ import { z } from 'zod';
 import { info, success, warn } from '../utils/logging';
 import { resolveTemplatesDir } from '../utils/paths';
 import { harnessExists } from './parser';
+import { findManifestPath } from './bundle-resolve';
 import {
   cleanupResolvedPlugin,
   listBundledPluginIds,
+  PLUGIN_BUNDLE_CONFIG,
   resolvePluginSource,
   type PluginSourceKind,
 } from './plugin-resolve';
 import { upsertPluginLedgerEntry } from './plugin-ledger';
 import { buildPluginAdaptationPrompt, writePluginAdaptationPrompt } from './plugin-prompt';
-import { HarnessStageRegistry, HarnessStageSchema } from './schema';
+import { HarnessStageRegistry, HarnessStageSchema, LINE_BUNDLE_KIND } from './schema';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
 /** Plugin id is a free-form slug discovered from manifests (no closed enum). */
@@ -147,13 +149,22 @@ function resolveBundledPluginDir(pluginId: PluginId): string {
 }
 
 export function readPluginManifestFromDir(pluginDir: string, expectedId?: string): PluginManifest {
-  const manifestPath = path.join(pluginDir, 'template.manifest.json');
-  if (!fs.existsSync(manifestPath)) {
+  const manifestPath = findManifestPath(pluginDir, PLUGIN_BUNDLE_CONFIG);
+  if (!manifestPath) {
     throw new Error(`No template.manifest.json in ${pluginDir}`);
   }
-  const parsed = PluginManifestSchema.safeParse(
-    JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
-  );
+  const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+
+  // Poka-yoke (#304): add-plugin always appends to verificationStages, so a
+  // factory line must never travel this path — its stages are opt-in.
+  if (raw.kind === LINE_BUNDLE_KIND || path.basename(manifestPath) === 'line.manifest.json') {
+    throw new Error(
+      `${path.basename(manifestPath)} declares "kind": "line" — this is a factory line bundle, ` +
+        'not a verification plugin. Install it with: har line add <spec>',
+    );
+  }
+
+  const parsed = PluginManifestSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid plugin manifest: ${parsed.error.message}`);
   }

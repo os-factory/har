@@ -7,11 +7,37 @@ A **factory line** is a declared program: an ordered set of stations, each
 runnable by one or more agents in isolated HAR slots, with a **cumulative**
 gate and a handoff a human owns.
 
-HAR 1.0 already has the primitives — work units, slots, stages, plugins,
+HAR already has the primitives — work units, slots, stages, plugins,
 validation records, the commit gate. A line is **composition plus a
-manifest**, not a new runner. This guide is Phase 1 of
-[epic #302](https://github.com/os-factory/har/issues/302): the skill and the
-template contract, with no CLI yet. `.har/line.json` and `har line` are Phase 2.
+manifest**, not a new runner.
+
+A line ships as an **installable bundle**, the same way a verification plugin
+does: `line.manifest.json` at the package root, installed from a path, git
+repo, npm package, or a bundled id. The difference is the apply path.
+
+> **Installing a line never widens verify.** `har line add` registers the
+> line's stages in `.har/stages.json` but does **not** add them to
+> `verificationStages`. Default `har env verify --full` takes exactly as long
+> as it did before. If a check should gate *every* verify, ship it as a
+> [verification plugin](/docs/guides/plugins/) instead.
+
+## Install one
+
+```bash
+har line add github:os-factory/har-line   # git
+har line add ./my-line                    # local path
+har line add @acme/onboarding-line        # npm
+har line status                           # stations and gate progress
+har line gate S2 --line my-line           # run the cumulative gate
+```
+
+`har line create <id>` scaffolds a publishable bundle at `.har/lines/<id>/`
+(manifest, program, an off-verify gate stage, README). Installs are recorded
+in `.har/lines.json`.
+
+[`os-factory/har-line`](https://github.com/os-factory/har-line) is the GitHub
+template for authoring one — the line equivalent of
+[`os-factory/har-plugin`](https://github.com/os-factory/har-plugin).
 
 Two skills in this repository already described themselves as a factory line
 before the name was a product:
@@ -34,14 +60,17 @@ Identical isolated slots are the workstation. One slot per concurrent agent;
 
 ## Author a line
 
-1. Copy the contract in `.claude/skills/factory-line/LINE.schema.md` and a
-   close instance from `.claude/skills/factory-line/examples/`.
-2. Fill `id`, `stations[]`, `skills[]`, `mcp[]`, `gate`, `handoff`, `traveler`.
+1. `har line create <id>`, or "Use this template" on
+   [`os-factory/har-line`](https://github.com/os-factory/har-line).
+2. Fill `id`, `stations[]`, `skills[]`, `mcp[]`, `gate`, `handoff`, `traveler`
+   in `line.json`. The contract is in
+   `.claude/skills/factory-line/LINE.schema.md`; close instances are under
+   `.claude/skills/factory-line/examples/`.
 3. Keep `gate.cumulative` true and `handoff.autonomousShip` false.
 4. Put instance tactics (stacked PRs, a specific fixture, tracker-only
    stations) in `prototypeNotes` — not in the orchestrator skill.
-
-Then run the `factory-line` skill with the path to your file and a station id.
+5. `har line add <id>` to install it, then run the `factory-line` skill with a
+   station id.
 
 ### Attach a skill
 
@@ -65,9 +94,9 @@ is `required: false`, skip tracker steps when it is missing.
 **ratchet**: a QA station is never removed.
 
 `extraStages[]` is for checks the profile does not already have (a
-fixture-e2e analogue, a docs-drift rule, a `doctor` question). Phase 1
-documents them; Phase 2 registers them. Prefer tagging a stage that already
-exists.
+fixture-e2e analogue, a docs-drift rule, a `doctor` question). The bundle's
+`stages[]` register them at install time — registered and runnable, and still
+absent from `verificationStages`. Prefer tagging a stage that already exists.
 
 Routine verifies should stay fast. If the jig is expensive, set
 `gate.optInEnv` (this repo uses `HAR_FIXTURE_E2E=1`).
@@ -83,10 +112,11 @@ package (#298). When that happens:
 2. Tag `fromStation` on the station that made it askable.
 3. Leave every earlier tag in place.
 
-The bash `case` in `.har/stages/fixture-e2e.sh` is the **prototype** of this
-pattern, not the product. Later milestone arms there add questions; they do
-not always re-enter earlier arms. Phase 2 should make "run every stage tagged
-≤ current station" data on the stage registry.
+The bash `case` in `.har/stages/fixture-e2e.sh` was the **prototype** of this
+pattern, not the product: later milestone arms there add questions but do not
+always re-enter earlier arms. `har line gate <station>` is the productized
+version — it runs every stage tagged at that station or earlier, from data, so
+the set can only grow.
 
 ## Instances
 
@@ -103,16 +133,28 @@ the v1 migration, the contract is still biased — delete it.
 
 | Not this | Because |
 |---|---|
-| A new plugin kind | Plugins already install stages. A line *references* plugins. |
+| A verification plugin | Plugin stages join `verificationStages` and gate every verify. Line stages never do. A line also *references* plugins by id. |
+| A fourth marketplace | Lines reuse the plugin install channels (path, git, npm) and the plugin resolver. |
+| A second stage runner | `har line gate` runs stages through the same runner and writes the same `.har/runs/` records. |
 | A new MCP surface | No `har_run_playwright`. No tracker-named core tools. |
 | Identical units out the door | The line repeats the *process*. Every program is bespoke. |
 | Rework as a defect | Iteration is the expected mode. |
 
 Agents hand off. They do not ship. That is the andon cord.
 
+## Poka-yoke
+
+The two bundle kinds are deliberately not interchangeable:
+
+- `har env add-plugin` on a line bundle fails and points at `har line add`.
+- `har line add` on a plugin manifest fails and points at `har env add-plugin`.
+- A line manifest that declares `verificationStages` is a schema error.
+- `har line add` re-reads the verify plan after applying and refuses to write
+  if it moved.
+- `har env doctor` fails when a line stage appears in `verificationStages` —
+  so a hand edit is caught before the next launch.
+
 ## Next
 
-Phase 2 will lift the template into `.har/line.json` and `har line status`,
-with the ratchet as tagged stages. Until then this guide and the skill are
-the whole feature — cheap on purpose, so the shape gets used before anyone
-invents CLI surface.
+Mission Control gets a line board over `.har/lines.json` and `har line status`
+([#305](https://github.com/os-factory/har/issues/305)).

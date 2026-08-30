@@ -1,24 +1,37 @@
-# Line template contract (Phase 1)
+# Line program contract
 
-A **line template** is data an agent (or a human) fills in to mint a factory
-line. It is not wired into the CLI yet — Phase 2 (#304) should be able to lift
-this file almost as-is into `.har/line.json`. Until then, the
-[`factory-line` skill](./SKILL.md) reads it as the program.
+A **line program** is the data that defines a factory line. It is the
+`line.json` inside an installable line bundle; installing that bundle
+(`har line add <spec>`) puts it at `.har/lines/<id>/line.json`, which is what
+the [`factory-line` skill](./SKILL.md) reads.
+
+The `*.line.json` files under [`examples/`](./examples/) are **authoring
+templates** — seeds for `har line create <id>` or for a fork of
+[`os-factory/har-line`](https://github.com/os-factory/har-line) — not installed
+programs.
 
 `contractVersion: 1`. Additive fields are fine; renaming a field is a new
 version.
 
 ## Design constraints (do not violate)
 
-- A line **composes** things HAR 1.0 already has: work units, slots, stages,
-  plugins, skills, MCP. It is not a fourth marketplace and not a second runner.
+- A line **composes** things HAR already has: work units, slots, stages,
+  plugins, skills, MCP. It is not a fourth marketplace and not a second runner:
+  it reuses the plugin install channels (path → git → bundled id → npm) and the
+  ordinary stage runner.
+- A line is a **plugin-style bundle with a different apply path**. Installing
+  one registers stages but **never** adds them to `verificationStages`. That is
+  the whole reason the kinds are separate — a check that must gate every verify
+  belongs in a verification plugin
+  ([os-factory/har-plugin](https://github.com/os-factory/har-plugin)), not a
+  line.
 - A **station** is a named step. GitHub/Linear/none is a `work.source` on the
   station, not the type of the station.
 - The **ratchet** is "every gate stage tagged ≤ current station still runs."
-  The bash `case` in `.har/stages/fixture-e2e.sh` is a **prototype**, not this
+  `har line gate <station>` implements exactly that from this data. The bash
+  `case` in `.har/stages/fixture-e2e.sh` was the **prototype**, not this
   contract: later milestone arms there add questions but do not always re-enter
-  earlier arms. Productize the *intent* (grow-only, never drop a station's
-  stages), not the `case`.
+  earlier arms.
 - HAR does not install or copy third-party skill packs. `skills[]` are
   declarations + install hints. MCP entries are server names + why, never new
   core tools named after a tracker or a framework.
@@ -117,7 +130,7 @@ instances.
 | `gate.cumulative` | yes | Must be `true` for a factory line. A QA station is never removed. |
 | `gate.stages[].fromStation` | yes | This stage becomes required at this station **and every later station**. |
 | `gate.optInEnv` | no | If set (e.g. `HAR_FIXTURE_E2E`), the gate is skipped unless that env is `1`, so routine verifies stay fast. |
-| `extraStages` | no | Testing/verify/custom stages this line adds beyond the profile defaults. Phase 1: documentation only. Phase 2: registered stages. |
+| `extraStages` | no | Testing/verify/custom stages this line adds beyond the profile defaults. The bundle's `line.manifest.json` `stages[]` registers them at install — registered and runnable, never in `verificationStages`. |
 | `handoff.autonomousShip` | yes | Must be `false`. Agents hand off; they do not merge or release. |
 | `traveler` | no | Durable record that survives the repo's actual merge policy (squash drops `BREAKING CHANGE:` footers). |
 | `prototypeNotes` | no | Instance tactics that must not leak into the primitive. |
@@ -135,13 +148,19 @@ docs drift):
 That is how #291 / #297 / #298 / #299 become permanent questions instead of
 one-off review comments.
 
-## Open decisions (Phase 2 — do not freeze here)
+## Closed decisions
 
-See epic #302. This contract is written so either answer still maps:
+Settled in epic #302 / #304. Do not reopen without updating them:
 
-1. Per-repo `.har/line.json` vs tracker-as-source-of-truth — this file can live
-   in-repo either way; tracker URLs stay on `work`.
-2. Tagged stages vs a new `kind` — `gate.stages[].fromStation` *is* the tag.
-3. Line vs plugin — this document **references** plugins; it is not one.
-4. How MCP/skills are checked — Phase 1: agent preflight. Phase 2: `doctor` /
-   `har line` preflight.
+1. **Per-repo installed bundle.** The program lives at
+   `.har/lines/<id>/line.json`, with the install recorded in
+   `.har/lines.json`. Tracker URLs stay on `stations[].work`.
+2. **Tagged stages, not a new kind.** `gate.stages[].fromStation` *is* the tag.
+   Tiers stay independent.
+3. **Plugin-style bundle, separate apply.** A line installs through the plugin
+   resolver but with its own apply path, which cannot patch
+   `verificationStages`. `har env add-plugin` refuses a line bundle and
+   `har line add` refuses a plugin manifest.
+4. **Preflight.** `har line status` reports gate progress and any stage that
+   leaked onto the verify plan; `har env doctor` fails on such a leak. Skill and
+   MCP presence stay an agent preflight — HAR declares, it does not vendor.

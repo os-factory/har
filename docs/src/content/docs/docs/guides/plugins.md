@@ -9,7 +9,8 @@ description: Install framework-specific verification bundles that register stage
 |---|---|---|
 | **Profile** | Ordered runtime bundles composing a stack scaffold (`default`, `cli`, `ios`) | `har onboard --profile …` |
 | **Stage** | Runtime operation in `.har/stages.json` | `har_run_stage`, `har env verify` |
-| **Plugin** | Installable bundle that *registers* one or more stages | `har env add-plugin …` |
+| **Plugin** | Installable bundle that *registers* one or more stages **and adds them to `verificationStages`** | `har env add-plugin …` |
+| **Factory line** | Installable *program* — stations plus a cumulative gate. Registers stages but **never** joins `verificationStages` | `har line add …` |
 
 Profiles are defined in `templates/profiles/<id>/profile.manifest.json` as an ordered
 list of runtime bundles (shared kernel, PM2, Xcode, profile overlay). Core detects
@@ -22,6 +23,14 @@ registry — never with stack-specific MCP tools like `run_playwright`.
 Profiles and plugins share one ledger file (`.har/plugins.json`): init records
 `profile` + `bundles`; each `add-plugin` appends to `plugins[]`. They are still
 different layers — profiles scaffold the environment; plugins add verification stages.
+Factory lines keep their own ledger (`.har/lines.json`) for the same reason they
+have their own command: installing one must not widen verification.
+
+**Which one do I want?** Ask whether the check should run on every
+`har env verify --full`. Yes → a plugin (this guide). No, it gates a *station*
+of a program → a [factory line](/docs/guides/factory-lines/), installed with
+`har line add`. Programs install with `har line add`, not `add-plugin` —
+`add-plugin` refuses a line bundle and points you at the right command.
 
 ## Discovery and install
 

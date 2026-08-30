@@ -6,6 +6,8 @@ import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
 import { PACKAGE_RUNTIME_KINDS, stagePointsAtLifecycleShim } from './lifecycle-shims';
 import { HarnessStage, HarnessStageRegistry, PortLane } from './schema';
+import { readLineLedger } from './line-ledger';
+import { readInstalledLineProgram } from './lines';
 import { readStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
@@ -29,7 +31,8 @@ export type DoctorCheckId =
   | 'slot-registry'
   | 'hooks'
   | 'retired-machinery'
-  | 'ejected-runtime';
+  | 'ejected-runtime'
+  | 'factory-lines';
 
 export type DoctorContract = '1.0' | 'pre-1.0' | 'none';
 
@@ -98,6 +101,7 @@ const CHECK_LABELS: Record<DoctorCheckId, string> = {
   hooks: 'lifecycle hooks (.har/hooks)',
   'retired-machinery': 'no references to retired runtime machinery',
   'ejected-runtime': 'ejected runtime (user-owned)',
+  'factory-lines': 'factory lines stay off verify',
 };
 
 /** Legacy helper functions whose presence marks a pre-1.0 harness.env. */
@@ -428,6 +432,56 @@ export function runDoctor(repoPath: string): DoctorReport {
           'Rewrite the script against the 1.0 stage surface (WORK_DIR, ENV_FILE, AGENT_ID and the slot env file are already exported), or run `har env maintain --migrate`',
       });
       break; // one finding per script is enough to act on
+    }
+  }
+
+  // Factory lines (#304): a line registers stages but must never put them on
+  // the verify plan. A hand edit (or a bad bundle) that leaks one there turns
+  // an opt-in station gate into a tax on every `verify --full` — the exact
+  // failure mode the separate bundle kind exists to prevent.
+  const lineLedger = readLineLedger(repoPath);
+  if (lineLedger) {
+    const verificationStages = registry?.verificationStages ?? [];
+    const registeredIds = new Set((registry?.stages ?? []).map((stage) => stage.id));
+
+    for (const line of lineLedger.lines) {
+      for (const stageId of line.stageIds) {
+        if (verificationStages.includes(stageId)) {
+          findings.push({
+            check: 'factory-lines',
+            severity: 'error',
+            file: 'stages.json',
+            message: `line "${line.id}" stage "${stageId}" is listed in verificationStages`,
+            remedy:
+              'Remove it from verificationStages — line gate stages run via `har line gate <station>`. If it must gate every verify, ship it as a verification plugin instead.',
+          });
+        }
+      }
+
+      const program = readInstalledLineProgram(repoPath, line.id);
+      if (!program) {
+        findings.push({
+          check: 'factory-lines',
+          severity: 'warning',
+          file: line.programPath,
+          message: `line "${line.id}" is in .har/lines.json but its program is missing or invalid`,
+          remedy: `Reinstall it (\`har line add ${line.id}\`) or drop the entry from .har/lines.json`,
+        });
+        continue;
+      }
+
+      for (const gateStage of program.gate.stages) {
+        if (!registeredIds.has(gateStage.id)) {
+          findings.push({
+            check: 'factory-lines',
+            severity: 'warning',
+            file: line.programPath,
+            message: `line "${line.id}" gate stage "${gateStage.id}" (from ${gateStage.fromStation}) is not registered in stages.json`,
+            remedy:
+              'Install the plugin that provides it, add it to the line bundle, or drop the gate tag',
+          });
+        }
+      }
     }
   }
 
