@@ -442,3 +442,40 @@ function initDashboardImageModal() {
 }
 
 initDashboardImageModal();
+
+// Rotating logo strips (agent icons, customer logos): each [data-rotate] strip's
+// visible slots cycle through the full set, fading the oldest slot out and the
+// next pooled item in, one at a time. Extra items live in a sibling [data-pool].
+function initLogoRotators() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  document.querySelectorAll<HTMLElement>('[data-rotate]').forEach((strip, i) => {
+    const slots = Array.from(strip.children) as HTMLElement[];
+    const sibling = strip.nextElementSibling as HTMLElement | null;
+    const pool = sibling?.matches('[data-pool]')
+      ? sibling
+      : strip.parentElement?.querySelector<HTMLElement>('[data-pool]') ?? null;
+
+    const items = slots.map((s) => s.innerHTML);
+    if (pool) Array.from(pool.children).forEach((c) => items.push((c as HTMLElement).innerHTML));
+    if (items.length <= slots.length) return;
+
+    let next = slots.length; // first item not currently visible
+    let slot = 0;            // oldest slot, rotated out next
+    const tick = () => {
+      const el = slots[slot];
+      const html = items[next % items.length];
+      el.classList.add('is-swapping');
+      setTimeout(() => {
+        el.innerHTML = html;
+        el.classList.remove('is-swapping');
+      }, 350);
+      next = (next + 1) % items.length;
+      slot = (slot + 1) % slots.length;
+    };
+    // Stagger start and cadence so multiple strips don't swap in lockstep.
+    setTimeout(() => setInterval(tick, 2600 + i * 700), i * 1300);
+  });
+}
+
+initLogoRotators();
