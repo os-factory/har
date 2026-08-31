@@ -32,17 +32,20 @@ import {
 } from './portal-targets';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import {
+  collectRunsBySource,
   collectRunsForSync,
+  mergeRunsBySource,
+  RunsBySource,
+  collectValidationBindingsForSync,
+  collectValidationsForSync,
   collectWorkUnitsForSync,
   resolveSyncSourcePaths,
+  selectRunsForSync,
 } from './sync-sources';
 import { collectEnvironmentStatus } from './slot-status';
-import { listRuns } from './runs';
 import { listValidations } from './validations';
 import {
   listValidationBindings,
-  listWorkAttempts,
-  listWorkUnits,
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
 import { isTelemetryEnabled } from './telemetry-config';
@@ -58,6 +61,7 @@ import { enrichUsageWithPricing } from '../harness/schema';
 import {
   readPortalWatermark,
   writePortalWatermark,
+  coveredSources,
   readRunsWatermarkEntry,
   writeRunsWatermark,
   selectSince,
@@ -194,6 +198,7 @@ async function syncRunBatches(
   getRepoId: () => string | undefined,
   dryRun: boolean | undefined,
   send: (batch: RunRecord[], index: number) => Promise<void>,
+  sources?: string[],
 ): Promise<void> {
   const ordered = [...newRuns].sort((a, b) => runTimestamp(a).localeCompare(runTimestamp(b)));
   const batches = chunkBySerializedSize(ordered, maxSyncBatchBytes());
@@ -202,7 +207,13 @@ async function syncRunBatches(
     const batch = toSend[i];
     await send(batch, i);
     if (!dryRun && batch.length > 0) {
-      writeRunsWatermark(repoPath, runsTarget, getRepoId(), runTimestamp(batch[batch.length - 1]));
+      writeRunsWatermark(
+        repoPath,
+        runsTarget,
+        getRepoId(),
+        runTimestamp(batch[batch.length - 1]),
+        sources,
+      );
     }
   }
 }
@@ -501,6 +512,7 @@ async function collectPortalTelemetry(
 
 async function buildPortalPayload(
   repoPath: string,
+  sourcePaths: string[],
   controlApiUrl: string,
   since: string | null,
   full = false,
@@ -508,20 +520,21 @@ async function buildPortalPayload(
 ): Promise<{
   syncBody: Record<string, unknown>;
   runs: RunRecord[];
+  runsBySource: RunsBySource[];
   events: Record<string, unknown>[];
   maxSyncedAt: string | null;
   failures: ChannelReadFailure[];
   truncated: string[];
 }> {
-  const runs = listRuns(repoPath);
+  // Same canonical-identity / workspace-evidence split as the local path (#255).
+  const rawRunsBySource = collectRunsBySource(sourcePaths);
+  const runs = mergeRunsBySource(rawRunsBySource);
   const status = collectEnvironmentStatus(repoPath);
   const manifest = readManifest(repoPath);
   const stagesRegistry = readStageRegistry(repoPath);
-  const harnessRoot = resolveHarnessRoot(repoPath);
-  const validations = listValidations(harnessRoot);
-  const workUnits = listWorkUnits(harnessRoot);
-  const attempts = listWorkAttempts(harnessRoot);
-  const validationBindings = listValidationBindings(harnessRoot);
+  const validations = collectValidationsForSync(sourcePaths);
+  const { workUnits, attempts } = collectWorkUnitsForSync(sourcePaths);
+  const validationBindings = collectValidationBindingsForSync(sourcePaths);
   // Attribute runs/validations to the syncing member so the portal can resolve
   // a real user FK instead of the lossy (repo, agentId) derivation.
   const userEmail = resolvePortalUserEmail(portal);
@@ -568,11 +581,22 @@ async function buildPortalPayload(
     ...(usage.length > 0 ? { usage } : {}),
   };
 
-  const runsPayload = userEmail
-    ? runs.map((run) => ({ ...run, userEmail }))
-    : runs;
+  const runsBySource = userEmail
+    ? rawRunsBySource.map(({ source, runs: sourceRuns }) => ({
+        source,
+        runs: sourceRuns.map((run) => ({ ...run, userEmail })),
+      }))
+    : rawRunsBySource;
 
-  return { syncBody, runs: runsPayload, events, maxSyncedAt, failures, truncated };
+  return {
+    syncBody,
+    runs: mergeRunsBySource(runsBySource),
+    runsBySource,
+    events,
+    maxSyncedAt,
+    failures,
+    truncated,
+  };
 }
 
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
@@ -828,13 +852,14 @@ async function syncRepoWithLocalControl(
 }
 
 async function syncRepoWithPortal(
-  options: ControlSyncOptions & { repoPath: string },
+  options: ControlSyncOptions & { repoPath: string; workspacePath?: string },
   controlApiUrl: string,
   portal: PortalTarget,
 ): Promise<string[]> {
   if (!isRepoPortalSyncEnabled(options.repoPath)) return [];
 
-  const { repoPath, dryRun, full } = options;
+  const { repoPath, workspacePath, dryRun, full } = options;
+  const sourcePaths = resolveSyncSourcePaths(repoPath, workspacePath);
   const watermarkKey = watermarkKeyForTarget(portal);
   const since = full ? null : readPortalWatermarkForTarget(repoPath, portal);
 
@@ -847,27 +872,43 @@ async function syncRepoWithPortal(
     }
   }
   const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
-  const { syncBody, runs, events, maxSyncedAt, failures, truncated } = await buildPortalPayload(
-    repoPath,
-    controlApiUrl,
-    since,
-    full,
-    portal,
+  const { syncBody, runsBySource, events, maxSyncedAt, failures, truncated } =
+    await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal);
+  const newRuns = selectRunsForSync(
+    runsBySource,
+    runsSince,
+    coveredSources(repoPath, stored),
+    (rows, rowsSince) => selectSince(rows, rowsSince, runTimestamp).selected,
   );
-  const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
 
   let repoId: string | undefined;
   const deltaRepoId = () => stored?.repoId ?? repoId;
-  await syncRunBatches(newRuns, repoPath, runsTarget, deltaRepoId, dryRun, async (batch, i) => {
-    const body = i === 0 ? { ...syncBody, runs: batch } : { path: repoPath, runs: batch };
-    const res = await postPortal(portal, '/api/sync', body, dryRun);
-    if (i === 0 && typeof res?.repositoryId === 'string') repoId = res.repositoryId;
-  });
+  await syncRunBatches(
+    newRuns,
+    repoPath,
+    runsTarget,
+    deltaRepoId,
+    dryRun,
+    async (batch, i) => {
+      const body = i === 0 ? { ...syncBody, runs: batch } : { path: repoPath, runs: batch };
+      const res = await postPortal(portal, '/api/sync', body, dryRun);
+      if (i === 0 && typeof res?.repositoryId === 'string') repoId = res.repositoryId;
+    },
+    sourcePaths,
+  );
 
   if (!full && !dryRun && stored?.repoId && repoId && stored.repoId !== repoId) {
-    await syncRunBatches(listRuns(repoPath), repoPath, runsTarget, () => repoId, dryRun, async (batch) => {
-      await postPortal(portal, '/api/sync', { path: repoPath, runs: batch }, dryRun);
-    });
+    await syncRunBatches(
+      mergeRunsBySource(runsBySource),
+      repoPath,
+      runsTarget,
+      () => repoId,
+      dryRun,
+      async (batch) => {
+        await postPortal(portal, '/api/sync', { path: repoPath, runs: batch }, dryRun);
+      },
+      sourcePaths,
+    );
   }
 
   for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes())) {
@@ -1020,7 +1061,9 @@ export async function syncRepoWithControl(
   const failures: Array<{ alias: string; error: string }> = [];
   for (const portal of resolved.targets) {
     try {
-      warnings.push(...(await syncRepoWithPortal({ ...options, repoPath }, apiUrl, portal)));
+      warnings.push(
+        ...(await syncRepoWithPortal({ ...options, repoPath, workspacePath }, apiUrl, portal)),
+      );
     } catch (err: unknown) {
       failures.push({
         alias: portal.alias ?? portal.identityKey,
@@ -1049,12 +1092,24 @@ async function syncRepoRunsAndSlots(
   const runsTarget = runsWatermarkTarget(apiUrl);
   const stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
   const runsSince = rewindSince(stored?.repoId === repoId ? (stored?.lastSyncedAt ?? null) : null);
-  const runs = collectRunsForSync(sourcePaths);
-  const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
+  const newRuns = selectRunsForSync(
+    collectRunsBySource(sourcePaths),
+    runsSince,
+    coveredSources(repoPath, stored),
+    (rows, since) => selectSince(rows, since, runTimestamp).selected,
+  );
 
-  await syncRunBatches(newRuns, repoPath, runsTarget, () => repoId, dryRun, async (batch) => {
-    await postJson(`${apiUrl}/api/repos/${repoId}/runs`, SyncRunsInputSchema.parse({ runs: batch }), dryRun);
-  });
+  await syncRunBatches(
+    newRuns,
+    repoPath,
+    runsTarget,
+    () => repoId,
+    dryRun,
+    async (batch) => {
+      await postJson(`${apiUrl}/api/repos/${repoId}/runs`, SyncRunsInputSchema.parse({ runs: batch }), dryRun);
+    },
+    sourcePaths,
+  );
 
   const status: EnvironmentStatus = collectEnvironmentStatus(repoPath);
   const slotsBody = SyncSlotsInputSchema.parse({

@@ -2,10 +2,17 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  collectRunsBySource,
   collectRunsForSync,
   collectWorkUnitsForSync,
   resolveSyncSourcePaths,
+  selectRunsForSync,
 } from '../src/core/sync-sources';
+import {
+  coveredSources,
+  readRunsWatermarkEntry,
+  writeRunsWatermark,
+} from '../src/core/portal-watermark';
 
 const tmpDirs: string[] = [];
 
@@ -141,5 +148,84 @@ describe('collectWorkUnitsForSync (#255)', () => {
     const { workUnits } = collectWorkUnitsForSync(resolveSyncSourcePaths(canonical, workspace));
     expect(workUnits).toHaveLength(1);
     expect(workUnits[0].updatedAt).toBe('2026-08-31T10:00:00.000Z');
+  });
+});
+
+describe('selectRunsForSync watermark coverage (#255)', () => {
+  const filterSince = (runs: { startedAt: string }[], since: string | null) =>
+    since ? runs.filter((r) => r.startedAt > since) : runs;
+
+  it('filters a source the watermark already covers', () => {
+    const canonical = makeHarness('har-wm-canon-');
+    writeRun(canonical, '66666666-6666-4666-8666-666666666666', '2026-08-31T09:00:00.000Z');
+
+    const selected = selectRunsForSync(
+      collectRunsBySource([canonical]),
+      '2026-08-31T10:00:00.000Z',
+      [canonical],
+      filterSince as never,
+    );
+    expect(selected).toHaveLength(0);
+  });
+
+  it('sends everything from a source the watermark has never covered', () => {
+    const canonical = makeHarness('har-wm-canon-');
+    const workspace = makeHarness('har-wm-ws-');
+    // Older than the watermark: without the coverage rule this is stranded.
+    writeRun(workspace, '77777777-7777-4777-8777-777777777777', '2026-08-31T09:00:00.000Z');
+
+    const selected = selectRunsForSync(
+      collectRunsBySource([canonical, workspace]),
+      '2026-08-31T10:00:00.000Z',
+      [canonical],
+      filterSince as never,
+    );
+    expect(selected.map((r) => r.runId)).toEqual(['77777777-7777-4777-8777-777777777777']);
+  });
+
+  it('filters the workspace once the watermark covers it', () => {
+    const canonical = makeHarness('har-wm-canon-');
+    const workspace = makeHarness('har-wm-ws-');
+    writeRun(workspace, '88888888-8888-4888-8888-888888888888', '2026-08-31T09:00:00.000Z');
+
+    const selected = selectRunsForSync(
+      collectRunsBySource([canonical, workspace]),
+      '2026-08-31T10:00:00.000Z',
+      [canonical, workspace],
+      filterSince as never,
+    );
+    expect(selected).toHaveLength(0);
+  });
+});
+
+describe('watermark source coverage storage (#255)', () => {
+  const statePath = path.join(os.tmpdir(), `har-wm-state-${process.pid}.json`);
+  const prev = process.env.HAR_PORTAL_SYNC_STATE_PATH;
+
+  beforeEach(() => {
+    process.env.HAR_PORTAL_SYNC_STATE_PATH = statePath;
+    fs.rmSync(statePath, { force: true });
+  });
+  afterEach(() => {
+    if (prev === undefined) delete process.env.HAR_PORTAL_SYNC_STATE_PATH;
+    else process.env.HAR_PORTAL_SYNC_STATE_PATH = prev;
+    fs.rmSync(statePath, { force: true });
+  });
+
+  it('treats a legacy entry with no source list as covering canonical only', () => {
+    const repo = makeHarness('har-wm-legacy-');
+    writeRunsWatermark(repo, 'target', 'repo-1', '2026-08-31T10:00:00.000Z');
+    const entry = readRunsWatermarkEntry(repo, 'target');
+    expect(entry?.sources).toBeUndefined();
+    expect(coveredSources(repo, entry)).toEqual([repo]);
+  });
+
+  it('accumulates sources across syncs', () => {
+    const repo = makeHarness('har-wm-acc-');
+    const workspace = makeHarness('har-wm-acc-ws-');
+    writeRunsWatermark(repo, 'target', 'repo-1', '2026-08-31T10:00:00.000Z', [repo, workspace]);
+    expect(coveredSources(repo, readRunsWatermarkEntry(repo, 'target')).sort()).toEqual(
+      [repo, workspace].sort(),
+    );
   });
 });

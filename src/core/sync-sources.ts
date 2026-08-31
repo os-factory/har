@@ -1,8 +1,15 @@
 import * as path from 'path';
 import { resolveHarnessRoot } from '../harness/manifest';
-import { RunRecord, WorkAttemptRecord, WorkUnitRecord } from '../harness/schema';
+import {
+  RunRecord,
+  ValidationBindingRecord,
+  ValidationRecord,
+  WorkAttemptRecord,
+  WorkUnitRecord,
+} from '../harness/schema';
 import { listRuns } from './runs';
-import { listWorkAttempts, listWorkUnits } from './work-units';
+import { listValidations } from './validations';
+import { listValidationBindings, listWorkAttempts, listWorkUnits } from './work-units';
 
 /**
  * Where one sync reads its on-disk evidence from (#255).
@@ -52,10 +59,7 @@ function mergeById<T>(groups: T[][], id: (item: T) => string): T[] {
 
 /** Runs across every source, newest first (matching listRuns' ordering). */
 export function collectRunsForSync(sourcePaths: string[]): RunRecord[] {
-  return mergeById(
-    sourcePaths.map((source) => listRuns(source)),
-    (run) => run.runId,
-  ).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  return mergeRunsBySource(collectRunsBySource(sourcePaths));
 }
 
 /** Work units and attempts across every source, newest first. */
@@ -74,4 +78,64 @@ export function collectWorkUnitsForSync(sourcePaths: string[]): {
       (attempt) => attempt.attemptId,
     ).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   };
+}
+
+/** Runs kept per source, so a source new to a watermark can skip its filter. */
+export interface RunsBySource {
+  source: string;
+  runs: RunRecord[];
+}
+
+export function collectRunsBySource(sourcePaths: string[]): RunsBySource[] {
+  return sourcePaths.map((source) => ({ source, runs: listRuns(source) }));
+}
+
+/** Flatten per-source groups into the deduped, newest-first list. */
+export function mergeRunsBySource(bySource: RunsBySource[]): RunRecord[] {
+  return mergeById(
+    bySource.map((group) => group.runs),
+    (run) => run.runId,
+  ).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+}
+
+/**
+ * Runs to send, given what a watermark has already covered.
+ *
+ * A watermark records which sources it was advanced over. A source absent from
+ * that list has never been synced to this target, so filtering its records by a
+ * timestamp it never contributed to would strand them permanently — send all of
+ * them once, and let the watermark cover it from then on. Legacy watermarks
+ * carry no source list and are treated as covering the canonical path only.
+ */
+export function selectRunsForSync(
+  bySource: RunsBySource[],
+  since: string | null,
+  coveredSources: string[],
+  selectSince: (runs: RunRecord[], since: string | null) => RunRecord[],
+): RunRecord[] {
+  const covered = new Set(coveredSources.map((source) => path.resolve(source)));
+  const groups = bySource.map(({ source, runs }) =>
+    covered.has(path.resolve(source)) ? selectSince(runs, since) : runs,
+  );
+  return mergeById(groups, (run) => run.runId).sort((a, b) =>
+    b.startedAt.localeCompare(a.startedAt),
+  );
+}
+
+/** Validations across every source. */
+export function collectValidationsForSync(sourcePaths: string[]): ValidationRecord[] {
+  return mergeById(
+    sourcePaths.map((source) => listValidations(resolveHarnessRoot(source))),
+    (record) => record.validationId,
+  );
+}
+
+/** Validation bindings across every source. */
+export function collectValidationBindingsForSync(
+  sourcePaths: string[],
+): ValidationBindingRecord[] {
+  return mergeById(
+    sourcePaths.map((source) => listValidationBindings(resolveHarnessRoot(source))),
+    (record) => record.bindingId,
+  );
 }

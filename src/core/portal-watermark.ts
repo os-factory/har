@@ -9,11 +9,19 @@ interface PortalSyncStateEntry {
   lastSyncedAt: string;
   /** Server repo id at last sync; a change means the repo was wiped/recreated. */
   repoId?: string;
+  /**
+   * Source roots this watermark was advanced over (#255). A source missing here
+   * has never been synced to this target, so its records must not be filtered
+   * by a timestamp it never contributed to. Absent on legacy entries, which
+   * predate multi-source reads and cover the canonical path only.
+   */
+  sources?: string[];
 }
 
 export interface RunsWatermark {
   lastSyncedAt: string;
   repoId?: string;
+  sources?: string[];
 }
 
 interface PortalSyncState {
@@ -80,7 +88,9 @@ export function readRunsWatermarkEntry(repoPath: string, target: string): RunsWa
   const entry = readState().states.find(
     (state) => state.repoPath === canonical && state.portalUrl === target,
   );
-  return entry ? { lastSyncedAt: entry.lastSyncedAt, repoId: entry.repoId } : null;
+  return entry
+    ? { lastSyncedAt: entry.lastSyncedAt, repoId: entry.repoId, sources: entry.sources }
+    : null;
 }
 
 export function writeRunsWatermark(
@@ -88,19 +98,35 @@ export function writeRunsWatermark(
   target: string,
   repoId: string | undefined,
   lastSyncedAt: string,
+  sources?: string[],
 ): void {
   const canonical = canonicalizeControlRepoPath(repoPath);
   const state = readState();
   const existing = state.states.find(
     (entry) => entry.repoPath === canonical && entry.portalUrl === target,
   );
+  const merged = sources
+    ? [...new Set([...(existing?.sources ?? [canonical]), ...sources.map((s) => path.resolve(s))])]
+    : existing?.sources;
   if (existing) {
     existing.lastSyncedAt = lastSyncedAt;
     existing.repoId = repoId;
+    if (merged) existing.sources = merged;
   } else {
-    state.states.push({ repoPath: canonical, portalUrl: target, lastSyncedAt, repoId });
+    state.states.push({
+      repoPath: canonical,
+      portalUrl: target,
+      lastSyncedAt,
+      repoId,
+      ...(merged ? { sources: merged } : {}),
+    });
   }
   writeState(state);
+}
+
+/** Source roots a watermark already covers; legacy entries cover canonical only. */
+export function coveredSources(repoPath: string, entry: RunsWatermark | null): string[] {
+  return entry?.sources ?? [canonicalizeControlRepoPath(repoPath)];
 }
 
 /**
