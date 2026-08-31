@@ -1,0 +1,95 @@
+{
+  "kind": "line",
+  "id": "external-worktree",
+  "title": "Externally-owned worktrees",
+  "program": "line.json",
+  "files": [
+    {
+      "src": "stages/external-s0.sh",
+      "dest": ".har/stages/external-s0.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/external-s1.sh",
+      "dest": ".har/stages/external-s1.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/external-s2.sh",
+      "dest": ".har/stages/external-s2.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/external-s3.sh",
+      "dest": ".har/stages/external-s3.sh",
+      "executable": true
+    }
+  ],
+  "stages": [
+    {
+      "id": "external-s0",
+      "kind": "test",
+      "description": "S0 \u2014 HAR knows it does not own the checkout",
+      "script": "stages/external-s0.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/external-s0",
+          "kind": "directory",
+          "description": "Output for external-s0"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "external-s1",
+      "kind": "test",
+      "description": "S1 \u2014 Evidence written there reaches Mission Control and the portal",
+      "script": "stages/external-s1.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/external-s1",
+          "kind": "directory",
+          "description": "Output for external-s1"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "external-s2",
+      "kind": "test",
+      "description": "S2 \u2014 Teardown leaves a checkout HAR did not create alone",
+      "script": "stages/external-s2.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/external-s2",
+          "kind": "directory",
+          "description": "Output for external-s2"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "external-s3",
+      "kind": "test",
+      "description": "S3 \u2014 A real external worktree, end to end \u2014 and the owned path unchanged",
+      "script": "stages/external-s3.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/external-s3",
+          "kind": "directory",
+          "description": "Output for external-s3"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    }
+  ],
+  "nextSteps": [
+    "har line status external-worktree",
+    "har line gate S3 --line external-worktree"
+  ],
+  "docsPath": ".har/lines/external-worktree/README.md"
+}

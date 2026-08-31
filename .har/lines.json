@@ -2,6 +2,19 @@
   "version": "1",
   "lines": [
     {
+      "id": "external-worktree",
+      "source": "local",
+      "spec": "external-worktree",
+      "stageIds": [
+        "external-s0",
+        "external-s1",
+        "external-s2",
+        "external-s3"
+      ],
+      "programPath": ".har/lines/external-worktree/line.json",
+      "installedAt": "2026-08-31T17:27:24.296Z"
+    },
+    {
       "id": "occupancy-identity",
       "source": "local",
       "spec": "occupancy-identity",
