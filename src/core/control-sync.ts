@@ -31,6 +31,11 @@ import {
   updatePortalTargetTokens,
 } from './portal-targets';
 import { canonicalizeControlRepoPath } from './control-repo-path';
+import {
+  collectRunsForSync,
+  collectWorkUnitsForSync,
+  resolveSyncSourcePaths,
+} from './sync-sources';
 import { collectEnvironmentStatus } from './slot-status';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
@@ -796,10 +801,10 @@ export async function ensureRepoRegisteredWithControl(
 }
 
 async function syncRepoWithLocalControl(
-  options: ControlSyncOptions & { repoPath: string },
+  options: ControlSyncOptions & { repoPath: string; workspacePath?: string },
 ): Promise<void> {
   const apiUrl = options.apiUrl ?? getControlApiUrl();
-  const { repoPath, dryRun, full } = options;
+  const { repoPath, workspacePath, dryRun, full } = options;
 
   const registerResult = await registerRepoWithControl({ ...options, repoPath });
   const repoId = registerResult?.id;
@@ -813,12 +818,12 @@ async function syncRepoWithLocalControl(
       // Unregistered / blocked — nothing to sync locally.
       return;
     }
-    await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, dryRun, full);
+    await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, workspacePath, dryRun, full);
     return;
   }
 
   if (repoId) {
-    await syncRepoRunsAndSlots(apiUrl, repoId, repoPath, dryRun, full);
+    await syncRepoRunsAndSlots(apiUrl, repoId, repoPath, workspacePath, dryRun, full);
   }
 }
 
@@ -964,6 +969,8 @@ async function syncTrajectoryWithPortal(
 export async function syncRepoWithControl(
   options: ControlSyncOptions,
 ): Promise<{ warnings: string[] }> {
+  // Identity is canonical; evidence may live in the workspace this ran in (#255).
+  const workspacePath = path.resolve(options.repoPath);
   const repoPath = canonicalizeControlRepoPath(options.repoPath);
   const apiUrl = options.apiUrl ?? getControlApiUrl();
 
@@ -972,8 +979,10 @@ export async function syncRepoWithControl(
     if (!remote) {
       throw new Error('HAR Cloud not configured (set HAR_CLOUD_API_URL and HAR_CLOUD_API_KEY)');
     }
-    const runs = listRuns(repoPath);
+    const sourcePaths = resolveSyncSourcePaths(repoPath, workspacePath);
+    const runs = collectRunsForSync(sourcePaths);
     const status = collectEnvironmentStatus(repoPath);
+    const cloudWork = collectWorkUnitsForSync(sourcePaths);
     const harnessRoot = resolveHarnessRoot(repoPath);
     const response = await fetch(`${process.env.HAR_CLOUD_API_URL}/api/sync`, {
       method: 'POST',
@@ -985,8 +994,8 @@ export async function syncRepoWithControl(
         path: repoPath,
         runs,
         slots: status.slots,
-        workUnits: listWorkUnits(harnessRoot),
-        attempts: listWorkAttempts(harnessRoot),
+        workUnits: cloudWork.workUnits,
+        attempts: cloudWork.attempts,
         validations: listValidations(harnessRoot),
         validationBindings: listValidationBindings(harnessRoot),
       }),
@@ -997,7 +1006,7 @@ export async function syncRepoWithControl(
     return { warnings: [] };
   }
 
-  await syncRepoWithLocalControl({ ...options, repoPath, apiUrl });
+  await syncRepoWithLocalControl({ ...options, repoPath, workspacePath, apiUrl });
 
   if (!isRepoPortalSyncEnabled(repoPath)) return { warnings: [] };
 
@@ -1032,13 +1041,15 @@ async function syncRepoRunsAndSlots(
   apiUrl: string,
   repoId: string,
   repoPath: string,
+  workspacePath?: string,
   dryRun?: boolean,
   full?: boolean,
 ): Promise<void> {
+  const sourcePaths = resolveSyncSourcePaths(repoPath, workspacePath);
   const runsTarget = runsWatermarkTarget(apiUrl);
   const stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
   const runsSince = rewindSince(stored?.repoId === repoId ? (stored?.lastSyncedAt ?? null) : null);
-  const runs = listRuns(repoPath);
+  const runs = collectRunsForSync(sourcePaths);
   const { selected: newRuns } = selectSince(runs, runsSince, runTimestamp);
 
   await syncRunBatches(newRuns, repoPath, runsTarget, () => repoId, dryRun, async (batch) => {
@@ -1052,10 +1063,7 @@ async function syncRepoRunsAndSlots(
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
 
-  const workUnitsBody = SyncWorkUnitsInputSchema.parse({
-    workUnits: listWorkUnits(resolveHarnessRoot(repoPath)),
-    attempts: listWorkAttempts(resolveHarnessRoot(repoPath)),
-  });
+  const workUnitsBody = SyncWorkUnitsInputSchema.parse(collectWorkUnitsForSync(sourcePaths));
   if (workUnitsBody.workUnits.length > 0 || workUnitsBody.attempts.length > 0) {
     await postJson(`${apiUrl}/api/repos/${repoId}/work-units`, workUnitsBody, dryRun);
   }
