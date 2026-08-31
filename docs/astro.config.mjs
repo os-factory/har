@@ -36,7 +36,7 @@ const redirects = Object.fromEntries(
 );
 // The docs landing was consolidated into the Introduction; send /docs there.
 redirects['/docs'] = '/docs/getting-started/introduction/';
-redirects['/enterprise'] = '/teams/';
+redirects['/enterprise'] = 'https://harhq.com/';
 redirects['/docs/project/road-to-1-0'] = '/blog/har-1-0-0/';
 redirects['/docs/project/road-to-1-0/'] = '/blog/har-1-0-0/';
 
