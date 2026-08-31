@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { HarSlotMode } from '../harness/schema';
 import { readSlotRegistry, isSlotResumable } from '../core/slot-registry';
 
 /**
@@ -177,6 +178,9 @@ export interface ResumedSession {
   baseBranch: string;
   baseCommit: string;
   useWorktree: boolean;
+  /** How this slot got its checkout — preserved so resume cannot downgrade
+   *  an externally-owned worktree to `root` and make it removable (#254). */
+  mode: HarSlotMode;
   envFile: string;
 }
 
@@ -232,6 +236,7 @@ export function resolveResumeSession(repoPath: string, agentId: number): ResumeR
       baseBranch: session?.baseBranch ?? '',
       baseCommit: session?.baseCommit ?? '',
       useWorktree: session?.mode === 'worktree',
+      mode: session?.mode ?? 'root',
       envFile,
     },
   };
@@ -253,6 +258,12 @@ export interface TeardownWorktreeOptions {
   agentId: number;
   /** From the slot registry; falls back to the legacy fixed path. */
   worktreePath?: string;
+  /**
+   * Slot mode from the registry. Only `worktree` is HAR-owned and removable.
+   * Undefined (registry missing/legacy) keeps the historical guess-and-remove
+   * behavior so orphan cleanup still works.
+   */
+  mode?: HarSlotMode;
   /** Legacy fallback path component (teardown.sh's HARNESS_PROJECT_NAME). */
   projectName?: string;
   branch?: string;
@@ -264,6 +275,8 @@ export interface TeardownWorktreeOptions {
 
 export interface TeardownWorktreeResult {
   removedWorktree?: string;
+  /** Set when a checkout was left alone because HAR does not own it (#254). */
+  preservedWorktree?: string;
   deletedBranch?: string;
   keptBranch?: string;
 }
@@ -282,6 +295,28 @@ export function removeSessionWorktree(options: TeardownWorktreeOptions): Teardow
   let worktreePath = options.worktreePath;
   if (!worktreePath && options.projectName) {
     worktreePath = path.join(homeDir, 'worktrees', `${options.projectName}-agent-${options.agentId}`);
+  }
+
+  // An externally-created worktree is a real linked worktree of this repo, so
+  // `git worktree remove` would happily succeed and take the orchestrator's
+  // workspace — and any uncommitted work in it — with it. HAR removes only what
+  // HAR created (#254). `root` has no session worktree to remove at all, so the
+  // legacy path guess must not be acted on either.
+  const owned = options.mode === undefined || options.mode === 'worktree';
+  if (!owned) {
+    if (worktreePath && fs.existsSync(worktreePath) && options.mode === 'external') {
+      result.preservedWorktree = worktreePath;
+    }
+    tryGit(git, ['worktree', 'prune'], options.repoRoot);
+    if (options.branch) {
+      if (options.deleteBranch) {
+        tryGit(git, ['branch', '-D', options.branch], options.repoRoot);
+        result.deletedBranch = options.branch;
+      } else {
+        result.keptBranch = options.branch;
+      }
+    }
+    return result;
   }
 
   if (worktreePath && fs.existsSync(worktreePath)) {

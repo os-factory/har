@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getHarnessDir } from '../harness/manifest';
-import { SlotRegistryEntry, SlotRegistryEntrySchema } from '../harness/schema';
+import { HarSlotMode, SlotRegistryEntry, SlotRegistryEntrySchema } from '../harness/schema';
 import { notifyControlSync } from './control-notify';
 
 export function getSlotRegistryDir(repoPath: string): string {
@@ -36,7 +36,7 @@ export function readSlotRegistry(
 export interface SlotRegistryWriteInput {
   agentId: number;
   projectName: string;
-  mode: 'worktree' | 'root';
+  mode: HarSlotMode;
   workDir: string;
   status?: 'starting' | 'active' | 'failed' | 'completed';
   suffix?: string;
