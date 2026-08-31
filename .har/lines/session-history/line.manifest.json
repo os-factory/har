@@ -1,0 +1,65 @@
+{
+  "kind": "line",
+  "id": "session-history",
+  "title": "Session history graph",
+  "program": "line.json",
+  "files": [
+    {
+      "src": "stages/session-history-s0.sh",
+      "dest": ".har/stages/session-history-s0.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/session-history-agent-lab.sh",
+      "dest": ".har/stages/session-history-agent-lab.sh",
+      "executable": true
+    },
+    {
+      "src": "lab/agent/run-agent-lab.mjs",
+      "dest": ".har/lines/session-history/lab/agent/run-agent-lab.mjs",
+      "executable": true
+    },
+    {
+      "src": "README.md",
+      "dest": ".har/lines/session-history/README.md"
+    }
+  ],
+  "stages": [
+    {
+      "id": "session-history-s0",
+      "kind": "test",
+      "description": "S0 — snapshot and commit stay distinct in the graph assembler",
+      "script": "stages/session-history-s0.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/session-history-s0",
+          "kind": "directory",
+          "description": "jest output for session-history-s0"
+        }
+      ],
+      "tier": "full"
+    },
+    {
+      "id": "session-history-agent-lab",
+      "kind": "test",
+      "description": "S1 — real Claude Code session, full verify, commit binding",
+      "script": "stages/session-history-agent-lab.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/session-history-agent-lab",
+          "kind": "directory",
+          "description": "Agent lab report and log"
+        }
+      ],
+      "tier": "full"
+    }
+  ],
+  "nextSteps": [
+    "har line status session-history",
+    "har line gate S0 --line session-history",
+    "har line gate S1 --line session-history"
+  ],
+  "docsPath": ".har/lines/session-history/README.md"
+}

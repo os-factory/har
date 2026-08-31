@@ -2,6 +2,7 @@
 logs/
 runs/
 validations/
+commit-bindings/
 artifacts/
 AGENTS.md.proposed
 AGENTS.md.proposed.meta.json

@@ -190,7 +190,7 @@ export function ChangeBatchDiff({ repoId, batch, open, onOpenChange }: ChangeBat
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2 pr-8">
                 <FileDiff className="h-5 w-5 text-primary" />
-                Change batch <span className="font-mono text-base">{batch.treeHash.slice(0, 8)}</span>
+                Content snapshot <span className="font-mono text-base">{batch.treeHash.slice(0, 8)}</span>
               </SheetTitle>
               <SheetDescription>
                 {batch.branch ?? 'Detached HEAD'} · {batch.changedFiles.length} changed file

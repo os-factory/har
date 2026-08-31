@@ -230,6 +230,36 @@
       ],
       "requiresAgentId": true,
       "tier": "full"
+    },
+    {
+      "id": "session-history-s0",
+      "kind": "test",
+      "description": "S0 — snapshot and commit stay distinct in the graph assembler",
+      "script": "stages/session-history-s0.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/session-history-s0",
+          "kind": "directory",
+          "description": "jest output for session-history-s0"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "session-history-agent-lab",
+      "kind": "test",
+      "description": "S1 — real Claude Code session, full verify, commit binding",
+      "script": "stages/session-history-agent-lab.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/session-history-agent-lab",
+          "kind": "directory",
+          "description": "Agent lab report and log"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
     }
   ],
   "commitGate": {

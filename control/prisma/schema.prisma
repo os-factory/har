@@ -26,6 +26,7 @@ model Repository {
   workUnits       WorkUnit[]
   workAttempts    WorkAttempt[]
   validationBindings ValidationBinding[]
+  commitBindings     ValidationCommitBinding[]
 }
 
 model AgentSlot {
@@ -265,6 +266,26 @@ model ValidationBinding {
   @@unique([repositoryId, bindingId])
   @@index([repositoryId, validationId])
   @@index([workUnitDbId, sourceCreatedAt])
+}
+
+model ValidationCommitBinding {
+  id              String     @id @default(uuid())
+  repositoryId    String
+  repository      Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  bindingId       String
+  validationId    String
+  treeHash        String
+  commitSha       String
+  parents         Json
+  refs            Json
+  message         String?
+  runId           String?
+  sourceCreatedAt DateTime
+  createdAt       DateTime   @default(now())
+
+  @@unique([repositoryId, bindingId])
+  @@unique([repositoryId, treeHash, commitSha])
+  @@index([repositoryId, validationId])
 }
 
 model ChangeBatch {

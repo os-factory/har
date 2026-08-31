@@ -96,7 +96,7 @@ export async function resetMissionControlFromCli(
   if (scrubLocalHarness) {
     scrubbed = options.dryRun
       ? repoPaths.flatMap((repoPath) =>
-          (['runs', 'validations', 'state', 'slots'] as const).map((directory) => ({
+          (['runs', 'validations', 'commit-bindings', 'state', 'slots'] as const).map((directory) => ({
             path: `${repoPath}/.har/${directory}`,
             directory,
             deleted: false,

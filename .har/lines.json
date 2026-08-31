@@ -14,6 +14,17 @@
       ],
       "programPath": ".har/lines/occupancy-identity/line.json",
       "installedAt": "2026-08-30T11:56:54.197Z"
+    },
+    {
+      "id": "session-history",
+      "source": "local",
+      "spec": "session-history",
+      "stageIds": [
+        "session-history-s0",
+        "session-history-agent-lab"
+      ],
+      "programPath": ".har/lines/session-history/line.json",
+      "installedAt": "2026-08-31T17:00:00.000Z"
     }
   ]
 }

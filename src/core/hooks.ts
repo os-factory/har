@@ -338,7 +338,14 @@ export async function recordCommitAssociation(
     const tree = tryGit(checkout, 'rev-parse HEAD^{tree}');
     if (!commitSha || !tree) return { attached: false };
 
-    const updated = attachCommit(checkout, tree, commitSha);
+    const parentLine = tryGit(checkout, 'log -1 --format=%P');
+    const message = tryGit(checkout, 'log -1 --format=%s');
+    const refList = tryGit(checkout, 'for-each-ref --points-at=HEAD --format=%(refname:short)');
+    const updated = attachCommit(checkout, tree, commitSha, {
+      parents: parentLine ? parentLine.split(/\s+/).filter(Boolean) : [],
+      refs: refList ? refList.split('\n').filter(Boolean) : [],
+      message,
+    });
     if (updated) {
       markDirty(updated.harnessRoot);
       return { attached: true, commitSha };

@@ -55,9 +55,11 @@ export function changeBatchColumns(
   },
   {
     accessorKey: 'treeHash',
-    header: 'Batch',
+    header: 'Content snapshot',
     cell: ({ row }) => (
-      <span className="font-mono">{row.original.treeHash.slice(0, 8)}</span>
+      <span className="font-mono" title={`Content snapshot ${row.original.treeHash}`}>
+        {row.original.treeHash.slice(0, 8)}
+      </span>
     ),
   },
   {
@@ -78,9 +80,9 @@ export function changeBatchColumns(
   },
   {
     accessorKey: 'runId',
-    header: 'Run',
+    header: 'Verified by run',
     cell: ({ row }) => (
-      <span className="font-mono">
+      <span className="font-mono" title={row.original.runId ?? undefined}>
         {row.original.runId ? row.original.runId.slice(0, 8) : '—'}
       </span>
     ),
@@ -89,7 +91,7 @@ export function changeBatchColumns(
     accessorKey: 'commitSha',
     header: 'Commit',
     cell: ({ row }) => (
-      <span className="font-mono">
+      <span className="font-mono" title={row.original.commitSha ?? undefined}>
         {row.original.commitSha ? row.original.commitSha.slice(0, 8) : '—'}
       </span>
     ),

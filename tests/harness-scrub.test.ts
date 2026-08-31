@@ -13,15 +13,15 @@ describe('CLI harness scrub', () => {
     temps.length = 0;
   });
 
-  it('removes the four sync-polluting .har directories', () => {
+  it('removes the sync-polluting .har directories', () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'har-cli-scrub-'));
     temps.push(repo);
-    for (const directory of ['runs', 'validations', 'state', 'slots']) {
+    for (const directory of ['runs', 'validations', 'commit-bindings', 'state', 'slots']) {
       fs.mkdirSync(path.join(repo, '.har', directory), { recursive: true });
     }
 
     const results = scrubLocalHarnessDirs(repo);
-    expect(results).toHaveLength(4);
+    expect(results).toHaveLength(5);
     expect(results.every((row) => row.deleted)).toBe(true);
     expect(fs.existsSync(path.join(repo, '.har', 'runs'))).toBe(false);
   });
