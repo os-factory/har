@@ -5,6 +5,11 @@
   "program": "line.json",
   "files": [
     {
+      "src": "stages/external-common.sh",
+      "dest": ".har/stages/external-common.sh",
+      "executable": false
+    },
+    {
       "src": "stages/external-s0.sh",
       "dest": ".har/stages/external-s0.sh",
       "executable": true

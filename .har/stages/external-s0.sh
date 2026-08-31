@@ -8,7 +8,9 @@ set -euo pipefail
 
 HARNESS_DIR="${HAR_HARNESS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 AGENT_ID="${1:-${AGENT_ID:-1}}"
-. "$HARNESS_DIR/lines/external-worktree/stages/_common.sh" 2>/dev/null ||   . "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+. "$HARNESS_DIR/lines/external-worktree/stages/_common.sh" 2>/dev/null ||   COMMON="$(dirname "${BASH_SOURCE[0]}")/external-common.sh"
+[ -f "$COMMON" ] || COMMON="$HARNESS_DIR/lines/external-worktree/stages/external-common.sh"
+. "$COMMON"
 
 TARGET="${WORK_DIR:-$(cd "$HARNESS_DIR/.." && pwd)}"
 ARTIFACTS_DIR="$HARNESS_DIR/artifacts/external-s0"
