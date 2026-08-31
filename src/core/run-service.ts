@@ -2,7 +2,11 @@ import { parseVerificationResult } from './results';
 import * as crypto from 'crypto';
 import { localScriptExecutor } from './local-executor';
 import { createRun, finishRun, resolveAgentWorkDir } from './runs';
-import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
+import {
+  listSlotRegistryEntries,
+  readSlotRegistry,
+  resolveSlotRegistryContext,
+} from './slot-registry';
 import { checkLaunchGuard } from './slot-launch-guard';
 import { formatPreflightReport, inspectSlotReadiness } from './slot-preflight';
 import {
@@ -94,7 +98,7 @@ export class RunService {
   async runStage(options: StageRunOptions & { trigger?: ExecutionContext['trigger'] }): Promise<StageResult> {
     const activeSession =
       options.agentId !== undefined && options.kind !== 'launch'
-        ? readSlotRegistry(resolveHarnessRoot(options.repoPath), options.agentId)
+        ? resolveSlotRegistryContext(options.repoPath, options.agentId)?.session
         : undefined;
     const ctx: ExecutionContext = {
       repoPath: options.repoPath,
@@ -383,8 +387,9 @@ export class RunService {
 
     if (verification) {
       try {
-        const harnessRoot = resolveHarnessRoot(options.repoPath);
-        const session = readSlotRegistry(harnessRoot, options.agentId);
+        const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
+        const harnessRoot = registry?.harnessRoot ?? resolveHarnessRoot(options.repoPath);
+        const session = registry?.session;
         const checkoutDir = resolveValidationCheckoutDir({
           worktreePath: session?.worktreePath,
           workDir: resolveAgentWorkDir(harnessRoot, options.agentId),
@@ -438,8 +443,9 @@ export class RunService {
   }): Promise<EnvironmentRunResult> {
     // Captured before teardown clears the slot registry — the attempt binding
     // is gone afterwards.
-    const harnessRoot = resolveHarnessRoot(options.repoPath);
-    const session = readSlotRegistry(harnessRoot, options.agentId);
+    const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
+    const harnessRoot = registry?.harnessRoot ?? resolveHarnessRoot(options.repoPath);
+    const session = registry?.session;
 
     const result = await this.runStage({
       repoPath: options.repoPath,
@@ -487,15 +493,15 @@ export class RunService {
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
   }): Promise<EnvironmentRunResult & { verification?: VerificationResult | null }> {
-    const harnessRoot = resolveHarnessRoot(options.repoPath);
-    const session = readSlotRegistry(harnessRoot, options.agentId);
-    if (!session) {
+    const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
+    if (!registry) {
       return {
         code: 1,
         stdout: '',
         stderr: `No active session for agent ${options.agentId}. Run launch first.`,
       };
     }
+    const { harnessRoot, session } = registry;
 
     const runVerify = shouldReverifyOnComplete(options);
     let verification: VerificationResult | null | undefined;

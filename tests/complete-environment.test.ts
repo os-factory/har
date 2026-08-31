@@ -186,4 +186,28 @@ describe('completeEnvironment (#324)', () => {
       treeHash: validation.treeHash,
     });
   });
+
+  it('finds the slot registry when cwd is a session worktree (#331)', async () => {
+    const main = initRepo();
+    const worktree = path.join(path.dirname(main), `${path.basename(main)}-wt`);
+    sh(main, `git worktree add -q -b session-branch "${worktree}"`);
+    writeActiveSlot(main, {
+      mode: 'worktree',
+      workDir: worktree,
+      worktreePath: worktree,
+    });
+    recordValidation({
+      checkoutDir: worktree,
+      harnessRoot: main,
+      status: 'pass',
+      full: true,
+      agentId: 1,
+    });
+
+    const result = await completeEnvironment({ repoPath: worktree, agentId: 1, capture: true });
+
+    expect(result.code).toBe(0);
+    expect(mockedPlan).not.toHaveBeenCalled();
+    expect(mockedTeardown).toHaveBeenCalledTimes(1);
+  });
 });
