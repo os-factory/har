@@ -241,9 +241,10 @@ to show, and a surface with no turns is indistinguishable from a session that ha
 none. Turning it off is the deliberate opt-out, and it is silent by design:
 
 - With `prompts` off (`har telemetry on --no-prompts`, or `har telemetry off`),
-  the Claude/Codex harvest contributes **zero** events. Anything that still
-  appears is mirrored from otel spans, so turn counts read 0 for sessions that
-  really had turns.
+  the Claude transcript harvest contributes **zero** events — and it is the only
+  event harvest there is, since the Codex one covers usage alone. Anything that
+  still appears is mirrored from otel spans, so turn counts read 0 for sessions
+  that really had turns.
 - `har telemetry status` prints the effective signals; `har control sync --full`
   warns when prompt capture is the reason no content is leaving the machine.
 - A harvested stream longer than 1000 events keeps the most recent 1000 and marks
