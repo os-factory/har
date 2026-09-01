@@ -1,0 +1,105 @@
+{
+  "contractVersion": 1,
+  "id": "external-worktree",
+  "title": "Externally-owned worktrees",
+  "description": "HAR runs inside checkouts it did not create \u2014 an external orchestrator's worktree, or the main checkout itself. Each station adds a question the gate keeps asking forever: does HAR know it does not own the checkout, does evidence written there reach Mission Control and the portal, and does teardown leave the orchestrator's workspace alone.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "github",
+      "why": "issue #253 is this line's traveler",
+      "required": false
+    }
+  ],
+  "plugins": [],
+  "stations": [
+    {
+      "id": "S0",
+      "title": "HAR knows it does not own the checkout",
+      "description": "`--no-worktree` no longer collapses the main checkout and a foreign worktree into one mode. Detection is git-based, so any tool that creates a worktree (Warp, Conductor, cursor, a hand-rolled `git worktree add`) is covered without HAR knowing its name.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "253"
+        ],
+        "url": "https://github.com/os-factory/har/issues/253",
+        "optional": false
+      }
+    },
+    {
+      "id": "S1",
+      "title": "Evidence written there reaches Mission Control and the portal",
+      "description": "Repository identity stays canonical \u2014 one row per repo, not one per worktree \u2014 while runs, work units, attempts, validations and bindings are read from the union of the canonical checkout and the workspace sync ran in. A source new to a watermark is sent unfiltered once.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "253"
+        ],
+        "url": "https://github.com/os-factory/har/issues/253",
+        "optional": false
+      }
+    },
+    {
+      "id": "S2",
+      "title": "Teardown leaves a checkout HAR did not create alone",
+      "description": "An externally-created worktree is a real linked worktree, so `git worktree remove` would succeed on it. HAR removes only what HAR created; root mode no longer acts on its legacy guessed path either.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "253"
+        ],
+        "url": "https://github.com/os-factory/har/issues/253",
+        "optional": false
+      }
+    },
+    {
+      "id": "S3",
+      "title": "A real external worktree, end to end \u2014 and the owned path unchanged",
+      "description": "Drives the built CLI through launch/verify/status/teardown inside a worktree created outside HAR, then does the same for a HAR-owned slot to prove the ordinary path did not regress.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "253"
+        ],
+        "url": "https://github.com/os-factory/har/issues/253",
+        "optional": false
+      }
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": null,
+    "stages": [
+      {
+        "id": "external-s0",
+        "fromStation": "S0",
+        "tier": "full"
+      },
+      {
+        "id": "external-s1",
+        "fromStation": "S1",
+        "tier": "full"
+      },
+      {
+        "id": "external-s2",
+        "fromStation": "S2",
+        "tier": "full"
+      },
+      {
+        "id": "external-s3",
+        "fromStation": "S3",
+        "tier": "full"
+      }
+    ]
+  },
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "human review of the S3 lab report before merge"
+  }
+}
