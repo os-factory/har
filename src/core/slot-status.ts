@@ -422,6 +422,9 @@ export function renderEnvironmentStatusText(status: EnvironmentStatus): string {
       lines.push(`  branch:      ${slot.branch}${drift.length ? ` [${drift.join(', ')}]` : ''}`);
     }
     if (slot.workDir) lines.push(`  work dir:    ${slot.workDir}`);
+    if (slot.mode === 'external') {
+      lines.push(`  worktree:    ${slot.worktreePath ?? slot.workDir} (externally owned — HAR will not remove it)`);
+    }
     if (slot.previewUrls && Object.keys(slot.previewUrls).length > 0) {
       lines.push(
         `  preview:     ${Object.entries(slot.previewUrls)

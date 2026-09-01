@@ -1,8 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getHarnessDir } from '../harness/manifest';
-import { SlotRegistryEntry, SlotRegistryEntrySchema } from '../harness/schema';
+import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
+import { HarSlotMode, SlotRegistryEntry, SlotRegistryEntrySchema } from '../harness/schema';
+import { canonicalizeControlRepoPath } from './control-repo-path';
 import { notifyControlSync } from './control-notify';
+
+export interface SlotRegistryContext {
+  harnessRoot: string;
+  session: SlotRegistryEntry;
+}
 
 export function getSlotRegistryDir(repoPath: string): string {
   return path.join(getHarnessDir(repoPath), 'slots');
@@ -15,6 +21,40 @@ export function getSlotRegistryPath(repoPath: string, agentId: number): string {
 /** Whether a partial launch can be resumed via --resume instead of tearing down first. */
 export function isSlotResumable(session: SlotRegistryEntry | undefined): boolean {
   return session?.status === 'failed' || session?.status === 'starting';
+}
+
+/**
+ * Resolve the harness root that owns a slot's registry entry.
+ * Session worktrees carry their own `.har/manifest.json`, so
+ * `resolveHarnessRoot(cwd)` may point at the worktree while the slot file
+ * lives under the main checkout — mirror teardown's cwd tolerance.
+ */
+export function resolveSlotRegistryContext(
+  repoPath: string,
+  agentId: number,
+): SlotRegistryContext | undefined {
+  const localHarnessRoot = resolveHarnessRoot(repoPath);
+  const localSession = readSlotRegistry(localHarnessRoot, agentId);
+  if (localSession) {
+    return { harnessRoot: localHarnessRoot, session: localSession };
+  }
+
+  const mainRepoPath = canonicalizeControlRepoPath(repoPath);
+  if (mainRepoPath === path.resolve(repoPath)) {
+    return undefined;
+  }
+
+  const mainHarnessRoot = resolveHarnessRoot(mainRepoPath);
+  if (mainHarnessRoot === localHarnessRoot) {
+    return undefined;
+  }
+
+  const mainSession = readSlotRegistry(mainHarnessRoot, agentId);
+  if (mainSession) {
+    return { harnessRoot: mainHarnessRoot, session: mainSession };
+  }
+
+  return undefined;
 }
 
 /** Read one slot's session entry; undefined when missing or invalid. */
@@ -36,7 +76,7 @@ export function readSlotRegistry(
 export interface SlotRegistryWriteInput {
   agentId: number;
   projectName: string;
-  mode: 'worktree' | 'root';
+  mode: HarSlotMode;
   workDir: string;
   status?: 'starting' | 'active' | 'failed' | 'completed';
   suffix?: string;

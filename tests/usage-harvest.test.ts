@@ -1,7 +1,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { harvestClaudeUsage, encodeClaudeProjectDir } from '../src/core/usage-harvest/claude';
+import {
+  MAX_HARVESTED_SESSION_EVENTS,
+  encodeClaudeProjectDir,
+  harvestClaudeEvents,
+  harvestClaudeUsage,
+} from '../src/core/usage-harvest/claude';
 import { USAGE_HARVEST_VERSION } from '../src/harness/schema';
 import { harvestCodexUsage } from '../src/core/usage-harvest/codex';
 import {
@@ -728,5 +733,191 @@ describe('omit harvest when otel present', () => {
     ];
 
     expect(omitHarvestEventsWhenOtelPresent(harvested, existing)).toEqual([]);
+  });
+});
+
+describe('harvest claude events', () => {
+  let tmp: string;
+  let telemetryPath: string;
+  const originalProjects = process.env.HAR_CLAUDE_PROJECTS_DIR;
+  const originalTelemetryConfig = process.env.HAR_TELEMETRY_CONFIG_PATH;
+  const originalTelemetry = process.env.HAR_TELEMETRY;
+
+  const writeTranscript = (
+    dir: string,
+    file: string,
+    turns: { role: 'user' | 'assistant'; text: string; timestamp: string }[],
+  ): void => {
+    const project = path.join(tmp, encodeClaudeProjectDir(dir));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(project, file),
+      turns
+        .map((turn) =>
+          JSON.stringify({
+            type: turn.role,
+            cwd: dir,
+            timestamp: turn.timestamp,
+            message: { role: turn.role, content: turn.text },
+          }),
+        )
+        .join('\n') + '\n',
+    );
+  };
+
+  const setPrompts = (prompts: boolean): void => {
+    fs.writeFileSync(
+      telemetryPath,
+      JSON.stringify({
+        enabled: true,
+        signals: { metrics: true, logs: true, prompts, traces: true },
+      }),
+    );
+  };
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'har-claude-events-'));
+    telemetryPath = path.join(tmp, 'telemetry.json');
+    process.env.HAR_CLAUDE_PROJECTS_DIR = tmp;
+    process.env.HAR_TELEMETRY_CONFIG_PATH = telemetryPath;
+    delete process.env.HAR_TELEMETRY;
+    setPrompts(true);
+  });
+
+  afterEach(() => {
+    if (originalProjects === undefined) delete process.env.HAR_CLAUDE_PROJECTS_DIR;
+    else process.env.HAR_CLAUDE_PROJECTS_DIR = originalProjects;
+    if (originalTelemetryConfig === undefined) delete process.env.HAR_TELEMETRY_CONFIG_PATH;
+    else process.env.HAR_TELEMETRY_CONFIG_PATH = originalTelemetryConfig;
+    if (originalTelemetry === undefined) delete process.env.HAR_TELEMETRY;
+    else process.env.HAR_TELEMETRY = originalTelemetry;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const slot = {
+    agentId: 1,
+    workDir: '/home/user/worktrees/main-abcd-har-agent-1-xy12',
+    branch: 'main-abcd-har-agent-1-xy12',
+    suffix: 'xy12',
+    repoPath: '/home/user/repo',
+  };
+
+  it('harvests nothing when the prompts signal is off', () => {
+    setPrompts(false);
+    writeTranscript(slot.workDir, 'session.jsonl', [
+      { role: 'user', text: 'hello', timestamp: '2026-01-01T00:00:00.000Z' },
+    ]);
+
+    expect(harvestClaudeEvents(slot)).toEqual([]);
+  });
+
+  it('merges every transcript of the slot, oldest first, with one continuous sequence', () => {
+    writeTranscript(slot.workDir, 'newer.jsonl', [
+      { role: 'user', text: 'second session', timestamp: '2026-01-02T00:00:00.000Z' },
+      { role: 'assistant', text: 'second answer', timestamp: '2026-01-02T00:00:01.000Z' },
+    ]);
+    writeTranscript(slot.workDir, 'older.jsonl', [
+      { role: 'user', text: 'first session', timestamp: '2026-01-01T00:00:00.000Z' },
+    ]);
+
+    const events = harvestClaudeEvents(slot);
+
+    expect(events.map((event) => [event.sequence, event.promptText ?? event.responseText])).toEqual([
+      [1, 'first session'],
+      [2, 'second session'],
+      [3, 'second answer'],
+    ]);
+    expect(events.map((event) => event.eventName)).toEqual([
+      'claude_code.user_prompt',
+      'claude_code.user_prompt',
+      'claude_code.assistant_response',
+    ]);
+  });
+
+  it('ignores the main-checkout transcript when the slot has one of its own', () => {
+    writeTranscript(slot.workDir, 'own.jsonl', [
+      { role: 'user', text: 'slot work', timestamp: '2026-01-01T00:00:00.000Z' },
+    ]);
+    writeTranscript(slot.repoPath, 'main.jsonl', [
+      { role: 'user', text: 'main checkout work', timestamp: '2026-01-03T00:00:00.000Z' },
+    ]);
+
+    const events = harvestClaudeEvents({ ...slot, includeRepoPathFallback: true });
+
+    expect(events.map((event) => event.promptText)).toEqual(['slot work']);
+  });
+
+  it('falls back to the main-checkout transcript when the slot has none', () => {
+    writeTranscript(slot.repoPath, 'main.jsonl', [
+      { role: 'user', text: 'main checkout work', timestamp: '2026-01-03T00:00:00.000Z' },
+    ]);
+
+    const events = harvestClaudeEvents({ ...slot, includeRepoPathFallback: true });
+
+    expect(events.map((event) => event.promptText)).toEqual(['main checkout work']);
+  });
+
+  it('labels a record by its role, not by the userType every record carries', () => {
+    const project = path.join(tmp, encodeClaudeProjectDir(slot.workDir));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(project, 'session.jsonl'),
+      [
+        JSON.stringify({
+          type: 'user',
+          userType: 'external',
+          cwd: slot.workDir,
+          timestamp: '2026-01-01T00:00:00.000Z',
+          message: { role: 'user', content: 'ship it' },
+        }),
+        JSON.stringify({
+          type: 'assistant',
+          userType: 'external',
+          cwd: slot.workDir,
+          timestamp: '2026-01-01T00:00:01.000Z',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'on it' }] },
+        }),
+        JSON.stringify({
+          type: 'system',
+          userType: 'external',
+          cwd: slot.workDir,
+          timestamp: '2026-01-01T00:00:02.000Z',
+          content: 'hook output',
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const events = harvestClaudeEvents(slot);
+
+    expect(events.map((event) => [event.eventName, event.promptText, event.responseText])).toEqual([
+      ['claude_code.user_prompt', 'ship it', null],
+      ['claude_code.assistant_response', null, 'on it'],
+    ]);
+  });
+
+  it('keeps the newest events past the cap and marks the stream as truncated', () => {
+    const total = MAX_HARVESTED_SESSION_EVENTS + 5;
+    writeTranscript(
+      slot.workDir,
+      'long.jsonl',
+      Array.from({ length: total }, (_, index) => ({
+        role: 'user' as const,
+        text: `turn ${index + 1}`,
+        timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      })),
+    );
+
+    const events = harvestClaudeEvents(slot);
+
+    expect(events).toHaveLength(MAX_HARVESTED_SESSION_EVENTS);
+    expect(events[0].promptText).toBe('turn 6');
+    expect(events[0].sequence).toBe(6);
+    expect(events[events.length - 1].sequence).toBe(total);
+    expect(events[0].attributes).toEqual({
+      'har.harvest.truncated': true,
+      'har.harvest.dropped_events': 5,
+      'har.harvest.total_events': total,
+    });
+    expect(events[1].attributes).toBeUndefined();
   });
 });

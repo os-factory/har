@@ -1,3 +1,24 @@
+## [1.6.0](https://github.com/os-factory/har/compare/v1.5.0...v1.6.0) (2026-09-01)
+
+### Features
+
+* represent externally-owned worktrees ([#333](https://github.com/os-factory/har/issues/333)) ([fc5029b](https://github.com/os-factory/har/commit/fc5029b8972276a6d1adf7cb63cfe9344a2be22f))
+
+### Bug Fixes
+
+* sync evidence written inside an external workspace ([#334](https://github.com/os-factory/har/issues/334)) ([7aa0a93](https://github.com/os-factory/har/commit/7aa0a93c299d3c035c7a77b9d02e1213e4b02cf1))
+* **telemetry:** harvest prompt events from every transcript of a slot ([#308](https://github.com/os-factory/har/issues/308)) ([8754c72](https://github.com/os-factory/har/commit/8754c722f620dc7e8db27890371b54b31ea38e5c))
+
+## [1.5.0](https://github.com/os-factory/har/compare/v1.4.0...v1.5.0) (2026-08-30)
+
+### Features
+
+* **control:** factory line board over the installed bundle ([#305](https://github.com/os-factory/har/issues/305)) ([#326](https://github.com/os-factory/har/issues/326)) ([0db74a1](https://github.com/os-factory/har/commit/0db74a11139584f22af8caf01417d5f0c2f88e47))
+
+### Bug Fixes
+
+* **telemetry:** bound the agent hooks so an unreachable collector cannot stall a turn ([#328](https://github.com/os-factory/har/issues/328)) ([#329](https://github.com/os-factory/har/issues/329)) ([98fa07b](https://github.com/os-factory/har/commit/98fa07b9ace8542cc9e6fa2eabb05d4fed03a39b))
+
 ## [1.4.0](https://github.com/os-factory/har/compare/v1.3.0...v1.4.0) (2026-08-30)
 
 ### Features

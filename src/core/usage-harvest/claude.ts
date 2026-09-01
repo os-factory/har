@@ -8,6 +8,9 @@ import { buildSessionKey } from '../telemetry-env';
 import { workspaceMatchesTarget } from '../workspace-path-match';
 import { recordTimeRange } from './record-time-range';
 
+/** Every sync re-sends the whole stream, so it needs a bound; drops are reported. */
+export const MAX_HARVESTED_SESSION_EVENTS = 1000;
+
 export interface HarvestSlotContext {
   agentId: number;
   workDir?: string;
@@ -213,6 +216,19 @@ function findMatchingClaudeTranscripts(slot: HarvestSlotContext): TranscriptMatc
   return [...primary, ...fallback];
 }
 
+// Main-checkout work is only this slot's when the slot has no transcript of its
+// own, so the fallback tier is never mixed with the primary one.
+function selectUsableTranscripts(matches: TranscriptMatch[]): TranscriptMatch[] {
+  const own = matches.filter((match) => match.primary);
+  return own.length > 0 ? own : matches;
+}
+
+function transcriptStartedAtMs(match: TranscriptMatch): number {
+  const range = recordTimeRange(match.records);
+  const started = range ? Date.parse(range.firstAt) : NaN;
+  return Number.isFinite(started) ? started : match.mtimeMs;
+}
+
 function extractPromptEvents(
   records: unknown[],
   sessionKey: string,
@@ -245,9 +261,13 @@ function extractPromptEvents(
     }
     if (!text || text.trim().length === 0) continue;
 
-    const isUser =
-      typ === 'user' || role === 'user' || typ === 'human' || Boolean(payload.userType);
     const isAssistant = typ === 'assistant' || role === 'assistant';
+    // `userType` is stamped on assistant and system records too.
+    const isUser =
+      typ === 'user' ||
+      typ === 'human' ||
+      role === 'user' ||
+      (!typ && !role && Boolean(payload.userType));
     if (!isUser && !isAssistant) continue;
 
     sequence += 1;
@@ -283,11 +303,7 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
     createdAt: slot.sessionCreatedAt,
   });
 
-  // Main-checkout work is only this slot's when the slot has no transcript of its
-  // own, so the fallback tier is never summed with the primary one.
-  const own = matches.filter((match) => match.primary);
-  const usable = own.length > 0 ? own : matches;
-  const records = usable.flatMap((match) => match.records);
+  const records = selectUsableTranscripts(matches).flatMap((match) => match.records);
   const usage = extractClaudeUsageFromRecords(records);
   if (
     usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead === 0 &&
@@ -324,17 +340,40 @@ export function harvestClaudeUsage(slot: HarvestSlotContext): AgentSessionUsage 
   };
 }
 
+function capHarvestedEvents(events: AgentSessionEvent[]): AgentSessionEvent[] {
+  if (events.length <= MAX_HARVESTED_SESSION_EVENTS) return events;
+  const kept = events.slice(-MAX_HARVESTED_SESSION_EVENTS);
+  kept[0] = {
+    ...kept[0],
+    attributes: {
+      ...(kept[0].attributes ?? {}),
+      'har.harvest.truncated': true,
+      'har.harvest.dropped_events': events.length - kept.length,
+      'har.harvest.total_events': events.length,
+    },
+  };
+  return kept;
+}
+
 /** Prompt/message summaries from local JSONL — only when prompts signal is on. */
 export function harvestClaudeEvents(slot: HarvestSlotContext): AgentSessionEvent[] {
   if (!getTelemetrySignals().prompts) return [];
-  const matches = findMatchingClaudeTranscripts(slot);
-  if (matches.length === 0) return [];
+  const usable = selectUsableTranscripts(findMatchingClaudeTranscripts(slot));
+  if (usable.length === 0) return [];
   const sessionKey = buildSessionKey({
     branch: slot.branch,
     agentId: slot.agentId,
     suffix: slot.suffix,
     createdAt: slot.sessionCreatedAt,
   });
-  // Newest transcript only — avoid flooding with historical chats.
-  return extractPromptEvents(matches[0].records, sessionKey, slot).slice(-40);
+  // Sequence is the position here and rows are keyed on it, so the order has to
+  // hold across syncs: oldest first, and a new transcript appends.
+  const records = usable
+    .map((match) => ({ match, startedAtMs: transcriptStartedAtMs(match) }))
+    .sort(
+      (a, b) =>
+        a.startedAtMs - b.startedAtMs || a.match.filePath.localeCompare(b.match.filePath),
+    )
+    .flatMap((entry) => entry.match.records);
+  return capHarvestedEvents(extractPromptEvents(records, sessionKey, slot));
 }

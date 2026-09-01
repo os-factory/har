@@ -60,6 +60,7 @@ jest.mock('../src/core/portal-watermark', () => ({
 jest.mock('../src/core/telemetry-config', () => ({
   isTelemetryEnabled: () => true,
   isPortalTrajectoryEnabled: jest.fn(() => false),
+  getTelemetrySignals: jest.fn(() => ({ metrics: true, logs: true, prompts: true, traces: true })),
   readTelemetryPreference: jest.fn(() => ({
     enabled: true,
     signals: { metrics: true, logs: true, prompts: true, traces: true },
@@ -98,6 +99,7 @@ import {
 import { harvestUsageForSlot, harvestEventsForSlot } from '../src/core/usage-harvest';
 import { fetchPersistedPortalTelemetry } from '../src/core/control-persisted-usage';
 import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
+import { getTelemetrySignals } from '../src/core/telemetry-config';
 
 const collectEnvironmentStatusMock = collectEnvironmentStatus as jest.Mock;
 const listRunsMock = listRuns as jest.Mock;
@@ -113,6 +115,7 @@ const harvestEventsForSlotMock = harvestEventsForSlot as jest.Mock;
 const fetchPersistedPortalTelemetryMock = fetchPersistedPortalTelemetry as jest.Mock;
 const readPortalWatermarkMock = readPortalWatermark as jest.Mock;
 const writePortalWatermarkMock = writePortalWatermark as jest.Mock;
+const getTelemetrySignalsMock = getTelemetrySignals as jest.Mock;
 
 function resetPayloadMocks(): void {
   collectEnvironmentStatusMock.mockReturnValue({
@@ -131,6 +134,12 @@ function resetPayloadMocks(): void {
   readPortalWatermarkMock.mockReset();
   readPortalWatermarkMock.mockReturnValue(null);
   writePortalWatermarkMock.mockReset();
+  getTelemetrySignalsMock.mockReturnValue({
+    metrics: true,
+    logs: true,
+    prompts: true,
+    traces: true,
+  });
 }
 
 const PORTAL_ENV = [
@@ -902,6 +911,28 @@ describe('syncRepoWithControl — portal watermark', () => {
     expect(writePortalWatermarkMock).not.toHaveBeenCalled();
     expect(outcome.warnings).toHaveLength(1);
     expect(outcome.warnings[0]).toContain('usage (HTTP 500)');
+  });
+
+  it('warns on a full sync when prompt capture is off', async () => {
+    getTelemetrySignalsMock.mockReturnValue({
+      metrics: true,
+      logs: true,
+      prompts: false,
+      traces: true,
+    });
+    mockFetch({ status: 200 });
+    const logged: string[] = [];
+    const spy = jest
+      .spyOn(console, 'error')
+      .mockImplementation((message?: unknown) => void logged.push(String(message)));
+
+    try {
+      await syncRepoWithControl({ repoPath: '/repo/x', full: true });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(logged.join('\n')).toContain('prompt capture is off');
   });
 
   it('reports a truncated read while still advancing what it did send', async () => {
