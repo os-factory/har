@@ -911,8 +911,6 @@ describe('harvest claude events', () => {
 
     expect(events).toHaveLength(MAX_HARVESTED_SESSION_EVENTS);
     expect(events[0].promptText).toBe('turn 6');
-    // Sequence stays the position in the full stream so a later sync upserts the
-    // same rows instead of duplicating them.
     expect(events[0].sequence).toBe(6);
     expect(events[events.length - 1].sequence).toBe(total);
     expect(events[0].attributes).toEqual({

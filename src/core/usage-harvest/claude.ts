@@ -8,13 +8,7 @@ import { buildSessionKey } from '../telemetry-env';
 import { workspaceMatchesTarget } from '../workspace-path-match';
 import { recordTimeRange } from './record-time-range';
 
-/**
- * Harvested events carry no per-event watermark, so every sync re-sends the whole
- * stream — an uncapped one would grow the payload without end. This keeps a long
- * session intact (far past the turn count a single agent run produces) while
- * bounding the worst case; whatever is dropped is reported on the oldest event
- * that survives.
- */
+/** Every sync re-sends the whole stream, so it needs a bound; drops are reported. */
 export const MAX_HARVESTED_SESSION_EVENTS = 1000;
 
 export interface HarvestSlotContext {
@@ -223,7 +217,7 @@ function findMatchingClaudeTranscripts(slot: HarvestSlotContext): TranscriptMatc
 }
 
 // Main-checkout work is only this slot's when the slot has no transcript of its
-// own, so the fallback tier is never summed with the primary one.
+// own, so the fallback tier is never mixed with the primary one.
 function selectUsableTranscripts(matches: TranscriptMatch[]): TranscriptMatch[] {
   const own = matches.filter((match) => match.primary);
   return own.length > 0 ? own : matches;
@@ -268,8 +262,7 @@ function extractPromptEvents(
     if (!text || text.trim().length === 0) continue;
 
     const isAssistant = typ === 'assistant' || role === 'assistant';
-    // `userType` is stamped on assistant and system records too, so it only
-    // identifies a prompt when nothing else says what the record is.
+    // `userType` is stamped on assistant and system records too.
     const isUser =
       typ === 'user' ||
       typ === 'human' ||
@@ -373,9 +366,8 @@ export function harvestClaudeEvents(slot: HarvestSlotContext): AgentSessionEvent
     suffix: slot.suffix,
     createdAt: slot.sessionCreatedAt,
   });
-  // Mission Control keys an event row on its sequence, so the order transcripts
-  // are concatenated in has to hold across syncs: oldest start first, and a new
-  // transcript appends instead of shifting the ones already reported.
+  // Sequence is the position here and rows are keyed on it, so the order has to
+  // hold across syncs: oldest first, and a new transcript appends.
   const records = usable
     .map((match) => ({ match, startedAtMs: transcriptStartedAtMs(match) }))
     .sort(
