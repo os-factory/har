@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { SidebarHealthStrip } from '@/components/sidebar-health-strip';
-import { SidebarOptInForm } from '@/components/sidebar-opt-in-form';
 import {
   Sidebar,
   SidebarContent,
@@ -73,7 +72,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <div className="space-y-2 p-1">
           <SidebarHealthStrip />
-          <SidebarOptInForm />
         </div>
       </SidebarFooter>
       <SidebarRail />

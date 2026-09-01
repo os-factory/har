@@ -25,7 +25,7 @@ test.describe('Validation pipeline visual', () => {
       test.skip(true, 'No validation pipeline for this repository');
     }
 
-    await expect(page.getByText('Verification pipeline')).toBeVisible();
+    await expect(page.getByTestId('validation-pipeline')).toBeVisible();
 
     const firstNode = page.locator('.react-flow__node').first();
     if (!(await firstNode.isVisible().catch(() => false))) {

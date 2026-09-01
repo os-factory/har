@@ -52,33 +52,16 @@ export function ValidationPipeline({
   if (stages.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No validation stages declared. Add `verificationStages` to `.har/stages.json` and re-sync
-        the repository.
+        No validation stages declared for this repository yet. Declare them in the harness and
+        re-sync.
       </p>
     );
   }
 
   return (
-    <div>
-      <div className="mx-auto max-w-2xl text-center">
-        <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          Verification pipeline
-        </p>
-        <h3 className="mt-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          From verify.sh to green checks
-        </h3>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Each push flows through the same deterministic stages declared in{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">.har/stages.json</code>. Quick
-          verify runs the core steps; full verify adds lint and browser E2E.
-        </p>
-      </div>
-
-      <div className="mt-10 sm:mt-12">
-        <ValidationFlow stages={stages} />
-
-        <PipelineMetrics stages={stages} verifyRunCount={verifyRunCount} />
-      </div>
+    <div data-testid="validation-pipeline">
+      <ValidationFlow stages={stages} />
+      <PipelineMetrics stages={stages} verifyRunCount={verifyRunCount} />
     </div>
   );
 }

@@ -20,11 +20,11 @@ export default async function SettingsPage() {
       <section className="mx-4 space-y-2 rounded-lg border p-4 md:mx-6 md:p-6">
         <h3 className="text-lg font-semibold">Trajectory storage</h3>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Agent trajectories stay in this local SQLite database. Exporting a session downloads
-          JSONL to your machine; nothing is sent to HAR Cloud unless you run a remote Mission
-          Control. Set <code>HAR_TRAJECTORY_RETENTION_DAYS</code> to expire old ledger rows
-          (0 keeps them). <code>HAR_TRAJECTORY_MAX_PAYLOAD_BYTES</code> caps stored tool/prompt
-          bodies.
+          Agent trajectories stay in this local database. Exporting a session downloads a JSONL
+          file to your machine; nothing leaves this host unless you run a remote Mission Control.
+          Retention and the size cap for stored prompts and tool payloads are set when Mission
+          Control starts (environment variables <code>HAR_TRAJECTORY_RETENTION_DAYS</code> and{' '}
+          <code>HAR_TRAJECTORY_MAX_PAYLOAD_BYTES</code>).
         </p>
         <p className="text-sm">
           Retention: {policy.retentionDays > 0 ? `${policy.retentionDays} days` : 'unlimited'} ·
@@ -36,9 +36,9 @@ export default async function SettingsPage() {
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-destructive">Danger zone</h3>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Clear the entire dashboard database so a fresh register/sync starts empty. Optionally
-            scrub gitignored harness history (`.har/runs`, `validations`, `state`, `slots`) on disk
-            for every registered repository.
+            Clear the entire dashboard database so the next register and sync start empty.
+            Optionally also delete the local harness history (runs, validations, slot state) on
+            disk for every registered repository.
           </p>
         </div>
         <ResetMissionControlButton repositoryCount={repos.length} />

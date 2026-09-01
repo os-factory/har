@@ -8,9 +8,9 @@ import { SlotGrid } from '@/components/slot-grid';
 import { UnregisterRepoButton } from '@/components/unregister-repo-button';
 import { ValidationPipeline } from '@/components/validation-pipeline';
 import { ValidationStages } from '@/components/validation-stages';
-import { VerificationTrendChart } from '@/components/verification-trend-chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/server/repositories';
+import { getRepository, getRepositoryHealth } from '@/server/repositories';
+import { listLineBoards } from '@/server/lines';
 import { listChangeBatches } from '@/server/change-batches';
 import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles } from '@/server/artifacts';
@@ -28,15 +28,7 @@ export default async function RepoDetailPage({
   if (!repo) notFound();
 
   const health = await getRepositoryHealth(id);
-  const trendRaw = await getVerificationTrend(id);
-  const byDate = new Map<string, { pass: number; fail: number }>();
-  for (const point of trendRaw) {
-    const entry = byDate.get(point.date) ?? { pass: 0, fail: 0 };
-    if (point.status === 'pass') entry.pass += 1;
-    else entry.fail += 1;
-    byDate.set(point.date, entry);
-  }
-  const trend = [...byDate.entries()].map(([date, counts]) => ({ date, ...counts }));
+  const lineBoards = await listLineBoards(id);
 
   const artifacts = listArtifactFiles(repo.path);
   const changeBatches = await listChangeBatches(id);
@@ -58,13 +50,15 @@ export default async function RepoDetailPage({
           </Link>
           <h2 className="mt-2 text-2xl font-semibold">{repo.path}</h2>
           {repo.gitRemote && <p className="text-sm text-muted-foreground">{repo.gitRemote}</p>}
-          <Link
-            href={`/repos/${repo.id}/lines`}
-            className="mt-2 inline-block text-sm underline"
-            data-testid="repo-lines-link"
-          >
-            Factory lines →
-          </Link>
+          {lineBoards.length > 0 && (
+            <Link
+              href={`/repos/${repo.id}/lines`}
+              className="mt-2 inline-block text-sm underline"
+              data-testid="repo-lines-link"
+            >
+              Factory lines →
+            </Link>
+          )}
         </div>
         <UnregisterRepoButton
           repoId={repo.id}
@@ -81,19 +75,7 @@ export default async function RepoDetailPage({
       </div>
 
       {health && (
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Harness adoption</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{health.harnessAdoption.mcpPercent}% MCP</p>
-              <p className="text-sm text-muted-foreground">
-                {health.harnessAdoption.mcp} MCP · {health.harnessAdoption.cli} CLI ·{' '}
-                {health.harnessAdoption.script} script
-              </p>
-            </CardContent>
-          </Card>
+        <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Verify pass rate</CardTitle>
@@ -123,7 +105,6 @@ export default async function RepoDetailPage({
           <TabsTrigger value="validation">Validation</TabsTrigger>
           <TabsTrigger value="changes">Changes</TabsTrigger>
           <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
-          <TabsTrigger value="analytics">Verify trend</TabsTrigger>
         </TabsList>
 
         <TabsContent value="slots" className="mt-4">
@@ -199,8 +180,8 @@ export default async function RepoDetailPage({
             <CardHeader>
               <CardTitle>Validation stages</CardTitle>
               <CardDescription>
-                Stages declared in `.har/stages.json` (`verificationStages`), with the latest
-                result per stage from recent verify runs
+                Verification stages declared by the harness, with the latest result per stage
+                from recent verify runs
                 {validation?.latestRun &&
                   ` — last verify ${validation.latestRun.startedAt.toLocaleString()} (${validation.latestRun.status})`}
               </CardDescription>
@@ -268,9 +249,6 @@ export default async function RepoDetailPage({
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="mt-4">
-          <VerificationTrendChart data={trend} />
-        </TabsContent>
       </Tabs>
     </div>
   );

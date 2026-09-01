@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { type ColumnDef } from '@tanstack/react-table';
 
 import { Badge } from '@/components/ui/badge';
+import type { RepoHiddenReason } from '@/lib/repo-hygiene';
 
 export interface RepoRow {
   id: string;
@@ -13,6 +14,9 @@ export interface RepoRow {
   runCount: number;
   slotCount: number;
   profile?: string;
+  /** Hidden by default on the list: temporary lab path, or a path that no longer exists. */
+  hidden?: boolean;
+  hiddenReason?: RepoHiddenReason;
 }
 
 export function repoName(repo: RepoRow): string {

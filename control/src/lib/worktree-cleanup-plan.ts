@@ -28,7 +28,7 @@ export function classifyWorktreeCleanup(
   if (row.onDisk === false) {
     return {
       recommendation: 'clear_missing',
-      reason: 'Path missing on disk — clear dashboard row or run har env teardown on the host',
+      reason: 'The worktree directory no longer exists. Remove this row, or run har env teardown on the host to clear the slot.',
       ageDays,
     };
   }

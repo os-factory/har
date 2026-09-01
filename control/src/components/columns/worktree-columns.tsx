@@ -68,6 +68,30 @@ const onDiskColumn: ColumnDef<WorktreeRow> = {
     ),
 };
 
+const CLEANUP_LABEL: Record<WorktreeCleanupRecommendation, string> = {
+  clear_missing: 'Path missing',
+  teardown: 'Safe to tear down',
+  review: 'Needs review',
+  keep: 'Keep',
+};
+
+/** The slot registry can still say "active" after the worktree directory was deleted. When
+ *  Mission Control can see that the path is gone, say so instead of showing a healthy state. */
+const statusColumn: ColumnDef<WorktreeRow> = {
+  accessorKey: 'active',
+  header: 'Status',
+  cell: ({ row }) => {
+    if (row.original.onDisk === false) {
+      return (
+        <span title="Registered as active, but the worktree path no longer exists on disk">
+          ● Active · path missing
+        </span>
+      );
+    }
+    return row.original.active ? '● Active' : '○ Idle';
+  },
+};
+
 const cleanupColumn: ColumnDef<WorktreeRow> = {
   id: 'cleanup',
   accessorFn: (row) => row.cleanupRecommendation,
@@ -82,7 +106,7 @@ const cleanupColumn: ColumnDef<WorktreeRow> = {
           : 'secondary';
     return (
       <div className="space-y-1">
-        <Badge variant={variant}>{rec}</Badge>
+        <Badge variant={variant}>{CLEANUP_LABEL[rec]}</Badge>
         <p className="max-w-xs text-xs text-muted-foreground">{row.original.cleanupReason}</p>
       </div>
     );
@@ -93,6 +117,8 @@ export const worktreeColumns: ColumnDef<WorktreeRow>[] = [
   repoColumn,
   cleanupColumn,
   onDiskColumn,
-  ...(slotColumns as ColumnDef<WorktreeRow>[]),
+  ...(slotColumns as ColumnDef<WorktreeRow>[]).map((column) =>
+    'accessorKey' in column && column.accessorKey === 'active' ? statusColumn : column,
+  ),
   syncedColumn,
 ];

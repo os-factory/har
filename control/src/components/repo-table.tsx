@@ -1,7 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { type ColumnFiltersState } from '@tanstack/react-table';
+import { toast } from 'sonner';
 
 import { repoColumns, repoName, type RepoRow } from '@/components/columns/repo-columns';
 import { DataTable } from '@/components/data-table/data-table';
@@ -30,9 +32,52 @@ function countFilteredRepos(
   }).length;
 }
 
-export function RepoTable({ repos }: { repos: RepoRow[] }) {
+async function unregisterRepos(rows: RepoRow[]): Promise<{ removed: number; failed: string[] }> {
+  let removed = 0;
+  const failed: string[] = [];
+  for (const repo of rows) {
+    const response = await fetch(`/api/repos/${encodeURIComponent(repo.id)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteWorktrees: false }),
+    });
+    if (response.ok) removed += 1;
+    else failed.push(repo.path);
+  }
+  return { removed, failed };
+}
+
+export function RepoTable({ repos: allRepos }: { repos: RepoRow[] }) {
+  const router = useRouter();
   const [globalFilter, setGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [showHidden, setShowHidden] = useState(false);
+  const [confirmUnregister, setConfirmUnregister] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  const hiddenRepos = useMemo(() => allRepos.filter((r) => r.hidden), [allRepos]);
+  const repos = useMemo(
+    () => (showHidden ? allRepos : allRepos.filter((r) => !r.hidden)),
+    [allRepos, showHidden],
+  );
+
+  async function handleUnregisterHidden() {
+    setPending(true);
+    try {
+      const { removed, failed } = await unregisterRepos(hiddenRepos);
+      if (failed.length > 0) {
+        toast.error(`Removed ${removed}, could not remove ${failed.length}`, {
+          description: failed.slice(0, 3).join(', '),
+        });
+      } else {
+        toast.success(`Removed ${removed} hidden repositor${removed === 1 ? 'y' : 'ies'}`);
+      }
+      setConfirmUnregister(false);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
+  }
 
   const profiles = useMemo(
     () => Array.from(new Set(repos.map((r) => r.profile).filter((p): p is string => !!p))).sort(),
@@ -47,10 +92,9 @@ export function RepoTable({ repos }: { repos: RepoRow[] }) {
     [repos, globalFilter, columnFilters],
   );
 
-  if (repos.length === 0) {
+  if (allRepos.length === 0) {
     return (
       <div className="flex w-full flex-col gap-4 px-4 lg:px-6">
-        <h1 className="text-base font-medium">Repositories</h1>
         <p className="text-sm text-muted-foreground">
           No repositories registered. Run <code className="rounded bg-muted px-1">har env init</code>{' '}
           or <code className="rounded bg-muted px-1">har control register</code>.
@@ -61,7 +105,37 @@ export function RepoTable({ repos }: { repos: RepoRow[] }) {
 
   return (
     <div className="flex min-w-0 w-full flex-col gap-4 px-4 lg:px-6">
-      <h1 className="text-base font-medium">Repositories</h1>
+      {hiddenRepos.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+          data-testid="hidden-repos-bar"
+        >
+          <span className="text-muted-foreground">
+            {hiddenRepos.length} hidden: temporary lab paths or paths that no longer exist.
+          </span>
+          <Button variant="outline" size="sm" onClick={() => setShowHidden((v) => !v)}>
+            {showHidden ? 'Hide them' : 'Show them'}
+          </Button>
+          {confirmUnregister ? (
+            <>
+              <span className="text-muted-foreground">
+                Removes {hiddenRepos.length} registration{hiddenRepos.length === 1 ? '' : 's'} from
+                Mission Control. Nothing on disk is touched.
+              </span>
+              <Button size="sm" variant="destructive" disabled={pending} onClick={handleUnregisterHidden}>
+                {pending ? 'Removing…' : 'Confirm'}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirmUnregister(false)}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setConfirmUnregister(true)}>
+              Unregister hidden…
+            </Button>
+          )}
+        </div>
+      )}
 
       {profiles.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">

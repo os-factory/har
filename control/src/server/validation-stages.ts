@@ -1,9 +1,10 @@
 import {
   HarnessStageRegistrySchema,
-  HarnessVerificationResultSchema,
+  HarnessVerificationStepSchema,
   type HarnessStage,
   type HarnessVerificationResult,
 } from '@har/schemas';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 
 export interface ValidationStageStatus {
@@ -30,21 +31,50 @@ export interface ValidationStagesSummary {
   verifyRunCount: number;
 }
 
-/** Run.result for a verify run is a StageResult; the per-stage breakdown lives in
- *  data.verification, but older records may carry the raw verify.sh JSON at the top level. */
-function extractVerification(result: unknown): HarnessVerificationResult | null {
+/** A verify run stores its per-stage breakdown in `result.data.verification`; older records
+ *  carry the raw verify.sh JSON at the top level or only in the stdout log. Some producers name
+ *  the array `steps` instead of `stages`. Normalise all of them to `{ stages }`. */
+const LooseVerificationSchema = z
+  .object({
+    stages: z.array(HarnessVerificationStepSchema).optional(),
+    steps: z.array(HarnessVerificationStepSchema).optional(),
+  })
+  .passthrough();
+
+type VerificationSteps = Pick<HarnessVerificationResult, 'stages'>;
+
+function normalizeVerification(candidate: unknown): VerificationSteps | null {
+  const parsed = LooseVerificationSchema.safeParse(candidate);
+  if (!parsed.success) return null;
+  const stages = parsed.data.stages ?? parsed.data.steps;
+  return stages && stages.length > 0 ? { stages } : null;
+}
+
+function verificationFromLogs(result: { logs?: unknown }): VerificationSteps | null {
+  if (!Array.isArray(result.logs)) return null;
+  for (const log of result.logs) {
+    const content = (log as { content?: unknown }).content;
+    if (typeof content !== 'string' || !content.trimStart().startsWith('{')) continue;
+    try {
+      const found = normalizeVerification(JSON.parse(content));
+      if (found) return found;
+    } catch {
+      /* not JSON */
+    }
+  }
+  return null;
+}
+
+export function extractVerification(result: unknown): VerificationSteps | null {
   if (!result || typeof result !== 'object') return null;
 
   const data = (result as { data?: unknown }).data;
   if (data && typeof data === 'object') {
-    const nested = HarnessVerificationResultSchema.safeParse(
-      (data as { verification?: unknown }).verification,
-    );
-    if (nested.success) return nested.data;
+    const nested = normalizeVerification((data as { verification?: unknown }).verification);
+    if (nested) return nested;
   }
 
-  const top = HarnessVerificationResultSchema.safeParse(result);
-  return top.success ? top.data : null;
+  return normalizeVerification(result) ?? verificationFromLogs(result as { logs?: unknown });
 }
 
 function emptyStage(name: string, declared: boolean): ValidationStageStatus {
