@@ -1,5 +1,18 @@
 import { z } from 'zod';
 
+/**
+ * How a slot got the checkout it runs in.
+ *
+ * - `worktree` — HAR created a session worktree for this launch and owns it.
+ * - `root`     — HAR runs in the main checkout (`--no-worktree`).
+ * - `external` — HAR runs inside a linked worktree that something else created
+ *                (an external orchestrator, a hand-rolled `git worktree add`).
+ *                HAR does **not** own it and must never remove it.
+ */
+export const HAR_SLOT_MODES = ['worktree', 'root', 'external'] as const;
+
+export type HarSlotMode = (typeof HAR_SLOT_MODES)[number];
+
 export const HAR_STAGE_KINDS = [
   'setup',
   'launch',
@@ -382,10 +395,14 @@ export const SlotRegistryEntrySchema = z
     version: z.number().int().default(1),
     agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
     projectName: z.string(),
-    mode: z.enum(['worktree', 'root']),
+    mode: z.enum(HAR_SLOT_MODES),
     /** Where edits/builds happen: worktree + monorepo prefix, or the repo root. */
     workDir: z.string(),
-    /** Git checkout root of the session worktree (absent in root mode). */
+    /**
+     * Git checkout root of the worktree the session runs in.
+     * Absent in root mode; in external mode this is the externally-owned
+     * checkout, which teardown must not remove.
+     */
     worktreePath: z.string().optional(),
     /** Session branch: <base-branch>-<sha4>-har-agent-<id>-<rand4>. */
     branch: z.string().optional(),
@@ -393,7 +410,7 @@ export const SlotRegistryEntrySchema = z
     baseBranch: z.string().optional(),
     /** HEAD sha at launch time. */
     baseCommit: z.string().optional(),
-    /** Random per-session chars; absent in root mode. */
+    /** Random per-session chars; a short base-commit tag in root/external mode. */
     suffix: z.string().optional(),
     createdAt: z.string(),
     ports: z.record(z.number()).optional(),
@@ -456,7 +473,7 @@ export const AgentSlotStatusSchema = z.object({
   lastRunAt: z.string().optional(),
   lastVerifyStatus: HarnessStageRunStatusSchema.optional(),
   lastBuildPass: z.boolean().optional(),
-  mode: z.enum(['worktree', 'root']).optional(),
+  mode: z.enum(HAR_SLOT_MODES).optional(),
   suffix: z.string().optional(),
   baseBranch: z.string().optional(),
   baseCommit: z.string().optional(),

@@ -104,12 +104,16 @@ export async function teardownSession(options: TeardownSessionOptions): Promise<
     agentId,
     worktreePath,
     projectName,
+    mode: session?.mode,
     branch: branch || undefined,
     deleteBranch: options.deleteBranch,
     homeDir: options.homeDir,
     git: options.git,
   });
   if (removed.removedWorktree) out(`✓ Removed worktree: ${removed.removedWorktree}`);
+  if (removed.preservedWorktree) {
+    out(`✓ Kept externally-owned worktree: ${removed.preservedWorktree} (HAR did not create it)`);
+  }
   if (removed.deletedBranch) out(`✓ Deleted branch: ${removed.deletedBranch}`);
   if (removed.keptBranch) {
     out(`✓ Kept branch: ${removed.keptBranch} (push it or delete with: git branch -D ${removed.keptBranch})`);

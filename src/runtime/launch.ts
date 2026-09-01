@@ -1,11 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readHarnessEnv } from '../harness/env';
+import { HarSlotMode } from '../harness/schema';
 import { getHarnessDir, readManifest, resolveHarnessRoot } from '../harness/manifest';
 import { harnessCapabilities, harnessUsesPm2 } from '../harness/capabilities';
 import { runLaunchPreflight } from '../core/slot-preflight';
 import { loadInfraState } from '../core/slot-ports';
 import { writeSlotRegistry } from '../core/slot-registry';
+import { detectInPlaceSlotMode, resolveWorktreeRoot } from '../core/worktree-ownership';
 import { defaultExec, ExecFn, LogFn, SleepFn, realSystemOps, SystemOps } from './exec';
 import {
   cloneAgentDatabase,
@@ -203,6 +205,7 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
     let suffix = '';
     let baseBranch = 'detached';
     let baseCommit = '';
+    let mode: HarSlotMode = useWorktree ? 'worktree' : 'root';
     if (useWorktree) {
       const created = createSessionWorktree({
         repoRoot,
@@ -222,11 +225,26 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
       });
       relPrefix = created.relPrefix;
     } else {
-      log('Using repo root (worktree disabled)');
       const head = exec('git', ['-C', repoRoot, 'rev-parse', '--abbrev-ref', 'HEAD']);
       baseBranch = head.code === 0 ? head.stdout.trim() : 'detached';
       const sha = exec('git', ['-C', repoRoot, 'rev-parse', 'HEAD']);
       baseCommit = sha.code === 0 ? sha.stdout.trim() : '';
+
+      // `--no-worktree` covers two different situations: the main checkout, and
+      // a linked worktree an external orchestrator created. Only the former is
+      // ours to tear down (#254).
+      mode = detectInPlaceSlotMode(repoRoot);
+      if (mode === 'external') {
+        worktreeDir = resolveWorktreeRoot(repoRoot) || repoRoot;
+        log(`Using externally-owned worktree at ${worktreeDir} (HAR will not remove it)`);
+      } else {
+        log('Using repo root (worktree disabled)');
+      }
+
+      // No random suffix is minted in place, so name the session after the
+      // commit it started from — otherwise the session key carries only an
+      // opaque timestamp (folded in from #257).
+      if (baseCommit) suffix = baseCommit.slice(0, 7);
     }
     seedGitExclude(repoRoot, options.git);
     if (pm === 'simulator') seedExtraExcludePattern(repoRoot, '.har/simulators', exec);
@@ -239,6 +257,7 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
       baseBranch,
       baseCommit,
       useWorktree,
+      mode,
       envFile: path.join(workDir, `.env.agent.${agentId}`),
     };
   }
@@ -293,7 +312,7 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
     writeSlotRegistry(repoRoot, {
       agentId,
       projectName,
-      mode: session.useWorktree ? 'worktree' : 'root',
+      mode: session.mode,
       workDir: session.workDir,
       suffix: session.suffix || undefined,
       worktreePath: session.worktreeDir || undefined,

@@ -255,6 +255,7 @@ describe('resolveResumeSession', () => {
         baseBranch: 'main',
         baseCommit: 'deadbeef',
         useWorktree: true,
+        mode: 'worktree',
         envFile: path.join(repo, '.env.agent.1'),
       });
     }
