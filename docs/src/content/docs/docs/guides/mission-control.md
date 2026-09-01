@@ -233,6 +233,29 @@ When telemetry is on:
 **Privacy:** prompt text is included by default and stays in local Mission Control (SQLite).
 Opt out with `har telemetry on --no-prompts` or disable everything with `har telemetry off`.
 
+### No agent content? Check the prompts signal
+
+Prompt capture **stays on by default** — that is a product choice, not an
+oversight: without it Mission Control and a hosted portal have no session content
+to show, and a surface with no turns is indistinguishable from a session that had
+none. Turning it off is the deliberate opt-out, and it is silent by design:
+
+- With `prompts` off (`har telemetry on --no-prompts`, or `har telemetry off`),
+  the Claude transcript harvest contributes **zero** events — and it is the only
+  event harvest there is, since the Codex one covers usage alone. Anything that
+  still appears is mirrored from otel spans, so turn counts read 0 for sessions
+  that really had turns.
+- `har telemetry status` prints the effective signals; `har control sync --full`
+  warns when prompt capture is the reason no content is leaving the machine.
+- A harvested stream longer than 1000 events keeps the most recent 1000 and marks
+  the oldest surviving event with `har.harvest.truncated`,
+  `har.harvest.dropped_events` and `har.harvest.total_events`, so a clipped
+  session is labelled as clipped rather than looking complete.
+
+Harvested events cover every transcript the slot owns, and fall back to the main
+checkout's only when the slot has none — the same primary/fallback tier the token
+harvest uses, so content and usage always describe the same session.
+
 ### Trajectory ledger
 
 The slot **Trajectory** tab is assembled from an append-only ledger, not from the

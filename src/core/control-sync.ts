@@ -48,7 +48,7 @@ import {
   listValidationBindings,
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
-import { isTelemetryEnabled } from './telemetry-config';
+import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 import { getHarPackageVersion } from './package-version';
 import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
@@ -557,6 +557,13 @@ async function buildPortalPayload(
       `${path.basename(repoPath)}: agent runs found but no usage harvested — attribution will be missing. ` +
         'This happens when agent sessions ran outside the har worktree slot (e.g. in the main checkout). ' +
         'Run agents inside `har env launch`.',
+    );
+  }
+
+  if (full && isTelemetryEnabled() && !getTelemetrySignals().prompts) {
+    warn(
+      `${path.basename(repoPath)}: prompt capture is off, so no agent prompt or response text is ` +
+        'harvested — surfaces that show session content stay empty. Enable with `har telemetry on --prompts`.',
     );
   }
 

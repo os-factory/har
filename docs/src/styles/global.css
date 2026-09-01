@@ -131,8 +131,9 @@ code, pre { font-family: var(--mono); }
 .install-command code { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .terminal-prompt { color: var(--blue); font-family: var(--mono); font-weight: 700; }
 .copy-label { min-width: 56px; text-align: center; box-sizing: border-box; font-size: 11px; color: #66707d; padding: 6px 8px; border-radius: 5px; background: rgba(17,22,29,.05); }
-.compatibility { margin-top: 30px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; color: #78818b; font-size: 12px; }
-.compatibility > span { flex: 0 0 auto; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.compatibility { margin-top: 30px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; color: #78818b; font-size: 12px; }
+.compat-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.compat-label { flex: 0 0 auto; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; }
 
 .hero-visual { position: relative; min-width: 0; perspective: 1400px; }
 .hero-terminal-stage { position: relative; transform-style: preserve-3d; transform: rotateX(1deg) rotateY(-3deg); transition: transform 0.45s cubic-bezier(.22, 1, .36, 1); will-change: transform; }
@@ -217,9 +218,6 @@ code, pre { font-family: var(--mono); }
 .dashboard-image-modal-close svg { width: 18px; height: 18px; }
 .dashboard-image-modal-hint { margin: 0; text-align: center; color: rgba(255,255,255,.62); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; }
 
-.enterprise-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 0; align-items: stretch; border: 1px solid var(--theme-border); border-radius: 5px; overflow: hidden; }.enterprise-copy { padding: 48px; border-right: 1px solid var(--theme-border); display: flex; flex-direction: column; justify-content: center; }.enterprise-copy h2 { margin: 0; }.enterprise-copy > p { margin: 24px 0 0; color: var(--muted); line-height: 1.75; max-width: 620px; }.enterprise-actions { padding: 48px; min-width: 0; max-width: none; display: flex; flex-direction: column; justify-content: center; }.enterprise-form { display: grid; gap: 10px; width: 100%; }.enterprise-form .hidden { display: none; }.enterprise-form input:not([type="hidden"]):not(.hidden), .enterprise-form textarea { width: 100%; border: 1px solid var(--theme-border); background: var(--theme-surface-raised); border-radius: 5px; padding: 12px 14px; color: var(--text); outline: none; font-size: 14px; }.enterprise-form input::placeholder, .enterprise-form textarea::placeholder { color: var(--muted); }.enterprise-form input:not([type="hidden"]):not(.hidden):focus, .enterprise-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(68,84,69,.15); background: var(--theme-surface-solid); }.enterprise-form textarea { resize: vertical; min-height: 88px; font-family: var(--sans); }.enterprise-form .button { width: 100%; }.enterprise-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.enterprise-kicker-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }.enterprise-kicker-row .section-kicker { margin-bottom: 0; }
-.soon-tag { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 4px 9px; border: 1px solid var(--theme-border); border-radius: 4px; }
 
 .site-footer {
   --footer-border: var(--theme-border);
@@ -257,7 +255,6 @@ code, pre { font-family: var(--mono); }
   .demo-video-copy > p { max-width: none; }
   .control-copy { grid-template-columns: 1fr; gap: 28px; padding: 32px; }.control-grid .dashboard-frame { padding: 20px; }
   
-  .enterprise-grid { grid-template-columns: 1fr; }.enterprise-copy { border-right: 0; border-bottom: 1px solid var(--theme-border); padding: 32px; }.enterprise-actions { padding: 32px; }
 }
 
 @media (max-width: 760px) {
@@ -296,7 +293,6 @@ code, pre { font-family: var(--mono); }
   .dashboard-image-modal-close { top: 8px; right: 8px; }
   .dashboard-image-modal-dialog { height: min(82vh, 680px); }
   
-  .enterprise-actions { width: 100%; }.enterprise-actions .button { width: 100%; }.enterprise-note { max-width: none; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .footer-brand { grid-column: 1 / -1; }
   .footer-grid > div { padding: 32px 22px; }
@@ -482,17 +478,33 @@ body { transition: background-color .25s ease, color .25s ease; }
 
 /* Stat row: big numerals + mono sublabels, vertical hairline separators */
 
-/* Hairline pill chips for enumerations */
-.chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border: 1px solid var(--theme-border); border-radius: 5px; background: var(--theme-surface-raised); font-size: 12px; font-weight: 550; color: var(--text); }
 
-/* Hairline mini-table (clean-list replacement in #control) */
-.hair-list { list-style: none; padding: 0; margin: 30px 0; border: 1px solid var(--theme-border); border-radius: var(--radius-sm); overflow: hidden; }
-.hair-list li { display: flex; align-items: center; gap: 12px; padding: 15px 18px; font-size: 14px; color: var(--text); }
-.hair-list li + li { border-top: 1px solid var(--theme-border); }
-.hair-list li span { color: var(--accent); font-family: var(--mono); font-size: 11px; }
-.hair-icon { width: 17px; height: 17px; color: var(--accent); flex-shrink: 0; }
-:root[data-theme="dark"] .hair-icon { color: var(--accent-bright); }
+/* Hero "Works with" agent logo strip */
+.agent-logos { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.agent-logo { display: inline-flex; font-size: 23px; line-height: 0; color: var(--text); filter: grayscale(1); opacity: .55; transition: opacity .35s ease, filter .15s ease; }
+.agent-logo:hover { filter: none; opacity: 1; }
+.agent-logo.is-swapping { opacity: 0; }
+.agent-more { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* Customer logo strip */
+.customers { padding-top: 46px; padding-bottom: 46px; }
+.customers-label { text-align: center; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 26px; }
+.customers-marquee { overflow: hidden; -webkit-mask: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); mask: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); }
+.customers-track { display: flex; width: max-content; animation: customers-scroll 45s linear infinite; }
+.customers-marquee:hover .customers-track { animation-play-state: paused; }
+@keyframes customers-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.customer-slot { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 150px; height: 34px; }
+.customer-logo { width: 100%; height: 100%; background: var(--muted); -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat; }
+@media (prefers-reduced-motion: reduce) { .customers-track { animation: none; } }
+
+/* For-teams CTA band */
+.teams-cta .container { position: relative; overflow: hidden; text-align: center; padding: 68px 32px; border: 1px solid var(--theme-border); border-radius: var(--radius); background: radial-gradient(ellipse 70% 130% at 50% -15%, color-mix(in srgb, var(--accent-bright) 14%, transparent), transparent 62%), var(--theme-surface-raised); }
+.teams-cta .container::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: linear-gradient(color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1px); background-size: 30px 30px; -webkit-mask: radial-gradient(ellipse 78% 78% at 50% 45%, #000, transparent 72%); mask: radial-gradient(ellipse 78% 78% at 50% 45%, #000, transparent 72%); }
+.teams-cta .container > * { position: relative; z-index: 1; }
+.teams-cta .section-kicker { justify-content: center; }
+.teams-cta h2 { margin: 14px auto 0; max-width: 580px; }
+.teams-cta p { margin: 16px auto 30px; max-width: 520px; color: var(--muted); font-size: 16px; line-height: 1.6; }
+
 
 /* Tabbed install block (TabbedInstall.astro) */
 

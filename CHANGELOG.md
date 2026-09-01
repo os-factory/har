@@ -1,3 +1,13 @@
+## [1.5.0](https://github.com/os-factory/har/compare/v1.4.0...v1.5.0) (2026-08-30)
+
+### Features
+
+* **control:** factory line board over the installed bundle ([#305](https://github.com/os-factory/har/issues/305)) ([#326](https://github.com/os-factory/har/issues/326)) ([0db74a1](https://github.com/os-factory/har/commit/0db74a11139584f22af8caf01417d5f0c2f88e47))
+
+### Bug Fixes
+
+* **telemetry:** bound the agent hooks so an unreachable collector cannot stall a turn ([#328](https://github.com/os-factory/har/issues/328)) ([#329](https://github.com/os-factory/har/issues/329)) ([98fa07b](https://github.com/os-factory/har/commit/98fa07b9ace8542cc9e6fa2eabb05d4fed03a39b))
+
 ## [1.4.0](https://github.com/os-factory/har/compare/v1.3.0...v1.4.0) (2026-08-30)
 
 ### Features
