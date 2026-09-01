@@ -3,10 +3,12 @@ import { resolveHarnessRoot } from '../harness/manifest';
 import {
   RunRecord,
   ValidationBindingRecord,
+  ValidationCommitBinding,
   ValidationRecord,
   WorkAttemptRecord,
   WorkUnitRecord,
 } from '../harness/schema';
+import { listCommitBindings } from './commit-bindings';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
 import { listValidationBindings, listWorkAttempts, listWorkUnits } from './work-units';
@@ -136,6 +138,16 @@ export function collectValidationBindingsForSync(
 ): ValidationBindingRecord[] {
   return mergeById(
     sourcePaths.map((source) => listValidationBindings(resolveHarnessRoot(source))),
+    (record) => record.bindingId,
+  );
+}
+
+/** Commit bindings across every source. */
+export function collectCommitBindingsForSync(
+  sourcePaths: string[],
+): ValidationCommitBinding[] {
+  return mergeById(
+    sourcePaths.map((source) => listCommitBindings(resolveHarnessRoot(source))),
     (record) => record.bindingId,
   );
 }

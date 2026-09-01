@@ -9,6 +9,7 @@ import {
   SyncSlotsInputSchema,
   SyncWorkUnitsInputSchema,
   SyncValidationBindingsInputSchema,
+  SyncValidationCommitBindingsInputSchema,
   SyncSessionEventsInputSchema,
   SyncUsageInputSchema,
   SyncValidationsInputSchema,
@@ -36,6 +37,7 @@ import {
   collectRunsForSync,
   mergeRunsBySource,
   RunsBySource,
+  collectCommitBindingsForSync,
   collectValidationBindingsForSync,
   collectValidationsForSync,
   collectWorkUnitsForSync,
@@ -535,6 +537,7 @@ async function buildPortalPayload(
   const validations = collectValidationsForSync(sourcePaths);
   const { workUnits, attempts } = collectWorkUnitsForSync(sourcePaths);
   const validationBindings = collectValidationBindingsForSync(sourcePaths);
+  const commitBindings = collectCommitBindingsForSync(sourcePaths);
   // Attribute runs/validations to the syncing member so the portal can resolve
   // a real user FK instead of the lossy (repo, agentId) derivation.
   const userEmail = resolvePortalUserEmail(portal);
@@ -585,6 +588,7 @@ async function buildPortalPayload(
     ...(workUnits.length > 0 ? { workUnits } : {}),
     ...(attempts.length > 0 ? { attempts } : {}),
     ...(validationBindings.length > 0 ? { validationBindings } : {}),
+    ...(commitBindings.length > 0 ? { commitBindings } : {}),
     ...(usage.length > 0 ? { usage } : {}),
   };
 
@@ -1046,6 +1050,7 @@ export async function syncRepoWithControl(
         attempts: cloudWork.attempts,
         validations: listValidations(harnessRoot),
         validationBindings: listValidationBindings(harnessRoot),
+        commitBindings: collectCommitBindingsForSync(sourcePaths),
       }),
     });
     if (!response.ok) {
@@ -1200,6 +1205,17 @@ async function syncRepoRunsAndSlots(
     await postJson(
       `${apiUrl}/api/repos/${repoId}/validation-bindings`,
       bindingsBody,
+      dryRun,
+    );
+  }
+
+  const commitBindingsBody = SyncValidationCommitBindingsInputSchema.parse({
+    bindings: collectCommitBindingsForSync(sourcePaths),
+  });
+  if (commitBindingsBody.bindings.length > 0) {
+    await postJson(
+      `${apiUrl}/api/repos/${repoId}/commit-bindings`,
+      commitBindingsBody,
       dryRun,
     );
   }

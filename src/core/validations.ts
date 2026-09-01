@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ValidationRecord, ValidationRecordSchema } from '../harness/schema';
 import { computeWorktreeSnapshot, isCheckoutRoot } from './change-batch';
+import { recordCommitBinding } from './commit-bindings';
 import { markDirty } from './sync-context';
 
 export const VALIDATIONS_DIR = 'validations';
@@ -136,14 +137,23 @@ export function findPassingFullValidation(input: {
   return undefined;
 }
 
+export interface AttachCommitMeta {
+  parents?: string[];
+  refs?: string[];
+  message?: string;
+}
+
 /**
  * Associate a commit with the validation for its tree. Updates the checkout
  * copy and mirrors to the harness root recorded on the validation itself.
+ * Also writes a durable commit binding so a later rebase or cherry-pick can
+ * share the same content snapshot without overwriting the first association.
  */
 export function attachCommit(
   checkoutDir: string,
   treeHash: string,
   commitSha: string,
+  meta?: AttachCommitMeta,
 ): ValidationRecord | undefined {
   const record = findValidation(checkoutDir, treeHash);
   if (!record) return undefined;
@@ -156,12 +166,28 @@ export function attachCommit(
   };
 
   writeRecord(checkoutDir, updated);
-  if (
+  const harnessRoot =
     record.harnessRoot &&
     path.resolve(record.harnessRoot) !== path.resolve(checkoutDir) &&
     fs.existsSync(path.join(record.harnessRoot, '.har'))
-  ) {
-    writeRecord(record.harnessRoot, updated);
+      ? record.harnessRoot
+      : checkoutDir;
+  if (path.resolve(harnessRoot) !== path.resolve(checkoutDir)) {
+    writeRecord(harnessRoot, updated);
+  }
+
+  const bindingInput = {
+    validationId: record.validationId,
+    treeHash,
+    commitSha,
+    parents: meta?.parents,
+    refs: meta?.refs,
+    message: meta?.message,
+    runId: record.runId,
+  };
+  recordCommitBinding({ harnessRoot: checkoutDir, ...bindingInput });
+  if (path.resolve(harnessRoot) !== path.resolve(checkoutDir)) {
+    recordCommitBinding({ harnessRoot, ...bindingInput });
   }
   return updated;
 }

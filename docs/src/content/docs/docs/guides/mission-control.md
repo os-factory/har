@@ -72,7 +72,7 @@ har control reset --yes
 Reset deletes every repository row (runs, slots, validations, telemetry cascade)
 and clears the unregister blocklist. Cloud / portal credentials are kept.
 With local scrub enabled (default), it also removes `.har/runs`,
-`.har/validations`, `.har/state`, and `.har/slots` under each registered
+`.har/validations`, `.har/commit-bindings`, `.har/state`, and `.har/slots` under each registered
 repository, and clears `~/.har/repos.json`. Packaged Docker Mission Control may
 not see host paths — prefer the CLI when host scrubbing is required.
 Re-register afterward with `har control register`.
@@ -148,8 +148,9 @@ and harness profiles. Repository detail provides:
 
 - active slots, worktrees, branches, preview URLs, dirtiness, and drift;
 - a run timeline with stage, trigger, duration, and status;
+- a **History** graph of content snapshots and the commits that share them, with labeled identifiers (commit, content snapshot, based on, verified by run) and the slot trajectory when one exists;
 - expected validation stages and their latest results;
-- exact-tree change batches and associated commits;
+- exact-tree content snapshots (formerly listed only as change batches) and associated commits;
 - files under `.har/artifacts/`;
 - verification trends and pass rates.
 

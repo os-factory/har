@@ -2,6 +2,7 @@
 logs/
 runs/
 validations/
+commit-bindings/
 artifacts/
 state/
 maintain/

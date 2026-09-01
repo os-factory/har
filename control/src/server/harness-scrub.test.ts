@@ -16,7 +16,7 @@ describe('scrubLocalHarnessDirs', () => {
 
   it('reports invisible repository paths without throwing', () => {
     const results = scrubLocalHarnessDirs('/tmp/definitely-missing-har-repo');
-    expect(results).toHaveLength(4);
+    expect(results).toHaveLength(5);
     expect(results.every((row) => row.deleted === false)).toBe(true);
     expect(results[0]?.error).toMatch(/not visible|har control reset/i);
   });
@@ -24,7 +24,7 @@ describe('scrubLocalHarnessDirs', () => {
   it('removes runs validations state and slots under .har', () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'har-scrub-repo-'));
     temps.push(repo);
-    for (const directory of ['runs', 'validations', 'state', 'slots']) {
+    for (const directory of ['runs', 'validations', 'commit-bindings', 'state', 'slots']) {
       const target = path.join(repo, '.har', directory);
       fs.mkdirSync(target, { recursive: true });
       fs.writeFileSync(path.join(target, 'keep-me-not.txt'), 'x');
@@ -55,6 +55,6 @@ describe('scrubLocalHarnessDirs', () => {
     temps.push(repo);
     fs.mkdirSync(path.join(repo, '.har', 'runs'), { recursive: true });
     const results = scrubLocalHarnessForRepos([repo, path.resolve(repo)]);
-    expect(results).toHaveLength(4);
+    expect(results).toHaveLength(5);
   });
 });

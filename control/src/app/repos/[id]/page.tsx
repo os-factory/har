@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArtifactTable } from '@/components/artifact-table';
 import { ChangeBatchList } from '@/components/change-batch-list';
+import { SessionHistoryPanel } from '@/components/session-history-panel';
 import { RunTimeline } from '@/components/run-timeline';
 import { SlotGrid } from '@/components/slot-grid';
 import { UnregisterRepoButton } from '@/components/unregister-repo-button';
@@ -12,6 +13,7 @@ import { VerificationTrendChart } from '@/components/verification-trend-chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/server/repositories';
 import { listChangeBatches } from '@/server/change-batches';
+import { getSessionHistory } from '@/server/session-history';
 import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles } from '@/server/artifacts';
 import { listSessionUsageForRepo } from '@/server/usage';
@@ -40,6 +42,7 @@ export default async function RepoDetailPage({
 
   const artifacts = listArtifactFiles(repo.path);
   const changeBatches = await listChangeBatches(id);
+  const history = await getSessionHistory(id);
   const validation = await getValidationStages(id);
   const allUsage = await listSessionUsageForRepo(id);
   const usageBySlot = new Map<number, typeof allUsage>();
@@ -120,6 +123,7 @@ export default async function RepoDetailPage({
         <TabsList>
           <TabsTrigger value="slots">Slots</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="validation">Validation</TabsTrigger>
           <TabsTrigger value="changes">Changes</TabsTrigger>
           <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
@@ -194,6 +198,26 @@ export default async function RepoDetailPage({
           </Card>
         </TabsContent>
 
+        <TabsContent value="history" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Session history</CardTitle>
+              <CardDescription>
+                Content snapshots and the commits that share them. A dashed node is verified
+                but not yet committed. Labels distinguish the commit, the content snapshot, the
+                base, and the verifying run.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {history ? (
+                <SessionHistoryPanel history={history} />
+              ) : (
+                <p className="text-sm text-muted-foreground">No session history available.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="validation" className="mt-4">
           <Card>
             <CardHeader>
@@ -221,10 +245,11 @@ export default async function RepoDetailPage({
         <TabsContent value="changes" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Change batches</CardTitle>
+              <CardTitle>Content snapshots</CardTitle>
               <CardDescription>
-                Working-tree states hashed at verify time, grouped by branch — was the harness run
-                on these exact changes?
+                Exact working-tree content hashed at verify time, grouped by branch. A content
+                snapshot is not a commit — it has no parent or message until one is created with
+                the same tree.
               </CardDescription>
             </CardHeader>
             <CardContent>

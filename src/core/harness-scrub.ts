@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /** Gitignored harness dirs that Mission Control syncs / re-ingests from. */
-export const HARNESS_SCRUB_DIRS = ['runs', 'validations', 'state', 'slots'] as const;
+export const HARNESS_SCRUB_DIRS = ['runs', 'validations', 'commit-bindings', 'state', 'slots'] as const;
 
 export interface HarnessScrubResult {
   path: string;

@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { computeWorktreeSnapshot } from '../src/core/change-batch';
+import { listCommitBindings } from '../src/core/commit-bindings';
 import {
   attachCommit,
   findPassingFullValidation,
@@ -106,9 +107,10 @@ describe('validation store', () => {
     const commitTree = sh(worktree, 'git rev-parse HEAD^{tree}');
     expect(commitTree).toBe(record.treeHash);
 
-    const updated = attachCommit(worktree, commitTree, commitSha);
+    const updated = attachCommit(worktree, commitTree, commitSha, { message: 'change' });
     expect(updated?.commitSha).toBe(commitSha);
     expect(findValidation(dir, commitTree)?.commitSha).toBe(commitSha);
+    expect(listCommitBindings(dir).map((row) => row.commitSha)).toContain(commitSha);
   });
 
   it('returns undefined for unknown hashes and skips invalid files in list', () => {

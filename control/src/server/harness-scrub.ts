@@ -3,7 +3,7 @@ import * as path from 'path';
 import type { HarnessScrubResult } from '@har/schemas';
 
 /** Gitignored harness dirs that Mission Control syncs / re-ingests from. */
-export const HARNESS_SCRUB_DIRS = ['runs', 'validations', 'state', 'slots'] as const;
+export const HARNESS_SCRUB_DIRS = ['runs', 'validations', 'commit-bindings', 'state', 'slots'] as const;
 
 /**
  * Best-effort removal of local harness history under `.har/`.

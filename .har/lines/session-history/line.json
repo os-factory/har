@@ -1,0 +1,87 @@
+{
+  "contractVersion": 1,
+  "id": "session-history",
+  "title": "Session history graph",
+  "description": "A content snapshot is not a commit. Full verify hashes the working tree; a later commit on that same tree binds without overwriting other history locations. The agent lab proves the chain with a real CLI, a mocked model, and the commit gate.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "github",
+      "why": "issue #191 is this line's traveler",
+      "required": false
+    }
+  ],
+  "plugins": [],
+  "stations": [
+    {
+      "id": "S0",
+      "title": "Snapshot and commit stay distinct",
+      "description": "The graph assembler keeps a pending snapshot separate from a commit, and two commits can share one content snapshot.",
+      "work": {
+        "source": "github",
+        "ids": ["191"],
+        "url": "https://github.com/os-factory/har/issues/191",
+        "optional": false
+      }
+    },
+    {
+      "id": "S1",
+      "title": "Real session, verify, commit, bind",
+      "description": "A real Claude Code turn against a mocked model, then full verify and commit, produces a commit binding whose tree matches the snapshot.",
+      "work": {
+        "source": "github",
+        "ids": ["191"],
+        "optional": false
+      }
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": null,
+    "stages": [
+      {
+        "id": "session-history-s0",
+        "fromStation": "S0",
+        "tier": "full"
+      },
+      {
+        "id": "session-history-agent-lab",
+        "fromStation": "S1",
+        "tier": "full"
+      }
+    ]
+  },
+  "extraStages": [
+    {
+      "id": "session-history-s0",
+      "kind": "test",
+      "tier": "full",
+      "description": "Graph assembler and commit-binding unit tests"
+    },
+    {
+      "id": "session-history-agent-lab",
+      "kind": "test",
+      "tier": "full",
+      "description": "Real Claude Code CLI, verify, commit, bind — sandbox HOME"
+    }
+  ],
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "human review of the lab report before merge"
+  },
+  "traveler": {
+    "kind": "github-issue-comment",
+    "ref": "191",
+    "note": "Durable notes live on issue #191 — a squash merge drops commit-body footers."
+  },
+  "prototypeNotes": [
+    "S1 reuses the occupancy-identity agent-lab jig (sandbox HOME, scripted Anthropic mock, real claude binary). Do not mention third-party session-archive products in code or reports.",
+    "S0 is jest against tests/session-history.test.ts and tests/commit-bindings.test.ts."
+  ]
+}

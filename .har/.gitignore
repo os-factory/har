@@ -2,6 +2,7 @@
 logs/
 runs/
 validations/
+commit-bindings/
 work-units/
 work-attempts/
 validation-bindings/

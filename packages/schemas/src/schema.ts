@@ -705,6 +705,32 @@ export const SyncValidationBindingsInputSchema = z.object({
 
 export type SyncValidationBindingsInput = z.infer<typeof SyncValidationBindingsInputSchema>;
 
+/**
+ * Many-to-many proof link: one exact-tree validation may appear at multiple
+ * history locations (rebase, cherry-pick, a second commit with the same tree).
+ */
+export const ValidationCommitBindingSchema = z.object({
+  bindingId: z.string().uuid(),
+  validationId: z.string().uuid(),
+  treeHash: z.string().regex(/^[0-9a-f]{40,64}$/),
+  commitSha: z.string().regex(/^[0-9a-f]{40,64}$/),
+  parents: z.array(z.string().regex(/^[0-9a-f]{40,64}$/)).default([]),
+  refs: z.array(z.string()).default([]),
+  message: z.string().optional(),
+  runId: z.string().uuid().optional(),
+  createdAt: z.string(),
+});
+
+export type ValidationCommitBinding = z.infer<typeof ValidationCommitBindingSchema>;
+
+export const SyncValidationCommitBindingsInputSchema = z.object({
+  bindings: z.array(ValidationCommitBindingSchema),
+});
+
+export type SyncValidationCommitBindingsInput = z.infer<
+  typeof SyncValidationCommitBindingsInputSchema
+>;
+
 export const AgentToolSchema = z.enum(['claude_code', 'codex', 'cursor']);
 export type AgentTool = z.infer<typeof AgentToolSchema>;
 

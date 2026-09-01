@@ -65,7 +65,8 @@ These paths are normally gitignored:
 | `.har/slots/agent-<id>.json` | Active session registry and source of truth for its work directory |
 | `.env.agent.<id>` | Resolved per-slot environment |
 | `.har/runs/` | Persisted CLI/MCP run records |
-| `.har/validations/` | Exact-tree full-verification records |
+| `.har/validations/` | Exact-tree full-verification records (content snapshots) |
+| `.har/commit-bindings/` | Commits whose tree matches a validation — one snapshot may bind many commits |
 | `.har/artifacts/` | Reports, logs, traces, screenshots, videos, and other stage output |
 | `.har/state/` | Local harness state and registration |
 | `.har/logs/` | Optional harness logs |
