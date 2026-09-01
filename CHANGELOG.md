@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/os-factory/har/compare/v1.6.0...v1.7.0) (2026-09-01)
+
+### Features
+
+* **control:** show session history as a content-snapshot graph ([#332](https://github.com/os-factory/har/issues/332)) ([61249a0](https://github.com/os-factory/har/commit/61249a03eb8a32d173dd3544756e9c6a3c8c01f1))
+
 ## [1.6.0](https://github.com/os-factory/har/compare/v1.5.0...v1.6.0) (2026-09-01)
 
 ### Features
