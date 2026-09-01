@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { describeProject, initHarness } from '../core/harness';
+import { addPlugin, describeProject, initHarness, maintainHarness } from '../core/harness';
 import { startControlAndSync } from '../core/control-lifecycle';
 import { getHarPackageVersion } from '../core/package-version';
 import { detectDockerStatus, formatDockerRequirementWarning } from '../core/docker-status';
@@ -23,8 +23,16 @@ import {
   teardownEnvironment,
 } from '../core/run-service';
 import { getRun, listRuns } from '../core/runs';
+import {
+  addLine,
+  createLineBundle,
+  getAllLineStatuses,
+  getLineStatus,
+  runLineGate,
+} from '../core/lines';
 import { addWorkUnitLinks } from '../core/work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
+import { runDoctor } from '../harness/doctor';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -54,6 +62,13 @@ import {
   GetRunOutputSchema,
   ControlUpInputSchema,
   ControlUpOutputSchema,
+  GetStatusOutputSchema,
+  MaintainHarnessInputSchema,
+  AddPluginInputSchema,
+  AddLineInputSchema,
+  CreateLineInputSchema,
+  LineStatusInputSchema,
+  RunLineGateInputSchema,
   RunStageInputSchema,
   RunVerificationInputSchema,
   RunVerificationOutputSchema,
@@ -76,6 +91,42 @@ export const HAR_MCP_TOOLS: Tool[] = [
       smoke: { type: 'boolean' },
       profile: { type: 'string', enum: ['default', 'cli', 'ios'] },
     }),
+  },
+  {
+    name: 'har_maintain',
+    description:
+      'Validate .har/ against the bundled templates: returns validation issues, drift, and a maintenance bundle report. Pass finalize=true (optionally with summary) to record a completed manual adaptation in .har/manifest.json.',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      finalize: {
+        type: 'boolean',
+        description: 'Record the completed manual adaptation in .har/manifest.json',
+      },
+      summary: {
+        type: 'string',
+        description: 'Adaptation summary stored in the manifest (finalize only)',
+      },
+    }),
+  },
+  {
+    name: 'har_add_plugin',
+    description:
+      'Install a verification plugin (bundled id, local path, npm package, or git URL) that registers stages in .har/stages.json.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        plugin: {
+          type: 'string',
+          description: 'Bundled plugin id, local path (./plugin), npm package (@org/pkg), or git URL',
+        },
+        force: { type: 'boolean', description: 'Overwrite existing plugin files and stage entry' },
+        withCi: {
+          type: 'boolean',
+          description: 'Also copy optional CI workflow files (skipped by default)',
+        },
+      },
+      ['plugin'],
+    ),
   },
   {
     name: 'har_launch_environment',
@@ -195,9 +246,15 @@ export const HAR_MCP_TOOLS: Tool[] = [
     ),
   },
   {
+    name: 'har_doctor',
+    description:
+      'Validate the harness contract: harness.env schema, stages.json, stage scripts exist and are executable, lifecycle stages resolve, verificationStages ids resolve, port lanes are coherent, slot registry entries point at existing worktrees. Returns pass/fail with actionable findings.',
+    inputSchema: objectJsonSchema({ repo: repoJsonProperty }),
+  },
+  {
     name: 'har_get_status',
     description:
-      'Return slot/process status for one agent or all slots. Call BEFORE har_launch_environment when a slot may already be in use — shows worktree path, dirty state, and branch.',
+      'Return structured slot status for one agent or all slots (same source as har env status/--json). Call BEFORE har_launch_environment when a slot may already be in use — shows worktree path, dirty state, branch, and readiness.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       agentId: agentIdJsonProperty,
@@ -230,14 +287,20 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_complete_environment',
     description:
-      'Finish a session when the work is done: runs full verification (recorded as a validation of the worktree tree hash), tears the slot down, and KEEPS the session branch so the user can push it and open a PR.',
+      'Finish a session when the work is done: reuses the last passing full validation for the current worktree (or re-runs verify when verify=true), tears the slot down, and KEEPS the session branch so the user can push it and open a PR.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
+        verify: {
+          type: 'boolean',
+          description:
+            'Re-run full verification before teardown when the tree may have changed since the last passing --full',
+        },
         skipVerify: {
           type: 'boolean',
-          description: 'Tear down without running verification (no validation is recorded)',
+          description:
+            'Deprecated. Complete already skips re-verification by default. Pass verify=true to re-run.',
         },
       },
       ['agentId'],
@@ -274,11 +337,82 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_control_up',
     description:
-      'Start local Mission Control (a single self-contained Docker container backed by SQLite) and sync all harness repositories that were initialized with har env init.',
+      'Start local Mission Control (a single self-contained Docker container backed by SQLite) and sync all harness repositories that were scaffolded with har onboard or har_init_harness.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       detach: { type: 'boolean', description: 'Run the container in detached mode (default true)' },
     }),
+  },
+  {
+    name: 'har_line_create',
+    description:
+      'Scaffold a project-owned factory line at .har/lines/<id>/ (manifest, program, optional gate stage, README). A line is a multi-station program, not a verification plugin.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        id: { type: 'string', description: 'Line id (lowercase slug, e.g. onboarding-line)' },
+        title: { type: 'string', description: 'Human-readable line title' },
+        description: { type: 'string', description: 'One-paragraph description of the program' },
+        stations: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Station ids in order (default: S1, S2)',
+        },
+        gateStage: {
+          type: 'boolean',
+          description: 'Scaffold one registered-but-off-verify gate stage (default true)',
+        },
+        optInEnv: {
+          type: 'string',
+          description: 'Env var that must be "1" for the gate to run (e.g. HAR_FIXTURE_E2E)',
+        },
+        force: { type: 'boolean', description: 'Overwrite an existing line' },
+      },
+      ['id'],
+    ),
+  },
+  {
+    name: 'har_add_line',
+    description:
+      'Install a factory line bundle (local id, path, npm package, or git URL). Registers the line\'s stages but NEVER adds them to verificationStages — default verify stays unchanged. Verification plugins use har_add_plugin instead.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        line: {
+          type: 'string',
+          description: 'Line id, local path (./line), npm package (@org/pkg), or git URL',
+        },
+        force: { type: 'boolean', description: 'Overwrite existing line files and stage entries' },
+      },
+      ['line'],
+    ),
+  },
+  {
+    name: 'har_line_status',
+    description:
+      'Stations, cumulative gate progress derived from .har/runs/ records, and slots in flight for installed factory lines. Pure read — writes no run records.',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      line: { type: 'string', description: 'Line id (default: every installed line)' },
+    }),
+  },
+  {
+    name: 'har_run_line_gate',
+    description:
+      'Run one station\'s cumulative gate: every gate stage tagged at that station or earlier. Runs through the normal stage runner and writes run records; does not call verify and does not widen the verify plan.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        station: { type: 'string', description: 'Station id whose cumulative gate should run' },
+        line: { type: 'string', description: 'Line id when more than one is installed' },
+        agentId: agentIdJsonProperty,
+        force: {
+          type: 'boolean',
+          description: 'Run even when the program declares an opt-in env var that is not set',
+        },
+      },
+      ['station'],
+    ),
   },
 ];
 
@@ -322,6 +456,40 @@ export async function handleMcpToolCall(
       });
     }
 
+    case 'har_maintain': {
+      const input = MaintainHarnessInputSchema.parse({ ...args, repo });
+      const result = await maintainHarness({
+        repoPath: repo,
+        finalize: input.finalize,
+        summary: input.summary,
+      });
+      return jsonContent({
+        validation: result.validation,
+        drift: result.drift,
+        bundleReport: result.bundle?.report,
+        finalized: input.finalize,
+      });
+    }
+
+    case 'har_add_plugin': {
+      const input = AddPluginInputSchema.parse({ ...args, repo });
+      const result = addPlugin(repo, input.plugin, {
+        force: input.force,
+        skipCi: !input.withCi,
+        spec: input.plugin,
+      });
+      return jsonContent({
+        pluginId: result.pluginId,
+        stageIds: result.stageIds,
+        filesWritten: result.filesWritten,
+        warnings: result.warnings,
+        nextSteps: result.nextSteps,
+        docsPath: result.docsPath,
+        source: result.source,
+        adaptPromptPath: result.adaptPromptPath,
+      });
+    }
+
     case 'har_launch_environment': {
       const input = LaunchEnvironmentInputSchema.parse({ ...args, repo });
       const agentId = validateAgentId(input.agentId, repo);
@@ -338,6 +506,7 @@ export async function handleMcpToolCall(
         parentWorkUnitId: input.parentWorkUnitId,
         relatedLinks: input.relatedLinks,
         capture: true,
+        trigger: 'mcp',
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
       return {
@@ -362,6 +531,7 @@ export async function handleMcpToolCall(
         parentWorkUnitId: input.parentWorkUnitId,
         relatedLinks: input.relatedLinks,
         capture: true,
+        trigger: 'mcp',
       });
       const parsed = LaunchEnvironmentOutputSchema.parse(result);
       return {
@@ -442,6 +612,14 @@ export async function handleMcpToolCall(
       );
     }
 
+    case 'har_doctor': {
+      const report = runDoctor(repo);
+      return {
+        ...jsonContent(report),
+        ...(report.ok ? {} : { isError: true }),
+      };
+    }
+
     case 'har_get_status': {
       const agentIdRaw = args.agentId as number | undefined;
       const agentId = agentIdRaw !== undefined ? validateAgentId(agentIdRaw, repo) : undefined;
@@ -451,7 +629,7 @@ export async function handleMcpToolCall(
         capture: true,
         trigger: 'mcp',
       });
-      return jsonContent(EnvironmentRunOutputSchema.parse(result));
+      return jsonContent(GetStatusOutputSchema.parse(result.status));
     }
 
     case 'har_get_logs': {
@@ -485,6 +663,7 @@ export async function handleMcpToolCall(
       const result = await completeEnvironment({
         repoPath: repo,
         agentId,
+        verify: input.verify,
         skipVerify: input.skipVerify,
         capture: true,
         trigger: 'mcp',
@@ -546,6 +725,63 @@ export async function handleMcpToolCall(
           apiReady: result.apiReady,
         }),
       );
+    }
+
+    case 'har_line_create': {
+      const input = CreateLineInputSchema.parse({ ...args, repo });
+      const result = createLineBundle(repo, {
+        id: input.id,
+        title: input.title,
+        description: input.description,
+        stations: input.stations,
+        gateStage: input.gateStage,
+        optInEnv: input.optInEnv,
+        force: input.force,
+      });
+      return jsonContent({
+        lineId: result.lineId,
+        filesWritten: result.filesWritten,
+        nextSteps: result.nextSteps,
+      });
+    }
+
+    case 'har_add_line': {
+      const input = AddLineInputSchema.parse({ ...args, repo });
+      const result = addLine(repo, input.line, { force: input.force, spec: input.line });
+      return jsonContent({
+        lineId: result.lineId,
+        title: result.title,
+        stationIds: result.stationIds,
+        firstGatedStationId: result.firstGatedStationId,
+        stageIds: result.stageIds,
+        filesWritten: result.filesWritten,
+        warnings: result.warnings,
+        nextSteps: result.nextSteps,
+        programPath: result.programPath,
+        docsPath: result.docsPath,
+        source: result.source,
+        adaptPromptPath: result.adaptPromptPath,
+        verificationStagesUnchanged: true,
+      });
+    }
+
+    case 'har_line_status': {
+      const input = LineStatusInputSchema.parse({ ...args, repo });
+      const statuses = input.line ? [getLineStatus(repo, input.line)] : getAllLineStatuses(repo);
+      return jsonContent(input.line ? statuses[0] : { lines: statuses });
+    }
+
+    case 'har_run_line_gate': {
+      const input = RunLineGateInputSchema.parse({ ...args, repo });
+      const agentId = input.agentId === undefined ? undefined : validateAgentId(input.agentId, repo);
+      const result = await runLineGate({
+        repoPath: repo,
+        lineId: input.line,
+        station: input.station,
+        agentId,
+        force: input.force,
+      });
+      return jsonContent(result);
     }
 
     default:

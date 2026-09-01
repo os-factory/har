@@ -14,9 +14,9 @@ description: Install HAR, verify the CLI, and connect an MCP client.
   [docs.docker.com](https://docs.docker.com/get-started/get-docker/) and make sure
   the daemon is running before you onboard.
 
-`har onboard` and `har env init` probe Docker on start and warn when the CLI is
-missing or the daemon is down. Onboarding still completes without Docker, but it
-will not offer to start Mission Control until Docker is available.
+`har onboard` probes Docker on start and warns when the CLI is missing or the
+daemon is down. Onboarding still completes without Docker, but it will not offer
+to start Mission Control until Docker is available.
 
 ## Install from npm
 

@@ -8,12 +8,15 @@ describe('HAR MCP tool schemas', () => {
     expect(names).toEqual([
       'har_describe_project',
       'har_init_harness',
+      'har_maintain',
+      'har_add_plugin',
       'har_launch_environment',
       'har_add_work_unit_link',
       'har_recover_environment',
       'har_preflight_environment',
       'har_run_stage',
       'har_run_verification',
+      'har_doctor',
       'har_get_status',
       'har_get_logs',
       'har_teardown_environment',
@@ -22,6 +25,10 @@ describe('HAR MCP tool schemas', () => {
       'har_list_runs',
       'har_get_run',
       'har_control_up',
+      'har_line_create',
+      'har_add_line',
+      'har_line_status',
+      'har_run_line_gate',
     ]);
     expect(names).not.toContain('run_playwright');
   });

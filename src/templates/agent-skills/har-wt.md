@@ -16,7 +16,7 @@ har env status        # or ./.har/agent-cli.sh 1 status
 ## 2. Launch — BEFORE editing any file
 
 ```bash
-har env launch <id>   # or ./.har/launch.sh <id>
+har env launch <id>
 ```
 
 Launch creates a fresh session worktree from HEAD and prints its **work dir** (also recorded in `.har/slots/agent-<id>.json`, path like `~/worktrees/<base>-<sha4>-har-agent-<id>-<rand4>`). If a previous launch failed partway, retry with `--resume` instead of starting fresh.
@@ -43,7 +43,7 @@ completion to HAR.
 - The main checkout must stay clean (`git status` there shows no changes from you).
 - Edits hot-reload in the running slot; use `./.har/agent-cli.sh <id> restart` if a change doesn't take.
 - Commit early and often on the session branch — teardown keeps the branch, not uncommitted work.
-- After launch, read `.har/CLAUDE.agent.md` in the worktree for slot URLs and the definition of done.
+- After launch, read `.har/README.md` in the worktree for slot URLs and the definition of done.
 
 ## 4. Verify through the harness
 
@@ -57,7 +57,8 @@ Do not substitute ad-hoc test commands for harness verification. Any edit after 
 ## 5. Finish
 
 ```bash
-har env complete <id>   # full verify + validation record + teardown, keeps the session branch
+har env complete <id>   # reuse last passing full validation + teardown, keeps the session branch
+har env complete <id> --verify   # re-run full verify first if the tree may have changed
 ```
 
 Report to the user: verification result, the session branch name (so they can push / open a PR), and the slot preview URLs if the app is running.

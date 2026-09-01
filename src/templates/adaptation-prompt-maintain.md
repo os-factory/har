@@ -4,7 +4,11 @@ Update the `.har/` harness in this repository to reflect current codebase change
 
 The harness already exists. Inspect what changed in the repo since the harness was last updated, then edit `.har/` files so coding agents can still run and verify the project correctly.
 
-**Do NOT** create a YAML config or JSON mapping file for runtime behavior. Put behavior directly in the harness scripts and templates.
+`.har/` is a **configuration surface** — the runtime machinery lives in the HAR
+package behind the `./.har/*.sh` shims. Reconcile through the contract only:
+config in `harness.env`, stages in `stages.json` / `.har/stages/`, hooks in
+`.har/hooks/`, plugins in `.har/plugins/`. Never patch the shims — `har env
+eject` is the sanctioned route to script ownership.
 
 {{MAINTAIN_BUNDLE_SECTION}}
 
@@ -15,7 +19,10 @@ Compare the current repo against the existing harness:
 - Root manifests, CI, Docker, README
 - New or changed test, lint, build, migrate, or seed commands
 - New services, ports, or environment variables
-- Review `.har/maintain/drift-report.json` (template drift, **missing port documentation vars**)
+- Review `.har/maintain/drift-report.json` (two-signal drift, **missing port documentation vars**).
+  Drift statuses: `upstream-updated` (bundled template moved since your last finalize — apply the diff),
+  `conflict` (template moved **and** the file was edited locally — merge, keep repo customizations),
+  `adapted` (local edits only — **no action**, never revert to stock; finalize blesses them).
 
 ## Step 2 — Update `.har/` files
 
@@ -24,10 +31,10 @@ Prefer targeted edits over full rewrites. Key files to review:
 ### `.har/README.md` (required)
 Keep this accurate — it is the harness index. Update whenever scripts, stages, or workflow change.
 
-### `.har/harness.env`, `verify.sh`, `provision-toolchain.sh`, `ecosystem.agent.template.cjs`, `CLAUDE.agent.md`
+### `.har/harness.env`, `stages.json`, `ecosystem.agent.template.cjs`, `README.md`
 Align commands and instructions with the current stack. Verify steps must use toolchain paths from `.env.agent.<id>` (`PYTHON_BIN`, `NPM_BIN`, `XCODEBUILD_BIN`, …) — never hardcoded venv or interpreter paths. `NPM_BIN` may be bun, pnpm, or yarn, so Node steps must use `${NPM_BIN:-npm} run <script>` and avoid npm-only flags such as `--prefix`. Replace stock ecosystem conventions that do not match the repository; do not leave npm/pytest/go/cargo/maven/gradle examples in place by accident.
 
-### `.har/env.template`, `setup-infra.sh`, `docker-compose.agent.yml`
+### `.har/env.template`, `docker-compose.agent.yml`
 Update only if infra changed.
 
 ### Readiness vs liveness regression check
@@ -52,64 +59,57 @@ Look specifically for drift introduced since the last adaptation:
   defaults from another file.
 - The dev server mode is fine for humans but blocks browser automation or agents
   with overlays/noisy HMR.
-- `verify.sh` became health-only and no longer checks the key workflow that makes
-  the slot usable.
-- `launch.sh` writes the slot registry only after fragile late steps; partial
-  launches must remain discoverable by verify/status/teardown.
+- `verificationStages` became health-only and no longer checks the key workflow
+  that makes the slot usable.
 
-Update `.har/CLAUDE.agent.md` with skipped setup steps, substitutes, credentials,
+Update `.har/README.md` with skipped setup steps, substitutes, credentials,
 and the repo-specific definition of "agent usable."
 
-### HAR platform upgrades checklist
+### Custom lifecycle behavior — `.har/hooks/`
 
-When upgrading `@osfactory/har` or adopting new harness standards:
+Custom launch/verify/teardown needs belong in lifecycle hooks, never in edits
+to harness machinery: `.har/hooks/pre-launch.sh`, `post-launch.sh`,
+`pre-verify.sh`, `pre-teardown.sh`, `post-teardown.sh`. Hooks receive
+`AGENT_ID`, `WORK_DIR`, `ENV_FILE`, `HAR_HARNESS_DIR`, and `HAR_PORT_<NAME>`
+(contract `HAR_HOOK_CONTRACT=1`). Failing `pre-*` hooks abort the operation;
+`post-*` failures warn unless `HARNESS_HOOK_POST_FAILURE=fail`. Hooks are
+user-owned and never drift-checked — if a past adaptation patched machinery
+scripts for a lifecycle side effect, move that code into a hook.
 
-**Generator 0.5.0 — `AGENTS.md` (canonical agent guide):**
+### HAR platform upgrades
 
-- Repo-root **`AGENTS.md`** is now the shared HAR workflow contract (Codex auto-loads it). Do **not** create or keep **`AGENT.md`** (singular).
-- If **`AGENT.md` exists**: merge any unique project notes into `AGENTS.md`, ensure a **HAR / agent environment** section is present, then **delete `AGENT.md`**.
-- If **`AGENTS.md` is missing**: create it (HAR may already have scaffolded a managed section during `maintain` — fill **Project-specific notes** and keep the marked HAR section).
-- If **`AGENTS.md` already exists**: add or refresh the managed **HAR / agent environment** section only — do not wipe unrelated project guidance.
-- Keep **`CLAUDE.md`** as a **thin pointer** to `AGENTS.md` (Claude Code auto-loads `CLAUDE.md`). Never paste the full Cursor-rule / HAR workflow into `CLAUDE.md`.
-- Update links in `.har/CLAUDE.agent.md` and `.har/README.md` from `AGENT.md` → `AGENTS.md` if they still point at the legacy name.
-- Cursor still uses `.cursor/rules/har-workflow.mdc` (always-on); that rule should also say `AGENTS.md`.
+Platform-shape upgrades are **code, not a checklist**: the har CLI carries a
+versioned migration registry keyed on the manifest's `runtimeVersion`.
+`har env maintain` detects an old harness shape, writes `.har/MIGRATE-PROMPT.md`,
+and `har env maintain --migrate` applies the mechanical steps (delete leftover wrappers, pure-config
+`harness.env` with `HARNESS_INFRA_SERVICES` / `HARNESS_INFRA_PORT_LANES`
+conversions, machinery removal) with backups under `.har/migrate/backup/`.
 
-**Generator 0.4.0 — primary app & shared infra services:**
+If a `.har/MIGRATE-PROMPT.md` exists, **follow it instead of this prompt** and
+come back here afterwards. Two standing rules:
 
-- Migrate `harness.env` from boolean `HARNESS_INFRA_*` flags to the `HARNESS_INFRA_SERVICES` list (space-separated compose service names, e.g. `"db mailpit"`) and add the `har_infra_enabled()` helper — copy both from `.har/maintain/templates/harness.env`. Update every script that still tests `HARNESS_INFRA_POSTGRES`-style flags (`setup-infra.sh`, `launch.sh`, `teardown.sh`, `agent-cli.sh`) to use `har_infra_enabled <service>`.
-- Set `HARNESS_PRIMARY_APP` in `harness.env` to the ONE app agents modify. Ensure `ecosystem.agent.template.cjs` starts only that app's processes. Move any other in-repo services agents depend on but don't change to shared infra: compose services in `docker-compose.agent.yml` or an optional `.har/ecosystem.shared.config.cjs` (processes `har-shared-<name>`; `setup-infra.sh` starts it when present — resync `setup-infra.sh` from the template to get this hook).
-- Prune `docker-compose.agent.yml` to only the services this project uses; delete unused menu services and volumes.
-- **Port & shared services:** ensure `.har/README.md` documents the allocation table and shared vs per-slot model; `harness.env` has every `HARNESS_*_PORT_*` var required for services in `HARNESS_INFRA_SERVICES` (copy missing vars from `.har/maintain/templates/harness.env` when drift reports them). Remove hardcoded ports from app code, tests, and `CLAUDE.agent.md`.
-- Run the **cleanup checklist**: no TODO placeholders, no env blocks for removed services in `env.template`, no dead script branches, `.har/README.md` file table matches the actual files, `CLAUDE.agent.md` shows only real URLs/ports and commands, unused files deleted.
-
-**Earlier standards:**
-
-- Add **Run history** section to repo-root `AGENTS.md` if missing (shell vs `har env`, worktree vs runs location)
-- Ensure `AGENTS.md` / `CLAUDE.agent.md` frame the harness as **how you run the project** (launch for manual testing/browser/screenshots; fix — don't work around — failing harness commands)
-- Ensure `launch.sh` installs dependencies in fresh worktrees and resolves the project subdirectory inside the worktree (`git rev-parse --show-prefix`) for monorepos
-- If the repo has multiple projects/harnesses, maintain the **"Harnesses in this repo"** table in root `AGENTS.md`, per-project pointer docs, and a single root Cursor rule
-- Remove dead boilerplate files (CLI profile: `ecosystem.agent.template.cjs`, `env.template`, `attach.sh`)
-- Align `launch.sh` / `harness.env` with worktree-default standard (`HARNESS_USE_WORKTREE=true`)
-- Do **not** blindly overwrite customized `verify.sh`
+- Verification customization lives in `stages.json` / `.har/stages/` — the
+  top-level `*.sh` files are generated shims, safe to regenerate.
+- Repo-root agent docs (`AGENTS.md`, `CLAUDE.md`) follow Step 3 below.
 
 ## Step 3 — Refresh repo-root `AGENTS.md`
 
 If harness commands, rules, or workflow changed, update the **HAR / agent environment** section in repo-root `AGENTS.md`:
 
-- Links to `.har/README.md` and `.har/CLAUDE.agent.md`
-- Preferred: HAR MCP tools or `har env …` (persists run history)
-- Fallback: `./.har/*` shell scripts (when CLI is not installed)
-- Run history rules (shell vs CLI/MCP, worktree vs `.har/runs/` location)
+- Links to `.har/README.md`
+- Commands: HAR MCP tools or `har env …`
+- Shell shims: `./.har/*.sh` — thin delegates to `har env`, same run records
+- Run history (worktree runs record to the main checkout `.har/runs/`)
 - Agent rules (ports, agent-cli.sh, isolation)
 - Project-specific notes
 
 If `AGENTS.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
 
-Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Keep `CLAUDE.md` as a thin pointer to `AGENTS.md`.
+Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Keep `CLAUDE.md` as the line `@AGENTS.md`.
 
 ## Rules
 
-1. Prefer targeted edits — keep working harness behavior where still valid
+1. Prefer targeted edits through the contract (config / stages / hooks / plugins) — keep working harness behavior where still valid; never edit the generated `*.sh` shims
 2. Always update `.har/README.md` when anything in the harness changes
 3. Reuse existing project commands from package.json, Makefile, CI, etc.
 4. Replace any remaining TODO placeholders

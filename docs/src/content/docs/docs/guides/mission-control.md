@@ -24,7 +24,7 @@ Stop it with `har control down`.
 
 ## Register and sync
 
-`har env init` remembers a repository for synchronization. You can also register
+Onboarding a repository remembers it for synchronization. You can also register
 one explicitly:
 
 ```bash
@@ -119,6 +119,28 @@ Historical repositories remain compatible: runs, validations, and slots without
 work metadata continue to appear under Operations and repository detail. They are
 not guessed into work units.
 
+## Factory lines
+
+Repository detail links to **Factory lines** (`/repos/<id>/lines`): a board over
+the [factory lines](/docs/guides/factory-lines/) installed in that repository.
+It shows stations in order, the cumulative gate and which of its stages are
+green, the workstations currently in use, and the skills, MCP servers and
+plugins each line declares.
+
+The board reads the repository's own `.har/lines.json` and program — the same
+source `har line status` reads — so the dashboard and the CLI always agree. It
+is read-only: installing or adapting a line is `har line add` plus the
+adaptation prompt that install writes, and running a gate is
+`har line gate <station>`.
+
+Line gate stages are absent from `verificationStages` by design, so the board
+never lists them among verification stages. It says so on the card, and flags
+the reverse case — a line stage that has leaked onto the verify plan — as an
+error, matching `har env doctor`.
+
+A repository with a harness and no line bundle gets an empty state naming the
+CLI, not an install button.
+
 ## Operations: runtime and infrastructure
 
 The repository overview summarizes registered projects, total runs, active slots,
@@ -165,6 +187,23 @@ har telemetry off             # clear hooks OTLP export + stop MC auto-start; ke
 ```
 
 Preference is stored in `~/.har/telemetry.json`. Override with `HAR_TELEMETRY=0|1`.
+### Hooks never cost you a turn
+
+Hooks fire on session start, every prompt, before and after every tool call,
+and on stop — six or more times per turn. Telemetry that blocks would therefore
+be paid several times over on every single turn, so the registration HAR writes
+is bounded on both sides:
+
+- Each generated hook entry carries an explicit `timeout` (10s), instead of the
+  agent's much longer default.
+- The wrapper caps the export itself (1.5s) and the flush (0.5s), and always
+  exits 0. A dropped telemetry event must never fail a tool call.
+
+The practical consequence: if Mission Control is not running, a turn costs a
+fraction of a second per hook rather than stalling. `har telemetry status` warns
+when hooks are installed and the collector is unreachable, since that
+combination is pure cost.
+
 Hooks config lives at `~/.har/otel-hooks/otel_config.json` (`HAR_OTEL_HOOKS_HOME` to override).
 The package itself is installed under `~/.har/otel-hooks/node_modules` (pinned
 `@osfactory/otel-hook`).

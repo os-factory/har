@@ -11,17 +11,17 @@ description: Choose and adapt the web, CLI, or iOS harness profile.
 | `cli` | CLIs, libraries, packages | Worktree and toolchain only; no PM2 or preview-port assumptions |
 | `ios` | Xcode and Swift applications | `xcodebuild`, iOS Simulator settings, optional RocketSim flows |
 
-Choose a profile once when initializing:
+Choose a profile once when you onboard:
 
 ```bash
-har env init
-har env init --profile cli
-har env init --profile ios
+har onboard
+har onboard --profile cli
+har onboard --profile ios
 ```
 
 Profiles are **ordered compositions** of runtime bundles (shared kernel, optional
 PM2 or Xcode helpers, then the profile overlay). The assembled result is still a
-flat `.har/` directory — same paths agents and maintain already expect. Init
+flat `.har/` directory — same paths agents and maintain already expect. Onboard
 records the profile and bundle list in `.har/plugins.json`.
 
 Stack capabilities (PM2, Simulator, app ports) are detected from marker files and

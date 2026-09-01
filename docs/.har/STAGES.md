@@ -57,13 +57,13 @@ then implement the TODO block in `.har/stages/db-integrity.sh`.
 
 Every script under `.har/stages/` must:
 
-1. Source `harness.env` and `agent-slot.sh` from `.har/`. Before sourcing,
-   set `SCRIPT_DIR` to the `.har/` directory (not `stages/`) — `agent-slot.sh`
-   resolves the slot registry via `$SCRIPT_DIR/slots/...`.
-2. Take the agent slot id as `$1` (validate with `validate_agent_id`); extra
-   args may follow.
-3. Load the slot env via `resolve_agent_env_file` and run checks from the
-   agent's work dir (`resolve_agent_work_dir`).
+1. Assume the 1.0 stage surface: the runner exports `WORK_DIR`, `ENV_FILE`,
+   `AGENT_ID` and `HAR_HARNESS_DIR`, with `harness.env` and the slot env file
+   already sourced. Never source `agent-slot.sh` — it is retired in 1.0.
+2. Take the agent slot id as `$1`, falling back to the exported `AGENT_ID`
+   (`AGENT_ID="${1:-${AGENT_ID:?...}}"`); extra args may follow.
+3. Guard the runner contract with `${ENV_FILE:?...}` / `${WORK_DIR:?...}`
+   (pointing at `har env launch <id>`) and run checks from `$WORK_DIR`.
 4. Write artifacts (reports, screenshots, logs) under `.har/artifacts/<id>/`.
 5. Print **only** the normalized JSON result object on stdout
    (`status`, `stageId`, `agent_id`, `total_ms`, …); log progress to stderr.
@@ -76,7 +76,7 @@ The scaffolded skeleton implements all of this — replace its TODO block.
 Listing a stage id in `verificationStages` is what includes it in
 `har env verify <id> --full`. Ids that match a registered stage run via their
 script/command; ids without a registry entry (e.g. `typecheck`, `api-health`)
-are inline steps owned by `.har/verify.sh`. Lifecycle kinds
+are inline steps owned by `har env verify`. Lifecycle kinds
 (`setup`/`launch`/`reset`/`teardown`/`inspect`) and `verify` itself never run
 as part of verification, even if listed.
 

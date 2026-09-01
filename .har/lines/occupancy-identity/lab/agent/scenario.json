@@ -1,0 +1,60 @@
+{
+  "id": "claude-read-then-ready",
+  "providerId": "claude-code",
+  "prompt": "Read the file widget.txt in this workspace using the Read tool. After you have read it, reply with only the word READY.",
+  "widgetFileName": "widget.txt",
+  "widgetContents": "synthetic lab fixture\nLAB_SECRET_NEVER_EXPORT_9f3a\n",
+  "secret": "LAB_SECRET_NEVER_EXPORT_9f3a",
+  "toolName": "Read",
+  "finalText": "READY",
+  "model": "claude-sonnet-5",
+  "usage": {
+    "toolTurn": {
+      "input_tokens": 100,
+      "output_tokens": 24,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 16
+    },
+    "finalTurn": {
+      "input_tokens": 120,
+      "output_tokens": 8,
+      "cache_read_input_tokens": 80,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "canonicalStopUsage": {
+    "temporality": "delta",
+    "inputTokens": 200,
+    "cachedInputTokens": 80,
+    "cacheCreationInputTokens": 0,
+    "cacheCreationAccounting": "included-in-input",
+    "outputTokens": 8,
+    "reasoningOutputTokens": 0,
+    "uncachedInputTokens": 120,
+    "totalTokens": 208,
+    "providerTotalAgreement": "unreported"
+  },
+  "agentPrintUsage": {
+    "input_tokens": 220,
+    "output_tokens": 32,
+    "cache_read_input_tokens": 80,
+    "cache_creation_input_tokens": 16
+  },
+  "requiredHookEvents": [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+    "SessionEnd"
+  ],
+  "requiredCanonicalTypes": [
+    "session.start",
+    "prompt.submitted",
+    "tool.start",
+    "tool.end",
+    "generation.start",
+    "generation.end",
+    "session.end"
+  ]
+}

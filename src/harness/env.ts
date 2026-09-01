@@ -1,18 +1,27 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getHarnessDir } from './manifest';
+import {
+  HarnessEnvValidation,
+  parseHarnessEnvSource,
+  validateHarnessEnvSource,
+} from './schema';
 
 export function readHarnessEnv(repoPath: string): Record<string, string> {
   const envPath = path.join(getHarnessDir(repoPath), 'harness.env');
   if (!fs.existsSync(envPath)) return {};
+  return parseHarnessEnvSource(fs.readFileSync(envPath, 'utf8')).values;
+}
 
-  const values: Record<string, string> = {};
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const match = line.match(/^export\s+([A-Z0-9_]+)=(.*)$/);
-    if (!match) continue;
-    values[match[1]] = match[2].replace(/^"|"$/g, '');
-  }
-  return values;
+/**
+ * Read harness.env through the 1.0 contract: pure KEY=value config validated
+ * against HarnessEnvSchema. Returns null when the file does not exist.
+ * Consumed by validation and `har env doctor` (#232).
+ */
+export function readValidatedHarnessEnv(repoPath: string): HarnessEnvValidation | null {
+  const envPath = path.join(getHarnessDir(repoPath), 'harness.env');
+  if (!fs.existsSync(envPath)) return null;
+  return validateHarnessEnvSource(fs.readFileSync(envPath, 'utf8'));
 }
 
 export function parseHarnessEnvInt(

@@ -1,29 +1,33 @@
 {
   "version": "1",
+  "artifactsDir": "artifacts",
+  "logsDir": "logs",
   "agentSlots": {
     "min": 1,
     "max": 5
   },
   "verificationStages": [
-    "docs-drift"
+    "typecheck",
+    "build",
+    "docs-check",
+    "docs-build",
+    "unit-tests",
+    "lint",
+    "readiness",
+    "docs-drift",
+    "fixture-e2e"
   ],
-  "commitGate": {
-    "enabled": true,
-    "mode": "block",
-    "scope": "worktrees"
-  },
   "stages": [
     {
       "id": "setup-infra",
       "kind": "setup",
       "description": "Optional shared Docker infrastructure",
-      "command": "./.har/setup-infra.sh"
+      "artifacts": []
     },
     {
       "id": "launch",
       "kind": "launch",
       "description": "Prepare agent slot (git worktree, deps, env file)",
-      "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
           "path": ".env.agent.{agentId}",
@@ -36,21 +40,21 @@
       "id": "verify",
       "kind": "verify",
       "description": "Verification pipeline (quick: typecheck/build/docs; --full adds tests, lint, docs-drift)",
-      "command": "./.har/verify.sh {agentId}",
-      "acceptsArgs": ["--full"],
       "artifacts": [
         {
           "path": ".har/artifacts",
           "kind": "directory",
           "description": "Optional verification outputs"
         }
+      ],
+      "acceptsArgs": [
+        "--full"
       ]
     },
     {
       "id": "status",
       "kind": "inspect",
       "description": "Inspect agent slot status and worktree path",
-      "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
           "path": ".har/logs",
@@ -64,14 +68,173 @@
       "kind": "custom",
       "description": "Validate documentation against CLI, MCP, stage, profile, template, and skill contracts",
       "command": "(cd docs && ${NPM_BIN:-npm} run drift)",
+      "artifacts": [],
       "requiresAgentId": false,
       "group": "documentation"
+    },
+    {
+      "id": "fixture-e2e",
+      "kind": "test",
+      "description": "v1.0.0 milestone gate: run the built CLI end-to-end against a clone of the car-app example (skipped unless HAR_FIXTURE_E2E=1; HAR_FIXTURE_MILESTONE=M0..M5 adds milestone asserts)",
+      "script": "stages/fixture-e2e.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/fixture-e2e",
+          "kind": "directory",
+          "description": "Gate logs and fixture status snapshots"
+        }
+      ],
+      "requiresAgentId": true,
+      "group": "release-gate"
     },
     {
       "id": "teardown",
       "kind": "teardown",
       "description": "Remove worktree and env file for the slot",
-      "command": "./.har/teardown.sh {agentId}"
+      "artifacts": []
+    },
+    {
+      "id": "typecheck",
+      "kind": "test",
+      "description": "Type check (ecosystem quick smoke)",
+      "command": "${NPM_BIN:-npm} run typecheck",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "unit-tests",
+      "kind": "test",
+      "description": "Unit tests",
+      "command": "${NPM_BIN:-npm} test",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "lint",
+      "kind": "test",
+      "description": "Lint",
+      "command": "${NPM_BIN:-npm} run lint",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "readiness",
+      "kind": "test",
+      "description": "Project readiness smoke (HARNESS_READINESS_CMD)",
+      "script": "stages/readiness.sh",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "build",
+      "kind": "test",
+      "description": "Build the CLI bundle",
+      "command": "${NPM_BIN:-npm} run build",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "docs-check",
+      "kind": "test",
+      "description": "Astro docs typecheck (astro check)",
+      "command": "(cd docs && ${NPM_BIN:-npm} run check)",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "docs-build",
+      "kind": "test",
+      "description": "Astro docs build",
+      "command": "(cd docs && ${NPM_BIN:-npm} run build)",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "occupancy-s0",
+      "kind": "test",
+      "description": "S0 — a relaunched slot does not keep the previous occupancy",
+      "script": "stages/occupancy-s0.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s0",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s0"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-s1",
+      "kind": "test",
+      "description": "S1 — trajectory and usage are scoped to the occupancy, not the slot id",
+      "script": "stages/occupancy-s1.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s1",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s1"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-s2",
+      "kind": "test",
+      "description": "S2 — ingest does not merge a new occupancy into the previous session",
+      "script": "stages/occupancy-s2.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-s2",
+          "kind": "directory",
+          "description": "vitest output for occupancy-s2"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-lab",
+      "kind": "test",
+      "description": "S3 — two real occupancies of one slot in a sandbox HOME (Docker)",
+      "script": "stages/occupancy-lab.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-lab",
+          "kind": "directory",
+          "description": "Lab report and container log"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "occupancy-agent-lab",
+      "kind": "test",
+      "description": "S3 — two real Claude Code sessions across an occupancy boundary, mocked LLM, sandbox HOME",
+      "script": "stages/occupancy-agent-lab.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/occupancy-agent-lab",
+          "kind": "directory",
+          "description": "Agent lab report and log"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
     }
-  ]
+  ],
+  "commitGate": {
+    "enabled": true,
+    "mode": "block",
+    "scope": "worktrees"
+  }
 }

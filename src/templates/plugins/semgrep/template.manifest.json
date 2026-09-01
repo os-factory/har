@@ -2,9 +2,6 @@
   "id": "semgrep",
   "stageId": "sast",
   "verificationStages": [
-    "typecheck",
-    "unit-tests",
-    "lint",
     "sast"
   ],
   "stage": {
@@ -23,18 +20,30 @@
         "path": ".har/artifacts/sast/semgrep.json",
         "kind": "report"
       }
-    ]
+    ],
+    "tier": "full"
   },
   "files": [
-    { "src": ".har/stages/sast.sh", "dest": ".har/stages/sast.sh", "executable": true },
-    { "src": ".har/stages/SEMGREP.md", "dest": ".har/stages/SEMGREP.md" }
+    {
+      "src": ".har/stages/sast.sh",
+      "dest": ".har/stages/sast.sh",
+      "executable": true
+    },
+    {
+      "src": ".har/stages/SEMGREP.md",
+      "dest": ".har/stages/SEMGREP.md"
+    }
   ],
   "optionalFiles": [
-    { "src": ".github/workflows/semgrep.yml", "dest": ".github/workflows/semgrep.yml", "skipFlag": "skipCi" }
+    {
+      "src": ".github/workflows/semgrep.yml",
+      "dest": ".github/workflows/semgrep.yml",
+      "skipFlag": "skipCi"
+    }
   ],
   "nextSteps": [
     "pipx install semgrep   # or: pip install semgrep / brew install semgrep",
-    "./.har/launch.sh 1",
+    "har env launch 1",
     "./.har/stages/sast.sh 1",
     "Open .har/artifacts/sast/ for the JSON and SARIF reports",
     "Read .har/stages/SEMGREP.md to pin rulesets (HARNESS_SEMGREP_CONFIG) or add local rules",

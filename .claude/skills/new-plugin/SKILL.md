@@ -5,6 +5,12 @@ description: Factory line for adding a new HAR verification plugin (like playwri
 
 # New HAR plugin factory line
 
+> **Instance of the [factory-line](../factory-line/SKILL.md) template.**
+> Program data: [`new-plugin.line.json`](../factory-line/examples/new-plugin.line.json).
+> Stations here are sequential phases, not GitHub issues. The product is a
+> plugin, not a runtime migration — that is why this line exists as a second
+> instance.
+
 Ship a new verification plugin `<id>` for framework `<framework>` end-to-end:
 research → template → registration → local validation → real-repo validation → PR.
 
@@ -133,7 +139,7 @@ bash -n .har/stages/<stage-id>.sh             # syntax check
 1. Clone/scaffold the validation repo from Phase 0 into the scratchpad — a repo
    that genuinely uses `<framework>` (e.g. the framework's official example app).
 2. `har env init` there (pick the right profile), then `har env add-plugin <id>`.
-3. Follow the manifest's own `nextSteps` verbatim: install deps, `./.har/launch.sh 1`,
+3. Follow the manifest's own `nextSteps` verbatim: install deps, `har env launch 1`,
    run `./.har/stages/<stage-id>.sh 1`.
 4. The stage must **pass** and populate `.har/artifacts/<stage-id>/`. If external
    hardware/tooling is unavailable (e.g. iOS simulator on Linux), validate as far as

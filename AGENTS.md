@@ -9,71 +9,25 @@ This repo **dogfoods HAR** — `.har/` at the repo root defines how coding agent
 <!-- har:agent-environment:start -->
 ## HAR / agent environment
 
-The harness is **how you run this project**, not only how you verify it. This
-root harness is the **CLI profile** (no runtime server). Launch a slot to get an
-isolated worktree with toolchain paths; never hand-roll setup. To see Mission
-Control or the docs site live, launch `control/.har/` or `docs/.har/` instead.
+This repository uses a `.har/` harness. It is **how you run and verify this
+project** — launch a slot for live apps, browsers and screenshots; never
+hand-roll docker or dev-server startup. If a harness command fails, fix the
+harness or report it; do not fall back to ad-hoc commands.
 
-If a harness command fails, fix the harness (or report the failure) — do not quietly
-fall back to ad-hoc commands.
+1. **Launch first** — `har_launch_environment` / `har env launch <id>`. Make ALL
+   edits under the returned **work dir**, never the main checkout. Bind tracker
+   work with `--work-id` / `--work-url` when the task names an issue.
+2. **Verify before done** — `har_run_verification` (`full: true`) /
+   `har env verify <id> --full`. Commit in the session worktree.
+3. **Stop at handoff** — report summary, session branch and preview URLs, then
+   wait. Never autonomously `complete`, `teardown`, push, or open a PR.
 
-### Before making changes
+Occupied slots always block: `complete` / `teardown`, then launch. Customize the
+harness only through `harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`
+and `.har/plugins/` — there is no generated `.har/*.sh` entry-point surface.
 
-1. On the **main checkout**, switch to the intended base (usually `main`) — launch
-   creates a worktree from that HEAD.
-2. **Launch first** — MCP `har_launch_environment` / `har env launch 1`. Use the
-   returned **work dir** for ALL edits (never the main checkout).
-   **Bind tracker work** when the task names a durable issue or ticket (GitHub,
-   Linear, etc.): pass a short repo-scoped `--work-id` / `workUnitId` (e.g.
-   `widget-123`), `--work-source` / `source`, `--work-url` / `sourceUrl`, and
-   `--work-title` / `title` when known. Skip binding for ad-hoc work with no
-   tracker identity.
-3. Read [`.har/README.md`](.har/README.md), [`.har/stages.json`](.har/stages.json), then
-   [`.har/CLAUDE.agent.md`](.har/CLAUDE.agent.md) (slot URLs / definition of done).
-4. Hot-reload usually applies; if not, `./.har/agent-cli.sh <id> restart` (no-op on
-   cli/ios profiles without managed processes).
-
-**Occupied slots always block.** Run `complete` / `teardown`, then `launch`. Resume
-failed/starting launches with `--resume` / `recover`. Prefer a free slot (2+) over
-sharing slot 1 across unrelated chats. Check `har_get_status` / `har env status` first.
-Commit early — teardown keeps the branch, not uncommitted work.
-
-### After making changes
-
-Prefer MCP → CLI → shell. Quick verify for the loop; **full verify before done**.
-
-- MCP: `har_run_verification` / `full: true`; finish with `har_complete_environment`
-  (propose; wait for approval) or `har_teardown_environment`
-- CLI: `har env verify 1`, `har env verify 1 --full`, `complete 1`, `teardown 1`
-- Shell: `./.har/verify.sh 1`, `./.har/verify.sh 1 --full`, `./.har/teardown.sh 1`
-
-Commit in the session worktree. Run JSON stays in the main checkout `.har/runs/`.
-
-### Definition of done
-
-- Full verify passes; edits only in the session worktree; tests cover new behavior;
-  changes committed; show preview URLs; then **session handoff** (below).
-
-### Session handoff (required)
-
-After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-<id>.json`), and preview URLs. Wait — never autonomously
-complete, teardown, push, or open a PR. **Default:** when `gh`/GitHub MCP is available,
-recommend **Complete + open a PR** (still needs approval). Alternatives: **Complete only**,
-or **Something else**. Without PR tooling, recommend **Complete only** and give the
-session branch for a manual push.
-
-### Commit gate
-
-Full verify records a tree hash under `.har/validations/`. With `har hooks install`,
-commits must match a passing full verify. Re-verify after any edit; `git add -A`.
-Do not bypass (`--no-verify`, `HAR_SKIP_GATE=1`).
-
-### Cursor IDE
-
-If `.cursor/rules/har-workflow.mdc` exists, the same harness workflow is injected into
-every Cursor agent session automatically. Run `har env init` or `har env maintain` to
-create or refresh it.
+Full detail — slot environment, readiness, definition of done, project commands,
+commit gate: [`.har/README.md`](.har/README.md) and [`.har/stages.json`](.har/stages.json).
 <!-- har:agent-environment:end -->
 
 ## Harnesses in this repo
@@ -108,21 +62,23 @@ Default recommendation is complete + open a PR when tooling is available (still
 requires approval); never run `complete`, push, or PR autonomously.
 
 Configure Cursor MCP from [`.cursor/mcp.json.example`](.cursor/mcp.json.example)
-(see [CONTRIBUTING.md](./CONTRIBUTING.md)). Prefer MCP or `har env …` over
-`./.har/*.sh` so run history is persisted. Use
+(see [CONTRIBUTING.md](./CONTRIBUTING.md)). All three surfaces are equivalent in
+1.0 — prefer MCP or `har env …` for the richer structured output. Use
 `har env launch 1 --no-worktree` only when you must use the repo root checkout.
 
 ## Run history
 
+CLI and MCP execute the same packaged runtime and write the same records:
+
 | Entry point | Writes `.har/runs/`? |
 |-------------|------------------------|
-| `./.har/*.sh` | No — same behavior, no run record |
 | `har env launch/verify/...` | Yes |
 | MCP `har_run_*` | Yes |
 
 Run records are stored under the **main checkout** `.har/runs/YYYY-MM-DD/HH-mm-ss_<stageId>_agent-<id>.json` (local date/time). With worktree slots, tests run in the worktree but run JSON stays in the main repo; each record includes a `workDir` field.
 
-Use MCP or `har env verify` by default — they persist run history. Use `./.har/*.sh` only when the CLI is not installed.
+The commit gate is therefore satisfiable from either surface. Prefer MCP or
+`har env …` for structured output and tracker binding.
 
 If your IDE workspace is a worktree, pass `--repo /path/to/main/checkout` to `har env` commands (MCP config already points at the main checkout).
 
@@ -139,7 +95,7 @@ Do not use `har env init --force` on an adapted harness — it wipes customizati
 
 ### Cursor rule
 
-`har env init` and `har env maintain` optionally scaffold `.cursor/rules/har-workflow.mdc` in the target repo — a Cursor rule that injects the harness read-before-change / verify-before-done workflow into every agent session.
+`har onboard`, `har_init_harness`, and `har env maintain` optionally scaffold `.cursor/rules/har-workflow.mdc` in the target repo — a Cursor rule that injects the harness read-before-change / verify-before-done workflow into every agent session.
 
 ```bash
 har env maintain --cursor-rule     # force-write without prompting
@@ -191,6 +147,11 @@ These are non-negotiable. Do not introduce imports that violate them.
 | MCP tool handler or JSON Schema | `src/mcp/server.ts`, `schemas.ts` |
 | Files copied into target `.har/` | `src/templates/har-boilerplate/` |
 | Optional verification plugins | `src/templates/plugins/` (applied via `har env add-plugin`) |
+| Factory line schemas (program + bundle manifest) | `packages/schemas/src/line.ts` |
+| Line apply / scaffold / ledger | `src/harness/lines.ts`, `line-create.ts`, `line-ledger.ts` |
+| Line status + cumulative gate orchestration | `src/core/lines.ts` |
+| Bundle install channels shared by plugins and lines | `src/harness/bundle-resolve.ts` |
+| Bundled example line (seed for `os-factory/har-line`) | `src/templates/lines/example-line/` |
 | Generic shell/path/logging helper | `src/utils/` |
 
 When unsure: put domain logic in `harness/` or `core/`, never in an adapter.
@@ -213,13 +174,53 @@ naming plugins ≠ shipping a marketplace.
 
 - **`StageExecutor`** (`src/core/types.ts`) — swap local vs cloud execution by injecting a different executor into `RunService`. `local-executor.ts` is the current implementation.
 - **Project-owned stages** — runtime behavior lives in the target repo's `.har/` scripts and `stages.json`, not as hardcoded tool APIs in core.
+- **Factory lines** — installable *programs* (`har line add <id|path|npm|git>`), resolved through the same channels as plugins (`bundle-resolve.ts`) but with an apply path that registers stages and **never** touches `verificationStages`. `har line gate <station>` runs the cumulative set through `RunService`; there is no second stage runner. Poka-yoke both ways: `add-plugin` refuses `kind: line`, `line add` refuses a plugin manifest, and `doctor` fails if a line stage reaches the verify plan.
 - **Plugins** — optional bundles applied with `har env add-plugin <id|path|npm|git>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). Discovered from `src/templates/plugins/*/template.manifest.json` (no closed enum). Installs are recorded in `.har/plugins.json`. They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`. Philosophy: *plugins install stages; agents only talk to the stage registry.*
 - **Profiles** — ordered runtime bundles (`src/templates/profiles/<id>/profile.manifest.json`), not forked logic in core. Stack capabilities (PM2, Simulator, ports) are detected via `src/harness/capabilities.ts` marker files.
+
+## Operation × surface matrix (CLI ↔ MCP)
+
+Every environment operation is available on both surfaces unless listed here as an
+intentional hole. Both surfaces delegate to the same `core/run-service.ts` /
+`core/harness.ts` code paths; status is one structured implementation
+(`collectEnvironmentStatus`) with text rendered on top, the launch guard runs
+exactly once inside `run-service`, and status is a pure read (no run records) on
+every surface.
+
+First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
+`har env init` is the mechanical CLI primitive (fixtures, `--force`) — same
+`initHarness` core. There is no `har_onboard` MCP tool.
+
+| Operation | CLI | MCP |
+|---|---|---|
+| describe / init / maintain / add-plugin | `har env init`, `maintain`, `add-plugin` | `har_describe_project`, `har_init_harness`, `har_maintain`, `har_add_plugin` |
+| launch / recover / preflight | `har env launch`, `recover`, `preflight` | `har_launch_environment`, `har_recover_environment`, `har_preflight_environment` |
+| verify / run-stage / logs / status / artifacts | `har env verify`, `run-stage`, `logs`, `status`, `artifacts` | `har_run_verification`, `har_run_stage`, `har_get_logs`, `har_get_status`, `har_list_artifacts` |
+| doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
+| complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
+| runs / work links | `har env runs list\|get`, `work-link` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link` |
+| factory lines | `har line create\|add\|status\|gate\|list` | `har_line_create`, `har_add_line`, `har_line_status`, `har_run_line_gate` |
+| Mission Control | `har control up` | `har_control_up` |
+
+Intentional holes (human-only, no MCP tool):
+
+- `har env cleanup` — cross-repo destructive teardown with interactive confirmation; an
+  agent must free its own slot with complete/teardown instead.
+- `har env add-stage --custom` — authoring a project stage is an adaptation task done in
+  the checkout, not a tool call; agents edit `.har/stages.json` + `stages/` directly.
+- `har env eject` / `har env adopt` — taking (or returning) ownership of the runtime
+  scripts is a deliberate human policy decision with an interactive confirmation.
+- Hooks / commit-gate onboarding (`har hooks …`, init/maintain onboarding prompts) —
+  installs git hooks and records user policy preferences; a policy decision for humans.
+- Onboarding/preferences, telemetry toggles, and portal login (`har onboard`,
+  `har preferences`, `har telemetry`, `har hq`) — account- and machine-level state.
 
 ## Anti-patterns
 
 - Orchestration logic in `mcp/server.ts` or `cli/commands/` — adapters delegate to `core/`
 - Stack-specific stages or MCP tools in core (Playwright, Cypress, migrations, etc.)
+- Implementing line apply by calling `applyPlugin` / `patchStageRegistry` — those exist to widen `verificationStages`; a line must never
+- Adding a line's gate stages to `verificationStages` (that is a verification plugin, not a line)
 - `harness/` importing from `core/` — keeps the contract layer independent
 - Domain types or HAR concepts in `utils/`
 - Deep barrel re-exports inside `src/` — prefer explicit imports; public surface is `run-service.ts` / `run.ts`
@@ -255,11 +256,11 @@ HAR session branches are derived from whatever base you launch from (`docs-…-h
 |---------------|---------|
 | `fix:` | Patch |
 | `feat:` | Minor |
-| `feat!:` or `BREAKING CHANGE:` footer | Major |
+| `feat!:` / `fix!:` (`!` on any type) or a `BREAKING CHANGE:` footer | Major |
 | `chore:`, `docs:`, `test:`, `refactor:`, `ci:` | No release |
 | `feat(benchmark):`, `*(ci):`, `docs(*):` | No release ([release.config.cjs](./release.config.cjs) rules) |
 
-Explicit analyzer rules in [release.config.cjs](./release.config.cjs): type `ci`, type `docs`, scope `ci`, and scope `benchmark` all set `release: false`. Prefer type `ci:` / `docs:` for those-only PRs — not `feat(docs):` or `fix(docs):` (type `feat`/`fix` still releases unless the scope is `ci` or `benchmark`). Squash-merge PR titles must follow the same format.
+Explicit analyzer rules in [release.config.cjs](./release.config.cjs): type `ci`, type `docs`, scope `ci`, and scope `benchmark` all set `release: false`. The analyzer uses the `conventionalcommits` preset so `!` alone marks a breaking change (#311) — put it in the **squash-merge title**, since a squash drops `BREAKING CHANGE:` footers written in commit bodies. Prefer type `ci:` / `docs:` for those-only PRs — not `feat(docs):` or `fix(docs):` (type `feat`/`fix` still releases unless the scope is `ci` or `benchmark`). Squash-merge PR titles must follow the same format.
 
 ### What actually skips CI jobs
 
@@ -279,10 +280,11 @@ har env verify 1                # typecheck + build + docs check/build
 har env verify 1 --full         # + unit tests, lint, docs-drift — required before declaring done
 # then: session handoff → wait for user → on approval of default (complete + PR):
 # push + open PR, then:
-har env complete 1              # full verify + validation + teardown; branch kept
+har env complete 1              # reuse last passing full validation + teardown; branch kept
+# har env complete 1 --verify   # re-run full verify first if the tree may have changed
 ```
 
-Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cursor). Shell fallback: `./.har/verify.sh 1 --full` then `./.har/teardown.sh 1` (no validation record — prefer CLI/MCP `complete` when available).
+Or use MCP `har_run_verification` / `har_complete_environment` (preferred in Cursor). Prefer `complete` over bare `teardown` — it closes the work attempt.
 
 Do not end the session without a handoff prompt. Never autonomously run `complete`, push, or open a PR. The default handoff recommendation is complete + PR when tooling is available.
 

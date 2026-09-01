@@ -107,7 +107,7 @@ describe('harness stage contract', () => {
     const readme = fs.readFileSync(path.join(repoPath, '.har', 'README.md'), 'utf8');
     expect(readme).toContain('Port & shared services');
 
-    expect(fs.existsSync(path.join(repoPath, '.har', 'provision-toolchain.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'provision-toolchain.sh'))).toBe(false);
 
     expect(fs.existsSync(path.join(repoPath, '.har', 'ecosystem.agent.template.cjs'))).toBe(false);
     expect(fs.existsSync(path.join(repoPath, '.har', 'env.template'))).toBe(false);
@@ -115,12 +115,13 @@ describe('harness stage contract', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(repoPath, '.har', 'manifest.json'), 'utf8'));
     expect(manifest.profile).toBe('cli');
 
-    const verifyScript = fs.readFileSync(path.join(repoPath, '.har', 'verify.sh'), 'utf8');
-    expect(verifyScript).toContain('run_quick_smoke');
-    expect(verifyScript).toContain('HARNESS_ECOSYSTEM');
-    expect(verifyScript).not.toContain("echo 'TODO:");
+    expect(fs.existsSync(path.join(repoPath, '.har', 'verify.sh'))).toBe(false);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'launch.sh'))).toBe(false);
 
     const registry = readStageRegistry(repoPath);
+    const verifyStage = registry.stages.find((stage) => stage.id === 'verify');
+    expect(verifyStage?.kind).toBe('verify');
+    expect(verifyStage?.command).toBeUndefined();
     expect(registry.agentSlots).toEqual({ min: 1, max: 3 });
 
     const gitignore = fs.readFileSync(path.join(repoPath, '.gitignore'), 'utf8');

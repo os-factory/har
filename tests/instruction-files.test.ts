@@ -17,6 +17,7 @@ import {
   formatDetectionReport,
   formatInstallPlan,
   handleInstructionFiles,
+  loadHarAgentsSectionFromTemplate,
   mergeAgentsMdContent,
   migrateLegacyAgentMd,
   stripClaudePointerFromAgentsMd,
@@ -56,6 +57,7 @@ describe('instruction-files', () => {
     const content = fs.readFileSync(path.join(repoPath, AGENTS_MD), 'utf8');
     expect(content).toContain(HAR_SECTION_START);
     expect(content).toContain('Launch first');
+    expect(content).not.toContain('/factory-line');
   });
 
   it('appends HAR section to existing AGENTS.md without wiping content', () => {
@@ -92,25 +94,65 @@ describe('instruction-files', () => {
     expect(content).toContain(HAR_SECTION_START);
   });
 
-  it('creates thin CLAUDE.md pointer to AGENTS.md', () => {
+  // #301: CLAUDE.md holds no content of its own — it imports AGENTS.md so there
+  // is exactly one instruction file to keep current.
+  it('creates CLAUDE.md as exactly the AGENTS.md import', () => {
     const repoPath = makeTempRepo('har-claude-thin');
     const action = ensureClaudeMdPointer(repoPath);
     expect(action).toBe('created');
     const content = fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8');
-    expect(content).toContain('AGENTS.md');
-    expect(content).not.toContain('Launch first');
+    expect(content.trim()).toBe('@AGENTS.md');
   });
 
-  it('appends short HAR pointer to rich CLAUDE.md', () => {
+  it('replaces a HAR-authored pointer with the import', () => {
+    const repoPath = makeTempRepo('har-claude-legacy');
+    fs.writeFileSync(
+      path.join(repoPath, CLAUDE_MD),
+      '# Proj\n\nRead [AGENTS.md](./AGENTS.md) and [.har/README.md](./.har/README.md).\n',
+    );
+    expect(ensureClaudeMdPointer(repoPath)).toBe('updated');
+    expect(fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8').trim()).toBe('@AGENTS.md');
+  });
+
+  it("preserves a user's own CLAUDE.md and prepends the import", () => {
     const repoPath = makeTempRepo('har-claude-rich');
     const rich = '# My project\n\n' + 'x'.repeat(700) + '\n\n## Style\nUse tabs.\n';
     fs.writeFileSync(path.join(repoPath, CLAUDE_MD), rich);
     const action = ensureClaudeMdPointer(repoPath);
     expect(action).toBe('appended');
     const content = fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8');
+    expect(content.startsWith('@AGENTS.md\n')).toBe(true);
     expect(content).toContain('Use tabs.');
-    expect(content).toContain('AGENTS.md');
+    expect(content).toContain('x'.repeat(700));
     expect(content).not.toContain('Definition of done');
+  });
+
+  it('is idempotent — a file that already imports AGENTS.md is untouched', () => {
+    const repoPath = makeTempRepo('har-claude-idem');
+    const rich = '@AGENTS.md\n\n# Mine\n' + 'y'.repeat(700) + '\n';
+    fs.writeFileSync(path.join(repoPath, CLAUDE_MD), rich);
+    expect(ensureClaudeMdPointer(repoPath)).toBe('skipped');
+    expect(fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8')).toBe(rich);
+    expect(ensureClaudeMdPointer(repoPath)).toBe('skipped');
+  });
+
+  // #301: the always-loaded block teaches one way to drive the harness. The
+  // shell surface appears only for an ejected harness, where the scripts are
+  // genuinely the entry point.
+  it('the AGENTS.md HAR block is minimal and free of shell entry points', () => {
+    const section = loadHarAgentsSectionFromTemplate();
+    expect(section.split('\n').length).toBeLessThanOrEqual(25);
+    expect(section).not.toMatch(/\.\/\.har\/[a-z-]+\.sh/);
+    expect(section).toContain('har env launch');
+    expect(section).toContain('.har/README.md');
+    expect(section).not.toContain('CLAUDE.agent.md');
+  });
+
+  it('an ejected harness gets the shell surface documented', () => {
+    const section = loadHarAgentsSectionFromTemplate({ ejected: true });
+    expect(section).toContain('node .har/runtime/har.cjs env');
+    expect(section).toContain('har env adopt');
+    expect(section.endsWith(HAR_SECTION_END)).toBe(true);
   });
 
   it('buildInstallPlan always includes AGENTS.md and gates adapters by targets', () => {

@@ -1,0 +1,149 @@
+{
+  "contractVersion": 1,
+  "id": "occupancy-identity",
+  "title": "Slot occupancy identity",
+  "description": "A slot number is a workstation; a working session is one occupancy of one worktree. After complete or teardown, the next launch may reuse the number but must mint a new occupancy \u2014 new purpose, new trajectory stream, no merge with the previous session key. Each station adds a question the gate keeps asking forever.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "github",
+      "why": "issue #316 is this line's traveler",
+      "required": false
+    }
+  ],
+  "plugins": [],
+  "stations": [
+    {
+      "id": "S0",
+      "title": "Purpose does not survive a relaunch",
+      "description": "After idle sync, purpose is null; relaunching slot N does not keep occupancy A's summary.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "316"
+        ],
+        "url": "https://github.com/os-factory/har/issues/316",
+        "optional": false
+      }
+    },
+    {
+      "id": "S1",
+      "title": "Trajectory and usage follow the occupancy",
+      "description": "Streams and usage rows for occupancy B are not listed under occupancy A of the same slot id.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "316"
+        ],
+        "optional": false
+      }
+    },
+    {
+      "id": "S2",
+      "title": "Ingest mints a new session",
+      "description": "complete then launch writes a new session key; ingest never prefers a stale har.session_key once the worktree changed.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "316"
+        ],
+        "optional": false
+      }
+    },
+    {
+      "id": "S3",
+      "title": "Prove it without a developer's laptop",
+      "description": "Two real occupancies of slot 1 driven by the real CLI against a real database, in a container with an isolated HOME.",
+      "work": {
+        "source": "github",
+        "ids": [
+          "316"
+        ],
+        "optional": false
+      }
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": null,
+    "stages": [
+      {
+        "id": "occupancy-s0",
+        "fromStation": "S0",
+        "tier": "full"
+      },
+      {
+        "id": "occupancy-s1",
+        "fromStation": "S1",
+        "tier": "full"
+      },
+      {
+        "id": "occupancy-s2",
+        "fromStation": "S2",
+        "tier": "full"
+      },
+      {
+        "id": "occupancy-lab",
+        "fromStation": "S3",
+        "tier": "full"
+      },
+      {
+        "id": "occupancy-agent-lab",
+        "fromStation": "S3",
+        "tier": "full"
+      }
+    ]
+  },
+  "extraStages": [
+    {
+      "id": "occupancy-s0",
+      "kind": "test",
+      "tier": "full",
+      "description": "Purpose resets on occupancy change"
+    },
+    {
+      "id": "occupancy-s1",
+      "kind": "test",
+      "tier": "full",
+      "description": "Occupancy-scoped trajectory and usage queries"
+    },
+    {
+      "id": "occupancy-s2",
+      "kind": "test",
+      "tier": "full",
+      "description": "Ingest session-key precedence"
+    },
+    {
+      "id": "occupancy-lab",
+      "kind": "test",
+      "tier": "full",
+      "description": "Docker sandbox occupancy lab \u2014 never on verify"
+    },
+    {
+      "id": "occupancy-agent-lab",
+      "kind": "test",
+      "tier": "full",
+      "description": "Real Claude Code CLI vs a scripted mock across an occupancy boundary"
+    }
+  ],
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "human review of the lab report before merge"
+  },
+  "traveler": {
+    "kind": "github-issue-comment",
+    "ref": "316",
+    "note": "Durable notes live on issue #316 \u2014 a squash merge drops commit-body footers."
+  },
+  "prototypeNotes": [
+    "S3's jig is modelled on os-factory/otel-hook har-plugins/agent-lab (isolated HOME, scripted mock, real CLI). Keep it local until a second repo needs the same install \u2014 do not publish @osfactory/agent-lab yet.",
+    "Stations map to vitest describe blocks named S0..S3; that is this instance's tactic, not part of the contract.",
+    "The agent lab needs a `claude` binary on PATH; the Docker lab and the unit stations do not. That is instance detail, not contract."
+  ]
+}

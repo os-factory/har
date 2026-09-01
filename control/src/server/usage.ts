@@ -168,6 +168,7 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     suffix: input.suffix ?? existing?.suffix ?? null,
     workUnitId: input.workUnitId ?? existing?.workUnitId ?? null,
     attemptId: input.attemptId ?? existing?.attemptId ?? null,
+    occupancyKey: input.occupancyKey ?? existing?.occupancyKey ?? null,
     tokensInput,
     tokensOutput,
     tokensCacheRead,
@@ -222,9 +223,15 @@ export async function listSessionUsageForRepo(repositoryId: string) {
   return rows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));
 }
 
-export async function listSessionUsageForSlot(repositoryId: string, agentId: number) {
+export async function listSessionUsageForSlot(
+  repositoryId: string,
+  agentId: number,
+  occupancyKey?: string | null,
+) {
+  // #316: scope to the current occupancy so a relaunched slot does not show the
+  // previous session's usage as if it were the same working session.
   const rows = await prisma.agentSessionUsage.findMany({
-    where: { repositoryId, agentId },
+    where: { repositoryId, agentId, ...(occupancyKey ? { occupancyKey } : {}) },
     orderBy: { lastSeenAt: 'desc' },
   });
   return rows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));

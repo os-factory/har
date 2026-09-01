@@ -5,6 +5,7 @@ import { execSync } from 'child_process';
 import { computeWorktreeSnapshot } from '../src/core/change-batch';
 import {
   attachCommit,
+  findPassingFullValidation,
   findValidation,
   listValidations,
   recordValidation,
@@ -118,6 +119,30 @@ describe('validation store', () => {
     fs.mkdirSync(path.join(dir, '.har', 'validations'), { recursive: true });
     fs.writeFileSync(path.join(dir, '.har', 'validations', 'garbage.json'), 'not json');
     expect(listValidations(dir)).toEqual([]);
+  });
+
+  it('findPassingFullValidation requires a pass + full record for the current tree', () => {
+    const dir = initRepo();
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+
+    expect(findPassingFullValidation({ checkoutDir: dir })).toBeUndefined();
+
+    recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: false });
+    expect(findPassingFullValidation({ checkoutDir: dir })).toBeUndefined();
+
+    recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'fail', full: true });
+    expect(findPassingFullValidation({ checkoutDir: dir })).toBeUndefined();
+
+    const passed = recordValidation({
+      checkoutDir: dir,
+      harnessRoot: dir,
+      status: 'pass',
+      full: true,
+    });
+    expect(findPassingFullValidation({ checkoutDir: dir })?.validationId).toBe(passed.validationId);
+
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'changed again\n');
+    expect(findPassingFullValidation({ checkoutDir: dir })).toBeUndefined();
   });
 
   it('prefers the worktree root over a nested harness workDir', () => {

@@ -13,14 +13,12 @@
     {
       "id": "setup-infra",
       "kind": "setup",
-      "description": "Boot iOS Simulator and start optional shared infra",
-      "command": "./.har/setup-infra.sh"
+      "description": "Boot iOS Simulator and start optional shared infra"
     },
     {
       "id": "launch",
       "kind": "launch",
       "description": "Prepare agent slot (git worktree, iOS deps, env file)",
-      "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
           "path": ".env.agent.{agentId}",
@@ -32,9 +30,10 @@
     {
       "id": "verify",
       "kind": "verify",
-      "description": "Verification pipeline (quick smoke by default; --full runs the registry's verificationStages)",
-      "command": "./.har/verify.sh {agentId}",
-      "acceptsArgs": ["--full"],
+      "description": "Verification pipeline: runs stages.json verificationStages in order (tier \"quick\" by default; --full runs the whole list)",
+      "acceptsArgs": [
+        "--full"
+      ],
       "artifacts": [
         {
           "path": ".har/artifacts",
@@ -47,7 +46,6 @@
       "id": "status",
       "kind": "inspect",
       "description": "Inspect agent slot status, simulator, and worktree path",
-      "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
           "path": ".har/logs",
@@ -59,8 +57,45 @@
     {
       "id": "teardown",
       "kind": "teardown",
-      "description": "Remove worktree and env file for the slot",
-      "command": "./.har/teardown.sh {agentId}"
+      "description": "Remove worktree and env file for the slot"
+    },
+    {
+      "id": "build",
+      "kind": "test",
+      "tier": "quick",
+      "description": "Xcode build smoke (compile-only, unsigned)",
+      "command": "${XCODEBUILD_BIN:-xcodebuild} build ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" CODE_SIGNING_ALLOWED=NO | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} build ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" CODE_SIGNING_ALLOWED=NO",
+      "requiresAgentId": true
+    },
+    {
+      "id": "unit-tests",
+      "kind": "test",
+      "tier": "full",
+      "description": "Xcode unit tests (signed: simulator installs the host app)",
+      "command": "${XCODEBUILD_BIN:-xcodebuild} test ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} test ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\"",
+      "requiresAgentId": true
+    },
+    {
+      "id": "lint",
+      "kind": "test",
+      "tier": "full",
+      "description": "SwiftLint (skips when not installed)",
+      "command": "command -v \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" >/dev/null 2>&1 && \"${HARNESS_SWIFTLINT_CMD:-swiftlint}\" --quiet || echo \"swiftlint not installed \u2014 skipping\"",
+      "requiresAgentId": true
+    },
+    {
+      "id": "readiness",
+      "kind": "test",
+      "tier": "full",
+      "description": "Project readiness smoke (HARNESS_READINESS_CMD)",
+      "script": "stages/readiness.sh",
+      "requiresAgentId": true
     }
+  ],
+  "verificationStages": [
+    "build",
+    "unit-tests",
+    "lint",
+    "readiness"
   ]
 }

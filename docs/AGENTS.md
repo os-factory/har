@@ -27,67 +27,25 @@ tests/               Playwright (frontend, api, a11y, visual-proof)
 <!-- har:agent-environment:start -->
 ## HAR / agent environment
 
-The harness is **how you run this site**. Launch a slot for `astro dev` on the
-slot port and Playwright before/after screenshots. Never hand-roll `astro dev`.
-If a harness command fails, fix the harness or report it.
+This repository uses a `.har/` harness. It is **how you run and verify this
+project** — launch a slot for live apps, browsers and screenshots; never
+hand-roll docker or dev-server startup. If a harness command fails, fix the
+harness or report it; do not fall back to ad-hoc commands.
 
-### Before making changes
+1. **Launch first** — `har_launch_environment` / `har env launch <id>`. Make ALL
+   edits under the returned **work dir**, never the main checkout. Bind tracker
+   work with `--work-id` / `--work-url` when the task names an issue.
+2. **Verify before done** — `har_run_verification` (`full: true`) /
+   `har env verify <id> --full`. Commit in the session worktree.
+3. **Stop at handoff** — report summary, session branch and preview URLs, then
+   wait. Never autonomously `complete`, `teardown`, push, or open a PR.
 
-1. On the **main checkout**, switch to the intended base (usually `main`) — launch
-   creates a worktree from that HEAD.
-2. **Launch first** — MCP `har_launch_environment` / `har env launch 1`. Use the
-   returned **work dir** for ALL edits (never the main checkout).
-   **Bind tracker work** when the task names a durable issue or ticket (GitHub,
-   Linear, etc.): pass a short repo-scoped `--work-id` / `workUnitId` (e.g.
-   `widget-123`), `--work-source` / `source`, `--work-url` / `sourceUrl`, and
-   `--work-title` / `title` when known. Skip binding for ad-hoc work with no
-   tracker identity.
-3. Read [`.har/README.md`](.har/README.md), [`.har/stages.json`](.har/stages.json), then
-   [`.har/CLAUDE.agent.md`](.har/CLAUDE.agent.md) (slot URLs / definition of done).
-4. Hot-reload usually applies; if not, `./.har/agent-cli.sh <id> restart` (no-op on
-   cli/ios profiles without managed processes).
+Occupied slots always block: `complete` / `teardown`, then launch. Customize the
+harness only through `harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`
+and `.har/plugins/` — there is no generated `.har/*.sh` entry-point surface.
 
-**Occupied slots always block.** Run `complete` / `teardown`, then `launch`. Resume
-failed/starting launches with `--resume` / `recover`. Prefer a free slot (2+) over
-sharing slot 1 across unrelated chats. Check `har_get_status` / `har env status` first.
-Commit early — teardown keeps the branch, not uncommitted work.
-
-### After making changes
-
-Prefer MCP → CLI → shell. Quick verify for the loop; **full verify before done**.
-
-- MCP: `har_run_verification` / `full: true`; finish with `har_complete_environment`
-  (propose; wait for approval) or `har_teardown_environment`
-- CLI: `har env verify 1`, `har env verify 1 --full`, `complete 1`, `teardown 1`
-- Shell: `./.har/verify.sh 1`, `./.har/verify.sh 1 --full`, `./.har/teardown.sh 1`
-
-Commit in the session worktree. Run JSON stays in the main checkout `.har/runs/`.
-
-### Definition of done
-
-- Full verify passes; edits only in the session worktree; tests cover new behavior;
-  changes committed; show preview URLs; then **session handoff** (below).
-
-### Session handoff (required)
-
-After full verify and commit, stop. Include summary, session branch
-(`.har/slots/agent-<id>.json`), and preview URLs. Wait — never autonomously
-complete, teardown, push, or open a PR. **Default:** when `gh`/GitHub MCP is available,
-recommend **Complete + open a PR** (still needs approval). Alternatives: **Complete only**,
-or **Something else**. Without PR tooling, recommend **Complete only** and give the
-session branch for a manual push.
-
-### Commit gate
-
-Full verify records a tree hash under `.har/validations/`. With `har hooks install`,
-commits must match a passing full verify. Re-verify after any edit; `git add -A`.
-Do not bypass (`--no-verify`, `HAR_SKIP_GATE=1`).
-
-### Cursor IDE
-
-If `.cursor/rules/har-workflow.mdc` exists, the same harness workflow is injected into
-every Cursor agent session automatically. Run `har env init` or `har env maintain` to
-create or refresh it.
+Full detail — slot environment, readiness, definition of done, project commands,
+commit gate: [`.har/README.md`](.har/README.md) and [`.har/stages.json`](.har/stages.json).
 <!-- har:agent-environment:end -->
 
 ## Project-specific notes

@@ -1,0 +1,52 @@
+---
+import BlogLayout from '../../layouts/BlogLayout.astro';
+import Footer from '../../components/Footer.astro';
+import MigrationPrompt from '../../components/MigrationPrompt.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+
+const dateFormat = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+---
+<BlogLayout
+  title={`${post.data.title} — HAR`}
+  description={post.data.description}
+  canonicalPath={`/blog/${post.id}/`}
+>
+<section class="hero blueprint-surface blog-hero blog-hero-article">
+<div class="container">
+<header class="blog-article-head">
+<div class="eyebrow"><span class="eyebrow-dot"></span> {post.data.kicker ?? 'Journal'}</div>
+<h1>{post.data.title}</h1>
+<p class="hero-lede">{post.data.description}</p>
+<p class="blog-article-date">
+<time datetime={post.data.date.toISOString()}>{dateFormat.format(post.data.date)}</time>
+</p>
+</header>
+</div>
+</section>
+<div class="page-frame">
+<section class="section blog-article-section">
+<div class="container">
+<article class="blog-prose">
+{post.data.migrationPrompt && <MigrationPrompt />}
+<Content />
+</article>
+</div>
+</section>
+<Footer />
+</div>
+</BlogLayout>

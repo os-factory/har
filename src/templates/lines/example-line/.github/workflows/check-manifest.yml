@@ -1,0 +1,24 @@
+name: Check line bundle
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate line manifest and program
+        run: node scripts/check-manifest.mjs
+      - name: Stage scripts are executable
+        run: |
+          set -euo pipefail
+          for script in stages/*.sh; do
+            [ -x "$script" ] || { echo "not executable: $script" >&2; exit 1; }
+            bash -n "$script"
+          done

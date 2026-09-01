@@ -42,8 +42,12 @@ export default async function SlotDetailPage({
   const slot = repo.slots.find((s) => s.slotId === slotId);
   if (!slot) notFound();
 
+  // #316: usage and trajectory are scoped to the slot's CURRENT occupancy.
+  // A slot number is reused after complete/teardown; a working session is not.
+  const occupancyKey = slot.occupancyKey ?? null;
+
   const [usageRows, validation, events, verifyRuns, trajectory] = await Promise.all([
-    listSessionUsageForSlot(id, slotId),
+    listSessionUsageForSlot(id, slotId, occupancyKey),
     getValidationStages(id, { agentId: slotId }),
     listSessionEventsForSlot(id, slotId),
     prisma.run.findMany({
@@ -51,7 +55,7 @@ export default async function SlotDetailPage({
       orderBy: { startedAt: 'desc' },
       take: 20,
     }),
-    getSlotTrajectoryData(id, slotId),
+    getSlotTrajectoryData(id, slotId, 100, occupancyKey),
   ]);
 
   const modelsByUsageKey = new Map<string, string[]>();

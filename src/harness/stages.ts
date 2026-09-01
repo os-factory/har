@@ -38,50 +38,43 @@ export function getStageRegistryPath(repoPath: string): string {
 }
 
 export function synthesizeStageRegistry(repoPath: string): HarnessStageRegistry {
-  const harnessDir = getHarnessDir(repoPath);
   const stages: HarnessStage[] = [];
 
-  addStageIfRunnable(stages, harnessDir, {
+  addKindDispatchedStage(stages, {
     id: 'setup-infra',
     kind: 'setup',
     description: 'Start shared harness infrastructure.',
-    command: './.har/setup-infra.sh',
     requiresAgentId: false,
   });
-  addStageIfRunnable(stages, harnessDir, {
+  addKindDispatchedStage(stages, {
     id: 'launch',
     kind: 'launch',
     description: 'Launch an isolated agent environment slot.',
-    command: './.har/launch.sh {agentId}',
     requiresAgentId: true,
   });
-  addStageIfRunnable(stages, harnessDir, {
+  addKindDispatchedStage(stages, {
     id: 'verify',
     kind: 'verify',
     description: 'Run the project verification pipeline.',
-    command: './.har/verify.sh {agentId}',
     requiresAgentId: true,
     acceptsArgs: ['--full'],
   });
-  addStageIfRunnable(stages, harnessDir, {
+  addKindDispatchedStage(stages, {
     id: 'status',
     kind: 'inspect',
     description: 'Inspect a running agent environment slot.',
-    command: './.har/agent-cli.sh {agentId} status',
     requiresAgentId: true,
   });
-  addStageIfRunnable(stages, harnessDir, {
+  addKindDispatchedStage(stages, {
     id: 'logs',
     kind: 'inspect',
     description: 'Read recent logs for an agent slot.',
-    command: './.har/agent-cli.sh {agentId} logs',
     requiresAgentId: true,
   });
-  addStageIfRunnable(stages, harnessDir, {
+  addKindDispatchedStage(stages, {
     id: 'teardown',
     kind: 'teardown',
     description: 'Tear down an isolated agent environment slot.',
-    command: './.har/teardown.sh {agentId}',
     requiresAgentId: true,
   });
 
@@ -115,29 +108,8 @@ function readAgentSlotsFromHarnessEnv(
   return { min, max };
 }
 
-function stageScriptExists(harnessDir: string, stage: HarnessStage): boolean {
-  if (stage.script) {
-    return fs.existsSync(path.join(harnessDir, stage.script));
-  }
-  if (stage.command) {
-    const scriptName = stage.command
-      .split(/\s+/)[0]
-      .replace(/^\.\/\.har\//, '')
-      .replace(/^\.\//, '');
-    return fs.existsSync(path.join(harnessDir, scriptName));
-  }
-  return fs.existsSync(path.join(harnessDir, 'stages', `${stage.id}.sh`));
-}
-
-function addStageIfRunnable(
-  stages: HarnessStage[],
-  harnessDir: string,
-  stage: Record<string, unknown>,
-): void {
-  const parsed = HarnessStageSchema.parse(stage);
-  if (stageScriptExists(harnessDir, parsed)) {
-    stages.push(parsed);
-  }
+function addKindDispatchedStage(stages: HarnessStage[], stage: Record<string, unknown>): void {
+  stages.push(HarnessStageSchema.parse(stage));
 }
 
 export function readStageRegistry(repoPath: string): HarnessStageRegistry {

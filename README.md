@@ -2,14 +2,14 @@
   <img src="assets/logo.png" alt="HAR logo" width="120">
 </p>
 
-# HAR: The open harness for multi-agent coding workflows
+# HAR: The open harness for AI coding workflows you can trust and verify
 
 [![Release](https://img.shields.io/github/v/release/os-factory/har)](https://github.com/os-factory/har/releases)
 [![CI](https://github.com/os-factory/har/actions/workflows/test.yml/badge.svg)](https://github.com/os-factory/har/actions/workflows/test.yml)
 [![Documentation](https://img.shields.io/badge/docs-harproject.dev-38c976)](https://harproject.dev/)
 [![GitHub stars](https://img.shields.io/github/stars/os-factory/har?style=social)](https://github.com/os-factory/har)
 
-HAR is an open-source **agent harness** — a **CLI** and **MCP** server — for multi-agent coding workflows. Run a fleet of coding agents in isolated **worktrees**, with deterministic validation, verifiable proof, and full observability. Use it as a portable **software factory** for Claude Code, Cursor, Codex, or any MCP agent.
+HAR is an open-source **agent harness** for AI coding workflows you can trust and verify. It runs every coding agent in its own isolated, consistent **worktree**, with deterministic validation, verifiable proof, and full observability. Run one agent or a whole fleet, with the same quality and control. It wraps the tools, tests, and CI you already use, and stays yours to customize.
 
 <table align="center">
   <tr>
@@ -21,7 +21,7 @@ HAR is an open-source **agent harness** — a **CLI** and **MCP** server — for
   </tr>
   <tr>
     <td align="center">
-    ▶ <strong>Introduction demo</strong> — click the thumbnail to watch on YouTube
+    ▶ <strong>Introduction demo</strong>, click the thumbnail to watch on YouTube
     </td>
   </tr>
 </table>
@@ -53,7 +53,7 @@ Full walkthrough: [Quickstart](https://harproject.dev/docs/getting-started/quick
 
 ## Why HAR
 
-Getting a single coding agent to work in a repo is easy. Scaling that into a real multi-agent workflow, where several agents run at once and humans still trust the output, is where it breaks down. HAR was built to close those gaps:
+Running a coding agent is easy. Trusting what it produced, without re-checking every change by hand, is the hard part, and it only gets harder as tasks grow more complex and you run more agents at once. HAR was built to close those gaps:
 
 1. **No standard way to run or verify a repo.** That knowledge is scattered across a README, a CLAUDE.md, Cursor rules, and CI yaml today, drifting out of sync with each other and the actual codebase. HAR replaces all of that with one machine-readable contract (.har/) that Claude Code, Cursor, Codex, or any MCP agent reads the same way.
 

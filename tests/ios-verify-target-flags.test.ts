@@ -2,22 +2,15 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { run } from '../src/utils/shell';
-import { resolveTemplatesDir } from '../src/utils/paths';
-
-const VERIFY = path.join(resolveTemplatesDir(), 'har-boilerplate-ios', 'verify.sh');
+import { XC_TARGET_FLAGS_FUNCTION } from '../src/runtime/verify';
 
 /**
- * Run verify.sh's xc_target_flags against a fixture work dir. The function is
- * lifted out of the script so the test exercises the real detection logic
- * without booting a simulator.
+ * Run the packaged xc_target_flags (src/runtime/verify.ts, formerly the ios
+ * verify.sh) against a fixture work dir — the real detection logic, no
+ * simulator needed.
  */
 function xcTargetFlags(workDir: string, env: Record<string, string> = {}): string {
-  const script = fs.readFileSync(VERIFY, 'utf8');
-  const start = script.indexOf('xc_target_flags() {');
-  expect(start).toBeGreaterThanOrEqual(0);
-  const end = script.indexOf('\n}\n', start);
-  expect(end).toBeGreaterThan(start);
-  const fn = script.slice(start, end + 3);
+  const fn = XC_TARGET_FLAGS_FUNCTION;
 
   const runner = path.join(workDir, 'run-xc-target-flags.sh');
   fs.writeFileSync(

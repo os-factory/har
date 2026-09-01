@@ -70,6 +70,16 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   info(`Mission Control: ${apiUrl} (${reachable ? 'reachable' : 'not reachable'})`);
   info(`OTLP endpoint: ${payload.otelEndpoint}`);
   info(`Hooks home:    ${payload.otelHooksHome}`);
+
+  // Hooks installed + collector down is the failure state worth naming (#328):
+  // every agent turn pays the export budget for telemetry nobody receives.
+  if (enabled && !reachable) {
+    warn(
+      'Agent hooks are installed but Mission Control is not reachable — each turn pays the export timeout for telemetry nobody receives.',
+    );
+    info('Start it with: har control up   •   or stop exporting: har telemetry off');
+  }
+
   printSignals();
 }
 

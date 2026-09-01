@@ -250,8 +250,25 @@ export function formatInstallPlan(
   return lines.join('\n');
 }
 
+/**
+ * Ejected harnesses vendor the runtime; invocation is still CLI/MCP (or
+ * `node .har/runtime/har.cjs env …` with no `har` install). No wrapper scripts.
+ */
+const HAR_EJECTED_SHELL_SECTION = `
+### Ejected harness
+
+This harness is **ejected** (\`har env eject\`): the runtime is vendored in
+\`.har/runtime/\`. Drive it with \`har env …\` or
+\`node .har/runtime/har.cjs env …\` (no \`har\` install required).
+
+You own \`.har/runtime/\` — HAR will not update it. Return to the packaged
+runtime with \`har env adopt\`.
+`;
+
 /** Extract the marked HAR section body from the AGENTS.md template (including markers). */
-export function loadHarAgentsSectionFromTemplate(): string {
+export function loadHarAgentsSectionFromTemplate(
+  options: { ejected?: boolean } = {},
+): string {
   const templatePath = resolveTemplateFile('AGENTS.md.template');
   if (!templatePath) {
     throw new Error('AGENTS.md.template not found. Run npm run build.');
@@ -262,7 +279,12 @@ export function loadHarAgentsSectionFromTemplate(): string {
   if (start === -1 || end === -1 || end < start) {
     throw new Error('AGENTS.md.template is missing har:agent-environment markers.');
   }
-  return content.slice(start, end + HAR_SECTION_END.length);
+  const section = content.slice(start, end + HAR_SECTION_END.length);
+  if (!options.ejected) return section;
+  return section.replace(
+    HAR_SECTION_END,
+    `${HAR_EJECTED_SHELL_SECTION}${HAR_SECTION_END}`,
+  );
 }
 
 export function loadAgentsMdTemplate(): string {
@@ -293,11 +315,15 @@ function upsertMarkedBlock(
  * Merge incoming AGENTS.md content into an existing file — refresh only the managed
  * HAR section; preserve all other project-specific guidance.
  */
-export function mergeAgentsMdContent(existing: string, incoming: string): string {
+export function mergeAgentsMdContent(
+  existing: string,
+  incoming: string,
+  options: { ejected?: boolean } = {},
+): string {
   const sanitizedExisting = stripClaudePointerFromAgentsMd(existing);
   const sanitizedIncoming = stripClaudePointerFromAgentsMd(incoming);
 
-  let harSection = loadHarAgentsSectionFromTemplate();
+  let harSection = loadHarAgentsSectionFromTemplate(options);
   if (sanitizedIncoming.includes(HAR_SECTION_START)) {
     const start = sanitizedIncoming.indexOf(HAR_SECTION_START);
     const end = sanitizedIncoming.indexOf(HAR_SECTION_END, start + HAR_SECTION_START.length);
@@ -323,7 +349,8 @@ export function upsertAgentsMdHarSection(
   options: UpsertAgentsMdOptions = {},
 ): 'created' | 'updated' | 'appended' | 'skipped' {
   const dest = path.join(repoPath, AGENTS_MD);
-  const section = loadHarAgentsSectionFromTemplate();
+  const ejected = readManifest(repoPath)?.ejected === true;
+  const section = loadHarAgentsSectionFromTemplate({ ejected });
 
   if (!fs.existsSync(dest)) {
     writeFileSafe(dest, loadAgentsMdTemplate());
@@ -387,19 +414,25 @@ export function migrateLegacyAgentMd(repoPath: string): boolean {
   return true;
 }
 
-function loadClaudeMdTemplate(projectName: string): string {
+/**
+ * CLAUDE.md carries no content of its own (#301): `AGENTS.md` is the
+ * cross-vendor instruction file, and Claude Code reaches it through an `@`
+ * import. One source of truth, one file to keep current.
+ */
+export const CLAUDE_MD_IMPORT = '@AGENTS.md';
+
+function loadClaudeMdTemplate(): string {
   const templatePath = resolveTemplateFile('CLAUDE.md.template');
   if (!templatePath) {
     throw new Error('CLAUDE.md.template not found. Run npm run build.');
   }
-  const displayName = projectName.replace(/_/g, ' ');
-  return fs
-    .readFileSync(templatePath, 'utf8')
-    .replace(/__PROJECT_DISPLAY_NAME__/g, displayName);
+  return fs.readFileSync(templatePath, 'utf8');
 }
 
-function isThinClaudePointer(content: string): boolean {
+/** True when the file is HAR's own pointer (ours to replace), not the user's work. */
+function isHarOwnedClaudeMd(content: string): boolean {
   const trimmed = content.trim();
+  if (trimmed === CLAUDE_MD_IMPORT) return true;
   if (trimmed.length > 600) return false;
   return (
     /AGENTS\.md|AGENT\.md/.test(trimmed) &&
@@ -407,24 +440,26 @@ function isThinClaudePointer(content: string): boolean {
   );
 }
 
-const CLAUDE_POINTER_BLOCK = `${CLAUDE_HAR_SECTION_START}
-## HAR
-
-This repository uses a \`.har/\` harness. Read [AGENTS.md](./AGENTS.md) and
-[\`.har/README.md\`](./.har/README.md) before making changes.
-${CLAUDE_HAR_SECTION_END}`;
+/** An `@AGENTS.md` import on its own line, ignoring code fences and inline text. */
+function hasAgentsImport(content: string): boolean {
+  return content.split('\n').some((line) => line.trim() === CLAUDE_MD_IMPORT);
+}
 
 /**
- * Ensure CLAUDE.md is a thin pointer to AGENTS.md, or add a short HAR subsection
- * when a rich CLAUDE.md already exists. Never paste the full workflow.
+ * Ensure CLAUDE.md pulls AGENTS.md into context.
+ *
+ * - absent, or a HAR-authored pointer → the file becomes exactly `@AGENTS.md`
+ * - hand-written by the user → content preserved verbatim, the import prepended
+ *   when missing. HAR never destroys project-specific Claude instructions.
+ *
+ * Idempotent: a file that already imports AGENTS.md is left alone.
  */
 export function ensureClaudeMdPointer(
   repoPath: string,
   options: { force?: boolean } = {},
 ): 'created' | 'updated' | 'appended' | 'skipped' {
   const dest = path.join(repoPath, CLAUDE_MD);
-  const projectName = path.basename(repoPath).toLowerCase().replace(/[^a-z0-9]/g, '_');
-  const thin = loadClaudeMdTemplate(projectName);
+  const thin = loadClaudeMdTemplate();
 
   if (!fs.existsSync(dest)) {
     writeFileSafe(dest, thin);
@@ -433,33 +468,16 @@ export function ensureClaudeMdPointer(
 
   const existing = fs.readFileSync(dest, 'utf8');
 
-  if (isThinClaudePointer(existing) || options.force) {
+  if (isHarOwnedClaudeMd(existing) || options.force) {
+    if (existing.trim() === CLAUDE_MD_IMPORT) return 'skipped';
     writeFileSafe(dest, thin);
     return 'updated';
   }
 
-  if (existing.includes(CLAUDE_HAR_SECTION_START) || /\[AGENTS\.md\]/.test(existing)) {
-    if (existing.includes(CLAUDE_HAR_SECTION_START)) {
-      const { content, action } = upsertMarkedBlock(
-        existing,
-        CLAUDE_POINTER_BLOCK,
-        CLAUDE_HAR_SECTION_START,
-        CLAUDE_HAR_SECTION_END,
-      );
-      writeFileSafe(dest, content);
-      return action;
-    }
-    return 'skipped';
-  }
-
-  const { content, action } = upsertMarkedBlock(
-    existing,
-    CLAUDE_POINTER_BLOCK,
-    CLAUDE_HAR_SECTION_START,
-    CLAUDE_HAR_SECTION_END,
-  );
-  writeFileSafe(dest, content);
-  return action;
+  // The user's own CLAUDE.md: keep every line, just make sure AGENTS.md loads.
+  if (hasAgentsImport(existing)) return 'skipped';
+  writeFileSafe(dest, `${CLAUDE_MD_IMPORT}\n\n${existing.replace(/^\n+/, '')}`);
+  return 'appended';
 }
 
 async function selectAgentProviders(

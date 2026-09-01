@@ -70,6 +70,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: |
+            package-lock.json
             control/package-lock.json
             packages/schemas/package-lock.json
 
@@ -78,6 +79,22 @@ jobs:
         run: |
           npm ci --prefix packages/schemas
           npm ci --prefix control
+
+      # #314: CLI/MCP are the only entry points. Put THIS repo's runtime on
+      # PATH so the job dogfoods `har env …` against the code under test
+      # instead of `npx @osfactory/har@<pinned>`.
+      - name: Build the har runtime under test
+        run: |
+          npm ci
+          npm run build
+
+      - name: Put the har runtime under test on PATH
+        run: |
+          mkdir -p "$RUNNER_TEMP/har-bin"
+          printf '#!/usr/bin/env bash\nexec node "%s/dist/index.js" "$@"\n' \
+            "$GITHUB_WORKSPACE" > "$RUNNER_TEMP/har-bin/har"
+          chmod +x "$RUNNER_TEMP/har-bin/har"
+          echo "$RUNNER_TEMP/har-bin" >> "$GITHUB_PATH"
 
       - name: Get Playwright version
         id: playwright-version
@@ -105,7 +122,7 @@ jobs:
       # Actions checkout is already the code under test.
       - name: Launch Mission Control harness
         working-directory: control
-        run: ./.har/launch.sh 1 --no-worktree
+        run: har env launch 1 --no-worktree
 
       # Full verify includes docker-build: image build + smoke-boot (prisma db push
       # and /api/health). Build-only checks miss first-boot CLI/runtime regressions.
@@ -113,9 +130,9 @@ jobs:
         working-directory: control
         env:
           CI: true
-        run: ./.har/verify.sh 1 --full
+        run: har env verify 1 --full
 
       - name: Teardown Mission Control harness
         if: always()
         working-directory: control
-        run: ./.har/teardown.sh 1
+        run: har env teardown 1

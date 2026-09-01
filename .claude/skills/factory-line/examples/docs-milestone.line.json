@@ -1,0 +1,72 @@
+{
+  "contractVersion": 1,
+  "id": "docs-milestone",
+  "title": "Docs-only milestone (minimal example)",
+  "description": "Ship a documentation or marketing-site change with a screenshot gate. Stresses an empty tracker, no stacked PRs, and a gate that is just tagged existing stages. Not a real program this repo runs — a filled template so the contract is not migration-shaped.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    }
+  ],
+  "mcp": [],
+  "plugins": ["playwright"],
+  "stations": [
+    {
+      "id": "draft",
+      "title": "Draft the change",
+      "description": "Agree scope. No tracker required.",
+      "work": {
+        "source": "none",
+        "ids": [],
+        "optional": true
+      }
+    },
+    {
+      "id": "implement",
+      "title": "Implement in a docs harness slot",
+      "description": "Launch docs/.har, edit only in the session work dir, keep copy and routes consistent."
+    },
+    {
+      "id": "proof",
+      "title": "Screenshot and a11y proof",
+      "description": "Full verify includes browser-e2e. After screenshots live in the session work dir."
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": null,
+    "stages": [
+      {
+        "id": "docs-check",
+        "fromStation": "implement",
+        "tier": "quick"
+      },
+      {
+        "id": "docs-build",
+        "fromStation": "implement",
+        "tier": "quick"
+      },
+      {
+        "id": "browser-e2e",
+        "fromStation": "proof",
+        "tier": "full"
+      }
+    ]
+  },
+  "extraStages": [],
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "Human review of preview URL plus after-screenshots. Commit title docs: … so this does not cut a release."
+  },
+  "traveler": {
+    "kind": "pull-request-body",
+    "note": "No epic. The PR (or the session handoff if there is no PR yet) is the traveler."
+  },
+  "prototypeNotes": [
+    "No GitHub issues, no stacked PRs, no car-app, no M0..M5.",
+    "The docs harness already has browser-e2e — this line only tags it.",
+    "Use this as a check: if a new field is required to express this line, the contract is still biased toward v1."
+  ]
+}

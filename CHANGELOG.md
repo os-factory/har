@@ -1,3 +1,83 @@
+## [1.5.0](https://github.com/os-factory/har/compare/v1.4.0...v1.5.0) (2026-08-30)
+
+### Features
+
+* **control:** factory line board over the installed bundle ([#305](https://github.com/os-factory/har/issues/305)) ([#326](https://github.com/os-factory/har/issues/326)) ([0db74a1](https://github.com/os-factory/har/commit/0db74a11139584f22af8caf01417d5f0c2f88e47))
+
+### Bug Fixes
+
+* **telemetry:** bound the agent hooks so an unreachable collector cannot stall a turn ([#328](https://github.com/os-factory/har/issues/328)) ([#329](https://github.com/os-factory/har/issues/329)) ([98fa07b](https://github.com/os-factory/har/commit/98fa07b9ace8542cc9e6fa2eabb05d4fed03a39b))
+
+## [1.4.0](https://github.com/os-factory/har/compare/v1.3.0...v1.4.0) (2026-08-30)
+
+### Features
+
+* **control:** scope slot identity to an occupancy, and gate it with a line ([#316](https://github.com/os-factory/har/issues/316)) ([#325](https://github.com/os-factory/har/issues/325)) ([0bea653](https://github.com/os-factory/har/commit/0bea6536afc3a2414ddde077883df6352ac697c5))
+* skip re-verify on complete unless the tree changed ([#327](https://github.com/os-factory/har/issues/327)) ([200c189](https://github.com/os-factory/har/commit/200c189f7c8a203dfe74642e9d07575f93da7361))
+
+## [1.3.0](https://github.com/os-factory/har/compare/v1.2.0...v1.3.0) (2026-08-30)
+
+### Features
+
+* har line — install factory lines as bundles that never widen verify ([#304](https://github.com/os-factory/har/issues/304), [#322](https://github.com/os-factory/har/issues/322)) ([#323](https://github.com/os-factory/har/issues/323)) ([0d2c6fd](https://github.com/os-factory/har/commit/0d2c6fd6b4f2379ecc64600bb7f32b182a18d7c1))
+
+## [1.2.0](https://github.com/os-factory/har/compare/v1.1.0...v1.2.0) (2026-08-29)
+
+### Features
+
+* ship factory-line as a managed agent skill ([#319](https://github.com/os-factory/har/issues/319)) ([#320](https://github.com/os-factory/har/issues/320)) ([d29f4d2](https://github.com/os-factory/har/commit/d29f4d2452261a6ea9736825c24d9d4a2fb8a6e3))
+
+## [1.1.0](https://github.com/os-factory/har/compare/v1.0.0...v1.1.0) (2026-08-29)
+
+### Features
+
+* stop generating lifecycle .sh shims ([#314](https://github.com/os-factory/har/issues/314)) ([#321](https://github.com/os-factory/har/issues/321)) ([215819a](https://github.com/os-factory/har/commit/215819a7801e0ef6d003aa4038f390163573d22f))
+
+## [1.0.0](https://github.com/os-factory/har/compare/v0.64.3...v1.0.0) (2026-08-28)
+
+### ⚠ BREAKING CHANGES
+
+* .har/ becomes a configuration surface — the vendored runtime
+moves into the package, harness.env becomes schema-validated config, and
+.har/CLAUDE.agent.md is retired. See the migration guide.
+* collapse the agent instruction surface onto AGENTS.md (#307)
+* har plugin create — local plugins in .har/plugins/, retire add-stage --custom (#240) (#283)
+* two-signal drift — user-edited vs upstream-updated (#237) (#280)
+* profiles become capability manifests (#236) (#278)
+* move the harness runtime into the package (#234) (#276)
+* verification as data — one stage namespace with quick/full tiers (#231) (#274)
+* harness.env becomes pure schema-validated config (#230) (#272)
+
+### release
+
+* HAR 1.0.0 — .har/ becomes a configuration surface ([76d502a](https://github.com/os-factory/har/commit/76d502a1532e58967fc5b0a957157280cc2d9ce0))
+
+### Features
+
+* close CLI/MCP parity gaps and deduplicate the launch guard ([#233](https://github.com/os-factory/har/issues/233)) ([#273](https://github.com/os-factory/har/issues/273)) ([83be53c](https://github.com/os-factory/har/commit/83be53c4fb94f09c9d4dce30cd00c50fadc933e2))
+* collapse the agent instruction surface onto AGENTS.md ([#307](https://github.com/os-factory/har/issues/307)) ([ae1f961](https://github.com/os-factory/har/commit/ae1f961bbe66669a164e66d2fad52538ba436cbe))
+* dogfood-migrate the repo's three harnesses to the 1.0 config surface ([#242](https://github.com/os-factory/har/issues/242)) ([#289](https://github.com/os-factory/har/issues/289)) ([a3bbaab](https://github.com/os-factory/har/commit/a3bbaab6388dc7fe87d3c50f8f229bd8d0c5a860))
+* generate .har scripts as thin shims with pinned npx fallback ([#235](https://github.com/os-factory/har/issues/235)) ([#277](https://github.com/os-factory/har/issues/277)) ([d013907](https://github.com/os-factory/har/commit/d013907b1f36bb9acd1c1f7075bb5e6163459c55))
+* har env doctor — harness contract validation ([#232](https://github.com/os-factory/har/issues/232)) ([#275](https://github.com/os-factory/har/issues/275)) ([ce240f2](https://github.com/os-factory/har/commit/ce240f2b5f55389495c2c58729cfb1912b25409b))
+* har env eject — explicit runtime ownership for power users ([#239](https://github.com/os-factory/har/issues/239)) ([#282](https://github.com/os-factory/har/issues/282)) ([e8ed3df](https://github.com/os-factory/har/commit/e8ed3dff28d790025d74167ecd5a7dc71f69b07a))
+* har plugin create — local plugins in .har/plugins/, retire add-stage --custom ([#240](https://github.com/os-factory/har/issues/240)) ([#283](https://github.com/os-factory/har/issues/283)) ([15575df](https://github.com/os-factory/har/commit/15575dfdd4446fd20c14806ba5d9141b2f627d08))
+* harness.env becomes pure schema-validated config ([#230](https://github.com/os-factory/har/issues/230)) ([#272](https://github.com/os-factory/har/issues/272)) ([1652b52](https://github.com/os-factory/har/commit/1652b52c6635f6e8496a1e7776fa01aee5d5f6cb))
+* lifecycle hooks — sanctioned user-owned extension points ([#238](https://github.com/os-factory/har/issues/238)) ([#281](https://github.com/os-factory/har/issues/281)) ([030e76b](https://github.com/os-factory/har/commit/030e76b88b13cc4a96984b0b061b7bb03746c03b))
+* move the harness runtime into the package ([#234](https://github.com/os-factory/har/issues/234)) ([#276](https://github.com/os-factory/har/issues/276)) ([764f323](https://github.com/os-factory/har/commit/764f323e6e974b963dbe23831bedc1f5c75910f4))
+* **plugins:** default add-plugin to skip CI workflows, add --with-ci opt-in ([#195](https://github.com/os-factory/har/issues/195)) (271) ([4af5b05](https://github.com/os-factory/har/commit/4af5b05a10101988c796e3b4d232208dac37b1e0))
+* post-add-plugin adaptation prompt with clipboard offer ([#195](https://github.com/os-factory/har/issues/195)) ([#296](https://github.com/os-factory/har/issues/296)) ([c023da6](https://github.com/os-factory/har/commit/c023da6e20a3667ab3c2e125c0fd5cbdf7a5e619))
+* profiles become capability manifests ([#236](https://github.com/os-factory/har/issues/236)) ([#278](https://github.com/os-factory/har/issues/278)) ([4855760](https://github.com/os-factory/har/commit/485576065525d06ea782bc84a91ea5c3a31a9c3e))
+* two-signal drift — user-edited vs upstream-updated ([#237](https://github.com/os-factory/har/issues/237)) ([#280](https://github.com/os-factory/har/issues/280)) ([76e5bf6](https://github.com/os-factory/har/commit/76e5bf6f7abed88355c69dd057fd9788d7e6a394))
+* verification as data — one stage namespace with quick/full tiers ([#231](https://github.com/os-factory/har/issues/231)) ([#274](https://github.com/os-factory/har/issues/274)) ([7698fe4](https://github.com/os-factory/har/commit/7698fe4a6faf589dc781c0353f71aca06319a9ef))
+* versioned manifest migrations + maintain-driven MIGRATE prompt ([#241](https://github.com/os-factory/har/issues/241)) ([#287](https://github.com/os-factory/har/issues/287)) ([cb47790](https://github.com/os-factory/har/commit/cb477900c0975f20ea80f60d4840d2c4fbfc24c4))
+
+### Bug Fixes
+
+* 1.0 plugin stage templates + shim guard against pre-1.0 runtime loops ([#290](https://github.com/os-factory/har/issues/290), [#291](https://github.com/os-factory/har/issues/291)) ([#292](https://github.com/os-factory/har/issues/292)) ([6eb8eba](https://github.com/os-factory/har/commit/6eb8eba4ac4235ab064f782b742541f659b6043a))
+* **ci:** honor the `!` breaking marker — semantic-release preset was dropping every breaking change ([#312](https://github.com/os-factory/har/issues/312)) ([a07bee5](https://github.com/os-factory/har/commit/a07bee5122474b6e74ed5b93b6f1c0e0edbdb4b3))
+* close the 1.0 release-review gaps — attach.sh migration, CI runtime resolution, stale harness docs ([#300](https://github.com/os-factory/har/issues/300)) ([7569ad5](https://github.com/os-factory/har/commit/7569ad5fd5131c96cd890e878352a3f234a083ba))
+* surface bugs — mcp launch trigger, status arg, cli setup-infra dead code, quick verify exit, teardown attempt outcome ([#228](https://github.com/os-factory/har/issues/228)) ([#266](https://github.com/os-factory/har/issues/266)) ([bb58597](https://github.com/os-factory/har/commit/bb58597715ddbfe02f1d9086bb68f6d02b02fc59))
+
 ## [0.64.3](https://github.com/os-factory/har/compare/v0.64.2...v0.64.3) (2026-08-27)
 
 

@@ -34,7 +34,7 @@ services:
     image: coollabsio/minio:latest
     ports:
       - "${AGENT_MINIO_PORT:-19000}:9000"
-      - "${AGENT_MINIO_CONSOLE_PORT:-19001}:9001"
+      - "${AGENT_MINIO_CONSOLE_PORT:-19050}:9001"
     volumes:
       - agent-minio-data:/minio/data
     environment:

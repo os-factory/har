@@ -36,7 +36,9 @@ const redirects = Object.fromEntries(
 );
 // The docs landing was consolidated into the Introduction; send /docs there.
 redirects['/docs'] = '/docs/getting-started/introduction/';
-redirects['/enterprise'] = '/teams/';
+redirects['/enterprise'] = 'https://harhq.com/';
+redirects['/docs/project/road-to-1-0'] = '/blog/har-1-0-0/';
+redirects['/docs/project/road-to-1-0/'] = '/blog/har-1-0-0/';
 
 export default defineConfig({
 	site: 'https://harproject.dev',
@@ -94,20 +96,26 @@ export default defineConfig({
 					label: 'Guides',
 					items: [
 						{ label: 'Agent workflow', slug: 'docs/guides/agent-workflow' },
+						{ label: 'Customization contract', slug: 'docs/guides/customization' },
 						{ label: 'Profiles & configuration', slug: 'docs/guides/profiles' },
 						{ label: 'Stages & artifacts', slug: 'docs/guides/stages' },
 						{ label: 'Plugins', slug: 'docs/guides/plugins' },
+						{ label: 'Local plugins', slug: 'docs/guides/local-plugins' },
 						{ label: 'Agent integrations', slug: 'docs/guides/agent-integrations' },
 						{ label: 'Skill-pack compatibility', slug: 'docs/guides/skill-pack-compatibility' },
+						{ label: 'Factory lines', slug: 'docs/guides/factory-lines' },
 						{ label: 'Verification & commit gate', slug: 'docs/guides/verification' },
 						{ label: 'Mission Control', slug: 'docs/guides/mission-control' },
+						{ label: 'Eject', slug: 'docs/guides/eject' },
 						{ label: 'Upgrade a harness', slug: 'docs/guides/upgrading' },
+						{ label: 'Migrating to 1.0', slug: 'docs/guides/migrating-to-1-0' },
 					],
 				},
 				{
 					label: 'Reference',
 					items: [
 						{ label: 'CLI', slug: 'docs/reference/cli' },
+						{ label: 'Doctor', slug: 'docs/reference/doctor' },
 						{ label: 'MCP tools', slug: 'docs/reference/mcp' },
 						{ label: 'Harness files', slug: 'docs/reference/harness-files' },
 						{ label: 'Environment variables', slug: 'docs/reference/environment' },
@@ -117,6 +125,7 @@ export default defineConfig({
 					label: 'Project',
 					items: [
 						{ label: 'Architecture', slug: 'docs/project/architecture' },
+						{ label: 'HAR 1.0.0', link: '/blog/har-1-0-0/' },
 						{ label: 'Contributing', slug: 'docs/project/contributing' },
 						{ label: 'FAQ', slug: 'docs/project/faq' },
 					],

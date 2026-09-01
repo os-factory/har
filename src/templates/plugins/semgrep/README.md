@@ -13,7 +13,7 @@ har env add-plugin semgrep
 |------|---------|
 | `.har/stages/sast.sh` | Stage runner — scans the session worktree with Semgrep |
 | `.har/stages/SEMGREP.md` | Adaptation guide: rulesets, noise tuning, CI/Vanta story |
-| `.github/workflows/semgrep.yml` | Optional CI workflow (`--skip-ci` to omit) — official `semgrep ci` recipe |
+| `.github/workflows/semgrep.yml` | Optional CI workflow (opt in with `--with-ci`) — official `semgrep ci` recipe |
 
 ## Workflow
 
@@ -50,8 +50,8 @@ evidence. See `.har/stages/SEMGREP.md` for the full story.
 
 ```bash
 pipx install semgrep
-./.har/launch.sh 1
+har env launch 1
 ./.har/stages/sast.sh 1
 # reports: .har/artifacts/sast/semgrep.json (+ .sarif, scan.log)
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```

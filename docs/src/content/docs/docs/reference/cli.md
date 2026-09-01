@@ -29,11 +29,10 @@ Onboarding probes Docker first (`docker --version` + `docker info`). Docker is
 required — Mission Control runs as a container and harness infra uses Docker
 Compose — so a missing CLI or stopped daemon is warned about, reported in the
 summary, and Mission Control is not started by default until Docker works.
-`har env init` prints the same warning.
 
 `--yes` accepts defaults (telemetry on, start Mission Control when Docker is
-available, no plugins) without prompts. Prefer this over hand-rolling `preferences` + `env init` + `telemetry`
-+ `control up` for new repositories.
+available, no plugins) without prompts. This is the first-run command for a
+new repository — do not substitute `har env init` in user-facing copy.
 
 `--agent-slots <n>` sets how many agents may run in parallel (`1`–`10`), written to
 `.har/stages.json` as `agentSlots.max`. Interactive onboarding asks this when the
@@ -44,22 +43,34 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 
 | Command | Purpose |
 | --- | --- |
-| `init` | Scaffold and adapt a new `.har/` |
+| `init` | Mechanical scaffold of `.har/` (fixtures / `--force`). Humans use `har onboard`. |
 | `maintain` | Validate, compare templates, and prepare or finalize an upgrade |
 | `add-plugin [plugin]` | Install a plugin (bundled id, path, npm, or git — registers stages) |
-| `add-stage [id]` | Register a custom stage (`--custom`), or deprecated plugin alias |
+| `add-stage [id]` | Deprecated plugin alias for `add-plugin` (`--custom` removed in 1.0 — see `har plugin create`) |
 | `preflight <id>` | Check ports, processes, Docker, slot occupation, and untracked worktree paths |
+| `setup-infra` | Set up shared infrastructure (Docker services, template DB, or the iOS toolchain) |
 | `launch <id>` | Start a fresh session (new worktree from `--repo` HEAD) |
 | `recover <id>` | Resume a failed or partial launch |
 | `verify <id>` | Run quick or full verification |
-| `complete <id>` | Full verify, record validation, teardown, keep branch |
+| `complete <id>` | Reuse last matching full validation, teardown, keep branch (`--verify` to re-run) |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
+| `doctor` | Validate the harness contract (schema, stages, scripts, port lanes) |
+| `eject` | Vendor the runtime into `.har/runtime/` for offline ownership |
+| `adopt` | Return an ejected harness to the packaged runtime |
 | `status` | Inspect all slots |
+| `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
+| `agent <id> <command>` | Per-slot ops: `status`, `logs`, `restart`, `psql`, `health`, `url`, `reset-db`, `slow-queries`, `exec`, `attach` |
+| `run-stage <id> <stage> [args..]` | Run one registered harness stage by id |
+| `artifacts` | List result files under `.har/artifacts/` |
 | `cleanup` | Discover stale sessions and orphan worktrees across registered repos |
 | `runs list` | List persisted run records |
 | `runs get <runId>` | Return one run record |
 
 ### Initialization
+
+First-time humans should run `har onboard`. `har env init` is the mechanical
+scaffold (same `initHarness` core as onboard and `har_init_harness`) — use it
+for fixtures and `--force` wipes, not as the advertised first-run command.
 
 ```bash
 har env init [--profile default|cli|ios] [--yes]
@@ -86,31 +97,35 @@ har env maintain [--yes] [--finalize]
 
 ```bash
 har env add-plugin --list
-har env add-plugin playwright [--force] [--skip-ci]
+har env add-plugin playwright [--force] [--with-ci]
 har env add-plugin rocketsim [--force]
-har env add-plugin kerno [--force] [--skip-ci]
-har env add-plugin gitleaks [--force] [--skip-ci]
-har env add-plugin trivy [--force] [--skip-ci]
-har env add-plugin semgrep [--force] [--skip-ci]
+har env add-plugin kerno [--force] [--with-ci]
+har env add-plugin gitleaks [--force] [--with-ci]
+har env add-plugin trivy [--force] [--with-ci]
+har env add-plugin semgrep [--force] [--with-ci]
 har env add-plugin ./my-plugin [--force]
 har env add-plugin @org/har-cypress [--force]
 har env add-plugin github:org/har-plugin [--force]
-har env add-stage <id> --custom --kind <kind>
-                       [--command <shell-command>|--script]
-                       [--description <text>] [--verification] [--force]
+har plugin create <id> [--kind <kind>] [--description <text>]
+                       [--package-fragment] [--force]
+har plugin list
 ```
 
 `add-plugin` installs a framework bundle that registers one or more stages
-(bundled id, local path, npm package, or git URL). Installs are recorded in
-`.har/plugins.json`. Bundled plugins are discovered from disk — no core enum
-edit is required to ship a new id. `add-stage --custom` registers a
-project-specific stage. `har env add-stage playwright` remains as a deprecated
-alias of `add-plugin playwright`.
-
-`--command` registers a direct command. `--script` scaffolds a contract-compliant
-`.har/stages/<id>.sh`; implement its TODO before verification can pass. See
+(bundled id, local plugin id, path, npm package, or git URL). Installs are
+recorded in `.har/plugins.json` with their source kind. Bundled plugins are
+discovered from disk — no core enum edit is required to ship a new id.
+`har plugin create` scaffolds a project-owned plugin at `.har/plugins/<id>/`
+(manifest, contract-compliant stage script, README); implement its TODO, then
+install it with `add-plugin <id>`. `har env add-stage playwright` remains as a
+deprecated alias of `add-plugin playwright`; `add-stage --custom` was removed
+in 1.0 — one-liner checks are plain command stages in `.har/stages.json`. See
 `.har/STAGES.md` in every generated harness and the [Plugins](/docs/guides/plugins/)
 guide.
+
+A **factory line** is the other bundle kind: it registers stages but never adds
+them to `verificationStages`. `add-plugin` refuses a line bundle and points at
+`har line add` — see [`har line`](#har-line).
 
 ### Launch and recovery
 
@@ -146,15 +161,19 @@ untracked (not gitignored) paths will be missing from the session worktree —
 the count plus a few examples. Track them, or launch with `--no-worktree`. The
 check is skipped when `HARNESS_USE_WORKTREE=false` and for a `--no-worktree`
 launch. The same warning appears in `har env status --json`, MCP launch
-`stderr`, and `./.har/launch.sh`.
+`stderr`, and `har env launch`.
 
 ### Verify and finish
 
 ```bash
 har env verify 1 [--full] [--json]
-har env complete 1 [--skip-verify]
+har env complete 1 [--verify]
 har env teardown 1 [--delete-branch]
 ```
+
+`complete` reuses the last passing full validation for the current tree. Pass
+`--verify` to re-run full verification if the worktree may have changed.
+`--skip-verify` is a deprecated no-op (skip is the default).
 
 Default verify output is the live progress lines on stderr (and a one-line
 summary). It does **not** reprint the machine JSON contract — that blob
@@ -162,10 +181,55 @@ duplicates step logs already shown. Use `--json` when a script needs the
 structured result. Passing steps omit `output`; failed steps keep a truncated
 excerpt. MCP `har_run_verification` returns the same slim shape.
 
+### Doctor
+
+```bash
+har env doctor [--json]
+```
+
+`doctor` validates the harness contract and exits `0` on pass, `1` on errors
+(so it slots into CI): `harness.env` against the schema, `stages.json` against
+the registry schema, every registered stage's script/command file exists and is
+executable, the lifecycle stages (launch/verify/teardown) resolve,
+`verificationStages` ids resolve to registered stages, infra port lanes are
+coherent (no overlaps, defaults inside scan ranges), and slot registry entries
+point at existing worktrees. Every finding carries a remedy. Doctor also runs
+automatically inside `har env maintain` and before every `launch` — a broken
+adaptation blocks the launch instead of failing mid-session. Pre-1.0 harnesses
+report contract findings as warnings until they migrate. On an ejected
+harness, doctor additionally checks the vendored runtime exists and the
+user-owned scripts are executable. MCP twin: `har_doctor`.
+
+### Eject and adopt
+
+```bash
+har env eject [--yes]
+har env adopt
+```
+
+`eject` is the explicit, supported path for power users who want to own the
+runtime: it vendors the complete HAR runtime bundle into `.har/runtime/` —
+no `har` on PATH, no npx fallback. Invoke it as
+`node .har/runtime/har.cjs env …`. The choice is recorded in
+`.har/manifest.json` (`ejected`, `ejectedVersion`). From then on the vendored
+runtime is user-owned: `maintain` reports no upstream drift for it, and
+upstream fixes reach it only by re-ejecting. Support covers issues
+reproducible with the packaged runtime; changes made to an ejected runtime
+are yours to maintain. Config surface files (`harness.env`, `stages.json`,
+`stages/`, docs) stay managed either way.
+
+`adopt` reverses it: removes `.har/runtime/` and clears the manifest record,
+preserving the config surface. Both commands are deliberately CLI-only (no
+MCP twin) — runtime ownership is a human policy decision with an interactive
+confirmation (`--yes` for automation).
+
 ### Status and runs
 
 ```bash
 har env status [--json]
+har env logs 1 [service]
+har env run-stage 1 <stage> [args..] [--json]
+har env artifacts [--stage <id>] [--json]
 har env cleanup [--dry-run] [--yes] [--repo <path>]
                 [--keep repo:agentId,/path/to/worktree]
                 [--stale 7] [--orphans] [--include-review] [--json]
@@ -173,10 +237,59 @@ har env runs list [--stage <id>] [--limit 50] [--json]
 har env runs get <uuid> [--json]
 ```
 
+`status` has one implementation on every surface: the structured collector
+behind `--json` is the source, the text view is rendered on top, and MCP
+`har_get_status` returns the same object. Status is a pure read — it writes no
+run records. `run-stage` executes any stage registered in `.har/stages.json`
+(the CLI twin of MCP `har_run_stage`); `artifacts` is the twin of
+`har_list_artifacts`.
+
 `cleanup` scans every repo in `~/.har/repos.json` (plus `--repo` when set),
 classifies active slots and orphan directories under `~/worktrees`, and runs
 full harness teardown for approved rows. Use `--dry-run` to preview the plan;
 pin live sessions with `--keep har-portal:4` or a worktree path.
+
+## `har line`
+
+```bash
+har line create <id> [--stations S1,S2,S3] [--title <text>]
+                     [--description <text>] [--opt-in-env <VAR>]
+                     [--no-gate-stage] [--force]
+har line add <id|./path|@org/pkg|github:org/repo> [--force]
+har line status [id] [--json]
+har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
+har line list
+```
+
+A **factory line** is a program: an ordered set of stations plus a cumulative
+gate. It composes what HAR already has — work units, slots, stages, plugins,
+skills, MCP — and is installed through the same channels as a plugin (path →
+git → bundled id → npm).
+
+The difference is the apply path. Installing a line registers its stages in
+`.har/stages.json` and records the install in `.har/lines.json`, but **never**
+touches `verificationStages`. Default `har env verify --full` takes exactly as
+long as it did before. Line gate stages run on demand:
+
+```bash
+har line gate S2 --line my-line
+```
+
+`gate.stages[].fromStation` is the ratchet: a stage tagged at a station is
+required at that station **and every later one**, so growing a line can never
+drop an earlier station's checks.
+
+`har line create` scaffolds a publishable bundle at `.har/lines/<id>/`
+(`line.manifest.json`, `line.json`, an off-verify gate stage, README);
+`har line add <id>` installs it. Publishing to git or npm later needs no format
+change.
+
+Poka-yoke runs both ways: `har env add-plugin` refuses a line bundle, and
+`har line add` refuses a verification-plugin manifest. If a check should gate
+*every* verify, it is a plugin, not a line. `har env doctor` fails if a line
+stage ever appears in `verificationStages`.
+
+See the [Factory lines](/docs/guides/factory-lines/) guide.
 
 ## `har agents`
 

@@ -1,0 +1,72 @@
+{
+  "contractVersion": 1,
+  "id": "example-line",
+  "title": "Example factory line",
+  "description": "A three-station program showing the shape a factory line takes: stations that produce something, a cumulative gate that grows as the line grows, and a handoff that a human owns. Rename it and make the stations describe your own work.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "github",
+      "why": "issue tracker and pull requests",
+      "required": false
+    }
+  ],
+  "plugins": [],
+  "stations": [
+    {
+      "id": "S1",
+      "title": "Draft",
+      "description": "Agree the contract before anyone writes code: schema, interfaces, the invariant that must hold.",
+      "work": { "source": "none", "ids": [], "optional": true }
+    },
+    {
+      "id": "S2",
+      "title": "Build",
+      "description": "Implement the contract in isolated slots, one work unit per slot.",
+      "work": { "source": "none", "ids": [], "optional": true }
+    },
+    {
+      "id": "S3",
+      "title": "Prove",
+      "description": "Demonstrate the invariant on a real repository, then hand off for human review.",
+      "work": { "source": "none", "ids": [], "optional": true }
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": null,
+    "stages": [
+      {
+        "id": "example-gate",
+        "fromStation": "S2",
+        "tier": "full"
+      }
+    ]
+  },
+  "extraStages": [
+    {
+      "id": "example-gate",
+      "kind": "test",
+      "tier": "full",
+      "description": "Line-owned gate — registered in .har/stages.json, absent from verificationStages"
+    }
+  ],
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "human review before merge or release"
+  },
+  "traveler": {
+    "kind": "github-issue-comment",
+    "note": "Durable notes live on the tracker issue — a squash merge drops commit-body footers."
+  },
+  "prototypeNotes": [
+    "Station names (Draft/Build/Prove) are instance data — rename them for your program.",
+    "This example binds no tracker work; set stations[].work.source and .ids to bind GitHub or Linear."
+  ]
+}

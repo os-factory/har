@@ -95,6 +95,8 @@ function askYesNo(question: string): Promise<boolean> {
 export interface OfferClipboardCopyOptions {
   /** When true, copy without prompting (still requires a TTY for OSC 52 fallback). */
   autoYes?: boolean;
+  /** Where the prompt was saved, for the skip/fallback messages. */
+  fileLabel?: string;
 }
 
 /**
@@ -105,9 +107,10 @@ export async function offerAdaptationPromptClipboard(
   content: string,
   options: OfferClipboardCopyOptions = {},
 ): Promise<boolean> {
+  const fileLabel = options.fileLabel ?? `.har/${ADAPTATION_PROMPT_FILE}`;
   const interactive = Boolean(process.stdin.isTTY && process.stderr.isTTY);
   if (!interactive && !options.autoYes) {
-    info('Prompt also saved to .har/ADAPT-PROMPT.md (open or copy from there)');
+    info(`Prompt also saved to ${fileLabel} (open or copy from there)`);
     return false;
   }
 
@@ -116,7 +119,7 @@ export async function offerAdaptationPromptClipboard(
     shouldCopy = await askYesNo('Copy adaptation prompt to clipboard for your coding agent? [Y/n]');
   }
   if (!shouldCopy) {
-    info('Skipped clipboard copy — prompt is in .har/ADAPT-PROMPT.md');
+    info(`Skipped clipboard copy — prompt is in ${fileLabel}`);
     return false;
   }
 
@@ -131,6 +134,6 @@ export async function offerAdaptationPromptClipboard(
   }
 
   warn(`Could not copy to clipboard: ${result.detail}`);
-  info('Open .har/ADAPT-PROMPT.md and paste that into your coding agent instead');
+  info(`Open ${fileLabel} and paste that into your coding agent instead`);
   return false;
 }

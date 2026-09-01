@@ -3,7 +3,7 @@ title: Quick start
 description: Initialize a harness and complete the first isolated agent session.
 ---
 
-## 1. Onboard (recommended)
+## 1. Onboard
 
 From your project root:
 
@@ -32,23 +32,15 @@ Non-interactive defaults:
 har onboard --yes --profile cli --no-control --no-plugins
 ```
 
-### Manual init (equivalent pieces)
-
-```bash
-har preferences configure
-har env init
-```
-
-The preferences wizard stores user-level onboarding defaults in
-`~/.har/preferences.json`. It controls Cursor rules, agent skills, and whether
-init/maintain should install the commit gate. Explicit command flags still win.
-
 The default profile targets web applications. Use `--profile cli` for libraries
 and command-line tools or `--profile ios` for an Xcode project.
 
 Adapt the scaffold with your coding agent using the printed prompt (also saved to
 `.har/ADAPT-PROMPT.md`). Review and commit `.har/`, `AGENTS.md`, and any generated
 agent workflows.
+
+User-level defaults (Cursor rules, agent skills, commit gate) live in
+`~/.har/preferences.json` (`har preferences configure`). Explicit flags still win.
 
 ## 2. Check readiness
 
@@ -96,21 +88,20 @@ for approval before finishing. Then:
 har env complete 1
 ```
 
-`complete` runs full verification, records the exact validated tree hash, removes
-the runtime and worktree, and keeps the session branch for a pull request.
+`complete` reuses the last passing full validation for the current tree, removes
+the runtime and worktree, and keeps the session branch for a pull request. Pass
+`--verify` if the tree may have changed since that verify.
 
 If you only need cleanup, use `har env teardown 1`. It also keeps the branch unless
 you explicitly pass `--delete-branch`.
 
-## Shell fallback
-
-The generated scripts remain directly usable without a global CLI:
+## Without a global CLI
 
 ```bash
-./.har/setup-infra.sh
-./.har/launch.sh 1
-./.har/verify.sh 1 --full
-./.har/teardown.sh 1
+npx @osfactory/har env setup-infra
+npx @osfactory/har env launch 1
+npx @osfactory/har env verify 1 --full
+npx @osfactory/har env teardown 1
 ```
 
-Direct scripts do not create persisted `.har/runs/` records; CLI and MCP execution do.
+CLI and MCP write the same `.har/runs/` records, validations, and telemetry.

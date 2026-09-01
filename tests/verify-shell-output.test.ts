@@ -1,89 +1,32 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { MANAGED_SHIM_FILES } from '../src/harness/template-tokens';
 
-const AGENT_SLOT = path.join(__dirname, '..', '.har', 'agent-slot.sh');
+describe('harness lifecycle wrappers are absent (1.0 / #314)', () => {
+  const harnesses = ['.har', 'control/.har', 'docs/.har'];
 
-function sh(command: string, cwd?: string): string {
-  return execSync(command, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-}
+  it.each(harnesses.flatMap((h) => MANAGED_SHIM_FILES.map((s) => `${h}/${s}`)))(
+    '%s is not present',
+    (relPath) => {
+      expect(fs.existsSync(path.join(__dirname, '..', relPath))).toBe(false);
+    },
+  );
 
-describe('verify.sh step output escaping', () => {
-  it('escape_step_output retains failed steps with >50 lines of output', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-verify-shell-'));
-    const script = path.join(dir, 'repro.sh');
-    fs.writeFileSync(
-      script,
-      `#!/usr/bin/env bash
-set -euo pipefail
-source "${AGENT_SLOT}"
-RESULTS_JSON='[{"name":"a","pass":true,"ms":1,"output":""}]'
-output="$(seq 1 100)"
-name="b"
-pass_bool="false"
-elapsed="1"
-step_output_escaped=$(escape_step_output "$output")
-RESULTS_JSON=$(echo "$RESULTS_JSON" | node -e "
-const fs=require('fs');
-let arr=JSON.parse(fs.readFileSync('/dev/stdin','utf8'));
-arr.push({name:'$name',pass:$pass_bool,ms:$elapsed,output:$step_output_escaped});
-process.stdout.write(JSON.stringify(arr));")
-node -e "const r=$RESULTS_JSON;process.stdout.write(String(r.length)+':'+r.every(x=>x.pass))"
-`,
+  it.each(harnesses)('%s lifecycle stages dispatch by kind', (harness) => {
+    const registry = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', harness, 'stages.json'), 'utf8'),
     );
-    fs.chmodSync(script, 0o755);
-    const out = sh(`bash "${script}"`, dir);
-    expect(out).toBe('2:false');
+    for (const stage of registry.stages) {
+      if (['launch', 'verify', 'teardown', 'setup', 'inspect'].includes(stage.kind)) {
+        expect(stage.command).toBeUndefined();
+        expect(stage.script).toBeUndefined();
+      }
+    }
   });
 
-  const verifyPaths = [
-    '.har/verify.sh',
-    'control/.har/verify.sh',
-    'docs/.har/verify.sh',
-    'src/templates/har-boilerplate/verify.sh',
-    'src/templates/har-boilerplate-cli/verify.sh',
-    'src/templates/har-boilerplate-ios/verify.sh',
-  ];
-
-  it.each(verifyPaths)('%s records steps without embedding passing-step output', (relPath) => {
-    const verifyScript = fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
-    expect(verifyScript).toContain('record_step_result "$name" "$pass_bool" "$elapsed" "$output"');
-    expect(verifyScript).not.toMatch(/arr\.push\(\{name:'\$name',pass:\$pass_bool,ms:\$elapsed,output:\$step_output_escaped\}\)/);
-    expect(verifyScript).not.toMatch(/step_output_escaped=\$\(echo "\$output" \| head -50/);
-  });
-});
-
-describe('record_step_result', () => {
-  it('omits output on pass and keeps a truncated excerpt on fail', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-record-step-'));
-    const script = path.join(dir, 'repro.sh');
-    fs.writeFileSync(
-      script,
-      `#!/usr/bin/env bash
-set -euo pipefail
-source "${AGENT_SLOT}"
-RESULTS_JSON='[]'
-record_step_result "typecheck" "true" "5" "$(seq 1 80)"
-record_step_result "unit-tests" "false" "9" "$(seq 1 80)"
-node -e "const r=$RESULTS_JSON;process.stdout.write(JSON.stringify(r))"
-`,
-    );
-    fs.chmodSync(script, 0o755);
-    const parsed = JSON.parse(sh(`bash "${script}"`, dir)) as Array<{
-      name: string;
-      pass: boolean;
-      output?: string;
-    }>;
-    expect(parsed).toEqual([
-      { name: 'typecheck', pass: true, ms: 5 },
-      expect.objectContaining({
-        name: 'unit-tests',
-        pass: false,
-        ms: 9,
-      }),
-    ]);
-    expect(parsed[0]).not.toHaveProperty('output');
-    expect(parsed[1]?.output?.split('\n')).toHaveLength(50);
+  it.each(harnesses)('%s carries no vendored runtime machinery', (harness) => {
+    for (const gone of ['agent-slot.sh', 'provision-toolchain.sh', 'simulator.sh']) {
+      expect(fs.existsSync(path.join(__dirname, '..', harness, gone))).toBe(false);
+    }
   });
 });

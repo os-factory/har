@@ -20,11 +20,19 @@ review. HAR can bind a stable work identifier to one or more isolated attempts a
 preserve execution plus exact-tree verification evidence. Mission Control derives
 operational state from that evidence; it does not copy mutable tracker workflows.
 
-## Why shell scripts instead of hidden CLI logic?
+## Does my project own the harness, or does HAR?
 
-Real repositories have unique services, setup steps, and safety rules. Checked-in
-scripts are reviewable, versioned, and usable without HAR. The CLI provides a stable
-control plane over that project-owned behavior.
+The project owns its **behavior**; HAR owns the machinery. Everything that makes
+the harness yours is checked in and readable: configuration (`harness.env`),
+verification stages (`stages.json` + `.har/stages/`), lifecycle hooks
+(`.har/hooks/`), and local plugins (`.har/plugins/`). That surface is smaller and
+more reviewable than a vendored copy of HAR's runtime ever was — and it is what
+`har env doctor` validates and drift tracking protects.
+
+CLI and MCP are the only entry points: both run the same packaged runtime and
+write the same run records. Teams that want to own the runtime itself can take
+it explicitly with `har env eject` — the vendored bundle lives in
+`.har/runtime/`, invoked as `node .har/runtime/har.cjs env …`.
 
 ## Why use worktrees?
 
@@ -33,14 +41,15 @@ branch, and let teardown remove runtime state without deleting reviewable work.
 
 ## Can a human use HAR?
 
-Yes. CLI commands and generated scripts are first-class human interfaces. MCP adds
-structured agent access to the same core.
+Yes. CLI commands are a first-class human interface. MCP adds structured
+agent access to the same core.
 
 ## What is included in the open-source core?
 
-The `har` CLI, editable `.har/` boilerplate, local/self-hosted execution, a generic
-stage/result contract, an MCP server, plus logs, status, artifacts, and preview URL
-discovery. The repo-owned `.har/` directory remains the runtime contract.
+The `har` CLI (with the packaged harness runtime), the project-owned `.har/`
+configuration surface, local/self-hosted execution, a generic stage/result
+contract, an MCP server, plus logs, status, artifacts, and preview URL discovery.
+The repo-owned `.har/` directory remains the project's operating contract.
 
 ## What is a stage?
 
@@ -67,8 +76,8 @@ Codex CLI does not support repository-local custom prompt files. HAR writes them
 `~/.codex/prompts/`; each developer installs them once. Repository `AGENTS.md` is the
 project-specific harness contract Codex auto-loads (HAR creates or updates a managed
 HAR section during init/onboard). Claude and Cursor skills stay in the
-repo (`.claude/skills/`, `.cursor/commands/`). Keep `CLAUDE.md` as a thin pointer to
-`AGENTS.md` — do not duplicate the full workflow there.
+repo (`.claude/skills/`, `.cursor/commands/`). `CLAUDE.md` holds nothing but the
+line `@AGENTS.md`, so Claude Code loads the same instructions as every other agent.
 
 ## What if launch fails halfway?
 
@@ -78,8 +87,13 @@ occupied slots always block a fresh launch.
 
 ## Can I change the generated harness?
 
-Yes—that is the design. Adapt scripts and configuration to match the repository.
-Use `har env maintain` to compare later bundled updates without wiping customization.
+Yes—that is the design. Customization has four sanctioned homes: configuration
+values in `harness.env`, verification steps as registered stages, lifecycle side
+effects as hooks in `.har/hooks/`, and anything bigger as a local plugin in
+`.har/plugins/`. `har env eject` exists for teams that want to own the runtime
+scripts outright. See the
+[customization contract](/docs/guides/customization/); `har env maintain` folds
+in later template updates without wiping customization.
 
 ## What is open source versus hosted?
 

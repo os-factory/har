@@ -69,7 +69,7 @@ Canonical schemas live in [`packages/schemas/src/schema.ts`](packages/schemas/sr
 | Concept | Meaning | Primary code |
 |---------|---------|--------------|
 | **Slot** | Numbered agent environment (1..N) with its own ports/env | [`src/core/slot-registry.ts`](src/core/slot-registry.ts) |
-| **Session worktree** | Isolated git worktree created on `launch`; all edits go here | [`src/core/run-service.ts`](src/core/run-service.ts) + `.har/launch.sh` |
+| **Session worktree** | Isolated git worktree created on `launch`; all edits go here | [`src/core/run-service.ts`](src/core/run-service.ts) |
 | **Stage** | Project-defined runnable step (`launch`, `verify`, `test`, …) | [`src/harness/stages.ts`](src/harness/stages.ts) |
 | **Validation** | Tree-hash record written after a passing full verify | [`src/core/validations.ts`](src/core/validations.ts) |
 | **Commit gate** | Git hooks that block commits unless the staged tree matches a validation | [`src/core/hooks.ts`](src/core/hooks.ts) |
@@ -87,11 +87,11 @@ Run harness commands from the directory that owns the harness (e.g. `cd control`
 
 ### Required loop
 
-1. **Launch before editing** — `har env launch 1` (or `./.har/launch.sh 1`). Launch creates a fresh session worktree and prints its **work dir**.
+1. **Launch before editing** — `har env launch 1`. Launch creates a fresh session worktree and prints its **work dir**.
 2. **Edit only in that work dir** — never in the main checkout. Changes there hot-reload for running slots when applicable.
 3. **Verify through the harness** — `har env verify 1` (fast) then `har env verify 1 --full` before declaring done.
 4. **Commit in the session worktree** — if the commit gate is installed, commits that do not match a passing full-verify validation are blocked.
-5. **Complete or teardown when finished** — `har env complete 1` (full verify + validation + teardown) or `har env teardown 1`. The session **branch is kept** so you can push a PR.
+5. **Complete or teardown when finished** — `har env complete 1` (reuse last passing full validation + teardown; `--verify` to re-run) or `har env teardown 1`. The session **branch is kept** so you can push a PR.
 
 ```bash
 har env launch 1
@@ -101,7 +101,7 @@ har env verify 1 --full
 har env complete 1
 ```
 
-Shell fallback when the CLI is not installed: `./.har/launch.sh 1`, `./.har/verify.sh 1 --full`, `./.har/teardown.sh 1`.
+When the CLI is not installed: `npx @osfactory/har env launch 1`, `npx @osfactory/har env verify 1 --full`, `npx @osfactory/har env teardown 1`.
 
 In Cursor, prefer MCP tools (`har_launch_environment`, `har_run_verification`, `har_complete_environment`) once [`.cursor/mcp.json`](.cursor/mcp.json.example) points at your checkout.
 
@@ -184,7 +184,7 @@ Top-level command groups (see `har <cmd> --help`):
 |---------|---------|
 | `har onboard` | Guided first-run setup (telemetry, Mission Control, plugins, adapt prompt) |
 | `har env …` | Harness lifecycle (init, maintain, launch, verify, complete, …) |
-| `har agents …` | Scaffold/remove agent skills (`/setup-har`, `/har-wt`, `/har-maintain`) |
+| `har agents …` | Scaffold/remove agent skills (`/setup-har`, `/har-wt`, `/har-maintain`, `/factory-line`) |
 | `har control …` | Local Mission Control dashboard |
 | `har hq …` | HAR HQ hosted portal (connect, list, disconnect) |
 | `har hooks …` | Commit gate and Claude worktree guard |
@@ -199,13 +199,12 @@ Top-level command groups (see `har <cmd> --help`):
 ```bash
 cd /path/to/your-project
 har onboard --yes --no-control --no-plugins
-# or: har env init
 ```
 
 For CLI/library repos:
 
 ```bash
-har env init --profile cli
+har onboard --yes --profile cli --no-control --no-plugins
 ```
 
 Paste `.har/ADAPT-PROMPT.md` into your coding agent to adapt the scaffold.
@@ -249,7 +248,7 @@ See [`control/AGENTS.md`](./control/AGENTS.md).
 ```bash
 cp -r tests/fixtures/go-gin-pg /tmp/har-test
 cd /tmp/har-test
-har env init
+har env init --force
 ```
 
 ### After init — run the harness
@@ -262,7 +261,7 @@ har env teardown 1
 har env status
 ```
 
-Shell fallback: `./.har/setup-infra.sh`, `./.har/launch.sh 1`, `./.har/verify.sh 1`, `./.har/teardown.sh 1`.
+When the CLI is not installed: `npx @osfactory/har env setup-infra`, `npx @osfactory/har env launch 1`, `npx @osfactory/har env verify 1`, `npx @osfactory/har env teardown 1`.
 
 ## Upgrading HAR
 
@@ -406,7 +405,7 @@ Releases are cut automatically when PRs merge to `main`. [semantic-release](http
 |---------------|---------|
 | `fix:` | Patch |
 | `feat:` | Minor |
-| `feat!:` or `BREAKING CHANGE:` footer | Major |
+| `feat!:` / `fix!:` (`!` on any type) or a `BREAKING CHANGE:` footer | Major |
 | `chore:`, `docs:`, `test:`, `refactor:`, `ci:` | No release |
 | `feat(benchmark):`, `*(ci):`, `docs(*):` | No release (type/scope rules in [release.config.cjs](release.config.cjs): types `ci` + `docs`, scopes `ci` + `benchmark`) |
 
@@ -421,5 +420,13 @@ BREAKING CHANGE: run records now require runId v2 fields
 ```
 
 Use scopes when helpful (`feat(cli):`, `fix(control):`). Squash-merge PR titles should follow the same format — they become the commit on `main`.
+
+> **Put `!` in the title, not only a footer.** The repo squash-merges, and a
+> squash keeps the PR title but discards the individual commit bodies — so a
+> `BREAKING CHANGE:` footer written in a commit body does not survive to `main`.
+> Seven `feat!:` commits reached `v1` with their footers stripped this way
+> (#311). The `!` in the squash-merge title always survives, and since the
+> analyzer uses the `conventionalcommits` preset it is sufficient on its own.
+
 
 Maintainer release mechanics (npm, Docker Hub, secrets, version coupling): [RELEASING.md](./RELEASING.md).

@@ -2,10 +2,6 @@
   "id": "playwright",
   "stageId": "browser-e2e",
   "verificationStages": [
-    "typecheck",
-    "unit-tests",
-    "api-health",
-    "lint",
     "browser-e2e"
   ],
   "stage": {
@@ -24,19 +20,46 @@
         "path": ".har/artifacts/browser-e2e/playwright-report",
         "kind": "report"
       }
-    ]
+    ],
+    "tier": "full"
   },
   "files": [
-    { "src": ".har/stages/browser-e2e.sh", "dest": ".har/stages/browser-e2e.sh", "executable": true },
-    { "src": ".har/stages/PLAYWRIGHT.md", "dest": ".har/stages/PLAYWRIGHT.md" },
-    { "src": "playwright.config.js", "dest": "playwright.config.js" },
-    { "src": "tests/frontend/smoke.spec.js", "dest": "tests/frontend/smoke.spec.js" },
-    { "src": "tests/api/health.spec.js", "dest": "tests/api/health.spec.js" },
-    { "src": "tests/a11y/smoke.spec.js", "dest": "tests/a11y/smoke.spec.js" },
-    { "src": "README.md", "dest": "tests/playwright/README.md" }
+    {
+      "src": ".har/stages/browser-e2e.sh",
+      "dest": ".har/stages/browser-e2e.sh",
+      "executable": true
+    },
+    {
+      "src": ".har/stages/PLAYWRIGHT.md",
+      "dest": ".har/stages/PLAYWRIGHT.md"
+    },
+    {
+      "src": "playwright.config.js",
+      "dest": "playwright.config.js"
+    },
+    {
+      "src": "tests/frontend/smoke.spec.js",
+      "dest": "tests/frontend/smoke.spec.js"
+    },
+    {
+      "src": "tests/api/health.spec.js",
+      "dest": "tests/api/health.spec.js"
+    },
+    {
+      "src": "tests/a11y/smoke.spec.js",
+      "dest": "tests/a11y/smoke.spec.js"
+    },
+    {
+      "src": "README.md",
+      "dest": "tests/playwright/README.md"
+    }
   ],
   "optionalFiles": [
-    { "src": ".github/workflows/playwright.yml", "dest": ".github/workflows/playwright.yml", "skipFlag": "skipCi" }
+    {
+      "src": ".github/workflows/playwright.yml",
+      "dest": ".github/workflows/playwright.yml",
+      "skipFlag": "skipCi"
+    }
   ],
   "merge": {
     "package.json": "package.fragment.json"
@@ -44,7 +67,7 @@
   "nextSteps": [
     "npm install",
     "npx playwright install",
-    "./.har/launch.sh 1",
+    "har env launch 1",
     "./.har/stages/browser-e2e.sh 1",
     "npx playwright show-report .har/artifacts/browser-e2e/playwright-report"
   ],

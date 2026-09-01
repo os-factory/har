@@ -7,9 +7,10 @@ description: Install framework-specific verification bundles that register stage
 
 | Concept | What it is | Command |
 |---|---|---|
-| **Profile** | Ordered runtime bundles composing a stack scaffold (`default`, `cli`, `ios`) | `har env init --profile …` |
+| **Profile** | Ordered runtime bundles composing a stack scaffold (`default`, `cli`, `ios`) | `har onboard --profile …` |
 | **Stage** | Runtime operation in `.har/stages.json` | `har_run_stage`, `har env verify` |
-| **Plugin** | Installable bundle that *registers* one or more stages | `har env add-plugin …` |
+| **Plugin** | Installable bundle that *registers* one or more stages **and adds them to `verificationStages`** | `har env add-plugin …` |
+| **Factory line** | Installable *program* — stations plus a cumulative gate. Registers stages but **never** joins `verificationStages` | `har line add …` |
 
 Profiles are defined in `templates/profiles/<id>/profile.manifest.json` as an ordered
 list of runtime bundles (shared kernel, PM2, Xcode, profile overlay). Core detects
@@ -22,6 +23,14 @@ registry — never with stack-specific MCP tools like `run_playwright`.
 Profiles and plugins share one ledger file (`.har/plugins.json`): init records
 `profile` + `bundles`; each `add-plugin` appends to `plugins[]`. They are still
 different layers — profiles scaffold the environment; plugins add verification stages.
+Factory lines keep their own ledger (`.har/lines.json`) for the same reason they
+have their own command: installing one must not widen verification.
+
+**Which one do I want?** Ask whether the check should run on every
+`har env verify --full`. Yes → a plugin (this guide). No, it gates a *station*
+of a program → a [factory line](/docs/guides/factory-lines/), installed with
+`har line add`. Programs install with `har line add`, not `add-plugin` —
+`add-plugin` refuses a line bundle and points you at the right command.
 
 ## Discovery and install
 
@@ -48,6 +57,13 @@ Resolution order: path → git → bundled id → npm. The target must expose
 stage ids, timestamp). `har env maintain` uses the ledger when present, otherwise
 falls back to matching stage ids in `stages.json`.
 
+Every successful install also writes `.har/ADAPT-PROMPT-<id>.md` — a structured
+adaptation prompt for your coding agent (install dependencies with the repo's
+real package manager, adapt the scaffolded files, prove the stage green via full
+verify) — and offers to copy it to the clipboard, like `har onboard` does.
+A `package.json` merge declares dependencies but does **not** install them; the
+prompt leads with the install command.
+
 ## Multi-stage plugins
 
 A plugin manifest may declare `stages: [...]` (preferred) or the legacy single
@@ -64,7 +80,7 @@ This adds:
 - a `browser-e2e` test stage;
 - Playwright configuration;
 - frontend, API health, and accessibility smoke specs;
-- CI workflow and artifact directories unless `--skip-ci` is used.
+- artifact directories, plus a CI workflow when `--with-ci` is passed (CI files are skipped by default).
 
 Adapt selectors and URLs after installation. Full verification runs the stage when
 it is listed in `verificationStages` (the plugin updates that list for you).
@@ -129,8 +145,8 @@ This adds:
   against the agent work dir (uncommitted changes included) and fails on findings;
 - a root `.gitleaks.toml` extending the default ruleset with harness allowlists
   (skipped if the repo already has one);
-- a CI workflow using the official `gitleaks/gitleaks-action` unless `--skip-ci`
-  is used.
+- a CI workflow using the official `gitleaks/gitleaks-action` when `--with-ci`
+  is passed (skipped by default).
 
 The `gitleaks` binary is an external requirement (`brew install gitleaks` or a
 [release binary](https://github.com/gitleaks/gitleaks/releases)) — the stage
@@ -156,8 +172,8 @@ This adds:
   Terraform, Dockerfiles, Kubernetes manifests, and other IaC (Trivy absorbed
   tfsec, so Terraform checks are included);
 - a `.trivyignore` scaffold for documented suppressions;
-- a CI workflow that uploads SARIF to GitHub code scanning unless `--skip-ci`
-  is used.
+- a CI workflow that uploads SARIF to GitHub code scanning when `--with-ci`
+  is passed (skipped by default).
 
 The `trivy` binary is an external requirement (`brew install trivy`); the stage
 fails fast with an install hint when missing. The fail threshold defaults to
@@ -179,7 +195,7 @@ This adds:
 
 - a `sast` test stage that scans the session worktree with Semgrep;
 - an adaptation guide (`.har/stages/SEMGREP.md`) covering rulesets and noise tuning;
-- a CI workflow running the official `semgrep ci` recipe unless `--skip-ci` is used.
+- a CI workflow running the official `semgrep ci` recipe when `--with-ci` is passed (skipped by default).
 
 The `semgrep` CLI itself is an external requirement (`pipx install semgrep`).
 Reports (JSON + SARIF) land under `.har/artifacts/sast/`. Pin rulesets with
@@ -194,27 +210,46 @@ Platform. Local runs are invisible to compliance platforms by design.
 
 Two paths — pick based on whether the check is project-private or reusable.
 
-### Custom stages (not plugins)
+### Command stages (not plugins)
 
-Project-specific checks (`npm test`, domain scripts) do **not** need a plugin:
+Project-specific one-liners (`npm test`, domain scripts) do **not** need a
+plugin — register a command stage directly in `.har/stages.json`:
 
-```bash
-har env add-stage unit-tests-fast --custom --kind test \
-  --command "npm test" --verification
+```json
+{ "id": "unit-tests-fast", "kind": "test", "command": "npm test", "tier": "quick" }
 ```
 
 See [Stages and artifacts](/docs/guides/stages/) and `.har/STAGES.md`.
+
+### Local plugins
+
+Anything bigger — a script that needs the slot's env, ports, or artifacts —
+is a **local plugin**, project-owned under `.har/plugins/<id>/`:
+
+```bash
+har plugin create db-integrity
+har env add-plugin db-integrity
+```
+
+The scaffold is a complete plugin (manifest, stage script, README, optional
+`package.fragment.json`), recorded in `.har/plugins.json` with source `local`.
+Publishing it later to npm or git requires zero format changes. Full guide:
+[Local plugins](/docs/guides/local-plugins/).
 
 ### Publish your own plugin
 
 HAR is open source. Anyone can ship a verification plugin without changing HAR core.
 
-**Start from the official boilerplate** (GitHub template + npm package layout):
+**Start from a local plugin** — `har plugin create <id>` scaffolds the exact
+publishable format in `.har/plugins/<id>/`; move it to its own repo or package
+when ready.
+
+**Or start from the official boilerplate** (GitHub template + npm package layout):
 
 - Repository: [os-factory/har-plugin](https://github.com/os-factory/har-plugin) (*Use this template*)
 - Agent guide (fit + examples): [AGENTS.md](https://github.com/os-factory/har-plugin/blob/main/AGENTS.md)
 - Authoring guide: [docs/AUTHORING.md](https://github.com/os-factory/har-plugin/blob/main/docs/AUTHORING.md)
-- Try the example: `har env add-plugin github:os-factory/har-plugin --skip-ci`
+- Try the example: `har env add-plugin github:os-factory/har-plugin`
 
 **1. Author a bundle** — a directory with:
 

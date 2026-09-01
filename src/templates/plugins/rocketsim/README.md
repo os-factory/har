@@ -62,5 +62,5 @@ cp flows/example-smoke.sh flows/my-feature.sh
 ./.har/stages/rocketsim-flows.sh 1
 
 # 7. Validate everything
-./.har/verify.sh 1 --full
+har env verify 1 --full
 ```

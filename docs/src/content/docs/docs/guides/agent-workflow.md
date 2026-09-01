@@ -10,7 +10,7 @@ description: The safe lifecycle for parallel coding tasks.
 3. On the **main checkout**, switch to the branch you want as the session base
    (usually `main`) — every launch creates a worktree from that HEAD.
 4. Launch once and record the returned work directory.
-5. Read `.har/CLAUDE.agent.md` in that worktree for resolved URLs and the
+5. Read `.har/README.md` in that worktree for resolved URLs and the
    repository-specific definition of done.
 
 ```bash
@@ -92,7 +92,8 @@ when `gh` or GitHub MCP is available; it still requires explicit user approval
 
 1. **Complete + open a PR** (recommended when PR tooling is available) — push the
    session branch, open the PR, then `har env complete <id>` / MCP
-   `har_complete_environment` (full verify + validation + teardown; **branch kept**).
+   `har_complete_environment` (reuse last passing full validation + teardown; **branch kept**).
+   Pass `--verify` / `verify: true` if the tree may have changed after that verify.
 2. **Complete only** — same finish without a PR. Prefer `complete` over bare
    `teardown` when the work succeeded.
 3. **Something else** — keep the slot running, more changes, or push only.
@@ -129,3 +130,9 @@ har env teardown 2
 
 Branch deletion is a separate, explicit operation. Prefer `complete` when the
 task succeeded and you want a validation record.
+
+## Factory lines
+
+For a multi-station program (parallel slots, cumulative gate, human handoff)
+declare a line template instead of forking a skill. See
+[Factory lines](/docs/guides/factory-lines/).

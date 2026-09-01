@@ -4,7 +4,7 @@ The public site is an [Astro](https://astro.build/) project deployed to GitHub
 Pages at <https://harproject.dev/>:
 
 - `/` — marketing landing page with interactive workflow hero
-- `/blog` — journal index and articles
+- `/blog/` — journal index; articles under `/blog/<slug>/` (`/blog/har-1-0-0/`, `/blog/the-factory-line/`)
 - `/docs` — Starlight documentation (same content as before, new theme)
 
 ## Agent harness
@@ -61,7 +61,8 @@ Documentation content is licensed under the
 ## Source layout
 
 - `src/pages/index.astro` — landing page
-- `src/pages/blog/` — journal pages
+- `src/pages/blog/` — journal index and article routes
+- `src/content/blog/` — journal markdown
 - `src/content/docs/docs/` — documentation (served under `/docs`)
 - `src/styles/global.css` — landing/blog theme
 - `src/styles/custom.css` — Starlight theme overrides

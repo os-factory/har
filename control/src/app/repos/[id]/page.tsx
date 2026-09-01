@@ -58,6 +58,13 @@ export default async function RepoDetailPage({
           </Link>
           <h2 className="mt-2 text-2xl font-semibold">{repo.path}</h2>
           {repo.gitRemote && <p className="text-sm text-muted-foreground">{repo.gitRemote}</p>}
+          <Link
+            href={`/repos/${repo.id}/lines`}
+            className="mt-2 inline-block text-sm underline"
+            data-testid="repo-lines-link"
+          >
+            Factory lines →
+          </Link>
         </div>
         <UnregisterRepoButton
           repoId={repo.id}

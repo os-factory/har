@@ -20,7 +20,7 @@ log() { echo "==> [example-smoke] $*" >&2; }
 log "Checking simulator focus..."
 FOCUSED=$(rocketsim simulator focused 2>/dev/null || echo "")
 if [ -z "$FOCUSED" ]; then
-  log "✗ No focused simulator — run ./.har/setup-infra.sh first"
+  log "✗ No focused simulator — run har env setup-infra first"
   exit 1
 fi
 log "Simulator: $(echo "$FOCUSED" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);process.stdout.write(j.name||d.trim());}catch{process.stdout.write(d.trim());}})" 2>/dev/null || echo "$FOCUSED")"

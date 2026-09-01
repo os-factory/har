@@ -84,5 +84,5 @@ produce the evidence.
 
 ```bash
 ./.har/stages/vuln-scan.sh 1        # standalone
-./.har/verify.sh 1 --full           # as part of full verification
+har env verify 1 --full           # as part of full verification
 ```

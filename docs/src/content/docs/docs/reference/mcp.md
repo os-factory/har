@@ -11,7 +11,9 @@ Start the server with `har mcp --repo <path>`. Every tool accepts an optional
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_describe_project` | `repo` | Manifest, stack hints, scripts, stages, and slot limits |
-| `har_init_harness` | `repo`, `force`, `smoke`, `profile` (`default` \| `cli` \| `ios`) | Scaffold and validation result, plus a `docker` block (`cliInstalled`, `daemonRunning`, `version`, `warning`) — Docker is required for Mission Control and harness infra |
+| `har_init_harness` | `repo`, `force`, `smoke`, `profile` (`default` \| `cli` \| `ios`) | Agent scaffold path (do not run `har onboard`). Returns the scaffold and validation result, plus a `docker` block (`cliInstalled`, `daemonRunning`, `version`, `warning`) — Docker is required for Mission Control and harness infra |
+| `har_maintain` | `repo`, optional `finalize`, `summary` | Validation issues, template drift, and the maintenance bundle report; `finalize: true` records a completed manual adaptation in `.har/manifest.json` |
+| `har_add_plugin` | `plugin` (bundled id, path, npm package, or git URL), optional `force`, `withCi` | Registered stage ids, files written, warnings, and next steps |
 
 ## Session lifecycle
 
@@ -26,9 +28,9 @@ Use `relatedLinks` or `har_add_work_unit_link` for secondary URLs (GitHub PR, mi
 issue, Bitbucket). Omit work metadata for ad-hoc work with no tracker identity.
 | `har_add_work_unit_link` | `workUnitId`, `source`, `url`, optional `label` | Append a related external link to an existing work unit |
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
-| `har_get_status` | optional `agentId` | Slot, process, worktree, branch, and dirty state |
+| `har_get_status` | optional `agentId` | Structured slot status (same source as `har env status --json`): worktree, branch, dirty state, readiness, last run/verify. A pure read — writes no run records |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |
-| `har_complete_environment` | `agentId`, `skipVerify` | Validation, teardown, and retained branch |
+| `har_complete_environment` | `agentId`, optional `verify` | Reuse last matching full validation (or re-run when `verify=true`), teardown, and retained branch |
 | `har_teardown_environment` | `agentId`, `deleteBranch` | Teardown result |
 
 Every launch creates a new session from the main checkout's current HEAD.
@@ -45,6 +47,7 @@ active session.
 | --- | --- | --- |
 | `har_run_stage` | `stageId` or `kind`, optional `agentId`, `args` | Normalized generic stage result |
 | `har_run_verification` | `agentId`, `full` | Status, timing, and failed-step output (passing steps omit logs) |
+| `har_doctor` | `repo` | Harness contract validation (same report as `har env doctor --json`): pass/fail checks plus findings with remedies; `isError` when the contract is broken |
 
 Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
 `teardown`, and `custom`.
@@ -56,6 +59,24 @@ Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
 | `har_list_artifacts` | optional `stageId` | Files, reports, screenshots, traces, videos, and URLs |
 | `har_list_runs` | optional `stageId`, `limit` | Persisted run records |
 | `har_get_run` | `runId` | One normalized run record |
+
+## Factory lines
+
+A **factory line** is a multi-station program with a cumulative gate. Line
+stages are registered in `.har/stages.json` but are **never** added to
+`verificationStages` — `har_run_verification` is unaffected by installing one.
+Verification plugins (which *do* join verify) use `har_add_plugin` instead.
+
+| Tool | Inputs | Result |
+| --- | --- | --- |
+| `har_line_create` | `id`, optional `title`, `description`, `stations`, `gateStage`, `optInEnv`, `force` | Scaffolds `.har/lines/<id>/` (manifest, program, gate stage, README) and returns files written and next steps |
+| `har_add_line` | `line` (local id, path, npm package, or git URL), optional `force` | Installed line id, stations, registered stage ids, files written, program path, adaptation prompt path, and `verificationStagesUnchanged: true` |
+| `har_line_status` | optional `line` | Stations with cumulative gate progress from run records, slots in flight, and any stage that leaked onto the verify plan. A pure read — writes no run records |
+| `har_run_line_gate` | `station`, optional `line`, `agentId`, `force` | Per-stage results for every gate stage tagged at that station or earlier |
+
+`har_add_line` refuses a verification-plugin bundle, and `har_add_plugin`
+refuses a line bundle — the two apply paths are deliberately not
+interchangeable.
 
 ## Mission Control
 

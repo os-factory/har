@@ -1,0 +1,19 @@
+{
+  "version": "1",
+  "lines": [
+    {
+      "id": "occupancy-identity",
+      "source": "local",
+      "spec": "occupancy-identity",
+      "stageIds": [
+        "occupancy-s0",
+        "occupancy-s1",
+        "occupancy-s2",
+        "occupancy-lab",
+        "occupancy-agent-lab"
+      ],
+      "programPath": ".har/lines/occupancy-identity/line.json",
+      "installedAt": "2026-08-30T11:56:54.197Z"
+    }
+  ]
+}

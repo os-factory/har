@@ -4,14 +4,17 @@ import { z } from 'zod';
 import { info, success, warn } from '../utils/logging';
 import { resolveTemplatesDir } from '../utils/paths';
 import { harnessExists } from './parser';
+import { findManifestPath } from './bundle-resolve';
 import {
   cleanupResolvedPlugin,
   listBundledPluginIds,
+  PLUGIN_BUNDLE_CONFIG,
   resolvePluginSource,
   type PluginSourceKind,
 } from './plugin-resolve';
 import { upsertPluginLedgerEntry } from './plugin-ledger';
-import { HarnessStageRegistry, HarnessStageSchema } from './schema';
+import { buildPluginAdaptationPrompt, writePluginAdaptationPrompt } from './plugin-prompt';
+import { HarnessStageRegistry, HarnessStageSchema, LINE_BUNDLE_KIND } from './schema';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
 /** Plugin id is a free-form slug discovered from manifests (no closed enum). */
@@ -108,6 +111,8 @@ export interface ApplyPluginResult {
   nextSteps: string[];
   docsPath: string;
   source: PluginSourceKind;
+  /** Repo-relative path of the generated adaptation prompt (#195). */
+  adaptPromptPath: string;
 }
 
 /** @deprecated Use ApplyPluginResult — `templateId` mirrors `pluginId` */
@@ -144,13 +149,22 @@ function resolveBundledPluginDir(pluginId: PluginId): string {
 }
 
 export function readPluginManifestFromDir(pluginDir: string, expectedId?: string): PluginManifest {
-  const manifestPath = path.join(pluginDir, 'template.manifest.json');
-  if (!fs.existsSync(manifestPath)) {
+  const manifestPath = findManifestPath(pluginDir, PLUGIN_BUNDLE_CONFIG);
+  if (!manifestPath) {
     throw new Error(`No template.manifest.json in ${pluginDir}`);
   }
-  const parsed = PluginManifestSchema.safeParse(
-    JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
-  );
+  const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+
+  // Poka-yoke (#304): add-plugin always appends to verificationStages, so a
+  // factory line must never travel this path — its stages are opt-in.
+  if (raw.kind === LINE_BUNDLE_KIND || path.basename(manifestPath) === 'line.manifest.json') {
+    throw new Error(
+      `${path.basename(manifestPath)} declares "kind": "line" — this is a factory line bundle, ` +
+        'not a verification plugin. Install it with: har line add <spec>',
+    );
+  }
+
+  const parsed = PluginManifestSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid plugin manifest: ${parsed.error.message}`);
   }
@@ -267,15 +281,6 @@ function patchStageRegistry(
     }
   }
 
-  const verifyIdx = nextStages.findIndex((s) => s.id === 'verify');
-  if (verifyIdx >= 0) {
-    nextStages[verifyIdx] = {
-      ...nextStages[verifyIdx],
-      description: `Verification pipeline (quick smoke by default; --full runs the registry's verificationStages: ${verificationStages.join(', ')})`,
-      acceptsArgs: ['--full'],
-    };
-  }
-
   const updated: HarnessStageRegistry = {
     ...registry,
     stages: nextStages,
@@ -287,7 +292,7 @@ function patchStageRegistry(
 
 function assertHarnessPresent(repoPath: string): void {
   if (!harnessExists(repoPath)) {
-    throw new Error('No .har/ harness found. Run "har env init" first.');
+    throw new Error('No .har/ harness found. Run "har onboard" first.');
   }
 }
 
@@ -370,16 +375,10 @@ function applyPluginFromDir(
   });
 
   const primary = primaryStageId(manifest);
-  success(`Applied plugin: ${manifest.id}`);
-  info(`Registered stage(s): ${stageIds.join(', ')}`);
-  for (const file of filesWritten) {
-    info(`  + ${file}`);
-  }
-  for (const warning of warnings) {
-    warn(`  ⚠ ${warning}`);
-  }
 
-  return {
+  // #195: the install is scaffolding only — leave the agent a structured
+  // adaptation prompt (sibling of ADAPT-PROMPT.md), written only on success.
+  const partialResult = {
     pluginId: manifest.id,
     stageId: primary,
     stageIds,
@@ -389,6 +388,24 @@ function applyPluginFromDir(
     docsPath: manifest.docsPath,
     source: meta.source,
   };
+  const promptContent = buildPluginAdaptationPrompt(resolved, {
+    ...partialResult,
+    adaptPromptPath: '',
+  });
+  const promptAbsPath = writePluginAdaptationPrompt(resolved, manifest.id, promptContent);
+  const adaptPromptPath = path.relative(resolved, promptAbsPath);
+
+  success(`Applied plugin: ${manifest.id}`);
+  info(`Registered stage(s): ${stageIds.join(', ')}`);
+  for (const file of filesWritten) {
+    info(`  + ${file}`);
+  }
+  info(`  + ${adaptPromptPath} (adaptation prompt for your coding agent)`);
+  for (const warning of warnings) {
+    warn(`  ⚠ ${warning}`);
+  }
+
+  return { ...partialResult, adaptPromptPath };
 }
 
 /**
@@ -400,7 +417,7 @@ export function applyPlugin(
   options: ApplyPluginOptions = {},
 ): ApplyPluginResult {
   const spec = options.spec ?? pluginSpec;
-  const source = resolvePluginSource(spec);
+  const source = resolvePluginSource(spec, repoPath);
   try {
     return applyPluginFromDir(repoPath, source.dir, options, {
       source: source.kind,

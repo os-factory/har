@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -18,7 +18,9 @@ import {
   buildTelemetryEnvBlock,
 } from '../src/core/telemetry-env';
 import {
+  buildOtelHookSetupArgs,
   buildOtelHooksConfig,
+  HOOK_TIMEOUT_SECONDS,
   OTEL_HOOKS_PACKAGE,
   pruneLegacyCursorHookEvents,
   rewriteHookCommandsToWrapper,
@@ -442,10 +444,69 @@ describe('otel hooks config', () => {
     const binary = path.join(hooksHome, 'node_modules', '.bin', 'otel-hook');
     const wrapper = writeOtelHooksWrapper(binary, hooksHome);
     const script = fs.readFileSync(wrapper, 'utf8');
-    expect(script).toContain(`exec "${binary}" run`);
+    expect(script).toContain(`"${binary}" run`);
     expect(script).toContain(`--config-file "${path.join(hooksHome, 'otel_config.json')}"`);
     expect(script).toContain(`--state-dir "${path.join(hooksHome, 'state')}"`);
     expect(script).not.toContain('python');
     expect(fs.statSync(wrapper).mode & 0o111).not.toBe(0);
+  });
+
+  // #328: hooks fire on session start, every prompt, before/after every tool
+  // call and on stop. An unbounded export turns an unreachable Mission Control
+  // into a stalled agent session, which reads exactly like a broken model API.
+  describe('hook budgets', () => {
+    it('bounds the export so an unreachable collector cannot stall a turn', () => {
+      const hooksHome = path.join(tmpDir, 'hooks-budget');
+      const binary = path.join(hooksHome, 'node_modules', '.bin', 'otel-hook');
+      const script = fs.readFileSync(writeOtelHooksWrapper(binary, hooksHome), 'utf8');
+
+      const exportTimeout = script.match(/--timeout-ms (\d+)/);
+      const flushTimeout = script.match(/--flush-timeout-ms (\d+)/);
+
+      expect(exportTimeout).not.toBeNull();
+      expect(flushTimeout).not.toBeNull();
+      expect(Number(exportTimeout![1])).toBeGreaterThan(0);
+      // Both budgets must fit inside the per-hook ceiling the agent enforces,
+      // so the hook returns on its own instead of being killed.
+      expect(Number(exportTimeout![1]) + Number(flushTimeout![1])).toBeLessThan(
+        HOOK_TIMEOUT_SECONDS * 1000,
+      );
+    });
+
+    it('never fails an agent turn because telemetry failed', () => {
+      const hooksHome = path.join(tmpDir, 'hooks-exit');
+      const binary = path.join(hooksHome, 'node_modules', '.bin', 'otel-hook');
+      const script = fs.readFileSync(writeOtelHooksWrapper(binary, hooksHome), 'utf8');
+
+      // A non-zero hook exit can block a tool call; dropped telemetry must not.
+      expect(script).toContain('|| true');
+      expect(script.trim().endsWith('exit 0')).toBe(true);
+      // `exec` would replace the shell and leak the child's status.
+      expect(script).not.toContain('exec "');
+      expect(script).not.toContain('set -euo pipefail');
+    });
+
+    it('writes a per-hook timeout into every generated hook entry', () => {
+      const args = buildOtelHookSetupArgs('claude-code', '/home/dev/.har/otel-hooks/run-otel-hook.sh');
+      const index = args.indexOf('--timeout-seconds');
+
+      expect(index).toBeGreaterThan(-1);
+      expect(Number(args[index + 1])).toBe(HOOK_TIMEOUT_SECONDS);
+      expect(Number(args[index + 1])).toBeGreaterThan(0);
+    });
+
+    it('runs the wrapper successfully even when the hook binary is missing', () => {
+      const hooksHome = path.join(tmpDir, 'hooks-missing-binary');
+      const wrapper = writeOtelHooksWrapper(
+        path.join(hooksHome, 'node_modules', '.bin', 'does-not-exist'),
+        hooksHome,
+      );
+
+      const result = spawnSync('bash', [wrapper, '--provider', 'claude-code'], {
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+    });
   });
 });

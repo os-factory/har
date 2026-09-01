@@ -6,7 +6,7 @@ Added by `har env add-plugin playwright` and adapted for the Astro docs site.
 cd docs
 npm ci
 npx playwright install chromium
-./.har/launch.sh 1
+har env launch 1
 ./.har/stages/browser-e2e.sh 1
 ```
 

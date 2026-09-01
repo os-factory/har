@@ -1,0 +1,52 @@
+---
+import BlogLayout from '../../layouts/BlogLayout.astro';
+import Footer from '../../components/Footer.astro';
+import { getCollection } from 'astro:content';
+
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.date.getTime() - a.data.date.getTime(),
+);
+
+const dateFormat = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+---
+<BlogLayout
+  title="HAR journal"
+  description="Writing on the harness, the factory line, and what the gates actually catch."
+  canonicalPath="/blog/"
+>
+<section class="hero blueprint-surface blog-hero">
+<div class="container">
+<div class="hero-copy">
+<div class="eyebrow"><span class="eyebrow-dot"></span> Journal</div>
+<h1>Notes from the line.</h1>
+<p class="hero-lede">Releases, stations, gates, and the questions the line actually caught.</p>
+</div>
+</div>
+</section>
+<div class="page-frame">
+<section class="section blog-index-section">
+<div class="container">
+<ul class="blog-index-list">
+{posts.map((post) => (
+<li>
+<a class="blog-post-card" href={`/blog/${post.id}/`}>
+<span class="blog-post-meta">
+<time datetime={post.data.date.toISOString()}>{dateFormat.format(post.data.date)}</time>
+{post.data.kicker && <span>{post.data.kicker}</span>}
+</span>
+<h2>{post.data.title}</h2>
+<p>{post.data.description}</p>
+<span class="blog-post-read">Read <span aria-hidden="true">→</span></span>
+</a>
+</li>
+))}
+</ul>
+</div>
+</section>
+<Footer />
+</div>
+</BlogLayout>

@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { run } from '../utils/shell';
+import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
 import { readStageRegistry } from './stages';
+import { findPhantomVerificationStageIds } from './verification';
 
 export interface ValidationIssue {
   file: string;
@@ -15,41 +17,24 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
+// Required files are the configuration surface only (#235 / #314): the runtime
+// lives in the package. Lifecycle wrappers are not generated.
 const REQUIRED_FILES_DEFAULT = [
   'README.md',
   'stages.json',
   'harness.env',
-  'setup-infra.sh',
-  'launch.sh',
-  'provision-toolchain.sh',
-  'verify.sh',
-  'teardown.sh',
-  'agent-cli.sh',
-  'agent-slot.sh',
   'docker-compose.agent.yml',
   'env.template',
   'ecosystem.agent.template.cjs',
-  'CLAUDE.agent.md',
 ];
 
 const REQUIRED_FILES_CLI = REQUIRED_FILES_DEFAULT.filter(
   (file) => file !== 'ecosystem.agent.template.cjs' && file !== 'env.template',
 );
 
-const REQUIRED_FILES_IOS = [
-  'README.md',
-  'stages.json',
-  'harness.env',
-  'setup-infra.sh',
-  'launch.sh',
-  'provision-toolchain.sh',
-  'verify.sh',
-  'teardown.sh',
-  'agent-cli.sh',
-  'agent-slot.sh',
-  'docker-compose.agent.yml',
-  'CLAUDE.agent.md',
-];
+const REQUIRED_FILES_IOS = REQUIRED_FILES_DEFAULT.filter(
+  (file) => file !== 'ecosystem.agent.template.cjs' && file !== 'env.template',
+);
 
 function getRequiredFiles(repoPath: string): string[] {
   const manifest = readManifest(repoPath);
@@ -61,9 +46,9 @@ function getRequiredFiles(repoPath: string): string[] {
 const SHELL_SCRIPTS = [
   'setup-infra.sh',
   'launch.sh',
-  'provision-toolchain.sh',
   'verify.sh',
   'teardown.sh',
+  'preflight.sh',
   'agent-cli.sh',
   'attach.sh',
 ];
@@ -129,6 +114,17 @@ export function validateHarness(repoPath: string): ValidationResult {
     if (content.includes('TODO: set seed command')) {
       issues.push({ file: 'harness.env', message: 'Seed command still has TODO', severity: 'warning' });
     }
+    // Schema-validate against the 1.0 pure-config contract. Reported as
+    // warnings here so pre-1.0 harnesses keep validating until they migrate;
+    // `har env doctor` (#232) enforces these as errors.
+    const envValidation = readValidatedHarnessEnv(repoPath);
+    for (const issue of envValidation?.issues ?? []) {
+      issues.push({
+        file: 'harness.env',
+        message: issue.line !== undefined ? `line ${issue.line}: ${issue.message}` : issue.message,
+        severity: 'warning',
+      });
+    }
   }
 
   const verifyPath = path.join(harnessDir, 'verify.sh');
@@ -146,6 +142,15 @@ export function validateHarness(repoPath: string): ValidationResult {
       const registry = readStageRegistry(repoPath);
       if (registry.stages.length === 0) {
         issues.push({ file: 'stages.json', message: 'No harness stages declared', severity: 'warning' });
+      }
+      for (const id of findPhantomVerificationStageIds(registry)) {
+        // Warning until har env doctor (#232) enforces the resolvable-namespace
+        // contract as an error.
+        issues.push({
+          file: 'stages.json',
+          message: `verificationStages id "${id}" does not resolve to a registered runnable stage`,
+          severity: 'warning',
+        });
       }
     } catch (err) {
       issues.push({

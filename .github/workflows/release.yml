@@ -42,6 +42,19 @@ jobs:
           npm ci --prefix packages/schemas
           npm ci --prefix control
 
+      # The control harness's .har/*.sh are thin shims that resolve `har` from
+      # PATH (#235). Without this repo's runtime on PATH they fall through to
+      # `npx @osfactory/har@<pinned>` — the last *published* release, which
+      # predates #234, re-executes the shim, and trips the #291 loop guard
+      # (exit 86, #298). The CLI step above already built dist/.
+      - name: Put the har runtime under test on PATH
+        run: |
+          mkdir -p "$RUNNER_TEMP/har-bin"
+          printf '#!/usr/bin/env bash\nexec node "%s/dist/index.js" "$@"\n' \
+            "$GITHUB_WORKSPACE" > "$RUNNER_TEMP/har-bin/har"
+          chmod +x "$RUNNER_TEMP/har-bin/har"
+          echo "$RUNNER_TEMP/har-bin" >> "$GITHUB_PATH"
+
       - name: Get Playwright version
         id: playwright-version
         working-directory: control
@@ -66,18 +79,18 @@ jobs:
 
       - name: Launch Mission Control harness
         working-directory: control
-        run: ./.har/launch.sh 1 --no-worktree
+        run: har env launch 1 --no-worktree
 
       - name: Verify Mission Control (full)
         working-directory: control
         env:
           CI: true
-        run: ./.har/verify.sh 1 --full
+        run: har env verify 1 --full
 
       - name: Teardown Mission Control harness
         if: always()
         working-directory: control
-        run: ./.har/teardown.sh 1
+        run: har env teardown 1
 
   release:
     needs: verify

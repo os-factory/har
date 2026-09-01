@@ -3,7 +3,7 @@ import { quoteShellArg } from '../src/utils/shell';
 import { LaunchEnvironmentInputSchema } from '../src/mcp/schemas';
 
 describe('launch flag plumbing', () => {
-  it('forwards resume flag to launch.sh argv', () => {
+  it('forwards resume flag to launch argv', () => {
     expect(
       buildLaunchFlagArgs({
         worktree: false,

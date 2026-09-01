@@ -1,0 +1,23 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import Header from '../components/Header.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath: string;
+}
+
+const { title, description, canonicalPath } = Astro.props;
+---
+<BaseLayout
+  title={title}
+  description={description}
+  bodyClass="home-page blog-page"
+  canonicalPath={canonicalPath}
+>
+  <Header active="blog" />
+  <main>
+    <slot />
+  </main>
+</BaseLayout>

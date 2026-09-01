@@ -1,31 +1,37 @@
 {
   "version": "1",
-  "generatorVersion": "0.5.0",
+  "runtimeVersion": "1.0.0",
   "outputDir": ".har",
-  "createdAt": "2026-08-16T22:08:47.404Z",
-  "updatedAt": "2026-08-16T22:08:47.404Z",
+  "createdAt": "2026-08-27T13:49:52.836Z",
+  "updatedAt": "2026-08-27T13:49:52.836Z",
   "stack": {
     "language": "typescript",
     "packageManager": "npm"
   },
-  "adaptationSummary": "Upgrade root CLI harness to generator 0.5.0: har_pkg_exec / package-manager-aware install fallback, keep typecheck/build/docs/docs-drift verify, drop unused compose menu, relocate AGENTS.md project guidance outside managed markers",
+  "adaptationSummary": "Instruction surface collapsed to AGENTS.md (#301): CLAUDE.agent.md lifted into this README, CLAUDE.md is @AGENTS.md",
   "profile": "cli",
   "fileChecksums": {
-    ".gitignore": "be76f72c473122ba",
-    "CLAUDE.agent.md": "84728c12a7f5d90f",
-    "README.md": "e9538fc24266601b",
-    "STAGES.md": "023a76c843d6c793",
-    "agent-cli.sh": "521a85e86297ebd2",
-    "agent-slot.sh": "93eb9505bd1efbb2",
+    ".gitignore": "3d63903a846622b1",
+    "README.md": "f0ef647ffad917f7",
+    "STAGES.md": "783578d22dcd3095",
     "docker-compose.agent.yml": "a560dd4f909c3987",
-    "harness.env": "57918f46c935c328",
+    "harness.env": "3f00050584330aa2",
     "justfile": "bf0037f301972ef0",
-    "launch.sh": "ce217302504edfbc",
-    "preflight.sh": "dd3ceea150c49c24",
-    "provision-toolchain.sh": "7bd28f0c2b6e1546",
-    "setup-infra.sh": "fd3de9d55c6fe957",
-    "stages.json": "2b9017461b6e2482",
-    "teardown.sh": "14917f84ef02434b",
-    "verify.sh": "24ea59d7d5a9ee22"
+    "stages.json": "456cde98edac2fb5",
+    "stages/README.sh": "bef64e2c2a1b21c3",
+    "stages/fixture-e2e.sh": "1e1f79243bd0c727",
+    "stages/readiness.sh": "5ceb071438d92ea5"
+  },
+  "templateChecksums": {
+    "STAGES.md": "4b1a83ce3a95aed3",
+    "lib/verify-runner.mjs": "382266eaf701e63d",
+    "stages/README.sh": "23b2e858dd2dc27a",
+    "stages/readiness.sh": "5ceb071438d92ea5",
+    "docker-compose.agent.yml": "643ba51e2378fe28",
+    ".gitignore": "3d63903a846622b1",
+    "harness.env": "d637962f5193ce63",
+    "justfile": "6415e7c5452eb2f9",
+    "stages.json": "ba957878d16f0aff",
+    "README.md": "29a49a8b7fb13479"
   }
 }

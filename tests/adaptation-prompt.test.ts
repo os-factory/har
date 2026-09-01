@@ -16,7 +16,9 @@ describe('adaptation prompts', () => {
     expect(defaultPrompt).toContain('Profile: default');
     expect(defaultPrompt).toContain('Docker');
     expect(defaultPrompt).toContain('HAR profiles');
-    expect(defaultPrompt).toContain('provision-toolchain.sh');
+    expect(defaultPrompt).toContain('Toolchain provisioning');
+    expect(defaultPrompt).toContain('never add lifecycle `.sh` wrappers');
+    expect(defaultPrompt).not.toContain('Cleanup checklist');
     expect(defaultPrompt).toContain('Port & shared services');
     expect(defaultPrompt).toContain('HARNESS_FE_BASE_PORT');
 
@@ -58,7 +60,8 @@ describe('initHarness scaffold', () => {
       profile: 'cli',
     });
 
-    expect(fs.existsSync(path.join(tmpDir, '.har', 'verify.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.har', 'verify.sh'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, '.har', 'stages.json'))).toBe(true);
     expect(result.validation.pass).toBe(true);
   });
 });

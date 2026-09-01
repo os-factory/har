@@ -167,7 +167,7 @@ describe('runOnboarding', () => {
     expect(result.harnessInitialized).toBe(true);
     expect(result.pluginsApplied).toEqual(['playwright']);
     expect(result.agentSlots).toEqual({ min: 1, max: 3 });
-    expect(fs.existsSync(path.join(tmpDir, '.har', 'verify.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.har', 'verify.sh'))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, '.har', 'stages', 'browser-e2e.sh'))).toBe(true);
     expect(result.adaptationPromptPath).toBe(
       path.join(tmpDir, '.har', ADAPTATION_PROMPT_FILE),

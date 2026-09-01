@@ -6,7 +6,7 @@
 #   2. Your app running and reachable at the SUT URL, with its database migrated/seeded.
 #   3. A Kerno agent bound to this checkout (`kerno init`) with a committed suite in .kerno/.
 #
-# The stage sources the HAR slot machinery (.har/harness.env, agent-slot.sh, .env.agent.<id>),
+# The stage relies on the HAR stage runner (harness.env + slot env exported by `har env verify`),
 # so the supported path is to run it inside a launched HAR slot. Adapt the "start app" and
 # "kerno init" steps for your stack. Remove `if: false` once wired up.
 name: Kerno backend validation
@@ -30,7 +30,7 @@ jobs:
       - name: Install Kerno CLI
         run: npm install -g @kerno/cli
       # - name: Start the app (adapt for your stack) and migrate/seed its database
-      #   run: ./.har/launch.sh 1 && <start your app in the slot>
+      #   run: har env launch 1 && <start your app in the slot>
       # - name: Bind a Kerno agent to this checkout
       #   run: kerno init
       # - name: Run backend validation

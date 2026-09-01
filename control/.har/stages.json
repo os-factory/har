@@ -1,5 +1,7 @@
 {
   "version": "1",
+  "artifactsDir": "artifacts",
+  "logsDir": "logs",
   "agentSlots": {
     "min": 1,
     "max": 3
@@ -9,26 +11,21 @@
     "unit-tests",
     "api-health",
     "lint",
+    "readiness",
     "browser-e2e",
     "docker-build"
   ],
-  "commitGate": {
-    "enabled": true,
-    "mode": "block",
-    "scope": "worktrees"
-  },
   "stages": [
     {
       "id": "setup-infra",
       "kind": "setup",
       "description": "Optional shared Docker infrastructure",
-      "command": "./.har/setup-infra.sh"
+      "artifacts": []
     },
     {
       "id": "launch",
       "kind": "launch",
       "description": "Launch an isolated agent environment slot",
-      "command": "./.har/launch.sh {agentId}",
       "artifacts": [
         {
           "path": ".env.agent.{agentId}",
@@ -41,21 +38,21 @@
       "id": "verify",
       "kind": "verify",
       "description": "Verification pipeline (quick: typecheck/tests/health; --full adds lint, browser-e2e, docker-build)",
-      "command": "./.har/verify.sh {agentId}",
-      "acceptsArgs": ["--full"],
       "artifacts": [
         {
           "path": ".har/artifacts",
           "kind": "directory",
           "description": "Optional verification outputs such as reports, traces, screenshots, and logs"
         }
+      ],
+      "acceptsArgs": [
+        "--full"
       ]
     },
     {
       "id": "status",
       "kind": "inspect",
       "description": "Inspect a running agent environment slot",
-      "command": "./.har/agent-cli.sh {agentId} status",
       "artifacts": [
         {
           "path": ".har/logs",
@@ -68,13 +65,13 @@
       "id": "logs",
       "kind": "inspect",
       "description": "Read recent logs for an agent slot",
-      "command": "./.har/agent-cli.sh {agentId} logs"
+      "artifacts": []
     },
     {
       "id": "teardown",
       "kind": "teardown",
       "description": "Stop processes and release agent slot resources",
-      "command": "./.har/teardown.sh {agentId}"
+      "artifacts": []
     },
     {
       "id": "browser-e2e",
@@ -107,6 +104,56 @@
         }
       ],
       "requiresAgentId": true
+    },
+    {
+      "id": "typecheck",
+      "kind": "test",
+      "description": "Type check (ecosystem quick smoke)",
+      "command": "${NPM_BIN:-npm} run typecheck",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "unit-tests",
+      "kind": "test",
+      "description": "Unit tests",
+      "command": "${NPM_BIN:-npm} test",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "lint",
+      "kind": "test",
+      "description": "Lint",
+      "command": "${NPM_BIN:-npm} run lint",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "readiness",
+      "kind": "test",
+      "description": "Project readiness smoke (HARNESS_READINESS_CMD)",
+      "script": "stages/readiness.sh",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "api-health",
+      "kind": "test",
+      "tier": "quick",
+      "requiresAgentId": true,
+      "artifacts": [],
+      "script": "stages/api-health.sh",
+      "description": "API health check on the slot's dev server"
     }
-  ]
+  ],
+  "commitGate": {
+    "enabled": true,
+    "mode": "block",
+    "scope": "worktrees"
+  }
 }
