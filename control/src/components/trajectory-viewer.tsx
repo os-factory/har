@@ -429,7 +429,7 @@ export function TrajectoryViewer({
   initialPage,
   selectedNodeId = null,
   onSelectNode,
-  logHeightClassName = 'h-[32rem] max-h-[70vh]',
+  fill = false,
 }: {
   repositoryId: string;
   agentId: number;
@@ -439,7 +439,8 @@ export function TrajectoryViewer({
   selectedNodeId?: string | null;
   /** Fires when the user selects a node so the host can mirror it into the URL. */
   onSelectNode?: (nodeId: string) => void;
-  logHeightClassName?: string;
+  /** Fill the parent (a flex column with a definite height, e.g. a drawer) instead of a fixed log height. */
+  fill?: boolean;
 }) {
   const initialStream = streams[0] ?? null;
   const [selectedKey, setSelectedKey] = useState(initialStream ? streamKey(initialStream) : '');
@@ -629,7 +630,7 @@ export function TrajectoryViewer({
   }
 
   return (
-    <div className="space-y-3">
+    <div className={cn('space-y-3', fill && 'flex h-full min-h-0 flex-col')}>
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         {streams.length > 1 ? (
           <Select value={selectedKey} onValueChange={(value) => void chooseStream(value)}>
@@ -720,14 +721,19 @@ export function TrajectoryViewer({
       ) : visibleNodes.length === 0 ? (
         <p className="text-sm text-muted-foreground">No events match this search.</p>
       ) : (
-        <div className="space-y-3">
+        <div className={cn('space-y-3', fill && 'flex min-h-0 flex-1 flex-col')}>
           <TrajectoryOverview
             nodes={visibleNodes}
             selectedId={selectedNode?.id ?? null}
             onSelect={setSelectedId}
           />
-          <div className="overflow-hidden rounded-lg border">
-            <div className={cn('grid lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]', logHeightClassName)}>
+          <div className={cn('overflow-hidden rounded-lg border', fill && 'min-h-0 flex-1')}>
+            <div
+              className={cn(
+                'grid lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]',
+                fill ? 'h-full' : 'h-[32rem] max-h-[70vh]',
+              )}
+            >
               <div
                 ref={logScrollRef}
                 className="min-h-0 overflow-auto border-b p-2 lg:border-b-0 lg:border-r"

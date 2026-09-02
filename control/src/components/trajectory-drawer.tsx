@@ -133,7 +133,7 @@ export function TrajectoryDrawer({ repositoryId }: { repositoryId: string }) {
             {' '}— click a turn or tool call to put it in the link.
           </SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col">
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           {!error && !page ? <p className="text-sm text-muted-foreground" aria-busy="true">Loading trajectory…</p> : null}
           {page && target ? (
@@ -149,7 +149,7 @@ export function TrajectoryDrawer({ repositoryId }: { repositoryId: string }) {
               initialPage={page}
               selectedNodeId={target.nodeId ?? null}
               onSelectNode={(nodeId) => open({ ...target, nodeId })}
-              logHeightClassName="h-[calc(100vh-17rem)]"
+              fill
             />
           ) : null}
         </div>
