@@ -7,6 +7,7 @@ import { SessionEventsTable } from '@/components/session-events-table';
 import { SessionTimeline } from '@/components/session-timeline';
 import { TrajectoryViewer } from '@/components/trajectory-viewer';
 import { VerifySummary } from '@/components/verify-summary';
+import { ValidationFlow } from '@/components/validation-flow';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { eventModel } from '@/lib/session-event-detail';
@@ -198,7 +199,12 @@ export default async function SlotDetailPage({
           <CardTitle>Verify</CardTitle>
         </CardHeader>
         <CardContent>
-          <VerifySummary validation={validation} validationHref={`/repos/${id}`} />
+          <VerifySummary validation={validation} validationHref={`/repos/${id}`} showStages={false} />
+          {(validation?.stages.length ?? 0) > 0 && (
+            <div className="mt-6" data-testid="slot-validation-flow">
+              <ValidationFlow stages={validation?.stages ?? []} />
+            </div>
+          )}
         </CardContent>
       </Card>
 
