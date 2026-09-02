@@ -1,5 +1,4 @@
 import { calcPrice } from '@pydantic/genai-prices';
-import { estimateCursorNativeCostUsd } from './cursor-pricing-overlay';
 import type { AgentSessionUsage, AgentTool } from './schema';
 
 /** Per-model token and cost fields stored on AgentSessionUsage.modelBreakdown. */
@@ -27,6 +26,7 @@ function resolveCostUsd(reported: number | null, computed: number | null): numbe
 function providerHint(agentTool: AgentTool): string | undefined {
   if (agentTool === 'claude_code') return 'anthropic';
   if (agentTool === 'codex') return 'openai';
+  if (agentTool === 'cursor') return 'cursor';
   return undefined;
 }
 
@@ -52,10 +52,19 @@ export function toGenaiPricesUsage(totals: ModelUsageTotals): {
   };
 }
 
-/** Cursor prefixes opaque slugs — try the stripped id against the catalog too. */
+/** Cursor prefixes opaque slugs — try stripped and tier aliases against the catalog too. */
 export function pricingModelCandidates(modelId: string): string[] {
   const out = [modelId];
-  if (modelId.startsWith('cursor-')) out.push(modelId.slice('cursor-'.length));
+  let normalized = modelId;
+  if (normalized.startsWith('cursor-')) {
+    normalized = normalized.slice('cursor-'.length);
+    out.push(normalized);
+  }
+  if (normalized.endsWith('-high-fast')) {
+    out.push(normalized.replace(/-high-fast$/, '-fast'));
+  } else if (normalized.endsWith('-high')) {
+    out.push(normalized.replace(/-high$/, ''));
+  }
   return [...new Set(out)];
 }
 
@@ -77,11 +86,6 @@ export function estimateModelCostUsd(
     } catch {
       continue;
     }
-  }
-
-  for (const candidate of pricingModelCandidates(modelId)) {
-    const overlay = estimateCursorNativeCostUsd(usage, candidate);
-    if (overlay != null) return overlay;
   }
   return null;
 }
