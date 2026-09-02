@@ -83,6 +83,19 @@ function bodyText(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+const DISCLOSURE_LABEL: Record<string, string> = {
+  full: 'Full content',
+  metadata_only: 'Metadata only',
+  truncated: 'Truncated',
+  redacted: 'Redacted',
+  masked: 'Masked',
+  withheld: 'Withheld',
+};
+
+function disclosureLabel(disclosure: string): string {
+  return DISCLOSURE_LABEL[disclosure] ?? disclosure;
+}
+
 function disclosureCopy(record: SerializedTrajectoryRecord): string {
   if (record.contentDisclosure === 'withheld') {
     const payload = record.payload && typeof record.payload === 'object'
@@ -349,7 +362,7 @@ function TrajectoryInspector({
               <dt className="text-muted-foreground">Status</dt>
               <dd>{statusLabel(node.status) ?? '—'}</dd>
               <dt className="text-muted-foreground">Disclosure</dt>
-              <dd>{payload.contentDisclosure}{result && result.contentDisclosure !== payload.contentDisclosure ? ` → ${result.contentDisclosure}` : ''}</dd>
+              <dd>{disclosureLabel(payload.contentDisclosure)}{result && result.contentDisclosure !== payload.contentDisclosure ? ` → ${disclosureLabel(result.contentDisclosure)}` : ''}</dd>
               {payload.toolCallId ? (
                 <>
                   <dt className="text-muted-foreground">Call id</dt>

@@ -47,15 +47,14 @@ export default async function RepoLinesPage({
             <CardTitle>No factory line installed</CardTitle>
             <CardDescription>
               {hasHarness
-                ? 'This repository has a HAR harness but no line bundle.'
-                : 'This repository has no HAR harness yet.'}
+                ? 'This repository has a harness but no line installed.'
+                : 'Mission Control has not received a harness for this repository yet. Run har control sync from the repository.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>
               A factory line is a program: an ordered set of stations plus a cumulative gate.
-              Installing one registers stages but never adds them to <code>verificationStages</code>,
-              so routine verification is unaffected.
+              Installing one adds stages for the gate without changing routine verification.
             </p>
             <pre className="overflow-x-auto rounded-md border bg-muted/40 p-3 text-xs">
               <code>

@@ -154,7 +154,7 @@ test.describe('Factory line board', () => {
     const empty = page.getByTestId('line-board-empty');
     await expect(empty).toBeVisible();
     await expect(empty).toContainText('har line add');
-    await expect(empty).toContainText('verificationStages');
+    await expect(empty).toContainText('without changing routine verification');
     await expect(page.getByRole('button', { name: /install/i })).toHaveCount(0);
 
     await request.delete(`/api/repos/${emptyId}`).catch(() => {});

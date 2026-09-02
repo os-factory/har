@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { SessionEventsTable } from '@/components/session-events-table';
 import { SessionTimeline } from '@/components/session-timeline';
 import { TrajectoryViewer } from '@/components/trajectory-viewer';
-import { ValidationPipeline } from '@/components/validation-pipeline';
+import { VerifySummary } from '@/components/verify-summary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { eventModel } from '@/lib/session-event-detail';
@@ -118,8 +118,8 @@ export default async function SlotDetailPage({
           </p>
         )}
         <p className="mt-1 text-xs text-muted-foreground">
-          Prompt text is included by default (opt out: `har telemetry on --no-prompts`).
-          Usage and events stay in local SQLite.
+          Prompts and usage are stored locally. Disable prompt capture with{' '}
+          <code>har telemetry on --no-prompts</code>.
         </p>
       </div>
 
@@ -196,17 +196,9 @@ export default async function SlotDetailPage({
       <Card>
         <CardHeader>
           <CardTitle>Verify</CardTitle>
-          <CardDescription>
-            Verification pipeline for this slot
-            {validation?.latestRun &&
-              ` — last verify ${validation.latestRun.startedAt.toLocaleString()} (${validation.latestRun.status})`}
-          </CardDescription>
         </CardHeader>
         <CardContent>
-          <ValidationPipeline
-            stages={validation?.stages ?? []}
-            verifyRunCount={validation?.verifyRunCount ?? 0}
-          />
+          <VerifySummary validation={validation} validationHref={`/repos/${id}`} />
         </CardContent>
       </Card>
 
@@ -214,8 +206,7 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Session activity</CardTitle>
           <CardDescription>
-            LLM usage and verify runs — model ids come from usage.modelBreakdown (OTEL
-            gen_ai.request.model), with event fallback for older rows.
+            Model usage and verify runs for this slot, newest first.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -246,7 +237,7 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Agent activity</CardTitle>
           <CardDescription>
-            Follow the assembled trajectory, or inspect raw session events. Tool and generation start/end pairs are hidden by default.
+            Follow what the agent did, or inspect the raw telemetry events.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -287,8 +278,7 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Usage by agent</CardTitle>
           <CardDescription>
-            Max-merged from OTEL ingest and sync harvest — per-model token totals and USD estimates
-            (genai-prices) live on modelBreakdown for the portal
+            Tokens and estimated cost per session, merged from telemetry and sync
           </CardDescription>
         </CardHeader>
         <CardContent>

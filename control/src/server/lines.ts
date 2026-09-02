@@ -232,10 +232,20 @@ export async function listLineBoards(repositoryId: string): Promise<LineBoard[]>
 }
 
 /** Whether the repository has a `.har/` harness at all (drives the empty state). */
+/** A repository "has a harness" when the CLI synced a stage registry for it, or when the
+ *  `.har/` directory is visible on disk. Disk alone is not enough: inside the Docker image host
+ *  paths are invisible, and lab fixtures are deleted after their run. */
 export async function repositoryHasHarness(repositoryId: string): Promise<boolean> {
   const repo = await prisma.repository.findUnique({
     where: { id: repositoryId },
-    select: { path: true },
+    select: { path: true, stagesRegistry: true },
   });
-  return Boolean(repo && existsSync(path.join(repo.path, '.har')));
+  if (!repo) return false;
+  const registry = repo.stagesRegistry as
+    | { stages?: unknown[]; verificationStages?: unknown[] }
+    | null;
+  if ((registry?.stages?.length ?? 0) > 0 || (registry?.verificationStages?.length ?? 0) > 0) {
+    return true;
+  }
+  return existsSync(path.join(repo.path, '.har'));
 }

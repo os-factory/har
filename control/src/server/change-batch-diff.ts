@@ -20,7 +20,7 @@ export async function getChangeBatchDiff(repositoryId: string, batchId: string) 
   if (!batch) return undefined;
 
   if (!batch.headSha || !GIT_OBJECT_ID.test(batch.headSha) || !GIT_OBJECT_ID.test(batch.treeHash)) {
-    throw new Error('This change batch does not have a diffable Git snapshot.');
+    throw new Error('This snapshot was recorded without a Git head, so there is nothing to diff it against.');
   }
 
   try {
@@ -51,6 +51,8 @@ export async function getChangeBatchDiff(repositoryId: string, batchId: string) 
         truncated: true,
       };
     }
-    throw new Error('The Git objects for this change batch are no longer available.');
+    throw new Error(
+      'The worktree that produced this snapshot is gone, so its diff can no longer be computed. The verified tree hash is still recorded; if a commit was created from it, inspect that commit in Git.',
+    );
   }
 }
