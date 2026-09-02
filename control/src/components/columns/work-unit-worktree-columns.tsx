@@ -11,7 +11,7 @@ export type { WorkUnitWorktreeRow };
 export const workUnitWorktreeColumns: ColumnDef<WorkUnitWorktreeRow>[] = [
   {
     accessorKey: 'agentId',
-    header: 'Agent',
+    header: 'Slot',
     cell: ({ row }) => (
       <Link
         href={`/repos/${row.original.repoId}/slots/${row.original.agentId}`}

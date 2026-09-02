@@ -37,3 +37,14 @@ test.describe('Repository validation stages', () => {
     expect(await badges.count()).toBeGreaterThanOrEqual(await rows.count());
   });
 });
+
+test('validation tab can be deep-linked with ?tab=validation', async ({ page }) => {
+  await page.goto('/repos');
+  const first = page.locator('tbody a[href^="/repos/"]').first();
+  if ((await first.count()) === 0) test.skip(true, 'No repositories');
+  const href = await first.getAttribute('href');
+  await page.goto(`${href}?tab=validation`);
+  await expect(page.getByRole('tab', { name: 'Validation' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: 'Slots' }).click();
+  await expect(page).not.toHaveURL(/tab=validation/);
+});

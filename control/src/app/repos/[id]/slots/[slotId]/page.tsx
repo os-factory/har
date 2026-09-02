@@ -4,9 +4,9 @@ import { isPreDedupeUsage } from '@har/schemas';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SessionEventsTable } from '@/components/session-events-table';
-import { SessionTimeline } from '@/components/session-timeline';
 import { TrajectoryViewer } from '@/components/trajectory-viewer';
 import { VerifySummary } from '@/components/verify-summary';
+import { ValidationFlow } from '@/components/validation-flow';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { eventModel } from '@/lib/session-event-detail';
@@ -17,7 +17,6 @@ import { listSessionEventsForSlot } from '@/server/session-events';
 import { getSlotTrajectoryData } from '@/server/trajectory-ledger';
 import { listSessionUsageForSlot } from '@/server/usage';
 import { getValidationStages } from '@/server/validation-stages';
-import { prisma } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,15 +45,11 @@ export default async function SlotDetailPage({
   // A slot number is reused after complete/teardown; a working session is not.
   const occupancyKey = slot.occupancyKey ?? null;
 
-  const [usageRows, validation, events, verifyRuns, trajectory] = await Promise.all([
+  const [usageRows, validation, events, trajectory] = await Promise.all([
     listSessionUsageForSlot(id, slotId, occupancyKey),
-    getValidationStages(id, { agentId: slotId }),
+    // Runs are scoped to the current occupancy too: same worktree, started after it was created.
+    getValidationStages(id, { agentId: slotId, since: slot.sessionCreatedAt, workDir: slot.workDir }),
     listSessionEventsForSlot(id, slotId),
-    prisma.run.findMany({
-      where: { repositoryId: id, stageId: 'verify', agentId: slotId },
-      orderBy: { startedAt: 'desc' },
-      take: 20,
-    }),
     getSlotTrajectoryData(id, slotId, 100, occupancyKey),
   ]);
 
@@ -196,40 +191,25 @@ export default async function SlotDetailPage({
       <Card>
         <CardHeader>
           <CardTitle>Verify</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VerifySummary validation={validation} validationHref={`/repos/${id}`} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Session activity</CardTitle>
           <CardDescription>
-            Model usage and verify runs for this slot, newest first.
+            Verify runs of the current session in this slot. Earlier occupants of slot {slotId} are
+            in the repository{' '}
+            <Link href={`/repos/${id}?tab=history`} className="underline underline-offset-2">
+              History
+            </Link>
+            .
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SessionTimeline
-            usageRows={usageRows.map((row) => ({
-              id: row.id,
-              kind: 'usage' as const,
-              sessionKey: row.sessionKey,
-              agentTool: row.agentTool,
-              tokensTotal: Number(row.tokensTotal),
-              costUsd: row.costUsd == null ? null : Number(row.costUsd),
-              sources: row.sources,
-              models: resolveModels(row.sessionKey, row.agentTool, row.modelBreakdown),
-              at: row.lastSeenAt,
-            }))}
-            verifyRuns={verifyRuns.map((run) => ({
-              id: run.id,
-              kind: 'verify' as const,
-              runId: run.runId,
-              status: run.status,
-              at: run.startedAt,
-            }))}
-          />
+          <VerifySummary validation={validation} validationHref={`/repos/${id}?tab=validation`} showStages={false} />
+          {(validation?.stages.length ?? 0) > 0 && (
+            <div className="mt-6" data-testid="slot-validation-flow">
+              <ValidationFlow
+                stages={validation?.stages ?? []}
+                verifyRunCount={validation?.verifyRunCount ?? 0}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

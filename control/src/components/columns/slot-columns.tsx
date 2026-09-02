@@ -1,5 +1,7 @@
 'use client';
 
+import { ExternalLinkIcon } from 'lucide-react';
+
 import Link from 'next/link';
 import { type ColumnDef } from '@tanstack/react-table';
 
@@ -118,7 +120,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
   {
     id: 'purpose',
     accessorFn: (row) => row.purpose ?? '',
-    header: 'Summary',
+    header: 'Task',
     cell: ({ row }) =>
       row.original.purpose ? (
         <span className="max-w-40 truncate" title={row.original.purpose}>
@@ -206,16 +208,18 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
       const urls = row.original.previewUrls;
       if (!row.original.active || !urls || Object.keys(urls).length === 0) return '—';
       return (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           {Object.entries(urls).map(([label, url]) => (
             <a
               key={label}
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-primary underline-offset-2 hover:underline"
+              title={url}
+              className="inline-flex h-6 items-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
             >
               {label}
+              <ExternalLinkIcon className="size-3 text-muted-foreground" aria-hidden />
             </a>
           ))}
         </div>

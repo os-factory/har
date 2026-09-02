@@ -16,7 +16,7 @@ test.describe('Repository session history', () => {
     await expect(historyTab).toBeVisible();
     await historyTab.click();
 
-    await expect(page.getByText('Session history', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Graph' })).toBeVisible();
     await expect(page.getByTestId('handoff-lifecycle-copy')).toContainText(
       'does not copy changes into a different branch',
     );

@@ -18,10 +18,10 @@ import {
 } from '@/components/ui/sidebar';
 
 const navItems = [
-  { title: 'Factory', url: '/' },
-  { title: 'Operations', url: '/worktrees' },
-  { title: 'Usage', url: '/usage' },
+  { title: 'Now', url: '/' },
+  { title: 'Work', url: '/work' },
   { title: 'Repositories', url: '/repos' },
+  { title: 'Cost', url: '/usage' },
   { title: 'Settings', url: '/settings' },
 ];
 

@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 test.describe('Usage page', () => {
   test('shows summary cards and empty or table state', async ({ page }) => {
     await page.goto('/usage');
-    await expect(page.getByRole('heading', { name: 'Usage' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cost' })).toBeVisible();
     // Summary card titles can also appear as column headers when rows exist.
     await expect(page.getByText('Sessions', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Tokens', { exact: true }).first()).toBeVisible();
@@ -37,7 +37,7 @@ test.describe('Usage page', () => {
 
   test('keeps horizontal scroll inside the table, not the page', async ({ page }) => {
     await page.goto('/usage');
-    await expect(page.getByRole('heading', { name: 'Usage' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cost' })).toBeVisible();
 
     const metrics = await page.evaluate(() => {
       const doc = document.documentElement;

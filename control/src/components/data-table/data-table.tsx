@@ -146,6 +146,8 @@ interface DataTableProps<TData, TValue> {
   rowSelection?: RowSelectionState;
   onRowSelectionChange?: OnChangeFn<RowSelectionState>;
   toolbarExtra?: ReactNode;
+  /** Height cap for the table body; the body scrolls inside it and the header stays pinned. */
+  maxBodyHeight?: string;
 }
 
 export function DataTable<TData, TValue>({
@@ -171,6 +173,7 @@ export function DataTable<TData, TValue>({
   rowSelection: controlledRowSelection,
   onRowSelectionChange,
   toolbarExtra,
+  maxBodyHeight = '70vh',
 }: DataTableProps<TData, TValue>) {
   const paginationId = useId();
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
@@ -265,9 +268,9 @@ export function DataTable<TData, TValue>({
           {toolbarExtra}
         </div>
       ) : null}
-      <div className="min-w-0 overflow-x-auto rounded-md border">
+      <div className="min-w-0 overflow-auto rounded-md border" style={{ maxHeight: maxBodyHeight }}>
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-background shadow-[inset_0_-1px_0_hsl(var(--border))]">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (

@@ -16,7 +16,7 @@ export function ChangeBatchList({ repoId, batches }: { repoId: string; batches: 
   if (batches.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No change batches synced yet. Batches are recorded when `har env verify` runs.
+        No snapshots yet. A snapshot is recorded each time `har env verify` runs.
       </p>
     );
   }
@@ -39,8 +39,8 @@ export function ChangeBatchList({ repoId, batches }: { repoId: string; batches: 
             data={group}
             getRowId={(batch) => batch.id}
             showPagination={group.length > 10}
-            searchPlaceholder="Search change batches…"
-            searchAriaLabel="Search change batches"
+            searchPlaceholder="Search snapshots…"
+            searchAriaLabel="Search snapshots"
           />
         </div>
       ))}

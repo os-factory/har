@@ -39,7 +39,10 @@ function statusKey(status: 'pass' | 'fail' | null): 'pass' | 'fail' | 'none' {
 /** Lay out stages in a wrapping "snake" grid — rows alternate direction so
  *  the flow reads left-to-right then right-to-left, like a wiring diagram.
  *  Keeps the canvas readable as more stages are declared over time. */
-function buildFlow(stages: ValidationStageStatus[]): { nodes: Node[]; edges: Edge[]; rows: number } {
+function buildFlow(
+  stages: ValidationStageStatus[],
+  verifyRunCount?: number,
+): { nodes: Node[]; edges: Edge[]; rows: number } {
   const columns = Math.max(1, Math.min(stages.length, MAX_COLS));
   const rows = Math.max(1, Math.ceil(stages.length / columns));
 
@@ -64,6 +67,10 @@ function buildFlow(stages: ValidationStageStatus[]): { nodes: Node[]; edges: Edg
       status: stage.lastStatus,
       duration: formatDuration(stage.lastMs),
       passRate: passRate(stage),
+      coverage:
+        verifyRunCount && stage.runCount > 0 && stage.runCount < verifyRunCount
+          ? `in ${stage.runCount} of ${verifyRunCount} runs`
+          : null,
       sourcePosition,
       targetPosition,
     };
@@ -96,8 +103,20 @@ function buildFlow(stages: ValidationStageStatus[]): { nodes: Node[]; edges: Edg
   return { nodes, edges, rows };
 }
 
-export function ValidationFlow({ stages }: { stages: ValidationStageStatus[] }) {
-  const { nodes, edges, rows } = useMemo(() => buildFlow(stages), [stages]);
+export function ValidationFlow({
+  stages: allStages,
+  verifyRunCount,
+}: {
+  stages: ValidationStageStatus[];
+  /** Total verify runs in this view; stages that ran in fewer runs say so. */
+  verifyRunCount?: number;
+}) {
+  // Stages removed from the harness still appear in the history table; the pipeline
+  // draws only what the harness declares today.
+  const { nodes, edges, rows } = useMemo(() => {
+    const declared = allStages.filter((s) => s.declared);
+    return buildFlow(declared.length > 0 ? declared : allStages, verifyRunCount);
+  }, [allStages, verifyRunCount]);
   const height = Math.min(560, Math.max(240, rows * (NODE_HEIGHT + ROW_GAP) + 96));
 
   return (

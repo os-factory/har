@@ -13,6 +13,7 @@ export interface StageNodeData extends Record<string, unknown> {
   status: 'pass' | 'fail' | null;
   duration: string;
   passRate: string;
+  coverage: string | null;
   targetPosition: Position;
   sourcePosition: Position;
 }
@@ -32,6 +33,7 @@ function StageNodeComponent({ data }: NodeProps) {
     status,
     duration,
     passRate,
+    coverage,
     targetPosition,
     sourcePosition,
   } = data as StageNodeData;
@@ -73,8 +75,15 @@ function StageNodeComponent({ data }: NodeProps) {
 
       <div className="mt-2.5 flex items-center justify-between border-t border-border/60 pt-2 font-mono text-[11px] tabular-nums text-muted-foreground">
         <span>{duration}</span>
-        <span>{passRate}</span>
+        <span title={coverage ? `Passes / runs where this stage executed (${coverage})` : 'Passes / verify runs'}>
+          {passRate}
+        </span>
       </div>
+      {coverage && (
+        <p className="mt-1 truncate text-[10px] text-muted-foreground/80" title={coverage}>
+          {coverage}
+        </p>
+      )}
 
       <Handle
         type="source"

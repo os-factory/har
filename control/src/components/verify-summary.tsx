@@ -7,9 +7,12 @@ import { timeAgo } from '@/lib/time';
 export function VerifySummary({
   validation,
   validationHref,
+  showStages = true,
 }: {
   validation: ValidationStagesSummary | null;
   validationHref: string;
+  /** Hide the per-stage chips when a fuller pipeline view is rendered right below. */
+  showStages?: boolean;
 }) {
   const latest = validation?.latestRun ?? null;
   const stages = validation?.stages ?? [];
@@ -31,7 +34,7 @@ export function VerifySummary({
       ) : (
         <span className="text-muted-foreground">No verify run yet for this slot.</span>
       )}
-      {stages.length > 0 && (
+      {showStages && stages.length > 0 && (
         <span className="flex flex-wrap gap-1" aria-label="Verification stages">
           {stages.map((stage) => (
             <Badge

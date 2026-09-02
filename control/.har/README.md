@@ -181,8 +181,8 @@ har env agent <id> health
 ## Readiness — what “agent usable” means
 
 1. **Process ready** — `har env agent <id> health` (`/api/health`)
-2. **Slot data ready** — SQLite `prisma/agent_<id>.db` exists (created by `prisma db push` at launch)
-3. **Workflow usable** — dashboard loads at the slot URL (`har env agent <id> url`); no shared Postgres
+2. **Slot data ready** — SQLite `prisma/agent_<id>.db` exists (created by `prisma db push` at launch, then seeded with curated demo data via `HARNESS_DB_SEED_CMD`)
+3. **Workflow usable** — dashboard loads at the slot URL (`har env agent <id> url`) with repos, work units, runs, and slots pre-populated; no shared Postgres
 4. **No extra credentials** — local SQLite, no seed login required
 
 ## Definition of done
