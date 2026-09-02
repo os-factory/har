@@ -37,6 +37,8 @@ export default async function SlotDetailPage({
     listSessionEventsForSlot(id, slotId),
   ]);
 
+  // Open the newest agent session so its trajectory is readable without a click.
+  const newestSession = timeline.current.find((row) => row.kind === 'session');
   const previewUrls = (slot.previewUrls ?? null) as Record<string, string> | null;
   const previewEntries = slot.active && previewUrls ? Object.entries(previewUrls) : [];
   const repoName = repo.path.split('/').pop() ?? repo.path;
@@ -121,6 +123,7 @@ export default async function SlotDetailPage({
             rows={timeline.current}
             previousRows={timeline.previous}
             previousLabel={`Earlier occupants of slot ${slotId}`}
+            defaultExpandedId={newestSession?.id ?? null}
             rawEvents={events.map((ev) => ({
               id: ev.id,
               eventName: ev.eventName,

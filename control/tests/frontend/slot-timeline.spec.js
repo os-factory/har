@@ -78,7 +78,9 @@ test.describe('Slot timeline', () => {
     const sessionRow = timeline.getByRole('table').first().locator('tbody tr[aria-expanded]')
       .filter({ has: page.getByText('Agent', { exact: true }) }).first();
     if ((await sessionRow.count()) === 0) test.skip(true, 'No agent session in this environment');
-    await sessionRow.click();
+    // The newest agent session is open by default on the slot page; open it if it is not.
+    if ((await sessionRow.getAttribute('aria-expanded')) !== 'true') await sessionRow.click();
+    await expect(sessionRow).toHaveAttribute('aria-expanded', 'true');
     await expect(timeline.getByTestId('timeline-session-detail')).toBeVisible();
     await expect(
       page.getByLabel('Agent trajectory timeline')

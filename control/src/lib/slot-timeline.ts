@@ -236,11 +236,11 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
       title: session.firstPrompt ? truncate(session.firstPrompt, 140) : `${session.agentTool} session`,
       detail: [
         session.models[0] ?? null,
-        `${formatTokenCount(session.tokensTotal)} tokens`,
+        session.tokensTotal > 0 ? `${formatTokenCount(session.tokensTotal)} tokens` : null,
         cost != null ? `$${cost.toFixed(2)}` : null,
       ]
         .filter(Boolean)
-        .join(' · '),
+        .join(' · ') || 'usage not harvested yet',
       status: session.agentTool,
       tone: 'neutral',
       agentId: session.agentId,

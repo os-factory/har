@@ -302,6 +302,8 @@ export interface SlotTimelineProps {
   showSlotColumn?: boolean;
   emptyMessage?: string;
   searchPlaceholder?: string;
+  /** Row opened on first render, e.g. the newest agent session so its trajectory is visible without a click. */
+  defaultExpandedId?: string | null;
 }
 
 export function SlotTimeline({
@@ -313,8 +315,9 @@ export function SlotTimeline({
   showSlotColumn = false,
   emptyMessage = 'Nothing recorded yet. Runs, snapshots, commits and agent sessions appear here as they happen.',
   searchPlaceholder = 'Search timeline…',
+  defaultExpandedId = null,
 }: SlotTimelineProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(defaultExpandedId);
   const [previousExpandedId, setPreviousExpandedId] = useState<string | null>(null);
   const [kinds, setKinds] = useState<Set<TimelineKind>>(() => new Set(KIND_ORDER));
   const [diffRow, setDiffRow] = useState<TimelineRow | null>(null);
