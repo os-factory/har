@@ -1,3 +1,9 @@
+## [1.9.0](https://github.com/os-factory/har/compare/v1.8.0...v1.9.0) (2026-09-02)
+
+### Features
+
+* **control:** reorganise Mission Control around Now, Work, Repositories and Cost ([#337](https://github.com/os-factory/har/issues/337)) ([#342](https://github.com/os-factory/har/issues/342)) ([b902381](https://github.com/os-factory/har/commit/b90238178fd9329d428fba2ac612704a77b06fbc))
+
 ## [1.8.0](https://github.com/os-factory/har/compare/v1.7.0...v1.8.0) (2026-09-02)
 
 ### Features
