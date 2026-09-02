@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@pydantic/genai-prices": "^0.0.73",
+    "@pydantic/genai-prices": "^0.1.5",
     "chalk": "^5.3.0",
     "inquirer": "^12.11.1",
     "js-yaml": "^4.1.0",

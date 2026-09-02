@@ -4,10 +4,6 @@ import {
   pricingModelCandidates,
   toGenaiPricesUsage,
 } from '../packages/schemas/src/usage-pricing';
-import {
-  estimateCursorNativeCostUsd,
-  isCursorNativeModel,
-} from '../packages/schemas/src/cursor-pricing-overlay';
 import type { AgentSessionUsage } from '../packages/schemas/src/schema';
 
 function usage(overrides: Partial<AgentSessionUsage> = {}): AgentSessionUsage {
@@ -33,7 +29,12 @@ describe('pricingModelCandidates', () => {
     expect(pricingModelCandidates('cursor-grok-4.5-high-fast')).toEqual([
       'cursor-grok-4.5-high-fast',
       'grok-4.5-high-fast',
+      'grok-4.5-fast',
     ]);
+  });
+
+  it('maps -high tier suffixes to genai-prices catalog ids', () => {
+    expect(pricingModelCandidates('grok-4.5-high')).toEqual(['grok-4.5-high', 'grok-4.5']);
   });
 });
 
@@ -82,27 +83,6 @@ describe('toGenaiPricesUsage', () => {
   });
 });
 
-describe('isCursorNativeModel', () => {
-  it('detects composer and grok-4.5 slugs', () => {
-    expect(isCursorNativeModel('composer-2.5-fast')).toBe(true);
-    expect(isCursorNativeModel('cursor-grok-4.5-high-fast')).toBe(true);
-    expect(isCursorNativeModel('claude-opus-4-8')).toBe(false);
-  });
-});
-
-describe('estimateCursorNativeCostUsd', () => {
-  it('prices grok-4.5 fast slugs from the temporary overlay', () => {
-    const usage = {
-      input_tokens: 1000,
-      output_tokens: 100,
-      cache_read_tokens: 0,
-      cache_write_tokens: 0,
-    };
-    expect(estimateCursorNativeCostUsd(usage, 'cursor-grok-4.5-high-fast')).toBeGreaterThan(0);
-    expect(estimateCursorNativeCostUsd(usage, 'composer-2.5-fast')).toBeGreaterThan(0);
-  });
-});
-
 describe('estimateModelCostUsd', () => {
   it('prices anthropic models from per-model token totals', () => {
     const cost = estimateModelCostUsd(
@@ -142,7 +122,7 @@ describe('estimateModelCostUsd', () => {
     ).toBeNull();
   });
 
-  it('prices cursor-native models via the temporary overlay', () => {
+  it('prices cursor-native models from the bundled genai-prices catalog', () => {
     const cost = estimateModelCostUsd(
       'cursor-grok-4.5-high-fast',
       { tokensInput: 1000, tokensOutput: 100 },
@@ -152,7 +132,7 @@ describe('estimateModelCostUsd', () => {
     expect(cost!).toBeGreaterThan(0);
   });
 
-  it('prices composer models via the temporary overlay', () => {
+  it('prices composer models from the bundled genai-prices catalog', () => {
     const cost = estimateModelCostUsd(
       'composer-2.5',
       { tokensInput: 10_000, tokensOutput: 1000 },
