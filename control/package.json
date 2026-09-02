@@ -11,6 +11,8 @@
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",
     "db:push": "prisma db push",
+    "db:seed": "node scripts/seed-dev-data.cjs",
+    "db:seed:export": "node scripts/export-seed-data.cjs --source",
     "db:migrate": "prisma migrate dev",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test tests/frontend",
