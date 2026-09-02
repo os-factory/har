@@ -47,7 +47,8 @@ export default async function SlotDetailPage({
 
   const [usageRows, validation, events, trajectory] = await Promise.all([
     listSessionUsageForSlot(id, slotId, occupancyKey),
-    getValidationStages(id, { agentId: slotId }),
+    // Runs are scoped to the current occupancy too: same worktree, started after it was created.
+    getValidationStages(id, { agentId: slotId, since: slot.sessionCreatedAt, workDir: slot.workDir }),
     listSessionEventsForSlot(id, slotId),
     getSlotTrajectoryData(id, slotId, 100, occupancyKey),
   ]);
@@ -191,7 +192,12 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Verify</CardTitle>
           <CardDescription>
-            Pass rates count this slot&apos;s recent verify runs, up to the last 50.
+            Verify runs of the current session in this slot. Earlier occupants of slot {slotId} are
+            in the repository{' '}
+            <Link href={`/repos/${id}?tab=history`} className="underline underline-offset-2">
+              History
+            </Link>
+            .
           </CardDescription>
         </CardHeader>
         <CardContent>

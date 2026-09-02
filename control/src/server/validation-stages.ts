@@ -92,9 +92,17 @@ function emptyStage(name: string, declared: boolean): ValidationStageStatus {
   };
 }
 
+export interface ValidationStagesScope {
+  agentId?: number;
+  /** Occupancy start: runs before it belong to an earlier occupant of the same slot number. */
+  since?: Date | null;
+  /** Occupancy work dir: runs from another worktree are another occupant. */
+  workDir?: string | null;
+}
+
 export async function getValidationStages(
   repositoryId: string,
-  options?: { agentId?: number },
+  options?: ValidationStagesScope,
 ): Promise<ValidationStagesSummary | null> {
   const repo = await prisma.repository.findUnique({ where: { id: repositoryId } });
   if (!repo) return null;
@@ -112,6 +120,8 @@ export async function getValidationStages(
       repositoryId,
       stageId: 'verify',
       ...(options?.agentId != null ? { agentId: options.agentId } : {}),
+      ...(options?.since ? { startedAt: { gte: options.since } } : {}),
+      ...(options?.workDir ? { workDir: options.workDir } : {}),
     },
     orderBy: { startedAt: 'desc' },
     take: 50,
