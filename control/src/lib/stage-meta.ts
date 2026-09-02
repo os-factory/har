@@ -34,5 +34,6 @@ export function formatDuration(ms: number | null): string {
 
 export function passRate(stage: ValidationStageStatus): string {
   if (stage.runCount === 0) return '—';
-  return `${Math.round((stage.passCount / stage.runCount) * 100)}%`;
+  const pct = Math.round((stage.passCount / stage.runCount) * 100);
+  return `${stage.passCount}/${stage.runCount} (${pct}%)`;
 }

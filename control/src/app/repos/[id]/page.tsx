@@ -277,8 +277,9 @@ export default async function RepoDetailPage({
             <CardHeader>
               <CardTitle>Validation stages</CardTitle>
               <CardDescription>
-                Verification stages declared by the harness, with the latest result per stage
-                from recent verify runs
+                Verification stages declared by the harness, with the latest result per stage.
+                Pass rates count this repository&apos;s recent verify runs across all slots, up to
+                the last 50
                 {validation?.latestRun &&
                   ` — last verify ${validation.latestRun.startedAt.toLocaleString()} (${validation.latestRun.status})`}
               </CardDescription>

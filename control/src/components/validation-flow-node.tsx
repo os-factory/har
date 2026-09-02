@@ -73,7 +73,7 @@ function StageNodeComponent({ data }: NodeProps) {
 
       <div className="mt-2.5 flex items-center justify-between border-t border-border/60 pt-2 font-mono text-[11px] tabular-nums text-muted-foreground">
         <span>{duration}</span>
-        <span>{passRate}</span>
+        <span title="Passes / verify runs counted for this view">{passRate}</span>
       </div>
 
       <Handle

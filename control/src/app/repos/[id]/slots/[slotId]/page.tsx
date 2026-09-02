@@ -4,7 +4,6 @@ import { isPreDedupeUsage } from '@har/schemas';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SessionEventsTable } from '@/components/session-events-table';
-import { SessionTimeline } from '@/components/session-timeline';
 import { TrajectoryViewer } from '@/components/trajectory-viewer';
 import { VerifySummary } from '@/components/verify-summary';
 import { ValidationFlow } from '@/components/validation-flow';
@@ -18,7 +17,6 @@ import { listSessionEventsForSlot } from '@/server/session-events';
 import { getSlotTrajectoryData } from '@/server/trajectory-ledger';
 import { listSessionUsageForSlot } from '@/server/usage';
 import { getValidationStages } from '@/server/validation-stages';
-import { prisma } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,15 +45,10 @@ export default async function SlotDetailPage({
   // A slot number is reused after complete/teardown; a working session is not.
   const occupancyKey = slot.occupancyKey ?? null;
 
-  const [usageRows, validation, events, verifyRuns, trajectory] = await Promise.all([
+  const [usageRows, validation, events, trajectory] = await Promise.all([
     listSessionUsageForSlot(id, slotId, occupancyKey),
     getValidationStages(id, { agentId: slotId }),
     listSessionEventsForSlot(id, slotId),
-    prisma.run.findMany({
-      where: { repositoryId: id, stageId: 'verify', agentId: slotId },
-      orderBy: { startedAt: 'desc' },
-      take: 20,
-    }),
     getSlotTrajectoryData(id, slotId, 100, occupancyKey),
   ]);
 
@@ -197,6 +190,9 @@ export default async function SlotDetailPage({
       <Card>
         <CardHeader>
           <CardTitle>Verify</CardTitle>
+          <CardDescription>
+            Pass rates count this slot&apos;s recent verify runs, up to the last 50.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <VerifySummary validation={validation} validationHref={`/repos/${id}`} showStages={false} />
@@ -205,37 +201,6 @@ export default async function SlotDetailPage({
               <ValidationFlow stages={validation?.stages ?? []} />
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Session activity</CardTitle>
-          <CardDescription>
-            Model usage and verify runs for this slot, newest first.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SessionTimeline
-            usageRows={usageRows.map((row) => ({
-              id: row.id,
-              kind: 'usage' as const,
-              sessionKey: row.sessionKey,
-              agentTool: row.agentTool,
-              tokensTotal: Number(row.tokensTotal),
-              costUsd: row.costUsd == null ? null : Number(row.costUsd),
-              sources: row.sources,
-              models: resolveModels(row.sessionKey, row.agentTool, row.modelBreakdown),
-              at: row.lastSeenAt,
-            }))}
-            verifyRuns={verifyRuns.map((run) => ({
-              id: run.id,
-              kind: 'verify' as const,
-              runId: run.runId,
-              status: run.status,
-              at: run.startedAt,
-            }))}
-          />
         </CardContent>
       </Card>
 
