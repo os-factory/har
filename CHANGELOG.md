@@ -1,3 +1,9 @@
+## [1.8.0](https://github.com/os-factory/har/compare/v1.7.0...v1.8.0) (2026-09-02)
+
+### Features
+
+* **control:** strip Mission Control noise and fix review bugs ([#336](https://github.com/os-factory/har/issues/336)) ([#341](https://github.com/os-factory/har/issues/341)) ([d6a72e6](https://github.com/os-factory/har/commit/d6a72e64a4f0962ab6a7fe26e9490ad2e69c47f2))
+
 ## [1.7.0](https://github.com/os-factory/har/compare/v1.6.0...v1.7.0) (2026-09-01)
 
 ### Features
