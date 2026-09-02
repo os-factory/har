@@ -60,7 +60,7 @@ export function ValidationPipeline({
 
   return (
     <div data-testid="validation-pipeline">
-      <ValidationFlow stages={stages} />
+      <ValidationFlow stages={stages} verifyRunCount={verifyRunCount} />
       <PipelineMetrics stages={stages} verifyRunCount={verifyRunCount} />
     </div>
   );

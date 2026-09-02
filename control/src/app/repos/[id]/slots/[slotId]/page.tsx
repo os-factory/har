@@ -195,10 +195,13 @@ export default async function SlotDetailPage({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <VerifySummary validation={validation} validationHref={`/repos/${id}`} showStages={false} />
+          <VerifySummary validation={validation} validationHref={`/repos/${id}?tab=validation`} showStages={false} />
           {(validation?.stages.length ?? 0) > 0 && (
             <div className="mt-6" data-testid="slot-validation-flow">
-              <ValidationFlow stages={validation?.stages ?? []} />
+              <ValidationFlow
+                stages={validation?.stages ?? []}
+                verifyRunCount={validation?.verifyRunCount ?? 0}
+              />
             </div>
           )}
         </CardContent>

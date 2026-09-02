@@ -11,6 +11,7 @@ import { ValidationPipeline } from '@/components/validation-pipeline';
 import { ValidationStages } from '@/components/validation-stages';
 import { VerifySparkline } from '@/components/verify-sparkline';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RouteTabs } from '@/components/route-tabs';
 import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/server/repositories';
 import { listLineBoards } from '@/server/lines';
 import { listChangeBatches } from '@/server/change-batches';
@@ -155,7 +156,7 @@ export default async function RepoDetailPage({
         </div>
       )}
 
-      <Tabs defaultValue="slots">
+      <RouteTabs defaultValue="slots" values={['slots', 'history', 'validation']}>
         <TabsList>
           <TabsTrigger value="slots">Slots</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
@@ -296,7 +297,7 @@ export default async function RepoDetailPage({
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+      </RouteTabs>
     </div>
   );
 }
