@@ -3,13 +3,13 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { type ColumnDef } from '@tanstack/react-table';
-import { ChevronDown, ChevronRight, FileDiff } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileDiff, PanelRightOpen } from 'lucide-react';
 import { DataTable } from '@/components/data-table/data-table';
 import { ChangeBatchDiff } from '@/components/change-batch-diff';
 import type { ChangeBatchRow } from '@/components/columns/change-batch-columns';
 import type { SessionEventRow } from '@/components/columns/session-event-columns';
 import { SessionEventsTable } from '@/components/session-events-table';
-import { TrajectoryPane } from '@/components/trajectory-pane';
+import { TrajectoryDrawer, useOpenTrajectory } from '@/components/trajectory-drawer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -245,8 +245,9 @@ function OccupancyDetail({ row }: { row: TimelineRow }) {
   );
 }
 
-function SessionDetail({ row, repositoryId }: { row: TimelineRow; repositoryId: string }) {
+function SessionDetail({ row }: { row: TimelineRow }) {
   const session = row.session!;
+  const openTrajectory = useOpenTrajectory();
   return (
     <div className="space-y-3" data-testid="timeline-session-detail">
       <dl className="grid gap-3 sm:grid-cols-5">
@@ -264,12 +265,14 @@ function SessionDetail({ row, repositoryId }: { row: TimelineRow; repositoryId: 
         {session.sources.length > 0 ? ` · ${session.sources.join(', ')}` : ''}
       </p>
       {row.agentId != null ? (
-        <TrajectoryPane
-          repositoryId={repositoryId}
-          agentId={row.agentId}
-          sessionKey={session.sessionKey}
-          agentTool={session.agentTool}
-        />
+        <Button
+          size="sm"
+          onClick={() => openTrajectory({ sessionKey: session.sessionKey, agentTool: session.agentTool, agentId: row.agentId! })}
+          data-testid="timeline-open-trajectory"
+        >
+          <PanelRightOpen className="mr-1.5 size-3.5" />
+          Open trajectory
+        </Button>
       ) : null}
     </div>
   );
@@ -344,7 +347,7 @@ export function SlotTimeline({
       case 'occupancy':
         return <OccupancyDetail row={row} />;
       case 'session':
-        return <SessionDetail row={row} repositoryId={repositoryId} />;
+        return <SessionDetail row={row} />;
       default:
         return null;
     }
@@ -429,6 +432,8 @@ export function SlotTimeline({
           {showRaw ? <SessionEventsTable events={rawEvents} /> : null}
         </div>
       ) : null}
+
+      <TrajectoryDrawer repositoryId={repositoryId} />
 
       <ChangeBatchDiff
         repoId={repositoryId}

@@ -257,7 +257,7 @@ function TrajectoryLog({
         const duration = nodeDurationMs(node);
         const selected = selectedId === node.id;
         return (
-          <li key={node.id} className="relative">
+          <li key={node.id} className="relative" data-node-id={node.id}>
             <button
               type="button"
               aria-pressed={selected}
@@ -427,11 +427,19 @@ export function TrajectoryViewer({
   agentId,
   streams,
   initialPage,
+  selectedNodeId = null,
+  onSelectNode,
+  logHeightClassName = 'h-[32rem] max-h-[70vh]',
 }: {
   repositoryId: string;
   agentId: number;
   streams: TrajectoryStream[];
   initialPage: SerializedTrajectoryPage;
+  /** Node (turn or tool call) to select, e.g. from a shared link. Older pages load until it is found. */
+  selectedNodeId?: string | null;
+  /** Fires when the user selects a node so the host can mirror it into the URL. */
+  onSelectNode?: (nodeId: string) => void;
+  logHeightClassName?: string;
 }) {
   const initialStream = streams[0] ?? null;
   const [selectedKey, setSelectedKey] = useState(initialStream ? streamKey(initialStream) : '');
@@ -442,7 +450,11 @@ export function TrajectoryViewer({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [connectionSeed, setConnectionSeed] = useState(0);
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedIdState] = useState<string | null>(selectedNodeId);
+  const setSelectedId = (id: string | null) => {
+    setSelectedIdState(id);
+    if (id && onSelectNode) onSelectNode(id);
+  };
   const [status, setStatus] = useState<LiveStatus>(
     typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'reconnecting',
   );
@@ -566,6 +578,34 @@ export function TrajectoryViewer({
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }, [loadedKey]);
 
+  // A shared link names a node that may sit in an older page: keep loading history
+  // (bounded) until it is present, then scroll it into view.
+  const pendingSelectionRef = useRef<string | null>(selectedNodeId);
+  useEffect(() => {
+    pendingSelectionRef.current = selectedNodeId;
+    if (selectedNodeId) setSelectedIdState(selectedNodeId);
+  }, [selectedNodeId]);
+  const olderPagesForSelection = useRef(0);
+  useEffect(() => {
+    const target = pendingSelectionRef.current;
+    if (!target) return;
+    if (nodes.some((node) => node.id === target)) {
+      pendingSelectionRef.current = null;
+      olderPagesForSelection.current = 0;
+      requestAnimationFrame(() => {
+        logScrollRef.current
+          ?.querySelector(`[data-node-id="${target}"]`)
+          ?.scrollIntoView({ block: 'center' });
+      });
+      return;
+    }
+    if (hasMore && before && olderPagesForSelection.current < 20) {
+      olderPagesForSelection.current += 1;
+      void loadOlder();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, hasMore, before]);
+
   // Infinite scroll: no pagination controls, older records load as the sentinel at the
   // top of the log scrolls into view.
   useEffect(() => {
@@ -687,7 +727,7 @@ export function TrajectoryViewer({
             onSelect={setSelectedId}
           />
           <div className="overflow-hidden rounded-lg border">
-            <div className="grid h-[32rem] max-h-[70vh] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
+            <div className={cn('grid lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]', logHeightClassName)}>
               <div
                 ref={logScrollRef}
                 className="min-h-0 overflow-auto border-b p-2 lg:border-b-0 lg:border-r"
