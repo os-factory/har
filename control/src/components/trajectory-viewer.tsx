@@ -530,9 +530,18 @@ export function TrajectoryViewer({
     setConnectionSeed((value) => value + 1);
   };
 
+  const logScrollRef = useRef<HTMLDivElement | null>(null);
+  const olderSentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadingOlderRef = useRef(false);
+
+  // Older records are prepended, so keep the viewport anchored on what the user was reading.
   const loadOlder = async () => {
-    if (!selected || !before) return;
+    if (!selected || !before || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
     setLoadingOlder(true);
+    const scroller = logScrollRef.current;
+    const heightBefore = scroller?.scrollHeight ?? 0;
+    const topBefore = scroller?.scrollTop ?? 0;
     try {
       const url = new URL(endpoint(repositoryId, agentId, selected), window.location.origin);
       url.searchParams.set('before', before);
@@ -542,10 +551,34 @@ export function TrajectoryViewer({
       replaceRecords(mergeTrajectoryRecords(page.records, recordsRef.current));
       setBefore(page.nextBefore);
       setHasMore(page.hasMore);
+      requestAnimationFrame(() => {
+        if (scroller) scroller.scrollTop = topBefore + (scroller.scrollHeight - heightBefore);
+      });
     } finally {
+      loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
   };
+
+  // Start at the newest record; older history is above.
+  useEffect(() => {
+    const scroller = logScrollRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }, [loadedKey]);
+
+  // Infinite scroll: no pagination controls, older records load as the sentinel at the
+  // top of the log scrolls into view.
+  useEffect(() => {
+    const sentinel = olderSentinelRef.current;
+    const root = logScrollRef.current;
+    if (!sentinel || !root || !hasMore || !before) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadOlder();
+    }, { root, rootMargin: '120px 0px 0px 0px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [before, hasMore, selectedKey, nodes.length]);
 
   if (streams.length === 0) {
     return (
@@ -642,12 +675,6 @@ export function TrajectoryViewer({
         />
       </div>
 
-      {hasMore && before ? (
-        <Button variant="outline" size="sm" disabled={loadingOlder} onClick={() => void loadOlder()}>
-          {loadingOlder ? 'Loading…' : 'Load older'}
-        </Button>
-      ) : null}
-
       {nodes.length === 0 ? (
         <p className="text-sm text-muted-foreground">No records in this trajectory stream.</p>
       ) : visibleNodes.length === 0 ? (
@@ -660,8 +687,17 @@ export function TrajectoryViewer({
             onSelect={setSelectedId}
           />
           <div className="overflow-hidden rounded-lg border">
-            <div className="grid min-h-[28rem] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
-              <div className="min-h-0 overflow-auto border-b p-2 lg:border-b-0 lg:border-r">
+            <div className="grid h-[32rem] max-h-[70vh] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
+              <div
+                ref={logScrollRef}
+                className="min-h-0 overflow-auto border-b p-2 lg:border-b-0 lg:border-r"
+                data-testid="trajectory-log-scroll"
+              >
+                {hasMore && before ? (
+                  <div ref={olderSentinelRef} className="py-1 text-center text-[11px] text-muted-foreground" aria-live="polite">
+                    {loadingOlder ? 'Loading older records…' : 'Scroll up for older records'}
+                  </div>
+                ) : null}
                 <TrajectoryLog
                   nodes={visibleNodes}
                   selectedId={selectedNode?.id ?? null}

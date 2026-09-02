@@ -3,13 +3,11 @@ import { notFound } from 'next/navigation';
 import type { WorkUnitRelatedLink } from '@har/schemas';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { WorkUnitEvidenceTable } from '@/components/work-unit-evidence-table';
+import { SlotTimeline } from '@/components/slot-timeline';
 import { WorkUnitWorktreesTable } from '@/components/work-unit-worktrees-table';
 import { gitRemoteBrowseUrl } from '@/lib/git-remote-url';
-import {
-  buildWorkUnitEvidenceRows,
-  buildWorkUnitWorktreeRows,
-} from '@/lib/work-unit-evidence';
+import { buildWorkUnitWorktreeRows } from '@/lib/work-unit-evidence';
+import { getWorkUnitTimeline } from '@/server/slot-timeline';
 import { getFactoryWorkUnitById } from '@/server/work-units';
 
 export const dynamic = 'force-dynamic';
@@ -56,10 +54,11 @@ export default async function WorkUnitPage({
     slots: unit.slots,
   });
 
-  const evidence = buildWorkUnitEvidenceRows({
+  const timeline = await getWorkUnitTimeline({
+    repositoryId: unit.repository.id,
+    workUnitId: unit.workUnitId,
     attempts: unit.attempts,
     runs: unit.runs,
-    validationBindings: unit.validationBindings,
     validations: unit.validations,
   });
 
@@ -202,13 +201,19 @@ export default async function WorkUnitPage({
 
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Evidence</CardTitle>
+          <CardTitle>Timeline</CardTitle>
           <CardDescription>
-            Attempts, runs, and exact-tree validations in a searchable table.
+            Attempts, agent sessions, verify runs, verified snapshots and commits across every slot
+            that worked this unit, newest first. Click a row to open it.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <WorkUnitEvidenceTable repoId={unit.repository.id} rows={evidence} />
+          <SlotTimeline
+            repositoryId={unit.repository.id}
+            rows={timeline}
+            showSlotColumn
+            emptyMessage="No execution evidence synchronized yet. Run har env launch with --work-id to bind a slot to this unit."
+          />
         </CardContent>
       </Card>
     </div>

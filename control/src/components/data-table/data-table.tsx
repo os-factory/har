@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Fragment,
   useEffect,
   useId,
   useMemo,
@@ -146,6 +147,10 @@ interface DataTableProps<TData, TValue> {
   rowSelection?: RowSelectionState;
   onRowSelectionChange?: OnChangeFn<RowSelectionState>;
   toolbarExtra?: ReactNode;
+  /** Row id (from `getRowId`) whose detail is rendered inline below it. */
+  expandedRowId?: string | null;
+  /** Renders the inline detail for the expanded row; requires `expandedRowId`. */
+  renderExpanded?: (row: TData) => ReactNode;
   /** Height cap for the table body; the body scrolls inside it and the header stays pinned. */
   maxBodyHeight?: string;
 }
@@ -173,6 +178,8 @@ export function DataTable<TData, TValue>({
   rowSelection: controlledRowSelection,
   onRowSelectionChange,
   toolbarExtra,
+  expandedRowId = null,
+  renderExpanded,
   maxBodyHeight = '70vh',
 }: DataTableProps<TData, TValue>) {
   const paginationId = useId();
@@ -285,25 +292,38 @@ export function DataTable<TData, TValue>({
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
-                  className={cn(
-                    getRowClassName?.(row.original),
-                    onRowClick && 'cursor-pointer',
-                  )}
-                  onClick={onRowClick ? (event) => handleRowClick(event, row.original) : undefined}
-                  onKeyDown={onRowClick ? (event) => handleRowKeyDown(event, row.original) : undefined}
-                  tabIndex={onRowClick ? 0 : undefined}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const expanded = renderExpanded != null && expandedRowId === row.id;
+                return (
+                  <Fragment key={row.id}>
+                    <TableRow
+                      data-state={row.getIsSelected() ? 'selected' : expanded ? 'expanded' : undefined}
+                      aria-expanded={renderExpanded ? expanded : undefined}
+                      className={cn(
+                        getRowClassName?.(row.original),
+                        onRowClick && 'cursor-pointer',
+                        expanded && 'bg-muted/40',
+                      )}
+                      onClick={onRowClick ? (event) => handleRowClick(event, row.original) : undefined}
+                      onKeyDown={onRowClick ? (event) => handleRowKeyDown(event, row.original) : undefined}
+                      tabIndex={onRowClick ? 0 : undefined}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    {expanded ? (
+                      <TableRow data-expanded-detail className="hover:bg-transparent">
+                        <TableCell colSpan={row.getVisibleCells().length} className="bg-muted/20 p-0">
+                          <div className="border-t px-4 py-3">{renderExpanded(row.original)}</div>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
