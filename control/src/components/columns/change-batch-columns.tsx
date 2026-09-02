@@ -55,9 +55,9 @@ export function changeBatchColumns(
   },
   {
     accessorKey: 'treeHash',
-    header: 'Content snapshot',
+    header: 'Snapshot',
     cell: ({ row }) => (
-      <span className="font-mono" title={`Content snapshot ${row.original.treeHash}`}>
+      <span className="font-mono" title={`Snapshot ${row.original.treeHash}`}>
         {row.original.treeHash.slice(0, 8)}
       </span>
     ),
@@ -98,7 +98,7 @@ export function changeBatchColumns(
   },
   {
     accessorKey: 'agentId',
-    header: 'Agent',
+    header: 'Slot',
     cell: ({ row }) => row.original.agentId ?? '—',
   },
   {

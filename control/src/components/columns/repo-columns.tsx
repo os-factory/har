@@ -19,8 +19,9 @@ export interface RepoRow {
   hiddenReason?: RepoHiddenReason;
 }
 
+/** Folder basename everywhere; the git remote is a secondary detail. */
 export function repoName(repo: RepoRow): string {
-  return repo.gitRemote ?? repo.path.split('/').pop() ?? repo.path;
+  return repo.path.split('/').pop() ?? repo.path;
 }
 
 export const repoColumns: ColumnDef<RepoRow>[] = [

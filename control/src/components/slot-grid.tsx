@@ -18,6 +18,7 @@ export function SlotGrid({ slots }: { slots: SlotRow[] }) {
       showPagination={slots.length > 10}
       searchPlaceholder="Search slots…"
       searchAriaLabel="Search slots"
+      columnVisibility={{ harnessUsage: false, lastBuildPass: false, tokens: false, worktree: false }}
       onRowClick={(slot) => {
         if (!slot.repoId) return;
         router.push(`/repos/${slot.repoId}/slots/${slot.slotId}`);

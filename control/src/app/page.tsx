@@ -1,82 +1,122 @@
-import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
+import * as fs from 'fs';
+import { Suspense } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { listFactoryWorkUnits } from '@/server/work-units';
+import { AttentionPanel } from '@/components/attention-panel';
+import { WorktreeGrid, type WorktreeRow } from '@/components/worktree-grid';
+import { attentionItems } from '@/lib/attention';
+import { classifyWorktreeCleanup } from '@/lib/worktree-cleanup-plan';
+import { listSessionWorktrees } from '@/server/repositories';
+import { summarizeUsageForBranch } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
-  const units = await listFactoryWorkUnits();
-  const completed = units.filter((unit) => {
-    const outcome = unit.outcome as { decision?: string } | null;
-    return outcome?.decision === 'completed';
-  }).length;
-  const active = units.filter((unit) => unit.slot).length;
-  const verified = units.filter((unit) =>
-    unit.validations.some((validation) => validation.status === 'pass' && validation.full),
+export default async function NowPage() {
+  const slots = await listSessionWorktrees();
+  const rows: WorktreeRow[] = await Promise.all(
+    slots.map(async (s) => {
+      const usage = await summarizeUsageForBranch(s.repositoryId, s.branch, s.suffix);
+      const path = s.worktreePath ?? s.workDir;
+      const onDisk = path ? fs.existsSync(path) : false;
+      const cleanup = classifyWorktreeCleanup({
+        active: s.active,
+        dirty: s.dirty,
+        sessionCreatedAt: s.sessionCreatedAt,
+        onDisk,
+      });
+      return {
+        repoId: s.repository.id,
+        repoPath: s.repository.path,
+        syncedAt: s.updatedAt,
+        sessionCreatedAt: s.sessionCreatedAt,
+        cleanupRecommendation: cleanup.recommendation,
+        cleanupReason: cleanup.reason,
+        cleanupAgeDays: cleanup.ageDays,
+        slotId: s.slotId,
+        active: s.active,
+        workDir: s.workDir,
+        worktreePath: s.worktreePath,
+        branch: s.branch,
+        baseBranch: s.baseBranch,
+        baseCommit: s.baseCommit,
+        previewUrls: s.previewUrls as Record<string, string> | null,
+        harnessUsage: s.harnessUsage,
+        lastRunAt: s.lastRunAt,
+        lastVerifyStatus: s.lastVerifyStatus,
+        lastBuildPass: s.lastBuildPass,
+        detachedHead: s.detachedHead,
+        dirty: s.dirty,
+        ahead: s.ahead,
+        behind: s.behind,
+        stale: s.stale,
+        purpose: s.purpose,
+        tokensTotal: usage.tokensTotal || null,
+        costUsd: usage.costUsd,
+        agentTools: usage.agentTools,
+        usageSources: usage.sources,
+        onDisk,
+      };
+    }),
+  );
+
+  const active = rows.filter((row) => row.active);
+  const attention = attentionItems(rows);
+  const safeToClean = rows.filter(
+    (row) => row.cleanupRecommendation === 'teardown' || row.cleanupRecommendation === 'clear_missing',
   ).length;
+  const summary = [
+    { label: 'Active slots', value: active.length },
+    { label: 'Needs attention', value: attention.length, alert: attention.length > 0 },
+    { label: 'Repositories in use', value: new Set(active.map((row) => row.repoId)).size },
+    { label: 'Safe to clean', value: safeToClean },
+  ];
 
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
       <div>
-        <h2 className="text-2xl font-semibold">Factory</h2>
+        <h2 className="text-2xl font-semibold">Now</h2>
         <p className="text-sm text-muted-foreground">
-          Durable work identity joined to attempts, exact-tree proof, time, and cost.
+          What is running across your repositories, and what needs you first.
         </p>
       </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ['Work units', units.length],
-          ['Active attempts', active],
-          ['Verified / completed', `${verified} / ${completed}`],
-        ].map(([label, value]) => (
-          <Card key={String(label)}>
-            <CardHeader><CardTitle className="text-base">{label}</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold">{value}</p></CardContent>
+      <div className="grid gap-4 md:grid-cols-4">
+        {summary.map((item) => (
+          <Card key={item.label}>
+            <CardHeader>
+              <CardTitle className="text-base">{item.label}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={`text-2xl font-bold tabular-nums ${item.alert ? 'text-amber-500' : ''}`}>
+                {item.value}
+              </p>
+            </CardContent>
           </Card>
         ))}
       </div>
-
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Work</CardTitle>
+          <CardTitle>Attention</CardTitle>
           <CardDescription>
-            State is derived from execution evidence; only completion and abandonment are explicit.
+            Active slots with a failed verify, a missing or stale worktree, uncommitted changes, or
+            no harness activity.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {units.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <p className="font-medium">No bound work yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Launch with <code>har env launch 1 --work-id ISSUE-123</code>. Existing unbound repositories continue to work normally.
-              </p>
-              <Link className="mt-4 inline-block text-sm underline" href="/worktrees">View operations</Link>
-            </div>
-          ) : units.map((unit) => {
-            const outcome = unit.outcome as { decision?: string } | null;
-            const latestRun = unit.runs[0];
-            const hasFullProof = unit.validations.some((validation) => validation.status === 'pass' && validation.full);
-            const state = outcome?.decision ?? (unit.slot ? 'active' : hasFullProof ? 'verified' : latestRun?.status === 'fail' || latestRun?.status === 'error' ? 'failed' : 'pending');
-            return (
-              <Link key={unit.id} href={`/factory/${unit.id}`} className="block rounded-lg border p-4 transition-colors hover:bg-muted/50">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{unit.title ?? unit.workUnitId}</p>
-                    <p className="font-mono text-xs text-muted-foreground">{unit.workUnitId} · {unit.repository.path}</p>
-                  </div>
-                  <Badge variant={state === 'failed' ? 'destructive' : 'secondary'}>{state}</Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-                  <span>{unit.attempts.length} attempt{unit.attempts.length === 1 ? '' : 's'}</span>
-                  <span>{unit.validationBindings.length} validation{unit.validationBindings.length === 1 ? '' : 's'}</span>
-                  <span>{unit.runs.reduce((sum, run) => sum + (run.durationMs ?? 0), 0)} ms</span>
-                  <span>{Number(unit.usage.costUsd ?? 0).toFixed(4)} USD</span>
-                </div>
-              </Link>
-            );
-          })}
+        <CardContent>
+          <AttentionPanel items={attention} />
+        </CardContent>
+      </Card>
+      <Card className="min-w-0">
+        <CardHeader>
+          <CardTitle>Session worktrees</CardTitle>
+          <CardDescription>
+            Every slot across registered repositories, with a cleanup recommendation. Select safe
+            rows to remove them from Mission Control; tear down on the host with{' '}
+            <code className="text-xs">har env teardown</code>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="min-w-0">
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading worktrees…</p>}>
+            <WorktreeGrid worktrees={rows} />
+          </Suspense>
         </CardContent>
       </Card>
     </div>

@@ -50,7 +50,7 @@ export function createWorkUnitEvidenceColumns(
     },
     {
       accessorKey: 'agentId',
-      header: 'Agent',
+      header: 'Slot',
       cell: ({ row }) =>
         row.original.agentId != null ? (
           <Link

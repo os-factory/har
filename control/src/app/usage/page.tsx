@@ -31,7 +31,7 @@ export default async function UsagePage() {
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
       <div>
-        <h2 className="text-2xl font-semibold">Usage</h2>
+        <h2 className="text-2xl font-semibold">Cost</h2>
         <p className="text-sm text-muted-foreground">
           Cross-repo LLM token and cost rollup from OTEL ingest and harvest. Costs use agent-reported
           USD when available, otherwise{' '}

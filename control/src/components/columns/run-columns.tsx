@@ -1,5 +1,7 @@
 'use client';
 
+import { formatDurationMs } from '@/lib/work-unit-state';
+
 import { type ColumnDef } from '@tanstack/react-table';
 
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +33,7 @@ export const runColumns: ColumnDef<RunRow>[] = [
   },
   {
     accessorKey: 'agentId',
-    header: 'Agent',
+    header: 'Slot',
     cell: ({ row }) => row.original.agentId ?? '—',
   },
   {
@@ -59,6 +61,6 @@ export const runColumns: ColumnDef<RunRow>[] = [
     accessorKey: 'durationMs',
     header: 'Duration',
     cell: ({ row }) =>
-      row.original.durationMs != null ? `${row.original.durationMs}ms` : '—',
+      row.original.durationMs != null ? formatDurationMs(row.original.durationMs) : '—',
   },
 ];

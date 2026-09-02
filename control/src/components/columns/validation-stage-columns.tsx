@@ -92,7 +92,7 @@ export const validationStageColumns: ColumnDef<ValidationStageStatus>[] = [
   },
   {
     accessorKey: 'lastAgentId',
-    header: 'Agent',
+    header: 'Slot',
     cell: ({ row }) => row.original.lastAgentId ?? '—',
   },
 ];

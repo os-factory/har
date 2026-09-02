@@ -1,10 +1,29 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Factory and operations', () => {
-  test('shows Factory as the work-centric home', async ({ page }) => {
+  test('shows Now as the home with attention and worktrees', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Factory' })).toBeVisible();
-    await expect(page.getByText('Work', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Now' })).toBeVisible();
+    await expect(page.getByText('Attention', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('attention-list').or(page.getByTestId('attention-empty'))).toBeVisible();
+  });
+
+  test('Work lists work units as a table with a state filter', async ({ page }) => {
+    await page.goto('/work');
+    await expect(page.getByRole('heading', { name: 'Work' })).toBeVisible();
+    const table = page.getByRole('table');
+    const empty = page.getByText(/no bound work yet/i);
+    await expect(table.or(empty)).toBeVisible();
+    if (await table.isVisible()) {
+      await expect(page.getByRole('group', { name: /filter by state/i })).toBeVisible();
+      await expect(page.getByRole('searchbox', { name: /search work units/i })).toBeVisible();
+    }
+  });
+
+  test('legacy routes redirect', async ({ page }) => {
+    await page.goto('/worktrees');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('heading', { name: 'Now' })).toBeVisible();
   });
 
   test('renders the operations worktree table', async ({ page }) => {
@@ -15,12 +34,12 @@ test.describe('Factory and operations', () => {
     await expect(page.getByRole('checkbox', { name: /select all rows/i })).toBeVisible();
   });
 
-  test('sidebar separates Factory and Operations', async ({ page }) => {
+  test('sidebar lists Now, Work, Repositories, Cost, Settings', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('link', { name: 'Factory', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Operations', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Usage', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Repositories', exact: true })).toBeVisible();
+    for (const name of ['Now', 'Work', 'Repositories', 'Cost', 'Settings']) {
+      await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole('link', { name: 'Operations', exact: true })).toHaveCount(0);
   });
 
   test('keeps horizontal scroll inside the table, not the page', async ({ page }) => {
