@@ -410,20 +410,3 @@ export function describeTimeline(totals: TimelineTotals): string {
   }
   return parts.join(' · ');
 }
-
-/**
- * Keep the rows of one branch. Runs carry no branch of their own, so a run is kept
- * when a snapshot on that branch names it as its verifying run.
- */
-export function filterTimelineByBranch(rows: TimelineRow[], branch: string | null): TimelineRow[] {
-  if (!branch) return rows;
-  const runIds = new Set(
-    rows.flatMap((row) => (row.kind === 'snapshot' && row.branch === branch && row.snapshot?.runId ? [row.snapshot.runId] : [])),
-  );
-  return rows.filter((row) => row.branch === branch || (row.kind === 'run' && row.run != null && runIds.has(row.run.runId)));
-}
-
-/** Distinct branches present in the rows, sorted. */
-export function timelineBranches(rows: TimelineRow[]): string[] {
-  return [...new Set(rows.map((row) => row.branch).filter((b): b is string => Boolean(b)))].sort();
-}

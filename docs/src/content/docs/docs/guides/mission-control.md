@@ -148,7 +148,7 @@ and harness profiles. Repository detail provides:
 
 - active slots, worktrees, branches, preview URLs, dirtiness, and drift;
 - a run timeline with stage, trigger, duration, and status;
-- a **History** graph of content snapshots and the commits that share them, with labeled identifiers (commit, content snapshot, based on, verified by run) and the slot trajectory when one exists;
+- a **History** graph of content snapshots and the commits that share them, laid out by branch. Selecting a node opens the record of the attempt that produced it: verification stages, the attempt timeline, agent trajectory and the bound work unit. Slots are live data and are not linked from the record;
 - expected validation stages and their latest results;
 - exact-tree content snapshots (formerly listed only as change batches) and associated commits;
 - files under `.har/artifacts/`;

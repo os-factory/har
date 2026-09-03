@@ -198,11 +198,14 @@ model Run {
   workDir      String?
   workUnitId   String?
   attemptId    String?
+  /// One occupancy of a slot (#316) — stamped at sync so the record joins exactly (#348).
+  occupancyKey String?
   result       Json?
   createdAt    DateTime   @default(now())
 
   @@unique([repositoryId, runId])
   @@index([repositoryId, startedAt])
+  @@index([repositoryId, occupancyKey])
 }
 
 model WorkUnit {
@@ -304,11 +307,14 @@ model ChangeBatch {
   changedFiles Json?
   commitSha    String?
   committedAt  DateTime?
+  /// One occupancy of a slot (#316) — stamped at sync so the record joins exactly (#348).
+  occupancyKey String?
   createdAt    DateTime
   updatedAt    DateTime   @updatedAt
 
   @@unique([repositoryId, treeHash])
   @@index([repositoryId, branch, createdAt])
+  @@index([repositoryId, occupancyKey])
 }
 
 model CloudConfig {

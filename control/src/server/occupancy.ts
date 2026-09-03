@@ -31,7 +31,7 @@ export type OccupancySource = Pick<
 export function deriveOccupancyKey(slot: OccupancySource): string | null {
   if (!slot.active) return null;
 
-  if (slot.attemptId) return `attempt${PART_SEPARATOR}${slot.attemptId}`;
+  if (slot.attemptId) return occupancyKeyForAttempt(slot.attemptId);
 
   const createdAt = slot.sessionCreatedAt ? new Date(slot.sessionCreatedAt).toISOString() : null;
   if (slot.branch && createdAt) {
@@ -57,4 +57,51 @@ export function isNewOccupancy(
   nextKey: string | null,
 ): boolean {
   return (previousKey ?? null) !== nextKey;
+}
+
+/** Occupancy key of a work attempt — HAR mints one attempt per launch. */
+export function occupancyKeyForAttempt(attemptId: string): string {
+  return `attempt${PART_SEPARATOR}${attemptId}`;
+}
+
+/** Attempt id encoded in an occupancy key, or null for branch / path keys. */
+export function attemptIdFromOccupancyKey(key: string | null | undefined): string | null {
+  if (!key) return null;
+  const prefix = `attempt${PART_SEPARATOR}`;
+  return key.startsWith(prefix) ? key.slice(prefix.length) : null;
+}
+
+export interface RecordOccupancyInput {
+  attemptId?: string | null;
+  agentId?: number | null;
+  workDir?: string | null;
+  /** When the record was produced. */
+  at: Date;
+}
+
+export interface OccupancyCandidate {
+  slotId: number;
+  workDir: string | null;
+  sessionCreatedAt: Date | null;
+  occupancyKey: string | null;
+}
+
+/**
+ * Occupancy key for a run or snapshot record (#348).
+ *
+ * A record bound to an attempt is exact. Otherwise it belongs to the occupancy of the
+ * slot it ran in when it was produced: same work dir, started at or after the session
+ * began. `candidates` are the slot rows of the repository as known at sync time.
+ */
+export function resolveRecordOccupancyKey(
+  record: RecordOccupancyInput,
+  candidates: OccupancyCandidate[],
+): string | null {
+  if (record.attemptId) return occupancyKeyForAttempt(record.attemptId);
+  if (record.agentId == null) return null;
+  const slot = candidates.find((candidate) => candidate.slotId === record.agentId);
+  if (!slot?.occupancyKey) return null;
+  if (slot.workDir && record.workDir && slot.workDir !== record.workDir) return null;
+  if (slot.sessionCreatedAt && record.at < slot.sessionCreatedAt) return null;
+  return slot.occupancyKey;
 }

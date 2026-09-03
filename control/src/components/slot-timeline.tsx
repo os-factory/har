@@ -12,7 +12,6 @@ import { TrajectoryDrawer, useOpenTrajectory } from '@/components/trajectory-dra
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Label } from '@/components/ui/label';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import {
@@ -56,12 +55,7 @@ function formatWhen(iso: string): { date: string; time: string } {
   return { date: d.toLocaleDateString(), time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
 }
 
-interface ColumnOptions {
-  showSlot: boolean;
-  showBranch: boolean;
-}
-
-function buildColumns(repositoryId: string, { showSlot, showBranch }: ColumnOptions, expandedId: string | null): ColumnDef<TimelineRow>[] {
+function buildColumns(repositoryId: string, showSlot: boolean, expandedId: string | null): ColumnDef<TimelineRow>[] {
   const columns: ColumnDef<TimelineRow>[] = [
     {
       id: 'expander',
@@ -117,18 +111,6 @@ function buildColumns(repositoryId: string, { showSlot, showBranch }: ColumnOpti
       },
     },
   ];
-  if (showBranch) {
-    columns.push({
-      accessorKey: 'branch',
-      header: 'Branch',
-      cell: ({ row }) =>
-        row.original.branch ? (
-          <code className="max-w-[16rem] truncate font-mono text-xs" title={row.original.branch}>{row.original.branch}</code>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
-    });
-  }
   if (showSlot) {
     columns.push({
       accessorKey: 'agentId',
@@ -313,13 +295,9 @@ function toChangeBatchRow(row: TimelineRow): ChangeBatchRow {
 export interface SlotTimelineProps {
   repositoryId: string;
   rows: TimelineRow[];
-  /** Events from earlier occupants of the same slot number; rendered collapsed. */
-  previousRows?: TimelineRow[];
-  previousLabel?: string;
   /** Raw OTEL events, offered behind a debug toggle. */
   rawEvents?: SessionEventRow[];
   showSlotColumn?: boolean;
-  showBranchColumn?: boolean;
   emptyMessage?: string;
   searchPlaceholder?: string;
   /** Row opened on first render, e.g. the newest agent session so its trajectory is visible without a click. */
@@ -329,32 +307,19 @@ export interface SlotTimelineProps {
 export function SlotTimeline({
   repositoryId,
   rows,
-  previousRows = [],
-  previousLabel = 'Earlier occupants of this slot',
   rawEvents,
   showSlotColumn = false,
-  showBranchColumn = false,
   emptyMessage = 'Nothing recorded yet. Runs, snapshots, commits and agent sessions appear here as they happen.',
   searchPlaceholder = 'Search timeline…',
   defaultExpandedId = null,
 }: SlotTimelineProps) {
   const [expandedId, setExpandedId] = useState<string | null>(defaultExpandedId);
-  const [previousExpandedId, setPreviousExpandedId] = useState<string | null>(null);
   const [kinds, setKinds] = useState<Set<TimelineKind>>(() => new Set(KIND_ORDER));
   const [diffRow, setDiffRow] = useState<TimelineRow | null>(null);
   const [showRaw, setShowRaw] = useState(false);
-  const [previousOpen, setPreviousOpen] = useState(false);
 
   const visible = useMemo(() => rows.filter((row) => kinds.has(row.kind)), [rows, kinds]);
-  const options = useMemo<ColumnOptions>(
-    () => ({ showSlot: showSlotColumn, showBranch: showBranchColumn }),
-    [showSlotColumn, showBranchColumn],
-  );
-  const columns = useMemo(() => buildColumns(repositoryId, options, expandedId), [repositoryId, options, expandedId]);
-  const previousColumns = useMemo(
-    () => buildColumns(repositoryId, options, previousExpandedId),
-    [repositoryId, options, previousExpandedId],
-  );
+  const columns = useMemo(() => buildColumns(repositoryId, showSlotColumn, expandedId), [repositoryId, showSlotColumn, expandedId]);
   const totals = useMemo(() => summarizeTimeline(rows), [rows]);
   const presentKinds = useMemo(() => KIND_ORDER.filter((kind) => rows.some((row) => row.kind === kind)), [rows]);
 
@@ -418,30 +383,6 @@ export function SlotTimeline({
           </div>
         }
       />
-
-      {previousRows.length > 0 ? (
-        <Collapsible open={previousOpen} onOpenChange={setPreviousOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground" data-testid="timeline-previous-toggle">
-              {previousOpen ? <ChevronDown className="mr-1 size-3.5" /> : <ChevronRight className="mr-1 size-3.5" />}
-              {previousLabel} ({previousRows.length})
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2">
-            <DataTable
-              columns={previousColumns}
-              data={previousRows}
-              getRowId={(row) => row.id}
-              showPagination={false}
-              showToolbar={false}
-              maxBodyHeight="40vh"
-              onRowClick={(row) => setPreviousExpandedId((current) => (current === row.id ? null : row.id))}
-              expandedRowId={previousExpandedId}
-              renderExpanded={renderExpanded}
-            />
-          </CollapsibleContent>
-        </Collapsible>
-      ) : null}
 
       {rawEvents ? (
         <div className="space-y-3">

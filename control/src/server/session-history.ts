@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db';
 import type { SessionHistoryExplanation, SessionHistoryView } from '@/lib/session-history-view';
 import { listChangeBatches } from '@/server/change-batches';
 import { listCommitBindings } from '@/server/commit-bindings';
+import { occupancyKeyForAttempt } from '@/server/occupancy';
 import { extractVerification } from '@/server/validation-stages';
 import type { SessionHistoryStageBadge } from '@/lib/session-history-view';
 
@@ -41,10 +42,17 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
   });
   if (!repo) return null;
 
-  const [batches, bindings] = await Promise.all([
+  const [batches, bindings, validationBindings] = await Promise.all([
     listChangeBatches(repositoryId, 200),
     listCommitBindings(repositoryId),
+    prisma.validationBinding.findMany({
+      where: { repositoryId },
+      select: { validationId: true, attempt: { select: { attemptId: true } } },
+    }),
   ]);
+  // A validation binding ties the snapshot to the attempt exactly; the stamped key is
+  // the fallback for snapshots produced without --work-id (#348).
+  const attemptByValidation = new Map(validationBindings.map((row) => [row.validationId, row.attempt.attemptId]));
 
   const snapshots: HistorySnapshot[] = batches.map((batch) => ({
     validationId: batch.validationId,
@@ -58,6 +66,10 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
     changedFileCount: changedFilesOf(batch.changedFiles).length,
     commitSha: batch.commitSha ?? undefined,
     createdAt: batch.createdAt.toISOString(),
+    occupancyKey: (() => {
+      const attemptId = attemptByValidation.get(batch.validationId);
+      return attemptId ? occupancyKeyForAttempt(attemptId) : batch.occupancyKey ?? undefined;
+    })(),
   }));
 
   const historyBindings: HistoryCommitBinding[] = bindings.map((row) => ({
@@ -88,37 +100,6 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
   });
 
   const batchesByTree = new Map(batches.map((batch) => [batch.treeHash, batch]));
-  const agentIds = [
-    ...new Set(
-      graph.nodes
-        .map((node) => node.agentId ?? (node.treeHash ? batchesByTree.get(node.treeHash)?.agentId : null))
-        .filter((id): id is number => id != null),
-    ),
-  ];
-  const trajectoryByAgent = new Map<number, { recordCount: number; firstPrompt: string | null }>();
-  await Promise.all(
-    agentIds.map(async (agentId) => {
-      const [recordCount, prompt] = await Promise.all([
-        prisma.agentTrajectoryRecord.count({ where: { repositoryId, agentId } }),
-        prisma.agentTrajectoryRecord.findFirst({
-          where: {
-            repositoryId,
-            agentId,
-            eventType: { in: ['prompt.submitted', 'user', 'prompt'] },
-          },
-          orderBy: [{ sequence: 'asc' }, { eventTimestamp: 'asc' }],
-        }),
-      ]);
-      let firstPrompt: string | null = null;
-      const payload = prompt?.payload;
-      if (payload && typeof payload === 'object' && payload !== null) {
-        const text =
-          (payload as { text?: unknown }).text ?? (payload as { prompt?: unknown }).prompt;
-        if (typeof text === 'string' && text.trim()) firstPrompt = text.trim();
-      }
-      trajectoryByAgent.set(agentId, { recordCount, firstPrompt });
-    }),
-  );
 
   // Stage badges come from the run that verified this exact tree — never from the
   // repository's latest run, which may belong to another slot or branch.
@@ -144,23 +125,11 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
 
   for (const node of graph.nodes) {
     const batch = node.treeHash ? batchesByTree.get(node.treeHash) : undefined;
-    const agentId = node.agentId ?? batch?.agentId ?? null;
-    const trajectory = (agentId != null ? trajectoryByAgent.get(agentId) : undefined) ?? {
-      recordCount: 0,
-      firstPrompt: null,
-    };
-
     explanations[node.id] = {
       node,
       provenance: provenanceForNode(node),
       stages: (node.runId ? stagesByRun.get(node.runId) : undefined) ?? [],
       changedFiles: changedFilesOf(batch?.changedFiles),
-      trajectory: {
-        agentId,
-        recordCount: trajectory.recordCount,
-        firstPrompt: trajectory.firstPrompt,
-        slotHref: agentId != null ? `/repos/${repositoryId}/slots/${agentId}` : null,
-      },
       reusedProof: node.matchingCommitCount > 1,
     };
   }

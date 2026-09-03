@@ -11,12 +11,6 @@ export interface SessionHistoryExplanation {
   provenance: HistoryProvenance;
   stages: SessionHistoryStageBadge[];
   changedFiles: { path: string; status: string; oldPath?: string }[];
-  trajectory: {
-    agentId: number | null;
-    recordCount: number;
-    firstPrompt: string | null;
-    slotHref: string | null;
-  };
   reusedProof: boolean;
 }
 
