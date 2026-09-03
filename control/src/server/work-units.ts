@@ -4,6 +4,7 @@ import {
   SyncWorkUnitsInputSchema,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
+import { attributeWorkUnitUsage } from '@/server/work-unit-usage';
 
 export async function syncWorkUnits(repositoryId: string, input: unknown) {
   const { workUnits, attempts } = SyncWorkUnitsInputSchema.parse(input);
@@ -156,10 +157,7 @@ export async function listFactoryWorkUnits(repositoryId?: string) {
           orderBy: { startedAt: 'desc' },
           take: 100,
         }),
-        prisma.agentSessionUsage.aggregate({
-          where: { repositoryId: unit.repositoryId, workUnitId: unit.workUnitId },
-          _sum: { tokensTotal: true, costUsd: true },
-        }),
+        attributeWorkUnitUsage(unit.repositoryId, unit.workUnitId, unit.attempts),
         prisma.changeBatch.findMany({
           where: {
             repositoryId: unit.repositoryId,
@@ -170,7 +168,7 @@ export async function listFactoryWorkUnits(repositoryId?: string) {
         }),
       ]);
       const slot = slots.find((candidate) => candidate.active) ?? null;
-      return { ...unit, slot, slots, runs, usage: usage._sum, validations };
+      return { ...unit, slot, slots, runs, usage, validations };
     }),
   );
 }

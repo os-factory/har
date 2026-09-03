@@ -8,6 +8,7 @@ import { VerifySummary } from '@/components/verify-summary';
 import { ValidationFlow } from '@/components/validation-flow';
 import { getRepository } from '@/server/repositories';
 import { listSessionEventsForSlot } from '@/server/session-events';
+import { pickDefaultSession } from '@/lib/slot-timeline';
 import { getSlotTimeline } from '@/server/slot-timeline';
 import { getValidationStages } from '@/server/validation-stages';
 
@@ -37,8 +38,8 @@ export default async function SlotDetailPage({
     listSessionEventsForSlot(id, slotId),
   ]);
 
-  // Open the newest agent session so its trajectory is readable without a click.
-  const newestSession = timeline.find((row) => row.kind === 'session');
+  // Open the newest agent session that has content so its trajectory is readable without a click.
+  const newestSession = pickDefaultSession(timeline);
   const previewUrls = (slot.previewUrls ?? null) as Record<string, string> | null;
   const previewEntries = slot.active && previewUrls ? Object.entries(previewUrls) : [];
   const repoName = repo.path.split('/').pop() ?? repo.path;

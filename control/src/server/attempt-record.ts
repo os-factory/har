@@ -80,7 +80,7 @@ function relatedLinks(value: unknown): WorkUnitRelatedLink[] {
  * attempt owned its work dir: from the attempt start until the next attempt that
  * reused the same work dir on the same slot.
  */
-async function legacyWindow(repositoryId: string, attempt: WorkAttempt) {
+export async function legacyWindow(repositoryId: string, attempt: WorkAttempt) {
   if (!attempt.workDir) return null;
   const next = await prisma.workAttempt.findFirst({
     where: {
@@ -100,9 +100,9 @@ async function legacyWindow(repositoryId: string, attempt: WorkAttempt) {
   };
 }
 
-type Window = NonNullable<Awaited<ReturnType<typeof legacyWindow>>>;
+export type LegacyWindow = NonNullable<Awaited<ReturnType<typeof legacyWindow>>>;
 
-function inWindow(window: Window | null, row: { agentId: number | null; workDir: string | null; at: Date }) {
+export function inWindow(window: LegacyWindow | null, row: { agentId: number | null; workDir: string | null; at: Date }) {
   if (!window) return false;
   if (row.agentId !== window.agentId || row.workDir !== window.workDir) return false;
   if (row.at < window.from) return false;
@@ -124,7 +124,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
   if (!attempt && !slot) return null;
 
   const agentId = attempt?.agentId ?? slot?.slotId ?? null;
-  const window = attempt ? await legacyWindow(repositoryId, attempt) : null;
+  const window: LegacyWindow | null = attempt ? await legacyWindow(repositoryId, attempt) : null;
   const boundValidationIds = attempt?.validationBindings.map((row) => row.validationId) ?? [];
 
   const [runs, snapshots, usageRows, streams] = await Promise.all([

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTimelineRows, describeTimeline, summarizeTimeline } from './slot-timeline';
+import { buildTimelineRows, describeSession, describeTimeline, formatDurationShort, pickDefaultSession, summarizeTimeline } from './slot-timeline';
 
 const t = (iso: string) => new Date(iso);
 
@@ -170,5 +170,35 @@ describe('summarizeTimeline', () => {
       sessions: 2, runs: 2, verifyPassed: 1, snapshots: 0, commits: 0, tokensTotal: 1500, costUsd: 1.5,
     });
     expect(describeTimeline(totals)).toBe('2 agent sessions · 2 runs (1 passed) · 0 snapshots · 0 commits · 1.5k tokens · $1.50');
+  });
+});
+
+describe('pickDefaultSession / describeSession (#339)', () => {
+  const session = (key: string, at: string, tokens: number, sources: string[] = []) => ({
+    sessionKey: key, agentTool: 'cursor', agentId: 1, models: ['gpt-5'], tokensTotal: tokens, costUsd: tokens ? 0.004 : null,
+    costSource: tokens ? 'estimated' : null, sources, firstSeenAt: t(at), lastSeenAt: t(at.replace('T10', 'T11')), firstPrompt: null,
+  });
+
+  it('prefers the newest session that has content over a metadata-only stub', () => {
+    const rows = buildTimelineRows({
+      sessions: [session('stub', '2026-09-03T10:00:00Z', 0), session('real', '2026-09-02T10:00:00Z', 900), session('older', '2026-09-01T10:00:00Z', 5)],
+    });
+    expect(pickDefaultSession(rows)?.session?.sessionKey).toBe('real');
+    const trajectoryOnly = buildTimelineRows({ sessions: [session('stub', '2026-09-03T10:00:00Z', 0), session('traj', '2026-09-02T10:00:00Z', 0, ['trajectory'])] });
+    expect(pickDefaultSession(trajectoryOnly)?.session?.sessionKey).toBe('traj');
+    expect(pickDefaultSession(buildTimelineRows({ sessions: [session('only', '2026-09-03T10:00:00Z', 0)] }))?.session?.sessionKey).toBe('only');
+    expect(pickDefaultSession([])).toBeUndefined();
+  });
+
+  it('labels a session with model, duration, tokens and cost provenance', () => {
+    const [row] = buildTimelineRows({ sessions: [session('real', '2026-09-02T10:00:00Z', 900)] });
+    expect(describeSession(row)).toBe('gpt-5 · 1h · 900 tokens · $0.0040 est.');
+  });
+
+  it('formats durations without raw milliseconds', () => {
+    expect(formatDurationShort(400)).toBe('<1s');
+    expect(formatDurationShort(42_000)).toBe('42s');
+    expect(formatDurationShort(125_000)).toBe('2m 5s');
+    expect(formatDurationShort(3_600_000)).toBe('1h');
   });
 });

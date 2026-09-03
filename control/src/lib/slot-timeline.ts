@@ -28,6 +28,8 @@ export interface TimelineSessionDetail {
   durationMs: number | null;
   tokensTotal: number;
   costUsd: number | null;
+  /** 'reported' by the agent, 'estimated' via genai-prices, or null when unknown (#339). */
+  costSource: string | null;
   firstPrompt: string | null;
   sources: string[];
 }
@@ -130,6 +132,7 @@ export interface TimelineSessionInput {
   models: string[];
   tokensTotal: number;
   costUsd: number | null;
+  costSource?: string | null;
   sources: string[];
   firstSeenAt: Date;
   lastSeenAt: Date;
@@ -255,6 +258,7 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
         durationMs: durationMs > 0 ? durationMs : null,
         tokensTotal: session.tokensTotal,
         costUsd: cost,
+        costSource: session.costSource ?? null,
         firstPrompt: session.firstPrompt,
         sources: session.sources,
       },
@@ -409,4 +413,45 @@ export function describeTimeline(totals: TimelineTotals): string {
     parts.push(`${formatTokenCount(totals.tokensTotal)} tokens${totals.costUsd != null ? ` · $${totals.costUsd.toFixed(2)}` : ''}`);
   }
   return parts.join(' · ');
+}
+
+/**
+ * The session to open by default: the newest one that has content — tokens counted or a
+ * trajectory captured — so a metadata-only stub never hides the real session (#339).
+ */
+export function pickDefaultSession(rows: TimelineRow[]): TimelineRow | undefined {
+  const sessions = rows.filter((row) => row.kind === 'session');
+  return (
+    sessions.find((row) => (row.session?.tokensTotal ?? 0) > 0 || row.session?.sources.includes('trajectory')) ??
+    sessions[0]
+  );
+}
+
+/** Compact one-line label for a session (#339): tool · model · duration · tokens · cost. */
+export function describeSession(row: TimelineRow): string {
+  const session = row.session;
+  if (!session) return row.title;
+  const cost =
+    session.costUsd == null
+      ? null
+      : `$${session.costUsd < 0.01 ? session.costUsd.toFixed(4) : session.costUsd.toFixed(2)}${session.costSource === 'estimated' ? ' est.' : ''}`;
+  return [
+    session.models[0] ?? null,
+    session.durationMs != null ? formatDurationShort(session.durationMs) : null,
+    session.tokensTotal > 0 ? `${formatTokenCount(session.tokensTotal)} tokens` : null,
+    cost,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Durations in seconds or minutes — never raw milliseconds (#339). */
+export function formatDurationShort(ms: number): string {
+  if (ms < 1000) return '<1s';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m}m ${s % 60}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
 }

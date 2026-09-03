@@ -6,6 +6,7 @@ import { AttemptRecordView } from '@/components/attempt-record';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { pickDefaultSession } from '@/lib/slot-timeline';
 import { timeAgo } from '@/lib/time';
 import type { AttemptRecord } from '@/server/attempt-record';
 
@@ -37,7 +38,6 @@ export function WorkUnitAttempts({ repositoryId, records }: { repositoryId: stri
       {records.map((record) => {
         const isOpen = open.has(record.occupancyKey);
         const latest = record.verification?.latestRun ?? null;
-        const newestSession = record.timeline.find((row) => row.kind === 'session');
         return (
           <Collapsible key={record.occupancyKey} open={isOpen} onOpenChange={() => toggle(record.occupancyKey)}>
             <div className="rounded-xl border">
@@ -74,7 +74,7 @@ export function WorkUnitAttempts({ repositoryId, records }: { repositoryId: stri
                   repositoryId={repositoryId}
                   record={record}
                   showWorkUnit={false}
-                  defaultExpandedId={newestSession?.id ?? null}
+                  defaultExpandedId={pickDefaultSession(record.timeline)?.id ?? null}
                 />
               </CollapsibleContent>
             </div>

@@ -17,6 +17,7 @@ import { formatAgentToolLabel } from '@/lib/agent-tool';
 import {
   TIMELINE_KIND_LABEL,
   describeTimeline,
+  formatDurationShort,
   formatTokenCount,
   summarizeTimeline,
   type TimelineKind,
@@ -24,7 +25,7 @@ import {
   type TimelineTone,
 } from '@/lib/slot-timeline';
 import { formatModelId } from '@/lib/usage-models';
-import { formatDurationMs } from '@/lib/work-unit-state';
+import { formatDuration } from '@/lib/stage-meta';
 
 const KIND_ORDER: TimelineKind[] = ['occupancy', 'session', 'run', 'snapshot', 'commit'];
 
@@ -146,7 +147,7 @@ function RunDetail({ row }: { row: TimelineRow }) {
     <div className="space-y-3" data-testid="timeline-run-detail">
       <dl className="grid gap-3 sm:grid-cols-4">
         <Field label="Result" value={<Badge variant={toneVariant(row.tone)}>{row.status}</Badge>} />
-        <Field label="Duration" value={run.durationMs != null ? formatDurationMs(run.durationMs) : '—'} />
+        <Field label="Duration" value={run.durationMs != null ? formatDurationShort(run.durationMs) : '—'} />
         <Field label="Trigger" value={run.trigger} />
         <Field label="Run id" value={run.runId} mono />
       </dl>
@@ -156,7 +157,7 @@ function RunDetail({ row }: { row: TimelineRow }) {
             <li key={stage.name}>
               <Badge variant={stage.pass ? 'success' : 'destructive'} className="gap-1 font-mono text-[11px]">
                 {stage.pass ? '✓' : '✗'} {stage.name}
-                {stage.ms != null ? <span className="opacity-70">{formatDurationMs(stage.ms)}</span> : null}
+                {stage.ms != null ? <span className="opacity-70">{formatDuration(stage.ms)}</span> : null}
               </Badge>
             </li>
           ))}
@@ -254,9 +255,12 @@ function SessionDetail({ row }: { row: TimelineRow }) {
           label="Models"
           value={session.models.length > 0 ? session.models.map(formatModelId).join(', ') : '—'}
         />
-        <Field label="Duration" value={session.durationMs != null ? formatDurationMs(session.durationMs) : '—'} />
+        <Field label="Duration" value={session.durationMs != null ? formatDurationShort(session.durationMs) : '—'} />
         <Field label="Tokens" value={formatTokenCount(session.tokensTotal)} />
-        <Field label="Cost" value={session.costUsd != null ? `$${session.costUsd.toFixed(4)}` : '—'} />
+        <Field
+          label={session.costSource === 'estimated' ? 'Cost (estimated)' : session.costSource === 'reported' ? 'Cost (agent-reported)' : 'Cost'}
+          value={session.costUsd != null ? `$${session.costUsd.toFixed(4)}` : '—'}
+        />
       </dl>
       <p className="font-mono text-[11px] text-muted-foreground">
         session {session.sessionKey}
@@ -396,7 +400,7 @@ export function SlotTimeline({
         </div>
       ) : null}
 
-      <TrajectoryDrawer repositoryId={repositoryId} />
+      <TrajectoryDrawer repositoryId={repositoryId} sessions={rows} />
 
       <ChangeBatchDiff
         repoId={repositoryId}

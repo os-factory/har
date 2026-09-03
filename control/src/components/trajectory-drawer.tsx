@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { TrajectoryViewer } from '@/components/trajectory-viewer';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
+import { describeSession, type TimelineRow } from '@/lib/slot-timeline';
 import type { SerializedTrajectoryPage } from '@/lib/trajectory';
 
 /** URL parameters that address a trajectory (and optionally one turn / tool call) so it can be shared. */
@@ -64,7 +65,7 @@ export function useOpenTrajectory() {
  * opens it, and selecting a turn or tool call updates `trajectoryNode`, so the address
  * bar is always a shareable deep link to what is on screen.
  */
-export function TrajectoryDrawer({ repositoryId }: { repositoryId: string }) {
+export function TrajectoryDrawer({ repositoryId, sessions = [] }: { repositoryId: string; sessions?: TimelineRow[] }) {
   const searchParams = useSearchParams();
   const open = useOpenTrajectory();
   const target = readTrajectoryTarget(new URLSearchParams(searchParams.toString()));
@@ -72,6 +73,13 @@ export function TrajectoryDrawer({ repositoryId }: { repositoryId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const streamKey = target ? `${target.agentId}::${target.sessionKey}::${target.agentTool}` : null;
+  // #339: label the drawer with what the session is — first prompt, then tool · model ·
+  // duration · tokens · cost — instead of the IDE's session id.
+  const sessionRow = target
+    ? sessions.find(
+        (row) => row.kind === 'session' && row.session?.sessionKey === target.sessionKey && row.session.agentTool === target.agentTool,
+      )
+    : undefined;
 
   useEffect(() => {
     if (!target) {
@@ -122,14 +130,25 @@ export function TrajectoryDrawer({ repositoryId }: { repositoryId: string }) {
       >
         <SheetHeader className="space-y-1 pr-8 text-left">
           <div className="flex flex-wrap items-center gap-2">
-            <SheetTitle>Agent trajectory</SheetTitle>
+            <SheetTitle className="max-w-[60ch] truncate" title={sessionRow?.title}>
+              {sessionRow?.session?.firstPrompt ? sessionRow.title : 'Agent trajectory'}
+            </SheetTitle>
             <Button variant="outline" size="sm" onClick={() => void copyLink()} data-testid="trajectory-copy-link">
               {copied ? <Check className="mr-1.5 size-3.5" /> : <Link2 className="mr-1.5 size-3.5" />}
               {copied ? 'Link copied' : 'Copy link'}
             </Button>
           </div>
-          <SheetDescription>
-            {target ? `${formatAgentToolLabel(target.agentTool)} · slot ${target.agentId} · ${target.sessionKey}` : ''}
+          <SheetDescription data-testid="trajectory-session-label">
+            {target
+              ? [
+                  sessionRow ? new Date(sessionRow.at).toLocaleString() : null,
+                  formatAgentToolLabel(target.agentTool),
+                  sessionRow ? describeSession(sessionRow) : null,
+                  `slot ${target.agentId}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : ''}
             {' '}— click a turn or tool call to put it in the link.
           </SheetDescription>
         </SheetHeader>
