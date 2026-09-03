@@ -1,3 +1,9 @@
+## [1.10.0](https://github.com/os-factory/har/compare/v1.9.0...v1.10.0) (2026-09-03)
+
+### Features
+
+* **control:** one slot timeline for runs, snapshots, commits and sessions ([#338](https://github.com/os-factory/har/issues/338)) ([#346](https://github.com/os-factory/har/issues/346)) ([dca98c1](https://github.com/os-factory/har/commit/dca98c114cc6a943714c6ad5228f45693e841f0c))
+
 ## [1.9.0](https://github.com/os-factory/har/compare/v1.8.0...v1.9.0) (2026-09-02)
 
 ### Features
