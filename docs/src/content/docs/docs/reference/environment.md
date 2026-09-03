@@ -102,7 +102,7 @@ registry and environment. Consumers should never assume the default remains free
 | `HARNESS_TEMPLATE_DB` | Database cloned for each slot |
 | `HARNESS_TEMPLATE_DBS` | Optional logical-name/template pairs for multiple stores |
 | `HARNESS_DB_MIGRATE_CMD` | Idempotent schema command |
-| `HARNESS_DB_SEED_CMD` | Template seed command |
+| `HARNESS_DB_SEED_CMD` | Seed command — once against the Postgres template DB, or once per slot at launch for file-backed databases |
 | `HARNESS_DB_MINIMAL_BOOTSTRAP_CMD` | Optional small per-slot bootstrap |
 | `HARNESS_INFRA_PORT_LANES` | Port lane per service: `<lane>=<default>:<scan_start>-<scan_end>` |
 
