@@ -17,6 +17,8 @@ import {
   harnessUsesSimulator,
 } from '../src/harness/capabilities';
 import { readStageRegistry } from '../src/harness/stages';
+import { readManifest } from '../src/harness/manifest';
+import { getHarPackageVersion } from '../src/core/package-version';
 
 function makeTempRepo(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
@@ -64,6 +66,23 @@ describe('plugins', () => {
     };
     expect(pkg.scripts['test:e2e']).toBe('playwright test');
     expect(pkg.devDependencies['@playwright/test']).toBe('^1.40.0');
+  });
+
+  it('stamps manifest.cliVersion when applying a plugin (#344)', () => {
+    const repoPath = makeTempRepo('har-plugin-cli-version');
+    fs.writeFileSync(
+      path.join(repoPath, 'package.json'),
+      JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
+    );
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+    const manifestPath = path.join(repoPath, '.har', 'manifest.json');
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    raw.cliVersion = '0.1.0';
+    fs.writeFileSync(manifestPath, JSON.stringify(raw, null, 2) + '\n');
+
+    applyPlugin(repoPath, 'playwright', { skipCi: true });
+
+    expect(readManifest(repoPath)?.cliVersion).toBe(getHarPackageVersion());
   });
 
   it('applies rocketsim plugin to a scaffolded harness', () => {

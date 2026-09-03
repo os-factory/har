@@ -1,6 +1,7 @@
 {
   "version": "1",
   "runtimeVersion": "1.0.0",
+  "cliVersion": "1.10.0",
   "outputDir": ".har",
   "createdAt": "2026-08-27T13:49:53.453Z",
   "updatedAt": "2026-08-27T13:49:53.453Z",

@@ -65,8 +65,15 @@ export const HarnessManifestSchema = z.object({
    * Harness runtime-contract version (#241) — the shape of the installed
    * `.har/` surface (thin shims + pure config = '1.0.0'). Absent on pre-1.0
    * harnesses; the migration registry (src/harness/migrations.ts) keys on it.
+   * Not the CLI that wrote the harness — that is `cliVersion`.
    */
   runtimeVersion: z.string().optional(),
+  /**
+   * @osfactory/har version that last wrote this harness (#344).
+   * Stamped by init / maintain / add-plugin / line add. Doctor compares it
+   * to the running CLI and stops with an upgrade error when the CLI is older.
+   */
+  cliVersion: z.string().optional(),
   /** Shape this harness was migrated from ('pre-1.0'), stamped at migration (#241). */
   migratedFrom: z.string().optional(),
   migratedAt: z.string().optional(),

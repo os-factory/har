@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getHarPackageVersion } from '../core/package-version';
 import { listSlotRegistryEntries } from '../core/slot-registry';
+import { compareSemver } from '../utils/semver';
 import { EJECTED_RUNTIME_BUNDLE, EJECTED_RUNTIME_DIR } from './eject';
 import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
@@ -22,6 +24,7 @@ import { LEGACY_MACHINERY_FILES } from './migrations';
  */
 
 export type DoctorCheckId =
+  | 'cli-version'
   | 'harness-env'
   | 'stages-registry'
   | 'stage-files'
@@ -91,6 +94,7 @@ function listHarnessShellScripts(harnessDir: string): string[] {
 }
 
 const CHECK_LABELS: Record<DoctorCheckId, string> = {
+  'cli-version': 'CLI vs harness writer',
   'harness-env': 'harness.env schema',
   'stages-registry': 'stages.json registry',
   'stage-files': 'stage scripts & commands',
@@ -179,6 +183,34 @@ export function runDoctor(repoPath: string): DoctorReport {
   // Pre-1.0 harnesses keep working until they migrate (#241): contract
   // findings degrade to warnings so maintain/launch report instead of block.
   const contractSeverity: 'error' | 'warning' = contract === '1.0' ? 'error' : 'warning';
+
+  // 0. Stale CLI vs a newer harness (#344): one upgrade error, then stop.
+  // Missing-stage noise is wrong once the writer is newer than this binary.
+  const writerVersion = readManifest(repoPath)?.cliVersion;
+  const runningVersion = getHarPackageVersion();
+  if (!writerVersion) {
+    skipped.add('cli-version');
+  }
+  if (writerVersion && compareSemver(runningVersion, writerVersion) < 0) {
+    const finding: DoctorFinding = {
+      check: 'cli-version',
+      severity: 'error',
+      file: 'manifest.json',
+      message: `This harness was written by @osfactory/har ${writerVersion}; you are running ${runningVersion}.`,
+      remedy:
+        'npm install -g @osfactory/har@latest   (or run the repo\'s local build: node dist/index.js)',
+    };
+    return {
+      ok: false,
+      contract,
+      checks: (Object.keys(CHECK_LABELS) as DoctorCheckId[]).map((id) =>
+        id === 'cli-version'
+          ? { id, label: CHECK_LABELS[id], status: 'fail' as const }
+          : { id, label: CHECK_LABELS[id], status: 'skip' as const },
+      ),
+      findings: [finding],
+    };
+  }
 
   // 1. harness.env against HarnessEnvSchema
   const envValidation = readValidatedHarnessEnv(repoPath);

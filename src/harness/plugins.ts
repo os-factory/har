@@ -15,6 +15,7 @@ import {
 import { upsertPluginLedgerEntry } from './plugin-ledger';
 import { buildPluginAdaptationPrompt, writePluginAdaptationPrompt } from './plugin-prompt';
 import { HarnessStageRegistry, HarnessStageSchema, LINE_BUNDLE_KIND } from './schema';
+import { stampManifestWriter } from './manifest';
 import { readStageRegistry, writeStageRegistry } from './stages';
 
 /** Plugin id is a free-form slug discovered from manifests (no closed enum). */
@@ -394,6 +395,7 @@ function applyPluginFromDir(
   });
   const promptAbsPath = writePluginAdaptationPrompt(resolved, manifest.id, promptContent);
   const adaptPromptPath = path.relative(resolved, promptAbsPath);
+  stampManifestWriter(resolved);
 
   success(`Applied plugin: ${manifest.id}`);
   info(`Registered stage(s): ${stageIds.join(', ')}`);

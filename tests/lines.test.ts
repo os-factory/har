@@ -11,6 +11,8 @@ import { listBundledLineIds } from '../src/harness/line-resolve';
 import { cumulativeGateStages, getLineStatus, listInstalledLineIds } from '../src/core/lines';
 import { runDoctor } from '../src/harness/doctor';
 import { readStageRegistry } from '../src/harness/stages';
+import { readManifest } from '../src/harness/manifest';
+import { getHarPackageVersion } from '../src/core/package-version';
 
 function makeTempRepo(name: string): string {
   const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
@@ -61,6 +63,7 @@ describe('factory lines', () => {
     expect(
       fs.existsSync(path.join(repoPath, '.har', 'ADAPT-PROMPT-line-example-line.md')),
     ).toBe(true);
+    expect(readManifest(repoPath)?.cliVersion).toBe(getHarPackageVersion());
   });
 
   it('records the install in .har/lines.json', () => {
