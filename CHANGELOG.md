@@ -1,3 +1,15 @@
+## [1.12.0](https://github.com/os-factory/har/compare/v1.11.0...v1.12.0) (2026-09-03)
+
+### Features
+
+* **control:** History is the record — commits open the attempt that produced them; slots are live only ([#348](https://github.com/os-factory/har/issues/348)) ([#350](https://github.com/os-factory/har/issues/350)) ([9fd3875](https://github.com/os-factory/har/commit/9fd38754dddc64d1d651188dd0d0c32d24eaa46d))
+* **control:** legible sessions, cost through attempts and the slot health cell ([#339](https://github.com/os-factory/har/issues/339)) ([#354](https://github.com/os-factory/har/issues/354)) ([da571ad](https://github.com/os-factory/har/commit/da571ad1df02d25b210a90f067d82078bc532f62))
+
+### Bug Fixes
+
+* **launch:** run HARNESS_DB_SEED_CMD per slot for file-backed databases ([#345](https://github.com/os-factory/har/issues/345)) ([#351](https://github.com/os-factory/har/issues/351)) ([7ba89da](https://github.com/os-factory/har/commit/7ba89da0bdd4df95d1424b36edc6f3ff31aad334))
+* **work:** launch --work-id reopens a decided work unit instead of failing ([#352](https://github.com/os-factory/har/issues/352)) ([#353](https://github.com/os-factory/har/issues/353)) ([f8d9240](https://github.com/os-factory/har/commit/f8d924069a3034203d07ba4b68df828a006b4b16))
+
 ## [1.11.0](https://github.com/os-factory/har/compare/v1.10.1...v1.11.0) (2026-09-03)
 
 ### Features
