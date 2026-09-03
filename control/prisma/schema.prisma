@@ -84,6 +84,8 @@ model AgentSessionUsage {
   tokensCacheCreation BigInt     @default(0)
   tokensTotal         BigInt     @default(0)
   costUsd             Decimal?
+  /// Where costUsd comes from: "reported" by the agent, "estimated" via genai-prices, or null (#339).
+  costSource          String?
   modelBreakdown      Json?
   sources             Json       @default("[]")
   // Harvest generation behind these counters; 0 = pre-dedupe, reads high.

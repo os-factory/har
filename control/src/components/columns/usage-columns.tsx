@@ -17,6 +17,7 @@ export interface UsageRow {
   agentTool: string;
   tokensTotal: number;
   costUsd: number | null;
+  costSource: string | null;
   sources: string[];
   preDedupe: boolean;
   lastSeenAt: Date | string;
@@ -93,7 +94,10 @@ export const usageColumns: ColumnDef<UsageRow>[] = [
     accessorFn: (row) => row.costUsd ?? -1,
     header: 'Cost',
     cell: ({ row }) => (
-      <span className="tabular-nums">{formatCostUsd(row.original.costUsd)}</span>
+      <span className="tabular-nums" title={row.original.costSource === 'estimated' ? 'Estimated from model usage via genai-prices' : row.original.costSource === 'reported' ? 'Reported by the agent' : undefined}>
+        {formatCostUsd(row.original.costUsd)}
+        {row.original.costSource === 'estimated' ? <span className="ml-1 text-[10px] uppercase text-muted-foreground">est.</span> : null}
+      </span>
     ),
   },
   {

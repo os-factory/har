@@ -7,7 +7,9 @@ test.describe('Usage page', () => {
     // Summary card titles can also appear as column headers when rows exist.
     await expect(page.getByText('Sessions', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Tokens', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('Estimated cost', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Cost', { exact: true }).first()).toBeVisible();
+    // #339: period filter is always offered; repository filter appears with more than one repo.
+    await expect(page.getByRole('combobox', { name: 'Filter usage by period' })).toBeVisible();
 
     const empty = page.getByText(/no usage recorded yet/i);
     const table = page.getByRole('table');

@@ -7,6 +7,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 
 import { Badge } from '@/components/ui/badge';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
+import { describeSlotHealth, describeSlotVerify, type HealthTone } from '@/lib/slot-health';
 
 export interface SlotRow {
   slotId: number;
@@ -20,6 +21,8 @@ export interface SlotRow {
   harnessUsage: string;
   lastRunAt: Date | null;
   lastVerifyStatus: string | null;
+  /** Start of the latest verify run of the current occupancy (#339). */
+  lastVerifyAt?: Date | null;
   lastBuildPass: boolean | null;
   detachedHead: boolean | null;
   dirty: boolean | null;
@@ -27,55 +30,16 @@ export interface SlotRow {
   behind: number | null;
   stale: boolean | null;
   purpose?: string | null;
+  /** Whether Mission Control can see the worktree path on disk. */
+  onDisk?: boolean;
+  /** Cleanup advice folded into the health sentence for idle worktrees (Now page). */
+  cleanupHint?: string | null;
   /** When set, Slot column links to the detail page. */
   repoId?: string;
   tokensTotal?: number | null;
   costUsd?: number | null;
   agentTools?: string[];
   usageSources?: string[];
-}
-
-function driftLabel(row: SlotRow): string {
-  if (!row.worktreePath) return '';
-  const parts: string[] = [];
-  if (row.detachedHead) parts.push('detached');
-  if (row.dirty) parts.push('dirty');
-  if (row.stale) parts.push(`behind ${row.behind ?? '?'}`);
-  if ((row.ahead ?? 0) > 0) parts.push(`ahead ${row.ahead}`);
-  if (parts.length === 0) return 'fresh';
-  return parts.join(' ');
-}
-
-function driftBadges(row: SlotRow) {
-  if (!row.worktreePath) return <span className="text-muted-foreground">—</span>;
-  const badges = [];
-  if (row.detachedHead) badges.push(<Badge key="detached" variant="destructive">detached</Badge>);
-  if (row.dirty) badges.push(<Badge key="dirty" variant="warning">dirty</Badge>);
-  if (row.stale) {
-    badges.push(
-      <Badge key="stale" variant="warning">
-        behind {row.behind ?? '?'}
-      </Badge>,
-    );
-  }
-  if ((row.ahead ?? 0) > 0) badges.push(<Badge key="ahead" variant="secondary">ahead {row.ahead}</Badge>);
-  if (badges.length === 0) badges.push(<Badge key="fresh" variant="success">fresh</Badge>);
-  return <div className="flex flex-wrap gap-1">{badges}</div>;
-}
-
-function usageBadge(usage: string) {
-  switch (usage) {
-    case 'mcp':
-      return <Badge variant="success">MCP</Badge>;
-    case 'cli':
-      return <Badge variant="default">CLI</Badge>;
-    case 'script':
-      return <Badge variant="secondary">Script</Badge>;
-    case 'bypass_warning':
-      return <Badge variant="warning">Bypass?</Badge>;
-    default:
-      return <Badge variant="outline">None</Badge>;
-  }
 }
 
 function formatTokens(n: number | null | undefined): string {
@@ -92,7 +56,15 @@ function formatCost(n: number | null | undefined): string {
   return `$${n.toFixed(2)}`;
 }
 
-/** Priority: status, purpose, drift, last verify, agent, tokens/cost, then path/preview. */
+// Shades chosen for WCAG AA contrast on both themes (the a11y spec runs axe on Now).
+const TONE_CLASS: Record<HealthTone, string> = {
+  pass: 'text-emerald-700 dark:text-emerald-400',
+  warn: 'text-amber-800 dark:text-amber-400',
+  fail: 'text-red-700 dark:text-red-400',
+  neutral: 'text-muted-foreground',
+};
+
+/** Priority: slot, health, task, verify, agent, cost, preview, branch; tokens and path hidden by default. */
 export const slotColumns: ColumnDef<SlotRow>[] = [
   {
     accessorKey: 'slotId',
@@ -113,9 +85,17 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     },
   },
   {
-    accessorKey: 'active',
-    header: 'Status',
-    cell: ({ row }) => (row.original.active ? '● Active' : '○ Idle'),
+    id: 'health',
+    accessorFn: (row) => describeSlotHealth(row).text,
+    header: 'Health',
+    cell: ({ row }) => {
+      const health = describeSlotHealth(row.original);
+      return (
+        <span className={`block min-w-[14rem] max-w-sm text-sm ${TONE_CLASS[health.tone]}`} data-testid="slot-health" title={health.text}>
+          {health.text}
+        </span>
+      );
+    },
   },
   {
     id: 'purpose',
@@ -123,7 +103,7 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
     header: 'Task',
     cell: ({ row }) =>
       row.original.purpose ? (
-        <span className="max-w-40 truncate" title={row.original.purpose}>
+        <span className="block max-w-64 truncate" title={row.original.purpose}>
           {row.original.purpose}
         </span>
       ) : (
@@ -131,24 +111,22 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
       ),
   },
   {
-    id: 'drift',
-    accessorFn: (row) => driftLabel(row),
-    header: 'Drift',
-    cell: ({ row }) => driftBadges(row.original),
-  },
-  {
-    accessorKey: 'lastVerifyStatus',
-    header: 'Last verify',
-    cell: ({ row }) =>
-      row.original.lastVerifyStatus ? (
-        <Badge
-          variant={row.original.lastVerifyStatus === 'pass' ? 'success' : 'destructive'}
+    id: 'verify',
+    accessorFn: (row) => row.lastVerifyAt?.getTime() ?? 0,
+    header: 'Verify',
+    cell: ({ row }) => {
+      const verify = describeSlotVerify({ lastVerifyStatus: row.original.lastVerifyStatus, lastVerifyAt: row.original.lastVerifyAt ?? null });
+      return (
+        <span
+          className={`whitespace-nowrap text-sm ${TONE_CLASS[verify.tone]}`}
+          data-testid="slot-verify"
+          title={row.original.lastVerifyAt ? row.original.lastVerifyAt.toLocaleString() : undefined}
+          suppressHydrationWarning
         >
-          {row.original.lastVerifyStatus}
-        </Badge>
-      ) : (
-        '—'
-      ),
+          {verify.text}
+        </span>
+      );
+    },
   },
   {
     id: 'agentTools',
@@ -249,24 +227,6 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
           {branch}
         </span>
       );
-    },
-  },
-  {
-    accessorKey: 'harnessUsage',
-    header: 'Harness',
-    cell: ({ row }) => usageBadge(row.original.harnessUsage),
-  },
-  {
-    accessorKey: 'lastBuildPass',
-    header: 'Build',
-    cell: ({ row }) => {
-      if (row.original.lastBuildPass === true) {
-        return <Badge variant="success">pass</Badge>;
-      }
-      if (row.original.lastBuildPass === false) {
-        return <Badge variant="destructive">fail</Badge>;
-      }
-      return '—';
     },
   },
 ];

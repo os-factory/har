@@ -142,6 +142,7 @@ export function sessionInputs(
     models: modelsFromBreakdown(row.modelBreakdown),
     tokensTotal: Number(row.tokensTotal),
     costUsd: row.costUsd == null ? null : Number(row.costUsd),
+    costSource: row.costSource,
     sources: row.sources,
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,

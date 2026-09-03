@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AttemptRecordView } from '@/components/attempt-record';
 import { Skeleton } from '@/components/ui/skeleton';
+import { pickDefaultSession } from '@/lib/slot-timeline';
 import type { AttemptRecord } from '@/server/attempt-record';
 
 type State =
@@ -46,6 +47,5 @@ export function AttemptRecordPanel({ repositoryId, occupancyKey }: { repositoryI
   if (state.status === 'error') {
     return <p className="text-sm text-destructive">Could not load the attempt record: {state.message}</p>;
   }
-  const newestSession = state.record.timeline.find((row) => row.kind === 'session');
-  return <AttemptRecordView repositoryId={repositoryId} record={state.record} defaultExpandedId={newestSession?.id ?? null} />;
+  return <AttemptRecordView repositoryId={repositoryId} record={state.record} defaultExpandedId={pickDefaultSession(state.record.timeline)?.id ?? null} />;
 }

@@ -88,6 +88,13 @@ function mergeModelBreakdown(
 
 export type UsageUpsertInput = AgentSessionUsage;
 
+/** Provenance of a session's `costUsd` (#339). */
+export type CostSource = 'reported' | 'estimated';
+
+export function toCostSource(value: unknown): CostSource | null {
+  return value === 'reported' || value === 'estimated' ? value : null;
+}
+
 /**
  * Max-merge upsert so OTEL and harvest never double-count cumulative counters,
  * unless a newer `harvestVersion` supersedes the stored row.
@@ -160,6 +167,14 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
       : new Prisma.Decimal(
           Math.max(Number(reportedCost ?? 0), priced.costUsd) || priced.costUsd,
         );
+  // #339: say where the number comes from. The estimate wins only when it is
+  // higher than what the agent reported, so "estimated" means the row reads high.
+  const costSource: CostSource | null =
+    costUsd == null
+      ? null
+      : priced.costUsd != null && priced.costUsd > Number(reportedCost ?? 0)
+        ? 'estimated'
+        : 'reported';
 
   const fields = {
     agentId: input.agentId,
@@ -175,6 +190,7 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
     tokensCacheCreation,
     tokensTotal,
     costUsd,
+    costSource,
     // Prisma reads `undefined` as "leave unchanged", so a superseding harvest
     // with no breakdown has to clear the stored one explicitly.
     modelBreakdown: nextModelBreakdown

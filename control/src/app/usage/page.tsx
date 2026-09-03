@@ -21,12 +21,14 @@ export default async function UsagePage() {
     agentTool: row.agentTool,
     tokensTotal: Number(row.tokensTotal),
     costUsd: row.costUsd == null ? null : Number(row.costUsd),
+    costSource: row.costSource,
     sources: row.sources,
     preDedupe: isPreDedupeUsage(row),
     lastSeenAt: row.lastSeenAt,
   }));
 
   const preDedupeCount = rows.filter((row) => row.preDedupe).length;
+  const estimatedCount = rows.filter((row) => row.costSource === 'estimated').length;
 
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
@@ -74,10 +76,15 @@ export default async function UsagePage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Estimated cost</CardTitle>
+            <CardTitle className="text-base">Cost</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{formatCostUsd(summary.costUsd)}</p>
+            {estimatedCount > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {estimatedCount} of {rows.filter((row) => row.costUsd != null).length} priced sessions estimated via genai-prices
+              </p>
+            ) : null}
           </CardContent>
         </Card>
         <Card>
@@ -96,7 +103,7 @@ export default async function UsagePage() {
         <CardHeader>
           <CardTitle>Sessions</CardTitle>
           <CardDescription>
-            Paginated usage sessions — search or filter, then open a slot for verify + timeline
+            One row per agent session. Filter by repository, agent or period; click a row to open its slot.
           </CardDescription>
         </CardHeader>
         <CardContent className="min-w-0">

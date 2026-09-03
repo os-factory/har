@@ -106,8 +106,14 @@ test.describe('Factory and operations', () => {
     expect(href).toBeTruthy();
 
     const row = slotLink.locator('xpath=ancestor::tr[1]');
-    // Click Status cell (non-link) so nested preview/repo links stay intact.
-    await row.getByRole('cell').nth(2).click();
+    // #339: one Health sentence and one Verify cell replace the six status columns.
+    await expect(table.getByRole('columnheader', { name: 'Health' })).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: 'Verify' })).toBeVisible();
+    for (const header of ['Status', 'Drift', 'Last verify', 'Harness', 'Build', 'Cleanup']) {
+      await expect(table.getByRole('columnheader', { name: header, exact: true })).toHaveCount(0);
+    }
+    // Click the Health cell (non-link) so nested preview/repo links stay intact.
+    await row.getByTestId('slot-health').click();
     await page.waitForURL((url) => url.pathname.includes('/slots/'), { timeout: 10_000 });
     expect(new URL(page.url()).pathname).toBe(href);
   });

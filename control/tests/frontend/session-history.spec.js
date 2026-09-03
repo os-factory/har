@@ -11,7 +11,9 @@ async function openHistory(page) {
   const historyTab = page.getByRole('tab', { name: 'History' });
   await expect(historyTab).toBeVisible();
   await historyTab.click();
-  await expect(page.getByTestId('history-how-toggle')).toBeVisible();
+  // The tab is URL-driven, so the History card renders after a server round-trip; give a
+  // cold dev server (first compile) time instead of the 5s default.
+  await expect(page.getByTestId('history-how-toggle')).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe('Repository history', () => {
