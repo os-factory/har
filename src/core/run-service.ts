@@ -224,6 +224,8 @@ export class RunService {
       .join('');
     const doctorSummary = summarizeDoctorReport(doctor);
     if (doctorSummary) launchBanner += `WARN: ${doctorSummary}\n`;
+    // Advisory notices produced while binding work (#352); rendered like warnings.
+    const launchNotices: string[] = [];
     if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
       const ensured = await ensureTelemetryInfrastructure({ startIfNeeded: true });
       if (ensured.message) {
@@ -265,6 +267,9 @@ export class RunService {
           blocked: true,
         };
       }
+      // #352: a decided unit (torn down or completed earlier) is reopened by a
+      // new launch — the outcome closed one attempt, not the issue. Say so once.
+      const priorOutcome = findWorkUnit(harnessRoot, workUnitId)?.outcome;
       upsertWorkUnit(harnessRoot, {
         workUnitId,
         source: options.source,
@@ -273,6 +278,12 @@ export class RunService {
         parentWorkUnitId: options.parentWorkUnitId,
         relatedLinks: options.relatedLinks,
       });
+      if (priorOutcome) {
+        const reason = priorOutcome.reason ? `: ${priorOutcome.reason}` : '';
+        launchNotices.push(
+          `Reopened work unit ${workUnitId} (${priorOutcome.decision} ${priorOutcome.decidedAt}${reason})`,
+        );
+      }
       createWorkAttempt(harnessRoot, {
         attemptId,
         workUnitId,
@@ -344,13 +355,17 @@ export class RunService {
           });
         }
       }
+      if (launchNotices.length) {
+        launchBanner += launchNotices.map((notice) => `NOTE: ${notice}\n`).join('');
+      }
       if (launchBanner) {
         envResult.stderr = `${launchBanner}${envResult.stderr ?? ''}`;
       }
-      // Structured copy of the readiness warnings so surfaces can render them
-      // without scraping WARN: lines out of stderr.
-      if (guard.readiness?.warnings?.length) {
-        envResult.warnings = guard.readiness.warnings;
+      // Structured copy of the readiness warnings (and work-binding notices) so
+      // surfaces can render them without scraping lines out of stderr.
+      const warnings = [...(guard.readiness?.warnings ?? []), ...launchNotices];
+      if (warnings.length) {
+        envResult.warnings = warnings;
       }
     }
     return envResult;

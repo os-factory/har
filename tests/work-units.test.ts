@@ -80,6 +80,30 @@ describe('durable work identity', () => {
     );
   });
 
+  it('reopens a decided unit on the next launch and keeps the old outcome (#352)', () => {
+    upsertWorkUnit(repo, { workUnitId: '338', title: 'Phase 2' });
+    decideWorkUnitOutcome(repo, '338', {
+      decision: 'abandoned',
+      decidedAt: '2026-09-03T08:45:00.000Z',
+      reason: 'Session torn down without completion.',
+    });
+    expect(findWorkUnit(repo, '338')?.outcome?.decision).toBe('abandoned');
+
+    const reopened = upsertWorkUnit(repo, { workUnitId: '338' });
+    expect(reopened.outcome).toBeUndefined();
+    expect(reopened.previousOutcomes).toEqual([
+      expect.objectContaining({ decision: 'abandoned', reason: 'Session torn down without completion.' }),
+    ]);
+    expect(reopened.title).toBe('Phase 2');
+
+    // Deciding and reopening again appends, oldest first.
+    decideWorkUnitOutcome(repo, '338', { decision: 'abandoned', decidedAt: '2026-09-03T09:00:00.000Z' });
+    expect(upsertWorkUnit(repo, { workUnitId: '338' }).previousOutcomes?.map((o) => o.decidedAt)).toEqual([
+      '2026-09-03T08:45:00.000Z',
+      '2026-09-03T09:00:00.000Z',
+    ]);
+  });
+
   it('requires completion to reference exact-tree proof', () => {
     upsertWorkUnit(repo, { workUnitId: 'ISSUE-9' });
 
