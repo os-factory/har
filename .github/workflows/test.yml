@@ -132,6 +132,19 @@ jobs:
           CI: true
         run: har env verify 1 --full
 
+      # The verify log only carries the stage summary; the Playwright report and
+      # per-test traces/screenshots are what you need to see why browser-e2e failed.
+      - name: Upload browser-e2e report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mission-control-browser-e2e
+          path: |
+            control/.har/artifacts/browser-e2e/playwright-report
+            control/.har/artifacts/browser-e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Teardown Mission Control harness
         if: always()
         working-directory: control
