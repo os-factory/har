@@ -16,6 +16,7 @@ import {
   infraPortDefault,
   HttpRequestFn,
 } from './infra';
+import { planSlotDatabaseSteps } from './slot-database';
 import {
   createSessionWorktree,
   GitRunner,
@@ -358,17 +359,19 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
 
     // Apply the database schema per slot (pre-1.0 launch.sh parity, idempotent)
     // — otherwise schema drift after a code change surfaces as runtime 500s in
-    // the slot instead of a clear launch error. Runs from the work dir with the
-    // slot env sourced, so DATABASE_URL points at the slot's database. "" means
-    // not configured (the #241 migration normalizes the pre-1.0 `true` no-op
-    // sentinel away, so the runtime carries no sentinel special cases).
-    if (pm !== 'simulator' && env.HARNESS_DB_MIGRATE_CMD) {
-      log(`Applying database schema: ${env.HARNESS_DB_MIGRATE_CMD}`);
-      const migrate = exec('bash', [
+    // the slot instead of a clear launch error — then seed file-backed databases
+    // (#345: with a shared Postgres service the template is seeded once instead).
+    // Runs from the work dir with the slot env sourced, so DATABASE_URL points at
+    // the slot's database. "" means not configured (the #241 migration normalizes
+    // the pre-1.0 `true` no-op sentinel away, so the runtime carries no sentinel
+    // special cases).
+    for (const step of planSlotDatabaseSteps(env, pm)) {
+      log(step.label);
+      const result = exec('bash', [
         '-c',
-        `cd ${JSON.stringify(session.workDir)} && set -a && . ${JSON.stringify(session.envFile)} && set +a && eval "$HARNESS_DB_MIGRATE_CMD"`,
+        `cd ${JSON.stringify(session.workDir)} && set -a && . ${JSON.stringify(session.envFile)} && set +a && eval "$${step.envVar}"`,
       ], { env: { ...process.env, ...env } });
-      if (migrate.code !== 0) throw new Error(`database migrate command failed (${migrate.code})`);
+      if (result.code !== 0) throw new Error(`database ${step.what} command failed (${result.code})`);
     }
 
     // ── Per-profile app runtime ────────────────────────────────────────────────
