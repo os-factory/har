@@ -15,6 +15,7 @@ import { listLineBoards } from '@/server/lines';
 import { getSessionHistory } from '@/server/session-history';
 import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles } from '@/server/artifacts';
+import { loadLatestVerifyBySlot } from '@/server/slot-verify';
 import { listSessionUsageForRepo } from '@/server/usage';
 import { timeAgo } from '@/lib/time';
 
@@ -39,6 +40,8 @@ export default async function RepoDetailPage({
       listSessionUsageForRepo(id),
     ]);
   const artifacts = listArtifactFiles(repo.path);
+  // #339: "Verify" reads the latest verify run of each slot's occupancy, never a launch/teardown.
+  const verifyBySlot = await loadLatestVerifyBySlot(repo.slots);
 
   const byDate = new Map<string, { pass: number; fail: number }>();
   for (const point of trendRaw) {
@@ -186,7 +189,8 @@ export default async function RepoDetailPage({
                     previewUrls: s.previewUrls as Record<string, string> | null,
                     harnessUsage: s.harnessUsage,
                     lastRunAt: s.lastRunAt,
-                    lastVerifyStatus: s.lastVerifyStatus,
+                    lastVerifyStatus: verifyBySlot.get(`${id}:${s.slotId}`)?.status ?? s.lastVerifyStatus,
+                    lastVerifyAt: verifyBySlot.get(`${id}:${s.slotId}`)?.startedAt ?? null,
                     lastBuildPass: s.lastBuildPass,
                     detachedHead: s.detachedHead,
                     dirty: s.dirty,

@@ -6,12 +6,14 @@ import { WorktreeGrid, type WorktreeRow } from '@/components/worktree-grid';
 import { attentionItems } from '@/lib/attention';
 import { classifyWorktreeCleanup } from '@/lib/worktree-cleanup-plan';
 import { listSessionWorktrees } from '@/server/repositories';
+import { loadLatestVerifyBySlot } from '@/server/slot-verify';
 import { summarizeUsageForBranch } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NowPage() {
   const slots = await listSessionWorktrees();
+  const latestVerify = await loadLatestVerifyBySlot(slots);
   const rows: WorktreeRow[] = await Promise.all(
     slots.map(async (s) => {
       const usage = await summarizeUsageForBranch(s.repositoryId, s.branch, s.suffix);
@@ -41,7 +43,8 @@ export default async function NowPage() {
         previewUrls: s.previewUrls as Record<string, string> | null,
         harnessUsage: s.harnessUsage,
         lastRunAt: s.lastRunAt,
-        lastVerifyStatus: s.lastVerifyStatus,
+        lastVerifyStatus: latestVerify.get(`${s.repositoryId}:${s.slotId}`)?.status ?? s.lastVerifyStatus,
+        lastVerifyAt: latestVerify.get(`${s.repositoryId}:${s.slotId}`)?.startedAt ?? null,
         lastBuildPass: s.lastBuildPass,
         detachedHead: s.detachedHead,
         dirty: s.dirty,
@@ -54,6 +57,8 @@ export default async function NowPage() {
         agentTools: usage.agentTools,
         usageSources: usage.sources,
         onDisk,
+        // Idle rows fold the cleanup advice into the health sentence (#339).
+        cleanupHint: s.active ? null : cleanup.reason,
       };
     }),
   );
