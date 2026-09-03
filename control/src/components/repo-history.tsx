@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { HistoryGraphNode } from '@har/schemas';
@@ -32,9 +32,16 @@ function Explanation({ explanation, repositoryId }: { explanation: SessionHistor
   const subject = node.pending ? `Snapshot ${shortHash(node.treeHash)}` : `Commit ${shortHash(node.commitSha)}`;
   const message = node.message?.split('\n')[0];
   const files = explanation.changedFiles;
+  const ref = useRef<HTMLDivElement>(null);
+
+  // The graph can be 600px tall, so the panel is usually below the fold when a node is
+  // clicked: bring it into view each time the selection changes.
+  useEffect(() => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [node.id]);
 
   return (
-    <div className="space-y-4 rounded-xl border p-4" data-testid="session-history-explain">
+    <div ref={ref} className="space-y-4 rounded-xl border p-4 scroll-mt-4" data-testid="session-history-explain">
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h4 className="text-sm font-medium">{subject}</h4>

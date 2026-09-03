@@ -49,6 +49,8 @@ test.describe('Repository history', () => {
     await nodes.first().click();
     const explain = page.getByTestId('session-history-explain');
     await expect(explain).toBeVisible();
+    // Selecting a node scrolls the explanation into the viewport.
+    await expect(explain).toBeInViewport({ ratio: 0.5 });
     await expect(explain.getByRole('heading', { level: 4 })).toHaveText(/^(Commit|Snapshot) [0-9a-f]{7}$/);
     const provenance = page.getByTestId('provenance-ids');
     await expect(provenance).toContainText('Content snapshot');
