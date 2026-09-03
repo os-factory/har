@@ -78,6 +78,8 @@ export interface TimelineRow {
   status: string | null;
   tone: TimelineTone;
   agentId: number | null;
+  /** Worktree branch the event belongs to, when known (runs and agent sessions carry none). */
+  branch: string | null;
   session?: TimelineSessionDetail;
   run?: TimelineRunDetail;
   snapshot?: TimelineSnapshotDetail;
@@ -217,6 +219,7 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
       status: null,
       tone: 'neutral',
       agentId: occupancy.agentId,
+      branch: occupancy.branch,
       occupancy: {
         branch: occupancy.branch,
         baseCommit: occupancy.baseCommit,
@@ -244,6 +247,7 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
       status: session.agentTool,
       tone: 'neutral',
       agentId: session.agentId,
+      branch: null,
       session: {
         sessionKey: session.sessionKey,
         agentTool: session.agentTool,
@@ -272,6 +276,7 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
       status: runStatusLabel(run.status),
       tone: runTone(run.status),
       agentId: run.agentId,
+      branch: null,
       run: {
         runId: run.runId,
         stageId: run.stageId,
@@ -297,6 +302,7 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
       status: status.label,
       tone: status.tone,
       agentId: snapshot.agentId,
+      branch: snapshot.branch,
       snapshot: {
         validationId: snapshot.validationId,
         treeHash: snapshot.treeHash,
@@ -319,6 +325,7 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
         status: status.label === 'Verified' ? 'Verified tree' : null,
         tone: status.label === 'Verified' ? 'pass' : 'neutral',
         agentId: snapshot.agentId,
+        branch: snapshot.branch,
         commit: {
           sha: snapshot.commitSha,
           message: null,
@@ -340,6 +347,7 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
       status: 'Verified tree',
       tone: 'pass',
       agentId: commit.agentId,
+      branch: commit.branch,
       commit: {
         sha: commit.commitSha,
         message: commit.message,
@@ -401,4 +409,21 @@ export function describeTimeline(totals: TimelineTotals): string {
     parts.push(`${formatTokenCount(totals.tokensTotal)} tokens${totals.costUsd != null ? ` · $${totals.costUsd.toFixed(2)}` : ''}`);
   }
   return parts.join(' · ');
+}
+
+/**
+ * Keep the rows of one branch. Runs carry no branch of their own, so a run is kept
+ * when a snapshot on that branch names it as its verifying run.
+ */
+export function filterTimelineByBranch(rows: TimelineRow[], branch: string | null): TimelineRow[] {
+  if (!branch) return rows;
+  const runIds = new Set(
+    rows.flatMap((row) => (row.kind === 'snapshot' && row.branch === branch && row.snapshot?.runId ? [row.snapshot.runId] : [])),
+  );
+  return rows.filter((row) => row.branch === branch || (row.kind === 'run' && row.run != null && runIds.has(row.run.runId)));
+}
+
+/** Distinct branches present in the rows, sorted. */
+export function timelineBranches(rows: TimelineRow[]): string[] {
+  return [...new Set(rows.map((row) => row.branch).filter((b): b is string => Boolean(b)))].sort();
 }

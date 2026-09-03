@@ -12,7 +12,7 @@ import {
 } from '@/lib/slot-timeline';
 import { modelsFromBreakdown } from '@/lib/usage-models';
 import { listTrajectoryStreams } from '@/server/trajectory-ledger';
-import { listSessionUsageForSlot } from '@/server/usage';
+import { listSessionUsageForRepo, listSessionUsageForSlot } from '@/server/usage';
 import { extractVerification } from '@/server/validation-stages';
 
 export interface SlotTimeline {
@@ -268,6 +268,29 @@ export async function getWorkUnitTimeline(input: {
     sessions: sessionInputs(usage, prompts),
     runs: input.runs.map(runInput),
     snapshots: input.validations.map(snapshotInput),
+    commits,
+  });
+}
+
+/**
+ * Timeline of a whole repository: every verify run, snapshot, bound commit and agent
+ * session across all slots. Feeds the History tab's list mode; the client filters it
+ * by branch with `filterTimelineByBranch`.
+ */
+export async function getRepoTimeline(repositoryId: string): Promise<TimelineRow[]> {
+  const [runs, snapshots, usage] = await Promise.all([
+    prisma.run.findMany({ where: { repositoryId }, orderBy: { startedAt: 'desc' }, take: RUN_LIMIT }),
+    prisma.changeBatch.findMany({ where: { repositoryId }, orderBy: { createdAt: 'desc' }, take: SNAPSHOT_LIMIT }),
+    listSessionUsageForRepo(repositoryId),
+  ]);
+  const [prompts, commits] = await Promise.all([
+    firstPrompts(repositoryId, usage),
+    commitBindingsFor(repositoryId, snapshots),
+  ]);
+  return buildTimelineRows({
+    sessions: sessionInputs(usage, prompts),
+    runs: runs.map(runInput),
+    snapshots: snapshots.map(snapshotInput),
     commits,
   });
 }

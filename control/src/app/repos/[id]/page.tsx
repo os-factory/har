@@ -2,20 +2,18 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArtifactsDrawer } from '@/components/artifacts-drawer';
-import { ChangeBatchList } from '@/components/change-batch-list';
-import { SessionHistoryPanel } from '@/components/session-history-panel';
-import { RunTimeline } from '@/components/run-timeline';
+import { RepoHistory } from '@/components/repo-history';
 import { SlotGrid } from '@/components/slot-grid';
 import { UnregisterRepoButton } from '@/components/unregister-repo-button';
 import { ValidationPipeline } from '@/components/validation-pipeline';
 import { ValidationStages } from '@/components/validation-stages';
 import { VerifySparkline } from '@/components/verify-sparkline';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RouteTabs } from '@/components/route-tabs';
 import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/server/repositories';
 import { listLineBoards } from '@/server/lines';
-import { listChangeBatches } from '@/server/change-batches';
 import { getSessionHistory } from '@/server/session-history';
+import { getRepoTimeline } from '@/server/slot-timeline';
 import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles } from '@/server/artifacts';
 import { listSessionUsageForRepo } from '@/server/usage';
@@ -32,12 +30,12 @@ export default async function RepoDetailPage({
   const repo = await getRepository(id);
   if (!repo) notFound();
 
-  const [health, lineBoards, trendRaw, changeBatches, history, validation, allUsage] =
+  const [health, lineBoards, trendRaw, timeline, history, validation, allUsage] =
     await Promise.all([
       getRepositoryHealth(id),
       listLineBoards(id),
       getVerificationTrend(id),
-      listChangeBatches(id),
+      getRepoTimeline(id),
       getSessionHistory(id),
       getValidationStages(id),
       listSessionUsageForRepo(id),
@@ -214,61 +212,11 @@ export default async function RepoDetailPage({
             <CardHeader>
               <CardTitle>History</CardTitle>
               <CardDescription>
-                Verified snapshots and the commits that share them. The graph follows one branch at a
-                time; the list shows every verify run and snapshot.
+                Verified snapshots and the commits that share their tree, laid out by branch.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="graph">
-                <TabsList>
-                  <TabsTrigger value="graph">Graph</TabsTrigger>
-                  <TabsTrigger value="list">List</TabsTrigger>
-                </TabsList>
-                <TabsContent value="graph" className="mt-4">
-                  {history ? (
-                    <SessionHistoryPanel history={history} />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No session history available.</p>
-                  )}
-                </TabsContent>
-                <TabsContent value="list" className="mt-4 space-y-8">
-                  <section>
-                    <h4 className="mb-3 text-sm font-medium text-muted-foreground">Snapshots</h4>
-                    <ChangeBatchList
-                      repoId={id}
-                      batches={changeBatches.map((b) => ({
-                        id: b.id,
-                        treeHash: b.treeHash,
-                        branch: b.branch,
-                        agentId: b.agentId,
-                        status: b.status,
-                        full: b.full,
-                        runId: b.runId,
-                        changedFiles: Array.isArray(b.changedFiles)
-                          ? (b.changedFiles as { path: string; status: string; oldPath?: string }[])
-                          : [],
-                        commitSha: b.commitSha,
-                        createdAt: b.createdAt,
-                      }))}
-                    />
-                  </section>
-                  <section>
-                    <h4 className="mb-3 text-sm font-medium text-muted-foreground">Runs</h4>
-                    <RunTimeline
-                      runs={repo.runs.map((r) => ({
-                        id: r.id,
-                        runId: r.runId,
-                        stageId: r.stageId,
-                        agentId: r.agentId,
-                        status: r.status,
-                        trigger: r.trigger,
-                        durationMs: r.durationMs,
-                        startedAt: r.startedAt,
-                      }))}
-                    />
-                  </section>
-                </TabsContent>
-              </Tabs>
+              <RepoHistory repositoryId={id} history={history} timeline={timeline} />
             </CardContent>
           </Card>
         </TabsContent>
