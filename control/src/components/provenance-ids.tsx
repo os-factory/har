@@ -1,6 +1,7 @@
+/** Git-style 7-character abbreviation for shas and tree hashes. Run ids are shown whole. */
 function shortHash(value: string | null | undefined): string {
   if (!value) return '—';
-  return value.length > 12 ? value.slice(0, 12) : value;
+  return value.length > 7 ? value.slice(0, 7) : value;
 }
 
 export function ProvenanceIds({
@@ -15,10 +16,10 @@ export function ProvenanceIds({
   verifiedByRun: string | null;
 }) {
   const rows = [
-    { label: 'Commit', value: commit, title: commit },
-    { label: 'Content snapshot', value: contentSnapshot, title: contentSnapshot },
-    { label: 'Based on', value: basedOn, title: basedOn },
-    { label: 'Verified by run', value: verifiedByRun, title: verifiedByRun },
+    { label: 'Commit', value: shortHash(commit), title: commit },
+    { label: 'Content snapshot', value: shortHash(contentSnapshot), title: contentSnapshot },
+    { label: 'Based on', value: shortHash(basedOn), title: basedOn },
+    { label: 'Verified by run', value: verifiedByRun ?? '—', title: verifiedByRun },
   ];
   return (
     <dl className="grid gap-2 sm:grid-cols-2" data-testid="provenance-ids">
@@ -27,8 +28,8 @@ export function ProvenanceIds({
           <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             {row.label}
           </dt>
-          <dd className="mt-0.5 font-mono text-sm" title={row.title ?? undefined}>
-            {shortHash(row.value)}
+          <dd className="mt-0.5 break-all font-mono text-sm" title={row.title ?? undefined}>
+            {row.value}
           </dd>
         </div>
       ))}

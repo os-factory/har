@@ -50,6 +50,8 @@ describe('session history graph', () => {
       full: true,
       handoff: 'active',
     });
+    // The base commit belongs to the base branch, not to the worktree hand-off.
+    expect(graph.nodes.find((node) => node.id === commitNodeId(BASE))?.handoff).toBe('unknown');
     expect(graph.edges).toContainEqual({
       id: `based-on:${commitNodeId(BASE)}->${snapshotNodeId(TREE)}`,
       source: commitNodeId(BASE),

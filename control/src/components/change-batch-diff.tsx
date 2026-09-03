@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileDiff, GripVertical, LoaderCircle } from 'lucide-react';
-import type { ChangeBatchRow } from '@/components/columns/change-batch-columns';
 import { DiffFileTree } from '@/components/diff-file-tree';
 import {
   Sheet,
@@ -13,6 +12,19 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { parseUnifiedDiff, type DiffFile, type DiffLine } from '@/lib/unified-diff';
+
+export interface ChangeBatchRow {
+  id: string;
+  treeHash: string;
+  branch: string | null;
+  agentId: number | null;
+  status: string;
+  full: boolean;
+  runId: string | null;
+  changedFiles: { path: string; status: string; oldPath?: string }[];
+  commitSha: string | null;
+  createdAt: Date;
+}
 
 interface ChangeBatchDiffProps {
   repoId: string;

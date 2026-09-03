@@ -246,11 +246,11 @@ export function buildSessionHistoryGraph(input: SessionHistoryInput): SessionHis
     }
   }
 
+  // Base commits are plain commits on the base branch (usually main). They anchor the
+  // graph but are not a worktree hand-off themselves, so their `handoff` stays unknown
+  // unless a binding or snapshot on their own branch says otherwise.
   for (const slot of slots) {
-    if (slot.baseCommit) {
-      const base = ensureCommit(slot.baseCommit, { branch: slot.baseBranch ?? undefined });
-      if (base.handoff === 'unknown') base.handoff = slot.active ? 'active' : 'retained';
-    }
+    if (slot.baseCommit) ensureCommit(slot.baseCommit, { branch: slot.baseBranch ?? undefined });
   }
 
   return {

@@ -9,7 +9,8 @@ import { prisma } from '@/lib/db';
 import type { SessionHistoryExplanation, SessionHistoryView } from '@/lib/session-history-view';
 import { listChangeBatches } from '@/server/change-batches';
 import { listCommitBindings } from '@/server/commit-bindings';
-import { getValidationStages } from '@/server/validation-stages';
+import { extractVerification } from '@/server/validation-stages';
+import type { SessionHistoryStageBadge } from '@/lib/session-history-view';
 
 export type { SessionHistoryExplanation, SessionHistoryView };
 
@@ -40,10 +41,9 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
   });
   if (!repo) return null;
 
-  const [batches, bindings, validation] = await Promise.all([
+  const [batches, bindings] = await Promise.all([
     listChangeBatches(repositoryId, 200),
     listCommitBindings(repositoryId),
-    getValidationStages(repositoryId),
   ]);
 
   const snapshots: HistorySnapshot[] = batches.map((batch) => ({
@@ -120,6 +120,26 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
     }),
   );
 
+  // Stage badges come from the run that verified this exact tree — never from the
+  // repository's latest run, which may belong to another slot or branch.
+  const runIds = [...new Set(graph.nodes.map((node) => node.runId).filter((id): id is string => Boolean(id)))];
+  const runs = runIds.length
+    ? await prisma.run.findMany({ where: { repositoryId, runId: { in: runIds } }, select: { runId: true, result: true } })
+    : [];
+  const stagesByRun = new Map<string, SessionHistoryStageBadge[]>();
+  for (const run of runs) {
+    const verification = extractVerification(run.result);
+    if (!verification) continue;
+    stagesByRun.set(
+      run.runId,
+      verification.stages.map((stage) => ({
+        name: stage.name,
+        lastStatus: stage.pass ? 'pass' : 'fail',
+        lastMs: typeof stage.ms === 'number' ? stage.ms : null,
+      })),
+    );
+  }
+
   const explanations: Record<string, SessionHistoryExplanation> = {};
 
   for (const node of graph.nodes) {
@@ -133,11 +153,7 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
     explanations[node.id] = {
       node,
       provenance: provenanceForNode(node),
-      stages: (validation?.stages ?? []).map((stage) => ({
-        name: stage.name,
-        lastStatus: stage.lastStatus,
-        lastMs: stage.lastMs,
-      })),
+      stages: (node.runId ? stagesByRun.get(node.runId) : undefined) ?? [],
       changedFiles: changedFilesOf(batch?.changedFiles),
       trajectory: {
         agentId,

@@ -5,8 +5,7 @@ import { useMemo, useState } from 'react';
 import { type ColumnDef } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight, FileDiff, PanelRightOpen } from 'lucide-react';
 import { DataTable } from '@/components/data-table/data-table';
-import { ChangeBatchDiff } from '@/components/change-batch-diff';
-import type { ChangeBatchRow } from '@/components/columns/change-batch-columns';
+import { ChangeBatchDiff, type ChangeBatchRow } from '@/components/change-batch-diff';
 import type { SessionEventRow } from '@/components/columns/session-event-columns';
 import { SessionEventsTable } from '@/components/session-events-table';
 import { TrajectoryDrawer, useOpenTrajectory } from '@/components/trajectory-drawer';
@@ -57,7 +56,12 @@ function formatWhen(iso: string): { date: string; time: string } {
   return { date: d.toLocaleDateString(), time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
 }
 
-function buildColumns(repositoryId: string, showSlot: boolean, expandedId: string | null): ColumnDef<TimelineRow>[] {
+interface ColumnOptions {
+  showSlot: boolean;
+  showBranch: boolean;
+}
+
+function buildColumns(repositoryId: string, { showSlot, showBranch }: ColumnOptions, expandedId: string | null): ColumnDef<TimelineRow>[] {
   const columns: ColumnDef<TimelineRow>[] = [
     {
       id: 'expander',
@@ -113,6 +117,18 @@ function buildColumns(repositoryId: string, showSlot: boolean, expandedId: strin
       },
     },
   ];
+  if (showBranch) {
+    columns.push({
+      accessorKey: 'branch',
+      header: 'Branch',
+      cell: ({ row }) =>
+        row.original.branch ? (
+          <code className="max-w-[16rem] truncate font-mono text-xs" title={row.original.branch}>{row.original.branch}</code>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    });
+  }
   if (showSlot) {
     columns.push({
       accessorKey: 'agentId',
@@ -303,6 +319,7 @@ export interface SlotTimelineProps {
   /** Raw OTEL events, offered behind a debug toggle. */
   rawEvents?: SessionEventRow[];
   showSlotColumn?: boolean;
+  showBranchColumn?: boolean;
   emptyMessage?: string;
   searchPlaceholder?: string;
   /** Row opened on first render, e.g. the newest agent session so its trajectory is visible without a click. */
@@ -316,6 +333,7 @@ export function SlotTimeline({
   previousLabel = 'Earlier occupants of this slot',
   rawEvents,
   showSlotColumn = false,
+  showBranchColumn = false,
   emptyMessage = 'Nothing recorded yet. Runs, snapshots, commits and agent sessions appear here as they happen.',
   searchPlaceholder = 'Search timeline…',
   defaultExpandedId = null,
@@ -328,10 +346,14 @@ export function SlotTimeline({
   const [previousOpen, setPreviousOpen] = useState(false);
 
   const visible = useMemo(() => rows.filter((row) => kinds.has(row.kind)), [rows, kinds]);
-  const columns = useMemo(() => buildColumns(repositoryId, showSlotColumn, expandedId), [repositoryId, showSlotColumn, expandedId]);
+  const options = useMemo<ColumnOptions>(
+    () => ({ showSlot: showSlotColumn, showBranch: showBranchColumn }),
+    [showSlotColumn, showBranchColumn],
+  );
+  const columns = useMemo(() => buildColumns(repositoryId, options, expandedId), [repositoryId, options, expandedId]);
   const previousColumns = useMemo(
-    () => buildColumns(repositoryId, showSlotColumn, previousExpandedId),
-    [repositoryId, showSlotColumn, previousExpandedId],
+    () => buildColumns(repositoryId, options, previousExpandedId),
+    [repositoryId, options, previousExpandedId],
   );
   const totals = useMemo(() => summarizeTimeline(rows), [rows]);
   const presentKinds = useMemo(() => KIND_ORDER.filter((kind) => rows.some((row) => row.kind === kind)), [rows]);
