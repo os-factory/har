@@ -1,3 +1,9 @@
+## [1.10.1](https://github.com/os-factory/har/compare/v1.10.0...v1.10.1) (2026-09-03)
+
+### Bug Fixes
+
+* tell stale CLIs to upgrade instead of inventing missing launch.sh ([#347](https://github.com/os-factory/har/issues/347)) ([f983826](https://github.com/os-factory/har/commit/f98382673dbaa5993fc70b589f35895d8b58bba3))
+
 ## [1.10.0](https://github.com/os-factory/har/compare/v1.9.0...v1.10.0) (2026-09-03)
 
 ### Features
