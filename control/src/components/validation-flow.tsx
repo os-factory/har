@@ -6,7 +6,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   Position,
   type Edge,
   type Node,
@@ -138,13 +137,6 @@ export function ValidationFlow({
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--border))" />
         <Controls showInteractive={false} />
-        <MiniMap
-          pannable
-          zoomable
-          nodeColor={(node) => STATUS_COLOR[statusKey((node.data as StageNodeData).status)]}
-          maskColor="hsl(var(--background) / 0.6)"
-          bgColor="hsl(var(--muted) / 0.3)"
-        />
       </ReactFlow>
     </div>
   );

@@ -1,30 +1,17 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { isPreDedupeUsage } from '@har/schemas';
+import { ExternalLinkIcon } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { SessionEventsTable } from '@/components/session-events-table';
-import { TrajectoryViewer } from '@/components/trajectory-viewer';
+import { SlotTimeline } from '@/components/slot-timeline';
 import { VerifySummary } from '@/components/verify-summary';
 import { ValidationFlow } from '@/components/validation-flow';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatAgentToolLabel } from '@/lib/agent-tool';
-import { eventModel } from '@/lib/session-event-detail';
-import { PreDedupeTip } from '@/components/pre-dedupe-tip';
-import { formatModelId, formatCostUsd, modelTotalsFromBreakdown, modelsFromBreakdown, type UsageModelTotals } from '@/lib/usage-models';
 import { getRepository } from '@/server/repositories';
 import { listSessionEventsForSlot } from '@/server/session-events';
-import { getSlotTrajectoryData } from '@/server/trajectory-ledger';
-import { listSessionUsageForSlot } from '@/server/usage';
+import { getSlotTimeline } from '@/server/slot-timeline';
 import { getValidationStages } from '@/server/validation-stages';
 
 export const dynamic = 'force-dynamic';
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
 
 export default async function SlotDetailPage({
   params,
@@ -41,151 +28,59 @@ export default async function SlotDetailPage({
   const slot = repo.slots.find((s) => s.slotId === slotId);
   if (!slot) notFound();
 
-  // #316: usage and trajectory are scoped to the slot's CURRENT occupancy.
-  // A slot number is reused after complete/teardown; a working session is not.
-  const occupancyKey = slot.occupancyKey ?? null;
-
-  const [usageRows, validation, events, trajectory] = await Promise.all([
-    listSessionUsageForSlot(id, slotId, occupancyKey),
-    // Runs are scoped to the current occupancy too: same worktree, started after it was created.
+  // #316: everything on this page is scoped to the slot's CURRENT occupancy. A slot
+  // number is reused after complete/teardown; a working session is not. Earlier
+  // occupants stay reachable in the collapsed section below the timeline.
+  const [validation, timeline, events] = await Promise.all([
     getValidationStages(id, { agentId: slotId, since: slot.sessionCreatedAt, workDir: slot.workDir }),
+    getSlotTimeline(id, slot),
     listSessionEventsForSlot(id, slotId),
-    getSlotTrajectoryData(id, slotId, 100, occupancyKey),
   ]);
 
-  const modelsByUsageKey = new Map<string, string[]>();
-  for (const ev of events) {
-    const model = eventModel(ev.attributes);
-    if (!model) continue;
-    const key = `${ev.sessionKey}::${ev.agentTool}`;
-    const list = modelsByUsageKey.get(key) ?? [];
-    if (!list.includes(model)) list.push(model);
-    modelsByUsageKey.set(key, list);
-  }
-
-  const resolveModels = (sessionKey: string, agentTool: string, breakdown: unknown): string[] => {
-    const stored = modelsFromBreakdown(breakdown);
-    if (stored.length > 0) return stored;
-    return (modelsByUsageKey.get(`${sessionKey}::${agentTool}`) ?? []).sort();
-  };
-
-  const totals = usageRows.reduce(
-    (acc, row) => {
-      acc.tokensInput += Number(row.tokensInput);
-      acc.tokensOutput += Number(row.tokensOutput);
-      acc.tokensCacheRead += Number(row.tokensCacheRead);
-      acc.tokensCacheCreation += Number(row.tokensCacheCreation);
-      acc.tokensTotal += Number(row.tokensTotal);
-      if (row.costUsd != null) {
-        acc.costUsd += Number(row.costUsd);
-        acc.hasCost = true;
-      }
-      return acc;
-    },
-    {
-      tokensInput: 0,
-      tokensOutput: 0,
-      tokensCacheRead: 0,
-      tokensCacheCreation: 0,
-      tokensTotal: 0,
-      costUsd: 0,
-      hasCost: false,
-    },
-  );
-
-  const preDedupeSessions = usageRows.filter((row) => isPreDedupeUsage(row)).length;
+  // Open the newest agent session so its trajectory is readable without a click.
+  const newestSession = timeline.current.find((row) => row.kind === 'session');
+  const previewUrls = (slot.previewUrls ?? null) as Record<string, string> | null;
+  const previewEntries = slot.active && previewUrls ? Object.entries(previewUrls) : [];
+  const repoName = repo.path.split('/').pop() ?? repo.path;
 
   return (
     <div className="space-y-6 px-4 py-4 md:px-6 md:py-6">
-      <div>
+      <div className="space-y-2">
         <Link href={`/repos/${id}`} className="text-sm text-muted-foreground hover:underline">
-          ← {repo.path.split('/').pop() ?? repo.path}
+          ← {repoName}
         </Link>
-        <h2 className="mt-2 text-2xl font-semibold">
-          Slot {slotId}{' '}
-          <span className="text-base font-normal text-muted-foreground">
-            {slot.active ? '● Active' : '○ Idle'}
-          </span>
-        </h2>
-        {slot.purpose && (
-          <p className="text-sm text-muted-foreground" title={slot.purpose}>
-            Summary: {slot.purpose}
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-2xl font-semibold">Slot {slotId}</h2>
+          <Badge variant={slot.active ? 'success' : 'outline'}>{slot.active ? 'Active' : 'Idle'}</Badge>
+          {slot.branch ? (
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs" title={slot.baseCommit ? `based on ${slot.baseCommit}` : undefined}>
+              {slot.branch}
+            </code>
+          ) : null}
+          {previewEntries.map(([label, url]) => (
+            <a
+              key={label}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              title={url}
+              className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+            >
+              {label}
+              <ExternalLinkIcon className="size-3 text-muted-foreground" aria-hidden />
+            </a>
+          ))}
+        </div>
+        {slot.purpose ? (
+          <p className="text-sm" title={slot.purpose}>
+            <span className="text-muted-foreground">Task: </span>
+            {slot.purpose}
           </p>
-        )}
-        <p className="mt-1 text-xs text-muted-foreground">
-          Prompts and usage are stored locally. Disable prompt capture with{' '}
-          <code>har telemetry on --no-prompts</code>.
+        ) : null}
+        <p className="break-all font-mono text-xs text-muted-foreground" data-testid="slot-worktree-path">
+          {slot.worktreePath ?? slot.workDir ?? 'No worktree recorded'}
+          {!slot.active && slot.worktreePath ? ' · last session' : ''}
         </p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Worktree</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="break-all font-mono text-xs text-muted-foreground">
-              {slot.worktreePath ?? slot.workDir ?? '—'}
-            </p>
-            {slot.branch && (
-              <p className="mt-2 font-mono text-xs" title={slot.baseCommit ?? undefined}>
-                {!slot.active || !slot.worktreePath ? (
-                  <span className="text-muted-foreground">last session · </span>
-                ) : null}
-                {slot.branch}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Total tokens</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold tabular-nums">{formatTokens(totals.tokensTotal)}</p>
-            <p className="text-xs text-muted-foreground">
-              in {formatTokens(totals.tokensInput)} · out {formatTokens(totals.tokensOutput)} ·
-              cache {formatTokens(totals.tokensCacheRead + totals.tokensCacheCreation)}
-            </p>
-            {preDedupeSessions > 0 && (
-              <p className="text-xs text-muted-foreground">
-                <PreDedupeTip>
-                  {`${preDedupeSessions} session(s) harvested pre-dedupe — reads high`}
-                </PreDedupeTip>
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Estimated cost</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold tabular-nums">
-              {totals.hasCost ? `$${totals.costUsd.toFixed(4)}` : '—'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Agent-reported USD when available; otherwise estimated via{' '}
-              <a
-                href="https://github.com/pydantic/genai-prices"
-                className="underline underline-offset-2"
-                target="_blank"
-                rel="noreferrer"
-              >
-                genai-prices
-              </a>
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Sessions recorded</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{usageRows.length}</p>
-            <p className="text-xs text-muted-foreground">Includes historical (post-teardown) usage</p>
-          </CardContent>
-        </Card>
       </div>
 
       <Card>
@@ -193,7 +88,7 @@ export default async function SlotDetailPage({
           <CardTitle>Verify</CardTitle>
           <CardDescription>
             Verify runs of the current session in this slot. Earlier occupants of slot {slotId} are
-            in the repository{' '}
+            listed under the timeline and in the repository{' '}
             <Link href={`/repos/${id}?tab=history`} className="underline underline-offset-2">
               History
             </Link>
@@ -215,139 +110,33 @@ export default async function SlotDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Agent activity</CardTitle>
+          <CardTitle>Timeline</CardTitle>
           <CardDescription>
-            Follow what the agent did, or inspect the raw telemetry events.
+            Agent sessions, verify runs, verified snapshots and commits of this session, newest first.
+            Click a row to open it. Prompts and usage are stored locally; disable prompt capture with{' '}
+            <code>har telemetry on --no-prompts</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="trajectory">
-            <TabsList>
-              <TabsTrigger value="trajectory">Trajectory</TabsTrigger>
-              <TabsTrigger value="raw-events">Raw events</TabsTrigger>
-            </TabsList>
-            <TabsContent value="trajectory" className="mt-4">
-              <TrajectoryViewer
-                repositoryId={id}
-                agentId={slotId}
-                streams={trajectory.streams}
-                initialPage={trajectory.initialPage}
-              />
-            </TabsContent>
-            <TabsContent value="raw-events" className="mt-4">
-              <SessionEventsTable
-                events={events.map((ev) => ({
-                  id: ev.id,
-                  eventName: ev.eventName,
-                  sessionKey: ev.sessionKey,
-                  agentTool: ev.agentTool,
-                  promptText: ev.promptText,
-                  responseText: ev.responseText,
-                  attributes: ev.attributes,
-                  rawTruncated: ev.rawTruncated,
-                  source: ev.source,
-                  timestamp: ev.timestamp,
-                }))}
-              />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Usage by agent</CardTitle>
-          <CardDescription>
-            Tokens and estimated cost per session, merged from telemetry and sync
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {usageRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No usage yet. Enable telemetry (`har telemetry on`), run Claude Code or Codex with
-              OTEL pointed at Mission Control, or wait for `har control sync` harvest.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="py-2 pr-4 font-medium">Session</th>
-                    <th className="py-2 pr-4 font-medium">Agent</th>
-                    <th className="py-2 pr-4 font-medium">Models</th>
-                    <th className="py-2 pr-4 font-medium">Tokens</th>
-                    <th className="py-2 pr-4 font-medium">Cost</th>
-                    <th className="py-2 pr-4 font-medium">Sources</th>
-                    <th className="py-2 font-medium">Last seen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usageRows.map((row) => {
-                    const modelRows = modelTotalsFromBreakdown(row.modelBreakdown);
-                    const models = resolveModels(row.sessionKey, row.agentTool, row.modelBreakdown);
-                    return (
-                      <tr key={row.id} className="border-b border-border/60">
-                        <td className="max-w-xs truncate py-2 pr-4 font-mono text-xs" title={row.sessionKey}>
-                          {row.sessionKey}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <Badge variant="outline">{formatAgentToolLabel(row.agentTool)}</Badge>
-                        </td>
-                        <td className="py-2 pr-4">
-                          {modelRows.length === 0 && models.length === 0 ? (
-                            <span className="text-muted-foreground">—</span>
-                          ) : (
-                            <div className="flex max-w-md flex-col gap-1">
-                              {(modelRows.length > 0
-                                ? modelRows
-                                : models.map((model) => ({
-                                    model,
-                                    totals: {} as UsageModelTotals,
-                                  }))
-                              ).map(({ model, totals }) => (
-                                <div key={model} className="flex flex-wrap items-center gap-1">
-                                  <Badge
-                                    variant="secondary"
-                                    className="font-mono text-[10px]"
-                                    title={model}
-                                  >
-                                    {formatModelId(model)}
-                                  </Badge>
-                                  {totals.costUsd != null ? (
-                                    <span className="text-[10px] tabular-nums text-muted-foreground">
-                                      {formatCostUsd(totals.costUsd)}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-2 pr-4 tabular-nums">
-                          {formatTokens(Number(row.tokensTotal))}
-                        </td>
-                        <td className="py-2 pr-4 tabular-nums">
-                          {formatCostUsd(row.costUsd == null ? null : Number(row.costUsd))}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <div className="flex flex-wrap gap-1">
-                            {row.sources.map((s) => (
-                              <Badge key={s} variant="secondary">
-                                {s}
-                              </Badge>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="py-2 text-muted-foreground" suppressHydrationWarning>
-                          {row.lastSeenAt.toLocaleString()}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <SlotTimeline
+            repositoryId={id}
+            rows={timeline.current}
+            previousRows={timeline.previous}
+            previousLabel={`Earlier occupants of slot ${slotId}`}
+            defaultExpandedId={newestSession?.id ?? null}
+            rawEvents={events.map((ev) => ({
+              id: ev.id,
+              eventName: ev.eventName,
+              sessionKey: ev.sessionKey,
+              agentTool: ev.agentTool,
+              promptText: ev.promptText,
+              responseText: ev.responseText,
+              attributes: ev.attributes,
+              rawTruncated: ev.rawTruncated,
+              source: ev.source,
+              timestamp: ev.timestamp,
+            }))}
+          />
         </CardContent>
       </Card>
     </div>

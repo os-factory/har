@@ -257,7 +257,7 @@ function TrajectoryLog({
         const duration = nodeDurationMs(node);
         const selected = selectedId === node.id;
         return (
-          <li key={node.id} className="relative">
+          <li key={node.id} className="relative" data-node-id={node.id}>
             <button
               type="button"
               aria-pressed={selected}
@@ -427,11 +427,20 @@ export function TrajectoryViewer({
   agentId,
   streams,
   initialPage,
+  selectedNodeId = null,
+  onSelectNode,
+  fill = false,
 }: {
   repositoryId: string;
   agentId: number;
   streams: TrajectoryStream[];
   initialPage: SerializedTrajectoryPage;
+  /** Node (turn or tool call) to select, e.g. from a shared link. Older pages load until it is found. */
+  selectedNodeId?: string | null;
+  /** Fires when the user selects a node so the host can mirror it into the URL. */
+  onSelectNode?: (nodeId: string) => void;
+  /** Fill the parent (a flex column with a definite height, e.g. a drawer) instead of a fixed log height. */
+  fill?: boolean;
 }) {
   const initialStream = streams[0] ?? null;
   const [selectedKey, setSelectedKey] = useState(initialStream ? streamKey(initialStream) : '');
@@ -442,7 +451,11 @@ export function TrajectoryViewer({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [connectionSeed, setConnectionSeed] = useState(0);
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedIdState] = useState<string | null>(selectedNodeId);
+  const setSelectedId = (id: string | null) => {
+    setSelectedIdState(id);
+    if (id && onSelectNode) onSelectNode(id);
+  };
   const [status, setStatus] = useState<LiveStatus>(
     typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'reconnecting',
   );
@@ -530,9 +543,18 @@ export function TrajectoryViewer({
     setConnectionSeed((value) => value + 1);
   };
 
+  const logScrollRef = useRef<HTMLDivElement | null>(null);
+  const olderSentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadingOlderRef = useRef(false);
+
+  // Older records are prepended, so keep the viewport anchored on what the user was reading.
   const loadOlder = async () => {
-    if (!selected || !before) return;
+    if (!selected || !before || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
     setLoadingOlder(true);
+    const scroller = logScrollRef.current;
+    const heightBefore = scroller?.scrollHeight ?? 0;
+    const topBefore = scroller?.scrollTop ?? 0;
     try {
       const url = new URL(endpoint(repositoryId, agentId, selected), window.location.origin);
       url.searchParams.set('before', before);
@@ -542,10 +564,62 @@ export function TrajectoryViewer({
       replaceRecords(mergeTrajectoryRecords(page.records, recordsRef.current));
       setBefore(page.nextBefore);
       setHasMore(page.hasMore);
+      requestAnimationFrame(() => {
+        if (scroller) scroller.scrollTop = topBefore + (scroller.scrollHeight - heightBefore);
+      });
     } finally {
+      loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
   };
+
+  // Start at the newest record; older history is above.
+  useEffect(() => {
+    const scroller = logScrollRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }, [loadedKey]);
+
+  // A shared link names a node that may sit in an older page: keep loading history
+  // (bounded) until it is present, then scroll it into view.
+  const pendingSelectionRef = useRef<string | null>(selectedNodeId);
+  useEffect(() => {
+    pendingSelectionRef.current = selectedNodeId;
+    if (selectedNodeId) setSelectedIdState(selectedNodeId);
+  }, [selectedNodeId]);
+  const olderPagesForSelection = useRef(0);
+  useEffect(() => {
+    const target = pendingSelectionRef.current;
+    if (!target) return;
+    if (nodes.some((node) => node.id === target)) {
+      pendingSelectionRef.current = null;
+      olderPagesForSelection.current = 0;
+      requestAnimationFrame(() => {
+        logScrollRef.current
+          ?.querySelector(`[data-node-id="${target}"]`)
+          ?.scrollIntoView({ block: 'center' });
+      });
+      return;
+    }
+    if (hasMore && before && olderPagesForSelection.current < 20) {
+      olderPagesForSelection.current += 1;
+      void loadOlder();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, hasMore, before]);
+
+  // Infinite scroll: no pagination controls, older records load as the sentinel at the
+  // top of the log scrolls into view.
+  useEffect(() => {
+    const sentinel = olderSentinelRef.current;
+    const root = logScrollRef.current;
+    if (!sentinel || !root || !hasMore || !before) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadOlder();
+    }, { root, rootMargin: '120px 0px 0px 0px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [before, hasMore, selectedKey, nodes.length]);
 
   if (streams.length === 0) {
     return (
@@ -556,7 +630,7 @@ export function TrajectoryViewer({
   }
 
   return (
-    <div className="space-y-3">
+    <div className={cn('space-y-3', fill && 'flex h-full min-h-0 flex-col')}>
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         {streams.length > 1 ? (
           <Select value={selectedKey} onValueChange={(value) => void chooseStream(value)}>
@@ -642,26 +716,34 @@ export function TrajectoryViewer({
         />
       </div>
 
-      {hasMore && before ? (
-        <Button variant="outline" size="sm" disabled={loadingOlder} onClick={() => void loadOlder()}>
-          {loadingOlder ? 'Loading…' : 'Load older'}
-        </Button>
-      ) : null}
-
       {nodes.length === 0 ? (
         <p className="text-sm text-muted-foreground">No records in this trajectory stream.</p>
       ) : visibleNodes.length === 0 ? (
         <p className="text-sm text-muted-foreground">No events match this search.</p>
       ) : (
-        <div className="space-y-3">
+        <div className={cn('space-y-3', fill && 'flex min-h-0 flex-1 flex-col')}>
           <TrajectoryOverview
             nodes={visibleNodes}
             selectedId={selectedNode?.id ?? null}
             onSelect={setSelectedId}
           />
-          <div className="overflow-hidden rounded-lg border">
-            <div className="grid min-h-[28rem] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
-              <div className="min-h-0 overflow-auto border-b p-2 lg:border-b-0 lg:border-r">
+          <div className={cn('overflow-hidden rounded-lg border', fill && 'min-h-0 flex-1')}>
+            <div
+              className={cn(
+                'grid lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]',
+                fill ? 'h-full' : 'h-[32rem] max-h-[70vh]',
+              )}
+            >
+              <div
+                ref={logScrollRef}
+                className="min-h-0 overflow-auto border-b p-2 lg:border-b-0 lg:border-r"
+                data-testid="trajectory-log-scroll"
+              >
+                {hasMore && before ? (
+                  <div ref={olderSentinelRef} className="py-1 text-center text-[11px] text-muted-foreground" aria-live="polite">
+                    {loadingOlder ? 'Loading older records…' : 'Scroll up for older records'}
+                  </div>
+                ) : null}
                 <TrajectoryLog
                   nodes={visibleNodes}
                   selectedId={selectedNode?.id ?? null}

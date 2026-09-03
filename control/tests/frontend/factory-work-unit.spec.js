@@ -15,16 +15,15 @@ test.describe('Factory work unit detail', () => {
 
     await expect(page.getByRole('link', { name: '← Work' })).toBeVisible();
     await expect(page.getByText('Worktrees', { exact: true })).toBeVisible();
-    await expect(page.getByText('Evidence', { exact: true })).toBeVisible();
+    await expect(page.getByText('Timeline', { exact: true })).toBeVisible();
+    await expect(page.getByText('Evidence', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Slots that worked this unit')).toBeVisible();
 
-    // Evidence is tabular (searchable data table), not a long timeline list.
-    await expect(
-      page
-        .getByRole('searchbox', { name: /search evidence/i })
-        .or(page.getByText(/no execution evidence synchronized yet/i)),
-    ).toBeVisible();
-    await expect(page.getByText('Evidence timeline')).toHaveCount(0);
+    // The timeline is one data table shared with the slot page, with the Slot column shown.
+    const timeline = page.getByTestId('slot-timeline');
+    await expect(timeline.getByRole('searchbox', { name: /search timeline/i })).toBeVisible();
+    await expect(timeline.getByRole('columnheader', { name: 'Slot' })).toBeVisible();
+    await expect(page.getByText(/rows per page/i)).toHaveCount(0);
 
     // Repository card links into Mission Control repo pages.
     await expect(page.locator('a[href^="/repos/"]').first()).toBeVisible();
