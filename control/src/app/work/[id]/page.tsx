@@ -3,11 +3,10 @@ import { notFound } from 'next/navigation';
 import type { WorkUnitRelatedLink } from '@har/schemas';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { SlotTimeline } from '@/components/slot-timeline';
-import { WorkUnitWorktreesTable } from '@/components/work-unit-worktrees-table';
+import { WorkUnitAttempts } from '@/components/work-unit-attempts';
 import { gitRemoteBrowseUrl } from '@/lib/git-remote-url';
-import { buildWorkUnitWorktreeRows } from '@/lib/work-unit-evidence';
-import { getWorkUnitTimeline } from '@/server/slot-timeline';
+import { getAttemptRecord, type AttemptRecord } from '@/server/attempt-record';
+import { occupancyKeyForAttempt } from '@/server/occupancy';
 import { getFactoryWorkUnitById } from '@/server/work-units';
 
 export const dynamic = 'force-dynamic';
@@ -26,41 +25,14 @@ export default async function WorkUnitPage({
   const repoName =
     unit.repository.path.split('/').pop() ?? unit.repository.path;
 
-  const agents = [
-    ...new Map(
-      [
-        ...unit.slots.map((slot) => ({
-          agentId: slot.slotId,
-          active: slot.active,
-          purpose: slot.purpose,
-        })),
-        ...unit.attempts.map((attempt) => ({
-          agentId: attempt.agentId,
-          active: unit.slots.some(
-            (slot) => slot.slotId === attempt.agentId && slot.active,
-          ),
-          purpose: null as string | null,
-        })),
-      ].map((agent) => [agent.agentId, agent]),
-    ).values(),
-  ].sort((a, b) => {
-    if (a.active !== b.active) return a.active ? -1 : 1;
-    return a.agentId - b.agentId;
-  });
-
-  const worktrees = buildWorkUnitWorktreeRows({
-    repoId: unit.repository.id,
-    attempts: unit.attempts,
-    slots: unit.slots,
-  });
-
-  const timeline = await getWorkUnitTimeline({
-    repositoryId: unit.repository.id,
-    workUnitId: unit.workUnitId,
-    attempts: unit.attempts,
-    runs: unit.runs,
-    validations: unit.validations,
-  });
+  // #348: attempts are records. Slot numbers are text here — a slot is live data and may
+  // hold unrelated work by now; only a live attempt links to its slot.
+  const records = (
+    await Promise.all(
+      unit.attempts.map((attempt) => getAttemptRecord(unit.repository.id, occupancyKeyForAttempt(attempt.attemptId))),
+    )
+  ).filter((record): record is AttemptRecord => record != null);
+  const verified = records.filter((record) => record.verification?.latestRun?.status === 'pass').length;
 
   const relatedLinks = (unit.relatedLinks as WorkUnitRelatedLink[] | null) ?? [];
 
@@ -105,7 +77,7 @@ export default async function WorkUnitPage({
         ) : null}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Repository</CardTitle>
@@ -139,42 +111,14 @@ export default async function WorkUnitPage({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Agent</CardTitle>
-            <CardDescription>Slots that worked this unit</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {agents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No agent linked yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {agents.map((agent) => (
-                  <li key={agent.agentId} className="flex flex-wrap items-center gap-2 text-sm">
-                    <Link
-                      href={`/repos/${unit.repository.id}/slots/${agent.agentId}`}
-                      className="font-medium text-primary underline-offset-2 hover:underline"
-                    >
-                      Slot {agent.agentId}
-                    </Link>
-                    <Badge variant={agent.active ? 'success' : 'outline'}>
-                      {agent.active ? 'active' : 'idle'}
-                    </Badge>
-                    {agent.purpose ? (
-                      <span className="max-w-48 truncate text-xs text-muted-foreground" title={agent.purpose}>
-                        {agent.purpose}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
             <CardTitle className="text-base">Attempts</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">{unit.attempts.length}</CardContent>
+          <CardContent>
+            <p className="text-2xl font-bold">{unit.attempts.length}</p>
+            <p className="text-sm text-muted-foreground">
+              {verified} verified{unit.slot ? ` · slot ${unit.slot.slotId} live` : ''}
+            </p>
+          </CardContent>
         </Card>
 
         <Card>
@@ -189,31 +133,14 @@ export default async function WorkUnitPage({
 
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Worktrees</CardTitle>
+          <CardTitle>Attempts</CardTitle>
           <CardDescription>
-            Session worktrees and attempts bound to this work unit.
+            Every launch bound to this unit, newest first: how its tree was verified, what the agent did, and the
+            commits it produced.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <WorkUnitWorktreesTable rows={worktrees} />
-        </CardContent>
-      </Card>
-
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle>Timeline</CardTitle>
-          <CardDescription>
-            Attempts, agent sessions, verify runs, verified snapshots and commits across every slot
-            that worked this unit, newest first. Click a row to open it.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SlotTimeline
-            repositoryId={unit.repository.id}
-            rows={timeline}
-            showSlotColumn
-            emptyMessage="No execution evidence synchronized yet. Run har env launch with --work-id to bind a slot to this unit."
-          />
+          <WorkUnitAttempts repositoryId={unit.repository.id} records={records} />
         </CardContent>
       </Card>
     </div>

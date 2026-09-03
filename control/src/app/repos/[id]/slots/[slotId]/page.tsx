@@ -28,9 +28,9 @@ export default async function SlotDetailPage({
   const slot = repo.slots.find((s) => s.slotId === slotId);
   if (!slot) notFound();
 
-  // #316: everything on this page is scoped to the slot's CURRENT occupancy. A slot
+  // #316 / #348: this page is LIVE data, scoped to the slot's current occupancy. A slot
   // number is reused after complete/teardown; a working session is not. Earlier
-  // occupants stay reachable in the collapsed section below the timeline.
+  // occupants are records — they live in the repository History and on work units.
   const [validation, timeline, events] = await Promise.all([
     getValidationStages(id, { agentId: slotId, since: slot.sessionCreatedAt, workDir: slot.workDir }),
     getSlotTimeline(id, slot),
@@ -38,7 +38,7 @@ export default async function SlotDetailPage({
   ]);
 
   // Open the newest agent session so its trajectory is readable without a click.
-  const newestSession = timeline.current.find((row) => row.kind === 'session');
+  const newestSession = timeline.find((row) => row.kind === 'session');
   const previewUrls = (slot.previewUrls ?? null) as Record<string, string> | null;
   const previewEntries = slot.active && previewUrls ? Object.entries(previewUrls) : [];
   const repoName = repo.path.split('/').pop() ?? repo.path;
@@ -87,8 +87,8 @@ export default async function SlotDetailPage({
         <CardHeader>
           <CardTitle>Verify</CardTitle>
           <CardDescription>
-            Verify runs of the current session in this slot. Earlier occupants of slot {slotId} are
-            listed under the timeline and in the repository{' '}
+            Verify runs of the current session in this slot. Earlier occupants of slot {slotId} are in the
+            repository{' '}
             <Link href={`/repos/${id}?tab=history`} className="underline underline-offset-2">
               History
             </Link>
@@ -120,9 +120,7 @@ export default async function SlotDetailPage({
         <CardContent>
           <SlotTimeline
             repositoryId={id}
-            rows={timeline.current}
-            previousRows={timeline.previous}
-            previousLabel={`Earlier occupants of slot ${slotId}`}
+            rows={timeline}
             defaultExpandedId={newestSession?.id ?? null}
             rawEvents={events.map((ev) => ({
               id: ev.id,

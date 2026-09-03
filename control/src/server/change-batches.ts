@@ -1,5 +1,7 @@
 import { SyncValidationsInputSchema, ValidationRecordSchema } from '@har/schemas';
 import { prisma } from '@/lib/db';
+import { resolveRecordOccupancyKey } from '@/server/occupancy';
+import { listOccupancyCandidates } from '@/server/repositories';
 
 function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as object;
@@ -7,9 +9,14 @@ function toJson(value: unknown) {
 
 export async function syncChangeBatches(repositoryId: string, input: unknown) {
   const { validations } = SyncValidationsInputSchema.parse(input);
+  const slots = await listOccupancyCandidates(repositoryId);
 
   for (const validation of validations) {
     const parsed = ValidationRecordSchema.parse(validation);
+    const occupancyKey = resolveRecordOccupancyKey(
+      { agentId: parsed.agentId, workDir: parsed.workDir, at: new Date(parsed.createdAt) },
+      slots,
+    );
     const data = {
       validationId: parsed.validationId,
       headSha: parsed.headSha,
@@ -29,9 +36,11 @@ export async function syncChangeBatches(repositoryId: string, input: unknown) {
         repositoryId,
         treeHash: parsed.treeHash,
         createdAt: new Date(parsed.createdAt),
+        occupancyKey,
         ...data,
       },
-      update: data,
+      // Keep a key stamped earlier: a later sync may run after the slot moved on.
+      update: { ...data, ...(occupancyKey ? { occupancyKey } : {}) },
     });
   }
 

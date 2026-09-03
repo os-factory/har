@@ -11,7 +11,7 @@ async function openHistory(page) {
   const historyTab = page.getByRole('tab', { name: 'History' });
   await expect(historyTab).toBeVisible();
   await historyTab.click();
-  await expect(page.getByRole('tab', { name: 'Graph' })).toBeVisible();
+  await expect(page.getByTestId('history-how-toggle')).toBeVisible();
 }
 
 test.describe('Repository history', () => {
@@ -64,31 +64,33 @@ test.describe('Repository history', () => {
     expect(runId === '—' || runId.length > 12).toBeTruthy();
   });
 
-  test('list mode reuses the timeline and follows the branch filter', async ({ page }) => {
+  test('a verified node opens the record of the attempt that produced it, without slot links', async ({ page }) => {
     await openHistory(page);
-    await page.getByRole('tab', { name: 'List' }).click();
+    await expect(page.getByRole('tab', { name: 'List' })).toHaveCount(0);
 
-    const timeline = page.getByTestId('slot-timeline');
-    await expect(timeline).toBeVisible();
-    await expect(timeline.getByRole('columnheader', { name: 'Branch' })).toBeVisible();
-    await expect(timeline.getByRole('columnheader', { name: 'Slot' })).toBeVisible();
-    // No page-long list: the table body scrolls and there is no pagination.
-    await expect(timeline.getByRole('button', { name: /next/i })).toHaveCount(0);
+    const graph = page.getByTestId('session-history-graph');
+    if (!(await graph.isVisible().catch(() => false))) return;
 
-    const filter = page.getByRole('combobox', { name: 'Filter history by branch' });
-    if (!(await filter.isVisible().catch(() => false))) return;
-    const before = await timeline.locator('tbody tr').count();
-    await filter.click();
-    const options = page.getByRole('option');
-    const optionCount = await options.count();
-    if (optionCount < 2) return;
-    const branch = (await options.nth(1).innerText()).trim();
-    await options.nth(1).click();
-    await expect(filter).toContainText(branch);
-    const after = await timeline.locator('tbody tr').count();
-    expect(after).toBeLessThanOrEqual(before);
-    for (const cell of await timeline.locator('tbody tr td:nth-child(6)').allInnerTexts()) {
-      expect(cell === '—' || cell === branch).toBeTruthy();
+    // Snapshots always come from an attempt; pick one so the record is non-trivial.
+    const snapshot = page.locator('[data-testid="session-history-node"][data-node-kind="snapshot"]').first();
+    if ((await snapshot.count()) === 0) return;
+    await snapshot.click();
+
+    const explain = page.getByTestId('session-history-explain');
+    await expect(explain).toBeVisible();
+    const record = explain.getByTestId('attempt-record');
+    const noAttempt = explain.getByTestId('session-history-no-attempt');
+    await expect(record.or(noAttempt).first()).toBeVisible({ timeout: 10_000 });
+    if (!(await record.isVisible().catch(() => false))) return;
+
+    // The record carries the attempt facts, the verify graph and the attempt timeline.
+    await expect(record.getByText('Work unit', { exact: true })).toBeVisible();
+    await expect(record.getByTestId('attempt-verify-summary')).toBeVisible();
+    await expect(record.getByTestId('slot-timeline')).toBeVisible();
+    // Record → slot navigation only exists for a live attempt.
+    const slotLinks = explain.locator('a[href*="/slots/"]');
+    for (const link of await slotLinks.all()) {
+      await expect(link).toHaveAttribute('data-testid', 'attempt-live-slot');
     }
   });
 });

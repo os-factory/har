@@ -731,7 +731,8 @@
         "data": {
           "agentId": 4
         }
-      }
+      },
+      "occupancyKey": "attempt::79f23717-4c09-4187-b1e0-863844871fa1"
     },
     {
       "id": "42691ca9-f78f-4891-b3ee-ee2881a7d426",
@@ -748,7 +749,8 @@
       "workDir": "/home/antoine/worktrees/main-98fa-har-agent-4-er98",
       "workUnitId": "191",
       "attemptId": "79f23717-4c09-4187-b1e0-863844871fa1",
-      "result": null
+      "result": null,
+      "occupancyKey": "attempt::79f23717-4c09-4187-b1e0-863844871fa1"
     },
     {
       "id": "408805d0-bdf5-4926-9126-75dade7cffe9",
@@ -873,7 +875,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::79f23717-4c09-4187-b1e0-863844871fa1"
     },
     {
       "id": "0ee9c903-42ae-43fe-9938-5178e0496ae7",
@@ -998,7 +1001,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     },
     {
       "id": "292a2885-934d-456b-a690-727f7c20e396",
@@ -1024,7 +1028,8 @@
         "data": {
           "agentId": 4
         }
-      }
+      },
+      "occupancyKey": "attempt::79f23717-4c09-4187-b1e0-863844871fa1"
     },
     {
       "id": "d21c6d1f-54a4-4524-891c-0358e74d5c62",
@@ -1149,7 +1154,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::23ab4a9a-ce66-4d5b-b304-4f440ac71d30"
     },
     {
       "id": "485e540b-a5cb-474e-9a95-d509b1063e67",
@@ -1274,7 +1280,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     },
     {
       "id": "0bdf673f-1be0-487e-9881-46e5b79963ac",
@@ -1300,7 +1307,8 @@
         "data": {
           "agentId": 3
         }
-      }
+      },
+      "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     },
     {
       "id": "d0ea1ec3-f2f0-4514-b4a2-9eb93e181bb2",
@@ -1425,7 +1433,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::23ab4a9a-ce66-4d5b-b304-4f440ac71d30"
     },
     {
       "id": "efbbcfc3-cbef-4a26-adb5-24e64fc3a6c2",
@@ -1551,7 +1560,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::23ab4a9a-ce66-4d5b-b304-4f440ac71d30"
     },
     {
       "id": "8c1dd7cd-e0de-455d-a758-81a95e201e1e",
@@ -1577,7 +1587,8 @@
         "data": {
           "agentId": 1
         }
-      }
+      },
+      "occupancyKey": "attempt::23ab4a9a-ce66-4d5b-b304-4f440ac71d30"
     },
     {
       "id": "c66d4843-9bb2-42f1-9f54-098cb66c761d",
@@ -1603,7 +1614,8 @@
         "data": {
           "agentId": 1
         }
-      }
+      },
+      "occupancyKey": "attempt::e5157b0f-bbfb-4d37-b3e8-0f26c7166f29"
     },
     {
       "id": "7ea18aaa-1268-4f22-a4b3-c9ab8b3e1934",
@@ -1728,7 +1740,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::e5157b0f-bbfb-4d37-b3e8-0f26c7166f29"
     },
     {
       "id": "c59e7439-35ac-4e71-9c6e-f53fa9f91ef8",
@@ -1754,7 +1767,8 @@
         "data": {
           "agentId": 1
         }
-      }
+      },
+      "occupancyKey": "attempt::e5157b0f-bbfb-4d37-b3e8-0f26c7166f29"
     },
     {
       "id": "6b47c34f-2952-40ea-8241-95963ed104df",
@@ -1780,7 +1794,8 @@
         "data": {
           "agentId": 1
         }
-      }
+      },
+      "occupancyKey": "attempt::cad4fa9c-bfa0-4b23-9e07-daa34e03aeeb"
     },
     {
       "id": "66e91aac-5e65-4f76-8f63-97ca64b2958a",
@@ -1905,7 +1920,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::cad4fa9c-bfa0-4b23-9e07-daa34e03aeeb"
     },
     {
       "id": "29641e71-dad4-4e30-bbc5-405904b52afa",
@@ -2030,7 +2046,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::cad4fa9c-bfa0-4b23-9e07-daa34e03aeeb"
     },
     {
       "id": "77337078-2eca-4d0b-8823-16cc55222ace",
@@ -2155,7 +2172,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::667dd8f8-75e4-4994-b5bc-912148b40ca7"
     },
     {
       "id": "f7ea638e-3e51-4e23-94c4-383db4326db1",
@@ -2280,7 +2298,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::cad4fa9c-bfa0-4b23-9e07-daa34e03aeeb"
     },
     {
       "id": "2664463d-8948-4709-a15d-f6a777fcd9a8",
@@ -2306,7 +2325,8 @@
         "data": {
           "agentId": 2
         }
-      }
+      },
+      "occupancyKey": "attempt::667dd8f8-75e4-4994-b5bc-912148b40ca7"
     },
     {
       "id": "f36c9885-f81a-4ccd-971b-aaccd162a23b",
@@ -2332,7 +2352,8 @@
         "data": {
           "agentId": 3
         }
-      }
+      },
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "d9a1219b-f7e4-4121-9591-089ae6c6f6b9",
@@ -2437,7 +2458,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "ff2e4d1a-85c8-4f77-b103-e7bf997a085b",
@@ -2542,7 +2564,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "2032f8ce-7753-44be-ab12-6413f86dbd7d",
@@ -2648,7 +2671,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "f22eb53b-7d96-4272-bc08-f5cecc09baf7",
@@ -2674,7 +2698,8 @@
         "data": {
           "agentId": 3
         }
-      }
+      },
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "38d1e704-114e-4a05-9e6e-333378d291f4",
@@ -2700,7 +2725,8 @@
         "data": {
           "agentId": 1
         }
-      }
+      },
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "cfcf0990-34a3-42a9-ad5c-82b40bfa5140",
@@ -2812,7 +2838,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "33dfbd33-f63c-4b2c-a990-db055f880da4",
@@ -2829,7 +2856,8 @@
       "workDir": null,
       "workUnitId": "issue-203",
       "attemptId": "4de29a46-9cff-4c71-bc00-1dc90cc96cde",
-      "result": null
+      "result": null,
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "f80ae126-1cb0-4b43-86d7-5d5520220b0d",
@@ -2941,7 +2969,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "cf4737f1-deb6-4080-bd88-5a5aaa1150f0",
@@ -3053,7 +3082,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "a08ed7f5-9888-48be-a967-51066451c59d",
@@ -3165,7 +3195,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "65e7e464-97bf-4731-967d-f64d1b758628",
@@ -3277,7 +3308,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "e3d0c02c-e98a-4c48-9563-16fcfc7a2423",
@@ -3303,7 +3335,8 @@
         "data": {
           "agentId": 1
         }
-      }
+      },
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "c34fe51d-fccd-4e44-b6a0-ba7522d02458",
@@ -3610,7 +3643,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "e4e73648-6168-46b2-903f-3ba128c95d04",
@@ -3735,7 +3769,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "89912e60-f3a1-45d3-9f51-5e9ca50e4d38",
@@ -3862,7 +3897,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "4ba977dd-ddfd-4aad-879a-abc6a301f328",
@@ -3987,7 +4023,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "6cb7bacf-0e98-48b1-93c1-5410b73f9c3a",
@@ -4112,7 +4149,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "d59886c6-858c-49b4-aa0c-f1a657646338",
@@ -4237,7 +4275,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "880802d5-9239-4bd6-9770-c8d4414a1c06",
@@ -4362,7 +4401,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "02017f89-16f6-4f1b-973c-9643ef6e3d84",
@@ -4487,7 +4527,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "ba073025-a64a-4984-a3a0-f176cb0995e4",
@@ -4612,7 +4653,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "branch::main-3eec-har-agent-4-rk32::2026-08-28T13:20:14.801Z"
     },
     {
       "id": "acb59a33-f6c1-4650-895d-4fd04b8cf48b",
@@ -4815,7 +4857,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::6fba96b3-f02d-488d-8bca-164fb0035bd7"
     },
     {
       "id": "1667a8fd-fbec-4ebc-ba97-407bfcfc4573",
@@ -4941,7 +4984,8 @@
             ]
           }
         }
-      }
+      },
+      "occupancyKey": "attempt::6fba96b3-f02d-488d-8bca-164fb0035bd7"
     },
     {
       "id": "099badb9-c62b-4227-a845-704734c286ee",
@@ -4967,7 +5011,8 @@
         "data": {
           "agentId": 1
         }
-      }
+      },
+      "occupancyKey": "attempt::6fba96b3-f02d-488d-8bca-164fb0035bd7"
     },
     {
       "id": "1d10ddea-7700-4eae-8aa7-5a5dbfcec6f4",
@@ -6359,7 +6404,8 @@
       "commitSha": "a0d31d079fcdf711178f82b94f8cece2700621db",
       "committedAt": "2026-08-31T20:13:06.280Z",
       "createdAt": "2026-08-31T17:20:44.765Z",
-      "updatedAt": "2026-09-01T21:25:36.315Z"
+      "updatedAt": "2026-09-01T21:25:36.315Z",
+      "occupancyKey": "attempt::79f23717-4c09-4187-b1e0-863844871fa1"
     },
     {
       "id": "099c0079-f996-4097-a424-fba84ea65660",
@@ -6398,7 +6444,8 @@
       "commitSha": "2536d6cc13714940e7c9a6e1997980dd6b3dfe3c",
       "committedAt": "2026-08-31T17:10:34.400Z",
       "createdAt": "2026-08-31T17:10:04.939Z",
-      "updatedAt": "2026-09-01T21:25:36.321Z"
+      "updatedAt": "2026-09-01T21:25:36.321Z",
+      "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     },
     {
       "id": "3a1be3e3-7831-4a6b-9f15-cc1a4bf2ef23",
@@ -6433,7 +6480,8 @@
       "commitSha": "87187933c6f094fed3e19eb49bbe0e6649bfe7e3",
       "committedAt": "2026-08-31T21:18:29.936Z",
       "createdAt": "2026-08-31T17:04:46.145Z",
-      "updatedAt": "2026-09-01T21:25:36.300Z"
+      "updatedAt": "2026-09-01T21:25:36.300Z",
+      "occupancyKey": "attempt::23ab4a9a-ce66-4d5b-b304-4f440ac71d30"
     },
     {
       "id": "7c670ad0-faa7-44f8-ae4f-a5a18f1cee91",
@@ -6468,7 +6516,8 @@
       "commitSha": "76c2cb5f166572cc62f7e4247b69f47fc83d9e1f",
       "committedAt": "2026-08-31T16:20:08.510Z",
       "createdAt": "2026-08-31T16:19:29.304Z",
-      "updatedAt": "2026-09-01T21:25:36.325Z"
+      "updatedAt": "2026-09-01T21:25:36.325Z",
+      "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     },
     {
       "id": "b8017107-7034-4da9-bb9b-c7bf0f61bd3f",
@@ -6519,7 +6568,8 @@
       "commitSha": "7e61ef736db53bda82c78aab07177b755db63ca0",
       "committedAt": "2026-08-31T12:13:35.220Z",
       "createdAt": "2026-08-31T12:12:56.762Z",
-      "updatedAt": "2026-09-01T21:25:36.331Z"
+      "updatedAt": "2026-09-01T21:25:36.331Z",
+      "occupancyKey": "attempt::23ab4a9a-ce66-4d5b-b304-4f440ac71d30"
     },
     {
       "id": "271bf392-2727-416d-81f1-4c75285cbb1b",
@@ -6570,7 +6620,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-08-31T12:10:45.250Z",
-      "updatedAt": "2026-09-01T21:25:36.335Z"
+      "updatedAt": "2026-09-01T21:25:36.335Z",
+      "occupancyKey": "attempt::23ab4a9a-ce66-4d5b-b304-4f440ac71d30"
     },
     {
       "id": "94d502ad-26c5-46f2-a51b-c23ebd7b3a5f",
@@ -6605,7 +6656,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-08-30T17:22:09.116Z",
-      "updatedAt": "2026-09-01T21:25:36.339Z"
+      "updatedAt": "2026-09-01T21:25:36.339Z",
+      "occupancyKey": "attempt::e5157b0f-bbfb-4d37-b3e8-0f26c7166f29"
     },
     {
       "id": "ed91d19b-7eb8-48cf-ad6b-64f102372abc",
@@ -6623,7 +6675,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-08-30T11:58:34.124Z",
-      "updatedAt": "2026-09-01T21:25:36.344Z"
+      "updatedAt": "2026-09-01T21:25:36.344Z",
+      "occupancyKey": "attempt::cad4fa9c-bfa0-4b23-9e07-daa34e03aeeb"
     },
     {
       "id": "512babc1-8bd6-48b3-8938-6f58784881cd",
@@ -6674,7 +6727,8 @@
       "commitSha": "317f9c0e53adef387656c7431d3ba0115a763c64",
       "committedAt": "2026-08-30T11:29:21.199Z",
       "createdAt": "2026-08-30T11:28:50.716Z",
-      "updatedAt": "2026-09-01T21:25:36.349Z"
+      "updatedAt": "2026-09-01T21:25:36.349Z",
+      "occupancyKey": "attempt::667dd8f8-75e4-4994-b5bc-912148b40ca7"
     },
     {
       "id": "84e68dc3-b7eb-4d7a-9b1d-3cc2cf56e205",
@@ -6725,7 +6779,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-08-30T11:25:08.966Z",
-      "updatedAt": "2026-09-01T21:25:36.356Z"
+      "updatedAt": "2026-09-01T21:25:36.356Z",
+      "occupancyKey": "attempt::cad4fa9c-bfa0-4b23-9e07-daa34e03aeeb"
     },
     {
       "id": "1a77fcd6-8430-4b02-9b8f-6e0d9ae437ce",
@@ -6776,7 +6831,8 @@
       "commitSha": "c943b8b3bbe049095897f837ca7cad1746b10f2e",
       "committedAt": "2026-09-01T20:52:24.216Z",
       "createdAt": "2026-09-01T20:52:00.381Z",
-      "updatedAt": "2026-09-01T21:25:31.646Z"
+      "updatedAt": "2026-09-01T21:25:31.646Z",
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "00ca5910-b7d9-4470-bb9c-4690fedf96ce",
@@ -6827,7 +6883,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-09-01T20:49:00.725Z",
-      "updatedAt": "2026-09-01T21:25:31.652Z"
+      "updatedAt": "2026-09-01T21:25:31.652Z",
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "2b2f8a12-d4be-4ad9-8667-ac77f42e65be",
@@ -6878,7 +6935,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-09-01T20:46:30.529Z",
-      "updatedAt": "2026-09-01T21:25:31.657Z"
+      "updatedAt": "2026-09-01T21:25:31.657Z",
+      "occupancyKey": "attempt::30b03508-a5ee-4020-afa0-d2ec143a03ac"
     },
     {
       "id": "c26d12ec-9cec-4252-90df-92ee0d305b16",
@@ -6901,7 +6959,8 @@
       "commitSha": "e469546c2c1e3ad94f4c5fef31b296d4334272f0",
       "committedAt": "2026-08-16T21:09:06.433Z",
       "createdAt": "2026-08-16T21:08:32.474Z",
-      "updatedAt": "2026-09-01T21:25:31.662Z"
+      "updatedAt": "2026-09-01T21:25:31.662Z",
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "394b72e5-dc6c-464c-a23d-9ff5fa3e7a90",
@@ -6940,7 +6999,8 @@
       "commitSha": "ffd55c9d14362ba1943aca00895b9ecc18d7b3f9",
       "committedAt": "2026-08-16T21:02:29.292Z",
       "createdAt": "2026-08-16T21:02:02.390Z",
-      "updatedAt": "2026-09-01T21:25:31.666Z"
+      "updatedAt": "2026-09-01T21:25:31.666Z",
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "f9cd28fa-8bd0-4d86-83bc-ec8a83c530e1",
@@ -6991,7 +7051,8 @@
       "commitSha": "e686ef0128067f5ad8eeed878395475bbc578ffa",
       "committedAt": "2026-08-16T20:59:37.030Z",
       "createdAt": "2026-08-16T20:59:04.807Z",
-      "updatedAt": "2026-09-01T21:25:31.670Z"
+      "updatedAt": "2026-09-01T21:25:31.670Z",
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "0b0068f4-46af-4656-ae14-966d412e011e",
@@ -7042,7 +7103,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-08-16T20:56:23.030Z",
-      "updatedAt": "2026-09-01T21:25:31.674Z"
+      "updatedAt": "2026-09-01T21:25:31.674Z",
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "aee9e62e-52dc-4a50-a3a0-ae03783a2b38",
@@ -7093,7 +7155,8 @@
       "commitSha": "06aa74873605e01530ae85ac455029a38afa367b",
       "committedAt": "2026-08-16T20:30:01.817Z",
       "createdAt": "2026-08-16T20:29:29.707Z",
-      "updatedAt": "2026-09-01T21:25:31.679Z"
+      "updatedAt": "2026-09-01T21:25:31.679Z",
+      "occupancyKey": "attempt::4de29a46-9cff-4c71-bc00-1dc90cc96cde"
     },
     {
       "id": "deb5c2e0-0d74-41d2-971d-a4e9b889f8ec",
@@ -7111,7 +7174,8 @@
       "commitSha": "cd194052d304be97f90417d46f3afe120d5641f4",
       "committedAt": "2026-08-14T11:59:22.785Z",
       "createdAt": "2026-08-14T11:55:53.048Z",
-      "updatedAt": "2026-09-01T21:25:31.683Z"
+      "updatedAt": "2026-09-01T21:25:31.683Z",
+      "occupancyKey": "attempt::8a94868c-cdad-4a3c-a101-bd6d43b0feff"
     },
     {
       "id": "129104c3-5bc8-4943-8c3a-0b4eff07b9a9",
@@ -7162,7 +7226,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-08-14T11:53:00.275Z",
-      "updatedAt": "2026-09-01T21:25:31.688Z"
+      "updatedAt": "2026-09-01T21:25:31.688Z",
+      "occupancyKey": "attempt::8a94868c-cdad-4a3c-a101-bd6d43b0feff"
     },
     {
       "id": "ceb8bb65-628b-4d54-a81e-4c0cffbd2286",
@@ -7621,7 +7686,8 @@
       "commitSha": "48ccf17fe8da7052832006ea7011ae83b74bb0bf",
       "committedAt": "2026-08-27T16:49:38.048Z",
       "createdAt": "2026-08-27T16:48:08.832Z",
-      "updatedAt": "2026-08-28T15:14:48.916Z"
+      "updatedAt": "2026-08-28T15:14:48.916Z",
+      "occupancyKey": "attempt::6fba96b3-f02d-488d-8bca-164fb0035bd7"
     },
     {
       "id": "60ffc14e-a1d7-4d66-a0e8-d5b7b4df07ee",
@@ -7672,7 +7738,8 @@
       "commitSha": null,
       "committedAt": null,
       "createdAt": "2026-08-27T16:47:00.358Z",
-      "updatedAt": "2026-08-28T15:14:48.919Z"
+      "updatedAt": "2026-08-28T15:14:48.919Z",
+      "occupancyKey": "attempt::6fba96b3-f02d-488d-8bca-164fb0035bd7"
     }
   ],
   "agentSlots": [
@@ -8109,11 +8176,11 @@
       "sessionKey": "6d805904-3ef2-439c-9b9e-218326f688c2",
       "agentId": 3,
       "agentTool": "cursor",
-      "workDir": "/home/antoine/Documents/osfactory/har-project",
+      "workDir": "/home/antoine/worktrees/main-98fa-har-agent-3-ywkv",
       "branch": null,
       "suffix": null,
       "workUnitId": null,
-      "attemptId": null,
+      "attemptId": "b118f490-92b0-467d-8847-31a587e4909a",
       "tokensInput": "349240",
       "tokensOutput": "3685",
       "tokensCacheRead": "345664",
@@ -8135,7 +8202,8 @@
       ],
       "harvestVersion": 2,
       "firstSeenAt": "2026-08-31T21:21:50.783Z",
-      "lastSeenAt": "2026-08-31T21:28:49.692Z"
+      "lastSeenAt": "2026-08-31T21:28:49.692Z",
+      "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     },
     {
       "id": "cede385c-ae99-4541-9818-fd61b54741be",
@@ -8143,11 +8211,11 @@
       "sessionKey": "311d6519-cff7-41b2-9583-bf618f4adc41",
       "agentId": 3,
       "agentTool": "cursor",
-      "workDir": "/home/antoine/Documents/osfactory/har-project",
+      "workDir": "/home/antoine/worktrees/main-98fa-har-agent-3-ywkv",
       "branch": null,
       "suffix": null,
       "workUnitId": null,
-      "attemptId": null,
+      "attemptId": "b118f490-92b0-467d-8847-31a587e4909a",
       "tokensInput": "1301084",
       "tokensOutput": "12776",
       "tokensCacheRead": "1192512",
@@ -8169,7 +8237,8 @@
       ],
       "harvestVersion": 2,
       "firstSeenAt": "2026-08-31T17:01:50.519Z",
-      "lastSeenAt": "2026-08-31T21:19:02.041Z"
+      "lastSeenAt": "2026-08-31T21:19:02.041Z",
+      "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     }
   ]
 }

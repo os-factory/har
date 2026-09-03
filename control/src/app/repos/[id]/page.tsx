@@ -13,7 +13,6 @@ import { RouteTabs } from '@/components/route-tabs';
 import { getRepository, getRepositoryHealth, getVerificationTrend } from '@/server/repositories';
 import { listLineBoards } from '@/server/lines';
 import { getSessionHistory } from '@/server/session-history';
-import { getRepoTimeline } from '@/server/slot-timeline';
 import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles } from '@/server/artifacts';
 import { listSessionUsageForRepo } from '@/server/usage';
@@ -30,12 +29,11 @@ export default async function RepoDetailPage({
   const repo = await getRepository(id);
   if (!repo) notFound();
 
-  const [health, lineBoards, trendRaw, timeline, history, validation, allUsage] =
+  const [health, lineBoards, trendRaw, history, validation, allUsage] =
     await Promise.all([
       getRepositoryHealth(id),
       listLineBoards(id),
       getVerificationTrend(id),
-      getRepoTimeline(id),
       getSessionHistory(id),
       getValidationStages(id),
       listSessionUsageForRepo(id),
@@ -212,11 +210,12 @@ export default async function RepoDetailPage({
             <CardHeader>
               <CardTitle>History</CardTitle>
               <CardDescription>
-                Verified snapshots and the commits that share their tree, laid out by branch.
+                Verified snapshots and the commits that share their tree, laid out by branch. Select one to
+                see the attempt that produced it.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <RepoHistory repositoryId={id} history={history} timeline={timeline} />
+              <RepoHistory repositoryId={id} history={history} />
             </CardContent>
           </Card>
         </TabsContent>

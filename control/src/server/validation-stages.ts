@@ -98,6 +98,8 @@ export interface ValidationStagesScope {
   since?: Date | null;
   /** Occupancy work dir: runs from another worktree are another occupant. */
   workDir?: string | null;
+  /** Exact set of runs (an attempt record, #348); other filters still apply. */
+  runIds?: string[];
 }
 
 export async function getValidationStages(
@@ -122,6 +124,7 @@ export async function getValidationStages(
       ...(options?.agentId != null ? { agentId: options.agentId } : {}),
       ...(options?.since ? { startedAt: { gte: options.since } } : {}),
       ...(options?.workDir ? { workDir: options.workDir } : {}),
+      ...(options?.runIds ? { runId: { in: options.runIds } } : {}),
     },
     orderBy: { startedAt: 'desc' },
     take: 50,

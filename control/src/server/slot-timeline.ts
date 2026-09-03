@@ -1,4 +1,4 @@
-import type { AgentSessionUsage, AgentSlot, ChangeBatch, Run, ValidationCommitBinding, WorkAttempt } from '@prisma/client';
+import type { AgentSessionUsage, AgentSlot, ChangeBatch, Run, ValidationCommitBinding } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import {
   buildTimelineRows,
@@ -12,15 +12,35 @@ import {
 } from '@/lib/slot-timeline';
 import { modelsFromBreakdown } from '@/lib/usage-models';
 import { listTrajectoryStreams } from '@/server/trajectory-ledger';
-import { listSessionUsageForRepo, listSessionUsageForSlot } from '@/server/usage';
+import { listSessionUsageForSlot } from '@/server/usage';
 import { extractVerification } from '@/server/validation-stages';
 
-export interface SlotTimeline {
-  /** Events of the slot's current occupancy (or the last one, when idle). */
-  current: TimelineRow[];
-  /** Events recorded under this slot number by earlier occupants. Never deleted, collapsed by default. */
-  previous: TimelineRow[];
+/**
+ * A trajectory can exist before (or without) a usage row — e.g. OTEL prompts arrive
+ * before the first token count is harvested. Surface it as a session row anyway.
+ */
+export function streamOnlySessions(
+  usage: Array<Pick<AgentSessionUsage, 'sessionKey' | 'agentTool'>>,
+  streams: Array<{ sessionKey: string; agentTool: string; latestTimestamp: string }>,
+  agentId: number,
+): TimelineSessionInput[] {
+  const usageKeys = new Set(usage.map((row) => `${row.sessionKey}::${row.agentTool}`));
+  return streams
+    .filter((stream) => !usageKeys.has(`${stream.sessionKey}::${stream.agentTool}`))
+    .map((stream) => ({
+      sessionKey: stream.sessionKey,
+      agentTool: stream.agentTool,
+      agentId,
+      models: [],
+      tokensTotal: 0,
+      costUsd: null,
+      sources: ['trajectory'],
+      firstSeenAt: new Date(stream.latestTimestamp),
+      lastSeenAt: new Date(stream.latestTimestamp),
+      firstPrompt: null,
+    }));
 }
+
 
 const RUN_LIMIT = 300;
 const SNAPSHOT_LIMIT = 200;
@@ -91,7 +111,7 @@ function commitInput(binding: ValidationCommitBinding, snapshot: ChangeBatch | u
   };
 }
 
-async function firstPrompts(repositoryId: string, sessions: Array<Pick<AgentSessionUsage, 'sessionKey' | 'agentTool'>>) {
+export async function firstPrompts(repositoryId: string, sessions: Array<Pick<AgentSessionUsage, 'sessionKey' | 'agentTool'>>) {
   const prompts = new Map<string, string>();
   await Promise.all(
     sessions.map(async (session) => {
@@ -111,7 +131,7 @@ async function firstPrompts(repositoryId: string, sessions: Array<Pick<AgentSess
   return prompts;
 }
 
-function sessionInputs(
+export function sessionInputs(
   rows: Array<AgentSessionUsage & { sources: string[] }>,
   prompts: Map<string, string>,
 ): TimelineSessionInput[] {
@@ -129,7 +149,7 @@ function sessionInputs(
   }));
 }
 
-async function commitBindingsFor(repositoryId: string, snapshots: ChangeBatch[]) {
+export async function commitBindingsFor(repositoryId: string, snapshots: ChangeBatch[]) {
   if (snapshots.length === 0) return [] as TimelineCommitInput[];
   const byTree = new Map(snapshots.map((snapshot) => [snapshot.treeHash, snapshot]));
   const bindings = await prisma.validationCommitBinding.findMany({
@@ -140,14 +160,16 @@ async function commitBindingsFor(repositoryId: string, snapshots: ChangeBatch[])
 }
 
 /**
- * Timeline of one slot. The current occupancy is identified by the slot's
- * `sessionCreatedAt` + `workDir` (#316): runs and snapshots recorded for this slot
- * number before that instant, or from another worktree, belong to a previous occupant.
+ * Timeline of a slot's CURRENT occupancy — live data (#316, #348). The occupancy is
+ * identified by `occupancyKey` where stamped, else by `sessionCreatedAt` + `workDir`:
+ * rows for this slot number from before that instant, or from another worktree, belong
+ * to an earlier occupant and live in the repository History instead.
  */
-export async function getSlotTimeline(repositoryId: string, slot: AgentSlot): Promise<SlotTimeline> {
+export async function getSlotTimeline(repositoryId: string, slot: AgentSlot): Promise<TimelineRow[]> {
   const since = slot.sessionCreatedAt;
   const workDir = slot.workDir;
-  const inCurrent = (row: { startedAt?: Date; createdAt?: Date; workDir: string | null }) => {
+  const inCurrent = (row: { startedAt?: Date; createdAt?: Date; workDir: string | null; occupancyKey: string | null }) => {
+    if (slot.occupancyKey && row.occupancyKey) return row.occupancyKey === slot.occupancyKey;
     const at = row.startedAt ?? row.createdAt;
     if (since && at && at < since) return false;
     if (workDir && row.workDir && row.workDir !== workDir) return false;
@@ -169,33 +191,14 @@ export async function getSlotTimeline(repositoryId: string, slot: AgentSlot): Pr
     listTrajectoryStreams(repositoryId, slot.slotId, slot.occupancyKey),
   ]);
 
-  // A trajectory can exist before (or without) a usage row — e.g. OTEL prompts arrive
-  // before the first token count is harvested. Surface it as a session row anyway.
-  const usageKeys = new Set(usage.map((row) => `${row.sessionKey}::${row.agentTool}`));
-  const streamOnly: TimelineSessionInput[] = streams
-    .filter((stream) => !usageKeys.has(`${stream.sessionKey}::${stream.agentTool}`))
-    .map((stream) => ({
-      sessionKey: stream.sessionKey,
-      agentTool: stream.agentTool,
-      agentId: slot.slotId,
-      models: [],
-      tokensTotal: 0,
-      costUsd: null,
-      sources: ['trajectory'],
-      firstSeenAt: new Date(stream.latestTimestamp),
-      lastSeenAt: new Date(stream.latestTimestamp),
-      firstPrompt: null,
-    }));
+  const streamOnly = streamOnlySessions(usage, streams, slot.slotId);
 
   const currentRuns = runs.filter(inCurrent);
-  const previousRuns = runs.filter((run) => !inCurrent(run));
   const currentSnapshots = snapshots.filter(inCurrent);
-  const previousSnapshots = snapshots.filter((snapshot) => !inCurrent(snapshot));
 
-  const [prompts, currentCommits, previousCommits] = await Promise.all([
+  const [prompts, currentCommits] = await Promise.all([
     firstPrompts(repositoryId, [...usage, ...streamOnly]),
     commitBindingsFor(repositoryId, currentSnapshots),
-    commitBindingsFor(repositoryId, previousSnapshots),
   ]);
 
   const occupancies = since
@@ -211,86 +214,17 @@ export async function getSlotTimeline(repositoryId: string, slot: AgentSlot): Pr
       }]
     : [];
 
-  return {
-    current: buildTimelineRows({
-      occupancies,
-      sessions: [
-        ...sessionInputs(usage, prompts),
-        ...streamOnly.map((session) => ({
-          ...session,
-          firstPrompt: prompts.get(`${session.sessionKey}::${session.agentTool}`) ?? null,
-        })),
-      ],
-      runs: currentRuns.map(runInput),
-      snapshots: currentSnapshots.map(snapshotInput),
-      commits: currentCommits,
-    }),
-    previous: buildTimelineRows({
-      runs: previousRuns.map(runInput),
-      snapshots: previousSnapshots.map(snapshotInput),
-      commits: previousCommits,
-    }),
-  };
-}
-
-/** Timeline of a work unit across every attempt and slot that worked it. */
-export async function getWorkUnitTimeline(input: {
-  repositoryId: string;
-  workUnitId: string;
-  attempts: WorkAttempt[];
-  runs: Run[];
-  validations: ChangeBatch[];
-}): Promise<TimelineRow[]> {
-  const usageRows = await prisma.agentSessionUsage.findMany({
-    where: { repositoryId: input.repositoryId, workUnitId: input.workUnitId },
-    orderBy: { firstSeenAt: 'desc' },
-  });
-  const usage = usageRows.map((row) => ({
-    ...row,
-    sources: Array.isArray(row.sources) ? row.sources.filter((s): s is string => typeof s === 'string') : [],
-  }));
-  const [prompts, commits] = await Promise.all([
-    firstPrompts(input.repositoryId, usage),
-    commitBindingsFor(input.repositoryId, input.validations),
-  ]);
-
   return buildTimelineRows({
-    occupancies: input.attempts.map((attempt) => ({
-      id: attempt.attemptId,
-      agentId: attempt.agentId,
-      title: `Attempt started in slot ${attempt.agentId}`,
-      at: attempt.sourceCreatedAt,
-      branch: attempt.branch,
-      baseCommit: attempt.baseCommit,
-      worktreePath: attempt.worktreePath ?? attempt.workDir,
-      attemptId: attempt.attemptId,
-    })),
-    sessions: sessionInputs(usage, prompts),
-    runs: input.runs.map(runInput),
-    snapshots: input.validations.map(snapshotInput),
-    commits,
-  });
-}
-
-/**
- * Timeline of a whole repository: every verify run, snapshot, bound commit and agent
- * session across all slots. Feeds the History tab's list mode; the client filters it
- * by branch with `filterTimelineByBranch`.
- */
-export async function getRepoTimeline(repositoryId: string): Promise<TimelineRow[]> {
-  const [runs, snapshots, usage] = await Promise.all([
-    prisma.run.findMany({ where: { repositoryId }, orderBy: { startedAt: 'desc' }, take: RUN_LIMIT }),
-    prisma.changeBatch.findMany({ where: { repositoryId }, orderBy: { createdAt: 'desc' }, take: SNAPSHOT_LIMIT }),
-    listSessionUsageForRepo(repositoryId),
-  ]);
-  const [prompts, commits] = await Promise.all([
-    firstPrompts(repositoryId, usage),
-    commitBindingsFor(repositoryId, snapshots),
-  ]);
-  return buildTimelineRows({
-    sessions: sessionInputs(usage, prompts),
-    runs: runs.map(runInput),
-    snapshots: snapshots.map(snapshotInput),
-    commits,
+    occupancies,
+    sessions: [
+      ...sessionInputs(usage, prompts),
+      ...streamOnly.map((session) => ({
+        ...session,
+        firstPrompt: prompts.get(`${session.sessionKey}::${session.agentTool}`) ?? null,
+      })),
+    ],
+    runs: currentRuns.map(runInput),
+    snapshots: currentSnapshots.map(snapshotInput),
+    commits: currentCommits,
   });
 }

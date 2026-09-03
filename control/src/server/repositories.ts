@@ -12,11 +12,19 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
-import { isNewOccupancy } from '@/server/occupancy';
+import { isNewOccupancy, resolveRecordOccupancyKey, type OccupancyCandidate } from '@/server/occupancy';
 import { cleanupSessionWorktrees } from '@/server/worktree-cleanup';
 
 function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as object;
+}
+
+/** Current occupancy of every slot of a repository, for stamping synced records (#348). */
+export async function listOccupancyCandidates(repositoryId: string): Promise<OccupancyCandidate[]> {
+  return prisma.agentSlot.findMany({
+    where: { repositoryId },
+    select: { slotId: true, workDir: true, sessionCreatedAt: true, occupancyKey: true },
+  });
 }
 
 export class RepositoryUnregisteredError extends Error {
@@ -185,9 +193,14 @@ export async function listSessionWorktrees() {
 
 export async function syncRuns(repositoryId: string, input: unknown) {
   const { runs } = SyncRunsInputSchema.parse(input);
+  const slots = await listOccupancyCandidates(repositoryId);
 
   for (const run of runs) {
     const parsed = RunRecordSchema.parse(run);
+    const occupancyKey = resolveRecordOccupancyKey(
+      { attemptId: parsed.attemptId, agentId: parsed.agentId, workDir: parsed.workDir, at: new Date(parsed.startedAt) },
+      slots,
+    );
     await prisma.run.upsert({
       where: { repositoryId_runId: { repositoryId, runId: parsed.runId } },
       create: {
@@ -204,6 +217,7 @@ export async function syncRuns(repositoryId: string, input: unknown) {
         workDir: parsed.workDir,
         workUnitId: parsed.workUnitId,
         attemptId: parsed.attemptId,
+        occupancyKey,
         result: parsed.result ? toJson(parsed.result) : undefined,
       },
       update: {
@@ -213,6 +227,8 @@ export async function syncRuns(repositoryId: string, input: unknown) {
         workDir: parsed.workDir,
         workUnitId: parsed.workUnitId,
         attemptId: parsed.attemptId,
+        // Keep a key stamped earlier: a later sync may run after the slot moved on.
+        ...(occupancyKey ? { occupancyKey } : {}),
         result: parsed.result ? toJson(parsed.result) : undefined,
       },
     });

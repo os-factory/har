@@ -28,6 +28,8 @@ export interface HistorySnapshot {
   changedFileCount: number;
   commitSha?: string;
   createdAt: string;
+  /** Occupancy that produced the snapshot (#348) — the key into the attempt record. */
+  occupancyKey?: string;
 }
 
 export interface HistorySlot {
@@ -61,6 +63,8 @@ export interface HistoryGraphNode {
   validationId?: string;
   workUnitId?: string;
   attemptId?: string;
+  /** Occupancy that produced this tree (#348); absent for base commits. */
+  occupancyKey?: string;
   handoff: HistoryHandoff;
   matchingCommitCount: number;
 }
@@ -212,6 +216,7 @@ export function buildSessionHistoryGraph(input: SessionHistoryInput): SessionHis
           validationId: snapshot.validationId,
           workUnitId: slot?.workUnitId ?? undefined,
           attemptId: slot?.attemptId ?? undefined,
+          occupancyKey: snapshot.occupancyKey,
           handoff: handoffForBranch(snapshot.branch, slots),
         }),
       );
@@ -236,6 +241,7 @@ export function buildSessionHistoryGraph(input: SessionHistoryInput): SessionHis
         validationId: snapshot.validationId,
         workUnitId: slot?.workUnitId ?? undefined,
         attemptId: slot?.attemptId ?? undefined,
+        occupancyKey: snapshot.occupancyKey,
         matchingCommitCount: commits.length,
         handoff: handoffForBranch(snapshot.branch, slots),
       });
