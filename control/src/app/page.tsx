@@ -90,7 +90,7 @@ export default async function NowPage() {
               <CardTitle className="text-base">{item.label}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className={`text-2xl font-bold tabular-nums ${item.alert ? 'text-amber-500' : ''}`}>
+              <p className={`text-2xl font-bold tabular-nums ${item.alert ? 'text-amber-700 dark:text-amber-400' : ''}`}>
                 {item.value}
               </p>
             </CardContent>
