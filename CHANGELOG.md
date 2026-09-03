@@ -1,3 +1,9 @@
+## [1.11.0](https://github.com/os-factory/har/compare/v1.10.1...v1.11.0) (2026-09-03)
+
+### Features
+
+* **control:** repo History graph with edges, branch lanes and a timeline list mode ([#338](https://github.com/os-factory/har/issues/338)) ([#349](https://github.com/os-factory/har/issues/349)) ([515fbab](https://github.com/os-factory/har/commit/515fbab07da36bcfd8dcccf63ef208a334fc3095))
+
 ## [1.10.1](https://github.com/os-factory/har/compare/v1.10.0...v1.10.1) (2026-09-03)
 
 ### Bug Fixes
