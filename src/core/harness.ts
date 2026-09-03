@@ -10,7 +10,7 @@ import {
   MaintainBundleResult,
   removeMaintainBundle,
 } from '../harness/maintain-bundle';
-import { readManifest, getHarnessDir } from '../harness/manifest';
+import { readManifest, getHarnessDir, stampManifestWriter } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages, syncAgentSlotsToHarnessEnv } from '../harness/stages';
 import { ensureEcosystemVerificationStages } from '../harness/verification';
 import { DoctorReport, runDoctor } from '../harness/doctor';
@@ -203,6 +203,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   retireLifecycleShims(repoPath);
 
   ensureEcosystemVerificationStages(repoPath);
+  stampManifestWriter(repoPath);
   const drift = compareHarnessToTemplate(repoPath);
   const validation = validateHarness(repoPath);
 

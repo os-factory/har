@@ -18,6 +18,7 @@ Exit code is non-zero when any check fails, so doctor slots directly into CI.
 
 | Check | Validates |
 | --- | --- |
+| CLI vs harness writer | Running CLI is not older than `manifest.cliVersion` (the last CLI that wrote the harness) |
 | `harness.env` schema | Pure `KEY=value` config, known keys, valid values — no shell functions |
 | `stages.json` registry | Parseable registry, valid stage entries and tiers |
 | Stage scripts & commands | Every stage that names a script resolves to an existing executable file |
@@ -32,6 +33,14 @@ Doctor detects the harness contract generation: on a pre-1.0 harness (legacy
 shell functions or port triplets in `harness.env`) it reports the old shape and
 points at the [1.0 migration](/docs/guides/migrating-to-1-0/) instead of
 failing every schema check.
+
+When `manifest.cliVersion` is newer than the running CLI, doctor stops with a
+single upgrade error (`npm install -g @osfactory/har@latest`) and skips the
+rest of the report. A stale CLI otherwise invents "missing `stages/launch.sh`"
+findings for lifecycle stages that now live in the package. `init`, `maintain`,
+`add-plugin`, and `line add` stamp `cliVersion`. A repo-local newer
+`@osfactory/har` (this checkout, or `node_modules/@osfactory/har`) is preferred
+over a stale global install.
 
 ## What doctor does not do
 

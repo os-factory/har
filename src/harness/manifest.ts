@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getHarPackageVersion } from '../core/package-version';
 import { HarnessManifest, HarnessManifestSchema } from './schema';
 import { writeFileSafe } from '../utils/file-ops';
 
@@ -41,8 +42,22 @@ export function readManifest(repoPath: string): HarnessManifest | null {
 }
 
 export function writeManifest(repoPath: string, manifest: HarnessManifest): void {
+  const stamped: HarnessManifest = {
+    ...manifest,
+    cliVersion: getHarPackageVersion(),
+  };
   const manifestPath = getManifestPath(repoPath);
-  writeFileSafe(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+  writeFileSafe(manifestPath, JSON.stringify(stamped, null, 2) + '\n');
+}
+
+/** Record the running CLI as the harness writer without other manifest edits. */
+export function stampManifestWriter(repoPath: string): void {
+  const existing = readManifest(repoPath);
+  if (!existing) return;
+  writeManifest(repoPath, {
+    ...existing,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 export function computeFileChecksum(content: string): string {
@@ -86,6 +101,7 @@ export function createManifest(
   return {
     version: MANIFEST_VERSION,
     runtimeVersion: HARNESS_RUNTIME_VERSION,
+    cliVersion: getHarPackageVersion(),
     outputDir: DEFAULT_HAR_DIR,
     createdAt: now,
     updatedAt: now,

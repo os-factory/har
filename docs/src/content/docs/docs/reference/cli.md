@@ -188,14 +188,17 @@ har env doctor [--json]
 ```
 
 `doctor` validates the harness contract and exits `0` on pass, `1` on errors
-(so it slots into CI): `harness.env` against the schema, `stages.json` against
+(so it slots into CI): the running CLI is not older than `manifest.cliVersion`,
+`harness.env` against the schema, `stages.json` against
 the registry schema, every registered stage's script/command file exists and is
 executable, the lifecycle stages (launch/verify/teardown) resolve,
 `verificationStages` ids resolve to registered stages, infra port lanes are
 coherent (no overlaps, defaults inside scan ranges), and slot registry entries
 point at existing worktrees. Every finding carries a remedy. Doctor also runs
 automatically inside `har env maintain` and before every `launch` — a broken
-adaptation blocks the launch instead of failing mid-session. Pre-1.0 harnesses
+adaptation blocks the launch instead of failing mid-session. A stale CLI vs a
+newer harness is a single upgrade error, not a list of missing lifecycle
+scripts. Pre-1.0 harnesses
 report contract findings as warnings until they migrate. On an ejected
 harness, doctor additionally checks the vendored runtime exists and the
 user-owned scripts are executable. MCP twin: `har_doctor`.

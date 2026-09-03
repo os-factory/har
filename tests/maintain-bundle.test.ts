@@ -14,6 +14,8 @@ import {
   removeMaintainBundle,
 } from '../src/harness/maintain-bundle';
 import { validateHarness } from '../src/harness/validator';
+import { readManifest } from '../src/harness/manifest';
+import { getHarPackageVersion } from '../src/core/package-version';
 
 describe('maintain bundle', () => {
   it('does not treat retired lifecycle wrappers as missing (#314)', () => {
@@ -123,6 +125,19 @@ describe('maintain bundle', () => {
     expect(fs.existsSync(path.join(repoPath, '.har', MAINTAIN_DIR, 'templates', 'README.md'))).toBe(
       true,
     );
+  });
+
+  it('stamps manifest.cliVersion on maintain (#344)', async () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-maintain-cli-version-'));
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'cli' });
+    const manifestPath = path.join(repoPath, '.har', 'manifest.json');
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    raw.cliVersion = '0.1.0';
+    fs.writeFileSync(manifestPath, JSON.stringify(raw, null, 2) + '\n');
+
+    await maintainHarness({ repoPath, finalize: false });
+
+    expect(readManifest(repoPath)?.cliVersion).toBe(getHarPackageVersion());
   });
 
   it('finalize removes the maintenance bundle', async () => {

@@ -53,9 +53,12 @@ describe('har env doctor (#232)', () => {
     expect(report.findings.filter((f) => f.severity === 'error')).toEqual([]);
     expect(report.ok).toBe(true);
     // ejected-runtime (#239) is skipped on a non-ejected harness by design.
+    // cli-version (#344) is skipped until a writer stamps manifest.cliVersion.
     expect(
       report.checks.every(
-        (c) => c.status === 'pass' || (c.id === 'ejected-runtime' && c.status === 'skip'),
+        (c) =>
+          c.status === 'pass' ||
+          ((c.id === 'ejected-runtime' || c.id === 'cli-version') && c.status === 'skip'),
       ),
     ).toBe(true);
     expect(summarizeDoctorReport(report)).toBeNull();
@@ -191,6 +194,62 @@ describe('har env doctor (#232)', () => {
     expect(report.ok).toBe(false);
     expect(report.contract).toBe('none');
     expect(report.findings[0].remedy).toContain('har onboard');
+  });
+
+  it('fails with a single upgrade error when the CLI is older than the harness writer (#344)', () => {
+    const repo = makeRepo();
+    fs.writeFileSync(
+      path.join(repo, '.har', 'manifest.json'),
+      JSON.stringify({
+        version: '1',
+        runtimeVersion: '1.0.0',
+        cliVersion: '99.0.0',
+        outputDir: '.har',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+    fs.rmSync(path.join(repo, '.har', 'stages', 'unit-tests.sh'));
+    const report = runDoctor(repo);
+    expect(report.ok).toBe(false);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].check).toBe('cli-version');
+    expect(report.findings[0].message).toContain('99.0.0');
+    expect(report.findings[0].remedy).toContain('npm install -g @osfactory/har@latest');
+    expect(report.findings.some((f) => f.check === 'stage-files')).toBe(false);
+    expect(
+      report.checks.filter((c) => c.id !== 'cli-version').every((c) => c.status === 'skip'),
+    ).toBe(true);
+  });
+
+  it('still reports missing stage files when the CLI matches the harness writer', () => {
+    const repo = makeRepo();
+    fs.writeFileSync(
+      path.join(repo, '.har', 'manifest.json'),
+      JSON.stringify({
+        version: '1',
+        runtimeVersion: '1.0.0',
+        cliVersion: '1.0.0',
+        outputDir: '.har',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+    const original = process.env.HAR_PACKAGE_VERSION;
+    process.env.HAR_PACKAGE_VERSION = '1.0.0';
+    try {
+      fs.rmSync(path.join(repo, '.har', 'stages', 'unit-tests.sh'));
+      const report = runDoctor(repo);
+      expect(report.ok).toBe(false);
+      expect(report.findings.find((f) => f.check === 'cli-version')).toBeUndefined();
+      expect(report.checks.find((c) => c.id === 'cli-version')?.status).toBe('pass');
+      expect(report.findings.find((f) => f.check === 'stage-files')?.message).toContain(
+        'unit-tests',
+      );
+    } finally {
+      if (original === undefined) delete process.env.HAR_PACKAGE_VERSION;
+      else process.env.HAR_PACKAGE_VERSION = original;
+    }
   });
 
   it('renders a readable report with remedies', () => {

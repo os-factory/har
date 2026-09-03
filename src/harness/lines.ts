@@ -14,6 +14,7 @@ import { findManifestPath } from './bundle-resolve';
 import { LINE_BUNDLE_KIND, LINE_MANIFEST_FILES } from './schema';
 import type { HarnessStage, LineManifest, LineProgram } from './schema';
 import { LineManifestSchema, LineProgramSchema } from './schema';
+import { stampManifestWriter } from './manifest';
 import { readStageRegistry, writeStageRegistry } from './stages';
 import { LINE_BUNDLE_CONFIG } from './line-resolve';
 
@@ -305,6 +306,7 @@ function applyLineFromDir(
     buildLineAdaptationPrompt(resolved, program, { ...partial, adaptPromptPath: '' }),
   );
   const adaptPromptPath = path.relative(resolved, promptAbsPath);
+  stampManifestWriter(resolved);
 
   success(`Applied line: ${manifest.id}`);
   info(`Stations: ${partial.stationIds.join(' → ')}`);

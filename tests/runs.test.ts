@@ -112,6 +112,7 @@ describe('harness drift detection', () => {
     const created = createManifest(repoPath, 'test', undefined, 'cli');
     expect(created.generatorVersion).toBeUndefined();
     expect(created).not.toHaveProperty('generatorVersion');
+    expect(created.cliVersion).toMatch(/^\d+\.\d+\.\d+/);
 
     const legacy = HarnessManifestSchema.parse({
       version: '1',
