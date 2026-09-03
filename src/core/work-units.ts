@@ -121,11 +121,6 @@ export function upsertWorkUnit(
   ensureWorkEvidenceIgnored(harnessRoot);
   const existing = findWorkUnit(harnessRoot, metadata.workUnitId);
   if (existing) {
-    if (existing.outcome) {
-      throw new Error(
-        `Work unit ${metadata.workUnitId} is already ${existing.outcome.decision}; reopening is not supported`,
-      );
-    }
     for (const field of ['source', 'sourceUrl', 'title', 'parentWorkUnitId'] as const) {
       if (
         metadata[field] !== undefined &&
@@ -155,7 +150,12 @@ export function upsertWorkUnit(
     version: 1,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    outcome: existing?.outcome,
+    // A new launch on a decided unit reopens it (#352): a teardown or complete
+    // closed one attempt, not the issue. The old outcome stays on the record.
+    outcome: undefined,
+    previousOutcomes: existing?.outcome
+      ? [...(existing.previousOutcomes ?? []), existing.outcome]
+      : existing?.previousOutcomes,
   });
   writeRecord(
     hashedRecordPath(harnessRoot, WORK_UNITS_DIR, metadata.workUnitId),

@@ -346,6 +346,8 @@ export const WorkUnitRecordSchema = WorkUnitMetadataSchema.extend({
   createdAt: z.string(),
   updatedAt: z.string(),
   outcome: WorkUnitOutcomeSchema.optional(),
+  /** Outcomes cleared by a later `launch --work-id` on the same unit (#352), oldest first. */
+  previousOutcomes: z.array(WorkUnitOutcomeSchema).optional(),
 }).passthrough();
 
 export type WorkUnitRecord = z.infer<typeof WorkUnitRecordSchema>;
