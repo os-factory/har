@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation';
 import { ExternalLinkIcon } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CopyCommand } from '@/components/copy-command';
 import { SlotTimeline } from '@/components/slot-timeline';
+import { slotCommands } from '@/lib/slot-commands';
 import { VerifySummary } from '@/components/verify-summary';
 import { ValidationFlow } from '@/components/validation-flow';
 import { getRepository } from '@/server/repositories';
@@ -82,6 +84,12 @@ export default async function SlotDetailPage({
           {slot.worktreePath ?? slot.workDir ?? 'No worktree recorded'}
           {!slot.active && slot.worktreePath ? ' · last session' : ''}
         </p>
+        {/* #340: Mission Control cannot run har; offer the exact next commands instead. */}
+        <div className="grid gap-1.5 pt-1 sm:grid-cols-2 xl:grid-cols-4" data-testid="slot-commands">
+          {slotCommands(repo.path, slotId, slot.active).map((entry) => (
+            <CopyCommand key={entry.label} label={entry.label} command={entry.command} />
+          ))}
+        </div>
       </div>
 
       <Card>
