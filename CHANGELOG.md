@@ -1,3 +1,9 @@
+## [1.14.1](https://github.com/os-factory/har/compare/v1.14.0...v1.14.1) (2026-09-07)
+
+### Bug Fixes
+
+* evaluate HARNESS_READINESS_CMD without pipefail ([#359](https://github.com/os-factory/har/issues/359)) ([eccc2fb](https://github.com/os-factory/har/commit/eccc2fb0c594331da0c731bca002d2ec586c46a3))
+
 ## [1.14.0](https://github.com/os-factory/har/compare/v1.13.0...v1.14.0) (2026-09-07)
 
 ### Features
