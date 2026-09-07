@@ -179,6 +179,7 @@ export default async function RepoDetailPage({
                   }
                   return {
                     repoId: id,
+                    repoPath: repo.path,
                     slotId: s.slotId,
                     active: s.active,
                     workDir: s.workDir,

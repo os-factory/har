@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { WorkUnitRelatedLink } from '@har/schemas';
+import { AttemptHandoff } from '@/components/attempt-handoff';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { WorkUnitAttempts } from '@/components/work-unit-attempts';
@@ -35,6 +36,7 @@ export default async function WorkUnitPage({
   const verified = records.filter((record) => record.verification?.latestRun?.status === 'pass').length;
 
   const relatedLinks = (unit.relatedLinks as WorkUnitRelatedLink[] | null) ?? [];
+  const liveRecord = records.find((record) => record.attempt.live) ?? null;
 
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
@@ -130,6 +132,21 @@ export default async function WorkUnitPage({
           </CardContent>
         </Card>
       </div>
+
+      {liveRecord ? (
+        <Card className="min-w-0" data-testid="work-unit-handoff">
+          <CardHeader>
+            <CardTitle>Handoff</CardTitle>
+            <CardDescription>
+              The live attempt in slot {liveRecord.attempt.agentId}. Copy the next command — Mission Control
+              cannot run har itself.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AttemptHandoff record={liveRecord} showHeading={false} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="min-w-0">
         <CardHeader>

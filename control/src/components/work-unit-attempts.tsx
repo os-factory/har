@@ -74,6 +74,7 @@ export function WorkUnitAttempts({ repositoryId, records }: { repositoryId: stri
                   repositoryId={repositoryId}
                   record={record}
                   showWorkUnit={false}
+                  showHandoff={false}
                   defaultExpandedId={pickDefaultSession(record.timeline)?.id ?? null}
                 />
               </CollapsibleContent>

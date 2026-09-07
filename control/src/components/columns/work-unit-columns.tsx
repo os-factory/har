@@ -1,9 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { ExternalLinkIcon } from 'lucide-react';
 import { type ColumnDef } from '@tanstack/react-table';
 
+import { CopyCommandButtons } from '@/components/copy-command';
 import { Badge } from '@/components/ui/badge';
+import { slotCommands } from '@/lib/slot-commands';
 import { timeAgo } from '@/lib/time';
 import { formatDurationMs, type WorkUnitState } from '@/lib/work-unit-state';
 
@@ -40,9 +43,23 @@ export const workUnitColumns: ColumnDef<WorkRow>[] = [
     header: 'Work unit',
     cell: ({ row }) => (
       <div className="min-w-0 max-w-md">
-        <Link href={`/work/${row.original.id}`} className="block truncate font-medium underline-offset-2 hover:underline" title={row.original.title ?? row.original.workUnitId}>
-          {row.original.title ?? row.original.workUnitId}
-        </Link>
+        <span className="flex items-center gap-1.5">
+          <Link href={`/work/${row.original.id}`} className="block truncate font-medium underline-offset-2 hover:underline" title={row.original.title ?? row.original.workUnitId}>
+            {row.original.title ?? row.original.workUnitId}
+          </Link>
+          {row.original.sourceUrl ? (
+            <a
+              href={row.original.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={row.original.sourceUrl}
+              className="shrink-0 text-muted-foreground hover:text-primary"
+              aria-label="Open tracker"
+            >
+              <ExternalLinkIcon className="size-3" />
+            </a>
+          ) : null}
+        </span>
         {row.original.title && (
           <span className="font-mono text-xs text-muted-foreground">{row.original.workUnitId}</span>
         )}
@@ -90,6 +107,19 @@ export const workUnitColumns: ColumnDef<WorkRow>[] = [
       if (cost == null || cost === 0) return <span className="text-muted-foreground">—</span>;
       return <span className="tabular-nums">${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}</span>;
     },
+  },
+  {
+    id: 'next',
+    accessorFn: (row) =>
+      row.activeSlotId != null ? slotCommands(row.repoPath, row.activeSlotId, true).map((c) => c.command).join(' ') : '',
+    header: 'Next',
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.activeSlotId != null ? (
+        <CopyCommandButtons commands={slotCommands(row.original.repoPath, row.original.activeSlotId, true)} />
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
   },
   {
     accessorKey: 'updatedAt',
