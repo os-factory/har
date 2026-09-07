@@ -120,6 +120,20 @@ fallback.)
 | `HAR_SKIP_GATE` | Explicit commit-gate bypass; recorded and not for agent completion |
 | `HAR_SKIP_WT_GUARD` | Explicit Claude worktree-guard bypass |
 
+The readiness stage evaluates `HARNESS_READINESS_CMD` under `set -euo pipefail`.
+Do not pipe `curl` into `grep -q`: quiet grep closes the pipe on the first match,
+the kernel SIGPIPEs curl (exit 23), and the stage fails once the response is
+larger than the pipe buffer (typically 64 KiB). Small placeholder pages pass;
+real app or dev homepages often do not.
+
+Safe form — `grep -c` reads to EOF so curl can finish:
+
+```bash
+export HARNESS_READINESS_CMD='curl -sf "http://localhost:${FE_PORT}/" | grep -ci "<html" >/dev/null'
+```
+
+Writing curl's body to a file, then grepping the file, is also safe.
+
 ## Mission Control
 
 | Variable | Meaning |

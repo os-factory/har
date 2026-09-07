@@ -16,6 +16,10 @@ repository's completion contract. The exact commands are adapted in
 `.har/stages.json`; typical full checks include unit tests, lint, readiness, browser
 E2E, and project-specific stages.
 
+`HARNESS_READINESS_CMD` runs under `pipefail`. If the command is `curl | grep`,
+use `grep -c` (not `grep -q`) so a large homepage does not SIGPIPE curl. See
+[Environment](/docs/reference/environment/).
+
 `har env verify` streams progress to stderr. It does not dump the per-step JSON
 contract afterward — that duplicated CI logs and agent context. Scripts that
 need the object can pass `--json`. Passing steps omit `output`; failed steps
