@@ -23,6 +23,8 @@ import { getValidationStages, type ValidationStagesSummary } from '@/server/vali
  */
 export interface AttemptRecord {
   occupancyKey: string;
+  /** Registered repository path — the `--repo` for copy-able commands (#340). */
+  repositoryPath: string | null;
   attempt: {
     attemptId: string | null;
     agentId: number | null;
@@ -112,7 +114,7 @@ export function inWindow(window: LegacyWindow | null, row: { agentId: number | n
 
 export async function getAttemptRecord(repositoryId: string, occupancyKey: string): Promise<AttemptRecord | null> {
   const attemptId = attemptIdFromOccupancyKey(occupancyKey);
-  const [attempt, slot] = await Promise.all([
+  const [attempt, slot, repository] = await Promise.all([
     attemptId
       ? prisma.workAttempt.findUnique({
           where: { repositoryId_attemptId: { repositoryId, attemptId } },
@@ -120,6 +122,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
         })
       : null,
     prisma.agentSlot.findFirst({ where: { repositoryId, occupancyKey } }),
+    prisma.repository.findUnique({ where: { id: repositoryId }, select: { path: true } }),
   ]);
   if (!attempt && !slot) return null;
 
@@ -216,6 +219,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
 
   return {
     occupancyKey,
+    repositoryPath: repository?.path ?? null,
     attempt: {
       attemptId,
       agentId,

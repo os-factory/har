@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { ExternalLinkIcon } from 'lucide-react';
+import { CopyCommand } from '@/components/copy-command';
 import { SlotTimeline } from '@/components/slot-timeline';
+import { slotCommands } from '@/lib/slot-commands';
 import { Badge } from '@/components/ui/badge';
 import { ValidationFlow } from '@/components/validation-flow';
 import { shortSha } from '@/lib/slot-timeline';
@@ -106,6 +108,24 @@ export function AttemptRecordView({
           )}
         </Fact>
       </dl>
+
+      {attempt.live && attempt.agentId != null && record.repositoryPath ? (
+        <section className="space-y-2" data-testid="attempt-handoff">
+          <h4 className="text-sm font-medium">Handoff</h4>
+          <p className="text-sm text-muted-foreground">
+            {latest?.status === 'pass'
+              ? 'The latest verify passed. Complete keeps the branch and frees the slot; push it and open the PR from your terminal.'
+              : 'Run a full verify first — complete refuses a tree without a passing full validation.'}
+          </p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {slotCommands(record.repositoryPath, attempt.agentId, true)
+              .filter((entry) => entry.label === 'Verify' || entry.label === 'Complete')
+              .map((entry) => (
+                <CopyCommand key={entry.label} label={entry.label} command={entry.command} />
+              ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <h4 className="text-sm font-medium">Verification</h4>

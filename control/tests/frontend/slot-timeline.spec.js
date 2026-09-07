@@ -21,10 +21,16 @@ async function openFirstSlot(page, { needSession = false } = {}) {
 
 test.describe('Slot timeline', () => {
   test('slot page collapses to header, verify and one timeline table', async ({ page }) => {
+    // (#340) the header offers the exact next har commands to copy
     if (!(await openFirstSlot(page))) test.skip(true, 'No slot fixture exists');
 
     await expect(page.getByRole('heading', { name: /^Slot \d+/ })).toBeVisible();
     await expect(page.getByTestId('slot-worktree-path')).toBeVisible();
+    // #340: the exact next har commands, --repo prefilled, ready to copy.
+    const commands = page.getByTestId('slot-commands').getByTestId('copy-command');
+    expect(await commands.count()).toBeGreaterThan(0);
+    await expect(commands.first()).toContainText(/har env (verify|launch) \d+/);
+    await expect(commands.first()).toContainText('--repo ');
     await expect(page.getByText('Verify', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Timeline', { exact: true }).first()).toBeVisible();
 
