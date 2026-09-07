@@ -1,3 +1,9 @@
+## [1.13.0](https://github.com/os-factory/har/compare/v1.12.0...v1.13.0) (2026-09-07)
+
+### Features
+
+* **control:** copy-able next commands on the slot page and a Handoff block on live attempts ([#340](https://github.com/os-factory/har/issues/340)) ([#355](https://github.com/os-factory/har/issues/355)) ([91cf399](https://github.com/os-factory/har/commit/91cf399ffacbd65ad8d4d8ee90410de317994cf6))
+
 ## [1.12.0](https://github.com/os-factory/har/compare/v1.11.0...v1.12.0) (2026-09-03)
 
 ### Features
