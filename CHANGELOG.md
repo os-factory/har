@@ -1,3 +1,9 @@
+## [1.14.0](https://github.com/os-factory/har/compare/v1.13.0...v1.14.0) (2026-09-07)
+
+### Features
+
+* **control:** commands on every slot and work row, plus a work-unit Handoff ([#340](https://github.com/os-factory/har/issues/340)) ([#357](https://github.com/os-factory/har/issues/357)) ([115c13b](https://github.com/os-factory/har/commit/115c13bcc0f7a7536da705f3737be23a626664be))
+
 ## [1.13.0](https://github.com/os-factory/har/compare/v1.12.0...v1.13.0) (2026-09-07)
 
 ### Features
