@@ -178,9 +178,7 @@ har env agent <id> health
 ## Readiness — what “agent usable” means
 
 1. **Process ready** — `har env agent <id> health` (HTTP 200 on `/`)
-2. **Landing usable** — hero headline is present (`HARNESS_READINESS_CMD` uses
-   `grep -c`, not `grep -q`, so a large homepage does not SIGPIPE curl under
-   `pipefail`)
+2. **Landing usable** — hero headline is present (wired as `HARNESS_READINESS_CMD`)
 3. **Visual proof** — before/after screenshots exist under `.har/artifacts/…/screenshots/`
 4. **No credentials** — the public site has no login; no seed data required
 

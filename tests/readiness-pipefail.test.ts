@@ -7,64 +7,63 @@ import * as path from 'path';
 const BODY_BYTES = 2 * 1024 * 1024;
 
 const repoRoot = path.resolve(__dirname, '..');
+const readinessScript = path.join(
+  repoRoot,
+  'src',
+  'templates',
+  'runtime-bundles',
+  'shared-kernel',
+  'stages',
+  'readiness.sh',
+);
 
-function runCurlPipeline(reader: string): number {
+function writeLargePage(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-readiness-'));
   const file = path.join(dir, 'page.html');
   fs.writeFileSync(file, `<html>${'x'.repeat(BODY_BYTES)}`);
-  const script = `
-    set -euo pipefail
-    curl -sf "file://${file}" | ${reader}
-  `;
-  try {
-    return spawnSync('bash', ['-c', script], { encoding: 'utf8' }).status ?? 1;
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  return file;
 }
 
-describe('readiness curl | grep under pipefail', () => {
-  it('fails when the reader closes the pipe before curl finishes (exit 23)', () => {
-    // head -c always closes early. grep -q does the same on BSD/macOS and
-    // older GNU grep; GNU grep 3.12 drains stdin on -q, so it is not portable
-    // as the writer-side repro.
-    expect(runCurlPipeline('head -c 16 >/dev/null')).toBe(23);
-  });
-
-  it('passes when grep -c reads the body to EOF', () => {
-    expect(runCurlPipeline('grep -ci "<html" >/dev/null')).toBe(0);
-  });
-});
-
-const CURL_PIPE_GREP_QUIET = /curl[^\n]*\|\s*grep\s+-[A-Za-z]*q/;
-
-function collectFiles(dir: string, acc: string[] = []): string[] {
-  if (!fs.existsSync(dir)) return acc;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === '.git') continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) collectFiles(full, acc);
-    else if (entry.name === 'harness.env' || entry.name.endsWith('.md')) acc.push(full);
-  }
-  return acc;
+function runReadiness(cmd: string): number {
+  return (
+    spawnSync('bash', [readinessScript, '1'], {
+      encoding: 'utf8',
+      env: { ...process.env, HARNESS_READINESS_CMD: cmd },
+    }).status ?? 1
+  );
 }
 
-describe('readiness examples avoid curl | grep -q', () => {
-  it('does not recommend a quiet-grep curl pipe in harness.env or docs', () => {
-    const files = [
-      ...collectFiles(path.join(repoRoot, 'src', 'templates')),
-      ...collectFiles(path.join(repoRoot, 'docs', 'src', 'content')),
-      path.join(repoRoot, 'docs', '.har', 'harness.env'),
-      path.join(repoRoot, 'docs', '.har', 'README.md'),
-      path.join(repoRoot, '.har', 'harness.env'),
-      path.join(repoRoot, 'control', '.har', 'harness.env'),
-    ].filter((file) => fs.existsSync(file));
+describe('readiness.sh HARNESS_READINESS_CMD', () => {
+  let page: string;
 
-    const hits: string[] = [];
-    for (const file of files) {
-      const text = fs.readFileSync(file, 'utf8');
-      if (CURL_PIPE_GREP_QUIET.test(text)) hits.push(path.relative(repoRoot, file));
-    }
-    expect(hits).toEqual([]);
+  beforeAll(() => {
+    page = writeLargePage();
+  });
+
+  afterAll(() => {
+    fs.rmSync(path.dirname(page), { recursive: true, force: true });
+  });
+
+  it('skips when the command is unset', () => {
+    const result = spawnSync('bash', [readinessScript, '1'], {
+      encoding: 'utf8',
+      env: { ...process.env, HARNESS_READINESS_CMD: '' },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/skipping readiness smoke/);
+  });
+
+  it('treats a curl | early-close match as success (no pipefail on the project command)', () => {
+    // head -c always closes early — the same SIGPIPE curl sees from grep -q on
+    // BSD/macOS and older GNU grep (GNU 3.12 drains stdin on -q).
+    expect(runReadiness(`curl -sf "file://${page}" | head -c 16 >/dev/null`)).toBe(0);
+  });
+
+  it('still fails when the last command does not match', () => {
+    expect(runReadiness(`curl -sf "file://${page}" | grep -c "NO-SUCH-MARKER" >/dev/null`)).not.toBe(0);
+  });
+
+  it('still fails when the command is a failing curl with no pipe', () => {
+    expect(runReadiness('curl -sf "file:///no/such/readiness-page.html"')).not.toBe(0);
   });
 });

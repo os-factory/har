@@ -11,4 +11,6 @@ if [ -z "${HARNESS_READINESS_CMD:-}" ]; then
   exit 0
 fi
 
+# Last-command status only — do not inherit pipefail for the project smoke (#358).
+set +o pipefail
 eval "${HARNESS_READINESS_CMD//\{agentId\}/$AGENT_ID}"

@@ -10,8 +10,3 @@ is alive; it does not automatically mean an agent can use the app.
   settings created by the harness.
 - **Skipped full-dev setup**: document anything intentionally omitted from the
   upstream developer setup and the minimal substitute in `.har/`.
-
-When `HARNESS_READINESS_CMD` is a `curl | grep` pipeline, do not use `grep -q`.
-The readiness stage runs under `set -o pipefail`; quiet grep exits on the first
-match, SIGPIPEs curl (exit 23), and the check fails once the page exceeds the
-kernel pipe buffer. Use `grep -c PATTERN >/dev/null` so grep reads to EOF.
