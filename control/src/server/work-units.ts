@@ -186,3 +186,11 @@ export async function getFactoryWorkUnitById(id: string) {
   if (!record) return null;
   return getFactoryWorkUnit(record.repositoryId, record.workUnitId);
 }
+
+/** Lightweight work-unit facts for slot headers (tracker / PR links, #340). */
+export async function getWorkUnitRef(repositoryId: string, workUnitId: string) {
+  return prisma.workUnit.findUnique({
+    where: { repositoryId_workUnitId: { repositoryId, workUnitId } },
+    select: { id: true, workUnitId: true, title: true, source: true, sourceUrl: true, relatedLinks: true },
+  });
+}

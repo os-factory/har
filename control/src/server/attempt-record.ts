@@ -25,6 +25,8 @@ export interface AttemptRecord {
   occupancyKey: string;
   /** Registered repository path — the `--repo` for copy-able commands (#340). */
   repositoryPath: string | null;
+  /** Git remote, so Handoff and timeline rows can link a commit on the code host (#340). */
+  gitRemote: string | null;
   attempt: {
     attemptId: string | null;
     agentId: number | null;
@@ -122,7 +124,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
         })
       : null,
     prisma.agentSlot.findFirst({ where: { repositoryId, occupancyKey } }),
-    prisma.repository.findUnique({ where: { id: repositoryId }, select: { path: true } }),
+    prisma.repository.findUnique({ where: { id: repositoryId }, select: { path: true, gitRemote: true } }),
   ]);
   if (!attempt && !slot) return null;
 
@@ -220,6 +222,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
   return {
     occupancyKey,
     repositoryPath: repository?.path ?? null,
+    gitRemote: repository?.gitRemote ?? null,
     attempt: {
       attemptId,
       agentId,

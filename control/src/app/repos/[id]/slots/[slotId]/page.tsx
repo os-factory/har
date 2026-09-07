@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import type { WorkUnitRelatedLink } from '@har/schemas';
 import { ExternalLinkIcon } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,7 @@ import { listSessionEventsForSlot } from '@/server/session-events';
 import { pickDefaultSession } from '@/lib/slot-timeline';
 import { getSlotTimeline } from '@/server/slot-timeline';
 import { getValidationStages } from '@/server/validation-stages';
+import { getWorkUnitRef } from '@/server/work-units';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,11 +36,13 @@ export default async function SlotDetailPage({
   // #316 / #348: this page is LIVE data, scoped to the slot's current occupancy. A slot
   // number is reused after complete/teardown; a working session is not. Earlier
   // occupants are records — they live in the repository History and on work units.
-  const [validation, timeline, events] = await Promise.all([
+  const [validation, timeline, events, workUnit] = await Promise.all([
     getValidationStages(id, { agentId: slotId, since: slot.sessionCreatedAt, workDir: slot.workDir }),
     getSlotTimeline(id, slot),
     listSessionEventsForSlot(id, slotId),
+    slot.workUnitId ? getWorkUnitRef(id, slot.workUnitId) : Promise.resolve(null),
   ]);
+  const relatedLinks = (workUnit?.relatedLinks as WorkUnitRelatedLink[] | null) ?? [];
 
   // Open the newest agent session that has content so its trajectory is readable without a click.
   const newestSession = pickDefaultSession(timeline);
@@ -78,6 +82,36 @@ export default async function SlotDetailPage({
           <p className="text-sm" title={slot.purpose}>
             <span className="text-muted-foreground">Task: </span>
             {slot.purpose}
+          </p>
+        ) : null}
+        {workUnit ? (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="slot-work-unit">
+            <Link href={`/work/${workUnit.id}`} className="text-primary underline-offset-2 hover:underline">
+              {workUnit.title ?? workUnit.workUnitId}
+            </Link>
+            {workUnit.sourceUrl ? (
+              <a
+                href={workUnit.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+              >
+                {workUnit.source ?? 'tracker'}
+                <ExternalLinkIcon className="size-3" aria-hidden />
+              </a>
+            ) : null}
+            {relatedLinks.map((link) => (
+              <a
+                key={link.url}
+                href={link.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+              >
+                {link.label ?? link.source}
+                <ExternalLinkIcon className="size-3" aria-hidden />
+              </a>
+            ))}
           </p>
         ) : null}
         <p className="break-all font-mono text-xs text-muted-foreground" data-testid="slot-worktree-path">
@@ -130,6 +164,8 @@ export default async function SlotDetailPage({
           <SlotTimeline
             repositoryId={id}
             rows={timeline}
+            gitRemote={repo.gitRemote}
+            liveSlotId={slot.active ? slotId : null}
             defaultExpandedId={newestSession?.id ?? null}
             rawEvents={events.map((ev) => ({
               id: ev.id,

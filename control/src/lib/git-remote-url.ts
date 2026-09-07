@@ -24,3 +24,19 @@ export function gitRemoteBrowseUrl(remote: string | null | undefined): string | 
 
   return null;
 }
+
+/** Browser URL for a commit on the code host (#340). */
+export function gitRemoteCommitUrl(remote: string | null | undefined, sha: string | null | undefined): string | null {
+  if (!sha) return null;
+  const base = gitRemoteBrowseUrl(remote);
+  if (!base) return null;
+  const host = (() => {
+    try {
+      return new URL(base).hostname;
+    } catch {
+      return '';
+    }
+  })();
+  if (host.includes('bitbucket.org')) return `${base}/commits/${sha}`;
+  return `${base}/commit/${sha}`;
+}

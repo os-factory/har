@@ -31,6 +31,11 @@ test.describe('Slot timeline', () => {
     expect(await commands.count()).toBeGreaterThan(0);
     await expect(commands.first()).toContainText(/har env (verify|launch) \d+/);
     await expect(commands.first()).toContainText('--repo ');
+    // #340: a bound slot links to its work unit (and the tracker when one exists).
+    const workUnit = page.getByTestId('slot-work-unit');
+    if (await workUnit.count()) {
+      await expect(workUnit.locator('a[href^="/work/"]').first()).toBeVisible();
+    }
     await expect(page.getByText('Verify', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Timeline', { exact: true }).first()).toBeVisible();
 

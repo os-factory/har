@@ -5,9 +5,11 @@ import { ExternalLinkIcon } from 'lucide-react';
 import Link from 'next/link';
 import { type ColumnDef } from '@tanstack/react-table';
 
+import { CopyCommandButtons } from '@/components/copy-command';
 import { Badge } from '@/components/ui/badge';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
 import { describeSlotHealth, describeSlotVerify, type HealthTone } from '@/lib/slot-health';
+import { slotCommands } from '@/lib/slot-commands';
 
 export interface SlotRow {
   slotId: number;
@@ -36,6 +38,8 @@ export interface SlotRow {
   cleanupHint?: string | null;
   /** When set, Slot column links to the detail page. */
   repoId?: string;
+  /** Registered repository path — `--repo` for copy-able next commands (#340). */
+  repoPath?: string;
   tokensTotal?: number | null;
   costUsd?: number | null;
   agentTools?: string[];
@@ -175,6 +179,17 @@ export const slotColumns: ColumnDef<SlotRow>[] = [
         {row.original.worktreePath ?? row.original.workDir ?? '—'}
       </span>
     ),
+  },
+  {
+    id: 'next',
+    accessorFn: (row) => (row.repoPath ? slotCommands(row.repoPath, row.slotId, row.active).map((c) => c.command).join(' ') : ''),
+    header: 'Next',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const path = row.original.repoPath;
+      if (!path) return <span className="text-muted-foreground">—</span>;
+      return <CopyCommandButtons commands={slotCommands(path, row.original.slotId, row.original.active)} />;
+    },
   },
   {
     id: 'preview',

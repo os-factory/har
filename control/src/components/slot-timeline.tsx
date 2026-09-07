@@ -14,11 +14,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { formatAgentToolLabel } from '@/lib/agent-tool';
+import { gitRemoteCommitUrl } from '@/lib/git-remote-url';
 import {
   TIMELINE_KIND_LABEL,
   describeTimeline,
   formatDurationShort,
   formatTokenCount,
+  shortSha,
   summarizeTimeline,
   type TimelineKind,
   type TimelineRow,
@@ -141,8 +143,26 @@ function Field({ label, value, mono = false }: { label: string; value: React.Rea
   );
 }
 
-function RunDetail({ row }: { row: TimelineRow }) {
+function RunDetail({
+  row,
+  repositoryId,
+  liveSlotId,
+}: {
+  row: TimelineRow;
+  repositoryId: string;
+  liveSlotId: number | null;
+}) {
   const run = row.run!;
+  const slotLink =
+    liveSlotId != null && row.agentId === liveSlotId ? (
+      <Link
+        href={`/repos/${repositoryId}/slots/${liveSlotId}`}
+        className="text-xs text-primary underline-offset-2 hover:underline"
+        data-testid="timeline-run-slot"
+      >
+        Open slot {liveSlotId}
+      </Link>
+    ) : null;
   return (
     <div className="space-y-3" data-testid="timeline-run-detail">
       <dl className="grid gap-3 sm:grid-cols-4">
@@ -151,6 +171,7 @@ function RunDetail({ row }: { row: TimelineRow }) {
         <Field label="Trigger" value={run.trigger} />
         <Field label="Run id" value={run.runId} mono />
       </dl>
+      {slotLink}
       {run.stages.length > 0 ? (
         <ul className="flex flex-wrap gap-1.5" aria-label="Stage results">
           {run.stages.map((stage) => (
@@ -169,9 +190,20 @@ function RunDetail({ row }: { row: TimelineRow }) {
   );
 }
 
-function SnapshotDetail({ row, repositoryId, onOpenDiff }: { row: TimelineRow; repositoryId: string; onOpenDiff: (row: TimelineRow) => void }) {
+function SnapshotDetail({
+  row,
+  repositoryId,
+  gitRemote,
+  onOpenDiff,
+}: {
+  row: TimelineRow;
+  repositoryId: string;
+  gitRemote: string | null;
+  onOpenDiff: (row: TimelineRow) => void;
+}) {
   const snapshot = row.snapshot!;
   const files = snapshot.changedFiles;
+  const commitUrl = gitRemoteCommitUrl(gitRemote, snapshot.commitSha);
   return (
     <div className="space-y-3" data-testid="timeline-snapshot-detail">
       <dl className="grid gap-3 sm:grid-cols-4">
@@ -180,7 +212,25 @@ function SnapshotDetail({ row, repositoryId, onOpenDiff }: { row: TimelineRow; r
         <Field label="Branch" value={snapshot.branch ?? '—'} mono />
         <Field
           label="Commit"
-          value={snapshot.commitSha ? snapshot.commitSha.slice(0, 7) : 'not committed'}
+          value={
+            snapshot.commitSha ? (
+              commitUrl ? (
+                <a
+                  href={commitUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline-offset-2 hover:underline"
+                  data-testid="timeline-commit-host"
+                >
+                  {shortSha(snapshot.commitSha)}
+                </a>
+              ) : (
+                shortSha(snapshot.commitSha)
+              )
+            ) : (
+              'not committed'
+            )
+          }
           mono
         />
       </dl>
@@ -214,12 +264,31 @@ function SnapshotDetail({ row, repositoryId, onOpenDiff }: { row: TimelineRow; r
   );
 }
 
-function CommitDetail({ row }: { row: TimelineRow }) {
+function CommitDetail({ row, gitRemote }: { row: TimelineRow; gitRemote: string | null }) {
   const commit = row.commit!;
+  const commitUrl = gitRemoteCommitUrl(gitRemote, commit.sha);
   return (
     <div className="space-y-3" data-testid="timeline-commit-detail">
       <dl className="grid gap-3 sm:grid-cols-3">
-        <Field label="Commit" value={commit.sha} mono />
+        <Field
+          label="Commit"
+          value={
+            commitUrl ? (
+              <a
+                href={commitUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline-offset-2 hover:underline"
+                data-testid="timeline-commit-host"
+              >
+                {commit.sha}
+              </a>
+            ) : (
+              commit.sha
+            )
+          }
+          mono
+        />
         <Field label="Tree hash" value={commit.treeHash} mono />
         <Field label="Branch" value={commit.branch ?? (commit.refs[0] ?? '—')} mono />
       </dl>
@@ -306,6 +375,10 @@ export interface SlotTimelineProps {
   searchPlaceholder?: string;
   /** Row opened on first render, e.g. the newest agent session so its trajectory is visible without a click. */
   defaultExpandedId?: string | null;
+  /** Git remote for snapshot/commit links on the code host (#340). */
+  gitRemote?: string | null;
+  /** Only a live occupancy may link a run back to its slot (#340 / #348). */
+  liveSlotId?: number | null;
 }
 
 export function SlotTimeline({
@@ -316,6 +389,8 @@ export function SlotTimeline({
   emptyMessage = 'Nothing recorded yet. Runs, snapshots, commits and agent sessions appear here as they happen.',
   searchPlaceholder = 'Search timeline…',
   defaultExpandedId = null,
+  gitRemote = null,
+  liveSlotId = null,
 }: SlotTimelineProps) {
   const [expandedId, setExpandedId] = useState<string | null>(defaultExpandedId);
   const [kinds, setKinds] = useState<Set<TimelineKind>>(() => new Set(KIND_ORDER));
@@ -330,11 +405,11 @@ export function SlotTimeline({
   const renderExpanded = (row: TimelineRow) => {
     switch (row.kind) {
       case 'run':
-        return <RunDetail row={row} />;
+        return <RunDetail row={row} repositoryId={repositoryId} liveSlotId={liveSlotId} />;
       case 'snapshot':
-        return <SnapshotDetail row={row} repositoryId={repositoryId} onOpenDiff={setDiffRow} />;
+        return <SnapshotDetail row={row} repositoryId={repositoryId} gitRemote={gitRemote} onOpenDiff={setDiffRow} />;
       case 'commit':
-        return <CommitDetail row={row} />;
+        return <CommitDetail row={row} gitRemote={gitRemote} />;
       case 'occupancy':
         return <OccupancyDetail row={row} />;
       case 'session':

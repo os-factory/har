@@ -109,6 +109,11 @@ test.describe('Factory and operations', () => {
     // #339: one Health sentence and one Verify cell replace the six status columns.
     await expect(table.getByRole('columnheader', { name: 'Health' })).toBeVisible();
     await expect(table.getByRole('columnheader', { name: 'Verify' })).toBeVisible();
+    // #340: every slot row offers the exact next har commands to copy.
+    await expect(table.getByRole('columnheader', { name: 'Next' })).toBeVisible();
+    const next = table.getByTestId('slot-commands').first();
+    await expect(next).toBeVisible();
+    await expect(next.getByRole('button').first()).toHaveAttribute('aria-label', /Copy: har env (verify|launch) \d+/);
     for (const header of ['Status', 'Drift', 'Last verify', 'Harness', 'Build', 'Cleanup']) {
       await expect(table.getByRole('columnheader', { name: header, exact: true })).toHaveCount(0);
     }
