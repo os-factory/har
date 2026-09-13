@@ -2,6 +2,7 @@ import * as path from 'path';
 import { readManifest, resolveHarnessRoot } from '../harness/manifest';
 import { readStageRegistry } from '../harness/stages';
 import {
+  AgentSlotStatus,
   EnvironmentStatus,
   RegisterRepoInput,
   RunRecord,
@@ -41,6 +42,7 @@ import {
   collectValidationBindingsForSync,
   collectValidationsForSync,
   collectWorkUnitsForSync,
+  mergeSlotStatuses,
   resolveSyncSourcePaths,
   selectRunsForSync,
 } from './sync-sources';
@@ -512,6 +514,31 @@ async function collectPortalTelemetry(
   }
 }
 
+/**
+ * Identity stays canonical (#255); slot occupancy is the union of every source
+ * that actually stores a session (#256). Prefer an active occupancy over idle
+ * so a main-checkout sync cannot blank a live external worktree.
+ */
+function collectEnvironmentStatusForSync(
+  canonicalPath: string,
+  sourcePaths: string[],
+): EnvironmentStatus {
+  const collected = new Map<string, EnvironmentStatus>();
+  const groups: AgentSlotStatus[][] = [];
+  for (const source of sourcePaths) {
+    const key = path.resolve(source);
+    let status = collected.get(key);
+    if (!status) {
+      status = collectEnvironmentStatus(source);
+      collected.set(key, status);
+    }
+    groups.push(status.slots);
+  }
+  const canonicalKey = path.resolve(canonicalPath);
+  const canonical = collected.get(canonicalKey) ?? collectEnvironmentStatus(canonicalPath);
+  return { ...canonical, slots: mergeSlotStatuses(groups) };
+}
+
 async function buildPortalPayload(
   repoPath: string,
   sourcePaths: string[],
@@ -531,7 +558,7 @@ async function buildPortalPayload(
   // Same canonical-identity / workspace-evidence split as the local path (#255).
   const rawRunsBySource = collectRunsBySource(sourcePaths);
   const runs = mergeRunsBySource(rawRunsBySource);
-  const status = collectEnvironmentStatus(repoPath);
+  const status = collectEnvironmentStatusForSync(repoPath, sourcePaths);
   const manifest = readManifest(repoPath);
   const stagesRegistry = readStageRegistry(repoPath);
   const validations = collectValidationsForSync(sourcePaths);
@@ -1033,7 +1060,7 @@ export async function syncRepoWithControl(
     }
     const sourcePaths = resolveSyncSourcePaths(repoPath, workspacePath);
     const runs = collectRunsForSync(sourcePaths);
-    const status = collectEnvironmentStatus(repoPath);
+    const status = collectEnvironmentStatusForSync(repoPath, sourcePaths);
     const cloudWork = collectWorkUnitsForSync(sourcePaths);
     const harnessRoot = resolveHarnessRoot(repoPath);
     const response = await fetch(`${process.env.HAR_CLOUD_API_URL}/api/sync`, {
@@ -1123,7 +1150,7 @@ async function syncRepoRunsAndSlots(
     sourcePaths,
   );
 
-  const status: EnvironmentStatus = collectEnvironmentStatus(repoPath);
+  const status: EnvironmentStatus = collectEnvironmentStatusForSync(repoPath, sourcePaths);
   const slotsBody = SyncSlotsInputSchema.parse({
     slots: status.slots,
     generatedAt: status.generatedAt,

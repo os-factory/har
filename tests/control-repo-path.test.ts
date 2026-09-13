@@ -4,6 +4,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import {
   canonicalizeControlRepoPath,
+  listLinkedWorktrees,
   resolveMainWorkingTree,
 } from '../src/core/control-repo-path';
 import { recordRepoForControlSync, listRegisteredRepos } from '../src/core/control-registry';
@@ -55,6 +56,7 @@ describe('canonicalizeControlRepoPath', () => {
     const main = initRepo();
     expect(canonicalizeControlRepoPath(main)).toBe(path.resolve(main));
     expect(resolveMainWorkingTree(main)).toBe(path.resolve(main));
+    expect(listLinkedWorktrees(main)).toEqual([]);
   });
 
   it('maps a linked worktree root to the main checkout', () => {
@@ -62,6 +64,8 @@ describe('canonicalizeControlRepoPath', () => {
     const worktree = addWorktree(main);
     expect(canonicalizeControlRepoPath(worktree)).toBe(path.resolve(main));
     expect(resolveMainWorkingTree(worktree)).toBe(path.resolve(main));
+    expect(listLinkedWorktrees(main)).toEqual([path.resolve(worktree)]);
+    expect(listLinkedWorktrees(worktree)).toEqual([path.resolve(worktree)]);
   });
 
   it('maps a path under a linked worktree to the same relative path on main', () => {

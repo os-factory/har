@@ -88,3 +88,29 @@ artifacts, runs, and Mission Control.
 MCP is the preferred interface in agents because it returns structured results
 the model does not have to parse. Run history is identical on every surface —
 `har env …` and MCP run the same packaged runtime and write the same records.
+
+## External worktree managers
+
+HAR also runs inside a checkout it did not create — a Conductor workspace, a
+Cursor worktree, a cloud sandbox, or a hand-rolled `git worktree add`. Launch
+with `--no-worktree` in that checkout; HAR records `mode: external` and will
+not delete the orchestrator's tree on teardown.
+
+The `.har/` contract has to live on the **branch / commit the orchestrator
+branches from**. Many managers pin a base SHA when the repository is added and
+ignore later local updates to `origin/HEAD`. If that pin is older than the
+harness commit, new workspaces have no `.har/` and every command fails with
+"Configure agent slot limits in .har/stages.json".
+
+Before creating workspaces:
+
+1. Commit `.har/` (and `AGENTS.md`) on the branch the orchestrator uses as its
+   base.
+2. If the orchestrator caches the base SHA, remove and re-add the repository
+   (or otherwise refresh the pin) so new workspaces inherit that commit.
+3. Then create workspaces and launch with `--no-worktree`.
+
+Mission Control still keeps **one repository row** per git repo. Slot occupancy
+is read from every linked worktree that stores its own `.har/` evidence, so a
+session bound in an external workspace shows up on the slot page instead of
+being blanked by an idle sync from the main checkout.

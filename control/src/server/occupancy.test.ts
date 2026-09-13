@@ -42,7 +42,7 @@ vi.mock('@/server/worktree-cleanup', () => ({
   cleanupSessionWorktrees: () => [],
 }));
 
-import { deriveOccupancyKey, isNewOccupancy } from './occupancy';
+import { deriveOccupancyKey, isNewOccupancy, shouldApplySlotSync } from './occupancy';
 import { buildAgentSlotSyncFields } from './slot-sync-fields';
 import { syncSlots } from './repositories';
 import { listTrajectoryStreams } from './trajectory-ledger';
@@ -158,6 +158,65 @@ describe('S0 — a relaunched slot does not keep the previous occupancy', () => 
     const { update } = agentSlotUpsert.mock.calls[0][0];
     // undefined = "leave the column unchanged" in Prisma.
     expect(update.purpose).toBeUndefined();
+  });
+});
+
+describe('S0 / #256 — idle sync from a different occupancy does not clobber the live row', () => {
+  it('refuses an idle report whose worktree is not the stored occupancy', async () => {
+    agentSlotFindUnique.mockResolvedValue({
+      occupancyKey: deriveOccupancyKey(occupancy()),
+      active: true,
+      workDir: occupancy().workDir,
+      worktreePath: occupancy().worktreePath,
+    });
+
+    await syncSlots('repo-1', {
+      slots: [
+        occupancy({
+          active: false,
+          workDir: '/other/workspace',
+          worktreePath: '/other/workspace',
+        }),
+      ],
+      generatedAt: new Date().toISOString(),
+    });
+
+    expect(agentSlotUpsert).not.toHaveBeenCalled();
+  });
+
+  it('still idles when the report is about the stored occupancy', async () => {
+    agentSlotFindUnique.mockResolvedValue({
+      occupancyKey: deriveOccupancyKey(occupancy()),
+      active: true,
+      workDir: occupancy().workDir,
+      worktreePath: occupancy().worktreePath,
+    });
+
+    await syncSlots('repo-1', {
+      slots: [occupancy({ active: false })],
+      generatedAt: new Date().toISOString(),
+    });
+
+    expect(agentSlotUpsert).toHaveBeenCalled();
+    const { update } = agentSlotUpsert.mock.calls[0][0];
+    expect(update.active).toBe(false);
+    expect(update.workDir).toBeNull();
+  });
+
+  it('shouldApplySlotSync matches those rules without a database', () => {
+    const live = {
+      active: true,
+      workDir: '/ws/a',
+      worktreePath: '/ws/a',
+    };
+    expect(shouldApplySlotSync(live, { active: true, workDir: '/ws/b' })).toBe(true);
+    expect(
+      shouldApplySlotSync(live, { active: false, workDir: '/ws/b', worktreePath: '/ws/b' }),
+    ).toBe(false);
+    expect(
+      shouldApplySlotSync(live, { active: false, workDir: '/ws/a', worktreePath: '/ws/a' }),
+    ).toBe(true);
+    expect(shouldApplySlotSync(live, { active: false })).toBe(true);
   });
 });
 

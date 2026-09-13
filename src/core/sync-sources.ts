@@ -1,6 +1,8 @@
+import * as fs from 'fs';
 import * as path from 'path';
-import { resolveHarnessRoot } from '../harness/manifest';
+import { DEFAULT_HAR_DIR, resolveHarnessRoot } from '../harness/manifest';
 import {
+  AgentSlotStatus,
   RunRecord,
   ValidationBindingRecord,
   ValidationCommitBinding,
@@ -9,6 +11,7 @@ import {
   WorkUnitRecord,
 } from '../harness/schema';
 import { listCommitBindings } from './commit-bindings';
+import { listLinkedWorktrees } from './control-repo-path';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
 import { listValidationBindings, listWorkAttempts, listWorkUnits } from './work-units';
@@ -32,19 +35,80 @@ import { listValidationBindings, listWorkAttempts, listWorkUnits } from './work-
  */
 export function resolveSyncSourcePaths(canonicalPath: string, workspacePath?: string): string[] {
   const canonical = path.resolve(canonicalPath);
-  if (!workspacePath) return [canonical];
+  const paths: string[] = [canonical];
+  const seenRoots = new Set([path.resolve(resolveHarnessRoot(canonical))]);
 
-  const workspace = path.resolve(workspacePath);
-  if (workspace === canonical) return [canonical];
+  const add = (candidate: string): void => {
+    const resolved = path.resolve(candidate);
+    const root = path.resolve(resolveHarnessRoot(resolved));
+    if (seenRoots.has(root)) return;
+    seenRoots.add(root);
+    paths.push(resolved);
+  };
 
-  // Distinct harness roots only — a subdirectory of the same checkout resolves
-  // to the same `.har` and would just duplicate every read.
-  const canonicalRoot = resolveHarnessRoot(canonical);
-  const workspaceRoot = resolveHarnessRoot(workspace);
-  if (path.resolve(canonicalRoot) === path.resolve(workspaceRoot)) return [canonical];
+  if (workspacePath) add(workspacePath);
 
-  // Canonical first: it wins any id collision.
-  return [canonical, workspace];
+  // Sibling linked worktrees that store their own evidence (#256). A HAR-owned
+  // session worktree copies `.har/manifest.json` but writes runs/slots on the
+  // main checkout, so it is skipped. An in-place launch inside an externally
+  // owned worktree writes into that workspace's `.har` and must be read even
+  // when sync was invoked from the canonical checkout.
+  for (const worktree of listLinkedWorktrees(canonical)) {
+    if (hasHarnessEvidence(worktree)) add(worktree);
+  }
+
+  return paths;
+}
+
+const EVIDENCE_SUBDIRS = ['slots', 'runs', 'work-units', 'validations'] as const;
+
+/** Whether this checkout's `.har/` holds records (not just a copied manifest). */
+export function hasHarnessEvidence(repoPath: string): boolean {
+  const root = resolveHarnessRoot(repoPath);
+  const harDir = path.join(root, DEFAULT_HAR_DIR);
+  if (!fs.existsSync(harDir)) return false;
+  for (const sub of EVIDENCE_SUBDIRS) {
+    const dir = path.join(harDir, sub);
+    if (!fs.existsSync(dir)) continue;
+    try {
+      if (fs.readdirSync(dir).length > 0) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
+/**
+ * One status row per slot number.
+ *
+ * Mission Control keeps a single AgentSlot per `(repository, slotId)` — that is
+ * the live occupancy of the workstation (#316). Concurrent in-place launches
+ * of the same number (N external workspaces each on "slot 1") cannot all be
+ * that row. Prefer any active occupancy over idle so a canonical idle report
+ * cannot wipe a live external session (#256); when two occupancies are both
+ * active, the newer `sessionCreatedAt` is the one the slot page shows.
+ */
+export function mergeSlotStatuses(groups: AgentSlotStatus[][]): AgentSlotStatus[] {
+  const byId = new Map<number, AgentSlotStatus>();
+  for (const group of groups) {
+    for (const slot of group) {
+      const existing = byId.get(slot.agentId);
+      byId.set(slot.agentId, existing ? preferSlotStatus(existing, slot) : slot);
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.agentId - b.agentId);
+}
+
+function preferSlotStatus(a: AgentSlotStatus, b: AgentSlotStatus): AgentSlotStatus {
+  if (a.active !== b.active) return a.active ? a : b;
+  const aCreated = a.sessionCreatedAt ?? '';
+  const bCreated = b.sessionCreatedAt ?? '';
+  if (aCreated !== bCreated) return aCreated >= bCreated ? a : b;
+  const aRun = a.lastRunAt ?? '';
+  const bRun = b.lastRunAt ?? '';
+  if (aRun !== bRun) return aRun >= bRun ? a : b;
+  return a;
 }
 
 /** Merge per-source lists, first occurrence of an id winning. */

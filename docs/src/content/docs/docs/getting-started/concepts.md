@@ -34,6 +34,12 @@ By default, launch creates:
 The worktree is where code is edited and tested. Teardown removes it while retaining
 the branch. Gitignored files inside a removed worktree are ephemeral.
 
+HAR can also run **inside a worktree it did not create** (`--no-worktree` in an
+external orchestrator's checkout). That slot is `mode: external`: the worktree
+path is recorded, and teardown leaves the checkout in place. The `.har/`
+contract must already be on the commit the orchestrator branches from; see
+[Agent integrations](/docs/guides/agent-integrations/#external-worktree-managers).
+
 ## Stage
 
 A stage is a project-defined operation with an id, kind, command, accepted

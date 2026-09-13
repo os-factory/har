@@ -40,6 +40,30 @@ export function resolveMainWorkingTree(cwd: string): string | undefined {
 }
 
 /**
+ * Linked git worktrees of `cwd`'s repository, excluding the main working tree.
+ *
+ * Used when syncing Mission Control: an externally-owned workspace writes its
+ * own `.har/` (runs, slots, work-units) and is invisible if we only read the
+ * canonical checkout (#256). HAR-owned session worktrees are linked too, but
+ * they normally hold no evidence of their own — callers filter on that.
+ */
+export function listLinkedWorktrees(cwd: string): string[] {
+  const porcelain = tryGit(cwd, 'worktree list --porcelain');
+  if (!porcelain) return [];
+
+  const main = resolveMainWorkingTree(cwd);
+  const mainResolved = main ? path.resolve(main) : undefined;
+  const paths: string[] = [];
+  for (const line of porcelain.split('\n')) {
+    if (!line.startsWith('worktree ')) continue;
+    const worktree = path.resolve(line.slice('worktree '.length));
+    if (mainResolved && worktree === mainResolved) continue;
+    paths.push(worktree);
+  }
+  return paths;
+}
+
+/**
  * Map a harness/repo path onto the main git working tree.
  *
  * Mission Control identities repositories by absolute path. Session worktrees

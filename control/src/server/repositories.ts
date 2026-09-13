@@ -12,7 +12,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
-import { isNewOccupancy, resolveRecordOccupancyKey, type OccupancyCandidate } from '@/server/occupancy';
+import { isNewOccupancy, resolveRecordOccupancyKey, shouldApplySlotSync, type OccupancyCandidate } from '@/server/occupancy';
 import { cleanupSessionWorktrees } from '@/server/worktree-cleanup';
 
 function toJson(value: unknown) {
@@ -245,8 +245,15 @@ export async function syncRuns(repositoryId: string, input: unknown) {
 export async function syncSlots(repositoryId: string, input: unknown) {
   const { slots } = SyncSlotsInputSchema.parse(input);
 
+  let synced = 0;
   for (const slot of slots) {
     const parsed = AgentSlotStatusSchema.parse(slot);
+    const existing = await prisma.agentSlot.findUnique({
+      where: { repositoryId_slotId: { repositoryId, slotId: parsed.agentId } },
+      select: { occupancyKey: true, active: true, workDir: true, worktreePath: true },
+    });
+    if (!shouldApplySlotSync(existing, parsed)) continue;
+
     const fields = buildAgentSlotSyncFields(parsed);
 
     // #316: a slot number is a workstation, an occupancy is one session in it.
@@ -255,10 +262,6 @@ export async function syncSlots(repositoryId: string, input: unknown) {
     // same slot keeps describing the previous agent's task. Cleared on any
     // occupancy change (including → idle); the next occupancy's first prompt
     // sets it again.
-    const existing = await prisma.agentSlot.findUnique({
-      where: { repositoryId_slotId: { repositoryId, slotId: parsed.agentId } },
-      select: { occupancyKey: true },
-    });
     const occupancyChanged = isNewOccupancy(existing?.occupancyKey, fields.occupancyKey);
 
     // Prisma JSON columns need DbNull for SQL NULL (plain `null` is rejected).
@@ -277,9 +280,10 @@ export async function syncSlots(repositoryId: string, input: unknown) {
       },
       update: data,
     });
+    synced++;
   }
 
-  return { synced: slots.length };
+  return { synced };
 }
 
 export async function listRuns(repositoryId: string, limit = 50) {

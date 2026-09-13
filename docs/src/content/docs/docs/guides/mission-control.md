@@ -37,6 +37,13 @@ commit, complete — so registered repositories stay current without a manual
 `sync` or a background watcher. `--dry-run` previews registration or sync, and
 `sync --json` produces structured output.
 
+Linked worktrees that store their own `.har/` evidence (an in-place launch inside
+an external orchestrator's checkout) are included in that sync. Repository
+identity stays the main checkout; the live occupancy of a slot is the active
+session among those sources, so an idle report from main cannot blank a session
+that is still running somewhere else. See
+[Agent integrations](/docs/guides/agent-integrations/#external-worktree-managers).
+
 ## Unregister
 
 Remove a repository from Mission Control (and stop auto-sync) from the CLI or the

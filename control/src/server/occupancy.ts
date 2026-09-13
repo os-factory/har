@@ -59,6 +59,36 @@ export function isNewOccupancy(
   return (previousKey ?? null) !== nextKey;
 }
 
+export type ExistingSlotOccupancy = {
+  active: boolean;
+  workDir: string | null;
+  worktreePath: string | null;
+};
+
+/**
+ * Whether this slot payload should replace the stored occupancy (#256).
+ *
+ * One AgentSlot row per `(repository, slotId)` means N external workspaces
+ * that each launched "slot 1" collapse onto the same row. An idle report from
+ * a *different* occupancy (typical: the main checkout, which never launched
+ * that number) must not null the live worktree / verify columns. Idle from
+ * the same occupancy — or a path-less idle after the CLI has already merged
+ * sources — still applies so teardown can free the row.
+ */
+export function shouldApplySlotSync(
+  existing: ExistingSlotOccupancy | null | undefined,
+  incoming: Pick<AgentSlotStatus, 'active' | 'workDir' | 'worktreePath'>,
+): boolean {
+  if (!existing) return true;
+  if (incoming.active) return true;
+  if (!existing.active) return true;
+
+  const existingPath = existing.workDir ?? existing.worktreePath;
+  const incomingPath = incoming.workDir ?? incoming.worktreePath;
+  if (existingPath && incomingPath && existingPath !== incomingPath) return false;
+  return true;
+}
+
 /** Occupancy key of a work attempt — HAR mints one attempt per launch. */
 export function occupancyKeyForAttempt(attemptId: string): string {
   return `attempt${PART_SEPARATOR}${attemptId}`;

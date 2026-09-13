@@ -109,13 +109,30 @@ Keep the slot range in `.har/stages.json` and `harness.env` aligned:
 
 The repository, not the HAR binary, decides how much parallelism is safe.
 
-## Root mode
+## Root mode and externally-owned worktrees
 
-`--no-worktree` is available for exceptional single-checkout workflows:
+`--no-worktree` is available for exceptional single-checkout workflows, and for
+checkouts an external orchestrator already created (Conductor, Cursor
+worktrees, a hand-rolled `git worktree add`, a cloud sandbox):
 
 ```bash
 har env launch 1 --no-worktree
 ```
 
+HAR detects the second case automatically: if the checkout is a linked git
+worktree, the slot is `mode: external` and teardown will not remove it.
+
 Worktrees remain the default because they separate concurrent tasks and make the
 session lifecycle explicit.
+
+### Orchestrator base branch
+
+The `.har/` contract must already exist on the **commit the orchestrator
+branches from**. External worktree managers typically pin a base SHA at
+add-time, independent of later local edits to `origin/main`. If that pin
+predates the harness, every new workspace comes up without `.har/` and harness
+commands fail with "Configure agent slot limits in .har/stages.json".
+
+Commit `.har/` to the branch the orchestrator uses as its base — then re-add
+the repository in the orchestrator if it cached an older SHA — before creating
+workspaces. See [Agent integrations](/docs/guides/agent-integrations/).
