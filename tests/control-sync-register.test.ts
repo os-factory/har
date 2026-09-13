@@ -1,6 +1,7 @@
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
   resolveMainWorkingTree: (p: string) => p,
+  listLinkedWorktrees: () => [],
 }));
 jest.mock('../src/harness/manifest', () => ({
   readManifest: () => ({ profile: 'cli' }),

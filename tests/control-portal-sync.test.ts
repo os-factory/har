@@ -19,6 +19,7 @@ jest.mock('../src/core/portal-targets', () => ({
 }));
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
+  listLinkedWorktrees: () => [],
 }));
 jest.mock('../src/core/runs', () => ({ listRuns: jest.fn(() => []) }));
 jest.mock('../src/core/slot-status', () => ({

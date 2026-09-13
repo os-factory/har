@@ -5,6 +5,7 @@ const canonicalFor = new Map<string, string>();
 
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => canonicalFor.get(p) ?? p,
+  listLinkedWorktrees: () => [],
 }));
 jest.mock('../src/core/telemetry-config', () => ({
   isTelemetryEnabled: () => false,

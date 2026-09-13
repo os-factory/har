@@ -1,5 +1,6 @@
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
+  listLinkedWorktrees: () => [],
 }));
 jest.mock('../src/core/portal-credentials', () => ({ readPortalCredentials: jest.fn(() => null) }));
 jest.mock('../src/core/runs', () => ({ listRuns: jest.fn(() => []) }));

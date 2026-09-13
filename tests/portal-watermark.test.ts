@@ -4,6 +4,7 @@ import * as path from 'path';
 
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
+  listLinkedWorktrees: () => [],
 }));
 
 import {
