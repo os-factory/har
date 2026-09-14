@@ -5,6 +5,7 @@
 // listRuns + fetch to exercise the batching and error-surfacing seams.
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
+  listLinkedWorktrees: () => [],
 }));
 jest.mock('../src/core/portal-credentials', () => ({ readPortalCredentials: jest.fn(() => null) }));
 jest.mock('../src/core/runs', () => ({ listRuns: jest.fn(() => []) }));

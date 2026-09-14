@@ -3,6 +3,7 @@
 // the portal fetch, so we only assert the synced/failed/results accounting.
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
+  listLinkedWorktrees: () => [],
 }));
 jest.mock('../src/core/portal-credentials', () => ({ readPortalCredentials: jest.fn(() => null) }));
 jest.mock('../src/core/runs', () => ({ listRuns: () => [] }));

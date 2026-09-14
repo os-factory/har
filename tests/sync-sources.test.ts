@@ -5,6 +5,8 @@ import {
   collectRunsBySource,
   collectRunsForSync,
   collectWorkUnitsForSync,
+  hasHarnessEvidence,
+  mergeSlotStatuses,
   resolveSyncSourcePaths,
   selectRunsForSync,
 } from '../src/core/sync-sources';
@@ -148,6 +150,78 @@ describe('collectWorkUnitsForSync (#255)', () => {
     const { workUnits } = collectWorkUnitsForSync(resolveSyncSourcePaths(canonical, workspace));
     expect(workUnits).toHaveLength(1);
     expect(workUnits[0].updatedAt).toBe('2026-08-31T10:00:00.000Z');
+  });
+});
+
+describe('hasHarnessEvidence / mergeSlotStatuses (#256)', () => {
+  it('ignores a copied manifest with no records', () => {
+    const repo = makeHarness('har-ev-empty-');
+    expect(hasHarnessEvidence(repo)).toBe(false);
+  });
+
+  it('detects a slot registry as evidence', () => {
+    const repo = makeHarness('har-ev-slots-');
+    const slots = path.join(repo, '.har', 'slots');
+    fs.mkdirSync(slots, { recursive: true });
+    fs.writeFileSync(path.join(slots, 'agent-1.json'), '{}\n');
+    expect(hasHarnessEvidence(repo)).toBe(true);
+  });
+
+  it('prefers an active occupancy over idle for the same slot number', () => {
+    const idle = {
+      agentId: 1,
+      active: false,
+      harnessUsage: 'none' as const,
+      lastRunAt: '2026-08-01T00:00:00.000Z',
+    };
+    const live = {
+      agentId: 1,
+      active: true,
+      harnessUsage: 'cli' as const,
+      workDir: '/ws/ext',
+      worktreePath: '/ws/ext',
+      sessionCreatedAt: '2026-09-01T00:00:00.000Z',
+    };
+    const merged = mergeSlotStatuses([[idle], [live]]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].active).toBe(true);
+    expect(merged[0].workDir).toBe('/ws/ext');
+  });
+
+  it('keeps the newer session when two occupancies are both active', () => {
+    const older = {
+      agentId: 1,
+      active: true,
+      harnessUsage: 'cli' as const,
+      workDir: '/ws/a',
+      sessionCreatedAt: '2026-09-01T10:00:00.000Z',
+    };
+    const newer = {
+      agentId: 1,
+      active: true,
+      harnessUsage: 'cli' as const,
+      workDir: '/ws/b',
+      sessionCreatedAt: '2026-09-01T11:00:00.000Z',
+    };
+    expect(mergeSlotStatuses([[older], [newer]])[0].workDir).toBe('/ws/b');
+  });
+
+  it('when both are idle, keeps the more recently verified row', () => {
+    const stale = {
+      agentId: 1,
+      active: false,
+      harnessUsage: 'cli' as const,
+      lastRunAt: '2026-08-01T00:00:00.000Z',
+      lastVerifyStatus: 'pass' as const,
+    };
+    const recent = {
+      agentId: 1,
+      active: false,
+      harnessUsage: 'cli' as const,
+      lastRunAt: '2026-09-01T00:00:00.000Z',
+      lastVerifyStatus: 'fail' as const,
+    };
+    expect(mergeSlotStatuses([[stale], [recent]])[0].lastVerifyStatus).toBe('fail');
   });
 });
 

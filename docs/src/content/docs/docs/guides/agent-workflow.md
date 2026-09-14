@@ -23,6 +23,11 @@ Use one slot per task. Separate parallel tasks use separate slots.
 With telemetry on (the default, including prompts), Mission Control fills the
 session purpose from the first captured user prompt.
 
+When an external orchestrator already created the checkout, launch in place
+(`har env launch N --no-worktree`) so HAR does not create a nested worktree.
+The `.har/` contract must exist on the orchestrator's base commit — see
+[Agent integrations](/docs/guides/agent-integrations/#external-worktree-managers).
+
 ## Occupied and failed slots
 
 An occupied slot always blocks a new launch. Free it first, then launch again:
