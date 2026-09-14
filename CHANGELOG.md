@@ -1,3 +1,9 @@
+## [1.14.2](https://github.com/os-factory/har/compare/v1.14.1...v1.14.2) (2026-09-14)
+
+### Bug Fixes
+
+* preserve live occupancy for externally-owned worktrees ([#360](https://github.com/os-factory/har/issues/360)) ([5b86ef2](https://github.com/os-factory/har/commit/5b86ef2a4885a2fbfa4d55345e9da7179488ee15))
+
 ## [1.14.1](https://github.com/os-factory/har/compare/v1.14.0...v1.14.1) (2026-09-07)
 
 ### Bug Fixes
