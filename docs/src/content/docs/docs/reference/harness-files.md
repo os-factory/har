@@ -46,13 +46,13 @@ Installed during `har onboard` (and refreshed on maintain):
 | Path | Purpose |
 | --- | --- |
 | `AGENTS.md` | Canonical shared HAR workflow (Codex auto-loads this; cross-tool standard) |
-| `CLAUDE.md` | Thin Claude Code pointer → `AGENTS.md` (only when Claude is a confirmed target) |
+| `CLAUDE.md` | Deprecated pointer → `AGENTS.md`. Never created (Claude Code reads `AGENTS.md`); an existing one is kept current |
 | `.cursor/rules/har-workflow.mdc` | Always-on Cursor injection (when Cursor is confirmed) |
 
 Legacy `AGENT.md` (singular) is migrated into `AGENTS.md` and removed. Do not create it.
 
 Keep instruction files **tracked**. A session worktree only materializes what is
-in `HEAD`, so an untracked `CLAUDE.md` or `.claude/` leaves every agent slot
+in `HEAD`, so an untracked `AGENTS.md` or `.claude/` leaves every agent slot
 blind to the rules. `har env preflight` and `har env launch` warn when they
 find untracked paths; see [Launch and recovery](/docs/reference/cli/#launch-and-recovery).
 

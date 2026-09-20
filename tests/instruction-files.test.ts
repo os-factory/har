@@ -94,14 +94,13 @@ describe('instruction-files', () => {
     expect(content).toContain(HAR_SECTION_START);
   });
 
-  // #301: CLAUDE.md holds no content of its own — it imports AGENTS.md so there
-  // is exactly one instruction file to keep current.
-  it('creates CLAUDE.md as exactly the AGENTS.md import', () => {
+  // Claude Code reads AGENTS.md directly, so the pointer is deprecated: HAR
+  // keeps an existing CLAUDE.md current but never creates one.
+  it('never creates CLAUDE.md when it is absent', () => {
     const repoPath = makeTempRepo('har-claude-thin');
     const action = ensureClaudeMdPointer(repoPath);
-    expect(action).toBe('created');
-    const content = fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8');
-    expect(content.trim()).toBe('@AGENTS.md');
+    expect(action).toBe('skipped');
+    expect(fs.existsSync(path.join(repoPath, CLAUDE_MD))).toBe(false);
   });
 
   it('replaces a HAR-authored pointer with the import', () => {
@@ -170,10 +169,18 @@ describe('instruction-files', () => {
     });
     expect(plan.agentsMd).toBe(true);
     expect(plan.migrateLegacyAgentMd).toBe(true);
-    expect(plan.claudeMd).toBe(true);
+    // No CLAUDE.md in the repo — the deprecated pointer is never created.
+    expect(plan.claudeMd).toBe(false);
     expect(plan.cursorRule).toBe(false);
     expect(plan.skills).toEqual(['claude']);
     expect(formatInstallPlan(plan, detection)).toContain('[x] Create AGENTS.md');
+    expect(formatInstallPlan(plan, detection)).toContain('no CLAUDE.md created');
+
+    const withExisting = buildInstallPlan({ ...detection, claudeMd: true }, ['claude'], {
+      skills: ['claude'],
+      respectProviderSelection: true,
+    });
+    expect(withExisting.claudeMd).toBe(true);
   });
 
   it('preselects detected providers and leaves skill installation off by default', async () => {
@@ -200,7 +207,7 @@ describe('instruction-files', () => {
     expect(skillsQuestion).toEqual(expect.objectContaining({ type: 'confirm', default: false }));
     expect(result.targets).toEqual(['claude', 'cursor']);
     expect(result.plan.skills).toEqual([]);
-    expect(result.plan.claudeMd).toBe(true);
+    expect(result.plan.claudeMd).toBe(false);
     expect(result.plan.cursorRule).toBe(true);
   });
 

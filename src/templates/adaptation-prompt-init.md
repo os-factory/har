@@ -202,7 +202,7 @@ Launch creates an isolated session worktree at `~/worktrees/<base>-<sha4>-har-ag
 
 Coding agents discover the harness through two files:
 
-1. **`AGENTS.md`** (repo root) — shared agent instructions (Codex auto-loads this; Claude via `CLAUDE.md` pointer)
+1. **`AGENTS.md`** (repo root) — shared agent instructions (Codex and Claude Code both auto-load this)
 2. **`.har/README.md`** — full index of what's in the harness
 
 Do **not** create `AGENT.md` (singular) — that legacy name is obsolete. If `AGENT.md` exists, merge any unique notes into `AGENTS.md` and delete `AGENT.md`.
@@ -219,14 +219,14 @@ If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 
 If **`AGENTS.md` already exists** (project-owned), add or update a concise **HAR / agent environment** section — do not replace unrelated content.
 
-Keep **`CLAUDE.md`** as the line `@AGENTS.md` (Claude Code auto-loads `CLAUDE.md` and follows the import). Never paste the harness workflow into it — `AGENTS.md` is the single instruction file.
+Do **not** create a `CLAUDE.md` — Claude Code reads `AGENTS.md` directly. If one already exists, keep it as the line `@AGENTS.md` and never paste the harness workflow into it — `AGENTS.md` is the single instruction file.
 
 ### Monorepos / multiple harnesses
 
 If this repository contains **more than one project or `.har` harness** (check for `.har/` directories above or below this one):
 
 - Maintain a **"Harnesses in this repo"** table in the ROOT `AGENTS.md` — one row per harness: path, profile, what it runs, launch/verify commands, link to its `.har/README.md`. Lead with "pick the harness that owns the files you are changing."
-- Keep a small `AGENTS.md` (and `CLAUDE.md` pointer) **inside each project directory** for local discovery, with a back-link to the root index.
+- Keep a small `AGENTS.md` **inside each project directory** for local discovery, with a back-link to the root index.
 - Keep ONE Cursor rule at the repo root (`.cursor/rules/har-workflow.mdc`) listing all harnesses — not one rule per project.
 
 Include a **Run history** subsection:

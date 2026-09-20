@@ -76,8 +76,9 @@ Codex CLI does not support repository-local custom prompt files. HAR writes them
 `~/.codex/prompts/`; each developer installs them once. Repository `AGENTS.md` is the
 project-specific harness contract Codex auto-loads (HAR creates or updates a managed
 HAR section during init/onboard). Claude and Cursor skills stay in the
-repo (`.claude/skills/`, `.cursor/commands/`). `CLAUDE.md` holds nothing but the
-line `@AGENTS.md`, so Claude Code loads the same instructions as every other agent.
+repo (`.claude/skills/`, `.cursor/commands/`). Claude Code reads `AGENTS.md` directly,
+so it loads the same instructions as every other agent — HAR no longer creates a
+`CLAUDE.md`. An existing one is kept as the line `@AGENTS.md`.
 
 ## What if launch fails halfway?
 

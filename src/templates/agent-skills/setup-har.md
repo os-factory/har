@@ -79,7 +79,7 @@ Fix the harness scripts until both pass. Then tear down or keep the slot as the 
 After the user confirms, commit the harness:
 
 ```bash
-git add .har/ AGENTS.md CLAUDE.md .claude/ .cursor/ 2>/dev/null || git add .har/ AGENTS.md
+git add .har/ AGENTS.md .claude/ .cursor/ 2>/dev/null || git add .har/ AGENTS.md
 git commit -m "chore: add har agent harness"
 ```
 

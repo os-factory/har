@@ -119,24 +119,33 @@ fresh_init_mode() {
   done
   # #301: the instruction surface is AGENTS.md; the harness detail is README.md.
   [ ! -f "$FRESH/.har/CLAUDE.agent.md" ] || fail "init produced retired .har/CLAUDE.agent.md"
-  # CLAUDE.md is managed only when Claude is a selected agent target, so drive
-  # that path explicitly rather than inferring it from a file the fixture may
-  # already ship. The fixture's own CLAUDE.md is hand-written, so this also
-  # proves HAR preserves user content and only prepends the import (#301).
+  # CLAUDE.md is deprecated: Claude Code reads AGENTS.md directly, so HAR must
+  # never create the pointer — but it must keep an existing one current, with
+  # the user's own content preserved and the import only prepended (#301).
   local claude_before claude_after
   claude_before="$(cat "$FRESH/CLAUDE.md" 2>/dev/null || true)"
+  rm -f "$FRESH/CLAUDE.md"
   har "$FRESH" env maintain --yes --agents claude --no-cursor-rule >/dev/null 2>&1 \
     || fail "maintain --agents claude failed on the fresh harness"
-  [ -f "$FRESH/CLAUDE.md" ] || fail "maintain --agents claude did not write CLAUDE.md"
+  [ ! -f "$FRESH/CLAUDE.md" ] \
+    || fail "maintain --agents claude created a CLAUDE.md (deprecated — AGENTS.md is read directly)"
+
+  # Now with a pre-existing, hand-written CLAUDE.md.
+  if [ -n "$claude_before" ]; then
+    printf '%s' "$claude_before" > "$FRESH/CLAUDE.md"
+  else
+    printf '# Project notes\n\nHand-written Claude guidance.\n' > "$FRESH/CLAUDE.md"
+    claude_before="$(cat "$FRESH/CLAUDE.md")"
+  fi
+  har "$FRESH" env maintain --yes --agents claude --no-cursor-rule >/dev/null 2>&1 \
+    || fail "maintain --agents claude failed with an existing CLAUDE.md"
   claude_after="$(cat "$FRESH/CLAUDE.md")"
   [ "$(grep -m1 -v '^[[:space:]]*$' "$FRESH/CLAUDE.md" | tr -d '[:space:]')" = "@AGENTS.md" ] \
     || fail "CLAUDE.md does not lead with the @AGENTS.md import (#301)"
-  if [ -n "$claude_before" ]; then
-    printf '%s' "$claude_before" | while IFS= read -r line; do
-      [ -n "$line" ] || continue
-      grep -qF "$line" "$FRESH/CLAUDE.md" || fail "CLAUDE.md lost pre-existing content: $line"
-    done
-  fi
+  printf '%s' "$claude_before" | while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    grep -qF "$line" "$FRESH/CLAUDE.md" || fail "CLAUDE.md lost pre-existing content: $line"
+  done
   # Idempotent: a second pass must not stack imports.
   har "$FRESH" env maintain --yes --agents claude --no-cursor-rule >/dev/null 2>&1 \
     || fail "second maintain --agents claude failed"

@@ -90,7 +90,7 @@ come back here afterwards. Two standing rules:
 
 - Verification customization lives in `stages.json` / `.har/stages/` — the
   top-level `*.sh` files are generated shims, safe to regenerate.
-- Repo-root agent docs (`AGENTS.md`, `CLAUDE.md`) follow Step 3 below.
+- Repo-root agent docs (`AGENTS.md`) follow Step 3 below.
 
 ## Step 3 — Refresh repo-root `AGENTS.md`
 
@@ -105,7 +105,7 @@ If harness commands, rules, or workflow changed, update the **HAR / agent enviro
 
 If `AGENTS.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
 
-Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Keep `CLAUDE.md` as the line `@AGENTS.md`.
+Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Do not create a `CLAUDE.md`; if one exists, keep it as the line `@AGENTS.md`.
 
 ## Rules
 

@@ -217,19 +217,14 @@ export function buildInstructionFileNotes(repoPath: string): InstructionFileMain
     });
   }
 
+  // Deprecated: Claude Code reads AGENTS.md directly. Only an existing
+  // CLAUDE.md is worth a note — HAR never suggests creating one.
   if (detection.claudeMd) {
     notes.push({
       kind: 'claude_md_pointer',
       path: 'CLAUDE.md',
       message:
-        'Keep CLAUDE.md as the `@AGENTS.md` import — no workflow content of its own. Existing project-specific notes stay; the import goes on top.',
-    });
-  } else {
-    notes.push({
-      kind: 'claude_md_pointer',
-      path: 'CLAUDE.md',
-      message:
-        'Optional: add a CLAUDE.md containing `@AGENTS.md` when Claude Code is used on this repo.',
+        'Keep CLAUDE.md as the `@AGENTS.md` import — no workflow content of its own. Existing project-specific notes stay; the import goes on top. It is optional now that Claude Code reads AGENTS.md directly.',
     });
   }
 
