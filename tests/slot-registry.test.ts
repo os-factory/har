@@ -52,7 +52,7 @@ function git(cwd: string, cmd: string): string {
 
 describe('slot registry', () => {
   it('reads and lists registry entries', () => {
-    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+    const repoPath = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-slot-registry-'));
     const harDir = writeHarness(repoPath);
     writeRegistryEntry(harDir, 1, { branch: 'main-abcd-har-agent-1-x7k2', suffix: 'x7k2' });
 
@@ -64,7 +64,7 @@ describe('slot registry', () => {
   });
 
   it('keeps failed launch entries readable for recovery', () => {
-    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+    const repoPath = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-slot-registry-'));
     const harDir = writeHarness(repoPath);
     writeRegistryEntry(harDir, 1, {
       status: 'failed',
@@ -81,7 +81,7 @@ describe('slot registry', () => {
   });
 
   it('returns undefined for invalid entries', () => {
-    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+    const repoPath = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-slot-registry-'));
     const harDir = writeHarness(repoPath);
     const slotsDir = path.join(harDir, 'slots');
     fs.mkdirSync(slotsDir, { recursive: true });
@@ -90,15 +90,15 @@ describe('slot registry', () => {
   });
 
   it('resolveAgentWorkDir prefers the registry workDir', () => {
-    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+    const repoPath = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-slot-registry-'));
     const harDir = writeHarness(repoPath);
-    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-workdir-'));
+    const workDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-workdir-'));
     writeRegistryEntry(harDir, 1, { workDir });
     expect(resolveAgentWorkDir(repoPath, 1)).toBe(workDir);
   });
 
   it('resolveAgentWorkDir discovers randomized session worktrees when registry is missing', () => {
-    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+    const repoPath = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-slot-registry-'));
     writeHarness(repoPath);
     git(repoPath, 'init -b main');
     git(repoPath, 'config user.email test@example.com');
@@ -131,7 +131,7 @@ describe('slot registry', () => {
   });
 
   it('slot status surfaces session fields and drift from a real worktree', () => {
-    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-drift-'));
+    const repoPath = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-slot-drift-'));
     const harDir = writeHarness(repoPath);
 
     git(repoPath, 'init -b main');
@@ -143,7 +143,7 @@ describe('slot registry', () => {
     const baseCommit = git(repoPath, 'rev-parse HEAD');
 
     const worktreePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'har-worktrees-')),
+      fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-worktrees-')),
       'session-worktree',
     );
     git(repoPath, `worktree add ${worktreePath} -b main-abcd-har-agent-1-x7k2`);

@@ -21,6 +21,10 @@ interface FakeCall {
   cwd?: string;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function fakeOps(options: {
   installed?: string[];
   exitCodes?: Record<string, number>;
@@ -204,7 +208,8 @@ describe('runtime/provision', () => {
       expect(env).toContain('NPM_BIN=/usr/bin/npm');
       expect(env).toContain('HARNESS_NODE_PACKAGE_MANAGER=npm');
       expect(env).toContain("HARNESS_PKG_EXEC='npx --yes'");
-      expect(env).toContain(`PATH=${path.join(dir, 'node_modules', '.bin')}:`);
+      // Shell-quoted when the inherited PATH contains spaces.
+      expect(env).toMatch(new RegExp(`^PATH='?${escapeRegExp(path.join(dir, 'node_modules', '.bin'))}:`, 'm'));
       expect(logs).toContain('Installing Node dependencies with npm...');
     });
 
