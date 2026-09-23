@@ -13,6 +13,7 @@ import { readInstalledLineProgram } from './lines';
 import { readStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
+import { AGENT_ENV_TEMPLATE_VARS, findUnsubstitutedTemplateVars } from '../runtime/agent-env';
 import { LEGACY_MACHINERY_FILES } from './migrations';
 
 /**
@@ -31,6 +32,7 @@ export type DoctorCheckId =
   | 'lifecycle-stages'
   | 'verification-ids'
   | 'port-lanes'
+  | 'env-template'
   | 'slot-registry'
   | 'hooks'
   | 'retired-machinery'
@@ -101,6 +103,7 @@ const CHECK_LABELS: Record<DoctorCheckId, string> = {
   'lifecycle-stages': 'lifecycle stages (launch/verify/teardown)',
   'verification-ids': 'verificationStages ids',
   'port-lanes': 'infra port lanes',
+  'env-template': 'env.template placeholders',
   'slot-registry': 'slot registry worktrees',
   hooks: 'lifecycle hooks (.har/hooks)',
   'retired-machinery': 'no references to retired runtime machinery',
@@ -366,6 +369,35 @@ export function runDoctor(repoPath: string): DoctorReport {
           remedy: 'Give each service a disjoint scan range in HARNESS_INFRA_PORT_LANES',
         });
       }
+    }
+  }
+
+  // 6b. env.template placeholders (#361): launch substitutes only the
+  // launch-time vars and copies every other `$VAR` verbatim into
+  // .env.agent.<id>. Warn (not error): a literal `$` can be intentional.
+  const envTemplatePath = path.join(harnessDir, 'env.template');
+  if (!fs.existsSync(envTemplatePath)) {
+    skipped.add('env-template');
+  } else {
+    const allowedVars = AGENT_ENV_TEMPLATE_VARS.join(', ');
+    const template = fs.readFileSync(envTemplatePath, 'utf8');
+    for (const { name, lines } of findUnsubstitutedTemplateVars(template)) {
+      const rest = lines.slice(1);
+      const more = rest.length
+        ? ` (also line${rest.length > 1 ? 's' : ''} ${rest.join(', ')})`
+        : '';
+      findings.push({
+        check: 'env-template',
+        severity: 'warning',
+        file: 'env.template',
+        line: lines[0],
+        message:
+          `\${${name}} is not substituted at launch and will be written literally ` +
+          `to .env.agent.<id>${more}`,
+        remedy:
+          `Use one of ${allowedVars}, or hard-code the value ` +
+          '(variables in harness.env are not substituted into env.template)',
+      });
     }
   }
 

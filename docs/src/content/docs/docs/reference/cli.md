@@ -54,7 +54,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `verify <id>` | Run quick or full verification |
 | `complete <id>` | Reuse last matching full validation, teardown, keep branch (`--verify` to re-run) |
 | `teardown <id>` | Free a slot without a completion validation; keep branch |
-| `doctor` | Validate the harness contract (schema, stages, scripts, port lanes) |
+| `doctor` | Validate the harness contract (schema, stages, scripts, port lanes, env.template) |
 | `eject` | Vendor the runtime into `.har/runtime/` for offline ownership |
 | `adopt` | Return an ejected harness to the packaged runtime |
 | `status` | Inspect all slots |
@@ -193,8 +193,10 @@ har env doctor [--json]
 the registry schema, every registered stage's script/command file exists and is
 executable, the lifecycle stages (launch/verify/teardown) resolve,
 `verificationStages` ids resolve to registered stages, infra port lanes are
-coherent (no overlaps, defaults inside scan ranges), and slot registry entries
-point at existing worktrees. Every finding carries a remedy. Doctor also runs
+coherent (no overlaps, defaults inside scan ranges), `env.template` only
+references variables launch substitutes (anything else is written literally to
+`.env.agent.<id>`, reported as a warning), and slot registry entries point at
+existing worktrees. Every finding carries a remedy. Doctor also runs
 automatically inside `har env maintain` and before every `launch` — a broken
 adaptation blocks the launch instead of failing mid-session. A stale CLI vs a
 newer harness is a single upgrade error, not a list of missing lifecycle

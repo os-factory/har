@@ -5,6 +5,7 @@ import * as path from 'path';
 import {
   AGENT_ENV_TEMPLATE_VARS,
   appendSessionTelemetry,
+  findUnsubstitutedTemplateVars,
   generateAgentEnvFile,
   substituteEnvTemplate,
 } from '../src/runtime/agent-env';
@@ -105,6 +106,27 @@ describe('substituteEnvTemplate', () => {
       'plain $FE_PORT ${FE_PORT} $FE_PORTS ${AGENT_ID}suffix $ lone\n' +
       'tail$DB_PORT ${REPO_ROOT}/x $NOPE ${ALSO_NOPE} _${API_PORT}_\n';
     expect(substituteEnvTemplate(template, VALUES)).toBe(runEnvsubst(template));
+  });
+});
+
+describe('findUnsubstitutedTemplateVars (#361)', () => {
+  it('reports nothing for the shipped pm2-runtime template', () => {
+    const template = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'templates', 'runtime-bundles', 'pm2-runtime', 'env.template'),
+      'utf8',
+    );
+    expect(findUnsubstitutedTemplateVars(template)).toEqual([]);
+  });
+
+  it('reports exactly the references substituteEnvTemplate leaves behind', () => {
+    const template = 'A=${AGENT_ID}\nB=${MONGO_PORT}:$API_PORTX\nC=$DB_PORT/${REDIS_URL}\n';
+    expect(findUnsubstitutedTemplateVars(template)).toEqual([
+      { name: 'MONGO_PORT', lines: [2] },
+      { name: 'API_PORTX', lines: [2] },
+      { name: 'REDIS_URL', lines: [3] },
+    ]);
+    const rendered = substituteEnvTemplate(template, { AGENT_ID: 1, DB_PORT: 5432 });
+    expect(rendered).toBe('A=1\nB=${MONGO_PORT}:$API_PORTX\nC=5432/${REDIS_URL}\n');
   });
 });
 

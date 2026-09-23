@@ -14,6 +14,14 @@ const HARNESS_ENV_1_0 = [
   '',
 ].join('\n');
 
+const ENV_TEMPLATE_OK = [
+  '# Agent environment — generated from env.template',
+  'AGENT_ID=${AGENT_ID}',
+  'PORT=$API_PORT',
+  'DATABASE_URL=postgresql://postgres:password@localhost:${DB_PORT}/agent_${AGENT_ID}',
+  '',
+].join('\n');
+
 function writeStages(repo: string, registry: Record<string, unknown>): void {
   fs.writeFileSync(path.join(repo, '.har', 'stages.json'), JSON.stringify(registry, null, 2));
 }
@@ -23,6 +31,7 @@ function makeRepo(): string {
   const harnessDir = path.join(repo, '.har');
   fs.mkdirSync(path.join(harnessDir, 'stages'), { recursive: true });
   fs.writeFileSync(path.join(harnessDir, 'harness.env'), HARNESS_ENV_1_0);
+  fs.writeFileSync(path.join(harnessDir, 'env.template'), ENV_TEMPLATE_OK);
   const stageScript = path.join(harnessDir, 'stages', 'unit-tests.sh');
   fs.writeFileSync(stageScript, '#!/usr/bin/env bash\ntrue\n');
   fs.chmodSync(stageScript, 0o755);
@@ -300,5 +309,68 @@ describe('doctor lifecycle hooks check (#238)', () => {
     const findings = report.findings.filter((f) => f.check === 'hooks');
     expect(findings).toHaveLength(1);
     expect(findings[0].message).toContain('not a recognized lifecycle hook');
+  });
+});
+
+describe('doctor env.template placeholders check (#361)', () => {
+  function writeTemplate(repo: string, content: string): void {
+    fs.writeFileSync(path.join(repo, '.har', 'env.template'), content);
+  }
+
+  it('passes when the template only uses launch-time variables', () => {
+    const repo = makeRepo();
+    const report = runDoctor(repo);
+    expect(report.findings.filter((f) => f.check === 'env-template')).toEqual([]);
+    expect(report.checks.find((c) => c.id === 'env-template')?.status).toBe('pass');
+  });
+
+  it('skips when there is no env.template', () => {
+    const repo = makeRepo();
+    fs.rmSync(path.join(repo, '.har', 'env.template'));
+    const report = runDoctor(repo);
+    expect(report.checks.find((c) => c.id === 'env-template')?.status).toBe('skip');
+  });
+
+  it('warns with file and line for variables launch never substitutes', () => {
+    const repo = makeRepo();
+    writeTemplate(
+      repo,
+      [
+        'AGENT_ID=${AGENT_ID}',
+        'MONGO_URL=mongodb://localhost:${MONGO_PORT}/agent_${AGENT_ID}',
+        'PRISMA_PORT=$AGENT_DB_PORT',
+        '',
+      ].join('\n'),
+    );
+    const report = runDoctor(repo);
+    const findings = report.findings.filter((f) => f.check === 'env-template');
+    expect(findings.map((f) => [f.line, f.message.split(' ')[0]])).toEqual([
+      [2, '${MONGO_PORT}'],
+      [3, '${AGENT_DB_PORT}'],
+    ]);
+    expect(findings.every((f) => f.severity === 'warning' && f.file === 'env.template')).toBe(true);
+    expect(findings[0].remedy).toContain('AGENT_ID, API_PORT');
+    expect(report.ok).toBe(true); // warning, not error — launch is not blocked
+    expect(report.checks.find((c) => c.id === 'env-template')?.status).toBe('warn');
+    expect(formatDoctorReport(report)).toContain('[env.template:2] ${MONGO_PORT}');
+  });
+
+  it('reports a repeated variable once, listing the other lines', () => {
+    const repo = makeRepo();
+    writeTemplate(repo, ['A=${MONGO_PORT}', 'B=1', 'C=${MONGO_PORT}', 'D=$MONGO_PORT'].join('\n'));
+    const findings = runDoctor(repo).findings.filter((f) => f.check === 'env-template');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].line).toBe(1);
+    expect(findings[0].message).toContain('(also lines 3, 4)');
+  });
+
+  it('ignores comment lines and backslash-escaped dollars', () => {
+    const repo = makeRepo();
+    writeTemplate(
+      repo,
+      ['# uses ${MONGO_PORT} later', '  # PORT=${OTHER}', 'SECRET=pa\\$word', ''].join('\n'),
+    );
+    const findings = runDoctor(repo).findings.filter((f) => f.check === 'env-template');
+    expect(findings).toEqual([]);
   });
 });
