@@ -6,11 +6,25 @@ import * as net from 'net';
 import { computePreviewUrls } from '../src/core/local-executor';
 import {
   defaultAppPort,
+  isPortInUse,
   loadInfraState,
   pickFreePort,
   portStep,
   slotPortLaneEnd,
 } from '../src/core/slot-ports';
+
+async function listenOn(host: string, port: number): Promise<net.Server> {
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => resolve());
+  });
+  return server;
+}
+
+async function closeServer(server: net.Server): Promise<void> {
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+}
 
 const tmpDirs: string[] = [];
 
@@ -113,32 +127,77 @@ describe('port formulas', () => {
   });
 });
 
+describe('isPortInUse', () => {
+  it('detects an IPv4 loopback listener', async () => {
+    const port = 58720;
+    const server = await listenOn('127.0.0.1', port);
+    try {
+      expect(isPortInUse(port)).toBe(true);
+      expect(isPortInUse(port, '127.0.0.1')).toBe(true);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('detects an IPv6-only loopback listener that IPv4 probing would miss', async () => {
+    const port = 58721;
+    let server: net.Server;
+    try {
+      server = await listenOn('::1', port);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EADDRNOTAVAIL' || code === 'EAFNOSUPPORT') {
+        return; // no IPv6 loopback on this host
+      }
+      throw err;
+    }
+    try {
+      expect(isPortInUse(port, '127.0.0.1')).toBe(false);
+      expect(isPortInUse(port, '::1')).toBe(true);
+      expect(isPortInUse(port)).toBe(true);
+    } finally {
+      await closeServer(server);
+    }
+  });
+});
+
 describe('pickFreePort', () => {
   it('skips an occupied port and returns the next free one in the lane', async () => {
     const start = 58730;
-    const server = net.createServer();
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(start, '127.0.0.1', () => resolve());
-    });
+    const server = await listenOn('127.0.0.1', start);
     try {
       expect(pickFreePort(start, start + 9)).toBe(start + 1);
     } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await closeServer(server);
+    }
+  });
+
+  it('skips a port occupied only on IPv6 loopback', async () => {
+    const start = 58740;
+    let server: net.Server;
+    try {
+      server = await listenOn('::1', start);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EADDRNOTAVAIL' || code === 'EAFNOSUPPORT') {
+        return;
+      }
+      throw err;
+    }
+    try {
+      expect(pickFreePort(start, start + 9)).toBe(start + 1);
+    } finally {
+      await closeServer(server);
     }
   });
 
   it('returns undefined when the whole range is busy', async () => {
     const start = 58750;
-    const server = net.createServer();
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(start, '127.0.0.1', () => resolve());
-    });
+    const server = await listenOn('127.0.0.1', start);
     try {
       expect(pickFreePort(start, start)).toBeUndefined();
     } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await closeServer(server);
     }
   });
 });

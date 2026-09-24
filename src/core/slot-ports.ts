@@ -67,14 +67,30 @@ export function slotPortLaneEnd(defaultPort: number, step: number): number {
   return defaultPort + step - 1;
 }
 
-/** Returns true when something is listening on the host port (TCP connect probe). */
-export function isPortInUse(port: number, host = '127.0.0.1'): boolean {
+/** TCP connect probe against a single host (bash /dev/tcp). */
+function probeTcpPort(port: number, host: string): boolean {
   try {
     execSync(`bash -c 'exec 3<>/dev/tcp/${host}/${port}'`, { stdio: 'ignore' });
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Returns true when something is listening on the host port (TCP connect probe).
+ *
+ * With no `host`, probes both IPv4 (`127.0.0.1`) and IPv6 (`::1`) loopback.
+ * Node/Vite often bind `[::1]` when given `localhost` (especially on macOS);
+ * an IPv4-only probe would miss that listener, allocate the "free" port, let
+ * the slot server slide to the next port, and let health checks hit the wrong
+ * process via `http://localhost:…`.
+ *
+ * Pass an explicit `host` to probe a single address.
+ */
+export function isPortInUse(port: number, host?: string): boolean {
+  if (host !== undefined) return probeTcpPort(port, host);
+  return probeTcpPort(port, '127.0.0.1') || probeTcpPort(port, '::1');
 }
 
 export function pickFreePort(start: number, end: number): number | undefined {
