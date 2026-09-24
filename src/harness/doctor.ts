@@ -372,31 +372,40 @@ export function runDoctor(repoPath: string): DoctorReport {
     }
   }
 
-  // 6b. env.template placeholders (#361): launch substitutes only the
-  // launch-time vars and copies every other `$VAR` verbatim into
-  // .env.agent.<id>. Warn (not error): a literal `$` can be intentional.
+  // 6b. env.template placeholders (#361): launch runs envsubst over the
+  // launch-time vars only; every other reference — and any `${VAR…}` with
+  // shell parameter syntax — is copied verbatim into .env.agent.<id>.
+  // Warn (not error) so existing adapted harnesses keep launching.
   const envTemplatePath = path.join(harnessDir, 'env.template');
   if (!fs.existsSync(envTemplatePath)) {
     skipped.add('env-template');
   } else {
+    const allowed = new Set<string>(AGENT_ENV_TEMPLATE_VARS);
     const allowedVars = AGENT_ENV_TEMPLATE_VARS.join(', ');
     const template = fs.readFileSync(envTemplatePath, 'utf8');
-    for (const { name, lines } of findUnsubstitutedTemplateVars(template)) {
+    for (const { name, reason, lines } of findUnsubstitutedTemplateVars(template)) {
       const rest = lines.slice(1);
       const more = rest.length
         ? ` (also line${rest.length > 1 ? 's' : ''} ${rest.join(', ')})`
         : '';
+      const literalDollar =
+        'A literal `$` cannot be written in env.template: envsubst has no escape and keeps `\\$` as-is';
       findings.push({
         check: 'env-template',
         severity: 'warning',
         file: 'env.template',
         line: lines[0],
         message:
-          `\${${name}} is not substituted at launch and will be written literally ` +
-          `to .env.agent.<id>${more}`,
+          reason === 'parameter-syntax'
+            ? `\${${name}…} uses shell parameter syntax, which launch never expands — ` +
+              `the whole reference is written literally to .env.agent.<id>${more}`
+            : `\${${name}} is not substituted at launch and will be written literally ` +
+              `to .env.agent.<id>${more}`,
         remedy:
-          `Use one of ${allowedVars}, or hard-code the value ` +
-          '(variables in harness.env are not substituted into env.template)',
+          reason === 'parameter-syntax' && allowed.has(name)
+            ? `Write a plain \${${name}}; :- / :? / # / % are not supported by envsubst`
+            : `Use one of ${allowedVars} (plain \${NAME}, no modifiers), or hard-code the value ` +
+              `(variables in harness.env are not substituted into env.template). ${literalDollar}`,
       });
     }
   }

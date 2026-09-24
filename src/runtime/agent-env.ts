@@ -48,35 +48,46 @@ export function substituteEnvTemplate(
   );
 }
 
+export type UnsubstitutedReason =
+  /** `$NAME` / `${NAME}` outside AGENT_ENV_TEMPLATE_VARS. */
+  | 'not-substituted'
+  /** `${NAME<modifier>}` (`:-`, `:?`, `#`, `%`, …): envsubst expands none of it. */
+  | 'parameter-syntax';
+
 export interface UnsubstitutedTemplateVar {
   name: string;
-  /** 1-indexed lines where the variable is referenced (comments excluded). */
+  reason: UnsubstitutedReason;
+  /** 1-indexed lines where the reference appears (comments excluded). */
   lines: number[];
 }
 
 /**
- * Variables referenced in an env.template that `substituteEnvTemplate` will
- * leave untouched (anything outside AGENT_ENV_TEMPLATE_VARS). Comment lines
- * and backslash-escaped `\$` are ignored. Used by `har env doctor` (#361) so a
- * placeholder that would be written literally to `.env.agent.<id>` is caught
- * before launch.
+ * References in an env.template that `substituteEnvTemplate` (like envsubst)
+ * writes literally to `.env.agent.<id>`: names outside AGENT_ENV_TEMPLATE_VARS,
+ * and any `${NAME…}` with shell parameter syntax — even for launch-time names.
+ * Comment lines are ignored. `\$` is not an escape (envsubst keeps the
+ * backslash), so it is reported like any other reference. Used by
+ * `har env doctor` (#361) to catch these before launch.
  */
 export function findUnsubstitutedTemplateVars(template: string): UnsubstitutedTemplateVar[] {
   const allowed = new Set<string>(AGENT_ENV_TEMPLATE_VARS);
-  const found = new Map<string, number[]>();
+  const found = new Map<string, UnsubstitutedTemplateVar>();
   template.split('\n').forEach((line, idx) => {
     if (/^\s*#/.test(line)) return;
-    const re = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g;
+    const re = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)(\}?)|([A-Za-z_][A-Za-z0-9_]*))/g;
     for (let m = re.exec(line); m !== null; m = re.exec(line)) {
-      if (m.index > 0 && line[m.index - 1] === '\\') continue;
-      const name = m[1] ?? m[2];
-      if (allowed.has(name)) continue;
-      const lines = found.get(name) ?? [];
-      if (!lines.includes(idx + 1)) lines.push(idx + 1);
-      found.set(name, lines);
+      const braced = m[1] !== undefined;
+      const name = braced ? m[1] : m[4];
+      const plain = !braced || (m[2] === '' && m[3] === '}');
+      const reason: UnsubstitutedReason = plain ? 'not-substituted' : 'parameter-syntax';
+      if (plain && allowed.has(name)) continue;
+      const key = `${reason}:${name}`;
+      const entry = found.get(key) ?? { name, reason, lines: [] };
+      if (!entry.lines.includes(idx + 1)) entry.lines.push(idx + 1);
+      found.set(key, entry);
     }
   });
-  return [...found].map(([name, lines]) => ({ name, lines }));
+  return [...found.values()];
 }
 
 export interface AgentEnvValues {

@@ -194,8 +194,9 @@ the registry schema, every registered stage's script/command file exists and is
 executable, the lifecycle stages (launch/verify/teardown) resolve,
 `verificationStages` ids resolve to registered stages, infra port lanes are
 coherent (no overlaps, defaults inside scan ranges), `env.template` only
-references variables launch substitutes (anything else is written literally to
-`.env.agent.<id>`, reported as a warning), and slot registry entries point at
+references variables launch substitutes, as plain `$VAR` / `${VAR}` (anything
+else — including `${VAR:-default}` and other shell parameter syntax — is written
+literally to `.env.agent.<id>`, reported as a warning), and slot registry entries point at
 existing worktrees. Every finding carries a remedy. Doctor also runs
 automatically inside `har env maintain` and before every `launch` — a broken
 adaptation blocks the launch instead of failing mid-session. A stale CLI vs a

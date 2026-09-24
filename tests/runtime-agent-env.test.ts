@@ -110,23 +110,88 @@ describe('substituteEnvTemplate', () => {
 });
 
 describe('findUnsubstitutedTemplateVars (#361)', () => {
+  const PM2_TEMPLATE = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'templates', 'runtime-bundles', 'pm2-runtime', 'env.template'),
+    'utf8',
+  );
+
+  /** Shipped templates plus lines envsubst renders surprisingly. */
+  const CORPUS = [
+    PM2_TEMPLATE,
+    [
+      'A=${DB_PORT:-5432}',
+      'B=${REDIS_PORT:-6379}',
+      'C=${AGENT_ID:?agent id required}',
+      'D=${REPO_ROOT#/home}',
+      'E=${FE_PORT%0}',
+      'F=pa\\$w0rd',
+      'G=pa$w0rd',
+      'H=$FE_PORTS ${API_PORT}x $ lone $1 $$ ${',
+      'I=${DB_PORT',
+      '# ${COMMENTED_OUT} $ALSO_COMMENTED',
+      '  # PORT=${OTHER:-1}',
+      'J=${MONGO_PORT}/${MONGO_PORT:-27017}',
+      '',
+    ].join('\n'),
+  ];
+
+  /** Names still referenced in rendered output, comment lines excluded. */
+  function leftoverNames(rendered: string): string[] {
+    const names = new Set<string>();
+    for (const line of rendered.split('\n')) {
+      if (/^\s*#/.test(line)) continue;
+      for (const m of line.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)/g)) names.add(m[1]);
+    }
+    return [...names].sort();
+  }
+
+  function detectedNames(template: string): string[] {
+    return [...new Set(findUnsubstitutedTemplateVars(template).map((v) => v.name))].sort();
+  }
+
   it('reports nothing for the shipped pm2-runtime template', () => {
-    const template = fs.readFileSync(
-      path.join(__dirname, '..', 'src', 'templates', 'runtime-bundles', 'pm2-runtime', 'env.template'),
-      'utf8',
-    );
-    expect(findUnsubstitutedTemplateVars(template)).toEqual([]);
+    expect(findUnsubstitutedTemplateVars(PM2_TEMPLATE)).toEqual([]);
   });
 
-  it('reports exactly the references substituteEnvTemplate leaves behind', () => {
+  it('reports exactly the references substituteEnvTemplate leaves behind, over the corpus', () => {
+    for (const template of CORPUS) {
+      expect(detectedNames(template)).toEqual(leftoverNames(substituteEnvTemplate(template, VALUES)));
+    }
+  });
+
+  it('reports exactly the references real envsubst leaves behind, over the corpus', () => {
+    if (!envsubstAvailable()) return;
+    for (const template of CORPUS) {
+      expect(detectedNames(template)).toEqual(leftoverNames(runEnvsubst(template)));
+    }
+  });
+
+  it('reports unknown names with their lines', () => {
     const template = 'A=${AGENT_ID}\nB=${MONGO_PORT}:$API_PORTX\nC=$DB_PORT/${REDIS_URL}\n';
     expect(findUnsubstitutedTemplateVars(template)).toEqual([
-      { name: 'MONGO_PORT', lines: [2] },
-      { name: 'API_PORTX', lines: [2] },
-      { name: 'REDIS_URL', lines: [3] },
+      { name: 'MONGO_PORT', reason: 'not-substituted', lines: [2] },
+      { name: 'API_PORTX', reason: 'not-substituted', lines: [2] },
+      { name: 'REDIS_URL', reason: 'not-substituted', lines: [3] },
     ]);
-    const rendered = substituteEnvTemplate(template, { AGENT_ID: 1, DB_PORT: 5432 });
-    expect(rendered).toBe('A=1\nB=${MONGO_PORT}:$API_PORTX\nC=5432/${REDIS_URL}\n');
+  });
+
+  it('reports shell parameter syntax even for launch-time names', () => {
+    const template = 'A=${DB_PORT:-5432}\nB=${DB_PORT:?err}\nC=${DB_PORT}\nD=${MONGO_PORT:-1}\n';
+    expect(findUnsubstitutedTemplateVars(template)).toEqual([
+      { name: 'DB_PORT', reason: 'parameter-syntax', lines: [1, 2] },
+      { name: 'MONGO_PORT', reason: 'parameter-syntax', lines: [4] },
+    ]);
+    // Launch writes the whole reference through, even though DB_PORT is set.
+    expect(substituteEnvTemplate(template, VALUES)).toBe(
+      'A=${DB_PORT:-5432}\nB=${DB_PORT:?err}\nC=15432\nD=${MONGO_PORT:-1}\n',
+    );
+  });
+
+  it('reports a backslash-escaped dollar: envsubst keeps the backslash', () => {
+    expect(findUnsubstitutedTemplateVars('SECRET=pa\\$w0rd\n')).toEqual([
+      { name: 'w0rd', reason: 'not-substituted', lines: [1] },
+    ]);
+    expect(substituteEnvTemplate('SECRET=pa\\$w0rd\n', VALUES)).toBe('SECRET=pa\\$w0rd\n');
   });
 });
 
