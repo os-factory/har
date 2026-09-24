@@ -1,3 +1,9 @@
+## [1.14.3](https://github.com/os-factory/har/compare/v1.14.2...v1.14.3) (2026-09-24)
+
+### Bug Fixes
+
+* probe IPv6 loopback when checking if a port is in use ([#363](https://github.com/os-factory/har/issues/363)) ([d1e7ee4](https://github.com/os-factory/har/commit/d1e7ee43698bb637860fdbc530d0c8f31af7c821))
+
 ## [1.14.2](https://github.com/os-factory/har/compare/v1.14.1...v1.14.2) (2026-09-14)
 
 ### Bug Fixes
