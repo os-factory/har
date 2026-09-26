@@ -15,7 +15,7 @@ function git(cwd: string, args: string): string {
 }
 
 function tmpDir(prefix: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), prefix));
   tmpDirs.push(dir);
   return dir;
 }

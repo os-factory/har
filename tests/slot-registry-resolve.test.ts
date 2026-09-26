@@ -14,7 +14,7 @@ function sh(cwd: string, command: string): string {
 }
 
 function initRepo(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-registry-'));
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-slot-registry-'));
   fs.cpSync(path.join(FIXTURE, '.har'), path.join(dir, '.har'), { recursive: true });
   for (const name of ['runs', 'slots', 'work-units', 'work-attempts', 'validation-bindings']) {
     fs.rmSync(path.join(dir, '.har', name), { recursive: true, force: true });

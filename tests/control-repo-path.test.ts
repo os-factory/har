@@ -18,7 +18,7 @@ function sh(cwd: string, command: string): string {
 }
 
 function initRepo(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-control-repo-'));
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-control-repo-'));
   sh(dir, 'git init -q -b main');
   sh(dir, 'git config user.email har@test.local');
   sh(dir, 'git config user.name har');
@@ -41,7 +41,7 @@ function initRepo(): string {
 }
 
 function addWorktree(main: string): string {
-  const worktree = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'har-control-wt-')), 'wt');
+  const worktree = path.join(fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-control-wt-')), 'wt');
   sh(main, `git worktree add -q "${worktree}" -b feature-har-agent-1-abcd`);
   return worktree;
 }
@@ -91,14 +91,14 @@ describe('canonicalizeControlRepoPath', () => {
   });
 
   it('returns the resolved path for non-git directories', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-nongit-'));
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-nongit-'));
     expect(canonicalizeControlRepoPath(dir)).toBe(path.resolve(dir));
   });
 
   it('records the main checkout when given a worktree path', () => {
     const main = initRepo();
     const worktree = addWorktree(main);
-    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'har-control-registry-'));
+    const tempHome = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-control-registry-'));
     process.env.HAR_CONTROL_REGISTRY_PATH = path.join(tempHome, 'repos.json');
 
     recordRepoForControlSync(worktree);
@@ -108,7 +108,7 @@ describe('canonicalizeControlRepoPath', () => {
   it('dedupes a worktree entry already stored in the registry', () => {
     const main = initRepo();
     const worktree = addWorktree(main);
-    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'har-control-registry-'));
+    const tempHome = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-control-registry-'));
     const registryPath = path.join(tempHome, 'repos.json');
     process.env.HAR_CONTROL_REGISTRY_PATH = registryPath;
 

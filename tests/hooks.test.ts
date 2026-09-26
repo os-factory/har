@@ -22,7 +22,7 @@ function sh(cwd: string, command: string, env: NodeJS.ProcessEnv = {}): string {
 }
 
 function initRepo(gate?: Record<string, unknown>): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-hooks-'));
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-hooks-'));
   sh(dir, 'git init -q -b main');
   sh(dir, 'git config user.email har@test.local');
   sh(dir, 'git config user.name har');
@@ -39,7 +39,7 @@ function initRepo(gate?: Record<string, unknown>): string {
 }
 
 function addAgentWorktree(dir: string, id = 1): string {
-  const worktree = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'har-hooks-wt-')), 'wt');
+  const worktree = path.join(fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-hooks-wt-')), 'wt');
   sh(dir, `git worktree add -q "${worktree}" -b har-agent-${id}`);
   return worktree;
 }
@@ -144,7 +144,7 @@ describe('checkCommitGate', () => {
     expect(warned.exitCode).toBe(0);
     expect(warned.messages.length).toBeGreaterThan(0);
 
-    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'har-hooks-plain-'));
+    const plain = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-hooks-plain-'));
     sh(plain, 'git init -q');
     expect(checkCommitGate(plain).exitCode).toBe(0);
   });
