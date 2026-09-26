@@ -1,3 +1,9 @@
+## [1.15.0](https://github.com/os-factory/har/compare/v1.14.3...v1.15.0) (2026-09-26)
+
+### Features
+
+* warn in doctor about env.template variables launch never substitutes ([#362](https://github.com/os-factory/har/issues/362)) ([394719f](https://github.com/os-factory/har/commit/394719fbb63908f33e0f41da45ffeda11be19b38))
+
 ## [1.14.3](https://github.com/os-factory/har/compare/v1.14.2...v1.14.3) (2026-09-24)
 
 ### Bug Fixes
