@@ -1,53 +1,17 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Teams page', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route(
-      /(?:posthog|googletagmanager|google-analytics|youtube|youtu\.be|web3forms|doubleclick)/i,
-      (route) => route.abort(),
-    );
+test.describe('Teams', () => {
+  test('nav points at HAR HQ', async ({ page }) => {
+    await page.goto('/');
+    const teams = page.getByRole('link', { name: 'Teams' }).first();
+    await expect(teams).toBeVisible();
+    await expect(teams).toHaveAttribute('href', 'https://harhq.com/');
+    await expect(teams).toHaveAttribute('target', '_blank');
   });
 
-  test('loads with hero and request-access form', async ({ page }) => {
-    await page.goto('/teams/');
-    await expect(page.locator('body')).toBeVisible();
-    await expect(page.locator('h1')).toContainText(
-      'Bring visibility, control, and governance to every agent across your org.',
-    );
-    await expect(page.getByRole('link', { name: 'Teams' }).first()).toBeVisible();
-    await expect(page.getByRole('textbox', { name: 'Work email' })).toBeVisible();
-    await expect(page.locator('img[data-dashboard-zoom]')).toBeVisible();
-  });
-
-  test('redirects legacy /enterprise/ URL to /teams/', async ({ page }) => {
-    await page.goto('/enterprise/');
-    await expect(page).toHaveURL(/\/teams\/$/);
-    await expect(page.locator('h1')).toContainText(
-      'Bring visibility, control, and governance to every agent across your org.',
-    );
-  });
-
-  test('opens dashboard screenshot in zoom modal on mobile', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/teams/');
-
-    const trigger = page.locator('img[data-dashboard-zoom]');
-    await expect(trigger).toBeVisible();
-
-    const modal = page.locator('[data-dashboard-image-modal]');
-    await expect(modal).toBeHidden();
-
-    // Play control sits over the image center; hit a corner so zoom opens.
-    await trigger.click({ position: { x: 12, y: 12 } });
-
-    await expect(modal).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Dashboard screenshot' })).toBeVisible();
-    await expect(page.locator('[data-dashboard-image-target]')).toHaveAttribute(
-      'src',
-      /enterprise-hero\.png/,
-    );
-
-    await page.getByRole('button', { name: 'Close', exact: true }).click();
-    await expect(modal).toBeHidden();
+  test('legacy /enterprise/ redirects to HAR HQ', async ({ request }) => {
+    const response = await request.get('/enterprise/', { maxRedirects: 0 });
+    expect(response.status()).toBe(301);
+    expect(response.headers().location).toBe('https://harhq.com/');
   });
 });

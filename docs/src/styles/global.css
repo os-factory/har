@@ -635,6 +635,7 @@ body { transition: background-color .25s ease, color .25s ease; }
 .migration-copy:hover { border-color: var(--accent); color: var(--accent); }
 :root[data-theme="dark"] .migration-copy:hover { border-color: var(--accent-bright); color: var(--accent-bright); }
 .blog-prose > *:first-child { margin-top: 0; }
+.blog-prose .video-embed { margin: 0 0 1.15em; }
 .blog-prose h2 { margin: 2.4em 0 0.7em; font-family: var(--sans); font-size: 22px; font-weight: 650; letter-spacing: -.02em; line-height: 1.25; }
 .blog-prose h3 { margin: 1.8em 0 0.55em; font-family: var(--sans); font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
 .blog-prose p { margin: 0 0 1.15em; }
