@@ -23,7 +23,7 @@ test.describe('Visual proof screenshots', () => {
     test.setTimeout(90_000);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('h1')).toContainText(
-      'The open harness for multi-agent coding workflows',
+      'Build AI coding workflows you can trust and verify.',
     );
     await expect(page.getByRole('link', { name: /v1\.0\.0 is here/i })).toBeVisible();
     await page.locator('.hero').waitFor({ state: 'visible' });
@@ -64,18 +64,6 @@ test.describe('Visual proof screenshots', () => {
     expect(file).toBeTruthy();
   });
 
-  test('teams page full-page shot', async ({ page }, testInfo) => {
-    test.setTimeout(90_000);
-    await page.goto('/teams/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('h1')).toContainText(
-      'Bring visibility, control, and governance to every agent across your org.',
-    );
-    await page.locator('.hero').waitFor({ state: 'visible' });
-    await page.waitForTimeout(800);
-    const file = await capturePageScreenshot(page, testInfo, 'teams');
-    expect(file).toBeTruthy();
-  });
-
   test('blog index full-page shot', async ({ page }, testInfo) => {
     test.setTimeout(90_000);
     await page.goto('/blog/', { waitUntil: 'domcontentloaded' });
@@ -105,6 +93,17 @@ test.describe('Visual proof screenshots', () => {
     await page.locator('.blog-prose').waitFor({ state: 'visible' });
     await page.waitForTimeout(800);
     const file = await capturePageScreenshot(page, testInfo, 'blog-the-factory-line');
+    expect(file).toBeTruthy();
+  });
+
+  test('verify-skill article full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.goto('/blog/a-skill-is-not-a-gate/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toContainText('A skill is not a gate');
+    await expect(page.getByRole('button', { name: /Copy v1\.0\.0 migration prompt/i })).toHaveCount(0);
+    await page.locator('.blog-prose').waitFor({ state: 'visible' });
+    await page.waitForTimeout(800);
+    const file = await capturePageScreenshot(page, testInfo, 'blog-a-skill-is-not-a-gate');
     expect(file).toBeTruthy();
   });
 });

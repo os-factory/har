@@ -5,7 +5,7 @@ test.describe('Frontend smoke', () => {
     await page.goto('/');
     await expect(page.locator('body')).toBeVisible();
     await expect(page.locator('h1')).toContainText(
-      'The open harness for multi-agent coding workflows',
+      'Build AI coding workflows you can trust and verify.',
     );
     await expect(page.getByRole('link', { name: /Read the docs/i })).toBeVisible();
     await expect(page.locator('iframe.github-star')).toHaveAttribute(
