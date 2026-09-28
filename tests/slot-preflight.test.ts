@@ -158,6 +158,31 @@ describe('inspectSlotReadiness', () => {
     expect(readiness.ports?.frontend).toBe(TEST_FE_BASE + 20);
     expect(readiness.ports?.api).toBe(TEST_API_BASE + 20);
   });
+
+  it('allows the same agent id when another project already has that PM2 name', () => {
+    const repo = makeHarness({ pm2: true });
+    const readiness = inspectSlotReadiness(repo, 1, {
+      pm2Processes: [
+        { name: 'har-managersky-agent-1-api', pm2_env: { pm_cwd: '/managersky' } },
+        { name: 'har-tempo-agent-1-web', pm2_env: { pm_cwd: '/tempo' } },
+      ],
+    });
+    expect(readiness.canLaunch).toBe(true);
+    expect(readiness.blockers.some((b) => b.code === 'foreign_pm2')).toBe(false);
+  });
+
+  it('still blocks an unscoped legacy PM2 name and points at a free slot first', () => {
+    const repo = makeHarness({ pm2: true });
+    const readiness = inspectSlotReadiness(repo, 1, {
+      pm2Processes: [{ name: 'agent-1-api', pm2_env: { pm_cwd: '/elsewhere' } }],
+    });
+    const remediation = readiness.blockers.find((b) => b.code === 'foreign_pm2')?.remediation ?? '';
+    expect(readiness.canLaunch).toBe(false);
+    expect(remediation.startsWith('Use a free higher slot: har env launch 2')).toBe(true);
+    expect(remediation).toContain('/elsewhere');
+    expect(remediation).not.toContain('pm2 delete');
+    expect(remediation.indexOf('har env launch')).toBeLessThan(remediation.indexOf('har env teardown'));
+  });
 });
 
 describe('formatPreflightReport', () => {
@@ -268,18 +293,39 @@ describe('runLaunchPreflight', () => {
     );
   });
 
-  it('blocks on foreign PM2 with exit code 1 and bash-format lines', () => {
+  it('does not block launch on another project PM2 process with the same agent id', () => {
     const repo = makeHarness({ pm2: true });
     const result = runLaunchPreflight({
       repoPath: repo,
       agentId: 1,
       pm2Processes: [{ name: 'har-other-project-agent-1-api', pm2_env: { pm_cwd: '/elsewhere' } }],
     });
+    expect(result.status).toBe('ok');
+    expect(result.exitCode).toBe(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('blocks on an unscoped legacy PM2 name with exit code 1 and bash-format lines', () => {
+    const repo = makeHarness({ pm2: true });
+    const result = runLaunchPreflight({
+      repoPath: repo,
+      agentId: 1,
+      pm2Processes: [{ name: 'agent-1-api', pm2_env: { pm_cwd: '/elsewhere' } }],
+    });
     expect(result.status).toBe('blocked');
     expect(result.exitCode).toBe(1);
     expect(result.errors[0]).toBe('ERROR: foreign PM2 processes match agent 1:');
-    expect(result.errors[1]).toBe('  har-other-project-agent-1-api  cwd=/elsewhere');
-    expect(result.errors[2]).toBe('  Stop the other harness session or use a different slot.');
+    expect(result.errors[1]).toBe('  agent-1-api  cwd=/elsewhere');
+    expect(result.errors[2]).toBe(
+      '  Use a free higher slot: har env launch 2 (free: 2, 3; agentSlots 1–3).',
+    );
+    expect(result.errors[3]).toBe(
+      '  These processes belong to another project and must not be deleted from this checkout.',
+    );
+    expect(result.errors[4]).toBe(
+      '  To stop that other session, run `har env teardown 1` in /elsewhere.',
+    );
+    expect(result.errors.join('\n')).not.toContain('pm2 delete');
   });
 
   it('blocks on a docker port conflict with bash-format lines', () => {
