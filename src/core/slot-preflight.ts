@@ -75,21 +75,18 @@ function listPm2Processes(): Pm2Process[] | undefined {
 }
 
 function detectForeignPm2(
-  projectName: string,
+  _projectName: string,
   agentId: number,
   procs: Pm2Process[] | undefined,
 ): { processes: Array<{ name: string; cwd?: string }> } | undefined {
   if (!procs) return undefined;
 
-  const slotPrefix = `har-${projectName}-agent-${agentId}-`;
+  // Names are already har-<project>-agent-<id>-<service>. Another project's
+  // agent id is a different PM2 process and must not block this repo. Only a
+  // legacy name with no project prefix (agent-<id>-*) is a shared name.
   const legacyPrefix = `agent-${agentId}-`;
   const foreign = procs.filter(
-    (p) =>
-      p.name &&
-      ((p.name.startsWith('har-') &&
-        p.name.includes(`-agent-${agentId}-`) &&
-        !p.name.startsWith(slotPrefix)) ||
-        (p.name.startsWith(legacyPrefix) && !p.name.startsWith('har-'))),
+    (p) => p.name && p.name.startsWith(legacyPrefix) && !p.name.startsWith('har-'),
   );
 
   if (foreign.length === 0) return undefined;

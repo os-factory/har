@@ -288,13 +288,9 @@ function detectPm2Issue(
   const slotPrefix = `har-${projectName}-agent-${agentId}-`;
   const legacyPrefix = `agent-${agentId}-`;
   const owned = procs.filter((p) => p.name?.startsWith(slotPrefix));
+  // See detectForeignPm2: another project's har-<name>-agent-<id>-* is not a conflict.
   const foreign = procs.filter(
-    (p) =>
-      p.name &&
-      ((p.name.startsWith('har-') &&
-        p.name.includes(`-agent-${agentId}-`) &&
-        !p.name.startsWith(slotPrefix)) ||
-        (p.name.startsWith(legacyPrefix) && !p.name.startsWith('har-'))),
+    (p) => p.name && p.name.startsWith(legacyPrefix) && !p.name.startsWith('har-'),
   );
 
   if (foreign.length > 0) return 'foreign_pm2';
