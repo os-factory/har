@@ -1,3 +1,9 @@
+## [1.15.1](https://github.com/os-factory/har/compare/v1.15.0...v1.15.1) (2026-09-28)
+
+### Bug Fixes
+
+* don't block a slot because another project uses the same agent id ([#366](https://github.com/os-factory/har/issues/366)) ([135bc13](https://github.com/os-factory/har/commit/135bc13eb4aaa28e4718b6ad17505e2f05c1b3d0))
+
 ## [1.15.0](https://github.com/os-factory/har/compare/v1.14.3...v1.15.0) (2026-09-26)
 
 ### Features
