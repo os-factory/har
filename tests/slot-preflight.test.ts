@@ -158,6 +158,53 @@ describe('inspectSlotReadiness', () => {
     expect(readiness.ports?.frontend).toBe(TEST_FE_BASE + 20);
     expect(readiness.ports?.api).toBe(TEST_API_BASE + 20);
   });
+
+  it('tells agents to pick a free higher slot before touching a foreign session', () => {
+    const repo = makeHarness({ pm2: true });
+    const readiness = inspectSlotReadiness(repo, 1, {
+      pm2Processes: [{ name: 'har-other-project-agent-1-api', pm2_env: { pm_cwd: '/elsewhere' } }],
+    });
+    const blocker = readiness.blockers.find((b) => b.code === 'foreign_pm2');
+    const remediation = blocker?.remediation ?? '';
+    expect(remediation.startsWith('Use a free higher slot: har env launch 2')).toBe(true);
+    expect(remediation).toContain('free: 2, 3; agentSlots 1–3');
+    expect(remediation).toContain('must not be deleted from this checkout');
+    expect(remediation).toContain('har env teardown 1');
+    expect(remediation).toContain('/elsewhere');
+    expect(remediation.indexOf('har env launch')).toBeLessThan(remediation.indexOf('har env teardown'));
+    expect(remediation).not.toContain('pm2 delete');
+    expect(readiness.remediations[0]).toBe('har env launch 2');
+  });
+
+  it('skips occupied and foreign-colliding slots when naming a free one', () => {
+    const repo = makeHarness({ pm2: true });
+    writeOccupiedSlot(repo, 2);
+    const readiness = inspectSlotReadiness(repo, 1, {
+      pm2Processes: [
+        { name: 'har-other-project-agent-1-api', pm2_env: { pm_cwd: '/elsewhere' } },
+        { name: 'har-tempo-agent-3-web', pm2_env: { pm_cwd: '/tempo' } },
+      ],
+    });
+    const remediation = readiness.blockers.find((b) => b.code === 'foreign_pm2')?.remediation ?? '';
+    expect(remediation.startsWith('Use a free slot:')).toBe(false);
+    expect(remediation).toContain('No free slot in agentSlots 1–3');
+    expect(remediation).toContain('/elsewhere');
+    expect(remediation.indexOf('No free slot')).toBeLessThan(remediation.indexOf('har env teardown'));
+    expect(remediation).not.toContain('pm2 delete');
+    expect(readiness.remediations.some((line) => line.startsWith('har env launch'))).toBe(false);
+  });
+
+  it('offers the next free slot when a higher one is taken', () => {
+    const repo = makeHarness({ pm2: true });
+    writeOccupiedSlot(repo, 2);
+    const readiness = inspectSlotReadiness(repo, 1, {
+      pm2Processes: [{ name: 'har-other-project-agent-1-web', pm2_env: { pm_cwd: '/other' } }],
+    });
+    const remediation = readiness.blockers.find((b) => b.code === 'foreign_pm2')?.remediation ?? '';
+    expect(remediation.startsWith('Use a free higher slot: har env launch 3')).toBe(true);
+    expect(remediation).toContain('free: 3; agentSlots 1–3');
+    expect(remediation).toContain('/other');
+  });
 });
 
 describe('formatPreflightReport', () => {
@@ -279,7 +326,16 @@ describe('runLaunchPreflight', () => {
     expect(result.exitCode).toBe(1);
     expect(result.errors[0]).toBe('ERROR: foreign PM2 processes match agent 1:');
     expect(result.errors[1]).toBe('  har-other-project-agent-1-api  cwd=/elsewhere');
-    expect(result.errors[2]).toBe('  Stop the other harness session or use a different slot.');
+    expect(result.errors[2]).toBe(
+      '  Use a free higher slot: har env launch 2 (free: 2, 3; agentSlots 1–3).',
+    );
+    expect(result.errors[3]).toBe(
+      '  These processes belong to another project and must not be deleted from this checkout.',
+    );
+    expect(result.errors[4]).toBe(
+      '  To stop that other session, run `har env teardown 1` in /elsewhere.',
+    );
+    expect(result.errors.join('\n')).not.toContain('pm2 delete');
   });
 
   it('blocks on a docker port conflict with bash-format lines', () => {

@@ -22,6 +22,7 @@ import {
   slotPortLaneEnd,
 } from './slot-ports';
 import { harnessAllocatesAppPorts } from '../harness/capabilities';
+import { getAgentSlotIds, getAgentSlotRange } from '../harness/stages';
 import { readSlotRegistry, isSlotResumable } from './slot-registry';
 import {
   formatUntrackedWorktreeWarning,
@@ -98,6 +99,75 @@ function detectForeignPm2(
       cwd: p.pm2_env?.pm_cwd ?? p.pm2_env?.cwd,
     })),
   };
+}
+
+/**
+ * Slots an agent can launch without colliding with this foreign PM2 name or an
+ * existing session in this repo. Registry occupancy only — a full worktree scan
+ * here would run once per slot from status.
+ */
+function freeAgentSlots(
+  harnessRoot: string,
+  projectName: string,
+  agentId: number,
+  procs: Pm2Process[] | undefined,
+): { free: number[]; range?: { min: number; max: number } } {
+  let ids: number[] = [];
+  let range: { min: number; max: number } | undefined;
+  try {
+    range = getAgentSlotRange(harnessRoot);
+    ids = getAgentSlotIds(harnessRoot);
+  } catch {
+    return { free: [] };
+  }
+
+  const free = ids.filter((id) => {
+    if (id === agentId) return false;
+    const session = readSlotRegistry(harnessRoot, id);
+    if (session !== undefined && session.status !== 'completed') return false;
+    return detectForeignPm2(projectName, id, procs) === undefined;
+  });
+  return { free, range };
+}
+
+/**
+ * Lead with a free slot. Teardown of the other project is a last resort and
+ * names that project's cwd — never a pm2 delete from this checkout.
+ */
+function foreignPm2Advice(
+  agentId: number,
+  processes: Array<{ name: string; cwd?: string }>,
+  free: number[],
+  range: { min: number; max: number } | undefined,
+): { lines: string[]; suggested?: number } {
+  const cwds = [
+    ...new Set(processes.map((p) => p.cwd).filter((cwd): cwd is string => Boolean(cwd))),
+  ];
+  const rangeLabel = range
+    ? `agentSlots ${range.min}–${range.max}`
+    : 'agentSlots in .har/stages.json';
+  const higher = free.filter((id) => id > agentId);
+  const suggested = higher[0] ?? free[0];
+  const lines: string[] = [];
+
+  if (suggested !== undefined) {
+    const kind = higher.length > 0 ? 'higher slot' : 'slot';
+    lines.push(
+      `Use a free ${kind}: har env launch ${suggested} (free: ${free.join(', ')}; ${rangeLabel}).`,
+    );
+  } else if (range) {
+    lines.push(`No free slot in ${rangeLabel}. Raise agentSlots.max in .har/stages.json.`);
+  } else {
+    lines.push('Use a different agent slot (see agentSlots in .har/stages.json).');
+  }
+
+  lines.push(
+    'These processes belong to another project and must not be deleted from this checkout.',
+  );
+
+  const where = cwds.length === 0 ? 'that project checkout (cwd unknown)' : cwds.join(', ');
+  lines.push(`To stop that other session, run \`har env teardown ${agentId}\` in ${where}.`);
+  return { lines, suggested };
 }
 
 function infraEnabled(env: Record<string, string>, service: string): boolean {
@@ -195,13 +265,17 @@ export function inspectSlotReadiness(
   const foreign = usesPm2 ? detectForeignPm2(projectName, agentId, pm2Procs) : undefined;
   if (foreign) {
     const names = foreign.processes.map((p) => p.name).join(', ');
+    const slots = freeAgentSlots(harnessRoot, projectName, agentId, pm2Procs);
+    const advice = foreignPm2Advice(agentId, foreign.processes, slots.free, slots.range);
     blockers.push({
       code: 'foreign_pm2',
       message: `Foreign PM2 processes match agent ${agentId}: ${names}`,
-      remediation:
-        'Stop the other harness session (`har env teardown` in that repo) or use a different agent slot.',
-      details: { processes: foreign.processes },
+      remediation: advice.lines.join(' '),
+      details: { processes: foreign.processes, adviceLines: advice.lines },
     });
+    if (advice.suggested !== undefined) {
+      remediations.push(`har env launch ${advice.suggested}`);
+    }
     remediations.push(`Inspect with: ${packageRunner()} pm2 jlist | grep agent-${agentId}`);
   }
 
@@ -395,10 +469,16 @@ function bashBlockerLines(agentId: number, b: SlotReadiness['blockers'][number])
   switch (b.code) {
     case 'foreign_pm2': {
       const procs = (details.processes ?? []) as Array<{ name: string; cwd?: string }>;
+      const advice = Array.isArray(details.adviceLines)
+        ? (details.adviceLines as string[])
+        : [
+            'Use a different agent slot.',
+            'These processes belong to another project and must not be deleted from this checkout.',
+          ];
       return [
         `ERROR: foreign PM2 processes match agent ${agentId}:`,
         ...procs.map((p) => `  ${p.name}  cwd=${p.cwd ?? 'unknown'}`),
-        '  Stop the other harness session or use a different slot.',
+        ...advice.map((line) => `  ${line}`),
       ];
     }
     case 'control_port_conflict':
