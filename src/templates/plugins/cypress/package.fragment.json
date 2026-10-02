@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "test:cypress": "cypress run",
+    "test:cypress:open": "cypress open",
+    "test:cypress:ci": "cypress run --browser electron --posix-exit-codes"
+  },
+  "devDependencies": {
+    "cypress": "^16.1.1"
+  }
+}

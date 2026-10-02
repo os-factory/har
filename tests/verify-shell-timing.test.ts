@@ -10,6 +10,7 @@ describe('stage scripts use portable timing', () => {
     'src/templates/plugins/gitleaks/.har/stages/secrets-scan.sh',
     'src/templates/plugins/trivy/.har/stages/vuln-scan.sh',
     'src/templates/plugins/semgrep/.har/stages/sast.sh',
+    'src/templates/plugins/cypress/.har/stages/cypress-e2e.sh',
     'control/.har/stages/browser-e2e.sh',
     'control/.har/stages/docker-build.sh',
     'docs/.har/stages/browser-e2e.sh',
@@ -43,6 +44,7 @@ describe('plugin template stage scripts follow the 1.0 stage surface', () => {
     'src/templates/plugins/gitleaks/.har/stages/secrets-scan.sh',
     'src/templates/plugins/trivy/.har/stages/vuln-scan.sh',
     'src/templates/plugins/semgrep/.har/stages/sast.sh',
+    'src/templates/plugins/cypress/.har/stages/cypress-e2e.sh',
     'src/templates/plugins/custom-stage-skeleton.sh',
   ];
 
