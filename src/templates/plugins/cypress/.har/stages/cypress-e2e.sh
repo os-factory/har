@@ -56,7 +56,17 @@ ARTIFACT_DIR="$(cd "$HARNESS_DIR/.." && pwd)/.har/artifacts/cypress-e2e"
 mkdir -p "$ARTIFACT_DIR"
 export HARNESS_CYPRESS_ARTIFACT_DIR="$ARTIFACT_DIR"
 
-BROWSER="${HARNESS_CYPRESS_BROWSER:-electron}"
+# Cypress 16 deprecates the bundled Electron browser. Prefer an installed Chrome
+# or Chromium; fall back to Electron so `npm install` is still enough to run.
+if [ -n "${HARNESS_CYPRESS_BROWSER:-}" ]; then
+  BROWSER="$HARNESS_CYPRESS_BROWSER"
+elif command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || [ -d "/Applications/Google Chrome.app" ]; then
+  BROWSER="chrome"
+elif command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1; then
+  BROWSER="chromium"
+else
+  BROWSER="electron"
+fi
 export HARNESS_CYPRESS_BROWSER="$BROWSER"
 
 if [ ! -x "$WORK_DIR/node_modules/.bin/cypress" ]; then

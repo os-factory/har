@@ -19,7 +19,7 @@ npx cypress verify
 har env verify <id> --full
 ```
 
-`cypress run` is headless. The bundled Electron browser is the default, so a separate Chrome install is not required. Set `HARNESS_CYPRESS_BROWSER` (`chrome`, `firefox`, `electron`) to pick another installed browser.
+`cypress run` is headless. Cypress 16 deprecates the bundled Electron browser, so the stage uses Chrome when `google-chrome` is on PATH (or Google Chrome.app on macOS), then Chromium, then Electron. Set `HARNESS_CYPRESS_BROWSER` (`chrome`, `chromium`, `firefox`, `electron`) to override. Electron still runs in Cypress 16 and prints a deprecation warning.
 
 ## Ports
 
@@ -28,8 +28,8 @@ The stage reads the slot env file and points Cypress at that slot:
 | Variable | Source | Cypress |
 |----------|--------|---------|
 | Frontend | `FE_PORT` (or `HARNESS_FE_BASE_PORT + id * 10`) | `CYPRESS_BASE_URL` → `cy.visit('/')` |
-| API | `API_PORT` (or `HARNESS_API_BASE_PORT + id * 10`) | `CYPRESS_API_URL` → `Cypress.env('API_URL')` |
-| Health path | `HARNESS_HEALTH_CHECK_PATH` (default `/health`) | `Cypress.env('HEALTH_PATH')` |
+| API | `API_PORT` (or `HARNESS_API_BASE_PORT + id * 10`) | `CYPRESS_API_URL` → `Cypress.expose('API_URL')` |
+| Health path | `HARNESS_HEALTH_CHECK_PATH` (default `/health`) | `Cypress.expose('HEALTH_PATH')` |
 
 Do not hardcode slot ports in specs. A monolith that serves UI and API on one port should set both bases to that origin in `.har/harness.env` (or only assert against `baseUrl`).
 

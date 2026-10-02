@@ -17,10 +17,10 @@
 // Environment (injected by cypress-e2e.sh — never hardcode slot ports in specs)
 // ------------------------------------------------------------------------------
 // CYPRESS_BASE_URL   Frontend origin for cy.visit('/') (slot FE port)
-// CYPRESS_API_URL    API origin for cy.request (Cypress.env('API_URL'))
-// CYPRESS_HEALTH_PATH  Health path (Cypress.env('HEALTH_PATH'), default /health)
+// CYPRESS_API_URL    API origin (Cypress.expose('API_URL'); Cypress.env was removed in Cypress 16)
+// CYPRESS_HEALTH_PATH  Health path (Cypress.expose('HEALTH_PATH'), default /health)
 // HARNESS_CYPRESS_ARTIFACT_DIR  Absolute artifact directory for this run
-// HARNESS_CYPRESS_BROWSER       Browser name passed to `cypress run` (default electron)
+// HARNESS_CYPRESS_BROWSER       Browser passed to `cypress run` (chrome when installed, else electron)
 //
 // Test layout — agents must add or update specs for every UI change
 // ------------------------------------------------------------------
@@ -44,10 +44,16 @@ const path = require('path');
 const { defineConfig } = require('cypress');
 
 const baseUrl = process.env.CYPRESS_BASE_URL || process.env.BASE_URL || 'http://localhost:3000';
+const apiUrl = process.env.CYPRESS_API_URL || process.env.API_URL || baseUrl;
+const healthPath = process.env.CYPRESS_HEALTH_PATH || '/health';
 const artifactDir =
   process.env.HARNESS_CYPRESS_ARTIFACT_DIR || path.join('.har', 'artifacts', 'cypress-e2e');
 
 module.exports = defineConfig({
+  expose: {
+    API_URL: apiUrl,
+    HEALTH_PATH: healthPath,
+  },
   e2e: {
     baseUrl,
     specPattern: 'cypress/e2e/**/*.cy.js',
