@@ -103,13 +103,14 @@ Control uses the same list to render the expected pipeline.
 
 ## Install plugins
 
-Framework integrations (Playwright, RocketSim, Kerno, Gitleaks, Trivy, Semgrep, …)
+Framework integrations (Playwright, Cypress, RocketSim, Kerno, Gitleaks, Trivy, Semgrep, …)
 ship as **plugins**. They install files and register stages — agents still only
 talk to the stage registry.
 
 ```bash
 har env add-plugin --list
 har env add-plugin playwright
+har env add-plugin cypress
 har env add-plugin rocketsim
 har env add-plugin kerno
 har env add-plugin gitleaks

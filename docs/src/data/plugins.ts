@@ -66,6 +66,43 @@ export const plugins: PluginEntry[] = [
     ],
   },
   {
+    id: 'cypress',
+    name: 'Cypress',
+    logo: '/assets/logo-cypress.svg',
+    category: 'Browser e2e',
+    stacks: 'Web apps',
+    stageId: 'cypress-e2e',
+    tagline: 'Headless Cypress end-to-end tests against each agent slot’s running app.',
+    seoTitle: 'Cypress plugin — browser e2e verification for coding agents | HAR',
+    seoDescription:
+      'Run Cypress end-to-end tests as a HAR verification stage. Coding agents prove their UI changes in a real browser before code lands — per-slot base URL, smoke specs, and the official GitHub Action.',
+    intro: [
+      'Cypress is how a lot of web apps already test the browser. The Cypress plugin turns that suite into a cypress-e2e stage: every agent session runs `cypress run` headlessly against the app on that slot’s own ports, so a UI change is only done when the specs agree.',
+      'The Cypress npm package ships the Electron browser, so the stage does not need a separate browser install. Parallel agents stay isolated because each slot gets its own base URL.',
+    ],
+    installs: [
+      'A `cypress-e2e` test stage registered in `.har/stages.json` and added to `verificationStages`, so `har env verify --full` runs it.',
+      'Cypress configuration wired to the slot’s computed base URL and API URL.',
+      'Homepage and API health smoke specs as a starting point.',
+      'Pinned `devDependencies` and `test:cypress` scripts merged into `package.json`.',
+      'A GitHub Actions workflow from the official Cypress action (opt in with `--with-ci`).',
+    ],
+    requirements: [
+      'Node.js project (the plugin merges `package.json`)',
+      'The Cypress binary from `npm install` (`npx cypress verify` checks system libraries on Linux)',
+    ],
+    artifacts:
+      'The run log and failure screenshots land under `.har/artifacts/cypress-e2e/` in the main repo. Video recording stays off unless you enable it in `cypress.config.js`.',
+    adaptation: [
+      'The shipped specs are smoke-level on purpose: adapt routes, selectors, and the health path to your app after installation.',
+      'An existing Cypress suite should keep its spec pattern and let the stage export `CYPRESS_BASE_URL` instead of a hardcoded origin. See `.har/stages/CYPRESS.md`.',
+    ],
+    links: [
+      { label: 'Cypress docs', href: 'https://docs.cypress.io' },
+      { label: 'Plugin install guide', href: '/docs/guides/plugins/#cypress' },
+    ],
+  },
+  {
     id: 'rocketsim',
     name: 'RocketSim',
     logo: '/assets/logo-rocketsim.png',

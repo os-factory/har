@@ -1,0 +1,25 @@
+# Cypress end-to-end tests — official GitHub Action
+# https://github.com/cypress-io/github-action
+#
+# Adapt `start` and `wait-on` to this repo's dev server. The action installs
+# dependencies, downloads the Cypress binary, and runs `cypress run`.
+name: Cypress tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cypress-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Cypress run
+        uses: cypress-io/github-action@v7
+        with:
+          start: npm run dev
+          wait-on: http://localhost:3000
+          browser: chrome
+        env:
+          CYPRESS_BASE_URL: http://localhost:3000
