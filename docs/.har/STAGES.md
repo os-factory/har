@@ -93,7 +93,8 @@ committed.
 playwright` (web), `har env add-plugin rocketsim` (iOS), or `har env
 add-plugin kerno` (backend), `har env add-plugin gitleaks` (secrets scanning, any
 stack), or `har env add-plugin trivy` (dependency + IaC security scan, any stack),
-or `har env add-plugin semgrep` (SAST, any stack)
+or `har env add-plugin semgrep` (SAST, any stack),
+or `har env add-plugin cypress` (browser e2e)
 installs one. A
 plugin is just packaging: it copies files, merges `package.json` fragments,
 and registers stages through the exact same registry as `add-stage --custom`.

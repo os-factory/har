@@ -225,9 +225,65 @@ describe('plugins', () => {
     expect(findPhantomVerificationStageIds(registry)).toEqual([]);
   });
 
+  it('applies cypress plugin to a scaffolded harness', () => {
+    const repoPath = makeTempRepo('har-cypress');
+    fs.writeFileSync(
+      path.join(repoPath, 'package.json'),
+      JSON.stringify({ name: 'test-app', version: '1.0.0' }, null, 2) + '\n',
+    );
+    scaffoldHarnessBoilerplate(repoPath, { force: true, profile: 'default' });
+
+    const result = applyPlugin(repoPath, 'cypress', { skipCi: true });
+
+    expect(result.pluginId).toBe('cypress');
+    expect(result.stageId).toBe('cypress-e2e');
+    expect(result.docsPath).toBe('.har/stages/CYPRESS.md');
+    expect(result.nextSteps.length).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'cypress-e2e.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.har', 'stages', 'CYPRESS.md'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, 'cypress.config.js'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, 'cypress', 'e2e', 'smoke.cy.js'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, 'cypress', 'e2e', 'api.cy.js'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.github', 'workflows', 'cypress.yml'))).toBe(false);
+
+    const stat = fs.statSync(path.join(repoPath, '.har', 'stages', 'cypress-e2e.sh'));
+    expect(stat.mode & 0o111).not.toBe(0);
+
+    const registry = readStageRegistry(repoPath);
+    expect(registry.stages.find((s) => s.id === 'cypress-e2e')).toMatchObject({
+      id: 'cypress-e2e',
+      kind: 'test',
+      script: 'stages/cypress-e2e.sh',
+    });
+    expect(registry.verificationStages).toEqual(
+      expect.arrayContaining(['typecheck', 'api-health', 'unit-tests', 'lint', 'readiness', 'cypress-e2e']),
+    );
+    expect(findPhantomVerificationStageIds(registry)).toEqual([]);
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoPath, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    expect(pkg.scripts['test:cypress']).toBe('cypress run');
+    expect(pkg.devDependencies.cypress).toBe('^16.1.1');
+
+    const ledger = readPluginLedger(repoPath);
+    expect(ledger?.plugins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'cypress',
+          source: 'bundled',
+          stageIds: ['cypress-e2e'],
+        }),
+      ]),
+    );
+  });
+
   it('every shipped plugin manifest passes schema validation', () => {
     const ids = listPluginIds();
-    expect(ids).toEqual(expect.arrayContaining(['playwright', 'rocketsim', 'kerno', 'gitleaks', 'trivy', 'semgrep']));
+    expect(ids).toEqual(
+      expect.arrayContaining(['playwright', 'rocketsim', 'kerno', 'gitleaks', 'trivy', 'semgrep', 'cypress']),
+    );
 
     for (const id of ids) {
       const manifest = readPluginManifest(id);

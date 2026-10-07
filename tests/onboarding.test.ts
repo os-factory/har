@@ -52,6 +52,7 @@ describe('onboarding guide', () => {
     expect(ids).toContain('gitleaks');
     expect(ids).toContain('trivy');
     expect(ids).toContain('semgrep');
+    expect(ids).toContain('cypress');
     expect(choices.every((c) => c.label.includes(c.id))).toBe(true);
   });
 });

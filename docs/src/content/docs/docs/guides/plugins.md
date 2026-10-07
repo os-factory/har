@@ -85,6 +85,22 @@ This adds:
 Adapt selectors and URLs after installation. Full verification runs the stage when
 it is listed in `verificationStages` (the plugin updates that list for you).
 
+## Cypress
+
+```bash
+har env add-plugin cypress
+```
+
+This adds:
+
+- a `cypress-e2e` test stage that runs [Cypress](https://docs.cypress.io) headlessly against the slot's app;
+- `cypress.config.js` wired to the slot's `CYPRESS_BASE_URL` and `CYPRESS_API_URL`;
+- homepage and API health smoke specs under `cypress/e2e/`;
+- pinned `devDependencies` and `test:cypress` scripts merged into `package.json`;
+- a GitHub Actions workflow using `cypress-io/github-action@v7` when `--with-ci` is passed (skipped by default).
+
+`npm install` downloads the Cypress binary (Electron). On Linux, `npx cypress verify` reports any missing system libraries. Adapt selectors, the health path, and — for an existing suite — `specPattern`. Screenshots and the run log land under `.har/artifacts/cypress-e2e/`. See `.har/stages/CYPRESS.md` after install.
+
 ## Upgrading installed plugins
 
 `har env maintain` compares **installed plugins** (from `.har/plugins.json` when
