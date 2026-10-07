@@ -1,3 +1,9 @@
+## [1.16.0](https://github.com/os-factory/har/compare/v1.15.1...v1.16.0) (2026-10-07)
+
+### Features
+
+* add Cypress plugin ([#367](https://github.com/os-factory/har/issues/367)) ([ab60d60](https://github.com/os-factory/har/commit/ab60d60bb30a5cdd4695b0c380d975ad016e8a09))
+
 ## [1.15.1](https://github.com/os-factory/har/compare/v1.15.0...v1.15.1) (2026-09-28)
 
 ### Bug Fixes
