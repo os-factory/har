@@ -96,6 +96,23 @@ test.describe('Visual proof screenshots', () => {
     expect(file).toBeTruthy();
   });
 
+  test('saas-har benchmark article full-page shot', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/blog/every-pull-request-left-a-proof/', {
+      waitUntil: 'domcontentloaded',
+    });
+    await expect(page.locator('h1')).toContainText('Every pull request left a proof');
+    await expect(page.locator('.pr-flow')).toBeVisible();
+    await expect(page.locator('.pr-flow .lane-har .box')).toHaveCount(35);
+    await expect(page.locator('.pr-flow .lane-raw .box.is-resolved')).toHaveCount(17);
+    await expect(page.locator('.pr-flow .lane-har .box.is-resolved')).toHaveCount(19);
+    await page.locator('.blog-prose').waitFor({ state: 'visible' });
+    await page.waitForTimeout(400);
+    const file = await capturePageScreenshot(page, testInfo, 'blog-every-pull-request-left-a-proof');
+    expect(file).toBeTruthy();
+  });
+
   test('verify-skill article full-page shot', async ({ page }, testInfo) => {
     test.setTimeout(90_000);
     await page.goto('/blog/a-skill-is-not-a-gate/', { waitUntil: 'domcontentloaded' });

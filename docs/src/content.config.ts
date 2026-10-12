@@ -11,6 +11,7 @@ const blog = defineCollection({
 		date: z.coerce.date(),
 		kicker: z.string().optional(),
 		migrationPrompt: z.boolean().optional(),
+		leadFigure: z.enum(['pr-pipeline']).optional(),
 	}),
 });
 

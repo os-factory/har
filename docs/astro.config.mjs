@@ -137,6 +137,7 @@ export default defineConfig({
 		resolve: {
 			alias: {
 				'@assets': path.join(repoRoot, 'assets'),
+				'@saas-har-results': path.join(repoRoot, 'benchmarks/saas-har/paper/results-public.json'),
 			},
 		},
 		optimizeDeps: {
