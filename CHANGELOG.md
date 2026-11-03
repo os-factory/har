@@ -1,3 +1,9 @@
+## [1.16.1](https://github.com/os-factory/har/compare/v1.16.0...v1.16.1) (2026-11-03)
+
+### Bug Fixes
+
+* require Playwright 1.64.1 for browser tests ([#370](https://github.com/os-factory/har/issues/370)) ([9ba11af](https://github.com/os-factory/har/commit/9ba11aff0a1ed954bef3f5edb3747ed9f482bb20))
+
 ## [1.16.0](https://github.com/os-factory/har/compare/v1.15.1...v1.16.0) (2026-10-07)
 
 ### Features
