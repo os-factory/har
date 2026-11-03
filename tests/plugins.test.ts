@@ -65,7 +65,7 @@ describe('plugins', () => {
       devDependencies: Record<string, string>;
     };
     expect(pkg.scripts['test:e2e']).toBe('playwright test');
-    expect(pkg.devDependencies['@playwright/test']).toBe('^1.40.0');
+    expect(pkg.devDependencies['@playwright/test']).toBe('^1.64.1');
   });
 
   it('stamps manifest.cliVersion when applying a plugin (#344)', () => {
