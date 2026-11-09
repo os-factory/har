@@ -12,8 +12,8 @@ import {
 /** Default Mission Control API base URL (local Docker Compose). */
 export const DEFAULT_CONTROL_API_URL = 'http://localhost:3847';
 
-export const DEFAULT_PORTAL_URL = 'https://app.harhq.com';
-export const DEFAULT_DEV_PORTAL_URL = 'https://app.dev.harhq.com';
+export const DEFAULT_PORTAL_URL = 'https://portal.kerno.io/har';
+export const DEFAULT_DEV_PORTAL_URL = 'https://portal.dev.kerno.io/har';
 
 export function getControlApiUrl(): string {
   return process.env.HAR_CONTROL_API_URL ?? DEFAULT_CONTROL_API_URL;
