@@ -347,7 +347,7 @@ har hq disconnect [name] [--yes] [--json]
 ```
 
 Connect this checkout to a HAR HQ workspace. On a TTY, `connect` asks Production
-(`https://app.harhq.com`), Development (`https://app.dev.harhq.com`), or a custom
+(`https://portal.kerno.io/har`), Development (`https://portal.dev.kerno.io/har`), or a custom
 URL, then opens browser SSO. The workspace chosen on the consent screen is the
 destination; HAR attaches **this repository** to that workspace. When other
 repositories are already registered locally, the consent page (or a TTY fallback)
