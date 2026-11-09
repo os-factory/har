@@ -1,3 +1,9 @@
+## [1.16.2](https://github.com/os-factory/har/compare/v1.16.1...v1.16.2) (2026-11-09)
+
+### Bug Fixes
+
+* **hq:** default portal URLs move to the Kerno portal's /har ([#371](https://github.com/os-factory/har/issues/371)) ([124500f](https://github.com/os-factory/har/commit/124500f6f3c3e3cc177d5a075616186952b7bdc6))
+
 ## [1.16.1](https://github.com/os-factory/har/compare/v1.16.0...v1.16.1) (2026-11-03)
 
 ### Bug Fixes
