@@ -11,6 +11,12 @@ never in the main checkout.
 - Occupied slots always block a new launch: `har env complete <id>` (or `teardown <id>`),
   then `har env launch <id>`. A new launch never chooses `main` for you — switch the
   main checkout to your intended base first.
+- When every slot is occupied, do not pick one to free on your own. Run
+  `har env status` and give the user a slot-by-slot summary: branch, bound work
+  unit, what the session achieves, last verify, and whether its commits are merged,
+  pushed, or unpushed (`git log <base>..<branch>`, PR state). Recommend which slot
+  to close — merged or abandoned work with nothing left to do first; never one with
+  unpushed commits — and free it with `complete` / `teardown` only after approval.
 - `teardown` removes the worktree but **keeps the session branch** so you can push it
   or open a PR (`--delete-branch` to drop it).
 - If launch fails after creating a worktree/env file, the registry records `status: failed`.

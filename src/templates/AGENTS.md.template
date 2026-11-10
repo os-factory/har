@@ -17,10 +17,16 @@ harness or report it; do not fall back to ad-hoc commands.
    `har env verify <id> --full`. Commit in the session worktree.
 3. **Stop at handoff** — report summary, session branch and preview URLs, then
    wait. Never autonomously `complete`, `teardown`, push, or open a PR.
+4. **All slots taken?** Occupied slots always block a launch, and you never free
+   one yourself. Run `har env status`, then show the user every slot — branch,
+   work unit, what it achieves, last verify, and whether its commits are merged,
+   pushed or unpushed — and recommend which to close: merged or abandoned work
+   with nothing left to do first; never one with unpushed commits. On approval:
+   `complete` / `teardown <id>`, then launch.
 
-Occupied slots always block: `complete` / `teardown`, then launch. Customize the
-harness only through `harness.env`, `stages.json` + `.har/stages/`, `.har/hooks/`
-and `.har/plugins/` — there is no generated `.har/*.sh` entry-point surface.
+Customize the harness only through `harness.env`, `stages.json` + `.har/stages/`,
+`.har/hooks/` and `.har/plugins/` — there is no generated `.har/*.sh` entry-point
+surface.
 
 Full detail — slot environment, readiness, definition of done, project commands,
 commit gate: [`.har/README.md`](.har/README.md) and [`.har/stages.json`](.har/stages.json).
