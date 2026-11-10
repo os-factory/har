@@ -5,6 +5,13 @@ import { canonicalizeControlRepoPath } from './control-repo-path';
 import { listRegisteredRepos } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
 import { markAllRegisteredDirty } from './sync-context';
+import {
+  isLegacyPortalUrl,
+  migrateConfiguredPortalUrl,
+  migrateLegacyPortalKey,
+  migrateLegacyPortalUrl,
+} from './portal-legacy-hosts';
+import { renamePortalWatermarkKeys } from './portal-watermark';
 
 export interface PortalTargetRecord {
   alias: string;
@@ -115,6 +122,10 @@ function writeStore(store: PortalTargetsStore): void {
 
 export function readPortalTargetsStore(): PortalTargetsStore {
   migrateLegacyCredentialsIfNeeded();
+  return moveTargetsOffLegacyPortalHosts(readStoreFile());
+}
+
+function readStoreFile(): PortalTargetsStore {
   const file = portalTargetsPath();
   try {
     if (!fs.existsSync(file)) return emptyStore();
@@ -122,6 +133,55 @@ export function readPortalTargetsStore(): PortalTargetsStore {
   } catch {
     return emptyStore();
   }
+}
+
+function moveTargetsOffLegacyPortalHosts(store: PortalTargetsStore): PortalTargetsStore {
+  if (!store.targets.some((entry) => isLegacyPortalUrl(entry.portalUrl))) return store;
+
+  const aliasByIdentity = new Map<string, string>();
+  for (const entry of store.targets) {
+    if (isLegacyPortalUrl(entry.portalUrl)) continue;
+    const identity = portalTargetIdentityKey(entry.portalUrl, entry.workspaceId);
+    if (!aliasByIdentity.has(identity)) aliasByIdentity.set(identity, entry.alias);
+  }
+
+  const replacementAlias = new Map<string, string>();
+  const targets: PortalTargetRecord[] = [];
+  for (const entry of store.targets) {
+    if (!isLegacyPortalUrl(entry.portalUrl)) {
+      targets.push(entry);
+      continue;
+    }
+    const moved = { ...entry, portalUrl: migrateLegacyPortalUrl(entry.portalUrl) };
+    const identity = portalTargetIdentityKey(moved.portalUrl, moved.workspaceId);
+    const survivingAlias = aliasByIdentity.get(identity);
+    if (survivingAlias) {
+      replacementAlias.set(entry.alias, survivingAlias);
+      continue;
+    }
+    aliasByIdentity.set(identity, moved.alias);
+    targets.push(moved);
+  }
+
+  const aliasAfterMove = (alias: string) => replacementAlias.get(alias) ?? alias;
+  const repoTargets = Object.fromEntries(
+    Object.entries(store.repoTargets ?? {}).map(([repoPath, aliases]) => [
+      repoPath,
+      [...new Set(aliases.map(aliasAfterMove))],
+    ]),
+  );
+  const next: PortalTargetsStore = {
+    ...store,
+    targets,
+    defaultTarget: store.defaultTarget && aliasAfterMove(store.defaultTarget),
+    ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
+  };
+
+  writeStore(next);
+  const defaultRecord = targets.find((entry) => entry.alias === next.defaultTarget);
+  if (defaultRecord) syncLegacyCredentialsFile(defaultRecord, true);
+  renamePortalWatermarkKeys(migrateLegacyPortalKey);
+  return next;
 }
 
 export function resolveWorkspaceId(input: {
@@ -252,8 +312,9 @@ export function upsertPortalTarget(input: {
   setAsDefault?: boolean;
 }): PortalTargetRecord {
   const store = readPortalTargetsStore();
+  const portalUrl = normalizePortalUrl(migrateLegacyPortalUrl(input.portalUrl));
   const workspaceId = resolveWorkspaceId(input);
-  const existingByIdentity = getPortalTargetRecordByIdentity(input.portalUrl, workspaceId);
+  const existingByIdentity = getPortalTargetRecordByIdentity(portalUrl, workspaceId);
   const existingAliases = new Set(store.targets.map((entry) => entry.alias));
   if (existingByIdentity) existingAliases.delete(existingByIdentity.alias);
 
@@ -261,7 +322,7 @@ export function upsertPortalTarget(input: {
     ? existingByIdentity.alias
     : deriveTargetAlias({
         alias: input.alias,
-        portalUrl: input.portalUrl,
+        portalUrl,
         workspace: input.workspace,
         workspaceSlug: input.workspaceSlug,
         workspaceName: input.workspaceName,
@@ -272,7 +333,7 @@ export function upsertPortalTarget(input: {
   const now = new Date().toISOString();
   const next: PortalTargetRecord = {
     alias,
-    portalUrl: normalizePortalUrl(input.portalUrl),
+    portalUrl,
     workspaceId,
     workspaceName: input.workspaceName ?? input.workspace,
     workspaceSlug: input.workspaceSlug ?? input.workspace,
@@ -450,7 +511,9 @@ export function resolvePortalTargetsForRepo(options?: {
   explicitTargets?: string[];
 }): { targets: PortalTargetResolution[]; source: PortalTargetSource } | null {
   if (process.env.HAR_PORTAL_URL && process.env.HAR_PORTAL_TOKEN) {
-    const url = normalizePortalUrl(process.env.HAR_PORTAL_URL);
+    const url = normalizePortalUrl(
+      migrateConfiguredPortalUrl(process.env.HAR_PORTAL_URL, 'HAR_PORTAL_URL'),
+    );
     return {
       source: 'env',
       targets: [

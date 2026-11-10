@@ -14,6 +14,7 @@ const ENV_KEYS = [
   'HAR_CREDENTIALS_PATH',
   'HAR_PORTAL_TARGETS_PATH',
   'HAR_CONTROL_REGISTRY_PATH',
+  'HAR_PORTAL_SYNC_STATE_PATH',
 ] as const;
 
 let tmpDir: string;
@@ -23,6 +24,7 @@ beforeEach(() => {
   process.env.HAR_CREDENTIALS_PATH = path.join(tmpDir, 'credentials.json');
   process.env.HAR_PORTAL_TARGETS_PATH = path.join(tmpDir, 'portal-targets.json');
   process.env.HAR_CONTROL_REGISTRY_PATH = path.join(tmpDir, 'repos.json');
+  process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(tmpDir, 'portal-sync-state.json');
   for (const key of ENV_KEYS) {
     if (key.endsWith('_PATH')) continue;
     delete process.env[key];
@@ -39,12 +41,12 @@ describe('runPortalConnect', () => {
     fs.mkdirSync(repoPath, { recursive: true });
 
     const result = await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
+      portalUrl: 'https://portal.kerno.io/har',
       apiKey: 'har_ingest_test',
       repoPath,
     });
 
-    expect(result.record.portalUrl).toBe('https://app.harhq.com');
+    expect(result.record.portalUrl).toBe('https://portal.kerno.io/har');
     expect(result.record.token).toBe('har_ingest_test');
     expect(result.attachedRepo).toBe(repoPath);
     expect(result.mappedInBrowser).toBe(false);
@@ -59,12 +61,12 @@ describe('runPortalConnect', () => {
     fs.mkdirSync(second, { recursive: true });
 
     const a = await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
+      portalUrl: 'https://portal.kerno.io/har',
       apiKey: 'token-shared',
       repoPath: first,
     });
     const b = await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
+      portalUrl: 'https://portal.kerno.io/har',
       apiKey: 'token-shared',
       repoPath: second,
     });
@@ -80,12 +82,12 @@ describe('runPortalConnect', () => {
     fs.mkdirSync(repoPath, { recursive: true });
 
     await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
+      portalUrl: 'https://portal.kerno.io/har',
       apiKey: 'token-org-a',
       repoPath,
     });
     await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
+      portalUrl: 'https://portal.kerno.io/har',
       apiKey: 'token-org-b',
       repoPath,
     });

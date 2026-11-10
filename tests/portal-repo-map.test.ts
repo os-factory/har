@@ -10,7 +10,12 @@ import {
 } from '../src/core/portal-repo-map';
 import { getRepoPortalTargetAliases, upsertPortalTarget } from '../src/core/portal-targets';
 
-const ENV_KEYS = ['HAR_PORTAL_TARGETS_PATH', 'HAR_CONTROL_REGISTRY_PATH', 'HAR_CREDENTIALS_PATH'] as const;
+const ENV_KEYS = [
+  'HAR_PORTAL_TARGETS_PATH',
+  'HAR_CONTROL_REGISTRY_PATH',
+  'HAR_CREDENTIALS_PATH',
+  'HAR_PORTAL_SYNC_STATE_PATH',
+] as const;
 
 let tmpDir: string;
 
@@ -19,6 +24,7 @@ beforeEach(() => {
   process.env.HAR_PORTAL_TARGETS_PATH = path.join(tmpDir, 'portal-targets.json');
   process.env.HAR_CONTROL_REGISTRY_PATH = path.join(tmpDir, 'repos.json');
   process.env.HAR_CREDENTIALS_PATH = path.join(tmpDir, 'credentials.json');
+  process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(tmpDir, 'portal-sync-state.json');
 });
 
 afterEach(() => {
@@ -36,7 +42,7 @@ describe('planRepoWorkspaceMap', () => {
         connections: [
           {
             alias: 'acme',
-            portalUrl: 'https://app.harhq.com',
+            portalUrl: 'https://portal.kerno.io/har',
             workspaceId: 'org-1',
             workspaceName: 'Acme',
             token: 't',
@@ -57,7 +63,7 @@ describe('planRepoWorkspaceMap', () => {
       connections: [
         {
           alias: 'acme',
-          portalUrl: 'https://app.harhq.com',
+          portalUrl: 'https://portal.kerno.io/har',
           workspaceId: 'org-1',
           workspaceName: 'Acme',
           token: 't',
@@ -108,7 +114,7 @@ describe('applyRepoWorkspaceMap', () => {
   it('attaches selected repos and skips the rest', () => {
     upsertPortalTarget({
       alias: 'acme',
-      portalUrl: 'https://app.harhq.com',
+      portalUrl: 'https://portal.kerno.io/har',
       workspaceId: 'org-1',
       token: 't',
     });

@@ -170,3 +170,34 @@ describe('resolvePortalUrl', () => {
     });
   });
 });
+
+describe('resolvePortalUrl on the old har domain', () => {
+  beforeEach(() => {
+    process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(
+      path.dirname(tmpFile),
+      'portal-sync-state.json',
+    );
+  });
+
+  afterEach(() => {
+    delete process.env.HAR_PORTAL_SYNC_STATE_PATH;
+  });
+
+  it('moves a login saved on app.harhq.com to the portal', () => {
+    writePortalCredentials({
+      portalUrl: 'https://app.harhq.com',
+      token: 'har_ingest_stored',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(resolvePortalUrl()).toEqual({ url: 'https://portal.kerno.io/har', source: 'saved' });
+  });
+
+  it('moves an old-domain --portal to the portal', () => {
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    expect(resolvePortalUrl('https://app.dev.harhq.com')).toEqual({
+      url: 'https://portal.dev.kerno.io/har',
+      source: 'flag',
+    });
+    stderr.mockRestore();
+  });
+});

@@ -79,6 +79,20 @@ export function writePortalWatermark(
   writeState(state);
 }
 
+export function renamePortalWatermarkKeys(rename: (portalUrl: string) => string): void {
+  const state = readState();
+  if (!state.states.some((entry) => rename(entry.portalUrl) !== entry.portalUrl)) return;
+
+  const byRepoAndKey = new Map<string, PortalSyncStateEntry>();
+  for (const entry of state.states) {
+    const renamed = { ...entry, portalUrl: rename(entry.portalUrl) };
+    const identity = `${renamed.repoPath}\n${renamed.portalUrl}`;
+    const kept = byRepoAndKey.get(identity);
+    if (!kept || renamed.lastSyncedAt > kept.lastSyncedAt) byRepoAndKey.set(identity, renamed);
+  }
+  writeState({ states: [...byRepoAndKey.values()] });
+}
+
 export function getPortalWatermarkPath(): string {
   return getStatePath();
 }

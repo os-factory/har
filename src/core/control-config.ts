@@ -1,4 +1,5 @@
 import { readPortalCredentials } from './portal-credentials';
+import { migrateConfiguredPortalUrl, migrateLegacyPortalUrl } from './portal-legacy-hosts';
 import {
   displayPortalTargetLabel,
   getPortalTargetRecord,
@@ -32,13 +33,17 @@ export function resolvePortalUrl(explicit?: string): {
   source: PortalUrlSource;
 } {
   const candidates: Array<[string | undefined, PortalUrlSource]> = [
-    [explicit, 'flag'],
-    [process.env.HAR_PORTAL_URL, 'env'],
+    [explicit && migrateConfiguredPortalUrl(explicit.trim(), '--portal'), 'flag'],
+    [
+      process.env.HAR_PORTAL_URL &&
+        migrateConfiguredPortalUrl(process.env.HAR_PORTAL_URL.trim(), 'HAR_PORTAL_URL'),
+      'env',
+    ],
     [readPortalCredentials()?.portalUrl, 'saved'],
   ];
 
   for (const [value, source] of candidates) {
-    const url = normalizePortalUrl((value ?? '').trim());
+    const url = normalizePortalUrl(migrateLegacyPortalUrl((value ?? '').trim()));
     if (url) return { url, source };
   }
 
@@ -50,7 +55,9 @@ export function getPortalTarget(repoPath?: string): PortalTarget | null {
   if (resolved) return resolved;
 
   if (process.env.HAR_CLOUD_API_URL && process.env.HAR_CLOUD_API_KEY) {
-    const url = normalizePortalUrl(process.env.HAR_CLOUD_API_URL);
+    const url = normalizePortalUrl(
+      migrateConfiguredPortalUrl(process.env.HAR_CLOUD_API_URL, 'HAR_CLOUD_API_URL'),
+    );
     return {
       url,
       token: process.env.HAR_CLOUD_API_KEY,

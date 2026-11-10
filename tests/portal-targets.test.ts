@@ -355,3 +355,137 @@ describe('refresh isolation', () => {
     });
   });
 });
+
+describe('targets saved on the old har domain', () => {
+  const CREATED_AT = '2026-06-01T00:00:00.000Z';
+
+  function writeSavedStore(store: Record<string, unknown>): void {
+    fs.writeFileSync(portalTargetsPath(), JSON.stringify(store));
+  }
+
+  function savedTarget(alias: string, portalUrl: string, workspaceId: string, token: string) {
+    return { alias, portalUrl, workspaceId, token, refreshToken: `${token}-refresh`, createdAt: CREATED_AT };
+  }
+
+  it('moves an app.harhq.com target to the portal and keeps its tokens', () => {
+    const repoPath = path.join(tmpDir, 'repo-a');
+    fs.mkdirSync(repoPath, { recursive: true });
+    writeSavedStore({
+      version: 1,
+      defaultTarget: 'acme',
+      targets: [savedTarget('acme', 'https://app.harhq.com', 'ws_acme', 'har_ingest_old')],
+      repoTargets: { [repoPath]: ['acme'] },
+    });
+
+    expect(resolvePortalTargetsForRepo({ repoPath })?.targets).toEqual([
+      expect.objectContaining({
+        url: 'https://portal.kerno.io/har',
+        token: 'har_ingest_old',
+        refreshToken: 'har_ingest_old-refresh',
+        alias: 'acme',
+        identityKey: 'https://portal.kerno.io/har#ws_acme',
+      }),
+    ]);
+
+    const persisted = JSON.parse(fs.readFileSync(portalTargetsPath(), 'utf8'));
+    expect(persisted.targets[0].portalUrl).toBe('https://portal.kerno.io/har');
+    expect(readPortalCredentials()?.portalUrl).toBe('https://portal.kerno.io/har');
+    const credentialsFile = JSON.parse(
+      fs.readFileSync(process.env.HAR_CREDENTIALS_PATH!, 'utf8'),
+    );
+    expect(credentialsFile).toMatchObject({
+      portalUrl: 'https://portal.kerno.io/har',
+      token: 'har_ingest_old',
+    });
+  });
+
+  it('moves app.dev.harhq.com to the dev portal', () => {
+    writeSavedStore({
+      version: 1,
+      targets: [savedTarget('dev', 'https://app.dev.harhq.com', 'ws_dev', 'dev-token')],
+    });
+
+    expect(readPortalTargetsStore().targets[0].portalUrl).toBe('https://portal.dev.kerno.io/har');
+  });
+
+  it('merges an old-domain target into a portal target for the same workspace', () => {
+    const repoA = path.join(tmpDir, 'repo-a');
+    const repoB = path.join(tmpDir, 'repo-b');
+    writeSavedStore({
+      version: 1,
+      defaultTarget: 'acme',
+      targets: [
+        savedTarget('acme', 'https://app.harhq.com', 'ws_acme', 'old-token'),
+        savedTarget('acme-2', 'https://portal.kerno.io/har', 'ws_acme', 'new-token'),
+        savedTarget('other', 'https://app.harhq.com', 'ws_other', 'other-token'),
+      ],
+      repoTargets: { [repoA]: ['acme'], [repoB]: ['acme', 'acme-2'] },
+    });
+
+    const store = readPortalTargetsStore();
+    expect(store.targets.map((entry) => [entry.alias, entry.portalUrl, entry.token])).toEqual([
+      ['acme-2', 'https://portal.kerno.io/har', 'new-token'],
+      ['other', 'https://portal.kerno.io/har', 'other-token'],
+    ]);
+    expect(store.defaultTarget).toBe('acme-2');
+    expect(store.repoTargets).toEqual({ [repoA]: ['acme-2'], [repoB]: ['acme-2'] });
+  });
+
+  it('carries sync watermarks over to the portal URL', () => {
+    const repoPath = path.join(tmpDir, 'repo-a');
+    fs.mkdirSync(repoPath, { recursive: true });
+    writePortalWatermark(repoPath, 'https://app.harhq.com#ws_acme', '2026-11-01T00:00:00.000Z');
+    writePortalWatermark(repoPath, 'runs:https://app.harhq.com#ws_acme', '2026-11-02T00:00:00.000Z');
+    writePortalWatermark(repoPath, 'https://portal.kerno.io/har#ws_acme', '2026-10-01T00:00:00.000Z');
+    writeSavedStore({
+      version: 1,
+      targets: [savedTarget('acme', 'https://app.harhq.com', 'ws_acme', 'token')],
+    });
+
+    readPortalTargetsStore();
+
+    expect(readPortalWatermark(repoPath, 'https://portal.kerno.io/har#ws_acme')).toBe(
+      '2026-11-01T00:00:00.000Z',
+    );
+    expect(readPortalWatermark(repoPath, 'runs:https://portal.kerno.io/har#ws_acme')).toBe(
+      '2026-11-02T00:00:00.000Z',
+    );
+    expect(readPortalWatermark(repoPath, 'https://app.harhq.com#ws_acme')).toBeNull();
+  });
+
+  it('leaves the store file untouched when no target is on the old domain', () => {
+    writeSavedStore({
+      version: 1,
+      targets: [savedTarget('acme', 'https://portal.kerno.io/har', 'ws_acme', 'token')],
+    });
+    const before = fs.readFileSync(portalTargetsPath(), 'utf8');
+
+    readPortalTargetsStore();
+
+    expect(fs.readFileSync(portalTargetsPath(), 'utf8')).toBe(before);
+  });
+
+  it('saves a new connection to the old domain under the portal URL', () => {
+    const record = upsertPortalTarget({
+      portalUrl: 'https://app.harhq.com',
+      workspaceId: 'ws_acme',
+      token: 'token',
+    });
+
+    expect(record.portalUrl).toBe('https://portal.kerno.io/har');
+    expect(readPortalTargetsStore().targets.map((entry) => entry.alias)).toEqual([record.alias]);
+  });
+
+  it('moves HAR_PORTAL_URL on the old domain to the portal', () => {
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    process.env.HAR_PORTAL_URL = 'https://app.harhq.com';
+    process.env.HAR_PORTAL_TOKEN = 'env-token';
+
+    expect(resolvePortalTargetsForRepo()?.targets[0]).toMatchObject({
+      url: 'https://portal.kerno.io/har',
+      token: 'env-token',
+    });
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('Update HAR_PORTAL_URL'));
+    stderr.mockRestore();
+  });
+});
