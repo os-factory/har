@@ -1,3 +1,9 @@
+## [1.17.0](https://github.com/os-factory/har/compare/v1.16.2...v1.17.0) (2026-11-10)
+
+### Features
+
+* tell agents how to triage HAR slots when all are occupied ([#373](https://github.com/os-factory/har/issues/373)) ([26d0b27](https://github.com/os-factory/har/commit/26d0b2782a591e076915443682044f3e073fbbfa))
+
 ## [1.16.2](https://github.com/os-factory/har/compare/v1.16.1...v1.16.2) (2026-11-09)
 
 ### Bug Fixes
