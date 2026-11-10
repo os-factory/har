@@ -12,6 +12,7 @@ har env status        # or ./.har/agent-cli.sh 1 status
 
 - One slot ≈ one task. If slot 1 is occupied by unrelated work, use slot 2+ (limit: `agentSlots` in `.har/stages.json`).
 - Occupied slots always block a new launch: run `har env teardown <id>` (or `complete <id>`) first, then launch again.
+- All slots occupied? Never free one on your own. Show the user each slot (branch, work unit, what it achieves, last verify, merged / pushed / unpushed commits) and recommend which to close — merged or abandoned work with nothing left to do first, never one with unpushed commits. Free it only after approval.
 
 ## 2. Launch — BEFORE editing any file
 

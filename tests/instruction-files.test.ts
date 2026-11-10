@@ -141,9 +141,10 @@ describe('instruction-files', () => {
   // genuinely the entry point.
   it('the AGENTS.md HAR block is minimal and free of shell entry points', () => {
     const section = loadHarAgentsSectionFromTemplate();
-    expect(section.split('\n').length).toBeLessThanOrEqual(25);
+    expect(section.split('\n').length).toBeLessThanOrEqual(31);
     expect(section).not.toMatch(/\.\/\.har\/[a-z-]+\.sh/);
     expect(section).toContain('har env launch');
+    expect(section).toContain('All slots taken?');
     expect(section).toContain('.har/README.md');
     expect(section).not.toContain('CLAUDE.agent.md');
   });
