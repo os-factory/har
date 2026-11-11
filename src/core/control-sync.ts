@@ -148,7 +148,6 @@ function watermarkKeyForTarget(target: PortalTarget): string {
 }
 
 function legacyWatermarkKeysForTarget(target: PortalTarget): string[] {
-  if (kernoApiUrlFor(target.url)) return [];
   return target.url === target.identityKey ? [] : [target.url];
 }
 
@@ -167,7 +166,7 @@ function readScopedPortalWatermark(
 }
 
 function legacyScopedWatermarkKeys(portal: PortalTarget, prefix: string): string[] {
-  if (kernoApiUrlFor(portal.url) || portal.url === portal.identityKey) return [];
+  if (portal.url === portal.identityKey) return [];
   return [`${prefix}:${portal.url}`];
 }
 
@@ -652,20 +651,6 @@ async function buildPortalPayload(
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
   try {
     const response = await fetch(`${apiUrl}/api/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(2000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function isPortalReachable(portal: PortalTarget): Promise<boolean> {
-  const apiUrl = kernoApiUrlFor(portal.url);
-  if (!apiUrl) return isControlApiReachable(portal.url);
-  try {
-    const response = await fetch(`${apiUrl}/api/healthz`, {
       method: 'GET',
       signal: AbortSignal.timeout(2000),
     });
@@ -1362,7 +1347,7 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
 
   for (const portal of resolved.targets) {
     try {
-      if (!(await isPortalReachable(portal))) continue;
+      if (!kernoApiUrlFor(portal.url) && !(await isControlApiReachable(portal.url))) continue;
       await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

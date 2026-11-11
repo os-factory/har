@@ -5,7 +5,6 @@ import { canonicalizeControlRepoPath } from './control-repo-path';
 import { listRegisteredRepos } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
 import { markAllRegisteredDirty } from './sync-context';
-import { migrateConfiguredPortalUrl } from './portal-hosts';
 
 export interface PortalTargetRecord {
   alias: string;
@@ -451,9 +450,7 @@ export function resolvePortalTargetsForRepo(options?: {
   explicitTargets?: string[];
 }): { targets: PortalTargetResolution[]; source: PortalTargetSource } | null {
   if (process.env.HAR_PORTAL_URL && process.env.HAR_PORTAL_TOKEN) {
-    const url = normalizePortalUrl(
-      migrateConfiguredPortalUrl(process.env.HAR_PORTAL_URL, 'HAR_PORTAL_URL'),
-    );
+    const url = normalizePortalUrl(process.env.HAR_PORTAL_URL);
     return {
       source: 'env',
       targets: [
