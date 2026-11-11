@@ -1,3 +1,9 @@
+## [1.18.0](https://github.com/os-factory/har/compare/v1.17.0...v1.18.0) (2026-11-11)
+
+### Features
+
+* **hq:** send ingest to Kerno's portal-api instead of har-ui (FE-2043) ([#374](https://github.com/os-factory/har/issues/374)) ([b137acb](https://github.com/os-factory/har/commit/b137acb4e2c9ff9f75c3423871b5cbfb03858e36))
+
 ## [1.17.0](https://github.com/os-factory/har/compare/v1.16.2...v1.17.0) (2026-11-10)
 
 ### Features
