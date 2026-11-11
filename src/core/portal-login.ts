@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { PortalCredentials } from './portal-credentials';
 
 const CALLBACK_PATH = '/callback';
+const KERNO_INGEST = 'kerno';
 const LOGIN_TIMEOUT_MS = 3 * 60_000;
 
 function openBrowser(url: string): void {
@@ -35,6 +36,8 @@ export type BrowserConnectTarget = {
 };
 
 export type PortalLoginResult = PortalCredentials & {
+  /** Kerno's portal-api, when the portal moved this CLI's ingest there. */
+  apiUrl?: string;
   /** Present when the portal assigned repositories in the browser. */
   targets?: BrowserConnectTarget[];
 };
@@ -101,6 +104,7 @@ export async function loginViaBrowser(
       const email = requestUrl.searchParams.get('email') ?? undefined;
       const refreshToken = requestUrl.searchParams.get('refreshToken') ?? undefined;
       const expiresAt = requestUrl.searchParams.get('expiresAt') ?? undefined;
+      const apiUrl = requestUrl.searchParams.get('apiUrl') ?? undefined;
 
       if (returnedState !== state || !token) {
         res.writeHead(400, { 'Content-Type': 'text/html' });
@@ -116,6 +120,7 @@ export async function loginViaBrowser(
       const targets = parseCliTargetsParam(requestUrl.searchParams.get('targets'));
       resolve({
         portalUrl,
+        ...(apiUrl ? { apiUrl } : {}),
         token,
         workspace: workspaceSlug ?? workspace,
         workspaceSlug,
@@ -147,7 +152,7 @@ export async function loginViaBrowser(
       const { port } = server.address() as AddressInfo;
       const callback = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
       const reposQuery = encodeCliReposQuery(options.repos ?? []);
-      const loginUrl = `${portalUrl}/cli/login?callback=${encodeURIComponent(callback)}&state=${state}${
+      const loginUrl = `${portalUrl}/cli/login?callback=${encodeURIComponent(callback)}&state=${state}&ingest=${KERNO_INGEST}${
         reposQuery ? `&repos=${reposQuery}` : ''
       }`;
       openUrl(loginUrl);

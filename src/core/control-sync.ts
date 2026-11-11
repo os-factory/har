@@ -146,7 +146,7 @@ function watermarkKeyForTarget(target: PortalTarget): string {
 }
 
 function legacyWatermarkKeysForTarget(target: PortalTarget): string[] {
-  return target.url === target.identityKey ? [] : [target.url];
+  return target.apiUrl || target.url === target.identityKey ? [] : [target.url];
 }
 
 function readScopedPortalWatermark(
@@ -164,7 +164,7 @@ function readScopedPortalWatermark(
 }
 
 function legacyScopedWatermarkKeys(portal: PortalTarget, prefix: string): string[] {
-  if (portal.url === portal.identityKey) return [];
+  if (portal.apiUrl || portal.url === portal.identityKey) return [];
   return [`${prefix}:${portal.url}`];
 }
 
@@ -271,13 +271,21 @@ async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promis
   return (await response.json()) as T;
 }
 
+const PORTAL_API_PREFIX = '/api';
+const KERNO_INGEST_PREFIX = '/api/har/ingest';
+
+function portalEndpointUrl(target: PortalTarget, endpoint: string): string {
+  if (!target.apiUrl) return `${target.url}${endpoint}`;
+  return `${target.apiUrl}${KERNO_INGEST_PREFIX}${endpoint.slice(PORTAL_API_PREFIX.length)}`;
+}
+
 function postPortalOnce(
   target: PortalTarget,
   endpoint: string,
   body: unknown,
 ): Promise<Response> {
   return postForResponse(
-    `${target.url}${endpoint}`,
+    portalEndpointUrl(target, endpoint),
     {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${target.token}`,
@@ -294,7 +302,7 @@ async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
 
   let response: Response;
   try {
-    response = await fetch(`${target.url}/api/cli/refresh`, {
+    response = await fetch(portalEndpointUrl(target, '/api/cli/refresh'), {
       method: 'POST',
       headers: { Authorization: `Bearer ${target.refreshToken}` },
     });
@@ -640,6 +648,19 @@ async function buildPortalPayload(
 export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
   try {
     const response = await fetch(`${apiUrl}/api/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(2000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function isPortalReachable(portal: PortalTarget): Promise<boolean> {
+  if (!portal.apiUrl) return isControlApiReachable(portal.url);
+  try {
+    const response = await fetch(`${portal.apiUrl}/api/healthz`, {
       method: 'GET',
       signal: AbortSignal.timeout(2000),
     });
@@ -1336,7 +1357,7 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
 
   for (const portal of resolved.targets) {
     try {
-      if (!(await isControlApiReachable(portal.url))) continue;
+      if (!(await isPortalReachable(portal))) continue;
       await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

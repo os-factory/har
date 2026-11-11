@@ -1,4 +1,5 @@
 import { readPortalCredentials } from './portal-credentials';
+import { kernoApiUrlFor, migrateConfiguredPortalUrl } from './portal-hosts';
 import {
   displayPortalTargetLabel,
   getPortalTargetRecord,
@@ -32,8 +33,12 @@ export function resolvePortalUrl(explicit?: string): {
   source: PortalUrlSource;
 } {
   const candidates: Array<[string | undefined, PortalUrlSource]> = [
-    [explicit, 'flag'],
-    [process.env.HAR_PORTAL_URL, 'env'],
+    [explicit && migrateConfiguredPortalUrl(explicit.trim(), '--portal'), 'flag'],
+    [
+      process.env.HAR_PORTAL_URL &&
+        migrateConfiguredPortalUrl(process.env.HAR_PORTAL_URL.trim(), 'HAR_PORTAL_URL'),
+      'env',
+    ],
     [readPortalCredentials()?.portalUrl, 'saved'],
   ];
 
@@ -50,11 +55,15 @@ export function getPortalTarget(repoPath?: string): PortalTarget | null {
   if (resolved) return resolved;
 
   if (process.env.HAR_CLOUD_API_URL && process.env.HAR_CLOUD_API_KEY) {
-    const url = normalizePortalUrl(process.env.HAR_CLOUD_API_URL);
+    const url = normalizePortalUrl(
+      migrateConfiguredPortalUrl(process.env.HAR_CLOUD_API_URL, 'HAR_CLOUD_API_URL'),
+    );
+    const apiUrl = kernoApiUrlFor(url);
     return {
       url,
+      ...(apiUrl ? { apiUrl } : {}),
       token: process.env.HAR_CLOUD_API_KEY,
-      identityKey: url,
+      identityKey: apiUrl ?? url,
     };
   }
 

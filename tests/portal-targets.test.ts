@@ -355,3 +355,95 @@ describe('refresh isolation', () => {
     });
   });
 });
+
+describe('Kerno targets move to portal-api', () => {
+  function writeStore(store: unknown): void {
+    fs.writeFileSync(portalTargetsPath(), JSON.stringify(store));
+  }
+
+  function target(alias: string, portalUrl: string, updatedAt: string) {
+    return {
+      alias,
+      portalUrl,
+      workspaceId: 'org_1',
+      token: `token-${alias}`,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt,
+    };
+  }
+
+  it('gives saved Kerno connections the portal-api and keeps self-hosted ones', () => {
+    writeStore({
+      version: 1,
+      defaultTarget: 'legacy',
+      targets: [
+        target('legacy', 'https://app.harhq.com', '2026-01-02T00:00:00.000Z'),
+        target('self', 'https://har.example.com', '2026-01-02T00:00:00.000Z'),
+      ],
+    });
+
+    const store = readPortalTargetsStore();
+
+    expect(store.targets.find((entry) => entry.alias === 'legacy')).toMatchObject({
+      portalUrl: 'https://portal.kerno.io/har',
+      apiUrl: 'https://api.kerno.io',
+    });
+    expect(store.targets.find((entry) => entry.alias === 'self')?.apiUrl).toBeUndefined();
+    expect(JSON.parse(fs.readFileSync(portalTargetsPath(), 'utf8')).targets[0].apiUrl).toBe(
+      'https://api.kerno.io',
+    );
+    expect(readPortalCredentials()?.portalUrl).toBe('https://portal.kerno.io/har');
+  });
+
+  it('keeps the newest of two connections that become the same workspace', () => {
+    writeStore({
+      version: 1,
+      defaultTarget: 'old',
+      targets: [
+        target('old', 'https://app.harhq.com', '2026-01-01T00:00:00.000Z'),
+        target('new', 'https://portal.kerno.io/har', '2026-03-01T00:00:00.000Z'),
+      ],
+      repoTargets: { '/repo/a': ['old'], '/repo/b': ['new', 'old'] },
+    });
+
+    const store = readPortalTargetsStore();
+
+    expect(store.targets.map((entry) => entry.alias)).toEqual(['new']);
+    expect(store.defaultTarget).toBe('new');
+    expect(getRepoPortalTargetAliases('/repo/a')).toEqual(['new']);
+    expect(getRepoPortalTargetAliases('/repo/b')).toEqual(['new']);
+  });
+
+  it('keys a Kerno target by its portal-api, so its sync history starts over', () => {
+    writeStore({
+      version: 1,
+      targets: [target('legacy', 'https://portal.kerno.io/har', '2026-01-02T00:00:00.000Z')],
+    });
+
+    const [resolved] = resolvePortalTargetsForRepo()?.targets ?? [];
+
+    expect(resolved).toMatchObject({
+      url: 'https://portal.kerno.io/har',
+      apiUrl: 'https://api.kerno.io',
+      identityKey: portalTargetIdentityKey('https://api.kerno.io', 'org_1'),
+    });
+  });
+
+  it('updates the moved connection in place on the next login', () => {
+    writeStore({
+      version: 1,
+      targets: [target('legacy', 'https://app.harhq.com', '2026-01-02T00:00:00.000Z')],
+    });
+
+    const record = upsertPortalTarget({
+      portalUrl: 'https://portal.kerno.io/har',
+      apiUrl: 'https://api.kerno.io',
+      workspaceId: 'org_1',
+      token: 'har_ingest_fresh',
+    });
+
+    expect(record.alias).toBe('legacy');
+    expect(readPortalTargetsStore().targets).toHaveLength(1);
+    expect(readPortalTargetsStore().targets[0].token).toBe('har_ingest_fresh');
+  });
+});

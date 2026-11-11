@@ -5,10 +5,17 @@ import { canonicalizeControlRepoPath } from './control-repo-path';
 import { listRegisteredRepos } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
 import { markAllRegisteredDirty } from './sync-context';
+import {
+  kernoApiUrlFor,
+  migrateConfiguredPortalUrl,
+  migrateLegacyPortalUrl,
+} from './portal-hosts';
 
 export interface PortalTargetRecord {
   alias: string;
   portalUrl: string;
+  /** Kerno's portal-api; ingest goes to `${apiUrl}/api/har/ingest/*` instead of the portal. */
+  apiUrl?: string;
   /** Stable workspace/org id from the portal login callback. */
   workspaceId: string;
   workspaceName?: string;
@@ -34,6 +41,7 @@ export interface PortalTargetsStore {
 
 export interface PortalTargetResolution {
   url: string;
+  apiUrl?: string;
   token: string;
   refreshToken?: string;
   alias?: string;
@@ -56,8 +64,16 @@ export function normalizePortalUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-export function portalTargetIdentityKey(portalUrl: string, workspaceId: string): string {
-  return `${normalizePortalUrl(portalUrl)}#${workspaceId}`;
+export function portalTargetIdentityKey(baseUrl: string, workspaceId: string): string {
+  return `${normalizePortalUrl(baseUrl)}#${workspaceId}`;
+}
+
+function recordBaseUrl(record: Pick<PortalTargetRecord, 'portalUrl' | 'apiUrl'>): string {
+  return record.apiUrl ?? record.portalUrl;
+}
+
+function recordIdentityKey(record: PortalTargetRecord): string {
+  return portalTargetIdentityKey(recordBaseUrl(record), record.workspaceId);
 }
 
 export function portalTargetsPath(): string {
@@ -115,6 +131,55 @@ function writeStore(store: PortalTargetsStore): void {
 
 export function readPortalTargetsStore(): PortalTargetsStore {
   migrateLegacyCredentialsIfNeeded();
+  return moveKernoTargetsToPortalApi(readStoreFile());
+}
+
+function recordRecency(record: PortalTargetRecord): string {
+  return record.updatedAt ?? record.createdAt;
+}
+
+function movedToPortalApi(entry: PortalTargetRecord): PortalTargetRecord {
+  if (entry.apiUrl) return entry;
+  const apiUrl = kernoApiUrlFor(entry.portalUrl);
+  return apiUrl ? { ...entry, portalUrl: migrateLegacyPortalUrl(entry.portalUrl), apiUrl } : entry;
+}
+
+function moveKernoTargetsToPortalApi(store: PortalTargetsStore): PortalTargetsStore {
+  const moved = store.targets.map(movedToPortalApi);
+  if (moved.every((entry, index) => entry === store.targets[index])) return store;
+
+  const kept = new Map<string, PortalTargetRecord>();
+  for (const entry of moved) {
+    const identity = recordIdentityKey(entry);
+    const current = kept.get(identity);
+    if (!current || recordRecency(entry) > recordRecency(current)) kept.set(identity, entry);
+  }
+
+  const targets = [...kept.values()];
+  const survivingAlias = new Map(
+    moved.map((entry) => [entry.alias, kept.get(recordIdentityKey(entry))!.alias]),
+  );
+  const aliasAfterMove = (alias: string) => survivingAlias.get(alias) ?? alias;
+  const repoTargets = Object.fromEntries(
+    Object.entries(store.repoTargets ?? {}).map(([repoPath, aliases]) => [
+      repoPath,
+      [...new Set(aliases.map(aliasAfterMove))],
+    ]),
+  );
+  const next: PortalTargetsStore = {
+    ...store,
+    targets,
+    defaultTarget: store.defaultTarget && aliasAfterMove(store.defaultTarget),
+    ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
+  };
+
+  writeStore(next);
+  const defaultRecord = targets.find((entry) => entry.alias === next.defaultTarget);
+  if (defaultRecord) syncLegacyCredentialsFile(defaultRecord, true);
+  return next;
+}
+
+function readStoreFile(): PortalTargetsStore {
   const file = portalTargetsPath();
   try {
     if (!fs.existsSync(file)) return emptyStore();
@@ -197,25 +262,22 @@ export function getPortalTargetRecord(alias: string): PortalTargetRecord | null 
 }
 
 export function getPortalTargetRecordByIdentity(
-  portalUrl: string,
+  baseUrl: string,
   workspaceId: string,
 ): PortalTargetRecord | null {
-  const key = portalTargetIdentityKey(portalUrl, workspaceId);
-  return (
-    readPortalTargetsStore().targets.find(
-      (entry) => portalTargetIdentityKey(entry.portalUrl, entry.workspaceId) === key,
-    ) ?? null
-  );
+  const key = portalTargetIdentityKey(baseUrl, workspaceId);
+  return readPortalTargetsStore().targets.find((entry) => recordIdentityKey(entry) === key) ?? null;
 }
 
 export function recordToPortalTarget(record: PortalTargetRecord): PortalTargetResolution {
   return {
     url: normalizePortalUrl(record.portalUrl),
+    ...(record.apiUrl ? { apiUrl: normalizePortalUrl(record.apiUrl) } : {}),
     token: record.token,
     refreshToken: record.refreshToken,
     alias: record.alias,
     workspaceId: record.workspaceId,
-    identityKey: portalTargetIdentityKey(record.portalUrl, record.workspaceId),
+    identityKey: recordIdentityKey(record),
     email: record.email,
   };
 }
@@ -224,6 +286,7 @@ export function redactPortalTargetRecord(record: PortalTargetRecord): Record<str
   return {
     alias: record.alias,
     portalUrl: normalizePortalUrl(record.portalUrl),
+    apiUrl: record.apiUrl,
     workspaceId: record.workspaceId,
     workspaceName: record.workspaceName,
     workspaceSlug: record.workspaceSlug,
@@ -240,6 +303,7 @@ export function redactPortalTargetRecord(record: PortalTargetRecord): Record<str
 export function upsertPortalTarget(input: {
   alias?: string;
   portalUrl: string;
+  apiUrl?: string;
   workspaceId?: string;
   workspace?: string;
   workspaceSlug?: string;
@@ -253,7 +317,9 @@ export function upsertPortalTarget(input: {
 }): PortalTargetRecord {
   const store = readPortalTargetsStore();
   const workspaceId = resolveWorkspaceId(input);
-  const existingByIdentity = getPortalTargetRecordByIdentity(input.portalUrl, workspaceId);
+  const portalUrl = normalizePortalUrl(migrateLegacyPortalUrl(input.portalUrl));
+  const apiUrl = input.apiUrl ? normalizePortalUrl(input.apiUrl) : kernoApiUrlFor(portalUrl);
+  const existingByIdentity = getPortalTargetRecordByIdentity(apiUrl ?? portalUrl, workspaceId);
   const existingAliases = new Set(store.targets.map((entry) => entry.alias));
   if (existingByIdentity) existingAliases.delete(existingByIdentity.alias);
 
@@ -261,7 +327,7 @@ export function upsertPortalTarget(input: {
     ? existingByIdentity.alias
     : deriveTargetAlias({
         alias: input.alias,
-        portalUrl: input.portalUrl,
+        portalUrl,
         workspace: input.workspace,
         workspaceSlug: input.workspaceSlug,
         workspaceName: input.workspaceName,
@@ -272,7 +338,8 @@ export function upsertPortalTarget(input: {
   const now = new Date().toISOString();
   const next: PortalTargetRecord = {
     alias,
-    portalUrl: normalizePortalUrl(input.portalUrl),
+    portalUrl,
+    ...(apiUrl ? { apiUrl } : {}),
     workspaceId,
     workspaceName: input.workspaceName ?? input.workspace,
     workspaceSlug: input.workspaceSlug ?? input.workspace,
@@ -450,14 +517,18 @@ export function resolvePortalTargetsForRepo(options?: {
   explicitTargets?: string[];
 }): { targets: PortalTargetResolution[]; source: PortalTargetSource } | null {
   if (process.env.HAR_PORTAL_URL && process.env.HAR_PORTAL_TOKEN) {
-    const url = normalizePortalUrl(process.env.HAR_PORTAL_URL);
+    const url = normalizePortalUrl(
+      migrateConfiguredPortalUrl(process.env.HAR_PORTAL_URL, 'HAR_PORTAL_URL'),
+    );
+    const apiUrl = kernoApiUrlFor(url);
     return {
       source: 'env',
       targets: [
         {
           url,
+          ...(apiUrl ? { apiUrl } : {}),
           token: process.env.HAR_PORTAL_TOKEN,
-          identityKey: url,
+          identityKey: apiUrl ?? url,
         },
       ],
     };
