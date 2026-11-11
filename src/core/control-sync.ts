@@ -20,6 +20,7 @@ import {
   isControlEnabled,
   PortalTarget,
 } from './control-config';
+import { kernoApiUrlFor } from './portal-hosts';
 import {
   isRepoPortalSyncEnabled,
   listRegisteredRepos,
@@ -142,11 +143,13 @@ function rewindSince(since: string | null): string | null {
 }
 
 function watermarkKeyForTarget(target: PortalTarget): string {
-  return target.identityKey;
+  const apiUrl = kernoApiUrlFor(target.url);
+  return apiUrl ? `${apiUrl}|${target.identityKey}` : target.identityKey;
 }
 
 function legacyWatermarkKeysForTarget(target: PortalTarget): string[] {
-  return target.apiUrl || target.url === target.identityKey ? [] : [target.url];
+  if (kernoApiUrlFor(target.url)) return [];
+  return target.url === target.identityKey ? [] : [target.url];
 }
 
 function readScopedPortalWatermark(
@@ -164,7 +167,7 @@ function readScopedPortalWatermark(
 }
 
 function legacyScopedWatermarkKeys(portal: PortalTarget, prefix: string): string[] {
-  if (portal.apiUrl || portal.url === portal.identityKey) return [];
+  if (kernoApiUrlFor(portal.url) || portal.url === portal.identityKey) return [];
   return [`${prefix}:${portal.url}`];
 }
 
@@ -275,8 +278,9 @@ const PORTAL_API_PREFIX = '/api';
 const KERNO_INGEST_PREFIX = '/api/har/ingest';
 
 function portalEndpointUrl(target: PortalTarget, endpoint: string): string {
-  if (!target.apiUrl) return `${target.url}${endpoint}`;
-  return `${target.apiUrl}${KERNO_INGEST_PREFIX}${endpoint.slice(PORTAL_API_PREFIX.length)}`;
+  const apiUrl = kernoApiUrlFor(target.url);
+  if (!apiUrl) return `${target.url}${endpoint}`;
+  return `${apiUrl}${KERNO_INGEST_PREFIX}${endpoint.slice(PORTAL_API_PREFIX.length)}`;
 }
 
 function postPortalOnce(
@@ -658,9 +662,10 @@ export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promis
 }
 
 async function isPortalReachable(portal: PortalTarget): Promise<boolean> {
-  if (!portal.apiUrl) return isControlApiReachable(portal.url);
+  const apiUrl = kernoApiUrlFor(portal.url);
+  if (!apiUrl) return isControlApiReachable(portal.url);
   try {
-    const response = await fetch(`${portal.apiUrl}/api/healthz`, {
+    const response = await fetch(`${apiUrl}/api/healthz`, {
       method: 'GET',
       signal: AbortSignal.timeout(2000),
     });

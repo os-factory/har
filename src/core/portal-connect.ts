@@ -62,7 +62,6 @@ export async function runPortalConnect(input: PortalConnectInput): Promise<Porta
   const record = upsertPortalTarget({
     alias: input.alias,
     portalUrl: input.portalUrl,
-    apiUrl: creds.apiUrl,
     workspaceId: creds.workspaceId,
     workspace: creds.workspace,
     workspaceSlug: creds.workspaceSlug,
@@ -82,7 +81,6 @@ export async function runPortalConnect(input: PortalConnectInput): Promise<Porta
   for (const target of creds.targets) {
     const next = upsertPortalTarget({
       portalUrl: input.portalUrl,
-      apiUrl: creds.apiUrl,
       workspaceId: target.workspaceId,
       workspace: target.workspace,
       workspaceSlug: target.workspace,

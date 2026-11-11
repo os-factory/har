@@ -1,5 +1,5 @@
 import { readPortalCredentials } from './portal-credentials';
-import { kernoApiUrlFor, migrateConfiguredPortalUrl } from './portal-hosts';
+import { migrateConfiguredPortalUrl, migrateLegacyPortalUrl } from './portal-hosts';
 import {
   displayPortalTargetLabel,
   getPortalTargetRecord,
@@ -43,7 +43,7 @@ export function resolvePortalUrl(explicit?: string): {
   ];
 
   for (const [value, source] of candidates) {
-    const url = normalizePortalUrl((value ?? '').trim());
+    const url = normalizePortalUrl(migrateLegacyPortalUrl((value ?? '').trim()));
     if (url) return { url, source };
   }
 
@@ -58,12 +58,10 @@ export function getPortalTarget(repoPath?: string): PortalTarget | null {
     const url = normalizePortalUrl(
       migrateConfiguredPortalUrl(process.env.HAR_CLOUD_API_URL, 'HAR_CLOUD_API_URL'),
     );
-    const apiUrl = kernoApiUrlFor(url);
     return {
       url,
-      ...(apiUrl ? { apiUrl } : {}),
       token: process.env.HAR_CLOUD_API_KEY,
-      identityKey: apiUrl ?? url,
+      identityKey: url,
     };
   }
 

@@ -344,6 +344,18 @@ describe('syncRepoWithControl — portal push', () => {
     ).toBe(true);
   });
 
+  it("sends a Kerno portal's sync to portal-api's har ingest", async () => {
+    process.env.HAR_PORTAL_URL = 'https://portal.kerno.io/har';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toContain('https://api.kerno.io/api/har/ingest/sync');
+    expect(urls.filter((u) => u.includes('portal.kerno.io'))).toEqual([]);
+  });
+
   it('raises a token error on 401 (bad/revoked token)', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_bad';
@@ -1046,40 +1058,6 @@ describe('syncRepoWithControl — token refresh on 401', () => {
       String(url).endsWith(endpoint),
     ) as [string, RequestInit][];
   }
-
-  it("sends a Kerno target's sync and refresh to portal-api's har ingest", async () => {
-    storedCreds({ apiUrl: 'https://api.example.com' });
-    let syncCall = 0;
-    const fetchMock = jest.fn(async (url: string) => {
-      const u = String(url);
-      if (u === 'https://api.example.com/api/har/ingest/cli/refresh') {
-        return {
-          ok: true,
-          status: 200,
-          text: async () => '',
-          json: async () => ({ token: 'har_ingest_new' }),
-        };
-      }
-      if (u === 'https://api.example.com/api/har/ingest/sync') {
-        const status = syncCall++ === 0 ? 401 : 200;
-        return { ok: status === 200, status, text: async () => '', json: async () => ({}) };
-      }
-      return { ok: true, status: 200, text: async () => '', json: async () => ({ id: 'local-repo-1' }) };
-    });
-    (global as unknown as { fetch: unknown }).fetch = fetchMock;
-
-    await syncRepoWithControl({ repoPath: '/repo/x' });
-
-    const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(urls.filter((u) => u.includes('portal.example.com'))).toEqual([]);
-    const syncCalls = fetchMock.mock.calls.filter(
-      ([url]) => url === 'https://api.example.com/api/har/ingest/sync',
-    ) as unknown as [string, RequestInit][];
-    expect(syncCalls).toHaveLength(2);
-    expect((syncCalls[1][1].headers as Record<string, string>).Authorization).toBe(
-      'Bearer har_ingest_new',
-    );
-  });
 
   it('rotates the ingest token on 401 and retries the sync with it', async () => {
     storedCreds();

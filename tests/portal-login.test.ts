@@ -18,7 +18,6 @@ function hitCallback(
     refreshToken?: string;
     expiresAt?: string;
     targets?: string;
-    apiUrl?: string;
   },
 ): void {
   const url = new URL(loginUrl);
@@ -33,7 +32,6 @@ function hitCallback(
   if (opts.refreshToken) params.set('refreshToken', opts.refreshToken);
   if (opts.expiresAt) params.set('expiresAt', opts.expiresAt);
   if (opts.targets) params.set('targets', opts.targets);
-  if (opts.apiUrl) params.set('apiUrl', opts.apiUrl);
   http.get(`${callback}?${params.toString()}`, (res) => res.resume());
 }
 
@@ -47,23 +45,6 @@ describe('loginViaBrowser', () => {
       token: 'har_ingest_abc',
       workspace: 'acme',
     });
-  });
-
-  it('asks the portal for Kerno ingest and saves the portal-api it returns', async () => {
-    let opened = '';
-    const creds = await loginViaBrowser('https://portal.example.com', (url) => {
-      opened = url;
-      hitCallback(url, { token: 'har_ingest_abc', apiUrl: 'https://api.example.com' });
-    });
-    expect(new URL(opened).searchParams.get('ingest')).toBe('kerno');
-    expect(creds.apiUrl).toBe('https://api.example.com');
-  });
-
-  it('leaves apiUrl unset when the portal does not return one', async () => {
-    const creds = await loginViaBrowser('https://portal.example.com', (url) =>
-      hitCallback(url, { token: 'har_ingest_abc' }),
-    );
-    expect(creds.apiUrl).toBeUndefined();
   });
 
   it('captures the stable workspace id from FE-1646 callbacks', async () => {

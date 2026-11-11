@@ -66,7 +66,8 @@ export function migrateLegacyPortalUrl(url: string): string {
 }
 
 export function kernoApiUrlFor(portalUrl: string): string | undefined {
-  return kernoDeployment(portalUrl)?.apiUrl;
+  const override = process.env.HAR_API_URL?.trim().replace(/\/+$/, '');
+  return override || kernoDeployment(portalUrl)?.apiUrl;
 }
 
 const settingsWarnedAboutLegacyHost = new Set<string>();

@@ -44,8 +44,7 @@ describe('runPortalConnect', () => {
       repoPath,
     });
 
-    expect(result.record.portalUrl).toBe('https://portal.kerno.io/har');
-    expect(result.record.apiUrl).toBe('https://api.kerno.io');
+    expect(result.record.portalUrl).toBe('https://app.harhq.com');
     expect(result.record.token).toBe('har_ingest_test');
     expect(result.attachedRepo).toBe(repoPath);
     expect(result.mappedInBrowser).toBe(false);
