@@ -20,6 +20,7 @@ import {
   isControlEnabled,
   PortalTarget,
 } from './control-config';
+import { kernoApiUrlFor } from './portal-hosts';
 import {
   isRepoPortalSyncEnabled,
   listRegisteredRepos,
@@ -142,7 +143,8 @@ function rewindSince(since: string | null): string | null {
 }
 
 function watermarkKeyForTarget(target: PortalTarget): string {
-  return target.identityKey;
+  const apiUrl = kernoApiUrlFor(target.url);
+  return apiUrl ? `${apiUrl}|${target.identityKey}` : target.identityKey;
 }
 
 function legacyWatermarkKeysForTarget(target: PortalTarget): string[] {
@@ -271,13 +273,22 @@ async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promis
   return (await response.json()) as T;
 }
 
+const PORTAL_API_PREFIX = '/api';
+const KERNO_INGEST_PREFIX = '/api/har/ingest';
+
+function portalEndpointUrl(target: PortalTarget, endpoint: string): string {
+  const apiUrl = kernoApiUrlFor(target.url);
+  if (!apiUrl) return `${target.url}${endpoint}`;
+  return `${apiUrl}${KERNO_INGEST_PREFIX}${endpoint.slice(PORTAL_API_PREFIX.length)}`;
+}
+
 function postPortalOnce(
   target: PortalTarget,
   endpoint: string,
   body: unknown,
 ): Promise<Response> {
   return postForResponse(
-    `${target.url}${endpoint}`,
+    portalEndpointUrl(target, endpoint),
     {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${target.token}`,
@@ -294,7 +305,7 @@ async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
 
   let response: Response;
   try {
-    response = await fetch(`${target.url}/api/cli/refresh`, {
+    response = await fetch(portalEndpointUrl(target, '/api/cli/refresh'), {
       method: 'POST',
       headers: { Authorization: `Bearer ${target.refreshToken}` },
     });
@@ -1336,7 +1347,7 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
 
   for (const portal of resolved.targets) {
     try {
-      if (!(await isControlApiReachable(portal.url))) continue;
+      if (!kernoApiUrlFor(portal.url) && !(await isControlApiReachable(portal.url))) continue;
       await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

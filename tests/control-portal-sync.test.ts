@@ -344,6 +344,18 @@ describe('syncRepoWithControl — portal push', () => {
     ).toBe(true);
   });
 
+  it("sends a Kerno portal's sync to portal-api's har ingest", async () => {
+    process.env.HAR_PORTAL_URL = 'https://portal.kerno.io/har';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    const fetchMock = mockFetch({ status: 200 });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toContain('https://api.kerno.io/api/har/ingest/sync');
+    expect(urls.filter((u) => u.includes('portal.kerno.io'))).toEqual([]);
+  });
+
   it('raises a token error on 401 (bad/revoked token)', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_bad';
