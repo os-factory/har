@@ -52,6 +52,13 @@ Bindings are created only from evidence:
 | `workspace` | The session itself runs inside the slot's work dir. | Mission Control, from span workspace |
 | `observed` | A tool event targeted a file or ran a command inside the slot's worktree. | otel-hook span attributes (`vcs.ref.head.name`, hashed worktree id) |
 
+**Nested agents.** Agents pass their variables down: Codex run from a Claude
+Code shell, or Claude Code started from a Cursor agent terminal, sees both
+agents' session variables. The session belongs to the innermost agent, which HAR
+finds by walking up its process tree to the nearest agent process whose variable
+is set (`src/core/agent-process.ts`). When several variables are set and the tree
+cannot settle it, no `launch` is recorded — never the wrong session.
+
 With no binding, an observation is the session's **unassigned** usage: it was
 spent in the main checkout, and it is shown as such. Mission Control never books
 it on a slot and never guesses a slot.
@@ -263,6 +270,20 @@ Spikes run on 2026-11-12 against a throwaway local OTLP/HTTP JSON receiver
   Codex-internal spans in Mission Control. Codex usage reaches Mission Control
   through otel-hook (live) and rollout harvest, one observation per turn keyed
   by `turn_id`.
+
+### Live end-to-end (ghostfolio, 2026-11-12)
+
+- **Claude Code**: a `claude -p` session read a file in main, launched slot 2,
+  then read a file in the slot. Mission Control recorded `launch` (from
+  `CLAUDE_CODE_SESSION_ID`) and `observed` (Read, `tool-path`) bindings; the two
+  requests before the launch stayed unassigned and the two after it landed on
+  slot 2, summing exactly to Claude's own session total.
+- **Codex**: a `codex exec` session launched slot 3 and wrote a file there with
+  `apply_patch`. otel-hook's `tool-path` evidence produced an `observed`
+  binding to slot 3. Its single turn (harvested, 19,315 input / 417 output
+  tokens, cost estimated) landed on slot 3 whole: per-turn granularity cannot
+  separate the part of a turn spent in main. The run was started from a Claude
+  Code shell, which exposed the nested-agents case above.
 
 ### Cursor
 

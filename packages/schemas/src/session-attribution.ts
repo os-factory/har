@@ -122,15 +122,31 @@ export const SyncUsageObservationsInputSchema = z.object({
 });
 export type SyncUsageObservationsInput = z.infer<typeof SyncUsageObservationsInputSchema>;
 
-/** Read the session of the agent running the current process, if any. */
+/**
+ * Read the session of the agent running the current process, if any.
+ *
+ * Agents nest — Codex run from a Claude Code shell, Claude Code started from a
+ * Cursor agent terminal — and each inherits the variables of the agents above
+ * it, so several may be set at once. The session belongs to the **innermost**
+ * agent, which only the process tree tells: callers pass `innermostTool`, the
+ * nearest agent among the process's ancestors. With several variables set and
+ * no innermost agent known, the session is ambiguous and none is returned —
+ * never a guess.
+ */
 export function launchingAgentSession(
   env: Readonly<Record<string, string | undefined>>,
+  innermostTool?: AgentTool | null,
 ): { agentTool: AgentTool; sessionId: string } | null {
+  const present: Array<{ agentTool: AgentTool; sessionId: string }> = [];
   for (const [agentTool, name] of Object.entries(AGENT_SESSION_ENV) as Array<[AgentTool, string]>) {
     const raw = env[name]?.trim().replace(/^'(.*)'$/, '$1');
     if (raw && AgentSessionRefSchema.shape.sessionId.safeParse(raw).success) {
-      return { agentTool, sessionId: raw };
+      present.push({ agentTool, sessionId: raw });
     }
   }
-  return null;
+  if (innermostTool) {
+    const innermost = present.find((session) => session.agentTool === innermostTool);
+    if (innermost) return innermost;
+  }
+  return present.length === 1 ? present[0] : null;
 }

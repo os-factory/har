@@ -2,12 +2,15 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  AGENT_SESSION_ENV,
   SessionSlotBindingSchema,
   deriveOccupancyKey,
   launchingAgentSession,
+  type AgentTool,
   type SessionSlotBinding,
   type SlotRegistryEntry,
 } from '../harness/schema';
+import { innermostAgentTool } from './agent-process';
 import { markDirty } from './sync-context';
 
 /**
@@ -115,6 +118,26 @@ export function listSessionBindings(harnessRoot: string): SessionSlotBinding[] {
 
 type Env = Readonly<Record<string, string | undefined>>;
 
+/** Finds the nearest agent among this process's ancestors (see `agent-process.ts`). */
+export type InnermostAgentResolver = (has: ReadonlySet<AgentTool>) => AgentTool | null;
+
+/**
+ * The agent session running this HAR command. With nested agents several
+ * session variables are set; the process tree decides which agent is
+ * innermost, and when it cannot, no session is recorded rather than a wrong one.
+ */
+export function currentAgentSession(
+  env: Env,
+  resolveInnermost: InnermostAgentResolver = (has) => innermostAgentTool({ has }),
+): { agentTool: AgentTool; sessionId: string } | null {
+  const has = new Set<AgentTool>();
+  for (const [tool, name] of Object.entries(AGENT_SESSION_ENV) as Array<[AgentTool, string]>) {
+    if (env[name]?.trim()) has.add(tool);
+  }
+  if (has.size <= 1) return launchingAgentSession(env);
+  return launchingAgentSession(env, resolveInnermost(has));
+}
+
 function slotFields(
   session: SlotRegistryEntry,
 ): Pick<SessionSlotBinding, 'slotId' | 'occupancyKey' | 'branch'> {
@@ -135,8 +158,9 @@ export function recordLaunchBinding(options: {
   session: SlotRegistryEntry;
   env?: Env;
   at?: string;
+  resolveInnermost?: InnermostAgentResolver;
 }): SessionSlotBinding | null {
-  const agent = launchingAgentSession(options.env ?? process.env);
+  const agent = currentAgentSession(options.env ?? process.env, options.resolveInnermost);
   if (!agent) return null;
   return recordSessionBinding(options.harnessRoot, {
     ...agent,
@@ -157,6 +181,7 @@ export function recordReleaseBindings(options: {
   session: SlotRegistryEntry;
   env?: Env;
   at?: string;
+  resolveInnermost?: InnermostAgentResolver;
 }): SessionSlotBinding[] {
   const at = options.at ?? new Date().toISOString();
   const fields = slotFields(options.session);
@@ -164,7 +189,7 @@ export function recordReleaseBindings(options: {
     string,
     { agentTool: SessionSlotBinding['agentTool']; sessionId: string }
   >();
-  const current = launchingAgentSession(options.env ?? process.env);
+  const current = currentAgentSession(options.env ?? process.env, options.resolveInnermost);
   if (current) sessions.set(`${current.agentTool}\0${current.sessionId}`, current);
   for (const binding of listSessionBindings(options.harnessRoot)) {
     if (binding.kind !== 'launch' || binding.slotId !== fields.slotId) continue;

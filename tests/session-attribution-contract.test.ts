@@ -21,6 +21,13 @@ describe('launchingAgentSession', () => {
     });
   });
 
+  it('picks the innermost agent when several are set, and refuses to guess otherwise', () => {
+    const env = { CLAUDE_CODE_SESSION_ID: 'c1', CODEX_THREAD_ID: 'x1' };
+    expect(launchingAgentSession(env, 'codex')).toEqual({ agentTool: 'codex', sessionId: 'x1' });
+    expect(launchingAgentSession(env)).toBeNull();
+    expect(launchingAgentSession(env, 'cursor')).toBeNull();
+  });
+
   it('returns null outside an agent and ignores blank values', () => {
     expect(launchingAgentSession({})).toBeNull();
     expect(launchingAgentSession({ CLAUDE_CODE_SESSION_ID: '  ' })).toBeNull();
