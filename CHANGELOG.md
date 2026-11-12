@@ -1,3 +1,9 @@
+## [1.21.0](https://github.com/os-factory/har/compare/v1.20.0...v1.21.0) (2026-11-12)
+
+### Features
+
+* **telemetry:** Claude cost from Claude Code's native metrics, attributed via hook spans ([#379](https://github.com/os-factory/har/issues/379)) ([8a0273e](https://github.com/os-factory/har/commit/8a0273e06c7afa1c06f2609b4dcd4e9fefaedb86))
+
 ## [1.20.0](https://github.com/os-factory/har/compare/v1.19.1...v1.20.0) (2026-11-12)
 
 ### Features
