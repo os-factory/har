@@ -1,3 +1,15 @@
+## [1.20.0](https://github.com/os-factory/har/compare/v1.19.1...v1.20.0) (2026-11-12)
+
+### Features
+
+* **sync:** harvest Claude usage by the session Mission Control attributed to a slot ([#378](https://github.com/os-factory/har/issues/378)) ([987415f](https://github.com/os-factory/har/commit/987415f13a38dbcd37cb2690fe71a10f0763c1c7))
+
+## [1.19.1](https://github.com/os-factory/har/compare/v1.19.0...v1.19.1) (2026-11-12)
+
+### Bug Fixes
+
+* **sync:** don't abort on HAR session worktrees that only hold mirrored validations ([#377](https://github.com/os-factory/har/issues/377)) ([21ab00e](https://github.com/os-factory/har/commit/21ab00e6b14cf19203e3c26fda19bfa8e6056b7e))
+
 ## [1.19.0](https://github.com/os-factory/har/compare/v1.18.0...v1.19.0) (2026-11-12)
 
 ### Features
