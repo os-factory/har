@@ -175,6 +175,44 @@ describe('enrichUsageWithPricing', () => {
     expect(enriched.costUsd).toBe(9.99);
   });
 
+  it('re-prices a breakdown whose tokens grew past its stored per-model cost', () => {
+    const first = enrichUsageWithPricing(
+      usage({
+        modelBreakdown: {
+          'claude-opus-5-5': { tokensInput: 1000, tokensOutput: 100, tokensTotal: 1100 },
+        },
+      }),
+    );
+    const storedCost = (first.modelBreakdown as Record<string, { costUsd: number }>)['claude-opus-5-5']
+      .costUsd;
+
+    // What Mission Control merges on the next sync: more tokens, old cost.
+    const resynced = enrichUsageWithPricing(
+      usage({
+        modelBreakdown: {
+          'claude-opus-5-5': {
+            tokensInput: 10_000,
+            tokensOutput: 1000,
+            tokensTotal: 11_000,
+            costUsd: storedCost,
+          },
+        },
+      }),
+    );
+    expect(resynced.costUsd!).toBeGreaterThan(first.costUsd!);
+  });
+
+  it('keeps a per-model cost that is higher than the estimate', () => {
+    const enriched = enrichUsageWithPricing(
+      usage({
+        modelBreakdown: {
+          'claude-opus-5-5': { tokensInput: 10, tokensOutput: 1, tokensTotal: 11, costUsd: 5 },
+        },
+      }),
+    );
+    expect(enriched.costUsd).toBe(5);
+  });
+
   it('passes through rows without modelBreakdown', () => {
     const row = usage({ costUsd: null });
     expect(enrichUsageWithPricing(row)).toBe(row);

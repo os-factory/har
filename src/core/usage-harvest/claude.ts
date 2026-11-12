@@ -22,7 +22,7 @@ export interface HarvestSlotContext {
   includeRepoPathFallback?: boolean;
 }
 
-function claudeProjectsRoot(): string {
+export function claudeProjectsRoot(): string {
   return process.env.HAR_CLAUDE_PROJECTS_DIR
     ? path.resolve(process.env.HAR_CLAUDE_PROJECTS_DIR)
     : path.join(os.homedir(), '.claude', 'projects');
@@ -33,7 +33,7 @@ export function encodeClaudeProjectDir(cwd: string): string {
   return cwd.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
-function readJsonlRecords(filePath: string): unknown[] {
+export function readJsonlRecords(filePath: string): unknown[] {
   if (!fs.existsSync(filePath)) return [];
   const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
   const out: unknown[] = [];
@@ -62,7 +62,7 @@ interface NestedUsage {
   model?: string;
 }
 
-function extractClaudeUsageFromRecords(records: unknown[]): {
+export function extractClaudeUsageFromRecords(records: unknown[]): {
   tokensInput: number;
   tokensOutput: number;
   tokensCacheRead: number;
