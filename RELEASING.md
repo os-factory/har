@@ -19,8 +19,7 @@ Maintainers must own the **`@osfactory`** scope on npm:
 1. Sign in at [npmjs.com](https://www.npmjs.com/) as a project maintainer.
 2. Create the **`@osfactory`** organization: [npmjs.com/org/create](https://www.npmjs.com/org/create) (free for public packages).
 3. Add other maintainers under **Organization → Members**.
-4. Create an **Automation** token with **Publish** access to `@osfactory/har` (and scope-wide publish if you prefer).
-5. Add the token as the `NPM_TOKEN` repository secret (see below).
+4. On `@osfactory/har` → **Settings → Trusted Publisher → GitHub Actions**, register organization `os-factory`, repository `har`, workflow `release.yml`, environment `npm-publish`. The release workflow publishes through npm Trusted Publishing (GitHub OIDC), so no npm token is stored.
 
 The root `package.json` sets `"publishConfig": { "access": "public" }` so scoped publishes are public by default.
 
@@ -55,15 +54,16 @@ If there is nothing to release, verify still runs and publish steps are skipped.
 
 | Secret | Used by |
 |--------|---------|
-| `NPM_TOKEN` | npm publish for `@osfactory/har` (Automation token with publish access to the `@osfactory` scope) |
 | `DOCKERHUB_TOKEN` | Docker Hub publish for `theosfactory/har-control` (PAT with read/write on the repo) |
 | `GITHUB_TOKEN` | GitHub Release (provided by Actions) |
+
+npm needs no secret: `publish-npm` uses Trusted Publishing (see above).
 
 Dry-run the next release from the Actions tab (**Release → Run workflow → Dry run**) or locally:
 
 ```bash
 npm ci
-GITHUB_TOKEN=... NPM_TOKEN=... npx semantic-release --dry-run
+GITHUB_TOKEN=... npx semantic-release --dry-run
 ```
 
 ## Version coupling
