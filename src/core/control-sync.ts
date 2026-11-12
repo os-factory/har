@@ -57,6 +57,7 @@ import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 import { getHarPackageVersion } from './package-version';
 import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
+import { harvestAttributedClaudeUsage } from './control-claude-sessions';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import type { ChannelReadFailure } from './control-api-read';
@@ -1187,7 +1188,7 @@ async function syncRepoRunsAndSlots(
   if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
     try {
       const userEmail = resolvePortalUserEmail();
-      const usage = status.slots.flatMap((slot) =>
+      const usage: AgentSessionUsage[] = status.slots.flatMap((slot) =>
         harvestUsageForSlot({
           agentId: slot.agentId,
           workDir: slot.workDir,
@@ -1211,6 +1212,25 @@ async function syncRepoRunsAndSlots(
           ...(userEmail ? { userEmail } : {}),
         })),
       );
+      // Sessions started in the main checkout (the normal HAR flow) never match
+      // a slot's work dir above; harvest them by the session Mission Control
+      // attributed to the slot.
+      if (!dryRun) {
+        const bySession = await harvestAttributedClaudeUsage(
+          apiUrl,
+          repoId,
+          status.slots.map((slot) => ({
+            agentId: slot.agentId,
+            workDir: slot.workDir ?? slot.worktreePath,
+            branch: slot.branch,
+            suffix: slot.suffix,
+          })),
+        );
+        if (bySession.warning) warn(bySession.warning);
+        usage.push(
+          ...bySession.usage.map((row) => ({ ...row, ...(userEmail ? { userEmail } : {}) })),
+        );
+      }
       if (usage.length > 0) {
         const usageBody = SyncUsageInputSchema.parse({ usage });
         await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);

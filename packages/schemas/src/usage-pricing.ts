@@ -112,9 +112,12 @@ export function enrichUsageWithPricing<
       continue;
     }
     const totals = raw as ModelUsageTotals;
+    // A stored per-model cost is a floor, not the answer: Mission Control merges
+    // a re-synced session's growing token counts into a breakdown that still
+    // carries the cost priced at the first sync, and reusing it froze the cost.
     const existingCost = totals.costUsd == null ? null : num(totals.costUsd);
-    const estimated =
-      existingCost ?? estimateModelCostUsd(modelId, totals, usage.agentTool);
+    const fresh = estimateModelCostUsd(modelId, totals, usage.agentTool);
+    const estimated = resolveCostUsd(existingCost, fresh);
     if (estimated != null) {
       computedTotal += estimated;
       hasComputed = true;
