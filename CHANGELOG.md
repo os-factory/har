@@ -1,3 +1,9 @@
+## [1.19.0](https://github.com/os-factory/har/compare/v1.18.0...v1.19.0) (2026-11-12)
+
+### Features
+
+* stop scaffolding CLAUDE.md — AGENTS.md is read directly ([#375](https://github.com/os-factory/har/issues/375)) ([2ceeaec](https://github.com/os-factory/har/commit/2ceeaec8e9dcdcd556f47e3bfbe04b6f883271cd))
+
 ## [1.18.0](https://github.com/os-factory/har/compare/v1.17.0...v1.18.0) (2026-11-11)
 
 ### Features
