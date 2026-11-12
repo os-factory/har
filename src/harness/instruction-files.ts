@@ -81,7 +81,7 @@ export interface InstructionFilesResult {
   targets: AgentSkillTarget[];
   agentsMdAction: 'created' | 'updated' | 'appended' | 'skipped' | null;
   migratedLegacy: boolean;
-  claudeMdAction: 'created' | 'updated' | 'appended' | 'skipped' | null;
+  claudeMdAction: 'updated' | 'appended' | 'skipped' | null;
 }
 
 function escapeRegExp(value: string): string {
@@ -426,14 +426,6 @@ export function migrateLegacyAgentMd(repoPath: string): boolean {
  */
 export const CLAUDE_MD_IMPORT = '@AGENTS.md';
 
-function loadClaudeMdTemplate(): string {
-  const templatePath = resolveTemplateFile('CLAUDE.md.template');
-  if (!templatePath) {
-    throw new Error('CLAUDE.md.template not found. Run npm run build.');
-  }
-  return fs.readFileSync(templatePath, 'utf8');
-}
-
 /** True when the file is HAR's own pointer (ours to replace), not the user's work. */
 function isHarOwnedClaudeMd(content: string): boolean {
   const trimmed = content.trim();
@@ -464,12 +456,12 @@ function hasAgentsImport(content: string): boolean {
 export function ensureClaudeMdPointer(
   repoPath: string,
   options: { force?: boolean } = {},
-): 'created' | 'updated' | 'appended' | 'skipped' {
+): 'updated' | 'appended' | 'skipped' {
   const dest = path.join(repoPath, CLAUDE_MD);
 
   if (!fs.existsSync(dest)) return 'skipped';
 
-  const thin = loadClaudeMdTemplate();
+  const thin = `${CLAUDE_MD_IMPORT}\n`;
   const existing = fs.readFileSync(dest, 'utf8');
 
   if (isHarOwnedClaudeMd(existing) || options.force) {
@@ -599,9 +591,7 @@ export async function handleInstructionFiles(
 
   if (plan.claudeMd) {
     claudeMdAction = ensureClaudeMdPointer(repoPath);
-    if (claudeMdAction === 'created') {
-      success(`Wrote ${CLAUDE_MD} (pointer → ${AGENTS_MD})`);
-    } else if (claudeMdAction === 'updated' || claudeMdAction === 'appended') {
+    if (claudeMdAction === 'updated' || claudeMdAction === 'appended') {
       info(
         `${claudeMdAction === 'updated' ? 'Updated' : 'Appended'} ${CLAUDE_MD} pointer → ${AGENTS_MD}`,
       );
