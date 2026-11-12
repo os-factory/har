@@ -29,6 +29,7 @@ import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
 import { isTelemetryEnabled } from './telemetry-config';
+import { recordLaunchBinding, recordReleaseBindings } from './session-bindings';
 import {
   appendTelemetryEnvToFile,
   buildSessionKey,
@@ -354,6 +355,12 @@ export class RunService {
             createdAt: session.createdAt,
           });
         }
+        try {
+          // ADR 0003: the agent session that ran this launch works in the slot from now on.
+          recordLaunchBinding({ harnessRoot, session, env: process.env });
+        } catch {
+          // Attribution evidence is best-effort; launch still succeeded.
+        }
       }
       if (launchNotices.length) {
         launchBanner += launchNotices.map((notice) => `NOTE: ${notice}\n`).join('');
@@ -471,6 +478,15 @@ export class RunService {
       trigger: options.trigger ?? 'cli',
     });
     const envResult = toEnvironmentRunResult(result);
+
+    if (envResult.code === 0 && session) {
+      try {
+        // ADR 0003: the occupancy ended, so no session works in it any more.
+        recordReleaseBindings({ harnessRoot, session, env: process.env });
+      } catch {
+        // Attribution evidence must not fail an otherwise successful teardown.
+      }
+    }
 
     // Teardown is the only exit besides `complete`; close the open attempt so
     // work units don't linger as in-flight forever. `complete` records its

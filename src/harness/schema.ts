@@ -4,3 +4,4 @@ export * from '../../packages/schemas/src/harness-env';
 export * from '../../packages/schemas/src/usage-authority';
 export * from '../../packages/schemas/src/usage-pricing';
 export * from '../../packages/schemas/src/line';
+export * from '../../packages/schemas/src/session-attribution';

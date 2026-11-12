@@ -91,7 +91,11 @@ export type UsageGranularity = z.infer<typeof UsageGranularitySchema>;
  * and attributed to a slot only when slot usage is derived.
  */
 export const UsageObservationSchema = AgentSessionRefSchema.extend({
-  /** Stable producer id for idempotency (Claude request/message id, Codex turn, Cursor generation id). */
+  /**
+   * Stable producer id for idempotency, the same for a live and a harvested
+   * copy of one unit: Claude `request_id` (transcript `requestId`), Codex
+   * `turn_id`, Cursor generation id.
+   */
   observationKey: z.string().min(1).max(512),
   observedAt: z.string().datetime(),
   granularity: UsageGranularitySchema,

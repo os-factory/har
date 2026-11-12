@@ -102,3 +102,92 @@ All types live in `packages/schemas/src/session-attribution.ts`.
   attributed through `launch` bindings and file-tool events.
 - **Cursor** reports no cost and no offline record; its cost is estimated from
   model prices, and usage missed while otel-hook was not installed is lost.
+
+## Verified
+
+Spikes run on 2026-11-12 against a throwaway local OTLP/HTTP JSON receiver
+(cheapest models, one-line prompts). Field and env names only.
+
+### Claude Code 2.1.322
+
+- **Session env.** Every Bash command gets `CLAUDE_CODE_SESSION_ID`; its value
+  equals `session.id` on every OTLP event and the transcript's file name
+  (`~/.claude/projects/<encoded cwd>/<session.id>.jsonl`). A subagent's
+  commands see the **parent** session id (confirms "Subagents launching slots").
+- **MCP launches.** A stdio MCP server spawned by Claude Code inherits
+  `CLAUDE_CODE_SESSION_ID` in its process env, so `har_launch_environment` via
+  the HAR MCP server binds the same way as the CLI. Requests carry no session
+  id (`tools/call` `_meta` has only `claudecode/toolUseId`, `progressToken`).
+  Not verified: whether a long-lived MCP server's env follows a session id
+  change inside one Claude process (`/clear`, resume).
+- **`claude_code.api_request`** (logs exporter; scope
+  `com.anthropic.claude_code.events`; body `claude_code.api_request`;
+  `event.name` = `api_request`). Attributes: `session.id`, `prompt.id`,
+  `request_id`, `client_request_id`, `model`, `input_tokens`, `output_tokens`,
+  `cache_read_tokens`, `cache_creation_tokens`, `cache_creation_5m_tokens`,
+  `cache_creation_1h_tokens`, `cost_usd`, `cost_usd_micros`, `duration_ms`,
+  `ttft_ms`, `speed`, `effort`, `query_source` (`sdk` in `-p` mode, or
+  `agent:builtin:<name>` for a subagent), `event.timestamp`, `event.sequence`,
+  optionally `mcp_server.name` / `mcp_tool.name`; a subagent's requests add
+  `agent_id` and `agent.name`. Identity attributes (`user.*`,
+  `organization.id`) are present on every event. Other events on the same
+  stream: `user_prompt`, `assistant_response`, `tool_decision`, `tool_result`,
+  `mcp_server_connection`, `plugin_loaded`, `managed_settings_resolved`.
+- **Transcripts.** Assistant records carry `requestId`, `message.id`,
+  `message.model`, `message.usage` (`input_tokens`, `output_tokens`,
+  `cache_read_input_tokens`, `cache_creation_input_tokens`), `timestamp`,
+  `isSidechain`, `cwd`. One message is split across several records that repeat
+  its usage. Subagent transcripts are
+  `<session.id>/subagents/agent-<agentId>.jsonl` (plus `agent-<agentId>.meta.json`);
+  their records add `agentId` and `isSidechain: true`.
+- **Join keys.** Transcript `requestId` = OTLP `request_id`; transcript
+  `agentId` = OTLP `agent_id` = subagent file name. Claude observations
+  therefore use `observationKey = request_id` (harvest falls back to
+  `message.id` only when a record has no `requestId`), so a harvested
+  observation and a live one are the same fact. `cost_usd` exists only on the
+  live event: Mission Control must not let a harvested copy erase it.
+
+### Codex 0.163.0
+
+- **Session env.** Commands get `CODEX_THREAD_ID` and `CODEX_SESSION_ID`, both
+  equal to the rollout id (`session_meta.payload.id`, the
+  `rollout-<ts>-<id>.jsonl` suffix).
+- **Rollout usage.** `event_msg` / `token_count` is emitted per model response,
+  not per turn (two in a one-turn spike), with `info.last_token_usage` and
+  `info.total_token_usage` (`input_tokens`, `cached_input_tokens`,
+  `cache_write_input_tokens`, `output_tokens`, `reasoning_output_tokens`,
+  `total_tokens`). `input_tokens` includes cached input and `total_tokens` =
+  input + output, so reasoning is already inside `output_tokens`. The turn id is
+  on `event_msg` / `task_started` and `turn_context` (`turn_id`, plus `model`,
+  `cwd`). Newer rollouts add a `token_usage_record` per response with
+  `thread_id`, `turn_id`, `response_id`, `usage`.
+- **Subagents.** A spawned agent is its own rollout whose
+  `session_meta.payload.source.subagent.thread_spawn.parent_thread_id` names its
+  parent thread; its commands get its **own** thread id. HAR reports it as a
+  subagent (`subagentId` = its thread id) of the root thread, for both
+  observations and bindings.
+- **Native OTel** (`[otel]` with `otlp-http`, `protocol = "json"`):
+  - logs: `codex.sse_event` with `event.kind = response.completed` carries
+    `input_token_count`, `output_token_count`, `cached_token_count`,
+    `cache_write_token_count`, `reasoning_token_count`, `tool_token_count`,
+    `model` and `conversation.id` (= thread id), but **no turn or response id**,
+    and the spike saw one more `response.completed` than the rollout has
+    responses;
+  - traces: span `session_task.turn` carries `turn.id`, `thread.id`, `model`
+    and `codex.turn.token_usage.*`; per-response `handle_responses` spans carry
+    `gen_ai.usage.*` with no thread id; most spans are Codex internals;
+  - metrics: histogram `codex.turn.token_usage` has no session id.
+
+  HAR therefore does **not** configure Codex's native OTel: no signal has both a
+  session id and a per-unit id that matches the rollout, so live and harvested
+  observations could not be told apart, and the trace stream would land
+  Codex-internal spans in Mission Control. Codex usage reaches Mission Control
+  through otel-hook (live) and rollout harvest, one observation per turn keyed
+  by `turn_id`.
+
+### Cursor
+
+`cursor-agent` is not installed on the spike machine; not verified at runtime.
+Evidence from the IDE bundle (`/usr/share/cursor/resources/app`): agent shell
+commands get `CURSOR_CONVERSATION_ID` (shell-quoted, hence the quote stripping
+in `launchingAgentSession`) and `CURSOR_REQUEST_ID`.
