@@ -81,7 +81,7 @@ export interface InstructionFilesResult {
   targets: AgentSkillTarget[];
   agentsMdAction: 'created' | 'updated' | 'appended' | 'skipped' | null;
   migratedLegacy: boolean;
-  claudeMdAction: 'created' | 'updated' | 'appended' | 'skipped' | null;
+  claudeMdAction: 'updated' | 'appended' | 'skipped' | null;
 }
 
 function escapeRegExp(value: string): string {
@@ -214,7 +214,9 @@ export function buildInstallPlan(
     agentsMd: writeAgentsMd,
     migrateLegacyAgentMd: writeAgentsMd && detection.agentMd,
     providers: targets,
-    claudeMd: targets.includes('claude'),
+    // Deprecated: Claude Code reads AGENTS.md directly, so HAR no longer
+    // creates a CLAUDE.md. An existing one is still kept pointing at AGENTS.md.
+    claudeMd: targets.includes('claude') && detection.claudeMd,
     cursorRule: wantsCursor,
     skills: options.skills ?? [],
   };
@@ -234,7 +236,9 @@ export function formatInstallPlan(
     lines.push(`  ${mark(true)} Migrate ${LEGACY_AGENT_MD} → ${AGENTS_MD}, then remove legacy file`);
   }
   lines.push(
-    `  ${mark(plan.claudeMd)} Claude — ensure ${CLAUDE_MD} points at ${AGENTS_MD}`,
+    plan.claudeMd
+      ? `  ${mark(true)} Claude — keep the existing ${CLAUDE_MD} pointing at ${AGENTS_MD}`
+      : `  ${mark(false)} Claude — reads ${AGENTS_MD} directly (no ${CLAUDE_MD} created)`,
   );
   lines.push(
     `  ${mark(plan.cursorRule)} Cursor — install/refresh .cursor/rules/har-workflow.mdc`,
@@ -417,17 +421,10 @@ export function migrateLegacyAgentMd(repoPath: string): boolean {
 /**
  * CLAUDE.md carries no content of its own (#301): `AGENTS.md` is the
  * cross-vendor instruction file, and Claude Code reaches it through an `@`
- * import. One source of truth, one file to keep current.
+ * import. Claude Code now reads `AGENTS.md` directly, so the pointer is
+ * deprecated — HAR keeps an existing one current but never creates one.
  */
 export const CLAUDE_MD_IMPORT = '@AGENTS.md';
-
-function loadClaudeMdTemplate(): string {
-  const templatePath = resolveTemplateFile('CLAUDE.md.template');
-  if (!templatePath) {
-    throw new Error('CLAUDE.md.template not found. Run npm run build.');
-  }
-  return fs.readFileSync(templatePath, 'utf8');
-}
 
 /** True when the file is HAR's own pointer (ours to replace), not the user's work. */
 function isHarOwnedClaudeMd(content: string): boolean {
@@ -446,9 +443,11 @@ function hasAgentsImport(content: string): boolean {
 }
 
 /**
- * Ensure CLAUDE.md pulls AGENTS.md into context.
+ * Ensure an existing CLAUDE.md pulls AGENTS.md into context.
  *
- * - absent, or a HAR-authored pointer → the file becomes exactly `@AGENTS.md`
+ * - absent → left absent. Claude Code reads AGENTS.md itself, so HAR no longer
+ *   creates the pointer file (deprecated; existing ones keep working).
+ * - a HAR-authored pointer → the file becomes exactly `@AGENTS.md`
  * - hand-written by the user → content preserved verbatim, the import prepended
  *   when missing. HAR never destroys project-specific Claude instructions.
  *
@@ -457,15 +456,12 @@ function hasAgentsImport(content: string): boolean {
 export function ensureClaudeMdPointer(
   repoPath: string,
   options: { force?: boolean } = {},
-): 'created' | 'updated' | 'appended' | 'skipped' {
+): 'updated' | 'appended' | 'skipped' {
   const dest = path.join(repoPath, CLAUDE_MD);
-  const thin = loadClaudeMdTemplate();
 
-  if (!fs.existsSync(dest)) {
-    writeFileSafe(dest, thin);
-    return 'created';
-  }
+  if (!fs.existsSync(dest)) return 'skipped';
 
+  const thin = `${CLAUDE_MD_IMPORT}\n`;
   const existing = fs.readFileSync(dest, 'utf8');
 
   if (isHarOwnedClaudeMd(existing) || options.force) {
@@ -512,7 +508,7 @@ async function confirmSkillInstallation(targets: AgentSkillTarget[]): Promise<bo
 
 /**
  * Detect instruction files, let the user select providers, optionally install skills,
- * then write AGENTS.md (always), migrate AGENT.md, and ensure CLAUDE.md when Claude is selected.
+ * then write AGENTS.md (always), migrate AGENT.md, and refresh an existing CLAUDE.md pointer.
  *
  * Cursor rule and skill scaffolding remain in their dedicated handlers — this function
  * returns the resolved targets/plan so callers can pass them through.
@@ -595,9 +591,7 @@ export async function handleInstructionFiles(
 
   if (plan.claudeMd) {
     claudeMdAction = ensureClaudeMdPointer(repoPath);
-    if (claudeMdAction === 'created') {
-      success(`Wrote ${CLAUDE_MD} (pointer → ${AGENTS_MD})`);
-    } else if (claudeMdAction === 'updated' || claudeMdAction === 'appended') {
+    if (claudeMdAction === 'updated' || claudeMdAction === 'appended') {
       info(
         `${claudeMdAction === 'updated' ? 'Updated' : 'Appended'} ${CLAUDE_MD} pointer → ${AGENTS_MD}`,
       );
