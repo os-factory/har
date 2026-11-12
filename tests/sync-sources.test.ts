@@ -167,6 +167,24 @@ describe('hasHarnessEvidence / mergeSlotStatuses (#256)', () => {
     expect(hasHarnessEvidence(repo)).toBe(true);
   });
 
+  it('does not treat mirrored validations alone as evidence', () => {
+    // A HAR-owned worktree after `verify`: the validation record is copied in
+    // and nothing else — and no manifest, as when the harness is uncommitted.
+    const worktree = tmpDir('har-ev-wt-');
+    const validations = path.join(worktree, '.har', 'validations');
+    fs.mkdirSync(validations, { recursive: true });
+    fs.writeFileSync(path.join(validations, 'abc123.json'), '{}\n');
+    expect(hasHarnessEvidence(worktree)).toBe(false);
+  });
+
+  it('still detects a worktree with its own runs next to validations', () => {
+    const repo = makeHarness('har-ev-runs-');
+    fs.mkdirSync(path.join(repo, '.har', 'validations'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.har', 'validations', 'abc123.json'), '{}\n');
+    writeRun(repo, '99999999-9999-4999-8999-999999999999', '2026-08-31T10:00:00.000Z');
+    expect(hasHarnessEvidence(repo)).toBe(true);
+  });
+
   it('prefers an active occupancy over idle for the same slot number', () => {
     const idle = {
       agentId: 1,

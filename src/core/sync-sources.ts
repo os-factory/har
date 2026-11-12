@@ -60,7 +60,15 @@ export function resolveSyncSourcePaths(canonicalPath: string, workspacePath?: st
   return paths;
 }
 
-const EVIDENCE_SUBDIRS = ['slots', 'runs', 'work-units', 'validations'] as const;
+// `validations/` is deliberately absent. `recordValidation` writes every record
+// into the session checkout (where the pre-commit gate reads it) *and* mirrors it
+// to the harness root, so a HAR-owned worktree that ran `verify` always holds a
+// copy — not evidence of records the canonical sources miss. Counting it pulled
+// such worktrees in as sync sources, and when the worktree had no copied `.har/`
+// config (an uncommitted harness) the slot-status read threw and aborted the
+// whole sync. A checkout that really keeps its own records also has `runs/`,
+// `slots/` or `work-units/`, so it is still detected.
+const EVIDENCE_SUBDIRS = ['slots', 'runs', 'work-units'] as const;
 
 /** Whether this checkout's `.har/` holds records (not just a copied manifest). */
 export function hasHarnessEvidence(repoPath: string): boolean {

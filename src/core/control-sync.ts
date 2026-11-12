@@ -536,16 +536,27 @@ function collectEnvironmentStatusForSync(
 ): EnvironmentStatus {
   const collected = new Map<string, EnvironmentStatus>();
   const groups: AgentSlotStatus[][] = [];
+  const canonicalKey = path.resolve(canonicalPath);
   for (const source of sourcePaths) {
     const key = path.resolve(source);
     let status = collected.get(key);
     if (!status) {
-      status = collectEnvironmentStatus(source);
+      try {
+        status = collectEnvironmentStatus(source);
+      } catch (err) {
+        // Only the canonical checkout may fail the sync. A secondary source
+        // (a linked worktree with its own `.har/`) can lack the slot config
+        // the canonical one has; skipping its slots must not cost the repo its
+        // runs, slots, usage and validations.
+        if (key === canonicalKey) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        warn(`Skipping slot status from ${source}: ${message}`);
+        continue;
+      }
       collected.set(key, status);
     }
     groups.push(status.slots);
   }
-  const canonicalKey = path.resolve(canonicalPath);
   const canonical = collected.get(canonicalKey) ?? collectEnvironmentStatus(canonicalPath);
   return { ...canonical, slots: mergeSlotStatuses(groups) };
 }
