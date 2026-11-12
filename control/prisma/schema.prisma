@@ -20,6 +20,9 @@ model Repository {
   runs            Run[]
   changeBatches   ChangeBatch[]
   sessionUsage    AgentSessionUsage[]
+  sessionBindings SessionSlotBinding[]
+  usageObservations    UsageObservation[]
+  sessionReportedUsage SessionReportedUsage[]
   sessionEvents   AgentSessionEvent[]
   sessionSpans    AgentSessionSpan[]
   trajectoryRecords AgentTrajectoryRecord[]
@@ -98,6 +101,86 @@ model AgentSessionUsage {
   @@index([repositoryId, agentId])
   @@index([repositoryId, agentId, occupancyKey])
   @@index([lastSeenAt])
+}
+
+/// One point of a session's slot timeline (ADR 0003): from `at` on, the session
+/// (or one subagent of it) works in slot `slotId` — or, for `release`, no longer does.
+model SessionSlotBinding {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  agentTool    String
+  sessionId    String
+  /// "" for the session itself: SQLite treats NULLs as distinct in a unique index.
+  subagentId   String     @default("")
+  /// launch | release | workspace | observed
+  kind         String
+  slotId       Int
+  occupancyKey String?
+  branch       String?
+  at           DateTime
+  /// Who recorded it: "sync" (HAR CLI) or "otel" (derived from a span by Mission Control).
+  origin       String     @default("sync")
+  createdAt    DateTime   @default(now())
+
+  @@unique([repositoryId, agentTool, sessionId, subagentId, kind, slotId, at])
+  @@index([repositoryId, agentTool, sessionId, at])
+  @@index([repositoryId, slotId, at])
+}
+
+/// One billable unit of LLM usage as reported (ADR 0003). Never merged into another;
+/// slot usage is derived from these and the binding timeline at read time.
+model UsageObservation {
+  id                  String     @id @default(uuid())
+  repositoryId        String
+  repository          Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  agentTool           String
+  sessionId           String
+  /// "" for the session itself.
+  subagentId          String     @default("")
+  observationKey      String
+  observedAt          DateTime
+  /// request | turn | generation | message
+  granularity         String
+  /// otel | harvest
+  source              String
+  /// Producer stream (claude.api_request, codex.sse_event, otelhook.generation, sync.harvest, ...).
+  /// Streams that report the same usage under different keys are de-duplicated by it.
+  producer            String
+  model               String?
+  tokensInput         BigInt     @default(0)
+  tokensOutput        BigInt     @default(0)
+  tokensCacheRead     BigInt     @default(0)
+  tokensCacheCreation BigInt     @default(0)
+  costUsd             Decimal?
+  /// For producers that report a session running total (Codex hooks): that total as reported
+  /// at this unit. The token columns then hold the difference from the previous unit.
+  reportedTotals      Json?
+  /// Whether `reportedTotals` is set (JSON columns are not filterable on SQLite).
+  reportsTotal        Boolean    @default(false)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  @@unique([repositoryId, agentTool, sessionId, observationKey])
+  @@index([repositoryId, observedAt])
+  @@index([repositoryId, agentTool, sessionId, observedAt])
+}
+
+/// A session total a provider reports itself (Claude Code `claude_code.cost.usage`).
+/// Kept as a cross-check against the sum of observations — never booked on a slot.
+model SessionReportedUsage {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  agentTool    String
+  sessionId    String
+  costUsd      Decimal?
+  tokensTotal  BigInt     @default(0)
+  firstSeenAt  DateTime
+  lastSeenAt   DateTime
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([repositoryId, agentTool, sessionId])
 }
 
 model AgentSessionEvent {

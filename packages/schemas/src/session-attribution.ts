@@ -21,6 +21,13 @@ import { AgentToolSchema, HAR_AGENT_SLOT_MIN, type AgentTool } from './schema';
  * usage from them, so late evidence re-attributes instead of being frozen.
  */
 
+/**
+ * `agentId` of a span, event or trajectory record whose session had no slot
+ * binding in force when it happened: the main checkout. Never a slot number
+ * (slots start at `HAR_AGENT_SLOT_MIN`), so no slot page claims it.
+ */
+export const MAIN_CHECKOUT_AGENT_ID = 0;
+
 /** Env var each agent sets, for every command it runs, to its session id. */
 export const AGENT_SESSION_ENV: Readonly<Record<AgentTool, string>> = {
   claude_code: 'CLAUDE_CODE_SESSION_ID',

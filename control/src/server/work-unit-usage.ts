@@ -1,8 +1,7 @@
 import type { AgentSessionUsage, Prisma, WorkAttempt } from '@prisma/client';
-import { prisma } from '@/lib/db';
 import { inWindow, legacyWindow, type LegacyWindow } from '@/server/attempt-record';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
-import { toCostSource, type CostSource } from '@/server/usage';
+import { listSessionUsageForRepo, toCostSource, type CostSource } from '@/server/usage';
 
 export interface WorkUnitUsage {
   tokensTotal: bigint | null;
@@ -69,21 +68,7 @@ export async function attributeWorkUnitUsage(
   attempts: WorkAttempt[],
 ): Promise<WorkUnitUsage> {
   const [rows, windows] = await Promise.all([
-    prisma.agentSessionUsage.findMany({
-      where: {
-        repositoryId,
-        OR: [
-          { workUnitId },
-          ...(attempts.length
-            ? [
-                { attemptId: { in: attempts.map((attempt) => attempt.attemptId) } },
-                { occupancyKey: { in: attempts.map((attempt) => occupancyKeyForAttempt(attempt.attemptId)) } },
-                { workUnitId: null, attemptId: null, occupancyKey: null, agentId: { in: [...new Set(attempts.map((a) => a.agentId))] } },
-              ]
-            : []),
-        ],
-      },
-    }),
+    listSessionUsageForRepo(repositoryId),
     Promise.all(attempts.map((attempt) => legacyWindow(repositoryId, attempt))).then((list) =>
       list.filter((window): window is LegacyWindow => window != null),
     ),

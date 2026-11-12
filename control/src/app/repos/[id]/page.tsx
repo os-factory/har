@@ -16,7 +16,8 @@ import { getSessionHistory } from '@/server/session-history';
 import { getValidationStages } from '@/server/validation-stages';
 import { listArtifactFiles } from '@/server/artifacts';
 import { loadLatestVerifyBySlot } from '@/server/slot-verify';
-import { listSessionUsageForRepo } from '@/server/usage';
+import { UnassignedUsage } from '@/components/unassigned-usage';
+import { loadUsageView } from '@/server/session-attribution';
 import { timeAgo } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
@@ -30,15 +31,18 @@ export default async function RepoDetailPage({
   const repo = await getRepository(id);
   if (!repo) notFound();
 
-  const [health, lineBoards, trendRaw, history, validation, allUsage] =
+  const [health, lineBoards, trendRaw, history, validation, usageView] =
     await Promise.all([
       getRepositoryHealth(id),
       listLineBoards(id),
       getVerificationTrend(id),
       getSessionHistory(id),
       getValidationStages(id),
-      listSessionUsageForRepo(id),
+      loadUsageView(id),
     ]);
+  // ADR 0003: slot cost is derived from observations and the binding timeline;
+  // what no binding covers is the main checkout's, listed apart from every slot.
+  const allUsage = usageView.rows;
   const artifacts = listArtifactFiles(repo.path);
   // #339: "Verify" reads the latest verify run of each slot's occupancy, never a launch/teardown.
   const verifyBySlot = await loadLatestVerifyBySlot(repo.slots);
@@ -206,6 +210,18 @@ export default async function RepoDetailPage({
                   };
                 })}
               />
+            </CardContent>
+          </Card>
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>Main checkout / unassigned</CardTitle>
+              <CardDescription>
+                Agent usage with no slot binding in force: spent in the main checkout before a launch, after a
+                release, or by a session that never worked in a slot. It is never counted on a slot.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <UnassignedUsage rows={usageView.unassigned} />
             </CardContent>
           </Card>
         </TabsContent>

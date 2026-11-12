@@ -7,6 +7,7 @@ import {
   usageHarvestVersion,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
+import { loadAllUsageViews, loadUsageView, type UsageView } from '@/server/session-attribution';
 
 function toBigInt(n: number | bigint | undefined | null): bigint {
   if (n === undefined || n === null) return 0n;
@@ -231,12 +232,19 @@ export async function syncUsage(repositoryId: string, records: UsageUpsertInput[
   return { synced };
 }
 
-export async function listSessionUsageForRepo(repositoryId: string) {
-  const rows = await prisma.agentSessionUsage.findMany({
-    where: { repositoryId },
-    orderBy: { lastSeenAt: 'desc' },
-  });
-  return rows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));
+/**
+ * Usage rows of a repository (ADR 0003): per-slot usage derived from usage
+ * observations and the session binding timeline, plus legacy session totals
+ * that no observation supersedes. Usage with no binding is not here — it is
+ * the sessions' unassigned (main checkout) usage, see `listUnassignedUsage`.
+ */
+export async function listSessionUsageForRepo(repositoryId: string, view?: UsageView) {
+  return (view ?? (await loadUsageView(repositoryId))).rows;
+}
+
+/** Usage spent outside any slot, per session — the main checkout. Never booked on a slot. */
+export async function listUnassignedUsage(repositoryId: string, view?: UsageView) {
+  return (view ?? (await loadUsageView(repositoryId))).unassigned;
 }
 
 export async function listSessionUsageForSlot(
@@ -246,32 +254,26 @@ export async function listSessionUsageForSlot(
 ) {
   // #316: scope to the current occupancy so a relaunched slot does not show the
   // previous session's usage as if it were the same working session.
-  const rows = await prisma.agentSessionUsage.findMany({
-    where: { repositoryId, agentId, ...(occupancyKey ? { occupancyKey } : {}) },
-    orderBy: { lastSeenAt: 'desc' },
-  });
-  return rows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));
+  const rows = await listSessionUsageForRepo(repositoryId);
+  return rows.filter(
+    (row) => row.agentId === agentId && (!occupancyKey || row.occupancyKey === occupancyKey),
+  );
 }
 
 export async function summarizeUsageForBranch(
   repositoryId: string,
   branch: string | null | undefined,
   suffix: string | null | undefined,
+  view?: UsageView,
 ) {
-  const or: Array<{ branch?: string; sessionKey?: string; suffix?: string }> = [];
-  if (branch) {
-    or.push({ branch });
-    or.push({ sessionKey: branch });
-  }
-  if (suffix) or.push({ suffix });
-
-  const rawRows =
-    or.length === 0
+  const rows =
+    !branch && !suffix
       ? []
-      : await prisma.agentSessionUsage.findMany({
-          where: { repositoryId, OR: or },
-        });
-  const rows = rawRows.map((row) => ({ ...row, sources: toStringArray(row.sources) }));
+      : (await listSessionUsageForRepo(repositoryId, view)).filter(
+          (row) =>
+            (branch && (row.branch === branch || row.sessionKey === branch)) ||
+            (suffix && row.suffix === suffix),
+        );
 
   let tokensTotal = 0n;
   let costUsd = 0;
@@ -298,17 +300,17 @@ export async function summarizeUsageForBranch(
   };
 }
 
-export async function listAllSessionUsage() {
-  const rows = await prisma.agentSessionUsage.findMany({
-    orderBy: { lastSeenAt: 'desc' },
-    include: {
-      repository: { select: { id: true, path: true } },
-    },
-  });
-  return rows.map((row) => ({
-    ...row,
-    sources: toStringArray(row.sources),
-  }));
+/** Every repository's usage rows and unassigned (main checkout) usage, derived once. */
+export async function listAllUsage() {
+  const views = await loadAllUsageViews();
+  const byRecency = (a: { lastSeenAt: Date }, b: { lastSeenAt: Date }) =>
+    b.lastSeenAt.getTime() - a.lastSeenAt.getTime();
+  return {
+    rows: views.flatMap(({ repository, view }) => view.rows.map((row) => ({ ...row, repository }))).sort(byRecency),
+    unassigned: views
+      .flatMap(({ repository, view }) => view.unassigned.map((row) => ({ ...row, repository })))
+      .sort(byRecency),
+  };
 }
 
 export function summarizeUsageRows(
