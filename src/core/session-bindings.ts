@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   SessionSlotBindingSchema,
+  deriveOccupancyKey,
   launchingAgentSession,
   type SessionSlotBinding,
   type SlotRegistryEntry,
@@ -23,29 +24,26 @@ import { markDirty } from './sync-context';
 
 export const SESSION_BINDINGS_DIR = 'session-bindings';
 
-/** Same separator Mission Control uses for occupancy keys (#316). */
-const OCCUPANCY_PART_SEPARATOR = '::';
-
 type OccupancySource = Pick<
   SlotRegistryEntry,
   'attemptId' | 'branch' | 'createdAt' | 'worktreePath' | 'workDir'
 >;
 
 /**
- * The occupancy key Mission Control derives for this slot record
- * (`control/src/server/occupancy.ts` `deriveOccupancyKey`, active slot): the
- * attempt id, else branch + creation time, else the worktree path.
+ * The occupancy key Mission Control derives for this slot record (#316): the
+ * shared `deriveOccupancyKey` applied to the record as an active slot.
  */
 export function slotOccupancyKey(session: OccupancySource): string | undefined {
-  const sep = OCCUPANCY_PART_SEPARATOR;
-  if (session.attemptId) return `attempt${sep}${session.attemptId}`;
-  const createdMs = session.createdAt ? Date.parse(session.createdAt) : NaN;
-  const createdAt = Number.isFinite(createdMs) ? new Date(createdMs).toISOString() : null;
-  if (session.branch && createdAt) return `branch${sep}${session.branch}${sep}${createdAt}`;
-  const where = session.worktreePath ?? session.workDir;
-  if (where && createdAt) return `path${sep}${where}${sep}${createdAt}`;
-  if (where) return `path${sep}${where}`;
-  return undefined;
+  return (
+    deriveOccupancyKey({
+      active: true,
+      attemptId: session.attemptId,
+      branch: session.branch,
+      sessionCreatedAt: session.createdAt,
+      worktreePath: session.worktreePath,
+      workDir: session.workDir,
+    }) ?? undefined
+  );
 }
 
 /** The idempotency tuple Mission Control upserts bindings on. */
