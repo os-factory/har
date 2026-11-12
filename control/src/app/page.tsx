@@ -7,6 +7,7 @@ import { attentionItems } from '@/lib/attention';
 import { classifyWorktreeCleanup } from '@/lib/worktree-cleanup-plan';
 import { listSessionWorktrees } from '@/server/repositories';
 import { loadLatestVerifyBySlot } from '@/server/slot-verify';
+import { loadUsageView, type UsageView } from '@/server/session-attribution';
 import { summarizeUsageForBranch } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
@@ -14,9 +15,15 @@ export const dynamic = 'force-dynamic';
 export default async function NowPage() {
   const slots = await listSessionWorktrees();
   const latestVerify = await loadLatestVerifyBySlot(slots);
+  // ADR 0003: slot usage is derived per repository — load each one's view once.
+  const views = new Map<string, Promise<UsageView>>();
+  const viewFor = (repositoryId: string) => {
+    if (!views.has(repositoryId)) views.set(repositoryId, loadUsageView(repositoryId));
+    return views.get(repositoryId)!;
+  };
   const rows: WorktreeRow[] = await Promise.all(
     slots.map(async (s) => {
-      const usage = await summarizeUsageForBranch(s.repositoryId, s.branch, s.suffix);
+      const usage = await summarizeUsageForBranch(s.repositoryId, s.branch, s.suffix, await viewFor(s.repositoryId));
       const path = s.worktreePath ?? s.workDir;
       const onDisk = path ? fs.existsSync(path) : false;
       const cleanup = classifyWorktreeCleanup({

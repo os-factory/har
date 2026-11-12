@@ -62,6 +62,66 @@ Per-slot and per-session usage is computed from observations and bindings,
 never written once. Evidence that arrives late, such as a launch record synced
 after the spans, corrects the attribution of usage already received.
 
+How Mission Control resolves the timeline:
+
+- **In force at t:** the latest `launch` or `observed` binding at or before t,
+  for the subagent, else for its parent session. A `workspace` binding (the
+  session's own cwd, including otel-hook's `otelhook.target.source =
+  session-cwd`) repeats on every event, so it counts from its *first* sighting
+  per occupancy and never overrides a stronger binding made after that.
+- **Release:** a `release` of slot N, from any session, ends N's occupancy. It
+  closes bindings to that occupancy (including ones recorded after it with the
+  same occupancy key) and leaves bindings to other slots alone, so tearing down
+  another slot does not move a session to main. A subagent whose own binding
+  is closed falls back to its parent's.
+- **Occupancy:** a binding never outlives its occupancy. Besides releases, the
+  start of a different known occupancy of the slot (a slot row, a work
+  attempt, another `launch` / `workspace` binding with another key) closes it.
+  A binding that names the slot's current branch but no occupancy key gets the
+  slot's current occupancy key when stored.
+- **Same unit, several producers:** observations are idempotent per key. A
+  repeat of a key from the live stream replaces a harvested copy; a harvested
+  copy never replaces the live one, and a provider-reported cost is never
+  erased by a repeat without one. Claude keys by API request id (`request_id`
+  = transcript `requestId`); Codex by `turn_id` (`otelhook.generation.id` =
+  rollout turn id); Cursor by `generation_id`. Streams that key the same units
+  differently (an otel-hook build without `otelhook.generation.id`, Codex
+  native `sse_event`) are de-duplicated by time: within a session the
+  highest-priority stream owns the window it covers, lower ones only fill the
+  time outside it.
+- **Running totals:** Codex hook usage is the session's running total
+  (`otelhook.usage.temporality = cumulative`). Mission Control stores the
+  reported total with the turn and the turn's own usage as the difference from
+  the previous reported total, less the turns stored in between without one
+  (harvested only). A turn arriving out of order recomputes the next one.
+- **Cost:** the provider's cost when reported (Claude `cost_usd`), else the
+  genai-prices estimate for the observation's model and tokens.
+- **Provider totals:** Claude's `claude_code.cost.usage` / `token.usage`
+  metrics are stored per session (`SessionReportedUsage`) and shown as a
+  cross-check against the sum of the session's observations. A session with a
+  reported total and no observation yet is listed with the unassigned usage as
+  "not itemized"; it is never booked on a slot. Codex `codex.turn.token_usage`
+  metrics carry no thread id and are not used.
+- **Legacy session totals:** `AgentSessionUsage` rows (one max-merged total per
+  session, from `POST /usage` and earlier OTLP ingest) stay as they are unless
+  observations of the same agent tool cover them — same session id, or an
+  overlapping time window, since legacy rows are often keyed by slot branch.
+  Covered rows are superseded by the projection; uncovered ones keep their
+  stored slot. `POST /usage` skips rows with `agentId` 0 instead of rejecting
+  the batch.
+
+### 3a. Spans, events and trajectory records
+
+Trajectory records are immutable facts, placed once at ingest: the record's
+own evidence joins its session's timeline and the record goes to the binding
+in force at its timestamp, else to the main checkout, stored as `agentId` 0
+(`MAIN_CHECKOUT_AGENT_ID`; the trajectory record schema now allows it). The
+repository's only active slot, the most recent slot, slot 1 and the slot of
+the session's first event are no longer used. Unlike usage, placement is not
+recomputed when a binding arrives late (see Known limitations). Per-request
+usage events (`claude_code.api_request`, Codex `sse_event`) become
+observations only, not trajectory records.
+
 ### 4. Wire format
 
 All types live in `packages/schemas/src/session-attribution.ts`.
@@ -73,7 +133,11 @@ All types live in `packages/schemas/src/session-attribution.ts`.
 - OTLP (`/api/otel/v1/{logs,metrics,traces}`) observations and bindings are
   produced inside Mission Control from the same types.
 - `har control sync` posts bindings and harvested observations; slot usage read
-  through the existing `/usage` route is the derived projection.
+  through the existing `/usage` route is the derived projection, with the
+  per-session `unassigned` (main checkout) usage and `crossChecks` beside it.
+- Mission Control persists them as `SessionSlotBinding`, `UsageObservation`
+  and `SessionReportedUsage` (SQLite, applied by `prisma db push` like every
+  Mission Control schema change).
 
 ## Consequences
 
@@ -102,3 +166,14 @@ All types live in `packages/schemas/src/session-attribution.ts`.
   attributed through `launch` bindings and file-tool events.
 - **Cursor** reports no cost and no offline record; its cost is estimated from
   model prices, and usage missed while otel-hook was not installed is lost.
+- **Trajectory placement is not re-attributed.** A span that arrives before
+  the binding that explains it (a launch synced late) stays in the main
+  checkout's trajectory; its usage is re-attributed, its timeline row is not.
+- **Legacy rows are joined by time.** A pre-observation `AgentSessionUsage`
+  row that overlaps observations of the same agent tool is hidden, even when it
+  belonged to another, unobserved session running in parallel.
+- **Live-stream gaps.** Within the window a live stream covers, a unit it
+  missed is recovered only when the harvest reports it under the same key.
+- **Read cost.** Slot usage is derived on every read from all of a
+  repository's observations; there is no materialized projection yet.
+

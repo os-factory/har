@@ -1,4 +1,4 @@
-import type { AgentSessionUsage, WorkAttempt } from '@prisma/client';
+import type { WorkAttempt } from '@prisma/client';
 import type { WorkUnitRelatedLink } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { buildTimelineRows, type TimelineRow } from '@/lib/slot-timeline';
@@ -12,6 +12,7 @@ import {
   streamOnlySessions,
 } from '@/server/slot-timeline';
 import { listTrajectoryStreams } from '@/server/trajectory-ledger';
+import { listSessionUsageForRepo } from '@/server/usage';
 import { getValidationStages, type ValidationStagesSummary } from '@/server/validation-stages';
 
 /**
@@ -157,17 +158,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
       orderBy: { createdAt: 'desc' },
       take: 200,
     }),
-    prisma.agentSessionUsage.findMany({
-      where: {
-        repositoryId,
-        OR: [
-          { occupancyKey },
-          ...(attemptId ? [{ attemptId }] : []),
-          ...(window ? [{ occupancyKey: null, agentId: window.agentId, workDir: window.workDir }] : []),
-        ],
-      },
-      orderBy: { lastSeenAt: 'desc' },
-    }),
+    listSessionUsageForRepo(repositoryId),
     agentId != null ? listTrajectoryStreams(repositoryId, agentId, occupancyKey) : Promise.resolve([]),
   ]);
 
@@ -180,17 +171,14 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
       boundValidationIds.includes(batch.validationId) ||
       inWindow(window, { agentId: batch.agentId, workDir: batch.workDir, at: batch.createdAt }),
   );
-  const usage: Array<AgentSessionUsage & { sources: string[] }> = usageRows
-    .filter(
-      (row) =>
-        row.occupancyKey === occupancyKey ||
-        (attemptId && row.attemptId === attemptId) ||
-        inWindow(window, { agentId: row.agentId, workDir: row.workDir, at: row.firstSeenAt }),
-    )
-    .map((row) => ({
-      ...row,
-      sources: Array.isArray(row.sources) ? row.sources.filter((s): s is string => typeof s === 'string') : [],
-    }));
+  // ADR 0003: derived usage rows carry the occupancy of the binding they were
+  // attributed through; legacy rows still join by stamp or legacy window.
+  const usage = usageRows.filter(
+    (row) =>
+      row.occupancyKey === occupancyKey ||
+      (attemptId && row.attemptId === attemptId) ||
+      (row.origin === 'legacy' && row.occupancyKey == null && inWindow(window, { agentId: row.agentId, workDir: row.workDir, at: row.firstSeenAt })),
+  );
   const streamOnly = agentId != null ? streamOnlySessions(usage, streams, agentId) : [];
 
   const [prompts, commits, verification] = await Promise.all([

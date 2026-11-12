@@ -1,4 +1,13 @@
 import type { AgentSlotStatus } from '@har/schemas';
+import { occupancyKeyForAttempt } from '@har/schemas';
+
+// The occupancy key is part of the shared contract (the CLI stamps it on session bindings).
+export {
+  attemptIdFromOccupancyKey,
+  deriveOccupancyKey,
+  occupancyKeyForAttempt,
+  type OccupancySource,
+} from '@har/schemas';
 
 /**
  * Slot occupancy identity (#316).
@@ -11,39 +20,6 @@ import type { AgentSlotStatus } from '@har/schemas';
  *
  * `--resume` / `recover` keeps the same worktree and therefore the same key.
  */
-
-/** Separator that cannot appear in an attempt id, branch, or ISO timestamp. */
-const PART_SEPARATOR = '::';
-
-export type OccupancySource = Pick<
-  AgentSlotStatus,
-  'active' | 'attemptId' | 'branch' | 'sessionCreatedAt' | 'worktreePath' | 'workDir'
->;
-
-/**
- * Stable key for one occupancy, or null when the slot is idle.
- *
- * Prefers `attemptId` — HAR mints one per launch, so it is the truest
- * occupancy identity. Falls back to branch + session creation time, then to the
- * worktree path, which still changes between occupancies because HAR encodes a
- * random per-session suffix in it.
- */
-export function deriveOccupancyKey(slot: OccupancySource): string | null {
-  if (!slot.active) return null;
-
-  if (slot.attemptId) return occupancyKeyForAttempt(slot.attemptId);
-
-  const createdAt = slot.sessionCreatedAt ? new Date(slot.sessionCreatedAt).toISOString() : null;
-  if (slot.branch && createdAt) {
-    return `branch${PART_SEPARATOR}${slot.branch}${PART_SEPARATOR}${createdAt}`;
-  }
-
-  const path = slot.worktreePath ?? slot.workDir;
-  if (path && createdAt) return `path${PART_SEPARATOR}${path}${PART_SEPARATOR}${createdAt}`;
-  if (path) return `path${PART_SEPARATOR}${path}`;
-
-  return null;
-}
 
 /**
  * Whether a sync moved the slot to a different occupancy.
@@ -87,18 +63,6 @@ export function shouldApplySlotSync(
   const incomingPath = incoming.workDir ?? incoming.worktreePath;
   if (existingPath && incomingPath && existingPath !== incomingPath) return false;
   return true;
-}
-
-/** Occupancy key of a work attempt — HAR mints one attempt per launch. */
-export function occupancyKeyForAttempt(attemptId: string): string {
-  return `attempt${PART_SEPARATOR}${attemptId}`;
-}
-
-/** Attempt id encoded in an occupancy key, or null for branch / path keys. */
-export function attemptIdFromOccupancyKey(key: string | null | undefined): string | null {
-  if (!key) return null;
-  const prefix = `attempt${PART_SEPARATOR}`;
-  return key.startsWith(prefix) ? key.slice(prefix.length) : null;
 }
 
 export interface RecordOccupancyInput {

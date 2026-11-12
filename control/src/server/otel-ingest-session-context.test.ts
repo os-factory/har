@@ -4,6 +4,8 @@ import { otelWorkspaceIdForPath } from './otel-workspace';
 interface FakeSlot {
   repositoryId: string;
   slotId: number;
+  occupancyKey?: string | null;
+  sessionCreatedAt?: Date | null;
   workDir: string | null;
   worktreePath: string | null;
   branch: string | null;
@@ -24,6 +26,19 @@ interface FakeSessionRow {
 const repos = [{ id: 'repo-1', path: '/home/user/project' }];
 let slots: FakeSlot[] = [];
 let sessionEvents: FakeSessionRow[] = [];
+
+interface FakeBinding {
+  repositoryId: string;
+  agentTool: string;
+  sessionId: string;
+  subagentId: string;
+  kind: string;
+  slotId: number;
+  occupancyKey: string | null;
+  branch: string | null;
+  at: Date;
+}
+let bindings: FakeBinding[] = [];
 
 function findSessionRow(
   rows: FakeSessionRow[],
@@ -52,6 +67,22 @@ vi.mock('@/lib/db', () => ({
         async ({ where }: { where: { repositoryId: string; sessionKey: string } }) =>
           findSessionRow(sessionEvents, where),
       ),
+    },
+    sessionSlotBinding: {
+      findMany: vi.fn(
+        async ({ where }: { where: { repositoryId: string; sessionId?: string; kind?: string; at: { lte: Date } } }) =>
+          bindings.filter(
+            (b) =>
+              b.repositoryId === where.repositoryId &&
+              (where.sessionId === undefined || b.sessionId === where.sessionId) &&
+              (where.kind === undefined || b.kind === where.kind) &&
+              b.at <= where.at.lte,
+          ),
+      ),
+    },
+    workAttempt: {
+      findMany: vi.fn(async () => []),
+      findFirst: vi.fn(async () => null),
     },
     agentSlot: {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
@@ -89,163 +120,164 @@ function makeSlot(overrides: Partial<FakeSlot>): FakeSlot {
     suffix: null,
     workUnitId: null,
     attemptId: null,
+    occupancyKey: null,
+    sessionCreatedAt: null,
     active: true,
     updatedAt: 0,
     ...overrides,
   };
 }
 
-describe('resolveSessionContext — Cursor on the main checkout', () => {
-  beforeEach(() => {
-    slots = [];
-    sessionEvents = [];
+const MAIN = '/home/user/project';
+const SLOT_2 = '/home/user/worktrees/project-abcd-har-agent-2-xyz';
+
+beforeEach(() => {
+  slots = [];
+  sessionEvents = [];
+  bindings = [];
+});
+
+describe('resolveSessionContext — no guessing (ADR 0003)', () => {
+  it('places a main-checkout record in the main checkout even when exactly one slot is active', async () => {
+    slots = [makeSlot({ slotId: 2, workDir: SLOT_2, worktreePath: SLOT_2, branch: 'feat/x' })];
+
+    const { context } = await resolveSessionContext({}, { 'gen_ai.client.workspace': MAIN });
+
+    expect(context).toMatchObject({ repositoryId: 'repo-1', agentId: 0, workDir: MAIN, branch: undefined });
+    expect(context?.workspaceSlot).toBeUndefined();
   });
 
-  it('attributes to the one active worktree when correlation is unambiguous', async () => {
-    slots = [
-      makeSlot({
-        slotId: 2,
-        workDir: '/home/user/worktrees/project-abcd-har-agent-2-xyz',
-        worktreePath: '/home/user/worktrees/project-abcd-har-agent-2-xyz',
-        branch: 'feat/x',
-        suffix: 'xyz',
-        workUnitId: 'WU-1',
-        attemptId: 'AT-1',
-        updatedAt: 1,
-      }),
-    ];
-
-    const { context } = await resolveSessionContext(
-      {},
-      { 'gen_ai.client.workspace': '/home/user/project' },
-    );
-
-    expect(context).toMatchObject({
-      repositoryId: 'repo-1',
-      agentId: 2,
-      workDir: '/home/user/worktrees/project-abcd-har-agent-2-xyz',
-      branch: 'feat/x',
-      suffix: 'xyz',
-      workUnitId: 'WU-1',
-      attemptId: 'AT-1',
-    });
-  });
-
-  it('falls back to the raw workspace path when two slots are active (ambiguous)', async () => {
+  it('places it in the main checkout with several active slots, or none', async () => {
     slots = [
       makeSlot({ slotId: 2, workDir: '/home/user/worktrees/project-a', updatedAt: 1 }),
       makeSlot({ slotId: 3, workDir: '/home/user/worktrees/project-b', updatedAt: 2 }),
     ];
-
-    const { context } = await resolveSessionContext(
-      {},
-      { 'gen_ai.client.workspace': '/home/user/project' },
-    );
-
-    expect(context).toMatchObject({
-      repositoryId: 'repo-1',
-      agentId: 3, // most recently updated active slot — same guess as before this fix
-      workDir: '/home/user/project',
-      branch: undefined,
-      workUnitId: undefined,
-      attemptId: undefined,
-    });
-  });
-
-  it('falls back to the raw workspace path when no slot is active', async () => {
+    expect((await resolveSessionContext({}, { 'gen_ai.client.workspace': MAIN })).context?.agentId).toBe(0);
     slots = [];
+    expect((await resolveSessionContext({}, { 'gen_ai.client.workspace': MAIN })).context?.agentId).toBe(0);
+  });
+
+  it('ignores the slot of the session\'s first event', async () => {
+    slots = [makeSlot({ slotId: 4, workDir: '/home/user/worktrees/project-a' })];
+    sessionEvents = [{ repositoryId: 'repo-1', sessionKey: 'session-uuid', agentId: 4, timestamp: 1 }];
 
     const { context } = await resolveSessionContext(
       {},
-      { 'gen_ai.client.workspace': '/home/user/project' },
+      { 'gen_ai.client.workspace': MAIN, 'session.id': 'session-uuid', 'otelhook.provider.id': 'claude-code' },
     );
 
-    expect(context).toMatchObject({
-      repositoryId: 'repo-1',
-      agentId: 1,
-      workDir: '/home/user/project',
-    });
+    expect(context).toMatchObject({ sessionKey: 'session-uuid', agentId: 0, agentTool: 'claude_code' });
   });
 
-  it('applies the same unambiguous correlation via the opaque workspace id', async () => {
-    slots = [
-      makeSlot({
-        slotId: 5,
-        workDir: '/home/user/worktrees/project-abcd-har-agent-5-xyz',
-        worktreePath: '/home/user/worktrees/project-abcd-har-agent-5-xyz',
-        branch: 'fix/y',
-        workUnitId: 'WU-2',
-        updatedAt: 1,
-      }),
-    ];
-    const workspaceId = otelWorkspaceIdForPath('/home/user/project');
-
-    const { context } = await resolveSessionContext(
-      {},
-      { 'otelhook.workspace.id': workspaceId },
-    );
-
-    expect(context).toMatchObject({
-      repositoryId: 'repo-1',
-      agentId: 5,
-      workDir: '/home/user/worktrees/project-abcd-har-agent-5-xyz',
-      branch: 'fix/y',
-      workUnitId: 'WU-2',
-    });
-  });
-
-  it('keeps a session on the agent id it was first attributed to', async () => {
-    slots = [
-      makeSlot({ slotId: 4, workDir: '/home/user/worktrees/project-a', updatedAt: 1 }),
-      makeSlot({ slotId: 5, workDir: '/home/user/worktrees/project-b', updatedAt: 2 }),
-    ];
-    sessionEvents = [
+  it('follows the session\'s binding timeline at the record\'s time', async () => {
+    slots = [makeSlot({ slotId: 4, workDir: '/home/user/worktrees/project-a', branch: 'b4', occupancyKey: 'occ-4' })];
+    bindings = [
       {
         repositoryId: 'repo-1',
-        sessionKey: 'session-uuid',
-        agentId: 4,
-        timestamp: 1,
+        agentTool: 'claude_code',
+        sessionId: 'session-uuid',
+        subagentId: '',
+        kind: 'launch',
+        slotId: 4,
+        occupancyKey: 'occ-4',
+        branch: 'b4',
+        at: new Date('2026-11-12T10:00:00Z'),
       },
     ];
+    const attrs = {
+      'gen_ai.client.workspace': MAIN,
+      'otelhook.session.id': 'session-uuid',
+      'session.id': 'har-session-key',
+      'otelhook.provider.id': 'claude-code',
+    };
 
-    const { context } = await resolveSessionContext(
-      {},
-      {
-        'gen_ai.client.workspace': '/home/user/project',
-        'session.id': 'session-uuid',
-        'otelhook.provider.id': 'claude-code',
-      },
-    );
+    const before = await resolveSessionContext({}, attrs, { at: new Date('2026-11-12T09:59:00Z') });
+    const after = await resolveSessionContext({}, attrs, { at: new Date('2026-11-12T10:01:00Z') });
 
-    expect(context).toMatchObject({
-      sessionKey: 'session-uuid',
+    expect(before.context?.agentId).toBe(0);
+    expect(after.context).toMatchObject({
       agentId: 4,
-      agentTool: 'claude_code',
+      branch: 'b4',
+      occupancyKey: 'occ-4',
+      sessionRef: { agentTool: 'claude_code', sessionId: 'session-uuid' },
     });
   });
 
-  it('does not let a pin override the slot whose worktree the session ran in', async () => {
-    slots = [
-      makeSlot({
-        slotId: 2,
-        workDir: '/home/user/worktrees/project-abcd-har-agent-2-xyz',
-        worktreePath: '/home/user/worktrees/project-abcd-har-agent-2-xyz',
-        branch: 'feat/x',
-        updatedAt: 1,
-      }),
-    ];
-    sessionEvents = [
-      { repositoryId: 'repo-1', sessionKey: 'feat/x', agentId: 5, timestamp: 1 },
-    ];
+  it('takes a tool event that targeted a slot worktree as evidence for that slot', async () => {
+    slots = [makeSlot({ slotId: 2, workDir: SLOT_2, worktreePath: SLOT_2, branch: 'feat/x', occupancyKey: 'occ-2' })];
 
-    const { context } = await resolveSessionContext(
+    const resolved = await resolveSessionContext(
       {},
       {
-        'gen_ai.client.workspace': '/home/user/worktrees/project-abcd-har-agent-2-xyz',
+        'gen_ai.client.workspace': MAIN,
+        'otelhook.session.id': 's-1',
+        'otelhook.provider.id': 'claude-code',
+        'vcs.ref.head.name': 'feat/x',
       },
     );
 
-    expect(context).toMatchObject({ agentId: 2 });
+    expect(resolved.context).toMatchObject({ agentId: 2, branch: 'feat/x', occupancyKey: 'occ-2' });
+    expect(resolved.evidence).toEqual([
+      { kind: 'observed', slot: expect.objectContaining({ slotId: 2, occupancyKey: 'occ-2' }) },
+    ]);
+  });
+
+  it('does not take the main checkout\'s own branch as slot evidence', async () => {
+    slots = [makeSlot({ slotId: 2, workDir: SLOT_2, branch: 'feat/x' })];
+
+    const resolved = await resolveSessionContext(
+      {},
+      { 'gen_ai.client.workspace': MAIN, 'otelhook.session.id': 's-1', 'vcs.ref.head.name': 'main' },
+    );
+
+    expect(resolved.context?.agentId).toBe(0);
+    expect(resolved.evidence).toEqual([]);
+  });
+
+  it('takes a session-cwd target as workspace evidence that never overrides a later launch elsewhere', async () => {
+    slots = [
+      makeSlot({ slotId: 2, workDir: SLOT_2, worktreePath: SLOT_2, branch: 'feat/x', occupancyKey: 'occ-2' }),
+      makeSlot({ slotId: 3, workDir: '/home/user/worktrees/project-c', branch: 'feat/y', occupancyKey: 'occ-3' }),
+    ];
+    const attrs = {
+      'gen_ai.client.workspace': MAIN,
+      'otelhook.session.id': 's-1',
+      'otelhook.provider.id': 'claude-code',
+      'vcs.ref.head.name': 'feat/x',
+      'otelhook.target.source': 'session-cwd',
+    };
+    const at = new Date('2026-11-12T10:30:00Z');
+    bindings = [
+      { repositoryId: 'repo-1', agentTool: 'claude_code', sessionId: 's-1', subagentId: '', kind: 'workspace', slotId: 2, occupancyKey: 'occ-2', branch: 'feat/x', at: new Date('2026-11-12T10:00:00Z') },
+      { repositoryId: 'repo-1', agentTool: 'claude_code', sessionId: 's-1', subagentId: '', kind: 'launch', slotId: 3, occupancyKey: 'occ-3', branch: 'feat/y', at: new Date('2026-11-12T10:10:00Z') },
+    ];
+
+    const resolved = await resolveSessionContext({}, attrs, { at });
+
+    expect(resolved.evidence).toEqual([{ kind: 'workspace', slot: expect.objectContaining({ slotId: 2 }) }]);
+    expect(resolved.context?.agentId).toBe(3);
+  });
+
+  it('maps the opaque workspace id of a slot worktree to that slot, as workspace evidence', async () => {
+    slots = [
+      makeSlot({ slotId: 5, workDir: SLOT_2, worktreePath: SLOT_2, branch: 'fix/y', workUnitId: 'WU-2', occupancyKey: 'occ-5' }),
+    ];
+
+    const inSlot = await resolveSessionContext({}, { 'otelhook.workspace.id': otelWorkspaceIdForPath(SLOT_2) });
+    const inMain = await resolveSessionContext({}, { 'otelhook.workspace.id': otelWorkspaceIdForPath(MAIN) });
+
+    expect(inSlot.context).toMatchObject({ agentId: 5, branch: 'fix/y', workUnitId: 'WU-2' });
+    expect(inSlot.context?.workspaceSlot).toMatchObject({ slotId: 5, occupancyKey: 'occ-5' });
+    expect(inMain.context).toMatchObject({ repositoryId: 'repo-1', agentId: 0, workDir: MAIN });
+  });
+
+  it('places a record in the slot whose worktree the session runs in', async () => {
+    slots = [makeSlot({ slotId: 2, workDir: SLOT_2, worktreePath: SLOT_2, branch: 'feat/x' })];
+    sessionEvents = [{ repositoryId: 'repo-1', sessionKey: 'feat/x', agentId: 5, timestamp: 1 }];
+
+    const { context } = await resolveSessionContext({}, { 'gen_ai.client.workspace': SLOT_2 });
+
+    expect(context).toMatchObject({ agentId: 2, workspaceSlot: { slotId: 2 } });
   });
 
   it('refuses harSessionKey-only attribution when agent tool is unknown', async () => {
