@@ -2,6 +2,10 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import {
+  disableClaudeNativeTelemetry,
+  enableClaudeNativeTelemetry,
+} from './claude-native-telemetry';
 import { getControlApiUrl } from './control-config';
 import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 
@@ -635,6 +639,17 @@ export function ensureOtelHooks(options?: {
       else errors.push(setup.detail);
     }
     rewriteKnownHookRegistrations(wrapperPath);
+    // Claude reports tokens/cost to no hook — its native metrics carry them.
+    try {
+      const claude = enableClaudeNativeTelemetry({ hooksHome });
+      if (claude.skipped.length > 0) {
+        errors.push(
+          `Claude native telemetry: left your own ${claude.skipped.join(', ')} in ${claude.settingsPath} — Claude cost needs them pointed at Mission Control`,
+        );
+      }
+    } catch (err) {
+      errors.push(`Claude native telemetry not configured: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   const agentsSetup = providersSetup.map(providerLabel);
@@ -657,5 +672,10 @@ export function ensureOtelHooks(options?: {
 
 /** Refresh config for telemetry off (exporter disabled) without uninstalling hooks. */
 export function disableOtelHooksExport(): string {
+  try {
+    disableClaudeNativeTelemetry({ hooksHome: getOtelHooksHome() });
+  } catch {
+    // best-effort: a malformed settings file must not block telemetry off
+  }
   return writeOtelHooksConfig(buildOtelHooksConfig({ enabled: false }));
 }

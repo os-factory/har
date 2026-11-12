@@ -872,6 +872,111 @@ async function resolveRepositoryId(repoPath: string | undefined): Promise<string
   return match?.id ?? null;
 }
 
+/**
+ * Claude Code's native metrics carry `session.id` on every data point and no
+ * workspace on the resource, so resource-based resolution cannot place them.
+ * The hook spans for the same session were already attributed (repo, slot,
+ * sessionKey) at ingest — reuse that attribution.
+ */
+async function resolveSessionContextFromSpans(
+  sessionId: string,
+): Promise<ResolvedSessionContext | null> {
+  if (!sessionId) return null;
+  const select = {
+    repositoryId: true,
+    sessionKey: true,
+    agentId: true,
+    workUnitId: true,
+    attemptId: true,
+  } as const;
+  let span = await prisma.agentSessionSpan.findFirst({
+    where: { sessionKey: sessionId },
+    orderBy: { startTime: 'asc' },
+    select,
+  });
+  if (!span) {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM AgentSessionSpan
+      WHERE json_extract(attributes, '$."session.id"') = ${sessionId}
+      ORDER BY startTime ASC LIMIT 1`;
+    if (rows[0]) {
+      span = await prisma.agentSessionSpan.findUnique({ where: { id: rows[0].id }, select });
+    }
+  }
+  if (!span) return null;
+  const slot = await prisma.agentSlot.findUnique({
+    where: { repositoryId_slotId: { repositoryId: span.repositoryId, slotId: span.agentId } },
+    select: { workDir: true, worktreePath: true, branch: true, suffix: true, occupancyKey: true },
+  });
+  return {
+    repositoryId: span.repositoryId,
+    sessionKey: span.sessionKey,
+    agentId: span.agentId,
+    agentTool: 'claude_code',
+    workDir: slot?.workDir ?? slot?.worktreePath ?? undefined,
+    branch: slot?.branch ?? undefined,
+    suffix: slot?.suffix ?? undefined,
+    workUnitId: span.workUnitId ?? undefined,
+    attemptId: span.attemptId ?? undefined,
+    occupancyKey: slot?.occupancyKey ?? undefined,
+  };
+}
+
+/** Split a Claude Code resource group into one group per `session.id`. */
+function splitClaudeGroupsBySession(
+  groups: Array<{ resource: AttrMap; points: ParsedMetricPoint[] }>,
+): Array<{ resource: AttrMap; points: ParsedMetricPoint[]; sessionId?: string }> {
+  const out: Array<{ resource: AttrMap; points: ParsedMetricPoint[]; sessionId?: string }> = [];
+  for (const group of groups) {
+    if (detectAgentTool(group.resource) !== 'claude_code') {
+      out.push(group);
+      continue;
+    }
+    const bySession = new Map<string, ParsedMetricPoint[]>();
+    for (const point of group.points) {
+      const sessionId = String(point.attributes['session.id'] ?? '');
+      const list = bySession.get(sessionId) ?? [];
+      list.push(point);
+      bySession.set(sessionId, list);
+    }
+    for (const [sessionId, points] of bySession) {
+      out.push({ resource: group.resource, points, ...(sessionId ? { sessionId } : {}) });
+    }
+  }
+  return out;
+}
+
+function addClaudeModelPoint(
+  breakdown: Record<string, Record<string, number>>,
+  point: ParsedMetricPoint,
+): void {
+  const model = String(point.attributes.model ?? '');
+  if (!model || !(point.name === 'claude_code.token.usage' || point.name.endsWith('token.usage'))) {
+    return;
+  }
+  const type = String(point.attributes.type ?? point.attributes.token_type ?? '').toLowerCase();
+  const key =
+    type === 'input'
+      ? 'tokensInput'
+      : type === 'output'
+        ? 'tokensOutput'
+        : type === 'cacheread' || type === 'cache_read'
+          ? 'tokensCacheRead'
+          : type === 'cachecreation' || type === 'cache_creation' || type === 'cache_create'
+            ? 'tokensCacheCreation'
+            : null;
+  if (!key) return;
+  const totals = (breakdown[model] ??= {
+    tokensInput: 0,
+    tokensOutput: 0,
+    tokensCacheRead: 0,
+    tokensCacheCreation: 0,
+    tokensTotal: 0,
+  });
+  totals[key] += point.value;
+  totals.tokensTotal += point.value;
+}
+
 export interface OtelIngestResult {
   accepted: number;
   dropped: number;
@@ -879,13 +984,18 @@ export interface OtelIngestResult {
 }
 
 export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelIngestResult> {
-  const groups = extractPointsFromResourceMetrics(payload);
+  const groups = splitClaudeGroupsBySession(extractPointsFromResourceMetrics(payload));
   let accepted = 0;
   let dropped = 0;
   const reasons: string[] = [];
 
   for (const group of groups) {
-    const resolved = await resolveSessionContext(group.resource);
+    const fromSpans = group.sessionId
+      ? await resolveSessionContextFromSpans(group.sessionId)
+      : null;
+    const resolved = fromSpans
+      ? { context: fromSpans }
+      : await resolveSessionContext(group.resource);
     if (!resolved.context) {
       dropped += 1;
       reasons.push(resolved.reason ?? 'unresolved session for metrics');
@@ -906,16 +1016,22 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
       occupancyKey: context.occupancyKey,
     });
 
+    const claudeModels: Record<string, Record<string, number>> = {};
     for (const point of group.points) {
       applyHooksUsageFromAttrs(usage, point.attributes);
-      if (tool === 'claude_code') applyClaudePoint(usage, point);
-      else if (tool === 'codex') applyCodexPoint(usage, point);
+      if (tool === 'claude_code') {
+        applyClaudePoint(usage, point);
+        addClaudeModelPoint(claudeModels, point);
+      } else if (tool === 'codex') applyCodexPoint(usage, point);
       else applyCodexPoint(usage, point); // cursor / generic metric names
     }
 
     usage.tokensTotal =
       usage.tokensTotal ||
       usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
+    if (Object.keys(claudeModels).length > 0) {
+      usage.modelBreakdown = claudeModels as AgentSessionUsage['modelBreakdown'];
+    }
 
     if (
       usage.tokensTotal === 0 &&
