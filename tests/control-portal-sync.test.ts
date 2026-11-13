@@ -1365,9 +1365,10 @@ describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
     expect(syncBody).not.toHaveProperty('usage');
     // No slot-guessing harvest runs for a portal that derives usage itself.
     expect(harvestUsageForSlotMock).not.toHaveBeenCalled();
+    // Its own watermark, so a portal's first attribution sync takes the whole history.
     expect(writePortalWatermarkMock).toHaveBeenCalledWith(
       '/repo/x',
-      expect.anything(),
+      expect.stringMatching(/^attribution:/),
       '2026-03-01T10:06:00.000Z',
     );
   });

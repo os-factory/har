@@ -309,6 +309,8 @@ arrives late (a portal max-merge could not lower them).
   `/usage-observations/changes` so late harvests and filled-in costs are not
   skipped, and every provider-reported session total via `/reported-usage` —
   and posts them to the portal's `/api/session-attribution` before `/api/sync`.
+  The channel has its own watermark, so a portal's first attribution sync takes
+  Mission Control's whole history and can tell which legacy totals it covers.
   Observations carry their `producer` (stream de-duplication needs it) and the
   syncing member's `userEmail`.
 - **Compatibility.** A portal that answers 404 on `/api/session-attribution`,

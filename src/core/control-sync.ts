@@ -176,6 +176,11 @@ function spansWatermarkTarget(target: PortalTarget): string {
   return `spans:${watermarkKeyForTarget(target)}`;
 }
 
+/** Its own watermark: a portal's first attribution sync takes Mission Control's whole history. */
+function attributionWatermarkTarget(target: PortalTarget): string {
+  return `attribution:${watermarkKeyForTarget(target)}`;
+}
+
 function runsWatermarkTarget(target: string): string {
   return `runs:${target}`;
 }
@@ -913,17 +918,11 @@ async function syncRepoWithPortal(
     portal,
     repoPath,
     controlApiUrl,
-    since,
+    full,
     dryRun,
   );
-  const {
-    syncBody,
-    runsBySource,
-    events,
-    maxSyncedAt: telemetryMaxSyncedAt,
-    failures: telemetryFailures,
-    truncated: telemetryTruncated,
-  } = await buildPortalPayload(
+  const { syncBody, runsBySource, events, maxSyncedAt, failures, truncated } =
+    await buildPortalPayload(
     repoPath,
     sourcePaths,
     controlApiUrl,
@@ -932,9 +931,6 @@ async function syncRepoWithPortal(
     portal,
     attribution.legacyUsage,
   );
-  const maxSyncedAt = combinePortalWatermark(telemetryMaxSyncedAt, attribution.facts);
-  const failures = [...telemetryFailures, ...attribution.facts.failures];
-  const truncated = [...telemetryTruncated, ...attribution.facts.truncated];
   const newRuns = selectRunsForSync(
     runsBySource,
     runsSince,
@@ -982,8 +978,10 @@ async function syncRepoWithPortal(
   }
 
   const warnings: string[] = [];
-  if (failures.length > 0) warnings.push(describeReadFailures(repoPath, failures));
-  if (truncated.length > 0) warnings.push(describeTruncatedReads(repoPath, truncated));
+  const allFailures = [...failures, ...attribution.facts.failures];
+  const allTruncated = [...truncated, ...attribution.facts.truncated];
+  if (allFailures.length > 0) warnings.push(describeReadFailures(repoPath, allFailures));
+  if (allTruncated.length > 0) warnings.push(describeTruncatedReads(repoPath, allTruncated));
 
   warnings.push(
     ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),
@@ -1008,7 +1006,7 @@ async function syncSessionAttributionWithPortal(
   portal: PortalTarget,
   repoPath: string,
   controlApiUrl: string,
-  since: string | null,
+  full: boolean | undefined,
   dryRun: boolean | undefined,
 ): Promise<{ legacyUsage: boolean; facts: MissionControlAttribution }> {
   const none: MissionControlAttribution = {
@@ -1028,6 +1026,8 @@ async function syncSessionAttributionWithPortal(
   const repoRef = { path: repoPath, ...(gitRemote ? { gitRemote } : {}) };
   const userEmail = resolvePortalUserEmail(portal);
 
+  const watermarkTarget = attributionWatermarkTarget(portal);
+  const since = full ? null : readScopedPortalWatermark(repoPath, watermarkTarget);
   const repo = await resolveControlRepoId(controlApiUrl, repoPath);
   let facts: MissionControlAttribution = repo.ok
     ? repo.data
@@ -1063,6 +1063,8 @@ async function syncSessionAttributionWithPortal(
     }
     return { legacyUsage: true, facts: { ...facts, maxSyncedAt: null, truncatedAt: null, truncated: [] } };
   }
+  const watermark = combinePortalWatermark(null, facts);
+  if (watermark) writePortalWatermark(repoPath, watermarkTarget, watermark);
   return { legacyUsage: false, facts };
 }
 
