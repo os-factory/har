@@ -1,4 +1,5 @@
 import { estimateModelCostUsd } from './model-pricing';
+import { occupancyKeyForAttempt } from './occupancy';
 
 /**
  * Evidence-timeline usage attribution (ADR 0003) — pure, no database.
@@ -98,6 +99,47 @@ export function occupancyEventsFromBindings(bindings: TimelineBinding[]): Occupa
     }
   }
   return out;
+}
+
+/** A slot row as a store keeps it: its current occupancy and when that began. */
+export interface OccupancyContextSlot {
+  slotId: number;
+  occupancyKey: string | null;
+  sessionCreatedAt: Date | null;
+}
+
+/** A work attempt: HAR mints one per launch, so each starts an occupancy. */
+export interface OccupancyContextAttempt {
+  attemptId: string;
+  agentId: number;
+  sourceCreatedAt: Date;
+}
+
+/**
+ * Occupancy starts known from the store's slot rows and work attempts, beside
+ * those the bindings imply. Mission Control and har-portal both pass these to
+ * `projectUsage`, so the two close bindings at the same boundaries.
+ */
+export function occupancyEventsFromContext(
+  slots: OccupancyContextSlot[],
+  attempts: OccupancyContextAttempt[],
+): OccupancyEvent[] {
+  return [
+    ...slots
+      .filter((slot) => slot.occupancyKey && slot.sessionCreatedAt)
+      .map((slot) => ({
+        slotId: slot.slotId,
+        occupancyKey: slot.occupancyKey,
+        at: slot.sessionCreatedAt as Date,
+        kind: 'start' as const,
+      })),
+    ...attempts.map((attempt) => ({
+      slotId: attempt.agentId,
+      occupancyKey: occupancyKeyForAttempt(attempt.attemptId),
+      at: attempt.sourceCreatedAt,
+      kind: 'start' as const,
+    })),
+  ];
 }
 
 /**

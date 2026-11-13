@@ -1,5 +1,3 @@
-import type { AgentSlotStatus } from './schema';
-
 /**
  * Slot occupancy identity (#316), shared by Mission Control and the HAR CLI.
  *
@@ -13,10 +11,20 @@ import type { AgentSlotStatus } from './schema';
 /** Separator that cannot appear in an attempt id, branch, or ISO timestamp. */
 const PART_SEPARATOR = '::';
 
-export type OccupancySource = Pick<
-  AgentSlotStatus,
-  'active' | 'attemptId' | 'branch' | 'sessionCreatedAt' | 'worktreePath' | 'workDir'
->;
+/**
+ * The slot fields an occupancy key is derived from — a structural subset of
+ * `AgentSlotStatus`, kept free of the zod schema so the
+ * `@osfactory/har/attribution` entry can ship it (har-portal derives the key
+ * from the slot rows it stores).
+ */
+export interface OccupancySource {
+  active: boolean;
+  attemptId?: string | null;
+  branch?: string | null;
+  sessionCreatedAt?: string | Date | null;
+  worktreePath?: string | null;
+  workDir?: string | null;
+}
 
 /**
  * Stable key for one occupancy, or null when the slot is idle.

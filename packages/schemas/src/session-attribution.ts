@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { AgentToolSchema, HAR_AGENT_SLOT_MIN, type AgentTool } from './schema';
+import { AgentToolSchema, HAR_AGENT_SLOT_MIN, type AgentSlotStatus, type AgentTool } from './schema';
+import type { OccupancySource } from './occupancy';
 import type { TimelineBindingKind } from './usage-attribution';
 
 /**
@@ -68,6 +69,9 @@ const bindingKindsMatch: [SessionBindingKind, TimelineBindingKind] extends [Time
   ? true
   : never = true;
 void bindingKindsMatch;
+// The zod-free occupancy source must keep accepting a slot status.
+const slotIsOccupancySource = (slot: AgentSlotStatus): OccupancySource => slot;
+void slotIsOccupancySource;
 
 /**
  * One timeline point: from `at` on, `ref` works in slot `slotId` (or, for

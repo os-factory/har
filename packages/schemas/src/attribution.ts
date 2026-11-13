@@ -8,6 +8,12 @@
  */
 export * from './usage-attribution';
 export { estimateModelCostUsd, type ModelUsageTotals } from './model-pricing';
+export {
+  attemptIdFromOccupancyKey,
+  deriveOccupancyKey,
+  occupancyKeyForAttempt,
+  type OccupancySource,
+} from './occupancy';
 
 export type AgentToolName = 'claude_code' | 'codex' | 'cursor';
 

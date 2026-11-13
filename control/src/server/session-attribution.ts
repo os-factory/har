@@ -14,6 +14,7 @@ import {
   subtractTotals,
   type TokenTotals,
   observationCoverage,
+  occupancyEventsFromContext,
   projectUsage,
   type ObservationFact,
   type OccupancyEvent,
@@ -22,7 +23,7 @@ import {
   type UsageBucket,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
-import { attemptIdFromOccupancyKey, occupancyKeyForAttempt } from '@/server/occupancy';
+import { attemptIdFromOccupancyKey } from '@/server/occupancy';
 
 /**
  * Storage and read model of session → slot attribution (ADR 0003).
@@ -751,17 +752,7 @@ export interface UsageViewInputs {
 /** Pure assembly of the read model from loaded facts (unit-tested). */
 export function buildUsageView(inputs: UsageViewInputs): UsageView {
   const { repositoryId } = inputs;
-  const occupancyEvents: OccupancyEvent[] = [
-    ...inputs.slots
-      .filter((slot) => slot.occupancyKey && slot.sessionCreatedAt)
-      .map((slot) => ({ slotId: slot.slotId, occupancyKey: slot.occupancyKey, at: slot.sessionCreatedAt!, kind: 'start' as const })),
-    ...inputs.attempts.map((attempt) => ({
-      slotId: attempt.agentId,
-      occupancyKey: occupancyKeyForAttempt(attempt.attemptId),
-      at: attempt.sourceCreatedAt,
-      kind: 'start' as const,
-    })),
-  ];
+  const occupancyEvents: OccupancyEvent[] = occupancyEventsFromContext(inputs.slots, inputs.attempts);
   const projection = projectUsage(inputs.bindings, inputs.observations, occupancyEvents);
   const coverage = observationCoverage(inputs.observations);
 
