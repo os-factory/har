@@ -24,7 +24,12 @@ import {
   resolveSyncSelection,
   writeSyncSelection,
 } from '../../core/control-sync-selection';
-import { startMissionControl, syncReposAfterControlStart, stopMissionControl } from '../../core/control-lifecycle';
+import {
+  startMissionControl,
+  stopMissionControl,
+  syncReposAfterControlStart,
+  upgradeStaleMissionControl,
+} from '../../core/control-lifecycle';
 import {
   confirmUnregister,
   listUnregisterWorktreeCandidates,
@@ -490,6 +495,16 @@ async function handleSync(argv: {
   full: boolean;
 }): Promise<void> {
   const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if (!argv.cloud && !argv.apiUrl && !argv.dryRun) {
+    const upgrade = await upgradeStaleMissionControl();
+    if (upgrade.upgraded && !argv.json) {
+      if (upgrade.code === 0) {
+        info(`Upgraded Mission Control from ${upgrade.from} to ${upgrade.to}`);
+      } else {
+        warn(`Could not upgrade Mission Control from ${upgrade.from} to ${upgrade.to}; run har control up`);
+      }
+    }
+  }
   const discovered = await discoverHarRepos({ apiUrl: argv.apiUrl, cwd: process.cwd() });
 
   if (argv.select && !isTTY) {
