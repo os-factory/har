@@ -1,3 +1,10 @@
+## [1.25.1](https://github.com/os-factory/har/compare/v1.25.0...v1.25.1) (2026-11-13)
+
+### Bug Fixes
+
+* **attribution:** claim slot evidence that arrives before its slot; keep registered repos in the sync selection ([#393](https://github.com/os-factory/har/issues/393)) ([06ebd31](https://github.com/os-factory/har/commit/06ebd31f5b8bbc1dcff1134712b35fd94a408ff2))
+* **pricing:** price Claude Opus 5.5 with genai-prices 0.2.3 ([#395](https://github.com/os-factory/har/issues/395)) ([ae308ca](https://github.com/os-factory/har/commit/ae308caa82626e894eec86f9788d69cdc145bb72))
+
 ## [1.25.0](https://github.com/os-factory/har/compare/v1.24.0...v1.25.0) (2026-11-13)
 
 ### Features
