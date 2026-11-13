@@ -307,13 +307,15 @@ describe('syncRepoWithControl — portal push', () => {
       const toHq = String(url).includes('portal.example.com');
       if (toHq) hqCalls += 1;
       const unavailable = toHq && hqCalls === 1;
-      const register = String(url).endsWith('/api/repos') && init?.method === 'POST';
+      const repos = String(url).endsWith('/api/repos');
+      const register = repos && init?.method === 'POST';
       return {
         ok: !unavailable,
         status: unavailable ? 503 : 200,
         headers: new Headers(unavailable ? { 'retry-after': '0' } : {}),
         text: async (): Promise<string> => '',
-        json: async (): Promise<unknown> => (register ? { id: 'local-repo-1' } : {}),
+        // Mission Control: registration returns the repo, the repo list is a list.
+        json: async (): Promise<unknown> => (register ? { id: 'local-repo-1' } : repos ? [] : {}),
       };
     });
     (global as unknown as { fetch: unknown }).fetch = fetchMock;
