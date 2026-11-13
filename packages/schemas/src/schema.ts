@@ -644,6 +644,27 @@ export const SyncSlotsInputSchema = z.object({
 
 export type SyncSlotsInput = z.infer<typeof SyncSlotsInputSchema>;
 
+/**
+ * A linked git worktree of a registered repository, as the CLI lists it on the
+ * host (`git worktree list --porcelain`). Mission Control in docker cannot read
+ * `<repo>/.git/worktrees`, so this report is how it learns where a non-slot
+ * worktree session works.
+ */
+export const ReportedGitWorktreeSchema = z.object({
+  path: z.string().min(1),
+  branch: z.string().nullable(),
+  head: z.string().nullable(),
+});
+
+export type ReportedGitWorktree = z.infer<typeof ReportedGitWorktreeSchema>;
+
+export const SyncGitWorktreesInputSchema = z.object({
+  worktrees: z.array(ReportedGitWorktreeSchema).max(2000),
+  generatedAt: z.string(),
+});
+
+export type SyncGitWorktreesInput = z.infer<typeof SyncGitWorktreesInputSchema>;
+
 export const SyncWorkUnitsInputSchema = z.object({
   workUnits: z.array(WorkUnitRecordSchema),
   attempts: z.array(WorkAttemptRecordSchema),

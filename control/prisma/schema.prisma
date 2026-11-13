@@ -14,6 +14,11 @@ model Repository {
   manifest        Json?
   stagesRegistry  Json?
   lastSyncAt      DateTime?
+  /// Linked git worktrees as the CLI last listed them on the host
+  /// (`ReportedGitWorktree[]`). Read when the repository's git directory is not
+  /// visible here (Mission Control in docker mounts only its data volume).
+  reportedWorktrees   Json?
+  reportedWorktreesAt DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   slots           AgentSlot[]
@@ -415,4 +420,22 @@ model UnregisteredRepository {
   path             String   @id
   unregisteredAt   DateTime @default(now())
   deleteWorktrees  Boolean  @default(false)
+}
+
+/// A usage-bearing OTLP record whose session no repository could be resolved for
+/// yet (its cwd is a worktree Mission Control has not been told about). Kept, not
+/// dropped, and replayed when a worktree listing arrives or its session becomes
+/// known. `payload` is the record as a one-record OTLP JSON document.
+model ParkedOtelRecord {
+  id          String   @id @default(uuid())
+  /// "span" | "log"
+  signal      String
+  agentTool   String?
+  sessionId   String?
+  workspaceId String?
+  payload     Json
+  createdAt   DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
 }

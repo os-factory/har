@@ -63,6 +63,42 @@ export function listLinkedWorktrees(cwd: string): string[] {
   return paths;
 }
 
+export interface LinkedWorktreeDetail {
+  path: string;
+  /** Short branch name; null on a detached HEAD. */
+  branch: string | null;
+  head: string | null;
+}
+
+/**
+ * Linked worktrees of `cwd`'s repository with their branch and HEAD, excluding
+ * the main working tree and bare entries. Reported to Mission Control on sync:
+ * in docker it cannot read `<repo>/.git/worktrees` and would otherwise not know
+ * where a session in a plain `git worktree add` worktree works.
+ */
+export function listLinkedWorktreeDetails(cwd: string): LinkedWorktreeDetail[] {
+  const porcelain = tryGit(cwd, 'worktree list --porcelain');
+  if (!porcelain) return [];
+  const main = resolveMainWorkingTree(cwd);
+  const mainResolved = main ? path.resolve(main) : undefined;
+  const out: LinkedWorktreeDetail[] = [];
+  for (const block of porcelain.split(/\n\s*\n/)) {
+    let worktree: string | undefined;
+    let branch: string | null = null;
+    let head: string | null = null;
+    let bare = false;
+    for (const line of block.split('\n')) {
+      if (line.startsWith('worktree ')) worktree = path.resolve(line.slice('worktree '.length));
+      else if (line.startsWith('HEAD ')) head = line.slice('HEAD '.length).trim() || null;
+      else if (line.startsWith('branch ')) branch = line.slice('branch '.length).trim().replace(/^refs\/heads\//, '') || null;
+      else if (line.trim() === 'bare') bare = true;
+    }
+    if (!worktree || bare || worktree === mainResolved) continue;
+    out.push({ path: worktree, branch, head });
+  }
+  return out;
+}
+
 /**
  * Map a harness/repo path onto the main git working tree.
  *

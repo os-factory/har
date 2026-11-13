@@ -6,6 +6,7 @@ import {
   EnvironmentStatus,
   RegisterRepoInput,
   RunRecord,
+  SyncGitWorktreesInputSchema,
   SyncRunsInputSchema,
   SyncSlotsInputSchema,
   SyncWorkUnitsInputSchema,
@@ -36,7 +37,7 @@ import {
   resolvePortalTarget,
   updatePortalTargetTokens,
 } from './portal-targets';
-import { canonicalizeControlRepoPath } from './control-repo-path';
+import { canonicalizeControlRepoPath, listLinkedWorktreeDetails } from './control-repo-path';
 import {
   collectRunsBySource,
   collectRunsForSync,
@@ -1252,6 +1253,31 @@ export async function syncSessionAttributionWithControl(
   }
 }
 
+/**
+ * Report the repository's linked git worktrees as listed on the host. Mission
+ * Control in docker mounts only its data volume, so it cannot read
+ * `<repo>/.git/worktrees`; without this listing, a session working in a plain
+ * `git worktree add` worktree reports a workspace id it cannot place.
+ * Never fails the sync; an older Mission Control without the route is skipped.
+ */
+export async function syncGitWorktreesWithControl(
+  apiUrl: string,
+  repoId: string,
+  repoPath: string,
+  dryRun?: boolean,
+): Promise<void> {
+  try {
+    const body = SyncGitWorktreesInputSchema.parse({
+      worktrees: listLinkedWorktreeDetails(repoPath),
+      generatedAt: new Date().toISOString(),
+    });
+    await postJsonIfSupported(`${apiUrl}/api/repos/${repoId}/git-worktrees`, body, dryRun);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[har control] worktree listing sync skipped: ${message}\n`);
+  }
+}
+
 async function syncRepoRunsAndSlots(
   apiUrl: string,
   repoId: string,
@@ -1289,6 +1315,7 @@ async function syncRepoRunsAndSlots(
     generatedAt: status.generatedAt,
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
+  await syncGitWorktreesWithControl(apiUrl, repoId, repoPath, dryRun);
 
   const workUnitsBody = SyncWorkUnitsInputSchema.parse(collectWorkUnitsForSync(sourcePaths));
   if (workUnitsBody.workUnits.length > 0 || workUnitsBody.attempts.length > 0) {

@@ -109,6 +109,19 @@ How Mission Control resolves the timeline:
   `vcs.ref.head.name` alone. Such usage stays unassigned — never a slot's —
   but is split per worktree (`workDir`, `branch`); worktree bindings never
   close each other or a slot's.
+- **Mission Control in docker (no `.git` visible):** the container mounts only
+  its data volume, so the CLI reports each repository's linked worktrees
+  (`git worktree list --porcelain`: path, branch, HEAD) on every repo sync
+  (`POST /api/repos/:id/git-worktrees`), and Mission Control reads that last
+  listing when the git directory is not readable. Usage is never dropped for
+  want of a place: a session already known to a repository that reports an
+  unnamed workspace id is bound to `unresolved-workspace:<id>` (renamed to
+  `worktree:<path>` once a listing names it); a usage-bearing record of a
+  session no repository knows yet is parked (`ParkedOtelRecord`, 30 days) and
+  replayed when a listing arrives or its session becomes known. Mounting the
+  repositories read-only was rejected: mounts are fixed at container creation,
+  so every newly registered repository would recreate the container, and it
+  would expose source trees and depend on Docker Desktop file sharing.
 - **Same unit, several producers:** observations are idempotent per key. A
   repeat of a key from the live stream replaces a harvested copy; a harvested
   copy never replaces the live one, and a provider-reported cost is never

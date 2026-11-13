@@ -14,9 +14,32 @@ export interface LinkedWorktree {
 }
 
 export interface LinkedWorktrees {
-  /** False when the repository's git directory cannot be read (e.g. not mounted): absence proves nothing. */
+  /**
+   * False when the repository's git directory cannot be read (e.g. not
+   * mounted): absence proves nothing — even with a reported listing, which
+   * may predate a worktree.
+   */
   readable: boolean;
   worktrees: LinkedWorktree[];
+}
+
+/** A repository row with the listing the CLI last reported for it. */
+export interface RepositoryWorktreeSource {
+  path: string;
+  reportedWorktrees?: unknown;
+}
+
+/** Prisma select for `linkedWorktreesOf`. */
+export const REPOSITORY_WORKTREE_COLUMNS = { id: true, path: true, reportedWorktrees: true } as const;
+
+export function parseReportedWorktrees(value: unknown): LinkedWorktree[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const { path: worktreePath, branch } = entry as { path?: unknown; branch?: unknown };
+    if (typeof worktreePath !== 'string' || !worktreePath) return [];
+    return [{ path: worktreePath, branch: typeof branch === 'string' && branch ? branch : null }];
+  });
 }
 
 const CACHE_TTL_MS = 10_000;
@@ -69,4 +92,19 @@ export function listLinkedWorktrees(
 
 export function clearLinkedWorktreeCache(): void {
   cache.clear();
+}
+
+/**
+ * A repository's linked worktrees as Mission Control can know them: read from
+ * its git directory when that is visible (run from source), else the listing
+ * the CLI last reported from the host (docker, where only `/data` is mounted).
+ */
+export function linkedWorktreesOf(
+  repo: RepositoryWorktreeSource,
+  now = Date.now(),
+  maxAgeMs = CACHE_TTL_MS,
+): LinkedWorktrees {
+  const local = listLinkedWorktrees(repo.path, now, maxAgeMs);
+  if (local.readable) return local;
+  return { readable: false, worktrees: parseReportedWorktrees(repo.reportedWorktrees) };
 }

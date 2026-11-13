@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import {
   AgentTrajectoryRecordSchema,
   MAIN_CHECKOUT_AGENT_ID,
+  unresolvedWorkspaceOccupancyKey,
   type AgentSessionRef,
   type AgentTool,
 } from '@har/schemas';
@@ -34,10 +35,16 @@ import {
   hidesTrajectoryContent,
   redactSecretAttributes,
 } from '@/lib/trajectory-privacy';
-import { listLinkedWorktrees } from '@/server/git-worktrees';
+import { linkedWorktreesOf, REPOSITORY_WORKTREE_COLUMNS } from '@/server/git-worktrees';
+import {
+  deleteParkedOtelRecord,
+  parkOtelRecord,
+  parkedOtelRecords,
+} from '@/server/parked-otel';
 import {
   isWorkspaceUnderPath,
   normalizeOtelPath,
+  otelWorkspaceIdForPath,
   pickBestRepoPathMatch,
   pickPathForWorkspaceId,
 } from '@/server/otel-workspace';
@@ -384,7 +391,7 @@ export interface ResolvedSessionContext {
 async function resolveRepositoryByWorkspacePath(
   workspace: string,
 ): Promise<{ repositoryId: string; path: string } | null> {
-  const repos = await prisma.repository.findMany({ select: { id: true, path: true } });
+  const repos = await prisma.repository.findMany({ select: REPOSITORY_WORKTREE_COLUMNS });
   const best = pickBestRepoPathMatch(
     workspace,
     repos.map((r) => r.path),
@@ -393,7 +400,7 @@ async function resolveRepositoryByWorkspacePath(
   const match = best
     ? repos.find((r) => normalizePath(r.path) === best)
     : repos.find((r) =>
-        listLinkedWorktrees(r.path).worktrees.some((worktree) => isWorkspaceUnderPath(workspace, worktree.path)),
+        linkedWorktreesOf(r).worktrees.some((worktree) => isWorkspaceUnderPath(workspace, worktree.path)),
       );
   return match ? { repositoryId: match.id, path: match.path } : null;
 }
@@ -408,7 +415,7 @@ async function resolveRepositoryByWorkspaceId(
   workspaceId: string,
 ): Promise<{ repositoryId: string; path: string; matchedPath: string; slot: WorkspaceSlotMatch | null } | null> {
   const [repos, slots] = await Promise.all([
-    prisma.repository.findMany({ select: { id: true, path: true } }),
+    prisma.repository.findMany({ select: REPOSITORY_WORKTREE_COLUMNS }),
     prisma.agentSlot.findMany({
       where: {
         OR: [{ workDir: { not: null } }, { worktreePath: { not: null } }],
@@ -433,11 +440,13 @@ async function resolveRepositoryByWorkspaceId(
   // otel-hook sends only the hashed id of the session's cwd, so a non-slot git
   // worktree (`git worktree add`, Claude Code's EnterWorktree) is found only if
   // its path is a candidate too, as resolveRepositoryByWorkspacePath does for a
-  // raw path. Slot work dirs were added first and keep winning on a tie.
+  // raw path — read from the repository's git directory, or, in docker, from
+  // the listing the CLI reported. Slot work dirs were added first and keep
+  // winning on a tie.
   const withWorktrees = (maxAgeMs?: number) => [
     ...candidates,
     ...repos.flatMap((repo) =>
-      listLinkedWorktrees(repo.path, Date.now(), maxAgeMs).worktrees.map((worktree) => ({
+      linkedWorktreesOf(repo, Date.now(), maxAgeMs).worktrees.map((worktree) => ({
         repositoryId: repo.id,
         path: repo.path,
         candidate: worktree.path,
@@ -573,6 +582,22 @@ export async function resolveSessionContext(
     };
   }
 
+  // A session Mission Control already knows (its earlier records were placed),
+  // now reporting from a place no repository path, slot or listed worktree
+  // names: a worktree not listed yet (docker sees no `.git`, and the CLI
+  // reports listings only when it syncs) or a subdirectory. The session's
+  // repository is known, so the record stays there, in an explicit
+  // unresolved-place bucket — never dropped.
+  let unresolvedWorkspaceId: string | null = null;
+  if (!repository && (workspace || workspaceId) && tool) {
+    const ref = providerSessionRef(tool, attributes, resource);
+    const known = ref ? await repositoryForProviderSession(ref) : null;
+    if (ref && known) {
+      unresolvedWorkspaceId = workspaceId || otelWorkspaceIdForPath(normalizeOtelPath(workspace));
+      repository = { repositoryId: known, sessionKey: providerSessionId || ref.sessionId };
+    }
+  }
+
   if (!repository) {
     return {
       context: null,
@@ -605,6 +630,9 @@ export async function resolveSessionContext(
     attrs: targetSlot ? undefined : attributes,
   });
   if (worktree) evidence.push(worktree);
+  if (unresolvedWorkspaceId && !evidence.some((item) => item.kind === 'workspace')) {
+    evidence.push({ kind: 'workspace', slot: unresolvedPlaceEvidence(unresolvedWorkspaceId) });
+  }
 
   // With a provider session, the record goes where the session's timeline —
   // including this evidence — puts it at that time, so repeating cwd evidence
@@ -635,6 +663,19 @@ export async function resolveSessionContext(
       };
   if (workspaceSlot) context.workspaceSlot = workspaceSlot;
   return { context, evidence };
+}
+
+/** The session's cwd is a place of the repository Mission Control cannot name yet. */
+function unresolvedPlaceEvidence(workspaceId: string): SlotEvidence {
+  return {
+    slotId: MAIN_CHECKOUT_AGENT_ID,
+    occupancyKey: unresolvedWorkspaceOccupancyKey(workspaceId),
+    branch: null,
+    workDir: null,
+    suffix: null,
+    workUnitId: null,
+    attemptId: null,
+  };
 }
 
 export interface SlotBindingEvidence {
@@ -830,6 +871,8 @@ async function resolveRepositoryId(repoPath: string | undefined): Promise<string
 export interface OtelIngestResult {
   accepted: number;
   dropped: number;
+  /** Kept for replay: their session's place is not known yet (never dropped). */
+  parked?: number;
   reasons: string[];
 }
 
@@ -1260,10 +1303,16 @@ function isSpanMirrorLogRecord(record: ParsedLogRecord): boolean {
   return record.eventName.startsWith('span.') && Boolean(record.spanId ?? record.attributes['span_id']);
 }
 
-export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestResult> {
+export async function ingestOtelLogsJson(
+  payload: unknown,
+  options: IngestOptions = {},
+): Promise<OtelIngestResult> {
   const records = extractLogRecords(payload);
+  const park = options.park ?? true;
+  const sessions = new Set<string>();
   let accepted = 0;
   let dropped = 0;
+  let parked = 0;
   const reasons: string[] = [];
 
   for (const record of records) {
@@ -1278,8 +1327,18 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
       }
       const stored = await storeObservations([observation], record.resource, () => record.attributes);
       accepted += stored.accepted;
-      dropped += stored.dropped;
+      if (stored.accepted > 0) sessions.add(observation.sessionId);
       reasons.push(...stored.reasons);
+      // Its session's place is not known yet: kept for replay, never dropped.
+      const kept = stored.dropped > 0 && park && await tryPark({
+        signal: 'log',
+        agentTool: observation.agentTool,
+        sessionId: observation.sessionId,
+        workspaceId: workspaceIdFromAttrs(record.attributes, record.resource) || null,
+        record: otlpLogsPayload(record),
+      });
+      if (kept) parked += stored.dropped;
+      else dropped += stored.dropped;
       continue;
     }
 
@@ -1335,11 +1394,15 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
     );
 
     await maybeSetDerivedPurpose(context.repositoryId, context.agentId, promptText);
+    if (context.sessionRef) sessions.add(context.sessionRef.sessionId);
     accepted += 1;
   }
 
-  return { accepted, dropped, reasons };
+  if (park) await replayParkedForSessions(sessions);
+  return { accepted, dropped, ...(parked ? { parked } : {}), reasons };
 }
+
+
 
 export async function ingestOtelLogsBody(
   body: Buffer,
@@ -1419,10 +1482,16 @@ export function extractSpans(payload: unknown): ParsedSpan[] {
   return out;
 }
 
-export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngestResult> {
+export async function ingestOtelTracesJson(
+  payload: unknown,
+  options: IngestOptions = {},
+): Promise<OtelIngestResult> {
   const spans = extractSpans(payload);
+  const park = options.park ?? true;
+  const sessions = new Set<string>();
   let accepted = 0;
   let dropped = 0;
+  let parked = 0;
   const reasons: string[] = [];
 
   for (const span of spans) {
@@ -1439,8 +1508,20 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
     const evidenceAt = span.endTime ?? span.startTime;
     const resolved = await resolveSessionContext(span.resource, span.attributes, { at: evidenceAt });
     if (!resolved.context) {
-      dropped += 1;
       reasons.push(resolved.reason ?? 'unresolved session for span');
+      // A span that carries usage is kept for replay (its own workspace id
+      // places it then), never dropped; other spans are.
+      const tool = detectAgentTool(span.attributes) ?? detectAgentTool(span.resource);
+      const usage = tool ? otelHookGenerationObservation(span, tool) : null;
+      const kept = usage && park && await tryPark({
+        signal: 'span',
+        agentTool: tool,
+        sessionId: usage.sessionId,
+        workspaceId: workspaceIdFromAttrs(span.attributes, span.resource) || null,
+        record: otlpTracesPayload(span),
+      });
+      if (kept) parked += 1;
+      else dropped += 1;
       continue;
     }
     const { context } = resolved;
@@ -1482,11 +1563,15 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
     );
 
     await maybeSetDerivedPurpose(context.repositoryId, context.agentId, canonical.promptText);
+    if (context.sessionRef) sessions.add(context.sessionRef.sessionId);
     accepted += 1;
   }
 
-  return { accepted, dropped, reasons };
+  if (park) await replayParkedForSessions(sessions);
+  return { accepted, dropped, ...(parked ? { parked } : {}), reasons };
 }
+
+
 
 export async function ingestOtelTracesBody(
   body: Buffer,
@@ -1511,4 +1596,124 @@ export async function ingestOtelTracesBody(
     dropped: 1,
     reasons: ['protobuf traces body not decoded; prefer http/json'],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Parked records (Mission Control in docker cannot see `.git`, FE-2058)
+
+interface IngestOptions {
+  /** Park a usage-bearing record no repository resolves for yet, instead of dropping it (default). */
+  park?: boolean;
+}
+
+function otlpAttrs(map: AttrMap): Array<{ key: string; value: Record<string, unknown> }> {
+  return Object.entries(map).map(([key, value]) => ({
+    key,
+    value:
+      typeof value === 'number'
+        ? Number.isInteger(value) ? { intValue: value } : { doubleValue: value }
+        : typeof value === 'boolean'
+          ? { boolValue: value }
+          : { stringValue: String(value) },
+  }));
+}
+
+function unixNano(date: Date | null): string | undefined {
+  return date ? `${date.getTime()}000000` : undefined;
+}
+
+/** One parsed span as a one-span OTLP JSON document, re-ingested on replay. */
+function otlpTracesPayload(span: ParsedSpan) {
+  return {
+    resourceSpans: [
+      {
+        resource: { attributes: otlpAttrs(span.resource) },
+        scopeSpans: [
+          {
+            spans: [
+              {
+                traceId: span.traceId,
+                spanId: span.spanId,
+                ...(span.parentSpanId ? { parentSpanId: span.parentSpanId } : {}),
+                name: span.name,
+                startTimeUnixNano: unixNano(span.startTime),
+                ...(span.endTime ? { endTimeUnixNano: unixNano(span.endTime) } : {}),
+                attributes: otlpAttrs(span.attributes),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** One parsed log record as a one-record OTLP JSON document, re-ingested on replay. */
+function otlpLogsPayload(record: ParsedLogRecord) {
+  return {
+    resourceLogs: [
+      {
+        resource: { attributes: otlpAttrs(record.resource) },
+        scopeLogs: [
+          {
+            logRecords: [
+              {
+                timeUnixNano: unixNano(record.timestamp),
+                eventName: record.eventName,
+                ...(record.body != null ? { body: record.body } : {}),
+                ...(record.traceId ? { traceId: record.traceId } : {}),
+                ...(record.spanId ? { spanId: record.spanId } : {}),
+                ...(record.parentSpanId ? { parentSpanId: record.parentSpanId } : {}),
+                attributes: otlpAttrs(record.attributes),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+async function tryPark(input: Parameters<typeof parkOtelRecord>[0]): Promise<boolean> {
+  try {
+    await parkOtelRecord(input);
+    return true;
+  } catch (err) {
+    console.warn('[otel] could not park an unresolved record:', err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+/** Records just accepted made their sessions known: their parked records may resolve now. Never fails ingest. */
+async function replayParkedForSessions(sessions: Set<string>): Promise<void> {
+  if (sessions.size === 0) return;
+  try {
+    await replayParkedOtelRecords({ sessionIds: [...sessions] });
+  } catch (err) {
+    console.warn('[otel] parked record replay failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * Re-ingest parked records (all, or those of the given sessions). A record
+ * that now resolves — a worktree listing names its workspace, or its session
+ * became known — is stored and leaves the park; the rest stay.
+ */
+export async function replayParkedOtelRecords(
+  filter: { sessionIds?: string[] } = {},
+): Promise<{ replayed: number; remaining: number }> {
+  let replayed = 0;
+  let remaining = 0;
+  for (const row of await parkedOtelRecords(filter)) {
+    const result = row.signal === 'span'
+      ? await ingestOtelTracesJson(row.payload, { park: false })
+      : await ingestOtelLogsJson(row.payload, { park: false });
+    if (result.accepted > 0 && result.dropped === 0) {
+      await deleteParkedOtelRecord(row.id);
+      replayed += 1;
+    } else {
+      remaining += 1;
+    }
+  }
+  return { replayed, remaining };
 }

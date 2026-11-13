@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
 import { isWorkspaceUnderPath, normalizeOtelPath, pickPathForWorkspaceId } from '@/server/otel-workspace';
-import { listLinkedWorktrees } from '@/server/git-worktrees';
+import { linkedWorktreesOf, REPOSITORY_WORKTREE_COLUMNS } from '@/server/git-worktrees';
 import type { ObservationInput } from '@/server/session-attribution';
 
 /**
@@ -357,10 +357,10 @@ export async function resolveTargetSlot(
  * cwd inside one. Recorded as a binding to `MAIN_CHECKOUT_AGENT_ID` naming the
  * worktree, so its usage is unassigned yet split from the main checkout's.
  *
- * Callers pass only what no slot claimed. When Mission Control cannot read the
- * repository's worktrees (its git directory is not mounted), a target is named
- * by its branch alone — provided its hash is neither the main checkout's nor a
- * slot's.
+ * Callers pass only what no slot claimed. Worktrees are read from the
+ * repository's git directory, else from the listing the CLI reported (docker).
+ * When neither names the target, a target is named by its branch alone —
+ * provided its hash is neither the main checkout's nor a slot's.
  */
 export async function resolveNonSlotWorktree(
   repositoryId: string,
@@ -370,7 +370,7 @@ export async function resolveNonSlotWorktree(
   const workspaceId = str([attrs], [TARGET_WORKSPACE_ID_ATTR]);
   const targetBranch = str([attrs], [TARGET_BRANCH_ATTR]);
   if (!input.workspace && !workspaceId) return null;
-  const repo = (await prisma.repository.findMany({ select: { id: true, path: true } })).find(
+  const repo = (await prisma.repository.findMany({ select: REPOSITORY_WORKTREE_COLUMNS })).find(
     (candidate) => candidate.id === repositoryId,
   );
   if (!repo) return null;
@@ -379,7 +379,7 @@ export async function resolveNonSlotWorktree(
     .flatMap((slot) => [slot.workDir, slot.worktreePath])
     .filter((p): p is string => Boolean(p))
     .map(normalizeOtelPath);
-  const { readable, worktrees } = listLinkedWorktrees(repo.path);
+  const { readable, worktrees } = linkedWorktreesOf(repo);
   const candidates = worktrees.filter((worktree) => !slotPaths.includes(normalizeOtelPath(worktree.path)));
   const evidence = (kind: 'workspace' | 'observed', workDir: string | null, branch: string | null) => ({
     kind,

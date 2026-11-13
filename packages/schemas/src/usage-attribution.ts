@@ -32,6 +32,24 @@ export const MAIN_CHECKOUT_AGENT_ID = 0;
 const WORKTREE_PATH_PREFIX = 'worktree:';
 const WORKTREE_BRANCH_PREFIX = 'worktree-branch:';
 
+/**
+ * A binding to `MAIN_CHECKOUT_AGENT_ID` whose place Mission Control could not
+ * name: a session it already knows reported a workspace id that matches no
+ * repository path, slot or listed worktree (a worktree not reported yet, a
+ * subdirectory). Its usage is kept apart from the main checkout's, and the
+ * binding is renamed to `worktree:<path>` once a listing names the place.
+ */
+const UNRESOLVED_WORKSPACE_PREFIX = 'unresolved-workspace:';
+
+export function unresolvedWorkspaceOccupancyKey(workspaceId: string): string {
+  return `${UNRESOLVED_WORKSPACE_PREFIX}${workspaceId}`;
+}
+
+/** The workspace id an unresolved-place binding names, when it is one. */
+export function workspaceIdFromUnresolvedOccupancyKey(key: string | null | undefined): string | null {
+  return key?.startsWith(UNRESOLVED_WORKSPACE_PREFIX) ? key.slice(UNRESOLVED_WORKSPACE_PREFIX.length) : null;
+}
+
 export function worktreeOccupancyKey(worktree: { workDir?: string | null; branch?: string | null }): string | null {
   if (worktree.workDir) return `${WORKTREE_PATH_PREFIX}${worktree.workDir}`;
   if (worktree.branch) return `${WORKTREE_BRANCH_PREFIX}${worktree.branch}`;
