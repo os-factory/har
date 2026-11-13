@@ -1,3 +1,9 @@
+## [1.25.0](https://github.com/os-factory/har/compare/v1.24.0...v1.25.0) (2026-11-13)
+
+### Features
+
+* **sync:** ship Mission Control's attributed usage to the portal (FE-2058) ([#392](https://github.com/os-factory/har/issues/392)) ([8d21c66](https://github.com/os-factory/har/commit/8d21c6686a95e4aec0aaa7782245d1f3528c29ad))
+
 ## [1.24.0](https://github.com/os-factory/har/compare/v1.23.0...v1.24.0) (2026-11-13)
 
 ### Features
