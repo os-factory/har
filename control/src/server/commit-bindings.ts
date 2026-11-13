@@ -7,17 +7,12 @@ function toJson(value: unknown) {
 
 export async function syncCommitBindings(repositoryId: string, input: unknown) {
   const { bindings } = SyncValidationCommitBindingsInputSchema.parse(input);
-  for (const binding of bindings) {
+  for (const { parents, refs, createdAt, ...binding } of bindings) {
     const data = {
-      bindingId: binding.bindingId,
-      validationId: binding.validationId,
-      treeHash: binding.treeHash,
-      commitSha: binding.commitSha,
-      parents: toJson(binding.parents),
-      refs: toJson(binding.refs),
-      message: binding.message,
-      runId: binding.runId,
-      sourceCreatedAt: new Date(binding.createdAt),
+      ...binding,
+      parents: toJson(parents),
+      refs: toJson(refs),
+      sourceCreatedAt: new Date(createdAt),
     };
     // Each worktree that validates a commit writes its own binding, so one
     // commit can arrive under several bindingIds; the last one synced wins.
