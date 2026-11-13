@@ -235,8 +235,10 @@ When telemetry is on:
    to export OTLP `http/protobuf` to `{HAR_CONTROL_API_URL}/api/otel`.
 3. Launch writes session attribution into `.env.agent.<id>` (`HAR_SESSION_KEY`, resource attrs).
    Mission Control matches sessions by `har.session_key` or by workspace/cwd → slot work dir.
-4. Token usage is derived from span `gen_ai.usage.*` attributes. `har control sync` also
-   **harvests** local Claude/Codex session files as a fallback when hooks telemetry is missing.
+4. Token usage arrives per request or turn — Claude Code's native `api_request` events,
+   otel-hook spans — and `har control sync` also **harvests** local Claude/Codex session
+   files. Each piece is booked on the slot the agent worked in at that moment; see
+   [Usage attribution](/docs/guides/usage-attribution/).
 
 **Privacy:** prompt text is included by default and stays in local Mission Control (SQLite).
 Opt out with `har telemetry on --no-prompts` or disable everything with `har telemetry off`.

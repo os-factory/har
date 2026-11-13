@@ -4,12 +4,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { UsageTable, type UsageRow } from '@/components/usage-table';
 import { PreDedupeTip } from '@/components/pre-dedupe-tip';
 import { formatCostUsd, formatTokens } from '@/lib/usage-models';
-import { listAllSessionUsage, summarizeUsageRows } from '@/server/usage';
+import { UnassignedUsage } from '@/components/unassigned-usage';
+import { listAllUsage, summarizeUsageRows } from '@/server/usage';
 
 export const dynamic = 'force-dynamic';
 
 export default async function UsagePage() {
-  const records = await listAllSessionUsage();
+  const { rows: records, unassigned } = await listAllUsage();
+  const unassignedCost = unassigned.reduce<number | null>(
+    (sum, row) => (row.costUsd == null ? sum : (sum ?? 0) + row.costUsd),
+    null,
+  );
   const summary = summarizeUsageRows(records);
 
   const rows: UsageRow[] = records.map((row) => ({
@@ -80,6 +85,11 @@ export default async function UsagePage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{formatCostUsd(summary.costUsd)}</p>
+            {unassignedCost != null ? (
+              <p className="text-xs text-muted-foreground" data-testid="usage-unassigned-total">
+                in slots, plus {formatCostUsd(unassignedCost)} in the main checkout / unassigned
+              </p>
+            ) : null}
             {estimatedCount > 0 ? (
               <p className="text-xs text-muted-foreground">
                 {estimatedCount} of {rows.filter((row) => row.costUsd != null).length} priced sessions estimated via genai-prices
@@ -108,6 +118,24 @@ export default async function UsagePage() {
         </CardHeader>
         <CardContent className="min-w-0">
           <UsageTable rows={rows} />
+        </CardContent>
+      </Card>
+
+      <Card className="min-w-0">
+        <CardHeader>
+          <CardTitle>Main checkout / unassigned</CardTitle>
+          <CardDescription>
+            Usage with no slot binding in force, per session — work done in the main checkout. Never
+            counted on a slot.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="min-w-0">
+          <UnassignedUsage
+            rows={unassigned.map((row) => ({
+              ...row,
+              repository: row.repository.path.split('/').pop() ?? row.repository.path,
+            }))}
+          />
         </CardContent>
       </Card>
     </div>

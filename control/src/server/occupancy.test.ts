@@ -30,6 +30,10 @@ vi.mock('@/lib/db', () => ({
     agentSessionUsage: {
       findMany: (...args: unknown[]) => usageFindMany(...args),
     },
+    sessionSlotBinding: { findMany: vi.fn(async () => []) },
+    usageObservation: { findMany: vi.fn(async () => []) },
+    sessionReportedUsage: { findMany: vi.fn(async () => []) },
+    workAttempt: { findMany: vi.fn(async () => []) },
     repository: { findMany: vi.fn(async () => []) },
   },
 }));
@@ -231,24 +235,48 @@ describe('S1 — trajectory and usage are scoped to the occupancy, not the slot 
     );
   });
 
-  it('filters usage rows by occupancyKey when the slot has one', async () => {
-    await listSessionUsageForSlot('repo-1', 1, 'attempt::occupancy-b');
+  /** Legacy session-total rows of slot 1 across two occupancies, and one of slot 2. */
+  function usageRows() {
+    const row = (id: string, agentId: number, occupancyKey: string | null) => ({
+      id,
+      repositoryId: 'repo-1',
+      sessionKey: id,
+      agentId,
+      agentTool: 'claude_code',
+      occupancyKey,
+      tokensTotal: 1n,
+      sources: [],
+      firstSeenAt: new Date('2026-08-01T10:00:00.000Z'),
+      lastSeenAt: new Date('2026-08-01T10:00:00.000Z'),
+    });
+    return [
+      row('a', 1, 'attempt::occupancy-a'),
+      row('b', 1, 'attempt::occupancy-b'),
+      row('legacy', 1, null),
+      row('other-slot', 2, 'attempt::occupancy-b'),
+    ];
+  }
 
-    expect(usageFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { repositoryId: 'repo-1', agentId: 1, occupancyKey: 'attempt::occupancy-b' },
-      }),
-    );
+  it('filters usage rows by occupancyKey when the slot has one', async () => {
+    usageFindMany.mockResolvedValue(usageRows());
+    slotFindMany.mockResolvedValue([]);
+
+    const rows = await listSessionUsageForSlot('repo-1', 1, 'attempt::occupancy-b');
+
+    expect(usageFindMany).toHaveBeenCalledWith({ where: { repositoryId: 'repo-1' } });
+    expect(rows.map((row) => row.id)).toEqual(['b']);
   });
 
   it('falls back to slot-wide listing for an idle slot with no occupancy', async () => {
     // Nothing to scope to — an idle slot page still shows its history rather
     // than an empty panel.
+    usageFindMany.mockResolvedValue(usageRows());
+    slotFindMany.mockResolvedValue([]);
     await listTrajectoryStreams('repo-1', 1, null);
-    await listSessionUsageForSlot('repo-1', 1, null);
+    const rows = await listSessionUsageForSlot('repo-1', 1, null);
 
     expect(trajectoryGroupBy.mock.calls[0][0].where).toEqual({ repositoryId: 'repo-1', agentId: 1 });
-    expect(usageFindMany.mock.calls[0][0].where).toEqual({ repositoryId: 'repo-1', agentId: 1 });
+    expect(rows.map((row) => row.id).sort()).toEqual(['a', 'b', 'legacy']);
   });
 });
 

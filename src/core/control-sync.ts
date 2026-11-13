@@ -12,7 +12,9 @@ import {
   SyncValidationBindingsInputSchema,
   SyncValidationCommitBindingsInputSchema,
   SyncSessionEventsInputSchema,
+  SyncSessionBindingsInputSchema,
   SyncUsageInputSchema,
+  SyncUsageObservationsInputSchema,
   SyncValidationsInputSchema,
 } from '../harness/schema';
 import {
@@ -57,7 +59,11 @@ import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 import { getHarPackageVersion } from './package-version';
 import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
-import { harvestAttributedClaudeUsage } from './control-claude-sessions';
+import {
+  collectSessionAttribution,
+  parseRemoteSessionBindings,
+  type AttributionSlot,
+} from './session-attribution-sync';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import type { ChannelReadFailure } from './control-api-read';
@@ -272,6 +278,22 @@ async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promis
   }
 
   return (await response.json()) as T;
+}
+
+/** POST that tolerates an older Mission Control without the route: false on 404. */
+async function postJsonIfSupported(url: string, body: unknown, dryRun?: boolean): Promise<boolean> {
+  if (dryRun) return true;
+  const response = await postForResponse(
+    url,
+    { 'Content-Type': 'application/json' },
+    JSON.stringify(body),
+  );
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Control API ${response.status}: ${text || response.statusText}`);
+  }
+  return true;
 }
 
 const PORTAL_API_PREFIX = '/api';
@@ -1142,6 +1164,80 @@ export async function syncRepoWithControl(
   throw new Error(`Portal sync failed for ${failures.length} destination(s): ${detail}`);
 }
 
+let warnedSessionBindingsUnsupported = false;
+
+async function fetchRemoteSessionBindings(apiUrl: string, repoId: string) {
+  try {
+    const response = await fetch(`${apiUrl}/api/repos/${repoId}/session-bindings`);
+    if (!response.ok) return [];
+    return parseRemoteSessionBindings(await response.json());
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Session → slot attribution (ADR 0003): post the `launch` / `release` /
+ * `workspace` bindings, then, when harvesting, the usage observations of every
+ * session this repo has evidence for. Never fails the sync.
+ *
+ * Returns false only when Mission Control has no `/usage-observations` route
+ * (an older version), so the caller can fall back to per-slot session totals.
+ */
+export async function syncSessionAttributionWithControl(
+  apiUrl: string,
+  repoId: string,
+  sourcePaths: string[],
+  slots: AttributionSlot[],
+  harvest: boolean,
+  dryRun?: boolean,
+): Promise<boolean> {
+  try {
+    const remoteBindings = harvest ? await fetchRemoteSessionBindings(apiUrl, repoId) : [];
+    const { bindings, observations } = collectSessionAttribution({
+      sourcePaths,
+      slots,
+      remoteBindings,
+      harvest,
+    });
+
+    if (bindings.length > 0) {
+      const body = SyncSessionBindingsInputSchema.parse({ bindings });
+      const accepted = await postJsonIfSupported(
+        `${apiUrl}/api/repos/${repoId}/session-bindings`,
+        body,
+        dryRun,
+      );
+      if (!accepted && !warnedSessionBindingsUnsupported) {
+        warnedSessionBindingsUnsupported = true;
+        warn(
+          'Mission Control does not accept session bindings yet (no /session-bindings route); ' +
+            'usage stays attributed per slot work dir until it is upgraded.',
+        );
+      }
+    }
+
+    if (!harvest) return true;
+    // Posted even when empty: an older Mission Control answers 404, which is
+    // how the caller knows to fall back to per-slot totals.
+    const batches = chunkBySerializedSize(observations, maxSyncBatchBytes());
+    for (const batch of batches.length > 0 ? batches : [[]]) {
+      const body = SyncUsageObservationsInputSchema.parse({ observations: batch });
+      const accepted = await postJsonIfSupported(
+        `${apiUrl}/api/repos/${repoId}/usage-observations`,
+        body,
+        dryRun,
+      );
+      if (!accepted) return false;
+    }
+    return true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[har control] session attribution sync skipped: ${message}\n`);
+    return true;
+  }
+}
+
 async function syncRepoRunsAndSlots(
   apiUrl: string,
   repoId: string,
@@ -1185,55 +1281,51 @@ async function syncRepoRunsAndSlots(
     await postJson(`${apiUrl}/api/repos/${repoId}/work-units`, workUnitsBody, dryRun);
   }
 
-  if (isTelemetryEnabled() && process.env.NODE_ENV !== 'test') {
+  const harvest = isTelemetryEnabled() && process.env.NODE_ENV !== 'test';
+  const observationsAccepted = await syncSessionAttributionWithControl(
+    apiUrl,
+    repoId,
+    sourcePaths,
+    status.slots,
+    harvest,
+    dryRun,
+  );
+
+  if (harvest) {
     try {
-      const userEmail = resolvePortalUserEmail();
-      const usage: AgentSessionUsage[] = status.slots.flatMap((slot) =>
-        harvestUsageForSlot({
-          agentId: slot.agentId,
-          workDir: slot.workDir,
-          worktreePath: slot.worktreePath,
-          branch: slot.branch,
-          suffix: slot.suffix,
-          sessionCreatedAt: slot.sessionCreatedAt,
-          repoPath,
-        }).map((row) => ({
-          ...row,
-          workUnitId: slot.workUnitId,
-          attemptId: slot.attemptId,
-          sessionKey:
-            row.sessionKey ||
-            buildSessionKey({
-              branch: slot.branch,
-              agentId: slot.agentId,
-              suffix: slot.suffix,
-              createdAt: slot.sessionCreatedAt,
-            }),
-          ...(userEmail ? { userEmail } : {}),
-        })),
-      );
-      // Sessions started in the main checkout (the normal HAR flow) never match
-      // a slot's work dir above; harvest them by the session Mission Control
-      // attributed to the slot.
-      if (!dryRun) {
-        const bySession = await harvestAttributedClaudeUsage(
-          apiUrl,
-          repoId,
-          status.slots.map((slot) => ({
+      // Mission Control without `/usage-observations` (older than ADR 0003)
+      // still takes per-slot session totals: only sessions that ran inside a
+      // slot's work dir, which is evidence, never a guessed slot.
+      if (!observationsAccepted) {
+        const userEmail = resolvePortalUserEmail();
+        const usage: AgentSessionUsage[] = status.slots.flatMap((slot) =>
+          harvestUsageForSlot({
             agentId: slot.agentId,
-            workDir: slot.workDir ?? slot.worktreePath,
+            workDir: slot.workDir,
+            worktreePath: slot.worktreePath,
             branch: slot.branch,
             suffix: slot.suffix,
+            sessionCreatedAt: slot.sessionCreatedAt,
+            repoPath,
+          }).map((row) => ({
+            ...row,
+            workUnitId: slot.workUnitId,
+            attemptId: slot.attemptId,
+            sessionKey:
+              row.sessionKey ||
+              buildSessionKey({
+                branch: slot.branch,
+                agentId: slot.agentId,
+                suffix: slot.suffix,
+                createdAt: slot.sessionCreatedAt,
+              }),
+            ...(userEmail ? { userEmail } : {}),
           })),
         );
-        if (bySession.warning) warn(bySession.warning);
-        usage.push(
-          ...bySession.usage.map((row) => ({ ...row, ...(userEmail ? { userEmail } : {}) })),
-        );
-      }
-      if (usage.length > 0) {
-        const usageBody = SyncUsageInputSchema.parse({ usage });
-        await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
+        if (usage.length > 0) {
+          const usageBody = SyncUsageInputSchema.parse({ usage });
+          await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
+        }
       }
 
       const events = status.slots.flatMap((slot) =>

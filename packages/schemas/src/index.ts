@@ -4,3 +4,5 @@ export * from './usage-authority';
 export * from './usage-pricing';
 export * from './line';
 export * from './session-history';
+export * from './session-attribution';
+export * from './occupancy';

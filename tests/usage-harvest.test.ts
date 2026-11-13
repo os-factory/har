@@ -631,6 +631,25 @@ describe('usage harvest codex', () => {
     expect(usage!.costUsd).toBeNull();
   });
 
+  it('counts reasoning tokens once, as part of output', () => {
+    const workDir = '/tmp/wt-codex-reasoning';
+    const sessionDir = path.join(tmp, '2026');
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionDir, 'r.jsonl'),
+      [
+        JSON.stringify({ cwd: workDir }),
+        JSON.stringify({
+          usage: { input_tokens: 10, output_tokens: 8, reasoning_output_tokens: 6, reasoning_tokens: 6 },
+        }),
+      ].join('\n') + '\n',
+    );
+
+    const usage = harvestCodexUsage({ agentId: 2, workDir, repoPath: '/repo' });
+
+    expect(usage!.tokensOutput).toBe(8);
+  });
+
   it('does not harvest a parent cwd session into a child worktree slot', () => {
     const homeDir = '/home/alice';
     const workDir = '/home/alice/worktrees/main-abcd-har-agent-2-bb22';

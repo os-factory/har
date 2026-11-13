@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import {
   AgentTrajectoryRecordSchema,
-  USAGE_HARVEST_VERSION,
-  type AgentSessionUsage,
+  MAIN_CHECKOUT_AGENT_ID,
+  type AgentSessionRef,
   type AgentTool,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
@@ -10,7 +10,24 @@ import {
   appendTrajectoryRecord,
   stableTrajectoryKey,
 } from '@/server/trajectory-ledger';
-import { upsertSessionUsage } from '@/server/usage';
+import {
+  claudeApiRequestObservation,
+  codexSseObservation,
+  isUsageOnlyLogRecord,
+  otelHookGenerationObservation,
+  providerSessionRef,
+  repositoryForProviderSession,
+  resolveTargetSlot,
+  targetBindingKind,
+  timelineSlotAt,
+  type SlotEvidence,
+} from '@/server/otel-attribution';
+import {
+  recordBindings,
+  recordObservations,
+  recordReportedUsage,
+  type ObservationInput,
+} from '@/server/session-attribution';
 import {
   boundTrajectoryPayload,
   hidesTrajectoryContent,
@@ -103,6 +120,24 @@ interface ParsedMetricPoint {
   name: string;
   attributes: AttrMap;
   value: number;
+  /** OTLP AggregationTemporality: 1 delta, 2 cumulative, 0 unspecified (gauges). */
+  temporality: number;
+  startTimeUnixNano: string;
+  timeUnixNano: string;
+  time: Date;
+}
+
+function temporalityOf(data: unknown): number {
+  const raw =
+    (data as { aggregationTemporality?: unknown; aggregation_temporality?: unknown } | undefined)
+      ?.aggregationTemporality ??
+    (data as { aggregation_temporality?: unknown } | undefined)?.aggregation_temporality;
+  if (raw === 1 || raw === 2) return raw;
+  if (typeof raw === 'string') {
+    if (raw.endsWith('DELTA') || raw === '1') return 1;
+    if (raw.endsWith('CUMULATIVE') || raw === '2') return 2;
+  }
+  return 0;
 }
 
 function attrsFromOtel(list: unknown): AttrMap {
@@ -126,6 +161,9 @@ function numberFromDataPoint(point: Record<string, unknown>): number {
   if (typeof point.asDouble === 'number') return point.asDouble;
   if (typeof point.asInt === 'number') return point.asInt;
   if (typeof point.asInt === 'string') return Number(point.asInt);
+  // Histogram points carry their total in `sum`.
+  if (typeof point.sum === 'number') return point.sum;
+  if (typeof point.sum === 'string' && Number.isFinite(Number(point.sum))) return Number(point.sum);
   if (point.sum && typeof point.sum === 'object') {
     const sum = point.sum as Record<string, unknown>;
     if (typeof sum.asDouble === 'number') return sum.asDouble;
@@ -171,13 +209,19 @@ function extractPointsFromResourceMetrics(payload: unknown): Array<{
           (metric as { histogram?: { dataPoints?: unknown[] } }).histogram;
         const dataPoints = data?.dataPoints ?? (data as { data_points?: unknown[] })?.data_points ?? [];
         if (!Array.isArray(dataPoints)) continue;
+        const temporality = temporalityOf(data);
         for (const dp of dataPoints) {
           if (!dp || typeof dp !== 'object') continue;
           const record = dp as Record<string, unknown>;
+          const time = record.timeUnixNano ?? record.time_unix_nano;
           points.push({
             name,
             attributes: attrsFromOtel(record.attributes),
             value: numberFromDataPoint(record),
+            temporality,
+            startTimeUnixNano: String(record.startTimeUnixNano ?? record.start_time_unix_nano ?? ''),
+            timeUnixNano: String(time ?? ''),
+            time: otelTimeToDate(time),
           });
         }
       }
@@ -254,17 +298,47 @@ function sessionIdFromAttrs(...maps: AttrMap[]): string {
   return '';
 }
 
-async function resolveSlotByWorkspace(workspace: string): Promise<{
+interface WorkspaceSlotMatch extends SlotEvidence {
   repositoryId: string;
-  sessionKey: string;
-  agentId: number;
-  workDir?: string;
-  branch?: string;
-  suffix?: string;
-  workUnitId?: string;
-  attemptId?: string;
-  occupancyKey?: string;
-} | null> {
+}
+
+const SLOT_COLUMNS = {
+  repositoryId: true,
+  slotId: true,
+  workDir: true,
+  worktreePath: true,
+  branch: true,
+  suffix: true,
+  workUnitId: true,
+  attemptId: true,
+  occupancyKey: true,
+} as const;
+
+function slotMatch(slot: {
+  repositoryId: string;
+  slotId: number;
+  workDir: string | null;
+  worktreePath: string | null;
+  branch: string | null;
+  suffix: string | null;
+  workUnitId: string | null;
+  attemptId: string | null;
+  occupancyKey: string | null;
+}): WorkspaceSlotMatch {
+  return {
+    repositoryId: slot.repositoryId,
+    slotId: slot.slotId,
+    occupancyKey: slot.occupancyKey,
+    branch: slot.branch,
+    workDir: slot.workDir ?? slot.worktreePath,
+    suffix: slot.suffix,
+    workUnitId: slot.workUnitId,
+    attemptId: slot.attemptId,
+  };
+}
+
+/** The slot whose work dir the session itself runs in (workspace evidence). */
+async function resolveSlotByWorkspace(workspace: string): Promise<WorkspaceSlotMatch | null> {
   if (!workspace) return null;
   const normalized = normalizePath(workspace);
   const slots = await prisma.agentSlot.findMany({
@@ -274,17 +348,7 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
         { worktreePath: { not: null } },
       ],
     },
-    select: {
-      repositoryId: true,
-      slotId: true,
-      workDir: true,
-      worktreePath: true,
-      branch: true,
-      suffix: true,
-      workUnitId: true,
-      attemptId: true,
-      occupancyKey: true,
-    },
+    select: SLOT_COLUMNS,
   });
 
   const match = slots.find((slot) => {
@@ -293,24 +357,13 @@ async function resolveSlotByWorkspace(workspace: string): Promise<{
       .map(normalizePath);
     return candidates.some((slotPath) => isWorkspaceUnderPath(normalized, slotPath));
   });
-  if (!match) return null;
-
-  return {
-    repositoryId: match.repositoryId,
-    sessionKey: match.branch || `agent-${match.slotId}`,
-    agentId: match.slotId,
-    workDir: match.workDir ?? undefined,
-    branch: match.branch ?? undefined,
-    suffix: match.suffix ?? undefined,
-    workUnitId: match.workUnitId ?? undefined,
-    attemptId: match.attemptId ?? undefined,
-    occupancyKey: match.occupancyKey ?? undefined,
-  };
+  return match ? slotMatch(match) : null;
 }
 
 export interface ResolvedSessionContext {
   repositoryId: string;
   sessionKey: string;
+  /** The slot the record happened in, or `MAIN_CHECKOUT_AGENT_ID` (ADR 0003). */
   agentId: number;
   agentTool: AgentTool;
   workDir?: string;
@@ -320,6 +373,10 @@ export interface ResolvedSessionContext {
   attemptId?: string;
   /** One occupancy of the slot (#316) — null when the slot is idle/unknown. */
   occupancyKey?: string;
+  /** The provider session (and subagent) the record belongs to, when it names one. */
+  sessionRef?: AgentSessionRef;
+  /** Set when the session runs inside a slot's work dir: evidence for a `workspace` binding. */
+  workspaceSlot?: SlotEvidence;
 }
 
 async function resolveRepositoryByWorkspacePath(
@@ -335,29 +392,33 @@ async function resolveRepositoryByWorkspacePath(
   return match ? { repositoryId: match.id, path: match.path } : null;
 }
 
+/**
+ * Map otel-hook's opaque workspace id back to a registered path. A slot's work
+ * dir wins over its parent checkout, and is then workspace evidence for that slot.
+ */
 async function resolveRepositoryByWorkspaceId(
   workspaceId: string,
-): Promise<{ repositoryId: string; path: string; matchedPath: string } | null> {
+): Promise<{ repositoryId: string; path: string; matchedPath: string; slot: WorkspaceSlotMatch | null } | null> {
   const [repos, slots] = await Promise.all([
     prisma.repository.findMany({ select: { id: true, path: true } }),
     prisma.agentSlot.findMany({
       where: {
         OR: [{ workDir: { not: null } }, { worktreePath: { not: null } }],
       },
-      select: { repositoryId: true, workDir: true, worktreePath: true },
+      select: SLOT_COLUMNS,
     }),
   ]);
 
-  const candidates: Array<{ repositoryId: string; path: string; candidate: string }> = [];
+  const candidates: Array<{ repositoryId: string; path: string; candidate: string; slot: WorkspaceSlotMatch | null }> = [];
   for (const repo of repos) {
-    candidates.push({ repositoryId: repo.id, path: repo.path, candidate: repo.path });
+    candidates.push({ repositoryId: repo.id, path: repo.path, candidate: repo.path, slot: null });
   }
   for (const slot of slots) {
     const repo = repos.find((r) => r.id === slot.repositoryId);
     if (!repo) continue;
     for (const candidate of [slot.workDir, slot.worktreePath]) {
       if (candidate) {
-        candidates.push({ repositoryId: repo.id, path: repo.path, candidate });
+        candidates.push({ repositoryId: repo.id, path: repo.path, candidate, slot: slotMatch(slot) });
       }
     }
   }
@@ -369,74 +430,19 @@ async function resolveRepositoryByWorkspaceId(
   if (!matchedPath) return null;
   const hit = candidates.find((c) => normalizePath(c.candidate) === matchedPath);
   return hit
-    ? { repositoryId: hit.repositoryId, path: hit.path, matchedPath }
+    ? { repositoryId: hit.repositoryId, path: hit.path, matchedPath, slot: hit.slot }
     : null;
 }
 
-async function defaultAgentIdForRepo(repositoryId: string): Promise<number> {
-  const active = await prisma.agentSlot.findFirst({
-    where: { repositoryId, active: true },
-    orderBy: { updatedAt: 'desc' },
-    select: { slotId: true },
-  });
-  return active?.slotId ?? 1;
-}
-
-async function pinnedAgentIdForSession(
-  repositoryId: string,
-  sessionKey: string,
-): Promise<number | undefined> {
-  if (!sessionKey) return undefined;
-  const first = await prisma.agentSessionEvent.findFirst({
-    where: { repositoryId, sessionKey },
-    orderBy: { timestamp: 'asc' },
-    select: { agentId: true },
-  });
-  return first?.agentId;
-}
-
-interface ActiveSlotAttribution {
-  agentId: number;
-  workDir?: string;
-  branch?: string;
-  suffix?: string;
-  workUnitId?: string;
-  attemptId?: string;
-  occupancyKey?: string;
-}
-
-/**
- * The repo's one active slot, when there is exactly one.
- *
- * Cursor's OTEL workspace is the main checkout, not a HAR session worktree —
- * `resolveSlotByWorkspace` only matches a slot's own workDir/worktreePath, so
- * activity from Cursor running against the main checkout never correlates to
- * the worktree an agent is actually working in. When a repo has exactly one
- * active slot, that correlation is unambiguous; two or more active slots make
- * a guess as likely wrong as right, so this returns null and callers keep
- * attributing to the raw workspace path instead.
- */
-async function resolveUnambiguousActiveSlot(
-  repositoryId: string,
-): Promise<ActiveSlotAttribution | null> {
-  const active = await prisma.agentSlot.findMany({
-    where: { repositoryId, active: true },
-    select: {
-      slotId: true,
-      workDir: true,
-      worktreePath: true,
-      branch: true,
-      suffix: true,
-      workUnitId: true,
-      attemptId: true,
-      occupancyKey: true,
-    },
-  });
-  if (active.length !== 1) return null;
-  const slot = active[0];
+function contextFromSlot(
+  base: Pick<ResolvedSessionContext, 'repositoryId' | 'sessionKey' | 'agentTool' | 'sessionRef'>,
+  slot: SlotEvidence,
+  fallbackWorkDir?: string,
+): ResolvedSessionContext {
   return {
+    ...base,
     agentId: slot.slotId,
-    workDir: slot.workDir ?? slot.worktreePath ?? undefined,
+    workDir: slot.workDir ?? fallbackWorkDir,
     branch: slot.branch ?? undefined,
     suffix: slot.suffix ?? undefined,
     workUnitId: slot.workUnitId ?? undefined,
@@ -445,121 +451,83 @@ async function resolveUnambiguousActiveSlot(
   };
 }
 
+/**
+ * Where a record happened (ADR 0003), from evidence only. The record's own
+ * evidence — its session's cwd is a slot work dir (`workspace`), or its tool
+ * event targeted a slot worktree (`vcs.ref.head.name` / hashed target
+ * workspace: `observed`, or `workspace` for `otelhook.target.source =
+ * session-cwd`) — joins the session's binding timeline, and the record goes to
+ * the binding in force at its time; with none, to the main checkout
+ * (`MAIN_CHECKOUT_AGENT_ID`). A record with no provider session id is placed by
+ * its own evidence only.
+ *
+ * The repo's single active slot, the most recent slot and slot 1 are never
+ * used as a fallback, and nor is the slot of the session's first event.
+ * The evidence is returned so the caller records it as bindings.
+ */
 export async function resolveSessionContext(
   resource: AttrMap,
   attributes: AttrMap = {},
-): Promise<{ context: ResolvedSessionContext | null; reason?: string }> {
+  options: { at?: Date } = {},
+): Promise<{ context: ResolvedSessionContext | null; reason?: string; evidence?: SlotBindingEvidence[] }> {
   const tool =
     detectAgentTool(attributes) ?? detectAgentTool(resource) ?? null;
   const harSessionKey = String(
     resource['har.session_key'] ?? attributes['har.session_key'] ?? '',
   );
   const repoPath = String(resource['har.repo_path'] ?? attributes['har.repo_path'] ?? '');
-  const agentIdRaw = Number(resource['har.agent_id'] ?? attributes['har.agent_id'] ?? 0);
   const workspace = workspaceFromAttrs(attributes, resource);
   const workspaceId = workspaceIdFromAttrs(attributes, resource);
   const providerSessionId = sessionIdFromAttrs(attributes, resource);
-  const explicitAgentId =
-    Number.isFinite(agentIdRaw) && agentIdRaw > 0 ? agentIdRaw : undefined;
+  const at = options.at ?? new Date();
+
+  let repository: { repositoryId: string; workDir?: string; sessionKey: string } | null = null;
+  let workspaceSlot: WorkspaceSlotMatch | null = null;
 
   // Prefer live workspace/slot matching over stale global har.session_key
   // resource attributes left behind by the last `har env launch`.
   if (workspace) {
-    const byWs = await resolveSlotByWorkspace(workspace);
-    if (byWs) {
+    workspaceSlot = await resolveSlotByWorkspace(workspace);
+    if (workspaceSlot) {
       // #316: the matched slot's own key wins over `har.session_key`. That
       // resource attribute is written once per launch and survives the
       // occupancy that wrote it (Claude Code also reuses `session.id` across
       // a resume), so preferring it merged a new worktree's events into the
       // previous session. The workspace match is live evidence; the attribute
       // is not.
-      return {
-        context: {
-          repositoryId: byWs.repositoryId,
-          sessionKey: byWs.sessionKey || harSessionKey || providerSessionId,
-          agentId: explicitAgentId ?? byWs.agentId,
-          agentTool: tool ?? 'cursor',
-          workDir: byWs.workDir ?? workspace,
-          branch: byWs.branch,
-          suffix: byWs.suffix,
-          workUnitId: byWs.workUnitId,
-          attemptId: byWs.attemptId,
-          occupancyKey: byWs.occupancyKey,
-        },
+      repository = {
+        repositoryId: workspaceSlot.repositoryId,
+        workDir: workspaceSlot.workDir ?? workspace,
+        sessionKey: workspaceSlot.branch || `agent-${workspaceSlot.slotId}`,
       };
-    }
-
-    const byRepo = await resolveRepositoryByWorkspacePath(workspace);
-    if (byRepo) {
-      const activeSlot = await resolveUnambiguousActiveSlot(byRepo.repositoryId);
-      const sessionKey =
-        harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`;
-      return {
-        context: {
+    } else {
+      const byRepo = await resolveRepositoryByWorkspacePath(workspace);
+      if (byRepo) {
+        repository = {
           repositoryId: byRepo.repositoryId,
-          sessionKey,
-          agentId:
-            explicitAgentId ??
-            (await pinnedAgentIdForSession(byRepo.repositoryId, sessionKey)) ??
-            activeSlot?.agentId ??
-            (await defaultAgentIdForRepo(byRepo.repositoryId)),
-          agentTool: tool ?? 'cursor',
-          workDir: activeSlot?.workDir ?? workspace,
-          branch:
-            activeSlot?.branch ??
-            (resource['har.branch'] ? String(resource['har.branch']) : undefined),
-          suffix:
-            activeSlot?.suffix ??
-            (resource['har.suffix'] ? String(resource['har.suffix']) : undefined),
-          workUnitId:
-            activeSlot?.workUnitId ??
-            (resource['har.work_unit_id'] ? String(resource['har.work_unit_id']) : undefined),
-          attemptId:
-            activeSlot?.attemptId ??
-            (resource['har.attempt_id'] ? String(resource['har.attempt_id']) : undefined),
-          occupancyKey: activeSlot?.occupancyKey,
-        },
-      };
+          workDir: workspace,
+          sessionKey: harSessionKey || providerSessionId || `ide:${normalizePath(byRepo.path)}`,
+        };
+      }
     }
   }
 
-  if (workspaceId) {
+  if (!repository && workspaceId) {
     const byId = await resolveRepositoryByWorkspaceId(workspaceId);
     if (byId) {
-      const activeSlot = await resolveUnambiguousActiveSlot(byId.repositoryId);
-      const sessionKey =
-        harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`;
-      return {
-        context: {
-          repositoryId: byId.repositoryId,
-          sessionKey,
-          agentId:
-            explicitAgentId ??
-            (await pinnedAgentIdForSession(byId.repositoryId, sessionKey)) ??
-            activeSlot?.agentId ??
-            (await defaultAgentIdForRepo(byId.repositoryId)),
-          agentTool: tool ?? 'cursor',
-          workDir: activeSlot?.workDir ?? byId.matchedPath,
-          branch:
-            activeSlot?.branch ??
-            (resource['har.branch'] ? String(resource['har.branch']) : undefined),
-          suffix:
-            activeSlot?.suffix ??
-            (resource['har.suffix'] ? String(resource['har.suffix']) : undefined),
-          workUnitId: activeSlot?.workUnitId,
-          attemptId: activeSlot?.attemptId,
-          occupancyKey: activeSlot?.occupancyKey,
-        },
+      workspaceSlot = byId.slot;
+      repository = {
+        repositoryId: byId.repositoryId,
+        workDir: byId.matchedPath,
+        sessionKey: byId.slot
+          ? byId.slot.branch || `agent-${byId.slot.slotId}`
+          : harSessionKey || providerSessionId || `ide:${normalizePath(byId.path)}`,
       };
     }
   }
 
-  if (harSessionKey) {
-    let repositoryId = await resolveRepositoryId(repoPath || undefined);
-    if (!repositoryId && workspace) {
-      const byWs = await resolveSlotByWorkspace(workspace);
-      repositoryId = byWs?.repositoryId ?? null;
-    }
+  if (!repository && harSessionKey) {
+    const repositoryId = await resolveRepositoryId(repoPath || undefined);
     if (!repositoryId) {
       return {
         context: null,
@@ -572,34 +540,101 @@ export async function resolveSessionContext(
         reason: `unknown agent tool for session key ${harSessionKey}`,
       };
     }
-    return {
-      context: {
-        repositoryId,
-        sessionKey: harSessionKey,
-        agentId:
-          explicitAgentId ??
-          (await pinnedAgentIdForSession(repositoryId, harSessionKey)) ??
-          1,
-        agentTool: tool,
-        workDir: resource['har.work_dir']
-          ? String(resource['har.work_dir'])
-          : workspace || undefined,
-        branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
-        suffix: resource['har.suffix'] ? String(resource['har.suffix']) : undefined,
-        workUnitId: resource['har.work_unit_id']
-          ? String(resource['har.work_unit_id'])
-          : undefined,
-        attemptId: resource['har.attempt_id']
-          ? String(resource['har.attempt_id'])
-          : undefined,
-      },
+    repository = {
+      repositoryId,
+      workDir: resource['har.work_dir'] ? String(resource['har.work_dir']) : workspace || undefined,
+      sessionKey: harSessionKey,
     };
   }
 
-  return {
-    context: null,
-    reason: `no repository matched workspace ${workspace || workspaceId || '(empty)'}`,
+  if (!repository) {
+    return {
+      context: null,
+      reason: `no repository matched workspace ${workspace || workspaceId || '(empty)'}`,
+    };
+  }
+
+  const agentTool = tool ?? 'cursor';
+  const sessionRef = providerSessionRef(agentTool, attributes, resource) ?? undefined;
+  const base = {
+    repositoryId: repository.repositoryId,
+    sessionKey: repository.sessionKey,
+    agentTool,
+    ...(sessionRef ? { sessionRef } : {}),
   };
+
+  // Evidence this record carries: the session's own cwd is a slot work dir
+  // (`workspace`), or its tool event targeted a slot worktree (`observed`, or
+  // `workspace` when otel-hook derived the target from the session cwd).
+  const evidence: SlotBindingEvidence[] = [];
+  if (workspaceSlot) evidence.push({ kind: 'workspace', slot: workspaceSlot });
+  const targetSlot = await resolveTargetSlot(repository.repositoryId, attributes);
+  if (targetSlot) evidence.push({ kind: targetBindingKind(attributes), slot: targetSlot });
+
+  // With a provider session, the record goes where the session's timeline —
+  // including this evidence — puts it at that time, so repeating cwd evidence
+  // never overrides a later move elsewhere. Without one, only direct evidence
+  // places it.
+  const placed = sessionRef
+    ? await timelineSlotAt(
+        repository.repositoryId,
+        sessionRef,
+        at,
+        evidence.map(({ kind, slot }) => evidenceBinding(sessionRef, kind, slot, at)),
+      )
+    : (evidence.find((item) => item.kind === 'observed') ?? evidence[0])?.slot ?? null;
+
+  const context: ResolvedSessionContext = placed
+    ? contextFromSlot(base, placed, repository.workDir)
+    : {
+        ...base,
+        agentId: MAIN_CHECKOUT_AGENT_ID,
+        workDir: repository.workDir,
+        branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
+        suffix: undefined,
+        workUnitId: undefined,
+        attemptId: undefined,
+      };
+  if (workspaceSlot) context.workspaceSlot = workspaceSlot;
+  return { context, evidence };
+}
+
+export interface SlotBindingEvidence {
+  kind: 'workspace' | 'observed';
+  slot: SlotEvidence;
+}
+
+function evidenceBinding(
+  ref: AgentSessionRef,
+  kind: SlotBindingEvidence['kind'],
+  slot: SlotEvidence,
+  at: Date,
+) {
+  return {
+    agentTool: ref.agentTool,
+    sessionId: ref.sessionId,
+    subagentId: ref.subagentId ?? null,
+    kind,
+    slotId: slot.slotId,
+    occupancyKey: slot.occupancyKey,
+    branch: slot.branch,
+    at,
+  };
+}
+
+/** Record the slot evidence a resolved record carries as bindings of its session. */
+async function recordContextEvidence(
+  context: ResolvedSessionContext,
+  evidence: SlotBindingEvidence[] | undefined,
+  at: Date,
+): Promise<void> {
+  const ref = context.sessionRef;
+  if (!ref || !evidence?.length) return;
+  await recordBindings(
+    context.repositoryId,
+    evidence.map(({ kind, slot }) => evidenceBinding(ref, kind, slot, at)),
+    'otel',
+  );
 }
 
 const PURPOSE_MAX_CHARS = 160;
@@ -725,7 +760,7 @@ async function maybeSetDerivedPurpose(
   agentId: number,
   promptText: string | null,
 ): Promise<void> {
-  if (!promptText) return;
+  if (!promptText || agentId === MAIN_CHECKOUT_AGENT_ID) return;
   const truncated =
     promptText.length > PURPOSE_MAX_CHARS
       ? `${promptText.slice(0, PURPOSE_MAX_CHARS - 1)}…`
@@ -741,124 +776,6 @@ async function maybeSetDerivedPurpose(
   });
 }
 
-function applyHooksUsageFromAttrs(usage: AgentSessionUsage, attributes: AttrMap): void {
-  const input = Number(
-    attributes['gen_ai.usage.input_tokens'] ?? attributes['gen_ai.usage.prompt_tokens'] ?? 0,
-  );
-  const output = Number(
-    attributes['gen_ai.usage.output_tokens'] ?? attributes['gen_ai.usage.completion_tokens'] ?? 0,
-  );
-  const cacheRead = Number(attributes['gen_ai.usage.cache_read.input_tokens'] ?? 0);
-  const cacheCreate = Number(attributes['gen_ai.usage.cache_creation.input_tokens'] ?? 0);
-  const safeInput = Number.isFinite(input) && input > 0 ? input : 0;
-  const safeOutput = Number.isFinite(output) && output > 0 ? output : 0;
-  const safeCacheRead = Number.isFinite(cacheRead) && cacheRead > 0 ? cacheRead : 0;
-  const safeCacheCreate = Number.isFinite(cacheCreate) && cacheCreate > 0 ? cacheCreate : 0;
-  if (safeInput > 0) usage.tokensInput += safeInput;
-  if (safeOutput > 0) usage.tokensOutput += safeOutput;
-  if (safeCacheRead > 0) usage.tokensCacheRead += safeCacheRead;
-  if (safeCacheCreate > 0) usage.tokensCacheCreation += safeCacheCreate;
-
-  // Associate usage with model id for later pricing (even when this span has no token attrs).
-  const model = String(
-    attributes['gen_ai.request.model'] ?? attributes['gen_ai.response.model'] ?? '',
-  ).trim();
-  if (!model) return;
-  const breakdown = (usage.modelBreakdown ??= {}) as Record<
-    string,
-    {
-      tokensInput: number;
-      tokensOutput: number;
-      tokensCacheRead: number;
-      tokensCacheCreation: number;
-      tokensTotal: number;
-    }
-  >;
-  const totals = (breakdown[model] ??= {
-    tokensInput: 0,
-    tokensOutput: 0,
-    tokensCacheRead: 0,
-    tokensCacheCreation: 0,
-    tokensTotal: 0,
-  });
-  totals.tokensInput += safeInput;
-  totals.tokensOutput += safeOutput;
-  totals.tokensCacheRead += safeCacheRead;
-  totals.tokensCacheCreation += safeCacheCreate;
-  totals.tokensTotal += safeInput + safeOutput + safeCacheRead + safeCacheCreate;
-}
-
-function emptyUsage(
-  base: Pick<AgentSessionUsage, 'sessionKey' | 'agentId' | 'agentTool' | 'workDir' | 'branch' | 'suffix'> &
-    Partial<Pick<AgentSessionUsage, 'workUnitId' | 'attemptId' | 'occupancyKey'>>,
-): AgentSessionUsage {
-  const now = new Date().toISOString();
-  return {
-    ...base,
-    tokensInput: 0,
-    tokensOutput: 0,
-    tokensCacheRead: 0,
-    tokensCacheCreation: 0,
-    tokensTotal: 0,
-    costUsd: null,
-    sources: ['otel'],
-    harvestVersion: USAGE_HARVEST_VERSION,
-    firstSeenAt: now,
-    lastSeenAt: now,
-  };
-}
-
-function applyClaudePoint(usage: AgentSessionUsage, point: ParsedMetricPoint): void {
-  const name = point.name;
-  const type = String(point.attributes.type ?? point.attributes.token_type ?? '').toLowerCase();
-  if (name === 'claude_code.token.usage' || name.endsWith('token.usage')) {
-    if (type === 'input') usage.tokensInput += point.value;
-    else if (type === 'output') usage.tokensOutput += point.value;
-    else if (type === 'cacheread' || type === 'cache_read' || type === 'cacheRead') {
-      usage.tokensCacheRead += point.value;
-    } else if (
-      type === 'cachecreation' ||
-      type === 'cache_creation' ||
-      type === 'cacheCreation' ||
-      type === 'cache_create'
-    ) {
-      usage.tokensCacheCreation += point.value;
-    } else {
-      usage.tokensTotal += point.value;
-    }
-  }
-  if (name === 'claude_code.cost.usage' || name.endsWith('cost.usage')) {
-    usage.costUsd = (usage.costUsd ?? 0) + point.value;
-  }
-}
-
-function applyCodexPoint(usage: AgentSessionUsage, point: ParsedMetricPoint): void {
-  const name = point.name;
-  const type = String(
-    point.attributes.token_type ?? point.attributes.type ?? point.attributes.tokenType ?? '',
-  ).toLowerCase();
-  if (
-    name.includes('token_usage') ||
-    name.includes('token.usage') ||
-    name.includes('tokens') ||
-    name === 'codex.turn.token_usage'
-  ) {
-    if (type === 'input' || type === 'input_token' || type === 'input_tokens') {
-      usage.tokensInput += point.value;
-    } else if (type === 'output' || type === 'output_token' || type === 'output_tokens') {
-      usage.tokensOutput += point.value;
-    } else if (type === 'cached' || type === 'cache' || type === 'cached_input') {
-      usage.tokensCacheRead += point.value;
-    } else if (type === 'reasoning') {
-      usage.tokensOutput += point.value;
-    } else if (type === 'total' || type === '') {
-      usage.tokensTotal += point.value;
-    } else {
-      usage.tokensTotal += point.value;
-    }
-  }
-}
-
 async function resolveRepositoryId(repoPath: string | undefined): Promise<string | null> {
   if (!repoPath) return null;
   const exact = await prisma.repository.findUnique({ where: { path: repoPath } });
@@ -872,183 +789,130 @@ async function resolveRepositoryId(repoPath: string | undefined): Promise<string
   return match?.id ?? null;
 }
 
-/**
- * Claude Code's native metrics carry `session.id` on every data point and no
- * workspace on the resource, so resource-based resolution cannot place them.
- * The hook spans for the same session were already attributed (repo, slot,
- * sessionKey) at ingest — reuse that attribution.
- */
-async function resolveSessionContextFromSpans(
-  sessionId: string,
-): Promise<ResolvedSessionContext | null> {
-  if (!sessionId) return null;
-  const select = {
-    repositoryId: true,
-    sessionKey: true,
-    agentId: true,
-    workUnitId: true,
-    attemptId: true,
-  } as const;
-  let span = await prisma.agentSessionSpan.findFirst({
-    where: { sessionKey: sessionId },
-    orderBy: { startTime: 'asc' },
-    select,
-  });
-  if (!span) {
-    const rows = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM AgentSessionSpan
-      WHERE json_extract(attributes, '$."session.id"') = ${sessionId}
-      ORDER BY startTime ASC LIMIT 1`;
-    if (rows[0]) {
-      span = await prisma.agentSessionSpan.findUnique({ where: { id: rows[0].id }, select });
-    }
-  }
-  if (!span) return null;
-  const slot = await prisma.agentSlot.findUnique({
-    where: { repositoryId_slotId: { repositoryId: span.repositoryId, slotId: span.agentId } },
-    select: { workDir: true, worktreePath: true, branch: true, suffix: true, occupancyKey: true },
-  });
-  return {
-    repositoryId: span.repositoryId,
-    sessionKey: span.sessionKey,
-    agentId: span.agentId,
-    agentTool: 'claude_code',
-    workDir: slot?.workDir ?? slot?.worktreePath ?? undefined,
-    branch: slot?.branch ?? undefined,
-    suffix: slot?.suffix ?? undefined,
-    workUnitId: span.workUnitId ?? undefined,
-    attemptId: span.attemptId ?? undefined,
-    occupancyKey: slot?.occupancyKey ?? undefined,
-  };
-}
-
-/** Split a Claude Code resource group into one group per `session.id`. */
-function splitClaudeGroupsBySession(
-  groups: Array<{ resource: AttrMap; points: ParsedMetricPoint[] }>,
-): Array<{ resource: AttrMap; points: ParsedMetricPoint[]; sessionId?: string }> {
-  const out: Array<{ resource: AttrMap; points: ParsedMetricPoint[]; sessionId?: string }> = [];
-  for (const group of groups) {
-    if (detectAgentTool(group.resource) !== 'claude_code') {
-      out.push(group);
-      continue;
-    }
-    const bySession = new Map<string, ParsedMetricPoint[]>();
-    for (const point of group.points) {
-      const sessionId = String(point.attributes['session.id'] ?? '');
-      const list = bySession.get(sessionId) ?? [];
-      list.push(point);
-      bySession.set(sessionId, list);
-    }
-    for (const [sessionId, points] of bySession) {
-      out.push({ resource: group.resource, points, ...(sessionId ? { sessionId } : {}) });
-    }
-  }
-  return out;
-}
-
-function addClaudeModelPoint(
-  breakdown: Record<string, Record<string, number>>,
-  point: ParsedMetricPoint,
-): void {
-  const model = String(point.attributes.model ?? '');
-  if (!model || !(point.name === 'claude_code.token.usage' || point.name.endsWith('token.usage'))) {
-    return;
-  }
-  const type = String(point.attributes.type ?? point.attributes.token_type ?? '').toLowerCase();
-  const key =
-    type === 'input'
-      ? 'tokensInput'
-      : type === 'output'
-        ? 'tokensOutput'
-        : type === 'cacheread' || type === 'cache_read'
-          ? 'tokensCacheRead'
-          : type === 'cachecreation' || type === 'cache_creation' || type === 'cache_create'
-            ? 'tokensCacheCreation'
-            : null;
-  if (!key) return;
-  const totals = (breakdown[model] ??= {
-    tokensInput: 0,
-    tokensOutput: 0,
-    tokensCacheRead: 0,
-    tokensCacheCreation: 0,
-    tokensTotal: 0,
-  });
-  totals[key] += point.value;
-  totals.tokensTotal += point.value;
-}
-
 export interface OtelIngestResult {
   accepted: number;
   dropped: number;
   reasons: string[];
 }
 
-export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelIngestResult> {
-  const groups = splitClaudeGroupsBySession(extractPointsFromResourceMetrics(payload));
-  let accepted = 0;
-  let dropped = 0;
-  const reasons: string[] = [];
+/**
+ * Repository of a provider session: where its earlier evidence was placed, else
+ * whatever the record's own resource/attributes resolve to.
+ */
+async function repositoryForRecord(
+  ref: AgentSessionRef,
+  resource: AttrMap,
+  attributes: AttrMap,
+): Promise<{ repositoryId: string | null; reason?: string }> {
+  const known = await repositoryForProviderSession(ref);
+  if (known) return { repositoryId: known };
+  const resolved = await resolveSessionContext(resource, attributes);
+  return { repositoryId: resolved.context?.repositoryId ?? null, reason: resolved.reason };
+}
 
-  for (const group of groups) {
-    const fromSpans = group.sessionId
-      ? await resolveSessionContextFromSpans(group.sessionId)
-      : null;
-    const resolved = fromSpans
-      ? { context: fromSpans }
-      : await resolveSessionContext(group.resource);
-    if (!resolved.context) {
-      dropped += 1;
-      reasons.push(resolved.reason ?? 'unresolved session for metrics');
+function isClaudeCostPoint(point: ParsedMetricPoint): boolean {
+  return point.name === 'claude_code.cost.usage' || point.name.endsWith('cost.usage');
+}
+
+function isClaudeTokenPoint(point: ParsedMetricPoint): boolean {
+  return point.name === 'claude_code.token.usage' || point.name.endsWith('token.usage');
+}
+
+/**
+ * Claude Code's native metrics are session totals (`claude_code.cost.usage`,
+ * `claude_code.token.usage`), not units of usage: they are kept per session as
+ * a cross-check against the sum of its `api_request` observations and never
+ * booked on a slot (ADR 0003).
+ */
+async function ingestClaudeSessionTotals(
+  resource: AttrMap,
+  points: ParsedMetricPoint[],
+): Promise<OtelIngestResult> {
+  const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
+  const bySession = new Map<string, ParsedMetricPoint[]>();
+  for (const point of points) {
+    const sessionId = String(point.attributes['session.id'] ?? '');
+    const list = bySession.get(sessionId) ?? [];
+    list.push(point);
+    bySession.set(sessionId, list);
+  }
+  for (const [sessionId, sessionPoints] of bySession) {
+    const ref = sessionId ? providerSessionRef('claude_code', { 'session.id': sessionId }) : null;
+    if (!ref) {
+      result.dropped += 1;
+      result.reasons.push('Claude metrics without session.id');
       continue;
     }
-    const { context } = resolved;
-    const tool = context.agentTool;
-
-    const usage = emptyUsage({
-      sessionKey: context.sessionKey,
-      agentId: context.agentId,
-      agentTool: tool,
-      workDir: context.workDir,
-      branch: context.branch,
-      suffix: context.suffix,
-      workUnitId: context.workUnitId,
-      attemptId: context.attemptId,
-      occupancyKey: context.occupancyKey,
+    const { repositoryId, reason } = await repositoryForRecord(ref, resource, sessionPoints[0].attributes);
+    if (!repositoryId) {
+      result.dropped += 1;
+      result.reasons.push(reason ?? `no repository known for Claude session ${sessionId}`);
+      continue;
+    }
+    const costPoints = sessionPoints.filter(isClaudeCostPoint);
+    const tokenPoints = sessionPoints.filter(isClaudeTokenPoint);
+    if (costPoints.length === 0 && tokenPoints.length === 0) {
+      result.dropped += 1;
+      result.reasons.push(`no token/cost points for ${sessionId}`);
+      continue;
+    }
+    const temporality = sessionPoints.some((point) => point.temporality === 1) ? 'delta' : 'cumulative';
+    const at = new Date(Math.max(...sessionPoints.map((point) => point.time.getTime())));
+    await recordReportedUsage(repositoryId, {
+      agentTool: 'claude_code',
+      sessionId: ref.sessionId,
+      costUsd: costPoints.length ? costPoints.reduce((sum, point) => sum + point.value, 0) : null,
+      tokensTotal: tokenPoints.reduce((sum, point) => sum + point.value, 0),
+      at,
+      temporality,
     });
+    result.accepted += 1;
+  }
+  return result;
+}
 
-    const claudeModels: Record<string, Record<string, number>> = {};
-    for (const point of group.points) {
-      applyHooksUsageFromAttrs(usage, point.attributes);
-      if (tool === 'claude_code') {
-        applyClaudePoint(usage, point);
-        addClaudeModelPoint(claudeModels, point);
-      } else if (tool === 'codex') applyCodexPoint(usage, point);
-      else applyCodexPoint(usage, point); // cursor / generic metric names
-    }
-
-    usage.tokensTotal =
-      usage.tokensTotal ||
-      usage.tokensInput + usage.tokensOutput + usage.tokensCacheRead + usage.tokensCacheCreation;
-    if (Object.keys(claudeModels).length > 0) {
-      usage.modelBreakdown = claudeModels as AgentSessionUsage['modelBreakdown'];
-    }
-
-    if (
-      usage.tokensTotal === 0 &&
-      usage.tokensInput === 0 &&
-      usage.tokensOutput === 0 &&
-      (usage.costUsd == null || usage.costUsd === 0)
-    ) {
-      dropped += 1;
-      reasons.push(`no token/cost points for ${context.sessionKey}`);
+/** Store observations, grouped per repository of their session. */
+async function storeObservations(
+  observations: ObservationInput[],
+  resource: AttrMap,
+  attributes: (observation: ObservationInput) => AttrMap,
+): Promise<OtelIngestResult> {
+  const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
+  for (const observation of observations) {
+    const { repositoryId, reason } = await repositoryForRecord(observation as AgentSessionRef, resource, attributes(observation));
+    if (!repositoryId) {
+      result.dropped += 1;
+      result.reasons.push(reason ?? `no repository known for session ${observation.sessionId}`);
       continue;
     }
+    await recordObservations(repositoryId, [observation]);
+    result.accepted += 1;
+  }
+  return result;
+}
 
-    await upsertSessionUsage(context.repositoryId, usage);
-    accepted += 1;
+export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelIngestResult> {
+  const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
+  const merge = (part: OtelIngestResult) => {
+    result.accepted += part.accepted;
+    result.dropped += part.dropped;
+    result.reasons.push(...part.reasons);
+  };
+
+  for (const group of extractPointsFromResourceMetrics(payload)) {
+    const tool = detectAgentTool(group.resource);
+    if (tool === 'claude_code') {
+      merge(await ingestClaudeSessionTotals(group.resource, group.points));
+      continue;
+    }
+    // Other agents' metrics name no unit of usage and no session to bind it to
+    // (Codex `codex.turn.token_usage` carries no thread id): their usage comes
+    // from otel-hook generation spans and harvest (ADR 0003).
+    result.dropped += 1;
+    result.reasons.push(`metrics from ${tool ?? 'an unknown agent'} carry no attributable usage`);
   }
 
-  return { accepted, dropped, reasons };
+  return result;
 }
 
 /** Best-effort: protobuf bodies are ignored if we cannot decode; agents must not fail. */
@@ -1361,13 +1225,31 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
   const reasons: string[] = [];
 
   for (const record of records) {
-    const resolved = await resolveSessionContext(record.resource, record.attributes);
+    // Per-request usage events (Claude `api_request`, Codex `sse_event`) are
+    // usage observations, attributed when read — not trajectory facts.
+    if (isUsageOnlyLogRecord(record)) {
+      const observation = claudeApiRequestObservation(record) ?? codexSseObservation(record);
+      if (!observation) {
+        dropped += 1;
+        reasons.push(`usage event ${record.eventName} without session id or tokens`);
+        continue;
+      }
+      const stored = await storeObservations([observation], record.resource, () => record.attributes);
+      accepted += stored.accepted;
+      dropped += stored.dropped;
+      reasons.push(...stored.reasons);
+      continue;
+    }
+
+    const at = record.timestamp.getTime() > 0 ? record.timestamp : new Date();
+    const resolved = await resolveSessionContext(record.resource, record.attributes, { at });
     if (!resolved.context) {
       dropped += 1;
       reasons.push(resolved.reason ?? 'unresolved session for log');
       continue;
     }
     const { context } = resolved;
+    await recordContextEvidence(context, resolved.evidence, at);
     const canonical = canonicalizeOtelLogRecord(record);
     const { eventType, sequence } = canonical;
     const promptText = extractPromptText(record.attributes, eventType, record.bodyText);
@@ -1506,13 +1388,16 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
       continue;
     }
 
-    const resolved = await resolveSessionContext(span.resource, span.attributes);
+    const resolved = await resolveSessionContext(span.resource, span.attributes, { at: span.startTime });
     if (!resolved.context) {
       dropped += 1;
       reasons.push(resolved.reason ?? 'unresolved session for span');
       continue;
     }
     const { context } = resolved;
+    await recordContextEvidence(context, resolved.evidence, span.startTime);
+    const observation = otelHookGenerationObservation(span, context.agentTool);
+    if (observation) await recordObservations(context.repositoryId, [observation]);
     const canonical = canonicalizeOtelSpan(span);
 
     await appendTrajectoryRecord(

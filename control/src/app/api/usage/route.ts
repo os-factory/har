@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { listAllSessionUsage, summarizeUsageRows } from '@/server/usage';
+import { listAllUsage, summarizeUsageRows } from '@/server/usage';
 
 export async function GET() {
-  const rows = await listAllSessionUsage();
+  const { rows, unassigned } = await listAllUsage();
   const summary = summarizeUsageRows(rows);
   return NextResponse.json({
     summary: {
@@ -21,6 +21,13 @@ export async function GET() {
       tokensTotal: Number(row.tokensTotal),
       costUsd: row.costUsd == null ? null : Number(row.costUsd),
       sources: row.sources,
+      lastSeenAt: row.lastSeenAt.toISOString(),
+    })),
+    // ADR 0003: usage with no slot binding in force, per session (main checkout).
+    unassigned: unassigned.map(({ repository, ...row }) => ({
+      ...row,
+      repoPath: repository.path,
+      firstSeenAt: row.firstSeenAt.toISOString(),
       lastSeenAt: row.lastSeenAt.toISOString(),
     })),
   });

@@ -12,6 +12,12 @@ vi.mock('@/lib/db', () => ({
       findUnique: (...args: unknown[]) => findUnique(...args),
       upsert: (...args: unknown[]) => upsert(...args),
     },
+    // ADR 0003 read model: no observations, so legacy rows read as they are.
+    sessionSlotBinding: { findMany: async () => [] },
+    usageObservation: { findMany: async () => [] },
+    sessionReportedUsage: { findMany: async () => [] },
+    agentSlot: { findMany: async () => [] },
+    workAttempt: { findMany: async () => [] },
   },
 }));
 
@@ -67,10 +73,7 @@ describe('listSessionUsageForRepo', () => {
   it('scopes the read to the repository id', async () => {
     findMany.mockResolvedValue([]);
     await listSessionUsageForRepo('repo-1');
-    expect(findMany).toHaveBeenCalledWith({
-      where: { repositoryId: 'repo-1' },
-      orderBy: { lastSeenAt: 'desc' },
-    });
+    expect(findMany).toHaveBeenCalledWith({ where: { repositoryId: 'repo-1' } });
   });
 
   it('coerces the JSON sources column back to a string[]', async () => {

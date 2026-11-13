@@ -77,7 +77,7 @@ function extractCodexTokens(records: unknown[]): {
           usage.cache_read_input_tokens ??
           0,
       );
-      tokensOutput += Number(usage.reasoning_tokens ?? usage.reasoning_token_count ?? 0);
+      // Reasoning tokens are a subset of output_tokens in Codex's accounting — never added on top.
     }
 
     // Cumulative turn totals sometimes appear as top-level fields on response.completed style events.

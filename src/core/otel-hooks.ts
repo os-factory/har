@@ -639,7 +639,8 @@ export function ensureOtelHooks(options?: {
       else errors.push(setup.detail);
     }
     rewriteKnownHookRegistrations(wrapperPath);
-    // Claude reports tokens/cost to no hook — its native metrics carry them.
+    // Claude reports tokens/cost to no hook — its native metrics and
+    // per-request `api_request` log events carry them (ADR 0003).
     try {
       const claude = enableClaudeNativeTelemetry({ hooksHome });
       if (claude.skipped.length > 0) {

@@ -785,7 +785,8 @@ export const AgentTrajectoryRecordV1Schema = z
     sourceEventId: z.string().min(1),
     contentKey: z.string().min(1),
     sessionKey: z.string().min(1),
-    agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
+    /** Slot the record happened in, or 0 (`MAIN_CHECKOUT_AGENT_ID`) for the main checkout (ADR 0003). */
+    agentId: z.number().int().nonnegative(),
     agentTool: AgentToolSchema,
     eventType: z.string().min(1),
     sequence: z.number().int().nonnegative(),

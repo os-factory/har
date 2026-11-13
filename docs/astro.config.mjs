@@ -106,6 +106,7 @@ export default defineConfig({
 						{ label: 'Factory lines', slug: 'docs/guides/factory-lines' },
 						{ label: 'Verification & commit gate', slug: 'docs/guides/verification' },
 						{ label: 'Mission Control', slug: 'docs/guides/mission-control' },
+						{ label: 'Usage attribution', slug: 'docs/guides/usage-attribution' },
 						{ label: 'Eject', slug: 'docs/guides/eject' },
 						{ label: 'Upgrade a harness', slug: 'docs/guides/upgrading' },
 						{ label: 'Migrating to 1.0', slug: 'docs/guides/migrating-to-1-0' },

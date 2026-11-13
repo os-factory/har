@@ -4,19 +4,21 @@ import * as path from 'path';
 import { getControlApiUrl } from './control-config';
 
 /**
- * Claude Code's own OpenTelemetry metrics → Mission Control.
+ * Claude Code's own OpenTelemetry metrics and events → Mission Control.
  *
  * Claude Code reports tokens and cost to no hook (otel-hook
  * docs/claude-code-usage-contract.md), but its native telemetry does:
- * `claude_code.token.usage` / `claude_code.cost.usage`, with `session.id` and
- * `model` on every point. Mission Control joins those points to the hook spans
- * of the same session, so the cost lands on the slot the spans were attributed
- * to — live, without reading transcripts.
  *
- * - Metrics only. Claude's native logs carry prompts and per-request events
- *   that Mission Control does not model yet.
- * - Cumulative temporality: Mission Control max-merges usage counters, which is
- *   only correct for cumulative series (Claude's default is delta).
+ * - Logs: one `claude_code.api_request` event per API request, with
+ *   `session.id`, `request_id`, `model`, token counts, `cost_usd`, and for a
+ *   subagent `agent_id`. These are the per-request usage observations Mission
+ *   Control attributes to the slot the session worked in at that moment
+ *   (ADR 0003). Prompt text and tool details stay off: HAR never sets
+ *   `OTEL_LOG_USER_PROMPTS` or `OTEL_LOG_TOOL_DETAILS`.
+ * - Metrics: `claude_code.token.usage` / `claude_code.cost.usage`, kept as a
+ *   cross-check of the session totals. Cumulative temporality: Mission Control
+ *   max-merges usage counters, which is only correct for cumulative series
+ *   (Claude's default is delta).
  * - `http/json`: decoded by every Mission Control version.
  *
  * Written to the `env` block of `~/.claude/settings.json`. A key the user set
@@ -25,6 +27,7 @@ import { getControlApiUrl } from './control-config';
  */
 
 export const CLAUDE_METRIC_EXPORT_INTERVAL_MS = 10_000;
+export const CLAUDE_LOGS_EXPORT_INTERVAL_MS = 5_000;
 
 export function buildClaudeNativeTelemetryEnv(apiUrl = getControlApiUrl()): Record<string, string> {
   const base = apiUrl.replace(/\/$/, '');
@@ -35,6 +38,10 @@ export function buildClaudeNativeTelemetryEnv(apiUrl = getControlApiUrl()): Reco
     OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${base}/api/otel/v1/metrics`,
     OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: 'cumulative',
     OTEL_METRIC_EXPORT_INTERVAL: String(CLAUDE_METRIC_EXPORT_INTERVAL_MS),
+    OTEL_LOGS_EXPORTER: 'otlp',
+    OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: 'http/json',
+    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: `${base}/api/otel/v1/logs`,
+    OTEL_LOGS_EXPORT_INTERVAL: String(CLAUDE_LOGS_EXPORT_INTERVAL_MS),
   };
 }
 
@@ -95,6 +102,11 @@ export function enableClaudeNativeTelemetry(options: {
     if (current !== value) written.push(key);
     env[key] = value;
     nowManaged[key] = value;
+  }
+
+  // A key HAR wrote before but no longer wants is removed, as `off` would.
+  for (const [key, value] of Object.entries(managed)) {
+    if (!(key in desired) && env[key] === value) delete env[key];
   }
 
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
