@@ -124,7 +124,6 @@ export async function startMissionControl(options: {
   return { code, apiUrl, imageRef };
 }
 
-/** The image the Mission Control container was created from, or null when there is none. */
 export function controlContainerImage(name = CONTROL_CONTAINER_NAME): string | null {
   const result = spawnSync('docker', ['inspect', '-f', '{{.Config.Image}}', name], {
     encoding: 'utf8',
@@ -134,11 +133,7 @@ export function controlContainerImage(name = CONTROL_CONTAINER_NAME): string | n
   return (result.stdout ?? '').trim() || null;
 }
 
-/**
- * A container is replaced only when it runs a released default image other than
- * the one this CLI expects. An image chosen through HAR_CONTROL_IMAGE or
- * HAR_CONTROL_IMAGE_TAG, now or when the container was started, is left alone.
- */
+/** Only a released default image is replaced; overrides and custom tags are left alone. */
 export function shouldUpgradeControlImage(
   running: string,
   expected: string,
@@ -149,11 +144,7 @@ export function shouldUpgradeControlImage(
   return new RegExp(`^${DEFAULT_CONTROL_IMAGE}:\\d+\\.\\d+\\.\\d+`).test(running);
 }
 
-/**
- * Mission Control keeps running the image it was started with (`--restart
- * unless-stopped`), so after a CLI upgrade it is recreated on the matching
- * image. Data lives on the volume and survives.
- */
+/** The container outlives CLI upgrades (`--restart unless-stopped`), so recreate it on the CLI's image. */
 export async function upgradeStaleMissionControl(): Promise<
   { upgraded: false } | { upgraded: true; from: string; to: string; code: number }
 > {
