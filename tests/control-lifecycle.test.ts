@@ -2,6 +2,7 @@ import {
   CONTROL_CONTAINER_NAME,
   CONTROL_DATA_VOLUME,
   buildDockerRunArgs,
+  shouldUpgradeControlImage,
   resolveControlBuildContext,
   resolveControlDir,
 } from '../src/core/control-lifecycle';
@@ -111,5 +112,28 @@ describe('control lifecycle docker run', () => {
     expect(args).toContain('--rm');
     expect(args).not.toContain('-d');
     expect(args).toContain('4000:3847');
+  });
+});
+
+describe('shouldUpgradeControlImage', () => {
+  const expected = `${DEFAULT_CONTROL_IMAGE}:1.23.0`;
+
+  it('upgrades a container on an older released image', () => {
+    expect(shouldUpgradeControlImage(`${DEFAULT_CONTROL_IMAGE}:1.16.0`, expected, {})).toBe(true);
+  });
+
+  it('leaves a container already on the expected image', () => {
+    expect(shouldUpgradeControlImage(expected, expected, {})).toBe(false);
+  });
+
+  it('leaves a container started from another image or a custom tag', () => {
+    expect(shouldUpgradeControlImage('my-registry/har-control:1.16.0', expected, {})).toBe(false);
+    expect(shouldUpgradeControlImage(`${DEFAULT_CONTROL_IMAGE}:dev`, expected, {})).toBe(false);
+  });
+
+  it('leaves the container alone while an image override is set', () => {
+    const running = `${DEFAULT_CONTROL_IMAGE}:1.16.0`;
+    expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_IMAGE_TAG: '1.16.0' })).toBe(false);
+    expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_IMAGE: 'x/har-control' })).toBe(false);
   });
 });

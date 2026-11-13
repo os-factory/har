@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process';
 import * as path from 'path';
 import {
+  DEFAULT_CONTROL_IMAGE,
   getControlImageRef,
   shouldBuildControlLocally,
 } from './control-image';
@@ -52,9 +53,9 @@ export function buildDockerRunArgs(options: {
   return args;
 }
 
-function runDocker(args: string[]): number {
+function runDocker(args: string[], quiet = false): number {
   const result = spawnSync('docker', args, {
-    stdio: 'inherit',
+    stdio: quiet ? ['ignore', 'ignore', 'inherit'] : 'inherit',
     env: process.env,
   });
   if (result.error) {
@@ -83,26 +84,31 @@ export function stopMissionControl(): number {
 export async function startMissionControl(options: {
   detach?: boolean;
   build?: boolean;
+  quiet?: boolean;
 }): Promise<{ code: number; apiUrl: string; imageRef: string }> {
+  const quiet = options.quiet ?? false;
   const build = options.build ?? shouldBuildControlLocally();
   const imageRef = getControlImageRef();
   const apiUrl = getControlApiUrl();
   const hostPort = parseControlHostPort(apiUrl);
 
   if (build) {
-    const buildCode = runDocker([
-      'build',
-      '-t',
-      imageRef,
-      '-f',
-      path.join(resolveControlDir(), 'Dockerfile'),
-      resolveControlBuildContext(),
-    ]);
+    const buildCode = runDocker(
+      [
+        'build',
+        '-t',
+        imageRef,
+        '-f',
+        path.join(resolveControlDir(), 'Dockerfile'),
+        resolveControlBuildContext(),
+      ],
+      quiet,
+    );
     if (buildCode !== 0) {
       return { code: buildCode, apiUrl, imageRef };
     }
   } else {
-    const pullCode = runDocker(['pull', imageRef]);
+    const pullCode = runDocker(['pull', imageRef], quiet);
     if (pullCode !== 0) {
       return { code: pullCode, apiUrl, imageRef };
     }
@@ -110,12 +116,57 @@ export async function startMissionControl(options: {
 
   // Replace any stale container so a re-run always lands on the current image.
   if (controlContainerExists()) {
-    runDocker(['rm', '-f', CONTROL_CONTAINER_NAME]);
+    runDocker(['rm', '-f', CONTROL_CONTAINER_NAME], quiet);
   }
 
   const detach = options.detach !== false;
-  const code = runDocker(buildDockerRunArgs({ imageRef, hostPort, detach }));
+  const code = runDocker(buildDockerRunArgs({ imageRef, hostPort, detach }), quiet);
   return { code, apiUrl, imageRef };
+}
+
+/** The image the Mission Control container was created from, or null when there is none. */
+export function controlContainerImage(name = CONTROL_CONTAINER_NAME): string | null {
+  const result = spawnSync('docker', ['inspect', '-f', '{{.Config.Image}}', name], {
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  if (result.error || result.status !== 0) return null;
+  return (result.stdout ?? '').trim() || null;
+}
+
+/**
+ * A container is replaced only when it runs a released default image other than
+ * the one this CLI expects. An image chosen through HAR_CONTROL_IMAGE or
+ * HAR_CONTROL_IMAGE_TAG, now or when the container was started, is left alone.
+ */
+export function shouldUpgradeControlImage(
+  running: string,
+  expected: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.HAR_CONTROL_IMAGE || env.HAR_CONTROL_IMAGE_TAG) return false;
+  if (running === expected) return false;
+  return new RegExp(`^${DEFAULT_CONTROL_IMAGE}:\\d+\\.\\d+\\.\\d+`).test(running);
+}
+
+/**
+ * Mission Control keeps running the image it was started with (`--restart
+ * unless-stopped`), so after a CLI upgrade it is recreated on the matching
+ * image. Data lives on the volume and survives.
+ */
+export async function upgradeStaleMissionControl(): Promise<
+  { upgraded: false } | { upgraded: true; from: string; to: string; code: number }
+> {
+  const running = controlContainerImage();
+  const expected = getControlImageRef();
+  if (!running || !shouldUpgradeControlImage(running, expected)) {
+    return { upgraded: false };
+  }
+  const { code, apiUrl } = await startMissionControl({ detach: true, quiet: true });
+  if (code === 0) {
+    await waitForControlApi(apiUrl);
+  }
+  return { upgraded: true, from: running, to: expected, code };
 }
 
 export async function syncReposAfterControlStart(cwd?: string): Promise<{
