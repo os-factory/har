@@ -7,6 +7,12 @@ import { getTelemetrySignals } from '../telemetry-config';
 import { buildSessionKey } from '../telemetry-env';
 import { workspaceMatchesTarget } from '../workspace-path-match';
 import { recordTimeRange } from './record-time-range';
+import {
+  parseJsonlText,
+  persistTranscriptIndex,
+  readTranscriptRecords,
+  transcriptWorkspaces,
+} from './transcript-cache';
 
 /** Every sync re-sends the whole stream, so it needs a bound; drops are reported. */
 export const MAX_HARVESTED_SESSION_EVENTS = 1000;
@@ -35,18 +41,7 @@ export function encodeClaudeProjectDir(cwd: string): string {
 
 export function readJsonlRecords(filePath: string): unknown[] {
   if (!fs.existsSync(filePath)) return [];
-  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
-  const out: unknown[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{')) continue;
-    try {
-      out.push(JSON.parse(trimmed));
-    } catch {
-      // skip bad lines
-    }
-  }
-  return out;
+  return parseJsonlText(fs.readFileSync(filePath, 'utf8'));
 }
 
 export interface ModelUsageTotals {
@@ -187,29 +182,21 @@ function findMatchingClaudeTranscripts(slot: HarvestSlotContext): TranscriptMatc
     for (const file of fs.readdirSync(projectDir)) {
       if (!file.endsWith('.jsonl')) continue;
       const filePath = path.join(projectDir, file);
-      const stat = fs.statSync(filePath);
-      const records = readJsonlRecords(filePath);
-      let primaryHit = primaryEncoded;
-      let fallbackHit = fallbackEncoded;
-      if (!primaryHit) {
-        for (const record of records) {
-          if (!record || typeof record !== 'object') continue;
-          const cwd = String((record as { cwd?: string }).cwd ?? '');
-          if (!cwd) continue;
-          if (workspaceMatchesTarget(cwd, primaryTargets)) {
-            primaryHit = true;
-            break;
-          }
-          if (!fallbackHit && workspaceMatchesTarget(cwd, fallbackTargets)) {
-            fallbackHit = true;
-          }
-        }
-      }
-      if (primaryHit) primary.push({ filePath, records, mtimeMs: stat.mtimeMs, primary: true });
-      else if (fallbackHit)
-        fallback.push({ filePath, records, mtimeMs: stat.mtimeMs, primary: false });
+      // The folder name settles a primary match; otherwise the indexed
+      // workspaces do, so an unrelated transcript is never parsed again.
+      const { cwds, mtimeMs } = transcriptWorkspaces(filePath);
+      const primaryHit =
+        primaryEncoded || cwds.some((cwd) => workspaceMatchesTarget(cwd, primaryTargets));
+      const fallbackHit =
+        !primaryHit &&
+        (fallbackEncoded || cwds.some((cwd) => workspaceMatchesTarget(cwd, fallbackTargets)));
+      if (!primaryHit && !fallbackHit) continue;
+      const match = { filePath, records: readTranscriptRecords(filePath), mtimeMs };
+      if (primaryHit) primary.push({ ...match, primary: true });
+      else fallback.push({ ...match, primary: false });
     }
   }
+  persistTranscriptIndex();
 
   primary.sort((a, b) => b.mtimeMs - a.mtimeMs);
   fallback.sort((a, b) => b.mtimeMs - a.mtimeMs);

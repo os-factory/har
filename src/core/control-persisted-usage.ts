@@ -167,10 +167,19 @@ export async function fetchPersistedPortalTelemetry(
     (row) => row.createdAt ?? row.timestamp,
   );
 
+  // One watermark covers both channels. When the events read stopped at the
+  // page cap, the watermark must stay at the last event read: a live session's
+  // usage `updatedAt` is ~now, and taking it would skip the unread events for
+  // good. Usage newer than that cut is simply re-sent (an idempotent upsert).
+  const maxSyncedAt =
+    eventsRead.ok && eventsRead.truncated
+      ? events.maxSyncedAt
+      : maxTimestamp(usage.maxSyncedAt, events.maxSyncedAt);
+
   return {
     usage: usage.selected.map(normalizeUsage),
     events: events.selected.map(normalizeEvent),
-    maxSyncedAt: maxTimestamp(usage.maxSyncedAt, events.maxSyncedAt),
+    maxSyncedAt,
     failures,
     truncated,
   };

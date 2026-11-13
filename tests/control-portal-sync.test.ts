@@ -277,6 +277,51 @@ describe('syncRepoWithControl — portal push', () => {
   });
   afterAll(clearPortalEnv);
 
+  it('still syncs HQ when Mission Control fails, then reports the Mission Control error', async () => {
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    const fetchMock = jest.fn(async (url: string): Promise<Partial<Response>> => {
+      const toHq = String(url).includes('portal.example.com');
+      // Mission Control rejects every request (e.g. a schema error on one endpoint).
+      return {
+        ok: toHq,
+        status: toHq ? 200 : 400,
+        statusText: toHq ? 'OK' : 'Bad Request',
+        text: async (): Promise<string> => (toHq ? '' : 'bad input'),
+        json: async (): Promise<unknown> => ({}),
+      };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).rejects.toThrow(
+      'Mission Control: Control API 400: bad input (HQ sync completed)',
+    );
+    expect(portalSyncCall(fetchMock)[0]).toBe('https://portal.example.com/api/sync');
+  });
+
+  it('retries an HQ 503 instead of failing the repo', async () => {
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    let hqCalls = 0;
+    const fetchMock = jest.fn(async (url: string, init?: RequestInit): Promise<Partial<Response>> => {
+      const toHq = String(url).includes('portal.example.com');
+      if (toHq) hqCalls += 1;
+      const unavailable = toHq && hqCalls === 1;
+      const register = String(url).endsWith('/api/repos') && init?.method === 'POST';
+      return {
+        ok: !unavailable,
+        status: unavailable ? 503 : 200,
+        headers: new Headers(unavailable ? { 'retry-after': '0' } : {}),
+        text: async (): Promise<string> => '',
+        json: async (): Promise<unknown> => (register ? { id: 'local-repo-1' } : {}),
+      };
+    });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).resolves.toEqual({ warnings: [] });
+    expect(portalCalls(fetchMock).filter(([u]) => u.endsWith('/api/sync'))).toHaveLength(2);
+  });
+
   it('POSTs the omnibus body to /api/sync with a bearer token', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';

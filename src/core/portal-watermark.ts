@@ -46,10 +46,15 @@ function readState(): PortalSyncState {
   }
 }
 
+// Write-then-rename: a process killed mid-write (or two syncs writing at once)
+// must never leave a truncated file, because an unreadable state reads as
+// "never synced" and every repo would resend its whole history.
 function writeState(state: PortalSyncState): void {
   const statePath = getStatePath();
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+  const tmp = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+  fs.renameSync(tmp, statePath);
 }
 
 /** Last-sync timestamp for a (repo, portal) pair, or null when never synced. */

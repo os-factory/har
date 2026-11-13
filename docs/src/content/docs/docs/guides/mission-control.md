@@ -37,6 +37,27 @@ commit, complete — so registered repositories stay current without a manual
 `sync` or a background watcher. `--dry-run` previews registration or sync, and
 `sync --json` produces structured output.
 
+`har control sync` asks which repositories to sync the first time it runs in a
+terminal and saves the choice in `~/.har/sync-selection.json` (change it with
+`har control sync --select`). Once saved, every sync — manual, automatic, and the
+all-repos sync after `har control up` or `har hq connect` — touches only those
+repositories, both for Mission Control and for HAR HQ. HAR HQ additionally
+receives only the repositories attached to the connected org.
+
+An automatic sync that fails prints one `[har control] sync of <repo> failed`
+line and leaves the rest for the next sync; run `har control sync` to retry and
+see the details. Every request has a 30-second timeout
+(`HAR_SYNC_REQUEST_TIMEOUT_MS`), and a sync that runs out of time stops sending
+instead of continuing in the background. When Mission Control rejects part of a
+sync, HAR HQ still receives that repository, and the error is reported once both
+have run.
+
+Sync reads local Claude Code and Codex transcripts. It remembers which workspace
+each transcript belongs to in `~/.har/cache/transcript-index.json`, so only new
+or changed transcripts are read again, and it re-sends a usage observation to
+Mission Control only when it changed (`~/.har/cache/observation-ledger.json`).
+Both files are caches: deleting them only makes the next sync slower.
+
 Linked worktrees that store their own `.har/` evidence (an in-place launch inside
 an external orchestrator's checkout) are included in that sync. Repository
 identity stays the main checkout; the live occupancy of a slot is the active
