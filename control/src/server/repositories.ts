@@ -14,6 +14,7 @@ import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
 import { isNewOccupancy, resolveRecordOccupancyKey, shouldApplySlotSync, type OccupancyCandidate } from '@/server/occupancy';
 import { cleanupSessionWorktrees } from '@/server/worktree-cleanup';
+import { claimLateSlotEvidenceSafely } from '@/server/late-slot-evidence';
 
 function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as object;
@@ -280,6 +281,16 @@ export async function syncSlots(repositoryId: string, input: unknown) {
       },
       update: data,
     });
+    if (fields.active && fields.occupancyKey && fields.sessionCreatedAt && (fields.branch || fields.workDir)) {
+      // Tool events may have targeted this worktree before the slot was known.
+      await claimLateSlotEvidenceSafely(repositoryId, {
+        slotId: parsed.agentId,
+        occupancyKey: fields.occupancyKey,
+        branch: fields.branch ?? null,
+        workDir: fields.workDir ?? fields.worktreePath ?? null,
+        since: fields.sessionCreatedAt,
+      });
+    }
     synced++;
   }
 

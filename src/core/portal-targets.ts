@@ -5,6 +5,7 @@ import { canonicalizeControlRepoPath } from './control-repo-path';
 import { listRegisteredRepos } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
 import { markAllRegisteredDirty } from './sync-context';
+import { includeInSyncSelection } from './control-sync-selection';
 
 /**
  * The CLI holds ONE HAR HQ (portal) org connection at a time. Every sync, OTel
@@ -355,6 +356,8 @@ export function attachRepoToPortal(repoPath: string): PortalTargetRecord {
   if (!state.attachedRepos.includes(canonical)) {
     writeState({ ...state, attachedRepos: [...state.attachedRepos, canonical] });
   }
+  // An attached repo outside a saved sync selection would never reach the workspace.
+  includeInSyncSelection(canonical);
   return state.connection;
 }
 

@@ -23,6 +23,8 @@ import {
   readSyncSelection,
   resolveSyncSelection,
   writeSyncSelection,
+  includeInSyncSelection,
+  getSyncSelectionPath,
 } from '../../core/control-sync-selection';
 import {
   startMissionControl,
@@ -289,6 +291,9 @@ async function handleRegister(argv: {
   try {
     if (!argv.dryRun) {
       recordRepoForControlSync(repoPath);
+      if (includeInSyncSelection(repoPath)) {
+        info(`Added to the saved sync selection (${getSyncSelectionPath()})`);
+      }
       // Only persist when the user passed --portal / --no-portal (undefined = leave as-is).
       if (argv.portal !== undefined) {
         setRepoPortalSync(repoPath, argv.portal);

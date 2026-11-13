@@ -42,7 +42,10 @@ terminal and saves the choice in `~/.har/sync-selection.json` (change it with
 `har control sync --select`). Once saved, every sync — manual, automatic, and the
 all-repos sync after `har control up` or `har hq connect` — touches only those
 repositories, both for Mission Control and for HAR HQ. HAR HQ additionally
-receives only the repositories attached to the connected org.
+receives only the repositories attached to the connected org. `har control
+register` and attaching a repository with `har hq connect` add it to a saved
+selection; an automatic sync that skips a repository outside the selection says
+so on one `[har control] sync skipped` line.
 
 An automatic sync that fails prints one `[har control] sync of <repo> failed`
 line and leaves the rest for the next sync; run `har control sync` to retry and

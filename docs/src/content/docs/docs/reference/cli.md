@@ -390,7 +390,7 @@ har control trajectory [on|off]
 `login` is a deprecated alias for `har hq connect`. Prefer `har hq connect`.
 `sync --select` interactively chooses repositories, saved in
 `~/.har/sync-selection.json`; once saved, automatic syncs also touch only those
-repositories. `--full` ignores the portal watermark and resends the complete
+repositories. `register` adds its repository to a saved selection. `--full` ignores the portal watermark and resends the complete
 payload. Portal sync always goes to the one
 connected HAR HQ org; set `HAR_PORTAL_URL` and `HAR_PORTAL_TOKEN` to send a run to
 a different org instead.

@@ -59,6 +59,17 @@ finds by walking up its process tree to the nearest agent process whose variable
 is set (`src/core/agent-process.ts`). When several variables are set and the tree
 cannot settle it, no `launch` is recorded — never the wrong session.
 
+**Slot evidence that arrives before its slot.** Mission Control learns a slot
+occupancy's branch and work dir from the CLI's slot and work-attempt sync. A
+tool event that targets the worktree before that sync (Mission Control down at
+launch, the repository outside the saved sync selection, or plain ordering) is
+stored as a non-slot worktree binding. When the sync then names that branch or
+work dir, Mission Control moves those bindings onto the occupancy, from the
+occupancy's start on, and places the session's main-checkout spans, events and
+trajectory rows from then on again through the timeline
+(`control/src/server/late-slot-evidence.ts`). A branch carries a per-occupancy
+suffix, so the match is evidence, not a guess.
+
 With no binding, an observation is the session's **unassigned** usage: it was
 spent in the main checkout, and it is shown as such. Mission Control never books
 it on a slot and never guesses a slot.
@@ -137,7 +148,9 @@ in force at its timestamp, else to the main checkout, stored as `agentId` 0
 (`MAIN_CHECKOUT_AGENT_ID`; the trajectory record schema now allows it). The
 repository's only active slot, the most recent slot, slot 1 and the slot of
 the session's first event are no longer used. Unlike usage, placement is not
-recomputed when a binding arrives late (see Known limitations). Per-request
+recomputed when a binding arrives late (see Known limitations), except when
+the late evidence is the slot itself (section 2): then rows placed on the main
+checkout are placed again. Per-request
 usage events (`claude_code.api_request`, Codex `sse_event`) become
 observations only, not trajectory records.
 
@@ -194,9 +207,12 @@ All types live in `packages/schemas/src/session-attribution.ts`.
   is attributed with its parent session.
 - **Cursor** reports no cost and no offline record; its cost is estimated from
   model prices, and usage missed while otel-hook was not installed is lost.
-- **Trajectory placement is not re-attributed.** A span that arrives before
-  the binding that explains it (a launch synced late) stays in the main
-  checkout's trajectory; its usage is re-attributed, its timeline row is not.
+- **Trajectory placement is re-attributed only for a late slot.** A span that
+  arrives before the binding that explains it (a launch synced late) stays in
+  the main checkout's trajectory; its usage is re-attributed, its timeline row
+  is not. Rows that arrived before their slot itself was known are placed again
+  when the slot syncs, but a copy already forwarded to HAR HQ keeps its first
+  placement.
 - **Legacy rows are joined by time.** A pre-observation `AgentSessionUsage`
   row that overlaps observations of the same agent tool is hidden, even when it
   belonged to another, unobserved session running in parallel.

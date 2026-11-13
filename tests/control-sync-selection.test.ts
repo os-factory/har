@@ -9,6 +9,7 @@ jest.mock('../src/core/control-repo-path', () => ({
 
 import {
   getSyncSelectionPath,
+  includeInSyncSelection,
   readSyncSelection,
   resolveSyncSelection,
   writeSyncSelection,
@@ -40,6 +41,18 @@ describe('sync selection persistence', () => {
   it('deduplicates repos on write', () => {
     writeSyncSelection(['/repos/a', '/repos/a', '/repos/b']);
     expect(readSyncSelection()).toEqual(['/repos/a', '/repos/b']);
+  });
+
+  it('adds a newly named repo to a saved selection, once', () => {
+    writeSyncSelection(['/repos/a']);
+    expect(includeInSyncSelection('/repos/b')).toBe(true);
+    expect(includeInSyncSelection('/repos/b')).toBe(false);
+    expect(readSyncSelection()).toEqual(['/repos/a', '/repos/b']);
+  });
+
+  it('creates no selection when none was saved (every repo already syncs)', () => {
+    expect(includeInSyncSelection('/repos/a')).toBe(false);
+    expect(readSyncSelection()).toBeNull();
   });
 
   it('returns null on malformed selection files', () => {

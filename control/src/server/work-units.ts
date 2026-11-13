@@ -2,9 +2,11 @@ import { Prisma } from '@prisma/client';
 import {
   SyncValidationBindingsInputSchema,
   SyncWorkUnitsInputSchema,
+  occupancyKeyForAttempt,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { attributeWorkUnitUsage } from '@/server/work-unit-usage';
+import { claimLateSlotEvidenceSafely } from '@/server/late-slot-evidence';
 
 export async function syncWorkUnits(repositoryId: string, input: unknown) {
   const { workUnits, attempts } = SyncWorkUnitsInputSchema.parse(input);
@@ -80,6 +82,14 @@ export async function syncWorkUnits(repositoryId: string, input: unknown) {
         branch: attempt.branch,
         baseCommit: attempt.baseCommit,
       },
+    });
+    // Tool events may have targeted the attempt's worktree before it was known.
+    await claimLateSlotEvidenceSafely(repositoryId, {
+      slotId: attempt.agentId,
+      occupancyKey: occupancyKeyForAttempt(attempt.attemptId),
+      branch: attempt.branch ?? null,
+      workDir: attempt.workDir ?? attempt.worktreePath ?? null,
+      since: new Date(attempt.createdAt),
     });
   }
 
