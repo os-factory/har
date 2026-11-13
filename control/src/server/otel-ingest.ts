@@ -398,6 +398,8 @@ async function resolveRepositoryByWorkspacePath(
   return match ? { repositoryId: match.id, path: match.path } : null;
 }
 
+const WORKTREE_MISS_REFRESH_MS = 1_000;
+
 /**
  * Map otel-hook's opaque workspace id back to a registered path. A slot's work
  * dir wins over its parent checkout, and is then workspace evidence for that slot.
@@ -428,13 +430,31 @@ async function resolveRepositoryByWorkspaceId(
       }
     }
   }
-
-  const matchedPath = pickPathForWorkspaceId(
-    workspaceId,
-    candidates.map((c) => c.candidate),
-  );
+  // otel-hook sends only the hashed id of the session's cwd, so a non-slot git
+  // worktree (`git worktree add`, Claude Code's EnterWorktree) is found only if
+  // its path is a candidate too, as resolveRepositoryByWorkspacePath does for a
+  // raw path. Slot work dirs were added first and keep winning on a tie.
+  const withWorktrees = (maxAgeMs?: number) => [
+    ...candidates,
+    ...repos.flatMap((repo) =>
+      listLinkedWorktrees(repo.path, Date.now(), maxAgeMs).worktrees.map((worktree) => ({
+        repositoryId: repo.id,
+        path: repo.path,
+        candidate: worktree.path,
+        slot: null,
+      })),
+    ),
+  ];
+  let all = withWorktrees();
+  let matchedPath = pickPathForWorkspaceId(workspaceId, all.map((c) => c.candidate));
+  if (!matchedPath) {
+    // A session that just created its worktree (EnterWorktree) reports from it
+    // within the listing cache's lifetime: re-read listings older than a second.
+    all = withWorktrees(WORKTREE_MISS_REFRESH_MS);
+    matchedPath = pickPathForWorkspaceId(workspaceId, all.map((c) => c.candidate));
+  }
   if (!matchedPath) return null;
-  const hit = candidates.find((c) => normalizePath(c.candidate) === matchedPath);
+  const hit = all.find((c) => normalizePath(c.candidate) === matchedPath);
   return hit
     ? { repositoryId: hit.repositoryId, path: hit.path, matchedPath, slot: hit.slot }
     : null;
@@ -578,8 +598,10 @@ export async function resolveSessionContext(
   if (targetSlot) evidence.push({ kind: targetBindingKind(attributes), slot: targetSlot });
   // What no slot claimed may still be a non-slot git worktree: recorded so its
   // usage splits from the main checkout's, never placed on a slot.
+  // The session's cwd: its raw path, or the path its opaque workspace id matched.
+  const sessionCwd = workspace || (workspaceId ? repository.workDir : undefined);
   const worktree = await resolveNonSlotWorktree(repository.repositoryId, {
-    workspace: workspaceSlot ? undefined : workspace,
+    workspace: workspaceSlot ? undefined : sessionCwd,
     attrs: targetSlot ? undefined : attributes,
   });
   if (worktree) evidence.push(worktree);
@@ -1234,6 +1256,10 @@ export function canonicalizeOtelSpan(span: ParsedSpan) {
   };
 }
 
+function isSpanMirrorLogRecord(record: ParsedLogRecord): boolean {
+  return record.eventName.startsWith('span.') && Boolean(record.spanId ?? record.attributes['span_id']);
+}
+
 export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestResult> {
   const records = extractLogRecords(payload);
   let accepted = 0;
@@ -1265,7 +1291,9 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
       continue;
     }
     const { context } = resolved;
-    await recordContextEvidence(context, resolved.evidence, at);
+    // A `span.*` event mirrors a span at the span's start time, with the cwd
+    // seen at its end; the span itself records that evidence at the right time.
+    if (!isSpanMirrorLogRecord(record)) await recordContextEvidence(context, resolved.evidence, at);
     const canonical = canonicalizeOtelLogRecord(record);
     const { eventType, sequence } = canonical;
     const promptText = extractPromptText(record.attributes, eventType, record.bodyText);
@@ -1404,14 +1432,19 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
       continue;
     }
 
-    const resolved = await resolveSessionContext(span.resource, span.attributes, { at: span.startTime });
+    // otel-hook exports a span when it ends, with the cwd it saw then: the
+    // session span carries the cwd at session end over the session's whole
+    // duration. Its evidence holds from the end, or it would move every
+    // earlier request of a session that later entered a worktree.
+    const evidenceAt = span.endTime ?? span.startTime;
+    const resolved = await resolveSessionContext(span.resource, span.attributes, { at: evidenceAt });
     if (!resolved.context) {
       dropped += 1;
       reasons.push(resolved.reason ?? 'unresolved session for span');
       continue;
     }
     const { context } = resolved;
-    await recordContextEvidence(context, resolved.evidence, span.startTime);
+    await recordContextEvidence(context, resolved.evidence, evidenceAt);
     const observation = otelHookGenerationObservation(span, context.agentTool);
     if (observation) await recordObservations(context.repositoryId, [observation]);
     const canonical = canonicalizeOtelSpan(span);

@@ -348,6 +348,34 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
     expect(evidence?.[0]?.slot).toMatchObject({ slotId: 0, branch: 'ext', workDir: outside });
   });
 
+  it('maps the opaque workspace id of a non-slot worktree to its repository, as worktree evidence', async () => {
+    for (const [workDir, branch] of [[inside, 'fix'], [outside, 'ext']] as const) {
+      const { context, evidence } = await resolveSessionContext(
+        {},
+        { 'otelhook.workspace.id': otelWorkspaceIdForPath(workDir), ...session },
+      );
+      expect(context).toMatchObject({ repositoryId: 'repo-wt', agentId: 0, workDir });
+      expect(evidence).toEqual([
+        {
+          kind: 'workspace',
+          slot: expect.objectContaining({ slotId: 0, occupancyKey: `worktree:${workDir}`, branch, workDir }),
+        },
+      ]);
+    }
+  });
+
+  it('finds a worktree the session created after the listing was cached', async () => {
+    const late = path.join(repoPath, '.claude', 'worktrees', 'late');
+    listLinkedWorktrees(repoPath, Date.now() - 2_000);
+    git('worktree', 'add', '-q', '-b', 'late', late);
+    const { context, evidence } = await resolveSessionContext(
+      {},
+      { 'otelhook.workspace.id': otelWorkspaceIdForPath(late), ...session },
+    );
+    expect(context).toMatchObject({ repositoryId: 'repo-wt', workDir: late });
+    expect(evidence?.[0]?.slot).toMatchObject({ slotId: 0, branch: 'late', workDir: late });
+  });
+
   it('records a tool event that targeted a non-slot worktree from the main checkout', async () => {
     const { context, evidence } = await resolveSessionContext(
       {},
