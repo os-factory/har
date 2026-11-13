@@ -1273,44 +1273,60 @@ describe('syncRepoWithControl — attached destinations', () => {
 });
 
 
-describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
+describe("syncRepoWithControl — Mission Control's attributed usage (ADR 0003)", () => {
   const realFetch = global.fetch;
-  const BINDING = {
-    id: 'b-1',
-    createdAt: '2026-03-01T10:05:00.000Z',
+  const OLD = '2026-03-01T10:00:00.000Z';
+  const NEW = '2026-03-01T12:00:00.000Z';
+  const SLOT_ROW = {
+    id: 'obs:claude_code:sess-1:2:occ-2',
+    sessionKey: 'sess-1',
+    agentId: 2,
     agentTool: 'claude_code',
-    sessionId: 'sess-1',
-    kind: 'launch',
-    slotId: 2,
+    workDir: '/wt/agent-2',
+    branch: 'agent-2-x',
+    suffix: null,
     occupancyKey: 'occ-2',
-    at: '2026-03-01T10:05:00.000Z',
-    origin: 'sync',
-  };
-  const OBSERVATION = {
-    id: 'o-1',
-    updatedAt: '2026-03-01T10:06:00.000Z',
-    agentTool: 'claude_code',
-    sessionId: 'sess-1',
-    observationKey: 'req_1',
-    observedAt: '2026-03-01T10:00:00.000Z',
-    granularity: 'request',
-    source: 'otel',
-    producer: 'claude.api_request',
-    model: 'claude-sonnet-4-5',
-    tokensInput: 100,
-    tokensOutput: 10,
+    workUnitId: 'FE-1',
+    attemptId: null,
+    tokensInput: 1_000_000,
+    tokensOutput: 1_000_000,
     tokensCacheRead: 0,
     tokensCacheCreation: 0,
-    costUsd: 0.25,
+    tokensTotal: 2_000_000,
+    // Far below the price estimate for these tokens: repricing would raise it.
+    costUsd: 0.01,
+    costSource: 'reported',
+    modelBreakdown: { 'claude-sonnet-4-5': { tokensTotal: 2_000_000, costUsd: 0.01 } },
+    sources: ['otel'],
+    harvestVersion: 3,
+    firstSeenAt: OLD,
+    lastSeenAt: OLD,
+    updatedAt: OLD,
+    origin: 'observations',
+    changedAt: OLD,
   };
-  const REPORTED = {
+  const MAIN_ROW = {
     agentTool: 'claude_code',
     sessionId: 'sess-1',
-    costUsd: 0.25,
-    tokensTotal: 110,
-    firstSeenAt: '2026-03-01T10:00:00.000Z',
-    lastSeenAt: '2026-03-01T10:00:00.000Z',
+    workDir: null,
+    branch: null,
+    tokensInput: 10,
+    tokensOutput: 5,
+    tokensCacheRead: 0,
+    tokensCacheCreation: 0,
+    tokensTotal: 15,
+    costUsd: 0.5,
+    costSource: 'reported',
+    observationCount: 1,
+    modelBreakdown: {},
+    sources: ['otel'],
+    harvestVersion: 3,
+    itemized: true,
+    firstSeenAt: OLD,
+    lastSeenAt: OLD,
+    changedAt: NEW,
   };
+  const OTHER_SESSION = { ...MAIN_ROW, sessionId: 'sess-2', workDir: '/wt/fix', branch: 'fix', changedAt: OLD };
 
   function respond(status: number, body: unknown) {
     return {
@@ -1321,31 +1337,15 @@ describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
     };
   }
 
-  function attributionFetch(options: {
-    portalAttribution: number;
-    changeFeed?: number;
-    signInRedirect?: boolean;
-  }): jest.Mock {
+  function missionControlFetch(usage: { status: number; body?: unknown }): jest.Mock {
     return jest.fn(async (url: string, init?: RequestInit) => {
       const u = String(url);
       const method = init?.method ?? 'GET';
-      if (u.includes('portal.example.com')) {
-        if (u.endsWith('/api/session-attribution')) {
-          if (options.signInRedirect) {
-            // An older portal's session guard: 302 to /sign-in, followed by fetch.
-            return { ...respond(200, {}), redirected: true, json: async () => { throw new Error('html'); } };
-          }
-          return respond(options.portalAttribution, { status: 'ok' });
-        }
-        return respond(200, {});
-      }
+      if (u.includes('portal.example.com')) return respond(200, {});
       if (u.endsWith('/api/repos') && method === 'POST') return respond(200, { id: 'mc-1' });
       if (u.endsWith('/api/repos')) return respond(200, [{ id: 'mc-1', path: '/repo/x' }]);
-      if (u.includes('/api/repos/mc-1/session-bindings?')) return respond(200, { bindings: [BINDING] });
-      if (u.includes('/api/repos/mc-1/usage-observations/changes')) {
-        return respond(options.changeFeed ?? 200, { observations: [OBSERVATION] });
-      }
-      if (u.endsWith('/api/repos/mc-1/reported-usage')) return respond(200, { reportedUsage: [REPORTED] });
+      if (u.endsWith('/api/repos/mc-1/usage') && method === 'GET') return respond(usage.status, usage.body ?? {});
+      if (u.includes('/api/repos/mc-1/events')) return respond(200, { events: [] });
       return respond(200, {});
     });
   }
@@ -1362,9 +1362,18 @@ describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
     };
   }
 
+  function sentUsage(fetchMock: jest.Mock): Array<Record<string, unknown>> {
+    return portalCalls(fetchMock)
+      .filter(([url]) => url.endsWith('/api/sync'))
+      .flatMap(([, init]) => (JSON.parse(init.body as string).usage ?? []) as Array<Record<string, unknown>>);
+  }
+
   beforeEach(() => {
     clearPortalEnv();
     resetPayloadMocks();
+    // The real Mission Control read, against the fetch mock below.
+    const actual = jest.requireActual('../src/core/control-persisted-usage') as typeof import('../src/core/control-persisted-usage');
+    fetchPersistedPortalTelemetryMock.mockImplementation(actual.fetchPersistedPortalTelemetry);
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
     readPortalCredentialsMock.mockReturnValue({
@@ -1382,102 +1391,92 @@ describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
   });
   afterEach(() => {
     (global as unknown as { fetch: unknown }).fetch = realFetch;
+    delete process.env.HAR_SYNC_MAX_BATCH_BYTES;
   });
   afterAll(clearPortalEnv);
 
-  it('sends Mission Control facts, with the member, and no per-slot totals', async () => {
-    const fetchMock = attributionFetch({ portalAttribution: 200 });
-    (global as unknown as { fetch: unknown }).fetch = fetchMock;
-
-    await syncRepoWithControl({ repoPath: '/repo/x' });
-
-    const calls = portalCalls(fetchMock);
-    const attributionIndex = calls.findIndex(([url]) => url.endsWith('/api/session-attribution'));
-    const syncIndex = calls.findIndex(([url]) => url.endsWith('/api/sync'));
-    expect(attributionIndex).toBeGreaterThanOrEqual(0);
-    expect(attributionIndex).toBeLessThan(syncIndex);
-
-    const body = JSON.parse(calls[attributionIndex][1].body as string);
-    expect(body.path).toBe('/repo/x');
-    // Storage columns (id, createdAt, updatedAt, origin) stay in Mission Control.
-    expect(body.bindings).toEqual([
-      {
-        agentTool: 'claude_code',
-        sessionId: 'sess-1',
-        kind: 'launch',
-        slotId: 2,
-        occupancyKey: 'occ-2',
-        at: '2026-03-01T10:05:00.000Z',
-      },
-    ]);
-    expect(body.observations).toHaveLength(1);
-    expect(body.observations[0]).not.toHaveProperty('id');
-    expect(body.observations[0]).not.toHaveProperty('updatedAt');
-    expect(body.observations[0]).toMatchObject({
-      observationKey: 'req_1',
-      producer: 'claude.api_request',
-      costUsd: 0.25,
-      userEmail: 'dev@example.com',
+  it("sends Mission Control's rows unchanged — no harvest, no repricing, no /session-attribution", async () => {
+    const fetchMock = missionControlFetch({
+      status: 200,
+      body: { usage: [SLOT_ROW], unassigned: [MAIN_ROW, OTHER_SESSION], crossChecks: [] },
     });
-    expect(body.reportedUsage).toEqual([REPORTED]);
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
 
-    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
-    expect(syncBody).not.toHaveProperty('usage');
-    // No slot-guessing harvest runs for a portal that derives usage itself.
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    expect(portalCalls(fetchMock).some(([url]) => url.endsWith('/api/session-attribution'))).toBe(false);
     expect(harvestUsageForSlotMock).not.toHaveBeenCalled();
-    // Its own watermark, so a portal's first attribution sync takes the whole history.
-    expect(writePortalWatermarkMock).toHaveBeenCalledWith(
-      '/repo/x',
-      expect.stringMatching(/^attribution:/),
-      '2026-03-01T10:06:00.000Z',
-    );
+    const usage = sentUsage(fetchMock);
+    expect(usage.map((row) => row.sessionKey)).toEqual(['sess-1@2:occ-2', 'sess-1@main', 'sess-2@wt:fix']);
+    expect(usage[0]).toMatchObject({
+      providerSessionId: 'sess-1',
+      agentId: 2,
+      workDir: '/wt/agent-2',
+      branch: 'agent-2-x',
+      workUnitId: 'FE-1',
+      attemptId: null,
+      costUsd: 0.01,
+      harvestVersion: 3,
+      userEmail: 'dev@example.com',
+      models: [{ model: 'claude-sonnet-4-5', tokensTotal: 2_000_000, costUsd: 0.01 }],
+    });
+    expect(usage[1]).toMatchObject({ providerSessionId: 'sess-1', agentId: 0, workDir: null, branch: null });
+    expect(usage[2]).toMatchObject({ providerSessionId: 'sess-2', agentId: 0, workDir: '/wt/fix', branch: 'fix' });
+    expect(writePortalWatermarkMock).toHaveBeenCalledWith('/repo/x', expect.not.stringMatching(/^attribution:/), NEW);
   });
 
-  it('keeps sending per-slot totals to a portal without /api/session-attribution', async () => {
-    const fetchMock = attributionFetch({ portalAttribution: 404 });
+  it('sends every row of a changed session, and none of an unchanged one', async () => {
+    readPortalWatermarkMock.mockReturnValue('2026-03-01T11:00:00.000Z');
+    const fetchMock = missionControlFetch({
+      status: 200,
+      body: { usage: [SLOT_ROW], unassigned: [MAIN_ROW, OTHER_SESSION], crossChecks: [] },
+    });
     (global as unknown as { fetch: unknown }).fetch = fetchMock;
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
-    expect(syncBody.usage).toHaveLength(1);
-    expect(syncBody.usage[0]).toMatchObject({ sessionKey: 'feat/x', userEmail: 'dev@example.com' });
+    // sess-1's slot row is older than the watermark, but its session changed.
+    expect(sentUsage(fetchMock).map((row) => row.sessionKey)).toEqual(['sess-1@2:occ-2', 'sess-1@main']);
   });
 
-  it('treats a redirect to sign-in (an older portal) as unsupported', async () => {
-    const fetchMock = attributionFetch({ portalAttribution: 200, signInRedirect: true });
+  it("never splits a session's rows across two requests", async () => {
+    process.env.HAR_SYNC_MAX_BATCH_BYTES = '600';
+    const fetchMock = missionControlFetch({
+      status: 200,
+      body: { usage: [SLOT_ROW], unassigned: [MAIN_ROW, OTHER_SESSION], crossChecks: [] },
+    });
     (global as unknown as { fetch: unknown }).fetch = fetchMock;
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
-    expect(syncBody.usage).toHaveLength(1);
+    const requests = portalCalls(fetchMock)
+      .filter(([url]) => url.endsWith('/api/sync'))
+      .map(([, init]) => ((JSON.parse(init.body as string).usage ?? []) as Array<{ providerSessionId: string }>))
+      .filter((usage) => usage.length > 0)
+      .map((usage) => usage.map((row) => row.providerSessionId));
+    expect(requests).toEqual([['sess-1', 'sess-1'], ['sess-2']]);
   });
 
-  it('keeps sending per-slot totals when Mission Control has no change feed', async () => {
-    const fetchMock = attributionFetch({ portalAttribution: 200, changeFeed: 404 });
+  it('keeps the legacy harvested totals for a Mission Control that serves no attributed usage', async () => {
+    const fetchMock = missionControlFetch({ status: 200, body: { usage: [] } });
     (global as unknown as { fetch: unknown }).fetch = fetchMock;
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const calls = portalCalls(fetchMock);
-    expect(calls.some(([url]) => url.endsWith('/api/session-attribution'))).toBe(false);
-    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
-    expect(syncBody.usage).toHaveLength(1);
+    expect(harvestUsageForSlotMock).toHaveBeenCalled();
+    expect(sentUsage(fetchMock)).toEqual([
+      expect.objectContaining({ sessionKey: 'feat/x', userEmail: 'dev@example.com' }),
+    ]);
   });
 
-  it('holds the watermark and sends no usage when Mission Control facts cannot be read', async () => {
-    const fetchMock = attributionFetch({ portalAttribution: 200, changeFeed: 503 });
+  it('holds the watermark and sends no usage when the usage view cannot be read', async () => {
+    const fetchMock = missionControlFetch({ status: 503 });
     (global as unknown as { fetch: unknown }).fetch = fetchMock;
 
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const calls = portalCalls(fetchMock);
-    // An empty probe only: the portal takes facts, so it gets no guessed totals.
-    const probe = calls.find(([url]) => url.endsWith('/api/session-attribution'));
-    expect(JSON.parse(probe![1].body as string)).toMatchObject({ bindings: [], observations: [] });
-    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
-    expect(syncBody).not.toHaveProperty('usage');
+    expect(harvestUsageForSlotMock).not.toHaveBeenCalled();
+    expect(sentUsage(fetchMock)).toEqual([]);
     expect(writePortalWatermarkMock).not.toHaveBeenCalled();
   });
 });

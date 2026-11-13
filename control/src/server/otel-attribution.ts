@@ -8,13 +8,16 @@ import {
   type AgentTool,
   type SessionBindingKind,
   BindingTimeline,
+  MAIN_CHECKOUT_AGENT_ID,
+  worktreeOccupancyKey,
   type OccupancyEvent,
   type TimelineBinding,
 } from '@har/schemas';
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
-import { normalizeOtelPath, pickPathForWorkspaceId } from '@/server/otel-workspace';
+import { isWorkspaceUnderPath, normalizeOtelPath, pickPathForWorkspaceId } from '@/server/otel-workspace';
+import { listLinkedWorktrees } from '@/server/git-worktrees';
 import type { ObservationInput } from '@/server/session-attribution';
 
 /**
@@ -348,6 +351,65 @@ export async function resolveTargetSlot(
 }
 
 /**
+ * A git worktree of the repository that is not a slot, which a record is
+ * evidence the session worked in: a tool event's target (its salted hash
+ * matched against the repository's linked worktrees), else the session's own
+ * cwd inside one. Recorded as a binding to `MAIN_CHECKOUT_AGENT_ID` naming the
+ * worktree, so its usage is unassigned yet split from the main checkout's.
+ *
+ * Callers pass only what no slot claimed. When Mission Control cannot read the
+ * repository's worktrees (its git directory is not mounted), a target is named
+ * by its branch alone — provided its hash is neither the main checkout's nor a
+ * slot's.
+ */
+export async function resolveNonSlotWorktree(
+  repositoryId: string,
+  input: { workspace?: string; attrs?: OtelAttrs },
+): Promise<{ kind: 'workspace' | 'observed'; slot: SlotEvidence } | null> {
+  const attrs = input.attrs ?? {};
+  const workspaceId = str([attrs], [TARGET_WORKSPACE_ID_ATTR]);
+  const targetBranch = str([attrs], [TARGET_BRANCH_ATTR]);
+  if (!input.workspace && !workspaceId) return null;
+  const repo = (await prisma.repository.findMany({ select: { id: true, path: true } })).find(
+    (candidate) => candidate.id === repositoryId,
+  );
+  if (!repo) return null;
+  const slots = await prisma.agentSlot.findMany({ where: { repositoryId }, select: SLOT_SELECT });
+  const slotPaths = slots
+    .flatMap((slot) => [slot.workDir, slot.worktreePath])
+    .filter((p): p is string => Boolean(p))
+    .map(normalizeOtelPath);
+  const { readable, worktrees } = listLinkedWorktrees(repo.path);
+  const candidates = worktrees.filter((worktree) => !slotPaths.includes(normalizeOtelPath(worktree.path)));
+  const evidence = (kind: 'workspace' | 'observed', workDir: string | null, branch: string | null) => ({
+    kind,
+    slot: {
+      slotId: MAIN_CHECKOUT_AGENT_ID,
+      occupancyKey: worktreeOccupancyKey({ workDir, branch }),
+      branch,
+      workDir,
+      suffix: null,
+      workUnitId: null,
+      attemptId: null,
+    },
+  });
+
+  if (workspaceId) {
+    const hit = pickPathForWorkspaceId(workspaceId, candidates.map((worktree) => worktree.path));
+    const worktree = hit ? candidates.find((candidate) => normalizeOtelPath(candidate.path) === hit) : undefined;
+    if (worktree) return evidence(targetBindingKind(attrs), worktree.path, worktree.branch ?? targetBranch ?? null);
+    if (!readable && targetBranch && !pickPathForWorkspaceId(workspaceId, [repo.path, ...slotPaths])) {
+      return evidence(targetBindingKind(attrs), null, targetBranch);
+    }
+  }
+  if (input.workspace) {
+    const worktree = candidates.find((candidate) => isWorkspaceUnderPath(input.workspace!, candidate.path));
+    if (worktree) return evidence('workspace', worktree.path, worktree.branch);
+  }
+  return null;
+}
+
+/**
  * The slot a session works in at `at`, from its stored binding timeline — the
  * same rule usage attribution applies. Null means the main checkout.
  */
@@ -400,7 +462,8 @@ export async function timelineSlotAt(
     })),
   ];
   const binding = new BindingTimeline(bindings.map(toTimeline), events).resolve(ref, at);
-  if (!binding) return null;
+  // A non-slot worktree is no slot: the record stays the main checkout's.
+  if (!binding || binding.slotId === MAIN_CHECKOUT_AGENT_ID) return null;
   const slot = slots.find(
     (candidate) =>
       candidate.slotId === binding.slotId &&

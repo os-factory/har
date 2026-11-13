@@ -6,14 +6,13 @@ import { occupancyKeyForAttempt } from './occupancy';
  *
  * Given the bindings and usage observations Mission Control holds, assign each
  * observation to the binding in force at its `observedAt`, and fold the result
- * into per-slot and per-session (unassigned = main checkout) usage. Attribution
- * is recomputed on every read, so a binding that arrives late re-attributes
- * usage already received.
+ * into per-slot and per-session unassigned usage (the main checkout, or a git
+ * worktree that is not a slot). Attribution is recomputed on every read, so a
+ * binding that arrives late re-attributes usage already received.
  *
- * Mission Control and har-portal run this same code over the same facts, so
- * the two derive the same split. It is free of zod and of the HAR domain
- * schema on purpose: it ships as the `@osfactory/har/attribution` library
- * entry, which a consumer on another zod major can import.
+ * Mission Control is the only place that attributes: har-portal receives the
+ * rows it derives (`har control sync`), never the facts. Free of zod and of the
+ * HAR domain schema.
  */
 
 /**
@@ -22,6 +21,27 @@ import { occupancyKeyForAttempt } from './occupancy';
  * (slots start at `HAR_AGENT_SLOT_MIN`), so no slot page claims it.
  */
 export const MAIN_CHECKOUT_AGENT_ID = 0;
+
+/**
+ * A binding to `MAIN_CHECKOUT_AGENT_ID` is evidence the session worked in a
+ * git worktree that is not a slot. Its `occupancyKey` names that worktree:
+ * its path when known, else only its branch (otel-hook exports a tool
+ * target's worktree as a salted hash and a branch; when Mission Control cannot
+ * list the repository's worktrees, the branch is all it can name).
+ */
+const WORKTREE_PATH_PREFIX = 'worktree:';
+const WORKTREE_BRANCH_PREFIX = 'worktree-branch:';
+
+export function worktreeOccupancyKey(worktree: { workDir?: string | null; branch?: string | null }): string | null {
+  if (worktree.workDir) return `${WORKTREE_PATH_PREFIX}${worktree.workDir}`;
+  if (worktree.branch) return `${WORKTREE_BRANCH_PREFIX}${worktree.branch}`;
+  return null;
+}
+
+/** The worktree path a non-slot worktree binding names, when it names one. */
+export function worktreeDirFromOccupancyKey(key: string | null | undefined): string | null {
+  return key?.startsWith(WORKTREE_PATH_PREFIX) ? key.slice(WORKTREE_PATH_PREFIX.length) : null;
+}
 
 /** How a binding was established; mirrors `SessionBindingKindSchema`. */
 export type TimelineBindingKind = 'launch' | 'release' | 'workspace' | 'observed';
@@ -87,11 +107,14 @@ function byRecency(a: TimelineBinding, b: TimelineBinding): number {
 /**
  * Occupancy boundaries implied by the bindings themselves: any session's
  * `release` ends the slot's occupancy; a `launch` / `workspace` binding with a
- * known occupancy key starts one.
+ * known occupancy key starts one. A non-slot worktree binding is no slot's
+ * occupancy: every session's worktree shares slot id 0, so one session's
+ * worktree must not close another's.
  */
 export function occupancyEventsFromBindings(bindings: TimelineBinding[]): OccupancyEvent[] {
   const out: OccupancyEvent[] = [];
   for (const binding of bindings) {
+    if (binding.slotId === MAIN_CHECKOUT_AGENT_ID) continue;
     if (binding.kind === 'release') {
       out.push({ slotId: binding.slotId, occupancyKey: binding.occupancyKey, at: binding.at, kind: 'end' });
     } else if ((binding.kind === 'launch' || binding.kind === 'workspace') && binding.occupancyKey) {
@@ -486,11 +509,20 @@ export function attributeObservations(
   }));
 }
 
+/** Usage outside every slot: the main checkout (`workDir` and `branch` null), or a non-slot worktree. */
+export interface UnassignedUsageBucket extends UsageBucket {
+  workDir: string | null;
+  branch: string | null;
+}
+
 export interface UsageProjection {
   /** One bucket per (agentTool, session, slot, occupancy). */
   slots: SlotUsageBucket[];
-  /** One bucket per session: usage with no binding in force — the main checkout. */
-  unassigned: UsageBucket[];
+  /**
+   * One bucket per session for usage with no binding in force (the main
+   * checkout), plus one per non-slot worktree the session was bound to.
+   */
+  unassigned: UnassignedUsageBucket[];
 }
 
 export function projectUsage(
@@ -500,13 +532,21 @@ export function projectUsage(
 ): UsageProjection {
   const timeline = new BindingTimeline(bindings, occupancyEvents);
   const slots = new Map<string, SlotUsageBucket>();
-  const unassigned = new Map<string, UsageBucket>();
+  const unassigned = new Map<string, UnassignedUsageBucket>();
   for (const { observation, binding } of attributeObservations(timeline, observations)) {
-    if (!binding) {
-      const key = sessionKeyOf(observation);
-      const bucket = unassigned.get(key) ?? emptyBucket(observation);
+    if (!binding || binding.slotId === MAIN_CHECKOUT_AGENT_ID) {
+      const key = `${sessionKeyOf(observation)}\0${binding?.occupancyKey ?? ''}`;
+      let bucket = unassigned.get(key);
+      if (!bucket) {
+        bucket = {
+          ...emptyBucket(observation),
+          workDir: worktreeDirFromOccupancyKey(binding?.occupancyKey),
+          branch: binding?.branch ?? null,
+        };
+        unassigned.set(key, bucket);
+      }
+      if (!bucket.branch && binding?.branch) bucket.branch = binding.branch;
       addToBucket(bucket, observation);
-      unassigned.set(key, bucket);
       continue;
     }
     const key = `${sessionKeyOf(observation)}\0${binding.slotId}\0${binding.occupancyKey ?? ''}`;

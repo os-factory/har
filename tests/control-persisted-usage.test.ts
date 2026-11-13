@@ -29,6 +29,7 @@ describe('fetchPersistedPortalTelemetry', () => {
     routedFetch({ '/api/repos': { status: 200, json: [{ id: 'r1', path: '/other/repo' }] } });
     const result = await fetchPersistedPortalTelemetry('/repo/x', API);
     expect(result).toEqual({
+      attributedUsage: null,
       usage: [],
       events: [],
       maxSyncedAt: null,
@@ -43,6 +44,8 @@ describe('fetchPersistedPortalTelemetry', () => {
     });
     (global as unknown as { fetch: unknown }).fetch = fn;
     await expect(fetchPersistedPortalTelemetry('/repo/x', API)).resolves.toEqual({
+      // No usage at all rather than the legacy totals: the failure holds the watermark.
+      attributedUsage: [],
       usage: [],
       events: [],
       maxSyncedAt: null,

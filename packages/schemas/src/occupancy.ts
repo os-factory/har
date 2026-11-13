@@ -13,9 +13,8 @@ const PART_SEPARATOR = '::';
 
 /**
  * The slot fields an occupancy key is derived from — a structural subset of
- * `AgentSlotStatus`, kept free of the zod schema so the
- * `@osfactory/har/attribution` entry can ship it (har-portal derives the key
- * from the slot rows it stores).
+ * `AgentSlotStatus`, kept free of the zod schema so the pure attribution core
+ * (`usage-attribution`) can use it.
  */
 export interface OccupancySource {
   active: boolean;

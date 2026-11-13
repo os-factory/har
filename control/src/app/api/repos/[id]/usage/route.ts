@@ -9,7 +9,10 @@ export async function GET(
 ) {
   const { id } = await params;
   // ADR 0003: slot usage is derived from observations and the binding timeline;
-  // usage with no binding is per-session `unassigned` (main checkout), never a slot's.
+  // usage with no binding is per-session `unassigned` (the main checkout, or a
+  // non-slot worktree named by `workDir` / `branch`), never a slot's. Every row
+  // carries `changedAt`, when its session's facts last changed: `har control
+  // sync` re-sends each changed session whole to har-portal.
   const view = await loadUsageView(id);
   return NextResponse.json({
     unassigned: view.unassigned,

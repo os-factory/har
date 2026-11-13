@@ -17,6 +17,7 @@ import {
   otelHookGenerationObservation,
   providerSessionRef,
   repositoryForProviderSession,
+  resolveNonSlotWorktree,
   resolveTargetSlot,
   targetBindingKind,
   timelineSlotAt,
@@ -33,6 +34,7 @@ import {
   hidesTrajectoryContent,
   redactSecretAttributes,
 } from '@/lib/trajectory-privacy';
+import { listLinkedWorktrees } from '@/server/git-worktrees';
 import {
   isWorkspaceUnderPath,
   normalizeOtelPath,
@@ -387,8 +389,12 @@ async function resolveRepositoryByWorkspacePath(
     workspace,
     repos.map((r) => r.path),
   );
-  if (!best) return null;
-  const match = repos.find((r) => normalizePath(r.path) === best);
+  // A linked worktree outside the checkout (`git worktree add ../x`) belongs to its repository too.
+  const match = best
+    ? repos.find((r) => normalizePath(r.path) === best)
+    : repos.find((r) =>
+        listLinkedWorktrees(r.path).worktrees.some((worktree) => isWorkspaceUnderPath(workspace, worktree.path)),
+      );
   return match ? { repositoryId: match.id, path: match.path } : null;
 }
 
@@ -570,6 +576,13 @@ export async function resolveSessionContext(
   if (workspaceSlot) evidence.push({ kind: 'workspace', slot: workspaceSlot });
   const targetSlot = await resolveTargetSlot(repository.repositoryId, attributes);
   if (targetSlot) evidence.push({ kind: targetBindingKind(attributes), slot: targetSlot });
+  // What no slot claimed may still be a non-slot git worktree: recorded so its
+  // usage splits from the main checkout's, never placed on a slot.
+  const worktree = await resolveNonSlotWorktree(repository.repositoryId, {
+    workspace: workspaceSlot ? undefined : workspace,
+    attrs: targetSlot ? undefined : attributes,
+  });
+  if (worktree) evidence.push(worktree);
 
   // With a provider session, the record goes where the session's timeline —
   // including this evidence — puts it at that time, so repeating cwd evidence
@@ -582,7 +595,10 @@ export async function resolveSessionContext(
         at,
         evidence.map(({ kind, slot }) => evidenceBinding(sessionRef, kind, slot, at)),
       )
-    : (evidence.find((item) => item.kind === 'observed') ?? evidence[0])?.slot ?? null;
+    : (() => {
+        const slotEvidence = evidence.filter((item) => item.slot.slotId !== MAIN_CHECKOUT_AGENT_ID);
+        return (slotEvidence.find((item) => item.kind === 'observed') ?? slotEvidence[0])?.slot ?? null;
+      })();
 
   const context: ResolvedSessionContext = placed
     ? contextFromSlot(base, placed, repository.workDir)

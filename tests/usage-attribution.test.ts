@@ -6,6 +6,7 @@ import {
   priceObservation,
   projectUsage,
   runningTotalDelta,
+  worktreeOccupancyKey,
   type ObservationFact,
   type TimelineBinding,
 } from '../packages/schemas/src/usage-attribution';
@@ -340,5 +341,52 @@ describe('legacyRowSuperseded', () => {
         coverage,
       ),
     ).toBe(true);
+  });
+});
+
+describe('non-slot worktrees (state 2)', () => {
+  const worktree = (minutes: number, sessionId: string, workDir: string | null, branch: string) =>
+    bind(minutes, 0, 'workspace', {
+      sessionId,
+      occupancyKey: worktreeOccupancyKey({ workDir, branch }),
+      branch,
+    });
+
+  it('splits a session\'s unassigned usage between the main checkout and the worktree it moved to', () => {
+    const projection = projectUsage(
+      [worktree(10, 'S1', '/repo/.claude/worktrees/fix', 'fix')],
+      [obs(5), obs(15), obs(20)],
+    );
+    expect(projection.slots).toEqual([]);
+    expect(
+      projection.unassigned.map((bucket) => [bucket.workDir, bucket.branch, bucket.costUsd]),
+    ).toEqual([
+      [null, null, 1],
+      ['/repo/.claude/worktrees/fix', 'fix', 2],
+    ]);
+  });
+
+  it('names a worktree known only by its branch', () => {
+    const projection = projectUsage([worktree(0, 'S1', null, 'fix')], [obs(5)]);
+    expect(projection.unassigned).toEqual([expect.objectContaining({ workDir: null, branch: 'fix', costUsd: 1 })]);
+  });
+
+  it('does not let one session\'s worktree close another session\'s', () => {
+    const projection = projectUsage(
+      [worktree(0, 'S1', '/wt/a', 'a'), worktree(10, 'S2', '/wt/b', 'b')],
+      [obs(20), obs(20, { sessionId: 'S2' })],
+    );
+    expect(
+      projection.unassigned.map((bucket) => [bucket.sessionId, bucket.workDir]).sort(),
+    ).toEqual([
+      ['S1', '/wt/a'],
+      ['S2', '/wt/b'],
+    ]);
+  });
+
+  it('moves the usage to a slot once a launch binds it', () => {
+    const projection = projectUsage([worktree(0, 'S1', '/wt/a', 'a'), bind(10, 2)], [obs(5), obs(15)]);
+    expect(projection.unassigned.map((bucket) => bucket.workDir)).toEqual(['/wt/a']);
+    expect(projection.slots.map((bucket) => bucket.slotId)).toEqual([2]);
   });
 });

@@ -86,6 +86,18 @@ How Mission Control resolves the timeline:
   attempt, another `launch` / `workspace` binding with another key) closes it.
   A binding that names the slot's current branch but no occupancy key gets the
   slot's current occupancy key when stored.
+- **Non-slot worktrees:** a session working in a linked git worktree that is
+  not a slot is bound to it as `MAIN_CHECKOUT_AGENT_ID` (0) with an occupancy
+  key naming the worktree (`worktree:<path>`, or `worktree-branch:<branch>`).
+  Evidence: the session's cwd inside one of the repository's linked worktrees
+  (read from `.git/worktrees/*`, no git spawn; a worktree outside the checkout
+  also resolves the repository), or a tool event's
+  `otelhook.target.workspace.id` matching one (otel-hook ADR 0008). When
+  Mission Control cannot read the repository's git directory, a target that is
+  neither the main checkout's nor a slot's hash is named by its
+  `vcs.ref.head.name` alone. Such usage stays unassigned — never a slot's —
+  but is split per worktree (`workDir`, `branch`); worktree bindings never
+  close each other or a slot's.
 - **Same unit, several producers:** observations are idempotent per key. A
   repeat of a key from the live stream replaces a harvested copy; a harvested
   copy never replaces the live one, and a provider-reported cost is never
@@ -141,7 +153,11 @@ All types live in `packages/schemas/src/session-attribution.ts`.
   produced inside Mission Control from the same types.
 - `har control sync` posts bindings and harvested observations; slot usage read
   through the existing `/usage` route is the derived projection, with the
-  per-session `unassigned` (main checkout) usage and `crossChecks` beside it.
+  `unassigned` usage (per session, and per non-slot worktree: `workDir` /
+  `branch`, null for the main checkout) and `crossChecks` beside it. Every
+  usage and unassigned row carries `changedAt`: the latest stored observation
+  or binding of its session (a slot's `launch` / `release` also touches every
+  session bound to that slot).
 - Mission Control persists them as `SessionSlotBinding`, `UsageObservation`
   and `SessionReportedUsage` (SQLite, applied by `prisma db push` like every
   Mission Control schema change).
@@ -294,27 +310,39 @@ in `launchingAgentSession`) and `CURSOR_REQUEST_ID`.
 
 ## Downstream mirror: har-portal (FE-2058)
 
-har-portal stores the same facts and derives slot usage with the same code; it
-never receives Mission Control's derived totals, which change when evidence
-arrives late (a portal max-merge could not lower them).
+The portal never attributes. Mission Control is the one place that attributes
+and prices usage; `har control sync` ships its rows to the portal unchanged, in
+the existing `/api/sync` `usage[]` record (`AgentSessionUsage`), plus one
+optional field, `providerSessionId`. The portal stores them as they are and,
+for every provider session a sync carries, **replaces** that session's rows —
+so usage a late launch record moves from the main checkout to a slot leaves the
+main checkout.
 
-- **Shared code.** The pure core lives in `packages/schemas/src/usage-attribution.ts`
-  and ships as the `@osfactory/har/attribution` library entry (CJS, ESM and
-  types). The entry is free of zod and of the domain schema, so a consumer on
-  another zod major imports it; the wire contract travels as plain types
-  (`PortalSessionAttributionWire`) and each side validates it with its own
-  schemas (`PortalSessionAttributionInputSchema` here).
-- **Transport.** `har control sync` reads Mission Control's facts — bindings
-  paged on `(createdAt, id)`, observations on `(updatedAt, id)` via
-  `/usage-observations/changes` so late harvests and filled-in costs are not
-  skipped, and every provider-reported session total via `/reported-usage` —
-  and posts them to the portal's `/api/session-attribution` before `/api/sync`.
-  The channel has its own watermark, so a portal's first attribution sync takes
-  Mission Control's whole history and can tell which legacy totals it covers.
-  Observations carry their `producer` (stream de-duplication needs it) and the
-  syncing member's `userEmail`.
-- **Compatibility.** A portal that answers 404 on `/api/session-attribution`,
-  or a Mission Control without the change feed, keeps getting the legacy
-  per-slot session totals in `/api/sync`, exactly as before (including the
-  main-checkout fallback onto the lowest slot, since that portal has no
-  unassigned bucket). A portal that takes the facts gets no per-slot totals.
+- **Rows.** One per bucket of a provider session, `providerSessionId` set:
+
+  | Where                     | `agentId` | `workDir` / `branch` | `sessionKey`                       |
+  |---------------------------|-----------|----------------------|------------------------------------|
+  | main checkout             | 0         | null / null          | `<session>@main`                   |
+  | non-slot git worktree     | 0         | its path / branch    | `<session>@wt:<branch ?? workDir>` |
+  | slot occupancy            | slot      | as Mission Control derives (with `workUnitId`, `attemptId`) | `<session>@<slot>:<occupancyKey ?? ''>` |
+  | provider total, no unit   | 0         | null / null          | `<session>@reported`               |
+
+  `costUsd` is Mission Control's (provider cost, else the genai-prices
+  estimate) and is never repriced; `modelBreakdown` / `models[]`, `sources`
+  and `harvestVersion` are Mission Control's too; `userEmail` is the syncing
+  member. Legacy session totals Mission Control still counts travel as stored,
+  without `providerSessionId`.
+- **Completeness.** A sync sends a session whole or not at all: every current
+  row of each session whose `changedAt` passed the portal watermark (first sync
+  and `--full`: everything). Requests are batched by size, never splitting a
+  session.
+- **Compatibility.** A Mission Control whose usage view has no `unassigned`
+  list predates attribution: the portal then gets the legacy per-slot totals
+  (local harvest, lowest slot taking main-checkout sessions, max-merged and
+  repriced), as before. If the usage view cannot be read, the sync sends no
+  usage and holds the watermark.
+- **Superseded.** 1.24.0 sent the facts to `POST /api/session-attribution` and
+  exported the attribution core as `@osfactory/har/attribution` for the portal
+  to derive usage itself. Both are gone, with the Mission Control routes that
+  fed them (`usage-observations/changes`, `reported-usage`, paged
+  `session-bindings`).

@@ -2,8 +2,8 @@ import { calcPrice } from '@pydantic/genai-prices';
 
 /**
  * Model pricing from the bundled genai-prices catalog. Free of zod and of the
- * HAR domain schema, so it ships in the `@osfactory/har/attribution` library
- * entry that har-portal runs alongside Mission Control.
+ * HAR domain schema, so the pure attribution core (`usage-attribution`) can
+ * price observations with it.
  */
 
 /** Per-model token and cost fields stored on AgentSessionUsage.modelBreakdown. */

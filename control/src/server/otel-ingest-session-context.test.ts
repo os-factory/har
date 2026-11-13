@@ -1,5 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { otelWorkspaceIdForPath } from './otel-workspace';
+import { clearLinkedWorktreeCache, listLinkedWorktrees } from './git-worktrees';
 
 interface FakeSlot {
   repositoryId: string;
@@ -291,5 +296,85 @@ describe('resolveSessionContext — no guessing (ADR 0003)', () => {
 
     expect(context).toBeNull();
     expect(reason).toMatch(/unknown agent tool/i);
+  });
+});
+
+describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)', () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mc-worktrees-')));
+  const repoPath = path.join(root, 'repo');
+  const inside = path.join(repoPath, '.claude', 'worktrees', 'fix');
+  const outside = path.join(root, 'repo-ext');
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: repoPath, stdio: 'ignore' });
+  fs.mkdirSync(repoPath);
+  git('init', '-q', '-b', 'main');
+  git('-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init');
+  git('worktree', 'add', '-q', '-b', 'fix', inside);
+  git('worktree', 'add', '-q', '-b', 'ext', outside);
+  repos.push({ id: 'repo-wt', path: repoPath });
+
+  afterAll(() => {
+    repos.splice(repos.findIndex((repo) => repo.id === 'repo-wt'), 1);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  beforeEach(() => clearLinkedWorktreeCache());
+
+  const session = { 'session.id': 'S-wt', 'otelhook.provider.id': 'claude-code' };
+
+  it('lists the linked worktrees with their branches', () => {
+    expect(listLinkedWorktrees(repoPath)).toEqual({
+      readable: true,
+      worktrees: expect.arrayContaining([
+        { path: inside, branch: 'fix' },
+        { path: outside, branch: 'ext' },
+      ]),
+    });
+    expect(listLinkedWorktrees(path.join(root, 'missing')).readable).toBe(false);
+  });
+
+  it('records a session started in a non-slot worktree as worktree evidence, not a slot', async () => {
+    const { context, evidence } = await resolveSessionContext({}, { 'gen_ai.client.workspace': inside, ...session });
+    expect(context).toMatchObject({ repositoryId: 'repo-wt', agentId: 0, workDir: inside });
+    expect(evidence).toEqual([
+      {
+        kind: 'workspace',
+        slot: expect.objectContaining({ slotId: 0, occupancyKey: `worktree:${inside}`, branch: 'fix', workDir: inside }),
+      },
+    ]);
+  });
+
+  it('resolves a worktree outside the checkout to its repository', async () => {
+    const { context, evidence } = await resolveSessionContext({}, { 'gen_ai.client.workspace': outside, ...session });
+    expect(context?.repositoryId).toBe('repo-wt');
+    expect(evidence?.[0]?.slot).toMatchObject({ slotId: 0, branch: 'ext', workDir: outside });
+  });
+
+  it('records a tool event that targeted a non-slot worktree from the main checkout', async () => {
+    const { context, evidence } = await resolveSessionContext(
+      {},
+      {
+        'gen_ai.client.workspace': repoPath,
+        ...session,
+        'otelhook.target.workspace.id': otelWorkspaceIdForPath(outside),
+        'vcs.ref.head.name': 'ext',
+        'otelhook.target.source': 'tool-path',
+      },
+    );
+    expect(context?.agentId).toBe(0);
+    expect(evidence).toEqual([
+      { kind: 'observed', slot: expect.objectContaining({ slotId: 0, occupancyKey: `worktree:${outside}`, branch: 'ext' }) },
+    ]);
+  });
+
+  it('records nothing for the main checkout itself', async () => {
+    const { evidence } = await resolveSessionContext(
+      {},
+      {
+        'gen_ai.client.workspace': repoPath,
+        ...session,
+        'otelhook.target.workspace.id': otelWorkspaceIdForPath(repoPath),
+        'vcs.ref.head.name': 'main',
+      },
+    );
+    expect(evidence).toEqual([]);
   });
 });

@@ -128,48 +128,6 @@ export const SyncUsageObservationsInputSchema = z.object({
 export type SyncUsageObservationsInput = z.infer<typeof SyncUsageObservationsInputSchema>;
 
 /**
- * A session total the provider reported on its own (Claude Code's cost
- * counter), kept only to cross-check the sum of the session's observations.
- * Never attributed to a slot.
- */
-export const ReportedSessionUsageSchema = z.object({
-  agentTool: AgentToolSchema,
-  sessionId: z.string().min(1).max(256),
-  costUsd: z.number().nonnegative().nullable(),
-  tokensTotal: z.number().int().nonnegative().default(0),
-  firstSeenAt: z.string().datetime(),
-  lastSeenAt: z.string().datetime(),
-});
-export type ReportedSessionUsage = z.infer<typeof ReportedSessionUsageSchema>;
-
-/**
- * An observation as Mission Control stores it, sent on to har-portal. The
- * producer stream travels with it because attribution de-duplicates streams
- * by it; the user is the portal member who ran the session.
- */
-export const PortalUsageObservationSchema = UsageObservationSchema.extend({
-  producer: z.string().min(1).max(128),
-  userEmail: z.string().email().optional(),
-});
-export type PortalUsageObservation = z.infer<typeof PortalUsageObservationSchema>;
-
-/**
- * `POST /api/session-attribution` on har-portal: the facts slot usage is
- * derived from, never derived totals. Every list is idempotent on its
- * contract key, so a re-send changes nothing. A portal that answers 404 is
- * older and still takes per-slot session totals in `/api/sync`.
- */
-export const PortalSessionAttributionInputSchema = z.object({
-  /** Repository path, resolved the same way as `/api/sync`'s `path`. */
-  path: z.string().min(1),
-  gitRemote: z.string().min(1).optional(),
-  bindings: z.array(SessionSlotBindingSchema).default([]),
-  observations: z.array(PortalUsageObservationSchema).default([]),
-  reportedUsage: z.array(ReportedSessionUsageSchema).default([]),
-});
-export type PortalSessionAttributionInput = z.infer<typeof PortalSessionAttributionInputSchema>;
-
-/**
  * Read the session of the agent running the current process, if any.
  *
  * Agents nest — Codex run from a Claude Code shell, Claude Code started from a
