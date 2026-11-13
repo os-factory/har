@@ -1,3 +1,17 @@
+## [1.24.0](https://github.com/os-factory/har/compare/v1.23.0...v1.24.0) (2026-11-13)
+
+### Features
+
+* **attribution:** share evidence-timeline attribution with the portal ([#387](https://github.com/os-factory/har/issues/387)) ([19e6a6c](https://github.com/os-factory/har/commit/19e6a6c73f301aed92b771bc0ced92f037bfaf8f))
+
+### Bug Fixes
+
+* **control:** bound and scope Mission Control / HQ sync ([#389](https://github.com/os-factory/har/issues/389)) ([2656d73](https://github.com/os-factory/har/commit/2656d73409007ff55a6acc680f8f6b57c2d51820))
+* **control:** key commit bindings on tree and commit (FE-2066) ([#386](https://github.com/os-factory/har/issues/386)) ([efcec22](https://github.com/os-factory/har/commit/efcec22ca7a081b922cff6fdcb00959eff31e50f))
+* **control:** sync recreates Mission Control on the CLI's image (FE-2067) ([#388](https://github.com/os-factory/har/issues/388)) ([c485727](https://github.com/os-factory/har/commit/c48572766dd38f07f7a7a7305ad753b1eff1d4f3))
+* **sync:** unblock the release — stub Mission Control's repo list in [#389](https://github.com/os-factory/har/issues/389)'s HQ 503 test (FE-2058) ([#390](https://github.com/os-factory/har/issues/390)) ([56902f9](https://github.com/os-factory/har/commit/56902f91030cf32c98e2114e3a9baa0556f974dc))
+* **telemetry:** install otel-hook 0.4.1 ([#385](https://github.com/os-factory/har/issues/385)) ([e0cbc15](https://github.com/os-factory/har/commit/e0cbc15c5913646e5739be990454eaf6692ec5ff))
+
 ## [1.23.0](https://github.com/os-factory/har/compare/v1.22.0...v1.23.0) (2026-11-13)
 
 ### Features
