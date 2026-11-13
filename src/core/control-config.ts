@@ -1,9 +1,8 @@
 import { readPortalCredentials } from './portal-credentials';
 import {
   displayPortalTargetLabel,
-  getPortalTargetRecord,
+  getActivePortalConnection,
   normalizePortalUrl,
-  readPortalTargetsStore,
   recordToPortalTarget,
   resolvePortalTargetForRepo,
   type PortalTargetResolution,
@@ -63,22 +62,11 @@ export function getPortalTarget(repoPath?: string): PortalTarget | null {
 
 export function describePortalTarget(target: PortalTarget): string {
   if (target.alias) {
-    const record = getPortalTargetRecord(target.alias);
-    if (record) return displayPortalTargetLabel(record);
+    const record = getActivePortalConnection();
+    if (record && recordToPortalTarget(record).identityKey === target.identityKey) {
+      return displayPortalTargetLabel(record);
+    }
   }
   const workspace = target.workspaceId ? ` (${target.workspaceId})` : '';
   return `${target.url}${workspace}`;
-}
-
-export function listSavedPortalUrls(): string[] {
-  const store = readPortalTargetsStore();
-  return [...new Set(store.targets.map((entry) => normalizePortalUrl(entry.portalUrl)))];
-}
-
-export function getDefaultPortalTargetRecord() {
-  const store = readPortalTargetsStore();
-  const alias = store.defaultTarget ?? store.targets[0]?.alias;
-  if (!alias) return null;
-  const record = store.targets.find((entry) => entry.alias === alias);
-  return record ? recordToPortalTarget(record) : null;
 }

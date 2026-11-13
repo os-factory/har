@@ -24,20 +24,7 @@ function openBrowser(url: string): void {
   }
 }
 
-export type BrowserConnectTarget = {
-  workspaceId: string;
-  workspace?: string;
-  workspaceName?: string;
-  token: string;
-  refreshToken?: string;
-  expiresAt?: string;
-  repos: string[];
-};
-
-export type PortalLoginResult = PortalCredentials & {
-  /** Present when the portal assigned repositories in the browser. */
-  targets?: BrowserConnectTarget[];
-};
+export type PortalLoginResult = PortalCredentials;
 
 export type LoginViaBrowserOptions = {
   openUrl?: (url: string) => void;
@@ -52,25 +39,6 @@ export function encodeCliReposQuery(repos: string[]): string | null {
   const encoded = encodeURIComponent(JSON.stringify(unique));
   if (encoded.length > REPOS_QUERY_BUDGET) return null;
   return encoded;
-}
-
-export function parseCliTargetsParam(raw: string | null): BrowserConnectTarget[] | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as {
-      targets?: BrowserConnectTarget[];
-    };
-    if (!Array.isArray(parsed.targets)) return null;
-    const targets = parsed.targets.filter(
-      (entry) =>
-        typeof entry?.workspaceId === 'string' &&
-        typeof entry?.token === 'string' &&
-        Array.isArray(entry.repos),
-    );
-    return targets.length > 0 ? targets : null;
-  } catch {
-    return null;
-  }
 }
 
 export async function loginViaBrowser(
@@ -113,7 +81,6 @@ export async function loginViaBrowser(
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<h1>Logged in</h1><p>You can close this tab and return to the terminal.</p>');
       cleanup();
-      const targets = parseCliTargetsParam(requestUrl.searchParams.get('targets'));
       resolve({
         portalUrl,
         token,
@@ -129,7 +96,6 @@ export async function loginViaBrowser(
         refreshToken,
         expiresAt,
         createdAt: new Date().toISOString(),
-        ...(targets ? { targets } : {}),
       });
     });
 

@@ -91,7 +91,7 @@ import {
   readPortalCredentials,
   writePortalCredentials,
 } from '../src/core/portal-credentials';
-import { attachRepoPortalTarget, updatePortalTargetTokens, upsertPortalTarget } from '../src/core/portal-targets';
+import { attachRepoToPortal, connectPortal, updatePortalTargetTokens } from '../src/core/portal-targets';
 import {
   listWorkUnits,
   listWorkAttempts,
@@ -1004,16 +1004,15 @@ describe('syncRepoWithControl — token refresh on 401', () => {
   afterAll(clearPortalEnv);
 
   function storedCreds(overrides: Record<string, unknown> = {}): void {
-    upsertPortalTarget({
+    connectPortal({
       alias: 'test',
       portalUrl: 'https://portal.example.com',
       workspaceId: 'ws_test',
       token: 'har_ingest_old',
       refreshToken: 'har_refresh_ok',
-      setAsDefault: true,
       ...overrides,
     });
-    attachRepoPortalTarget('/repo/x', 'test');
+    attachRepoToPortal('/repo/x');
   }
 
   function refreshFetch(opts: {
@@ -1085,7 +1084,7 @@ describe('syncRepoWithControl — token refresh on 401', () => {
     );
 
     expect(updatePortalTargetTokensMock).toHaveBeenCalledWith(
-      'test',
+      'https://portal.example.com#ws_test',
       expect.objectContaining({
         token: 'har_ingest_new',
         expiresAt: '2026-02-01T00:00:00.000Z',
@@ -1148,78 +1147,74 @@ describe('syncRepoWithControl — attached destinations', () => {
   });
   afterAll(clearPortalEnv);
 
-  it('does not advance a failed destination watermark after a sibling succeeds', async () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev',
-    });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      token: 'prod',
-    });
-    attachRepoPortalTarget('/repo/x', 'dev');
-    attachRepoPortalTarget('/repo/x', 'prod');
-
+  function okFetch(onPortalPost?: (url: string, auth: string) => void): jest.Mock {
     const fn = jest.fn(async (url: string, init?: RequestInit) => {
       const u = String(url);
       const method = init?.method ?? 'GET';
-      if (u.includes('prod.example.com') && u.endsWith('/api/sync')) {
-        return { ok: false, status: 500, text: async () => 'boom', json: async () => ({}) };
-      }
       if (u.endsWith('/api/repos') && method === 'POST') {
         return { ok: true, status: 200, text: async () => '', json: async () => ({ id: 'local-repo-1' }) };
+      }
+      if (u.includes('portal.example.com') && method === 'POST') {
+        onPortalPost?.(u, (init?.headers as Record<string, string>).Authorization);
       }
       return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
     });
     (global as unknown as { fetch: unknown }).fetch = fn;
+    return fn;
+  }
 
-    await expect(syncRepoWithControl({ repoPath: '/repo/x' })).rejects.toThrow(/prod/);
+  function portalPostAuths(fetchMock: jest.Mock): string[] {
+    return (fetchMock.mock.calls as [string, RequestInit | undefined][])
+      .filter(([url, init]) => String(url).includes('portal.example.com') && init?.method === 'POST')
+      .map(([, init]) => (init!.headers as Record<string, string>).Authorization);
+  }
 
-    const watermarkKeys = writePortalWatermarkMock.mock.calls.map((call) => call[1]);
-    expect(watermarkKeys.some((key) => String(key).includes('ws_dev'))).toBe(true);
-    expect(watermarkKeys.some((key) => String(key).includes('ws_prod'))).toBe(false);
-  });
+  function connectOrg(workspaceId: string, token: string): void {
+    connectPortal({ portalUrl: 'https://portal.example.com', workspaceId, token });
+  }
 
-  it('posts an independent payload to each attached workspace', async () => {
-    upsertPortalTarget({
-      alias: 'org-a',
-      portalUrl: 'https://portal.example.com',
-      workspaceId: 'org_a',
-      token: 'token-a',
-    });
-    upsertPortalTarget({
-      alias: 'org-b',
-      portalUrl: 'https://portal.example.com',
-      workspaceId: 'org_b',
-      token: 'token-b',
-    });
-    attachRepoPortalTarget('/repo/x', 'org-a');
-    attachRepoPortalTarget('/repo/x', 'org-b');
+  it('sends only to the org the CLI is connected to after a switch', async () => {
+    connectOrg('org_a', 'token-a');
+    attachRepoToPortal('/repo/x');
+    connectOrg('org_b', 'token-b');
+    attachRepoToPortal('/repo/x');
 
-    const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
-      const method = init?.method ?? 'GET';
-      if (String(url).endsWith('/api/repos') && method === 'POST') {
-        return { ok: true, status: 200, text: async () => '', json: async () => ({ id: 'local-repo-1' }) };
-      }
-      return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
-    });
-    (global as unknown as { fetch: unknown }).fetch = fetchMock;
-
+    const fetchMock = okFetch();
     await syncRepoWithControl({ repoPath: '/repo/x' });
 
-    const syncCalls = fetchMock.mock.calls.filter(([url]) =>
-      String(url).endsWith('/api/sync'),
-    ) as [string, RequestInit][];
-    expect(syncCalls).toHaveLength(2);
-    const tokens = syncCalls.map(
-      ([, init]) => (init.headers as Record<string, string>).Authorization,
-    );
-    expect(tokens.sort()).toEqual(['Bearer token-a', 'Bearer token-b']);
-    expect(syncCalls.every(([url]) => url === 'https://portal.example.com/api/sync')).toBe(true);
+    const auths = portalPostAuths(fetchMock);
+    expect(auths.length).toBeGreaterThan(0);
+    expect(new Set(auths)).toEqual(new Set(['Bearer token-b']));
+  });
+
+  it('does not sync a repo the switch detached', async () => {
+    connectOrg('org_a', 'token-a');
+    attachRepoToPortal('/repo/x');
+    connectOrg('org_b', 'token-b');
+
+    const fetchMock = okFetch();
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    expect(portalPostAuths(fetchMock)).toEqual([]);
+  });
+
+  it('stops sending to the previous org when the org changes mid-sync', async () => {
+    connectOrg('org_a', 'token-a');
+    attachRepoToPortal('/repo/x');
+
+    let switched = false;
+    const fetchMock = okFetch((_url, auth) => {
+      if (!switched && auth === 'Bearer token-a') {
+        switched = true;
+        connectOrg('org_b', 'token-b');
+      }
+    });
+
+    await syncRepoWithControl({ repoPath: '/repo/x' }).catch((err: Error) => {
+      expect(err.message).toMatch(/connection changed during sync/);
+    });
+
+    expect(switched).toBe(true);
+    expect(portalPostAuths(fetchMock).filter((auth) => auth === 'Bearer token-a')).toHaveLength(1);
   });
 });
-

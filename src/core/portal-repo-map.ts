@@ -1,13 +1,12 @@
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { listRegisteredRepos, recordRepoForControlSync } from './control-registry';
 import {
-  attachRepoPortalTarget,
+  attachRepoToPortal,
   displayPortalTargetLabel,
-  listPortalTargetRecords,
+  getActivePortalConnection,
+  listAttachedRepos,
   type PortalTargetRecord,
 } from './portal-targets';
-
-export type RepoMapConnection = { alias: string; label: string };
 
 export type RepoMapPlan =
   | { kind: 'none' }
@@ -16,83 +15,49 @@ export type RepoMapPlan =
       workspaceAlias: string;
       workspaceLabel: string;
       repos: string[];
-    }
-  | {
-      kind: 'map-orgs';
-      currentAlias: string;
-      repos: string[];
-      connections: RepoMapConnection[];
     };
 
 /**
- * After `har hq connect` attaches the current checkout, decide whether to ask
- * about other registered repositories. One saved workspace → checkbox to attach
- * more to that workspace. Several workspaces → pick a destination per repo.
+ * After `har hq connect` attaches the current checkout, decide whether to offer
+ * the other registered repositories. There is only ever one org connection, so
+ * the only choice is which not-yet-attached repos also sync to it.
  */
 export function planRepoWorkspaceMap(opts: {
   currentRepo: string | null;
-  currentAlias: string;
   registeredRepos?: string[];
-  connections?: PortalTargetRecord[];
+  connection?: PortalTargetRecord | null;
+  attachedRepos?: string[];
 }): RepoMapPlan {
-  const registered = (opts.registeredRepos ?? listRegisteredRepos()).map((repoPath) =>
-    canonicalizeControlRepoPath(repoPath),
+  const connection = opts.connection === undefined ? getActivePortalConnection() : opts.connection;
+  if (!connection) return { kind: 'none' };
+
+  const attached = new Set(
+    (opts.attachedRepos ?? listAttachedRepos()).map((repoPath) =>
+      canonicalizeControlRepoPath(repoPath),
+    ),
   );
   const current = opts.currentRepo ? canonicalizeControlRepoPath(opts.currentRepo) : null;
-  const others = registered.filter((repoPath) => repoPath !== current);
-  const connections = opts.connections ?? listPortalTargetRecords();
-  if (others.length === 0 || connections.length === 0) return { kind: 'none' };
-
-  if (connections.length === 1) {
-    const only = connections[0];
-    return {
-      kind: 'attach-more',
-      workspaceAlias: only.alias,
-      workspaceLabel: displayPortalTargetLabel(only),
-      repos: others,
-    };
-  }
+  const others = (opts.registeredRepos ?? listRegisteredRepos())
+    .map((repoPath) => canonicalizeControlRepoPath(repoPath))
+    .filter((repoPath) => repoPath !== current && !attached.has(repoPath));
+  if (others.length === 0) return { kind: 'none' };
 
   return {
-    kind: 'map-orgs',
-    currentAlias: opts.currentAlias,
-    repos: others,
-    connections: connections.map((entry) => ({
-      alias: entry.alias,
-      label: displayPortalTargetLabel(entry),
-    })),
+    kind: 'attach-more',
+    workspaceAlias: connection.alias,
+    workspaceLabel: displayPortalTargetLabel(connection),
+    repos: [...new Set(others)],
   };
 }
 
-export function applyRepoWorkspaceMap(
-  assignments: { repoPath: string; alias: string | null }[],
-): string[] {
+/** Attach these repos to the active org connection. */
+export function attachReposToPortal(repoPaths: string[]): string[] {
   const attached: string[] = [];
-  for (const row of assignments) {
-    if (!row.alias) continue;
-    const canonical = canonicalizeControlRepoPath(row.repoPath);
-    attachRepoPortalTarget(canonical, row.alias);
+  for (const repoPath of repoPaths) {
+    const canonical = canonicalizeControlRepoPath(repoPath);
+    attachRepoToPortal(canonical);
     recordRepoForControlSync(canonical);
     attached.push(canonical);
   }
   return attached;
-}
-
-/** Repos still unassigned after a mapping round — already-picked paths are hidden. */
-export function remainingUnassignedRepos(
-  repos: string[],
-  assigned: Iterable<string>,
-): string[] {
-  const taken = new Set(
-    [...assigned].map((repoPath) => canonicalizeControlRepoPath(repoPath)),
-  );
-  return repos.filter((repoPath) => !taken.has(canonicalizeControlRepoPath(repoPath)));
-}
-
-export function remainingConnections(
-  connections: RepoMapConnection[],
-  usedAliases: Iterable<string>,
-): RepoMapConnection[] {
-  const used = new Set([...usedAliases]);
-  return connections.filter((entry) => !used.has(entry.alias));
 }

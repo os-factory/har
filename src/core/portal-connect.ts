@@ -4,10 +4,10 @@ import { createHash } from 'crypto';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { listRegisteredRepos, recordRepoForControlSync } from './control-registry';
 import { loginViaBrowser } from './portal-login';
-import { applyRepoWorkspaceMap } from './portal-repo-map';
 import {
-  attachRepoPortalTarget,
-  upsertPortalTarget,
+  attachRepoToPortal,
+  connectPortal,
+  type ConnectPortalResult,
   type PortalTargetRecord,
 } from './portal-targets';
 
@@ -15,22 +15,24 @@ export interface PortalConnectInput {
   portalUrl: string;
   apiKey?: string;
   repoPath?: string;
-  /** Optional alias override (deprecated `har control login --target`). */
+  /** Optional alias override. */
   alias?: string;
 }
 
 export interface PortalConnectResult {
   record: PortalTargetRecord;
   attachedRepo: string | null;
-  extraAttached: string[];
-  mappedInBrowser: boolean;
+  /** The different org this connect replaced (nothing is sent to it any more). */
+  replaced: PortalTargetRecord | null;
+  /** Repos attached to the replaced org; they no longer sync until re-attached. */
+  detachedRepos: string[];
 }
 
-function attachRepoIfPresent(alias: string, repoPath?: string): string | null {
+function attachRepoIfPresent(repoPath?: string): string | null {
   const resolved = path.resolve(repoPath ?? '.');
   if (!fs.existsSync(resolved)) return null;
   const canonical = canonicalizeControlRepoPath(resolved);
-  attachRepoPortalTarget(canonical, alias);
+  attachRepoToPortal(canonical);
   recordRepoForControlSync(canonical);
   return canonical;
 }
@@ -39,27 +41,33 @@ function workspaceIdForApiKey(token: string): string {
   return `key:${createHash('sha256').update(token).digest('hex').slice(0, 12)}`;
 }
 
+/**
+ * Connect the CLI to one org. This replaces any existing connection to a
+ * different org — the CLI never holds keys for several orgs.
+ */
 export async function runPortalConnect(input: PortalConnectInput): Promise<PortalConnectResult> {
-  if (input.apiKey) {
-    const record = upsertPortalTarget({
-      alias: input.alias,
-      portalUrl: input.portalUrl,
-      workspaceId: workspaceIdForApiKey(input.apiKey),
-      token: input.apiKey,
-      setAsDefault: true,
-    });
-    return {
-      record,
-      attachedRepo: attachRepoIfPresent(record.alias, input.repoPath),
-      extraAttached: [],
-      mappedInBrowser: false,
-    };
-  }
+  const connected = input.apiKey
+    ? connectPortal({
+        alias: input.alias,
+        portalUrl: input.portalUrl,
+        workspaceId: workspaceIdForApiKey(input.apiKey),
+        token: input.apiKey,
+      })
+    : await connectViaBrowser(input);
 
+  return {
+    record: connected.record,
+    attachedRepo: attachRepoIfPresent(input.repoPath),
+    replaced: connected.replaced,
+    detachedRepos: connected.detachedRepos,
+  };
+}
+
+async function connectViaBrowser(input: PortalConnectInput): Promise<ConnectPortalResult> {
   const creds = await loginViaBrowser(input.portalUrl, {
     repos: listRegisteredReposForConnect(input.repoPath),
   });
-  const record = upsertPortalTarget({
+  return connectPortal({
     alias: input.alias,
     portalUrl: input.portalUrl,
     workspaceId: creds.workspaceId,
@@ -70,33 +78,7 @@ export async function runPortalConnect(input: PortalConnectInput): Promise<Porta
     refreshToken: creds.refreshToken,
     expiresAt: creds.expiresAt,
     email: creds.email,
-    setAsDefault: true,
   });
-  const attachedRepo = attachRepoIfPresent(record.alias, input.repoPath);
-  if (!creds.targets || creds.targets.length === 0) {
-    return { record, attachedRepo, extraAttached: [], mappedInBrowser: false };
-  }
-
-  const extraAttached: string[] = [];
-  for (const target of creds.targets) {
-    const next = upsertPortalTarget({
-      portalUrl: input.portalUrl,
-      workspaceId: target.workspaceId,
-      workspace: target.workspace,
-      workspaceSlug: target.workspace,
-      workspaceName: target.workspaceName,
-      token: target.token,
-      refreshToken: target.refreshToken,
-      expiresAt: target.expiresAt,
-      email: creds.email,
-      setAsDefault: false,
-    });
-    const attached = applyRepoWorkspaceMap(
-      target.repos.map((repoPath) => ({ repoPath, alias: next.alias })),
-    );
-    extraAttached.push(...attached.filter((repoPath) => repoPath !== attachedRepo));
-  }
-  return { record, attachedRepo, extraAttached, mappedInBrowser: true };
 }
 
 function listRegisteredReposForConnect(repoPath?: string): string[] {

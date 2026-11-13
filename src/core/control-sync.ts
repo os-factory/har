@@ -29,8 +29,9 @@ import {
 } from './control-registry';
 import { readPortalCredentials } from './portal-credentials';
 import {
+  isPortalTargetActive,
   isPortalTrajectoryEnabledForTarget,
-  resolvePortalTargetsForRepo,
+  resolvePortalTarget,
   updatePortalTargetTokens,
 } from './portal-targets';
 import { canonicalizeControlRepoPath } from './control-repo-path';
@@ -82,8 +83,6 @@ export interface ControlSyncOptions {
   force?: boolean;
   /** Ignore the portal watermark and resend the complete persisted payload. */
   full?: boolean;
-  /** Named portal target aliases for an explicit sync (comma-separated on CLI). */
-  portalTargets?: string[];
 }
 
 export interface SyncRepoResult {
@@ -91,7 +90,6 @@ export interface SyncRepoResult {
   ok: boolean;
   error?: string;
   warnings?: string[];
-  targets?: Array<{ alias: string; ok: boolean; error?: string; warnings?: string[] }>;
 }
 
 export interface ControlRegisterOptions extends ControlSyncOptions {
@@ -282,11 +280,25 @@ function portalEndpointUrl(target: PortalTarget, endpoint: string): string {
   return `${apiUrl}${KERNO_INGEST_PREFIX}${endpoint.slice(PORTAL_API_PREFIX.length)}`;
 }
 
+/**
+ * The CLI sends to one org at a time. A target resolved before the user
+ * switched org (or disconnected) must not send anything — not data, and not a
+ * token refresh — to the previous org.
+ */
+function assertPortalTargetActive(target: PortalTarget): void {
+  if (!isPortalTargetActive(target)) {
+    throw new Error(
+      'HAR HQ connection changed during sync — nothing more is sent to the previous org.',
+    );
+  }
+}
+
 function postPortalOnce(
   target: PortalTarget,
   endpoint: string,
   body: unknown,
 ): Promise<Response> {
+  assertPortalTargetActive(target);
   return postForResponse(
     portalEndpointUrl(target, endpoint),
     {
@@ -302,6 +314,7 @@ function postPortalOnce(
 // so the caller surfaces the original 401.
 async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
   if (!target.refreshToken) return false;
+  if (!isPortalTargetActive(target)) return false;
 
   let response: Response;
   try {
@@ -322,7 +335,7 @@ async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
 
   target.token = data.token;
   if (target.alias) {
-    updatePortalTargetTokens(target.alias, {
+    updatePortalTargetTokens(target.identityKey, {
       token: data.token,
       expiresAt: data.expiresAt,
     });
@@ -704,7 +717,6 @@ export async function syncReposWithControl(options: {
   dryRun?: boolean;
   cloud?: boolean;
   full?: boolean;
-  portalTargets?: string[];
 }): Promise<{
   synced: number;
   failed: number;
@@ -718,49 +730,6 @@ export async function syncReposWithControl(options: {
   let incomplete = 0;
 
   for (const repoPath of options.repoPaths) {
-    const destinationAliases = destinationAliasesForSync(repoPath, options.portalTargets);
-    if (destinationAliases.length > 1) {
-      const targetResults: Array<{
-        alias: string;
-        ok: boolean;
-        error?: string;
-        warnings?: string[];
-      }> = [];
-      for (const alias of destinationAliases) {
-        try {
-          const outcome = await withTimeout(
-            syncRepoWithControl({
-              repoPath,
-              apiUrl,
-              dryRun: options.dryRun,
-              cloud: options.cloud,
-              full: options.full,
-              portalTargets: [alias],
-            }),
-            EXPLICIT_SYNC_TIMEOUT_MS,
-            'control sync',
-          );
-          targetResults.push({
-            alias,
-            ok: true,
-            ...(outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {}),
-          });
-        } catch (err: unknown) {
-          targetResults.push({
-            alias,
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-      const ok = targetResults.every((entry) => entry.ok);
-      if (ok) synced++;
-      else failed++;
-      if (ok && targetResults.some((entry) => entry.warnings)) incomplete++;
-      results.push({ repoPath, ok, targets: targetResults, error: ok ? undefined : 'one or more targets failed' });
-      continue;
-    }
-
     try {
       const outcome = await withTimeout(
         syncRepoWithControl({
@@ -769,7 +738,6 @@ export async function syncReposWithControl(options: {
           dryRun: options.dryRun,
           cloud: options.cloud,
           full: options.full,
-          portalTargets: options.portalTargets,
         }),
         EXPLICIT_SYNC_TIMEOUT_MS,
         'control sync',
@@ -788,14 +756,6 @@ export async function syncReposWithControl(options: {
   }
 
   return { synced, failed, incomplete, results };
-}
-
-function destinationAliasesForSync(repoPath: string, explicit?: string[]): string[] {
-  if (explicit && explicit.length > 0) return explicit;
-  const resolved = resolvePortalTargetsForRepo({ repoPath });
-  return (resolved?.targets ?? [])
-    .map((target) => target.alias)
-    .filter((alias): alias is string => Boolean(alias));
 }
 
 export async function syncAllKnownReposWithControl(options?: {
@@ -1101,33 +1061,16 @@ export async function syncRepoWithControl(
 
   if (!isRepoPortalSyncEnabled(repoPath)) return { warnings: [] };
 
-  const resolved = resolvePortalTargetsForRepo({
-    repoPath,
-    explicitTargets: options.portalTargets,
-  });
+  const resolved = resolvePortalTarget({ repoPath });
   if (!resolved) return { warnings: [] };
 
-  const warnings: string[] = [];
-  const failures: Array<{ alias: string; error: string }> = [];
-  for (const portal of resolved.targets) {
-    try {
-      warnings.push(
-        ...(await syncRepoWithPortal({ ...options, repoPath, workspacePath }, apiUrl, portal)),
-      );
-    } catch (err: unknown) {
-      failures.push({
-        alias: portal.alias ?? portal.identityKey,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  if (failures.length === 0) return { warnings };
-  if (failures.length === resolved.targets.length && failures.length === 1) {
-    throw new Error(failures[0].error);
-  }
-  const detail = failures.map((entry) => `${entry.alias}: ${entry.error}`).join('; ');
-  throw new Error(`Portal sync failed for ${failures.length} destination(s): ${detail}`);
+  return {
+    warnings: await syncRepoWithPortal(
+      { ...options, repoPath, workspacePath },
+      apiUrl,
+      resolved.target,
+    ),
+  };
 }
 
 async function syncRepoRunsAndSlots(
@@ -1341,17 +1284,16 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
     process.stderr.write(`[har control] run sync skipped: ${message}\n`);
   }
 
-  const resolved = resolvePortalTargetsForRepo({ repoPath: canonical });
+  const resolved = resolvePortalTarget({ repoPath: canonical });
   if (!resolved) return;
   if (!isRepoPortalSyncEnabled(canonical)) return;
 
-  for (const portal of resolved.targets) {
-    try {
-      if (!kernoApiUrlFor(portal.url) && !(await isControlApiReachable(portal.url))) continue;
-      await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[har control] run sync skipped: ${message}\n`);
-    }
+  const portal = resolved.target;
+  try {
+    if (!kernoApiUrlFor(portal.url) && !(await isControlApiReachable(portal.url))) return;
+    await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[har control] run sync skipped: ${message}\n`);
   }
 }

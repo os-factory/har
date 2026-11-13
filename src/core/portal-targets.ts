@@ -6,6 +6,12 @@ import { listRegisteredRepos } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
 import { markAllRegisteredDirty } from './sync-context';
 
+/**
+ * The CLI holds ONE HAR HQ (portal) org connection at a time. Every sync, OTel
+ * and trajectory upload goes to that org only. Connecting to another org
+ * replaces the connection and clears the attached repositories, so nothing is
+ * sent to the previous org and no repository syncs to more than one org.
+ */
 export interface PortalTargetRecord {
   alias: string;
   portalUrl: string;
@@ -23,12 +29,22 @@ export interface PortalTargetRecord {
   lastUsedAt?: string;
 }
 
-export interface PortalTargetsStore {
+/** The active org connection and the repositories that sync to it. */
+export interface PortalConnectionState {
+  connection: PortalTargetRecord | null;
+  /** Canonical repo paths attached to {@link connection}. Empty when disconnected. */
+  attachedRepos: string[];
+}
+
+/**
+ * On-disk shape of `~/.har/portal-targets.json`. Kept readable by older CLIs
+ * (which read `targets` / `defaultTarget` / `repoTargets`), but always written
+ * with at most one target and every repo mapped to that target only.
+ */
+interface PortalTargetsFile {
   version: 1;
-  /** Last-used connection (login URL / credentials.json mirror). Not a current-org pointer. */
   defaultTarget?: string;
   targets: PortalTargetRecord[];
-  /** Canonical repo path → attached target aliases (additive at connect). */
   repoTargets?: Record<string, string[]>;
 }
 
@@ -42,13 +58,8 @@ export interface PortalTargetResolution {
   email?: string;
 }
 
-export type PortalTargetSource =
-  | 'env'
-  | 'flag'
-  | 'repo'
-  | 'default'
-  | 'explicit'
-  | 'single';
+/** `env`: HAR_PORTAL_URL + HAR_PORTAL_TOKEN override. `connection`: the saved org connection. */
+export type PortalTargetSource = 'env' | 'connection';
 
 const ALIAS_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 
@@ -60,6 +71,10 @@ export function portalTargetIdentityKey(portalUrl: string, workspaceId: string):
   return `${normalizePortalUrl(portalUrl)}#${workspaceId}`;
 }
 
+function recordIdentityKey(record: PortalTargetRecord): string {
+  return portalTargetIdentityKey(record.portalUrl, record.workspaceId);
+}
+
 export function portalTargetsPath(): string {
   if (process.env.HAR_PORTAL_TARGETS_PATH) {
     return path.resolve(process.env.HAR_PORTAL_TARGETS_PATH);
@@ -67,61 +82,113 @@ export function portalTargetsPath(): string {
   return path.join(os.homedir(), '.har', 'portal-targets.json');
 }
 
-function emptyStore(): PortalTargetsStore {
-  return { version: 1, targets: [] };
+function isRecord(entry: unknown): entry is PortalTargetRecord {
+  const value = entry as Partial<PortalTargetRecord> | null | undefined;
+  return (
+    typeof value?.alias === 'string' &&
+    typeof value?.portalUrl === 'string' &&
+    typeof value?.workspaceId === 'string' &&
+    typeof value?.token === 'string' &&
+    typeof value?.createdAt === 'string'
+  );
 }
 
-function normalizeStore(raw: Partial<PortalTargetsStore> | null | undefined): PortalTargetsStore {
-  const targets = Array.isArray(raw?.targets)
-    ? raw!.targets.filter((entry): entry is PortalTargetRecord => {
-        return (
-          typeof entry?.alias === 'string' &&
-          typeof entry?.portalUrl === 'string' &&
-          typeof entry?.workspaceId === 'string' &&
-          typeof entry?.token === 'string' &&
-          typeof entry?.createdAt === 'string'
-        );
-      })
-    : [];
-  const repoTargets = normalizeRepoTargetMap(raw?.repoTargets);
+function recencyOf(record: PortalTargetRecord): number {
+  const parsed = Date.parse(record.lastUsedAt ?? record.updatedAt ?? record.createdAt);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** Repos whose saved destination list names `alias` (older stores could list several). */
+function reposAttachedTo(raw: unknown, alias: string): string[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const repos: string[] = [];
+  for (const [repoPath, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!repoPath) continue;
+    const aliases = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+    if (aliases.some((entry) => typeof entry === 'string' && entry.trim().toLowerCase() === alias)) {
+      repos.push(repoPath);
+    }
+  }
+  return [...new Set(repos)];
+}
+
+/**
+ * Collapse a stored file — including one from an older CLI that held several
+ * org connections — to a single connection: `defaultTarget` when it still
+ * exists, else the most recently used one. The other connections, their tokens
+ * and their repo attachments are dropped.
+ */
+export function collapsePortalTargetsFile(raw: unknown): PortalConnectionState {
+  const file = (raw ?? {}) as Partial<PortalTargetsFile>;
+  const targets = Array.isArray(file.targets) ? file.targets.filter(isRecord) : [];
+  if (targets.length === 0) return { connection: null, attachedRepos: [] };
+
+  const byDefault =
+    typeof file.defaultTarget === 'string'
+      ? targets.find((entry) => entry.alias === file.defaultTarget)
+      : undefined;
+  const connection = byDefault ?? [...targets].sort((a, b) => recencyOf(b) - recencyOf(a))[0];
+  return { connection, attachedRepos: reposAttachedTo(file.repoTargets, connection.alias) };
+}
+
+function toFile(state: PortalConnectionState): PortalTargetsFile {
+  if (!state.connection) return { version: 1, targets: [] };
+  const alias = state.connection.alias;
+  const repos = [...new Set(state.attachedRepos)];
   return {
     version: 1,
-    defaultTarget: typeof raw?.defaultTarget === 'string' ? raw.defaultTarget : undefined,
-    targets,
-    ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
+    defaultTarget: alias,
+    targets: [state.connection],
+    ...(repos.length > 0
+      ? { repoTargets: Object.fromEntries(repos.map((repoPath) => [repoPath, [alias]])) }
+      : {}),
   };
 }
 
-function normalizeRepoTargetMap(raw: unknown): Record<string, string[]> {
-  if (!raw || typeof raw !== 'object') return {};
-  const next: Record<string, string[]> = {};
-  for (const [repoPath, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof repoPath !== 'string' || !repoPath) continue;
-    const aliases = (typeof value === 'string' ? [value] : Array.isArray(value) ? value : [])
-      .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
-      .map((entry) => entry.trim().toLowerCase());
-    const unique = [...new Set(aliases)];
-    if (unique.length > 0) next[repoPath] = unique;
-  }
-  return next;
-}
-
-function writeStore(store: PortalTargetsStore): void {
+function writeState(state: PortalConnectionState): void {
   const file = portalTargetsPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(normalizeStore(store), null, 2) + '\n', { mode: 0o600 });
+  fs.writeFileSync(file, JSON.stringify(toFile(state), null, 2) + '\n', { mode: 0o600 });
   fs.chmodSync(file, 0o600);
 }
 
-export function readPortalTargetsStore(): PortalTargetsStore {
+const EMPTY_STATE: PortalConnectionState = { connection: null, attachedRepos: [] };
+
+/** Read the active connection, collapsing (and persisting) a multi-connection store. */
+export function readPortalConnectionState(): PortalConnectionState {
   migrateLegacyCredentialsIfNeeded();
   const file = portalTargetsPath();
+  let raw: unknown;
   try {
-    if (!fs.existsSync(file)) return emptyStore();
-    return normalizeStore(JSON.parse(fs.readFileSync(file, 'utf8')) as PortalTargetsStore);
+    if (!fs.existsSync(file)) return { ...EMPTY_STATE };
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
-    return emptyStore();
+    return { ...EMPTY_STATE };
   }
+
+  const state = collapsePortalTargetsFile(raw);
+  if (JSON.stringify(toFile(state)) !== JSON.stringify(raw)) {
+    // Persist the collapse right away so the dropped connections' tokens leave disk.
+    try {
+      writeState(state);
+      if (state.connection) syncLegacyCredentialsFile(state.connection);
+    } catch {
+      // Unwritable home: keep using the collapsed view in memory.
+    }
+  }
+  return state;
+}
+
+export function getActivePortalConnection(): PortalTargetRecord | null {
+  return readPortalConnectionState().connection;
+}
+
+export function listAttachedRepos(): string[] {
+  return readPortalConnectionState().attachedRepos;
+}
+
+export function isRepoAttachedToPortal(repoPath: string): boolean {
+  return readPortalConnectionState().attachedRepos.includes(canonicalizeControlRepoPath(repoPath));
 }
 
 export function resolveWorkspaceId(input: {
@@ -143,14 +210,10 @@ export function deriveTargetAlias(input: {
   workspace?: string;
   workspaceSlug?: string;
   workspaceName?: string;
-  existingAliases: Set<string>;
 }): string {
   if (input.alias?.trim()) {
     const candidate = sanitizeAlias(input.alias.trim());
     if (!candidate) throw new Error('Target alias must be alphanumeric (dots, dashes, underscores allowed).');
-    if (input.existingAliases.has(candidate)) {
-      throw new Error(`Target alias "${candidate}" already exists — pick another name or remove it first.`);
-    }
     return candidate;
   }
 
@@ -159,12 +222,7 @@ export function deriveTargetAlias(input: {
     sanitizeAlias(input.workspaceName ?? '') ||
     sanitizeAlias(new URL(input.portalUrl).hostname.replace(/\./g, '-'));
 
-  const candidate = slugBase || 'default';
-  if (!input.existingAliases.has(candidate)) return candidate;
-
-  let index = 2;
-  while (input.existingAliases.has(`${candidate}-${index}`)) index += 1;
-  return `${candidate}-${index}`;
+  return slugBase || 'default';
 }
 
 function sanitizeAlias(raw: string): string {
@@ -187,27 +245,6 @@ export function validateTargetAlias(alias: string): void {
   }
 }
 
-export function listPortalTargetRecords(): PortalTargetRecord[] {
-  return readPortalTargetsStore().targets;
-}
-
-export function getPortalTargetRecord(alias: string): PortalTargetRecord | null {
-  const normalized = alias.trim().toLowerCase();
-  return readPortalTargetsStore().targets.find((entry) => entry.alias === normalized) ?? null;
-}
-
-export function getPortalTargetRecordByIdentity(
-  portalUrl: string,
-  workspaceId: string,
-): PortalTargetRecord | null {
-  const key = portalTargetIdentityKey(portalUrl, workspaceId);
-  return (
-    readPortalTargetsStore().targets.find(
-      (entry) => portalTargetIdentityKey(entry.portalUrl, entry.workspaceId) === key,
-    ) ?? null
-  );
-}
-
 export function recordToPortalTarget(record: PortalTargetRecord): PortalTargetResolution {
   return {
     url: normalizePortalUrl(record.portalUrl),
@@ -215,7 +252,7 @@ export function recordToPortalTarget(record: PortalTargetRecord): PortalTargetRe
     refreshToken: record.refreshToken,
     alias: record.alias,
     workspaceId: record.workspaceId,
-    identityKey: portalTargetIdentityKey(record.portalUrl, record.workspaceId),
+    identityKey: recordIdentityKey(record),
     email: record.email,
   };
 }
@@ -237,7 +274,20 @@ export function redactPortalTargetRecord(record: PortalTargetRecord): Record<str
   };
 }
 
-export function upsertPortalTarget(input: {
+export interface ConnectPortalResult {
+  record: PortalTargetRecord;
+  /** The different org this connection replaced; null on first connect or same-org reconnect. */
+  replaced: PortalTargetRecord | null;
+  /** Repos that stopped syncing because the org changed. */
+  detachedRepos: string[];
+}
+
+/**
+ * Make this org the CLI's one connection. Reconnecting to the same org refreshes
+ * its tokens and keeps its attached repos; connecting to a different org
+ * replaces the connection and clears the attached repos.
+ */
+export function connectPortal(input: {
   alias?: string;
   portalUrl: string;
   workspaceId?: string;
@@ -249,28 +299,25 @@ export function upsertPortalTarget(input: {
   expiresAt?: string;
   email?: string;
   trajectoryForwarding?: boolean;
-  setAsDefault?: boolean;
-}): PortalTargetRecord {
-  const store = readPortalTargetsStore();
+}): ConnectPortalResult {
+  const current = readPortalConnectionState();
   const workspaceId = resolveWorkspaceId(input);
-  const existingByIdentity = getPortalTargetRecordByIdentity(input.portalUrl, workspaceId);
-  const existingAliases = new Set(store.targets.map((entry) => entry.alias));
-  if (existingByIdentity) existingAliases.delete(existingByIdentity.alias);
+  const sameOrg =
+    current.connection !== null &&
+    recordIdentityKey(current.connection) === portalTargetIdentityKey(input.portalUrl, workspaceId);
+  const previous = sameOrg ? current.connection : null;
 
-  const alias = existingByIdentity?.alias
-    ? existingByIdentity.alias
-    : deriveTargetAlias({
-        alias: input.alias,
-        portalUrl: input.portalUrl,
-        workspace: input.workspace,
-        workspaceSlug: input.workspaceSlug,
-        workspaceName: input.workspaceName,
-        existingAliases,
-      });
-
+  const alias = deriveTargetAlias({
+    alias: input.alias ?? previous?.alias,
+    portalUrl: input.portalUrl,
+    workspace: input.workspace,
+    workspaceSlug: input.workspaceSlug,
+    workspaceName: input.workspaceName,
+  });
   validateTargetAlias(alias);
+
   const now = new Date().toISOString();
-  const next: PortalTargetRecord = {
+  const record: PortalTargetRecord = {
     alias,
     portalUrl: normalizePortalUrl(input.portalUrl),
     workspaceId,
@@ -280,34 +327,34 @@ export function upsertPortalTarget(input: {
     refreshToken: input.refreshToken,
     expiresAt: input.expiresAt,
     email: input.email,
-    trajectoryForwarding:
-      input.trajectoryForwarding ?? existingByIdentity?.trajectoryForwarding ?? false,
-    createdAt: existingByIdentity?.createdAt ?? now,
+    trajectoryForwarding: input.trajectoryForwarding ?? previous?.trajectoryForwarding ?? false,
+    createdAt: previous?.createdAt ?? now,
     updatedAt: now,
     lastUsedAt: now,
   };
 
-  const without = store.targets.filter((entry) => entry.alias !== alias);
-  without.push(next);
-  const defaultTarget =
-    input.setAsDefault || !store.defaultTarget || store.defaultTarget === existingByIdentity?.alias
-      ? alias
-      : store.defaultTarget;
-
-  writeStore({ ...store, targets: without, defaultTarget });
-  syncLegacyCredentialsFile(next, defaultTarget === alias);
+  writeState({ connection: record, attachedRepos: sameOrg ? current.attachedRepos : [] });
+  syncLegacyCredentialsFile(record);
   markAllRegisteredDirty();
-  return next;
+  return {
+    record,
+    replaced: sameOrg ? null : current.connection,
+    detachedRepos: sameOrg ? [] : current.attachedRepos,
+  };
 }
 
+/**
+ * Persist a rotated ingest token. Ignored unless `identityKey` still names the
+ * active connection, so a refresh that lands after an org switch cannot
+ * overwrite the new org's credential.
+ */
 export function updatePortalTargetTokens(
-  alias: string,
+  identityKey: string,
   tokens: { token: string; refreshToken?: string; expiresAt?: string },
 ): PortalTargetRecord | null {
-  const store = readPortalTargetsStore();
-  const index = store.targets.findIndex((entry) => entry.alias === alias.trim().toLowerCase());
-  if (index < 0) return null;
-  const current = store.targets[index];
+  const state = readPortalConnectionState();
+  const current = state.connection;
+  if (!current || recordIdentityKey(current) !== identityKey) return null;
   const next: PortalTargetRecord = {
     ...current,
     token: tokens.token,
@@ -315,97 +362,41 @@ export function updatePortalTargetTokens(
     expiresAt: tokens.expiresAt ?? current.expiresAt,
     updatedAt: new Date().toISOString(),
   };
-  const targets = [...store.targets];
-  targets[index] = next;
-  writeStore({ ...store, targets });
-  if (store.defaultTarget === alias) syncLegacyCredentialsFile(next, true);
+  writeState({ ...state, connection: next });
+  syncLegacyCredentialsFile(next);
   return next;
 }
 
-export function removePortalTarget(alias: string): boolean {
-  const normalized = alias.trim().toLowerCase();
-  const store = readPortalTargetsStore();
-  const nextTargets = store.targets.filter((entry) => entry.alias !== normalized);
-  if (nextTargets.length === store.targets.length) return false;
-
-  const repoTargets = { ...(store.repoTargets ?? {}) };
-  for (const [repoPath, aliases] of Object.entries(repoTargets)) {
-    const next = aliases.filter((alias) => alias !== normalized);
-    if (next.length > 0) repoTargets[repoPath] = next;
-    else delete repoTargets[repoPath];
-  }
-
-  let defaultTarget = store.defaultTarget;
-  if (defaultTarget === normalized) {
-    defaultTarget = nextTargets[0]?.alias;
-  }
-
-  writeStore({
-    ...store,
-    targets: nextTargets,
-    defaultTarget,
-    ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
-  });
-
-  if (defaultTarget) {
-    const fallback = getPortalTargetRecord(defaultTarget);
-    if (fallback) syncLegacyCredentialsFile(fallback, true);
-  } else {
-    removeLegacyCredentialsFile();
-  }
+/** Remove the connection and every repo attachment. Returns the removed connection. */
+export function disconnectPortal(): PortalTargetRecord | null {
+  const { connection } = readPortalConnectionState();
+  if (!connection) return null;
+  writeState({ ...EMPTY_STATE });
+  removeLegacyCredentialsFile();
   markAllRegisteredDirty();
-  return true;
+  return connection;
 }
 
-export function setDefaultPortalTarget(alias: string): PortalTargetRecord {
-  const record = getPortalTargetRecord(alias);
-  if (!record) throw new Error(`Unknown target "${alias}".`);
-  const store = readPortalTargetsStore();
-  writeStore({ ...store, defaultTarget: record.alias });
-  syncLegacyCredentialsFile(record, true);
-  return record;
-}
-
-export function attachRepoPortalTarget(repoPath: string, alias: string): PortalTargetRecord {
-  const record = getPortalTargetRecord(alias);
-  if (!record) throw new Error(`Unknown target "${alias}".`);
+/** Attach a repo to the active connection. Throws when there is no connection. */
+export function attachRepoToPortal(repoPath: string): PortalTargetRecord {
+  const state = readPortalConnectionState();
+  if (!state.connection) throw new Error('No HAR HQ connection — run har hq connect first.');
   const canonical = canonicalizeControlRepoPath(repoPath);
-  const store = readPortalTargetsStore();
-  const current = store.repoTargets?.[canonical] ?? [];
-  const next = current.includes(record.alias) ? current : [...current, record.alias];
-  writeStore({
-    ...store,
-    repoTargets: { ...(store.repoTargets ?? {}), [canonical]: next },
-  });
-  return record;
-}
-
-export function detachRepoPortalTarget(repoPath: string, alias?: string): boolean {
-  const canonical = canonicalizeControlRepoPath(repoPath);
-  const store = readPortalTargetsStore();
-  const current = store.repoTargets?.[canonical];
-  if (!current || current.length === 0) return false;
-
-  const repoTargets = { ...(store.repoTargets ?? {}) };
-  if (!alias) {
-    delete repoTargets[canonical];
-  } else {
-    const next = current.filter((entry) => entry !== alias.trim().toLowerCase());
-    if (next.length === current.length) return false;
-    if (next.length > 0) repoTargets[canonical] = next;
-    else delete repoTargets[canonical];
+  if (!state.attachedRepos.includes(canonical)) {
+    writeState({ ...state, attachedRepos: [...state.attachedRepos, canonical] });
   }
-
-  writeStore({
-    ...store,
-    ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
-  });
-  return true;
+  return state.connection;
 }
 
-export function getRepoPortalTargetAliases(repoPath: string): string[] {
+export function detachRepoFromPortal(repoPath: string): boolean {
+  const state = readPortalConnectionState();
   const canonical = canonicalizeControlRepoPath(repoPath);
-  return readPortalTargetsStore().repoTargets?.[canonical] ?? [];
+  if (!state.attachedRepos.includes(canonical)) return false;
+  writeState({
+    ...state,
+    attachedRepos: state.attachedRepos.filter((entry) => entry !== canonical),
+  });
+  return true;
 }
 
 export function displayPortalTargetLabel(record: PortalTargetRecord): string {
@@ -426,120 +417,79 @@ export function displayPortalTargetLabel(record: PortalTargetRecord): string {
   return workspace ? `${workspace} @ ${host}` : host;
 }
 
-export function findPortalTargetRecord(ref: string): PortalTargetRecord | null {
-  const trimmed = ref.trim();
-  if (!trimmed) return null;
-  const byAlias = getPortalTargetRecord(trimmed);
-  if (byAlias) return byAlias;
-
-  const lowered = trimmed.toLowerCase();
-  const matches = listPortalTargetRecords().filter((entry) => {
-    const label = displayPortalTargetLabel(entry).toLowerCase();
-    return (
-      label === lowered ||
-      (entry.workspaceSlug ?? '').toLowerCase() === lowered ||
-      (entry.workspaceName ?? '').toLowerCase() === lowered ||
-      entry.workspaceId.toLowerCase() === lowered
-    );
-  });
-  return matches.length === 1 ? matches[0] : null;
+function envPortalTarget(): PortalTargetResolution | null {
+  if (!process.env.HAR_PORTAL_URL || !process.env.HAR_PORTAL_TOKEN) return null;
+  const url = normalizePortalUrl(process.env.HAR_PORTAL_URL);
+  return { url, token: process.env.HAR_PORTAL_TOKEN, identityKey: url };
 }
 
-export function resolvePortalTargetsForRepo(options?: {
+/**
+ * The one org a run sends to. `HAR_PORTAL_URL` + `HAR_PORTAL_TOKEN` override
+ * the saved connection for that run. With a `repoPath`, the saved connection
+ * only applies when the repo is attached to it — unattached checkouts never
+ * sync, so connecting does not ingest every registered repo.
+ */
+export function resolvePortalTarget(options?: {
   repoPath?: string;
-  explicitTargets?: string[];
-}): { targets: PortalTargetResolution[]; source: PortalTargetSource } | null {
-  if (process.env.HAR_PORTAL_URL && process.env.HAR_PORTAL_TOKEN) {
-    const url = normalizePortalUrl(process.env.HAR_PORTAL_URL);
-    return {
-      source: 'env',
-      targets: [
-        {
-          url,
-          token: process.env.HAR_PORTAL_TOKEN,
-          identityKey: url,
-        },
-      ],
-    };
-  }
+}): { target: PortalTargetResolution; source: PortalTargetSource } | null {
+  const env = envPortalTarget();
+  if (env) return { target: env, source: 'env' };
 
-  if (options?.explicitTargets && options.explicitTargets.length > 0) {
-    const targets = options.explicitTargets.map((alias) => {
-      const record = findPortalTargetRecord(alias);
-      if (!record) throw new Error(`Unknown portal target "${alias}".`);
-      return recordToPortalTarget(record);
-    });
-    return { source: 'explicit', targets };
-  }
-
-  const store = readPortalTargetsStore();
+  const state = readPortalConnectionState();
+  if (!state.connection) return null;
   if (options?.repoPath) {
-    const aliases = getRepoPortalTargetAliases(options.repoPath);
-    const attached = aliases
-      .map((alias) => getPortalTargetRecord(alias))
-      .filter((entry): entry is PortalTargetRecord => entry !== null)
-      .map(recordToPortalTarget);
-    if (attached.length > 0) return { source: 'repo', targets: attached };
-
-    // Unattached repos do not inherit the only saved connection — that would
-    // ingest every registered checkout into whichever workspace you last
-    // connected. Attach explicitly at `har hq connect` (or via --target).
-    return null;
+    const canonical = canonicalizeControlRepoPath(options.repoPath);
+    if (!state.attachedRepos.includes(canonical)) return null;
   }
-
-  if (store.defaultTarget) {
-    const record = getPortalTargetRecord(store.defaultTarget);
-    if (record) return { source: 'default', targets: [recordToPortalTarget(record)] };
-  }
-
-  if (store.targets.length === 1) {
-    return { source: 'single', targets: [recordToPortalTarget(store.targets[0])] };
-  }
-
-  return null;
+  return { target: recordToPortalTarget(state.connection), source: 'connection' };
 }
 
 export function resolvePortalTargetForRepo(repoPath?: string): PortalTargetResolution | null {
-  return resolvePortalTargetsForRepo({ repoPath })?.targets[0] ?? null;
+  return resolvePortalTarget({ repoPath })?.target ?? null;
 }
 
-export function resolvePortalTargetAliases(explicit?: string): string[] {
-  if (!explicit?.trim()) return [];
-  return explicit
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-export function isPortalTrajectoryEnabledForTarget(target?: PortalTargetResolution): boolean {
-  if (!target?.alias) {
-    const envOverride = process.env.HAR_PORTAL_TRAJECTORY?.trim().toLowerCase();
-    if (envOverride === 'on' || envOverride === 'true' || envOverride === '1') return true;
-    if (envOverride === 'off' || envOverride === 'false' || envOverride === '0') return false;
-    return readTelemetryPreference().portalTrajectory === true;
+/**
+ * True while `target` is still the org this CLI may send to. A target taken
+ * from the saved connection goes stale once the user switches org or
+ * disconnects; every portal request checks this so an in-flight sync stops
+ * instead of sending to the previous org.
+ */
+export function isPortalTargetActive(target: PortalTargetResolution): boolean {
+  if (!target.alias) {
+    const env = envPortalTarget();
+    return env !== null && env.identityKey === target.identityKey;
   }
+  const connection = getActivePortalConnection();
+  return connection !== null && recordIdentityKey(connection) === target.identityKey;
+}
+
+function trajectoryEnvOverride(): boolean | null {
   const envOverride = process.env.HAR_PORTAL_TRAJECTORY?.trim().toLowerCase();
   if (envOverride === 'on' || envOverride === 'true' || envOverride === '1') return true;
   if (envOverride === 'off' || envOverride === 'false' || envOverride === '0') return false;
-  const record = getPortalTargetRecord(target.alias);
-  return record?.trajectoryForwarding === true;
+  return null;
 }
 
-export function writePortalTargetTrajectoryPreference(
-  alias: string,
-  enabled: boolean,
-): PortalTargetRecord {
-  const store = readPortalTargetsStore();
-  const index = store.targets.findIndex((entry) => entry.alias === alias.trim().toLowerCase());
-  if (index < 0) throw new Error(`Unknown target "${alias}".`);
-  const targets = [...store.targets];
-  targets[index] = {
-    ...targets[index],
+export function isPortalTrajectoryEnabledForTarget(target?: PortalTargetResolution): boolean {
+  const override = trajectoryEnvOverride();
+  if (override !== null) return override;
+  if (!target?.alias) return readTelemetryPreference().portalTrajectory === true;
+  const connection = getActivePortalConnection();
+  if (!connection || recordIdentityKey(connection) !== target.identityKey) return false;
+  return connection.trajectoryForwarding === true;
+}
+
+/** Turn trajectory forwarding on/off for the active connection. Throws when disconnected. */
+export function writePortalConnectionTrajectoryPreference(enabled: boolean): PortalTargetRecord {
+  const state = readPortalConnectionState();
+  if (!state.connection) throw new Error('No HAR HQ connection — run har hq connect first.');
+  const next: PortalTargetRecord = {
+    ...state.connection,
     trajectoryForwarding: enabled,
     updatedAt: new Date().toISOString(),
   };
-  writeStore({ ...store, targets });
-  return targets[index];
+  writeState({ ...state, connection: next });
+  return next;
 }
 
 function legacyCredentialsPath(): string {
@@ -549,8 +499,7 @@ function legacyCredentialsPath(): string {
   return path.join(os.homedir(), '.har', 'credentials.json');
 }
 
-function syncLegacyCredentialsFile(record: PortalTargetRecord, isDefault: boolean): void {
-  if (!isDefault) return;
+function syncLegacyCredentialsFile(record: PortalTargetRecord): void {
   const file = legacyCredentialsPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
@@ -612,11 +561,7 @@ export function migrateLegacyCredentialsIfNeeded(): void {
     const alias =
       parsed.targetAlias && sanitizeAlias(parsed.targetAlias)
         ? sanitizeAlias(parsed.targetAlias)
-        : deriveTargetAlias({
-            portalUrl: parsed.portalUrl,
-            workspace: parsed.workspace,
-            existingAliases: new Set(),
-          });
+        : deriveTargetAlias({ portalUrl: parsed.portalUrl, workspace: parsed.workspace });
 
     const record: PortalTargetRecord = {
       alias,
@@ -632,17 +577,7 @@ export function migrateLegacyCredentialsIfNeeded(): void {
       createdAt: new Date().toISOString(),
     };
 
-    const repoTargets: Record<string, string[]> = {};
-    for (const repoPath of listRegisteredRepos()) {
-      repoTargets[repoPath] = [alias];
-    }
-
-    writeStore({
-      version: 1,
-      defaultTarget: alias,
-      targets: [record],
-      ...(Object.keys(repoTargets).length > 0 ? { repoTargets } : {}),
-    });
+    writeState({ connection: record, attachedRepos: listRegisteredRepos() });
   } catch {
     // ignore corrupt legacy files
   }

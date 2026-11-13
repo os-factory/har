@@ -343,27 +343,33 @@ are internal hook workers invoked by Git, not day-to-day commands.
 ```bash
 har hq connect [--portal <url>] [--api-key <key>] [--repo .] [--yes] [--json]
 har hq list [--json]
-har hq disconnect [name] [--yes] [--json]
+har hq disconnect [--json]
 ```
 
-Connect this checkout to a HAR HQ workspace. On a TTY, `connect` asks Production
+The CLI holds **one HAR HQ org connection at a time**, and every sync, OTel and
+trajectory upload goes to that org only. On a TTY, `connect` asks Production
 (`https://portal.kerno.io/har`), Development (`https://portal.dev.kerno.io/har`), or a custom
-URL, then opens browser SSO. The workspace chosen on the consent screen is the
-destination; HAR attaches **this repository** to that workspace. When other
-repositories are already registered locally, the consent page (or a TTY fallback)
-shows their count and paths. You can send all of them to one workspace, or pick
-a workspace and then the repositories for it — already-assigned paths are hidden
-on the next workspace. `--yes` / `--json` skip that prompt and attach only the
-current checkout. A second `har hq connect` from another checkout (or against
-another workspace) adds another attachment — it does not replace the first
-connection.
+URL, then opens browser SSO. The org chosen on the consent screen becomes the
+connection, and HAR attaches **this repository** to it. When other repositories
+are registered locally, a TTY prompt lists them so you can attach more to the
+same org. `--yes` / `--json` skip that prompt and attach only the current checkout.
 
-Automatic sync sends only to workspaces a repository is **attached** to. A
-single leftover connection is not inherited by unattached checkouts.
+Running `connect` again for the same org adds the current checkout and keeps the
+repositories already attached. Connecting to a **different** org replaces the
+connection: the previous org's credentials are removed, nothing more is sent to
+it, and its attached repositories stop syncing until you attach them to the new
+org. A sync that is already running when you switch stops before sending
+anything else to the previous org.
 
-`list` shows saved connections (workspace + portal host, never tokens).
-`disconnect` removes one connection and its credentials. Credentials stay in
-`~/.har/` and are never committed into `.har/`.
+Automatic sync sends only repositories **attached** to the connection;
+unattached checkouts are never ingested.
+
+`list` shows the connection (org + portal host, never tokens) and its attached
+repositories. `disconnect` removes the connection and its credentials.
+Credentials stay in `~/.har/` and are never committed into `.har/`. A
+`~/.har/portal-targets.json` written by an older CLI with several connections is
+reduced to its default (else most recently used) connection the first time it is
+read; the other connections and their tokens are deleted.
 
 `har control login` remains a deprecated alias for `har hq connect`.
 
@@ -375,25 +381,25 @@ har control down
 har control register [--repo .] [--api-url <url>] [--dry-run] [--force] [--portal|--no-portal]
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
-har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full] [--target <alias>] [--targets a,b]
+har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
 har control login [--portal <url>] [--api-key <key>] [--repo .]
-har control trajectory [on|off] [--target <alias>]
+har control trajectory [on|off]
 ```
 
 `login` is a deprecated alias for `har hq connect`. Prefer `har hq connect`.
 `sync --select` interactively chooses repositories; `--full` ignores the portal
-watermark and resends the complete payload. `--target` / `--targets` send to named
-saved connections for a one-off push; automatic activity-edge sync uses the
-workspace(s) this repository was attached to at `har hq connect`.
+watermark and resends the complete payload. Portal sync always goes to the one
+connected HAR HQ org; set `HAR_PORTAL_URL` and `HAR_PORTAL_TOKEN` to send a run to
+a different org instead.
 `register --no-portal` keeps the repo on local Mission Control only (skips hosted
 portal sync even when logged in); `--portal` re-enables portal sync for that repo.
 
 `trajectory` controls whether sync forwards the trajectory ledger — agent prompts,
 tool arguments and tool results — to a hosted portal. Off by default: without it a
 portal receives runs, slots, token counts and events, and those bodies stay on this
-machine. Use `--target` to scope the setting to one saved portal destination; the
-preference is stored per target in `~/.har/portal-targets.json`. Requires telemetry
+machine. The setting belongs to the connected HAR HQ org and is stored with it in
+`~/.har/portal-targets.json`; switching org starts with it off. Requires telemetry
 to be on, and `HAR_PORTAL_TRAJECTORY=on|off` overrides the stored choice. Forwarded
 content is capped and redacted by the same local policy that governs storage (see
 the Mission Control guide).

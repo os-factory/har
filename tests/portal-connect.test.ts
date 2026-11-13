@@ -3,10 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { runPortalConnect } from '../src/core/portal-connect';
-import {
-  getRepoPortalTargetAliases,
-  readPortalTargetsStore,
-} from '../src/core/portal-targets';
+import { getActivePortalConnection, listAttachedRepos } from '../src/core/portal-targets';
 
 const ENV_KEYS = [
   'HAR_PORTAL_URL',
@@ -33,10 +30,15 @@ afterEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];
 });
 
+function makeRepo(name: string): string {
+  const repoPath = path.join(tmpDir, name);
+  fs.mkdirSync(repoPath, { recursive: true });
+  return fs.realpathSync(repoPath);
+}
+
 describe('runPortalConnect', () => {
   it('saves an api-key connection and attaches the current repository', async () => {
-    const repoPath = path.join(tmpDir, 'app');
-    fs.mkdirSync(repoPath, { recursive: true });
+    const repoPath = makeRepo('app');
 
     const result = await runPortalConnect({
       portalUrl: 'https://app.harhq.com',
@@ -47,50 +49,36 @@ describe('runPortalConnect', () => {
     expect(result.record.portalUrl).toBe('https://app.harhq.com');
     expect(result.record.token).toBe('har_ingest_test');
     expect(result.attachedRepo).toBe(repoPath);
-    expect(result.mappedInBrowser).toBe(false);
-    expect(getRepoPortalTargetAliases(repoPath)).toEqual([result.record.alias]);
-    expect(readPortalTargetsStore().targets).toHaveLength(1);
+    expect(result.replaced).toBeNull();
+    expect(listAttachedRepos()).toEqual([repoPath]);
   });
 
-  it('keeps an existing workspace connection when attaching a second repository', async () => {
-    const first = path.join(tmpDir, 'one');
-    const second = path.join(tmpDir, 'two');
-    fs.mkdirSync(first, { recursive: true });
-    fs.mkdirSync(second, { recursive: true });
+  it('adds a second repository when reconnecting to the same org', async () => {
+    const first = makeRepo('one');
+    const second = makeRepo('two');
 
-    const a = await runPortalConnect({
+    const a = await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'shared', repoPath: first });
+    const b = await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'shared', repoPath: second });
+
+    expect(a.record.alias).toBe(b.record.alias);
+    expect(b.replaced).toBeNull();
+    expect(listAttachedRepos()).toEqual([first, second]);
+  });
+
+  it('replaces the connection and its repos when the key belongs to another org', async () => {
+    const first = makeRepo('one');
+    const second = makeRepo('two');
+
+    await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'token-org-a', repoPath: first });
+    const switched = await runPortalConnect({
       portalUrl: 'https://app.harhq.com',
-      apiKey: 'token-shared',
-      repoPath: first,
-    });
-    const b = await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
-      apiKey: 'token-shared',
+      apiKey: 'token-org-b',
       repoPath: second,
     });
 
-    expect(a.record.alias).toBe(b.record.alias);
-    expect(readPortalTargetsStore().targets).toHaveLength(1);
-    expect(getRepoPortalTargetAliases(first)).toEqual([a.record.alias]);
-    expect(getRepoPortalTargetAliases(second)).toEqual([b.record.alias]);
-  });
-
-  it('keeps two api-key connections on the same portal when the tokens differ', async () => {
-    const repoPath = path.join(tmpDir, 'app');
-    fs.mkdirSync(repoPath, { recursive: true });
-
-    await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
-      apiKey: 'token-org-a',
-      repoPath,
-    });
-    await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
-      apiKey: 'token-org-b',
-      repoPath,
-    });
-
-    expect(readPortalTargetsStore().targets).toHaveLength(2);
-    expect(getRepoPortalTargetAliases(repoPath)).toHaveLength(2);
+    expect(switched.replaced?.token).toBe('token-org-a');
+    expect(switched.detachedRepos).toEqual([first]);
+    expect(getActivePortalConnection()?.token).toBe('token-org-b');
+    expect(listAttachedRepos()).toEqual([second]);
   });
 });
