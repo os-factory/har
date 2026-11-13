@@ -9,6 +9,7 @@ export async function syncCommitBindings(repositoryId: string, input: unknown) {
   const { bindings } = SyncValidationCommitBindingsInputSchema.parse(input);
   for (const binding of bindings) {
     const data = {
+      bindingId: binding.bindingId,
       validationId: binding.validationId,
       treeHash: binding.treeHash,
       commitSha: binding.commitSha,
@@ -18,13 +19,17 @@ export async function syncCommitBindings(repositoryId: string, input: unknown) {
       runId: binding.runId,
       sourceCreatedAt: new Date(binding.createdAt),
     };
+    // Each worktree that validates a commit writes its own binding, so one
+    // commit can arrive under several bindingIds; the last one synced wins.
     await prisma.validationCommitBinding.upsert({
-      where: { repositoryId_bindingId: { repositoryId, bindingId: binding.bindingId } },
-      create: {
-        repositoryId,
-        bindingId: binding.bindingId,
-        ...data,
+      where: {
+        repositoryId_treeHash_commitSha: {
+          repositoryId,
+          treeHash: binding.treeHash,
+          commitSha: binding.commitSha,
+        },
       },
+      create: { repositoryId, ...data },
       update: data,
     });
   }
