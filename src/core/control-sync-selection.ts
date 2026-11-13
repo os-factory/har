@@ -34,6 +34,21 @@ export function writeSyncSelection(repos: string[]): void {
   fs.writeFileSync(selectionPath, JSON.stringify({ repos: canonical }, null, 2) + '\n');
 }
 
+/**
+ * Add a repo the user just named (`har control register`, `har hq connect`) to
+ * a saved selection. A saved selection lists what to sync, so a repo
+ * registered after it was saved would otherwise never sync — not even its
+ * slots at `har env launch`. Returns whether the selection changed; with no
+ * saved selection every repo already syncs.
+ */
+export function includeInSyncSelection(repoPath: string): boolean {
+  const stored = readSyncSelection();
+  const canonical = canonicalizeControlRepoPath(repoPath);
+  if (stored === null || stored.includes(canonical)) return false;
+  writeSyncSelection([...stored, canonical]);
+  return true;
+}
+
 export function getSyncSelectionPath(): string {
   return getSelectionPath();
 }

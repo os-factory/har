@@ -23,6 +23,7 @@ import {
   writePortalConnectionTrajectoryPreference,
 } from '../src/core/portal-targets';
 import { readPortalCredentials } from '../src/core/portal-credentials';
+import { readSyncSelection, writeSyncSelection } from '../src/core/control-sync-selection';
 import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
 
 const ENV_KEYS = [
@@ -127,6 +128,17 @@ describe('one org connection at a time', () => {
     attachRepoToPortal(repo);
     attachRepoToPortal(repo);
     expect(listAttachedRepos()).toEqual([repo]);
+  });
+
+  it('adds an attached repo to a saved sync selection, so it reaches the workspace', () => {
+    const other = makeRepo('other');
+    const repo = makeRepo('app');
+    writeSyncSelection([other]);
+    connectOrg('org_a');
+
+    attachRepoToPortal(repo);
+
+    expect(readSyncSelection()).toEqual([other, repo]);
   });
 
   it('disconnect removes the connection, its repos and the legacy credentials file', () => {

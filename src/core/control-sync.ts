@@ -1418,9 +1418,12 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
   try {
     recordRepoForControlSync(repoPath);
     if (selectedRepos([canonical]).length === 0) {
-      if (verbose) {
-        process.stderr.write(`[har control] sync skipped: ${canonical} is not in the sync selection\n`);
-      }
+      // Not verbose-only: Mission Control silently missing a repo's slots is
+      // what this line exists to explain.
+      process.stderr.write(
+        `[har control] sync skipped: ${canonical} is not in the saved sync selection — ` +
+          'add it with har control register (or har control sync --select)\n',
+      );
       return;
     }
 
