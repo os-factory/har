@@ -1,3 +1,9 @@
+## [1.23.0](https://github.com/os-factory/har/compare/v1.22.0...v1.23.0) (2026-11-13)
+
+### Features
+
+* **hq:** hold one org connection at a time (FE-2065) ([#384](https://github.com/os-factory/har/issues/384)) ([45e6a37](https://github.com/os-factory/har/commit/45e6a372c2b6af458234412fb4af98e5e55d9e41))
+
 ## [1.22.0](https://github.com/os-factory/har/compare/v1.21.0...v1.22.0) (2026-11-13)
 
 ### Features
