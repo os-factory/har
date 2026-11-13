@@ -7,24 +7,23 @@ function toJson(value: unknown) {
 
 export async function syncCommitBindings(repositoryId: string, input: unknown) {
   const { bindings } = SyncValidationCommitBindingsInputSchema.parse(input);
-  for (const binding of bindings) {
+  for (const { parents, refs, createdAt, ...binding } of bindings) {
     const data = {
-      validationId: binding.validationId,
-      treeHash: binding.treeHash,
-      commitSha: binding.commitSha,
-      parents: toJson(binding.parents),
-      refs: toJson(binding.refs),
-      message: binding.message,
-      runId: binding.runId,
-      sourceCreatedAt: new Date(binding.createdAt),
+      ...binding,
+      parents: toJson(parents),
+      refs: toJson(refs),
+      sourceCreatedAt: new Date(createdAt),
     };
+    // Each worktree writes its own binding for a commit; the last one synced wins.
     await prisma.validationCommitBinding.upsert({
-      where: { repositoryId_bindingId: { repositoryId, bindingId: binding.bindingId } },
-      create: {
-        repositoryId,
-        bindingId: binding.bindingId,
-        ...data,
+      where: {
+        repositoryId_treeHash_commitSha: {
+          repositoryId,
+          treeHash: binding.treeHash,
+          commitSha: binding.commitSha,
+        },
       },
+      create: { repositoryId, ...data },
       update: data,
     });
   }
