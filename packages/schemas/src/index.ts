@@ -6,3 +6,4 @@ export * from './line';
 export * from './session-history';
 export * from './session-attribution';
 export * from './occupancy';
+export * from './usage-attribution';

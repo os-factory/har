@@ -18,21 +18,9 @@ import { readSlotRegistry } from './slot-registry';
 import { allocateAppPorts } from './slot-ports';
 import { inspectSlotReadiness, scanUntrackedWorktreePaths } from './slot-preflight';
 import { packageRunner } from '../utils/package-runner';
+import { readGitRemote } from './git-remote';
 
 const BYPASS_WARNING_MS = 15 * 60 * 1000;
-
-function readGitRemote(repoPath: string): string | undefined {
-  try {
-    const remote = execSync('git remote get-url origin', {
-      cwd: repoPath,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-    }).trim();
-    return remote || undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function runGit(cwd: string, args: string): string | undefined {
   try {

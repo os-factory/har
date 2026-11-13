@@ -7,10 +7,12 @@ import {
   type AgentSessionRef,
   type AgentTool,
   type SessionBindingKind,
+  BindingTimeline,
+  type OccupancyEvent,
+  type TimelineBinding,
 } from '@har/schemas';
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
-import { BindingTimeline, type OccupancyEvent, type TimelineBinding } from '@/lib/usage-attribution';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
 import { normalizeOtelPath, pickPathForWorkspaceId } from '@/server/otel-workspace';
 import type { ObservationInput } from '@/server/session-attribution';

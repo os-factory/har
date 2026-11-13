@@ -25,6 +25,7 @@ const db = vi.hoisted(() => {
   /** Field filters with Prisma operators; a nested non-operator object is a composite unique key. */
   const matches = (row: Row, where: Record<string, unknown>): boolean =>
     Object.entries(where).every(([field, value]): boolean => {
+      if (field === 'OR') return (value as Array<Record<string, unknown>>).some((clause) => matches(row, clause));
       if (value && typeof value === 'object' && !(value instanceof Date) && !Array.isArray(value)) {
         const entries = Object.entries(value as Record<string, unknown>);
         if (entries.every(([op]) => OPS.includes(op))) return entries.every(([op, v]) => test(row[field], op, v));
@@ -48,8 +49,8 @@ const db = vi.hoisted(() => {
       tables[name].find((row) => matches(row, where)) ?? null,
     findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: Order }) =>
       sorted(tables[name].filter((row) => matches(row, where)), orderBy)[0] ?? null,
-    findMany: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: Order }) =>
-      sorted(tables[name].filter((row) => matches(row, where)), orderBy),
+    findMany: async ({ where, orderBy, take }: { where: Record<string, unknown>; orderBy?: Order; take?: number }) =>
+      sorted(tables[name].filter((row) => matches(row, where)), orderBy).slice(0, take),
     create: async ({ data }: { data: Record<string, unknown> }) => {
       const row = { id: `r${(seq += 1)}`, ...data };
       tables[name].push(row);
@@ -84,6 +85,9 @@ vi.mock('@/lib/db', () => ({
 
 import {
   buildUsageView,
+  listReportedUsage,
+  listSessionBindingsPage,
+  listUsageObservationChanges,
   mergeRepeatedObservation,
   recordBindings,
   recordObservations,
@@ -373,6 +377,78 @@ describe('buildUsageView', () => {
   it('cross-checks the observed sum against the reported session total', () => {
     expect(view.crossChecks).toEqual([
       expect.objectContaining({ sessionId: 'S1', observedCostUsd: 1.5, reportedCostUsd: 1.6, observationCount: 3 }),
+    ]);
+  });
+});
+
+describe('mirror reads (har-portal)', () => {
+  function stored(id: string, updatedAt: string, observedAt: string) {
+    return {
+      id,
+      repositoryId: 'repo-1',
+      agentTool: 'claude_code',
+      sessionId: 'S1',
+      subagentId: '',
+      observationKey: `req_${id}`,
+      observedAt: new Date(observedAt),
+      granularity: 'request',
+      source: 'otel',
+      producer: 'claude.api_request',
+      model: null,
+      tokensInput: BigInt(1),
+      tokensOutput: BigInt(2),
+      tokensCacheRead: BigInt(0),
+      tokensCacheCreation: BigInt(0),
+      costUsd: new Prisma.Decimal(0.5),
+      reportedTotals: null,
+      updatedAt: new Date(updatedAt),
+    };
+  }
+
+  it('pages observations in change order, so a late fact with an old observedAt is not skipped', async () => {
+    const t = '2026-11-12T10:00:00.000Z';
+    db.tables.observations.push(
+      stored('a', t, t),
+      stored('b', t, t),
+      // Harvested late: observed long before, changed after the cursor.
+      stored('c', '2026-11-12T11:00:00.000Z', '2026-11-11T09:00:00.000Z'),
+    );
+    const first = await listUsageObservationChanges('repo-1', { since: null, sinceId: null, limit: 1 });
+    expect(first.map((row) => row.id)).toEqual(['a']);
+    // A page boundary inside one millisecond loses nothing.
+    const next = await listUsageObservationChanges('repo-1', { since: t, sinceId: 'a', limit: 10 });
+    expect(next.map((row) => row.id)).toEqual(['b', 'c']);
+    expect(next[1]).toMatchObject({
+      observedAt: '2026-11-11T09:00:00.000Z',
+      updatedAt: '2026-11-12T11:00:00.000Z',
+      producer: 'claude.api_request',
+      costUsd: 0.5,
+    });
+  });
+
+  it('pages bindings in storage order with their cursor columns', async () => {
+    await syncSessionBindings('repo-1', {
+      bindings: [{ agentTool: 'codex', sessionId: 'T1', kind: 'launch', slotId: 2, at: AT }],
+    });
+    for (const row of db.tables.bindings) row.createdAt = new Date(AT);
+    const page = await listSessionBindingsPage('repo-1', { since: null, sinceId: null, limit: 10 });
+    expect(page).toEqual([
+      expect.objectContaining({ agentTool: 'codex', sessionId: 'T1', kind: 'launch', slotId: 2, createdAt: AT }),
+    ]);
+    expect(await listSessionBindingsPage('repo-1', { since: AT, sinceId: page[0].id, limit: 10 })).toEqual([]);
+  });
+
+  it('lists provider-reported session totals', async () => {
+    await recordReportedUsage('repo-1', {
+      agentTool: 'claude_code',
+      sessionId: 'S1',
+      costUsd: 1.5,
+      tokensTotal: 300,
+      at: new Date(AT),
+      temporality: 'cumulative',
+    });
+    expect(await listReportedUsage('repo-1')).toEqual([
+      { agentTool: 'claude_code', sessionId: 'S1', costUsd: 1.5, tokensTotal: 300, firstSeenAt: AT, lastSeenAt: AT },
     ]);
   });
 });

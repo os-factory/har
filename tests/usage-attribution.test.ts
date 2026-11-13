@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import {
   BindingTimeline,
   dedupeProducers,
@@ -9,7 +8,7 @@ import {
   runningTotalDelta,
   type ObservationFact,
   type TimelineBinding,
-} from './usage-attribution';
+} from '../packages/schemas/src/usage-attribution';
 
 const T0 = Date.parse('2026-11-12T10:00:00.000Z');
 const at = (minutes: number) => new Date(T0 + minutes * 60_000);

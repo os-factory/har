@@ -7,30 +7,30 @@ import {
   type SessionBindingKind,
   type SessionSlotBinding,
   type UsageObservation,
-} from '@har/schemas';
-import { prisma } from '@/lib/db';
-import {
   legacyRowSuperseded,
+  mergeRepeatedObservation,
   producerFamily,
   runningTotalDelta,
   subtractTotals,
   type TokenTotals,
   observationCoverage,
+  occupancyEventsFromContext,
   projectUsage,
   type ObservationFact,
   type OccupancyEvent,
   type SlotUsageBucket,
   type TimelineBinding,
   type UsageBucket,
-} from '@/lib/usage-attribution';
-import { attemptIdFromOccupancyKey, occupancyKeyForAttempt } from '@/server/occupancy';
+} from '@har/schemas';
+import { prisma } from '@/lib/db';
+import { attemptIdFromOccupancyKey } from '@/server/occupancy';
 
 /**
  * Storage and read model of session → slot attribution (ADR 0003).
  *
  * Bindings and usage observations are stored as facts. Slot usage is never
  * written: every read derives it from the facts through the pure core in
- * `@/lib/usage-attribution`, so late evidence corrects earlier attribution.
+ * `@har/schemas` (`usage-attribution`, shared with har-portal), so late evidence corrects earlier attribution.
  */
 
 // ---------------------------------------------------------------------------
@@ -147,12 +147,60 @@ export interface SessionBindingFilter {
   sessionId?: string;
 }
 
+/** A `(createdAt | updatedAt, id)` page request, as `readControlPages` sends it. */
+export interface KeysetPage {
+  since: string | null;
+  sinceId: string | null;
+  limit: number;
+}
+
+/** Rows strictly after the `(column, id)` cursor, so a page boundary inside one millisecond loses nothing. */
+function keysetAfter(column: 'createdAt' | 'updatedAt', page: KeysetPage) {
+  const since = page.since ? new Date(page.since) : null;
+  if (!since || !Number.isFinite(since.getTime())) return {};
+  const sinceId = page.sinceId?.trim();
+  if (!sinceId) return { [column]: { gt: since } };
+  return { OR: [{ [column]: { gt: since } }, { [column]: since, id: { gt: sinceId } }] };
+}
+
+/**
+ * Bindings in storage order, paged on `(createdAt, id)`: how a downstream
+ * mirror (har-portal) picks up every binding recorded since its last sync,
+ * including late ones whose `at` lies in the past.
+ */
+export async function listSessionBindingsPage(repositoryId: string, page: KeysetPage) {
+  const rows = await prisma.sessionSlotBinding.findMany({
+    where: { repositoryId, ...keysetAfter('createdAt', page) },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: page.limit,
+  });
+  return rows.map((row) => ({
+    ...bindingView(row),
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
 export async function listSessionBindings(repositoryId: string, filter: SessionBindingFilter = {}) {
   const rows = await prisma.sessionSlotBinding.findMany({
     where: { repositoryId, ...filter },
     orderBy: [{ at: 'asc' }, { createdAt: 'asc' }],
   });
-  return rows.map((row) => ({
+  return rows.map(bindingView);
+}
+
+function bindingView(row: {
+  agentTool: string;
+  sessionId: string;
+  subagentId: string;
+  kind: string;
+  slotId: number;
+  occupancyKey: string | null;
+  branch: string | null;
+  at: Date;
+  origin: string;
+}) {
+  return {
     agentTool: row.agentTool,
     sessionId: row.sessionId,
     ...(row.subagentId ? { subagentId: row.subagentId } : {}),
@@ -162,7 +210,7 @@ export async function listSessionBindings(repositoryId: string, filter: SessionB
     ...(row.branch ? { branch: row.branch } : {}),
     at: row.at.toISOString(),
     origin: row.origin,
-  }));
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -195,32 +243,7 @@ function toBigInt(value: number | undefined): bigint {
   return BigInt(Math.max(0, Math.floor(Number(value ?? 0) || 0)));
 }
 
-/**
- * How a repeat of a stored observation (same agentTool, sessionId,
- * observationKey) merges into it. A key names one unit of usage, so a repeat
- * is the same fact, possibly from another producer — e.g. Claude's live
- * `api_request` and its transcript harvest share the API request id.
- *
- * - The live report (`otel`) is authoritative over a harvested copy: it
- *   replaces a stored harvest copy, and a harvest never replaces it.
- * - A provider-reported cost is never erased: a repeat without a cost keeps
- *   the stored one, and a stored fact without a cost takes the repeat's.
- * - The same producer may correct its own fact (a re-harvest).
- *
- * Returns the fields to write, or null when the stored fact stays as it is.
- */
-export function mergeRepeatedObservation(
-  existing: { producer: string; source: string; costUsd: number | null },
-  incoming: { producer: string; source: string; costUsd: number | null },
-): { replace: boolean; costUsd: number | null } | null {
-  const costUsd = incoming.costUsd ?? existing.costUsd;
-  const replace =
-    existing.producer === incoming.producer ||
-    (incoming.source === 'otel' && existing.source !== 'otel');
-  if (replace) return { replace: true, costUsd };
-  if (existing.costUsd == null && incoming.costUsd != null) return { replace: false, costUsd };
-  return null;
-}
+export { mergeRepeatedObservation };
 
 /** Idempotent per (agentTool, sessionId, observationKey); repeats merge by `mergeRepeatedObservation`. */
 export async function recordObservations(
@@ -445,7 +468,42 @@ export async function listUsageObservations(
     orderBy: [{ observedAt: 'asc' }, { id: 'asc' }],
     take: limit,
   });
-  return rows.map((row) => ({
+  return rows.map(observationView);
+}
+
+/**
+ * Observations in change order, paged on `(updatedAt, id)`. A mirror reads
+ * this rather than the `observedAt` list: a harvest that arrives late carries
+ * an old `observedAt`, and a repeat that fills in a provider cost updates a
+ * stored row — both must reach the mirror.
+ */
+export async function listUsageObservationChanges(repositoryId: string, page: KeysetPage) {
+  const rows = await prisma.usageObservation.findMany({
+    where: { repositoryId, ...keysetAfter('updatedAt', page) },
+    orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+    take: page.limit,
+  });
+  return rows.map((row) => ({ ...observationView(row), id: row.id, updatedAt: row.updatedAt.toISOString() }));
+}
+
+function observationView(row: {
+  agentTool: string;
+  sessionId: string;
+  subagentId: string;
+  observationKey: string;
+  observedAt: Date;
+  granularity: string;
+  source: string;
+  producer: string;
+  model: string | null;
+  tokensInput: bigint;
+  tokensOutput: bigint;
+  tokensCacheRead: bigint;
+  tokensCacheCreation: bigint;
+  costUsd: Prisma.Decimal | null;
+  reportedTotals: Prisma.JsonValue | null;
+}) {
+  return {
     agentTool: row.agentTool,
     sessionId: row.sessionId,
     ...(row.subagentId ? { subagentId: row.subagentId } : {}),
@@ -461,7 +519,7 @@ export async function listUsageObservations(
     tokensCacheCreation: Number(row.tokensCacheCreation),
     ...(row.costUsd != null ? { costUsd: Number(row.costUsd) } : {}),
     ...(row.reportedTotals ? { reportedTotals: row.reportedTotals } : {}),
-  }));
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -506,6 +564,22 @@ export async function recordReportedUsage(repositoryId: string, input: ReportedU
     create: { repositoryId, agentTool: input.agentTool, sessionId: input.sessionId, ...data },
     update: data,
   });
+}
+
+/** Provider-reported session totals, for a mirror's cross-check (one row per session). */
+export async function listReportedUsage(repositoryId: string) {
+  const rows = await prisma.sessionReportedUsage.findMany({
+    where: { repositoryId },
+    orderBy: [{ lastSeenAt: 'asc' }, { id: 'asc' }],
+  });
+  return rows.map((row) => ({
+    agentTool: row.agentTool,
+    sessionId: row.sessionId,
+    costUsd: row.costUsd == null ? null : Number(row.costUsd),
+    tokensTotal: Number(row.tokensTotal),
+    firstSeenAt: row.firstSeenAt.toISOString(),
+    lastSeenAt: row.lastSeenAt.toISOString(),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -678,17 +752,7 @@ export interface UsageViewInputs {
 /** Pure assembly of the read model from loaded facts (unit-tested). */
 export function buildUsageView(inputs: UsageViewInputs): UsageView {
   const { repositoryId } = inputs;
-  const occupancyEvents: OccupancyEvent[] = [
-    ...inputs.slots
-      .filter((slot) => slot.occupancyKey && slot.sessionCreatedAt)
-      .map((slot) => ({ slotId: slot.slotId, occupancyKey: slot.occupancyKey, at: slot.sessionCreatedAt!, kind: 'start' as const })),
-    ...inputs.attempts.map((attempt) => ({
-      slotId: attempt.agentId,
-      occupancyKey: occupancyKeyForAttempt(attempt.attemptId),
-      at: attempt.sourceCreatedAt,
-      kind: 'start' as const,
-    })),
-  ];
+  const occupancyEvents: OccupancyEvent[] = occupancyEventsFromContext(inputs.slots, inputs.attempts);
   const projection = projectUsage(inputs.bindings, inputs.observations, occupancyEvents);
   const coverage = observationCoverage(inputs.observations);
 

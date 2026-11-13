@@ -291,3 +291,30 @@ Spikes run on 2026-11-12 against a throwaway local OTLP/HTTP JSON receiver
 Evidence from the IDE bundle (`/usr/share/cursor/resources/app`): agent shell
 commands get `CURSOR_CONVERSATION_ID` (shell-quoted, hence the quote stripping
 in `launchingAgentSession`) and `CURSOR_REQUEST_ID`.
+
+## Downstream mirror: har-portal (FE-2058)
+
+har-portal stores the same facts and derives slot usage with the same code; it
+never receives Mission Control's derived totals, which change when evidence
+arrives late (a portal max-merge could not lower them).
+
+- **Shared code.** The pure core lives in `packages/schemas/src/usage-attribution.ts`
+  and ships as the `@osfactory/har/attribution` library entry (CJS, ESM and
+  types). The entry is free of zod and of the domain schema, so a consumer on
+  another zod major imports it; the wire contract travels as plain types
+  (`PortalSessionAttributionWire`) and each side validates it with its own
+  schemas (`PortalSessionAttributionInputSchema` here).
+- **Transport.** `har control sync` reads Mission Control's facts — bindings
+  paged on `(createdAt, id)`, observations on `(updatedAt, id)` via
+  `/usage-observations/changes` so late harvests and filled-in costs are not
+  skipped, and every provider-reported session total via `/reported-usage` —
+  and posts them to the portal's `/api/session-attribution` before `/api/sync`.
+  The channel has its own watermark, so a portal's first attribution sync takes
+  Mission Control's whole history and can tell which legacy totals it covers.
+  Observations carry their `producer` (stream de-duplication needs it) and the
+  syncing member's `userEmail`.
+- **Compatibility.** A portal that answers 404 on `/api/session-attribution`,
+  or a Mission Control without the change feed, keeps getting the legacy
+  per-slot session totals in `/api/sync`, exactly as before (including the
+  main-checkout fallback onto the lowest slot, since that portal has no
+  unassigned bucket). A portal that takes the facts gets no per-slot totals.
