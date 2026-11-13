@@ -3,7 +3,6 @@ import * as http from 'http';
 import {
   encodeCliReposQuery,
   loginViaBrowser,
-  parseCliTargetsParam,
 } from '../src/core/portal-login';
 
 function hitCallback(
@@ -95,31 +94,18 @@ describe('loginViaBrowser', () => {
     await expect(pending).resolves.toMatchObject({ token: 'har_ingest_abc' });
   });
 
-  it('captures browser assignment targets from the callback', async () => {
+  it('ignores a targets callback parameter — the CLI holds one org connection', async () => {
     const targets = Buffer.from(
       JSON.stringify({
-        targets: [
-          {
-            workspaceId: 'org-a',
-            workspace: 'acme',
-            token: 'har_ingest_a',
-            repos: ['/repo/a'],
-          },
-        ],
+        targets: [{ workspaceId: 'org-b', token: 'har_ingest_b', repos: ['/repo/a'] }],
       }),
       'utf8',
     ).toString('base64url');
     const creds = await loginViaBrowser('https://portal.example.com', (url) =>
       hitCallback(url, { token: 'har_ingest_a', workspaceId: 'org-a', targets }),
     );
-    expect(creds.targets).toEqual([
-      {
-        workspaceId: 'org-a',
-        workspace: 'acme',
-        token: 'har_ingest_a',
-        repos: ['/repo/a'],
-      },
-    ]);
+    expect(creds).toMatchObject({ token: 'har_ingest_a', workspaceId: 'org-a' });
+    expect(creds).not.toHaveProperty('targets');
   });
 
   it('rejects on state mismatch', async () => {
@@ -131,18 +117,11 @@ describe('loginViaBrowser', () => {
   });
 });
 
-describe('cli repos / targets encoding', () => {
-  it('encodes a short repo list and round-trips targets', () => {
+describe('cli repos encoding', () => {
+  it('encodes a short repo list', () => {
     expect(JSON.parse(decodeURIComponent(encodeCliReposQuery(['/a', '/b'])!))).toEqual([
       '/a',
       '/b',
     ]);
-    const raw = Buffer.from(
-      JSON.stringify({
-        targets: [{ workspaceId: 'o', token: 't', repos: ['/a'] }],
-      }),
-      'utf8',
-    ).toString('base64url');
-    expect(parseCliTargetsParam(raw)?.[0]).toMatchObject({ workspaceId: 'o', repos: ['/a'] });
   });
 });

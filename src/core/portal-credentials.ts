@@ -2,11 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-  getPortalTargetRecord,
+  connectPortal,
+  getActivePortalConnection,
   migrateLegacyCredentialsIfNeeded,
-  readPortalTargetsStore,
   resolveWorkspaceId,
-  upsertPortalTarget,
 } from './portal-targets';
 
 export interface PortalCredentials {
@@ -32,23 +31,19 @@ export function portalCredentialsPath(): string {
 
 export function readPortalCredentials(): PortalCredentials | null {
   migrateLegacyCredentialsIfNeeded();
-  const store = readPortalTargetsStore();
-  const alias = store.defaultTarget ?? store.targets[0]?.alias;
-  if (alias) {
-    const record = getPortalTargetRecord(alias);
-    if (record) {
-      return {
-        portalUrl: record.portalUrl,
-        token: record.token,
-        workspace: record.workspaceSlug ?? record.workspaceName,
-        workspaceId: record.workspaceId,
-        targetAlias: record.alias,
-        email: record.email,
-        createdAt: record.createdAt,
-        refreshToken: record.refreshToken,
-        expiresAt: record.expiresAt,
-      };
-    }
+  const record = getActivePortalConnection();
+  if (record) {
+    return {
+      portalUrl: record.portalUrl,
+      token: record.token,
+      workspace: record.workspaceSlug ?? record.workspaceName,
+      workspaceId: record.workspaceId,
+      targetAlias: record.alias,
+      email: record.email,
+      createdAt: record.createdAt,
+      refreshToken: record.refreshToken,
+      expiresAt: record.expiresAt,
+    };
   }
 
   try {
@@ -71,10 +66,9 @@ export function readPortalCredentials(): PortalCredentials | null {
   }
 }
 
-/** @deprecated Prefer upsertPortalTarget — kept for callers not yet on named targets. */
+/** @deprecated Prefer connectPortal. Replaces the active org connection like any connect. */
 export function writePortalCredentials(creds: PortalCredentials): void {
-  upsertPortalTarget({
-    alias: creds.targetAlias,
+  connectPortal({
     portalUrl: creds.portalUrl,
     workspaceId: creds.workspaceId,
     workspace: creds.workspace,
@@ -82,7 +76,6 @@ export function writePortalCredentials(creds: PortalCredentials): void {
     refreshToken: creds.refreshToken,
     expiresAt: creds.expiresAt,
     email: creds.email,
-    setAsDefault: true,
   });
 }
 

@@ -7,19 +7,12 @@ import {
   type PortalUrlSource,
 } from '../../core/control-config';
 import { runPortalConnect } from '../../core/portal-connect';
+import { attachReposToPortal, unattachedRegisteredRepos } from '../../core/portal-repo-map';
 import {
-  applyRepoWorkspaceMap,
-  planRepoWorkspaceMap,
-  remainingConnections,
-  remainingUnassignedRepos,
-} from '../../core/portal-repo-map';
-import {
+  disconnectPortal,
   displayPortalTargetLabel,
-  findPortalTargetRecord,
-  listPortalTargetRecords,
-  readPortalTargetsStore,
+  readPortalConnectionState,
   redactPortalTargetRecord,
-  removePortalTarget,
 } from '../../core/portal-targets';
 import { error, header, info, success, warn } from '../../utils/logging';
 import { finishCommand } from '../finish-command';
@@ -33,12 +26,12 @@ const PORTAL_SOURCE_LABEL: Record<PortalUrlSource, string> = {
 
 export const hqCommand = {
   command: 'hq <subcommand>',
-  describe: 'HAR HQ hosted portal (workspaces, connections)',
+  describe: 'HAR HQ hosted portal (one org connection at a time)',
   builder: (yargs: Argv) =>
     yargs
       .command(
         'connect',
-        'Connect this repository to a HAR HQ workspace (browser SSO)',
+        'Connect to a HAR HQ org (browser SSO); replaces any connection to another org',
         (y: Argv) =>
           y
             .option('portal', {
@@ -69,35 +62,21 @@ export const hqCommand = {
               repo: string;
               json: boolean;
               yes: boolean;
-              alias?: string;
               deprecated?: boolean;
             },
           ),
       )
       .command(
         'list',
-        'List saved HAR HQ connections and attached repositories',
+        'Show the HAR HQ org connection and its attached repositories',
         (y: Argv) => y.option('json', { type: 'boolean', default: false }),
         (argv) => handleHqList(argv as { json: boolean }),
       )
       .command(
-        'disconnect [name]',
-        'Remove a saved HAR HQ connection',
-        (y: Argv) =>
-          y
-            .positional('name', {
-              type: 'string',
-              describe: 'Workspace name, alias, or "name @ host"',
-            })
-            .option('json', { type: 'boolean', default: false })
-            .option('yes', {
-              alias: 'y',
-              type: 'boolean',
-              default: false,
-              describe: 'Do not prompt when multiple connections exist',
-            }),
-        (argv) =>
-          handleHqDisconnect(argv as { name?: string; json: boolean; yes: boolean }),
+        'disconnect',
+        'Remove the HAR HQ org connection (nothing syncs until you connect again)',
+        (y: Argv) => y.option('json', { type: 'boolean', default: false }),
+        (argv) => handleHqDisconnect(argv as { json: boolean }),
       )
       .demandCommand(1, 'Please specify a subcommand: connect, list, disconnect'),
   handler: () => {},
@@ -142,100 +121,30 @@ async function resolveConnectPortalUrl(
   return resolvePortalUrl(url);
 }
 
-async function promptExtraRepoAttachments(opts: {
-  currentRepo: string | null;
-  currentAlias: string;
-}): Promise<string[]> {
-  const plan = planRepoWorkspaceMap(opts);
-  if (plan.kind === 'none') return [];
+async function promptExtraRepoAttachments(
+  currentRepo: string | null,
+  orgLabel: string,
+): Promise<string[]> {
+  const repos = unattachedRegisteredRepos(currentRepo);
+  if (repos.length === 0) return [];
 
-  const noun = plan.repos.length === 1 ? 'repository' : 'repositories';
-  info(`${plan.repos.length} other registered ${noun}:`);
-  for (const repoPath of plan.repos) info(`  ${repoPath}`);
+  const noun = repos.length === 1 ? 'repository' : 'repositories';
+  info(`${repos.length} other registered ${noun}:`);
+  for (const repoPath of repos) info(`  ${repoPath}`);
 
-  if (plan.kind === 'attach-more') {
-    const { selected } = await inquirer.prompt<{ selected: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'selected',
-        message: `Attach which of these ${plan.repos.length} ${noun} to ${plan.workspaceLabel}?`,
-        choices: plan.repos.map((repoPath) => ({
-          name: repoPath,
-          value: repoPath,
-          checked: true,
-        })),
-      },
-    ]);
-    return applyRepoWorkspaceMap(
-      selected.map((repoPath) => ({ repoPath, alias: plan.workspaceAlias })),
-    );
-  }
-
-  const { sendAll } = await inquirer.prompt<{ sendAll: boolean }>([
+  const { selected } = await inquirer.prompt<{ selected: string[] }>([
     {
-      type: 'confirm',
-      name: 'sendAll',
-      message: `Send all ${plan.repos.length} ${noun} to the same workspace?`,
-      default: true,
+      type: 'checkbox',
+      name: 'selected',
+      message: `Attach which of these ${repos.length} ${noun} to ${orgLabel}?`,
+      choices: repos.map((repoPath) => ({
+        name: repoPath,
+        value: repoPath,
+        checked: true,
+      })),
     },
   ]);
-
-  if (sendAll) {
-    const { alias } = await inquirer.prompt<{ alias: string }>([
-      {
-        type: 'list',
-        name: 'alias',
-        message: 'Which workspace?',
-        default: plan.currentAlias,
-        choices: plan.connections.map((entry) => ({
-          name: entry.label,
-          value: entry.alias,
-        })),
-      },
-    ]);
-    return applyRepoWorkspaceMap(plan.repos.map((repoPath) => ({ repoPath, alias })));
-  }
-
-  const attached: string[] = [];
-  let remainingRepos = [...plan.repos];
-  let remainingOrgs = [...plan.connections];
-  while (remainingRepos.length > 0 && remainingOrgs.length > 0) {
-    const left = remainingRepos.length === 1 ? 'repository' : 'repositories';
-    info(`${remainingRepos.length} ${left} left to assign.`);
-    const { alias } = await inquirer.prompt<{ alias: string }>([
-      {
-        type: 'list',
-        name: 'alias',
-        message: 'Workspace to assign repositories to',
-        default:
-          remainingOrgs.some((entry) => entry.alias === plan.currentAlias)
-            ? plan.currentAlias
-            : remainingOrgs[0]?.alias,
-        choices: [
-          ...remainingOrgs.map((entry) => ({
-            name: entry.label,
-            value: entry.alias,
-          })),
-          { name: 'Done — leave the rest unattached', value: '' },
-        ],
-      },
-    ]);
-    if (!alias) break;
-    const { selected } = await inquirer.prompt<{ selected: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'selected',
-        message: `Repositories for ${remainingOrgs.find((entry) => entry.alias === alias)?.label ?? alias}`,
-        choices: remainingRepos.map((repoPath) => ({ name: repoPath, value: repoPath })),
-      },
-    ]);
-    if (selected.length > 0) {
-      attached.push(...applyRepoWorkspaceMap(selected.map((repoPath) => ({ repoPath, alias }))));
-    }
-    remainingRepos = remainingUnassignedRepos(remainingRepos, selected);
-    remainingOrgs = remainingConnections(remainingOrgs, [alias]);
-  }
-  return attached;
+  return attachReposToPortal(selected);
 }
 
 export async function handleHqConnect(argv: {
@@ -244,7 +153,6 @@ export async function handleHqConnect(argv: {
   repo?: string;
   json?: boolean;
   yes?: boolean;
-  alias?: string;
   deprecated?: boolean;
 }): Promise<void> {
   if (argv.deprecated) {
@@ -258,11 +166,10 @@ export async function handleHqConnect(argv: {
   }
 
   try {
-    const { record, attachedRepo, extraAttached, mappedInBrowser } = await runPortalConnect({
+    const { record, attachedRepo, replaced, detachedRepos } = await runPortalConnect({
       portalUrl,
       apiKey: argv.apiKey,
       repoPath: argv.repo ?? '.',
-      alias: argv.alias,
     });
     const label = displayPortalTargetLabel(record);
     if (argv.json) {
@@ -272,12 +179,25 @@ export async function handleHqConnect(argv: {
             ok: true,
             connection: redactPortalTargetRecord(record),
             attachedRepo,
+            replaced: replaced ? redactPortalTargetRecord(replaced) : null,
+            detachedRepos,
           },
           null,
           2,
         ) + '\n',
       );
       return;
+    }
+    if (replaced) {
+      warn(
+        `Switched org: ${displayPortalTargetLabel(replaced)} → ${label}. ` +
+          'Nothing is sent to the previous org any more.',
+      );
+      if (detachedRepos.length > 0) {
+        const noun = detachedRepos.length === 1 ? 'repository' : 'repositories';
+        info(`${detachedRepos.length} ${noun} attached to the previous org no longer sync:`);
+        for (const repoPath of detachedRepos) info(`  ${repoPath}`);
+      }
     }
     success(`Connected to ${label}`);
     if (record.email) info(`Account: ${record.email}`);
@@ -286,15 +206,9 @@ export async function handleHqConnect(argv: {
     } else {
       info('No local repository attached (run this from a repo, or pass --repo).');
     }
-    for (const repoPath of extraAttached) {
-      success(`Attached ${repoPath}`);
-    }
 
-    if (!argv.json && !argv.yes && !mappedInBrowser && isInteractive()) {
-      const extra = await promptExtraRepoAttachments({
-        currentRepo: attachedRepo,
-        currentAlias: record.alias,
-      });
+    if (!argv.yes && isInteractive()) {
+      const extra = await promptExtraRepoAttachments(attachedRepo, label);
       for (const repoPath of extra) {
         success(`Attached ${repoPath}`);
       }
@@ -308,97 +222,52 @@ export async function handleHqConnect(argv: {
 }
 
 async function handleHqList(argv: { json: boolean }): Promise<void> {
-  const store = readPortalTargetsStore();
-  const records = listPortalTargetRecords();
-  const connections = records.map((record) => {
-    const attachedRepos = Object.entries(store.repoTargets ?? {})
-      .filter(([, aliases]) => aliases.includes(record.alias))
-      .map(([repoPath]) => repoPath);
-    return {
-      ...redactPortalTargetRecord(record),
-      label: displayPortalTargetLabel(record),
-      attachedRepos,
-    };
-  });
+  const { connection, attachedRepos } = readPortalConnectionState();
 
   if (argv.json) {
-    process.stdout.write(JSON.stringify({ connections }, null, 2) + '\n');
+    process.stdout.write(
+      JSON.stringify(
+        {
+          connection: connection
+            ? { ...redactPortalTargetRecord(connection), label: displayPortalTargetLabel(connection) }
+            : null,
+          attachedRepos,
+        },
+        null,
+        2,
+      ) + '\n',
+    );
     return;
   }
 
   header('har hq list');
-  if (records.length === 0) {
-    info('No HAR HQ connections yet.');
-    info('Add one with: har hq connect');
+  if (!connection) {
+    info('Not connected to a HAR HQ org.');
+    info('Connect with: har hq connect');
     return;
   }
 
-  for (const record of records) {
-    const attachedRepos = Object.entries(store.repoTargets ?? {})
-      .filter(([, aliases]) => aliases.includes(record.alias))
-      .map(([repoPath]) => repoPath);
-    info(displayPortalTargetLabel(record));
-    info(`  portal: ${record.portalUrl}`);
-    if (record.email) info(`  account: ${record.email}`);
-    if (attachedRepos.length === 0) {
-      info('  repos: (none attached — run har hq connect from a repository)');
-    } else {
-      info(`  repos: ${attachedRepos.join(', ')}`);
-    }
+  info(displayPortalTargetLabel(connection));
+  info(`  portal: ${connection.portalUrl}`);
+  if (connection.email) info(`  account: ${connection.email}`);
+  if (attachedRepos.length === 0) {
+    info('  repos: (none attached — run har hq connect from a repository)');
+  } else {
+    info(`  repos: ${attachedRepos.join(', ')}`);
   }
 }
 
-async function handleHqDisconnect(argv: {
-  name?: string;
-  json: boolean;
-  yes: boolean;
-}): Promise<void> {
-  const records = listPortalTargetRecords();
-  if (records.length === 0) {
-    error('No HAR HQ connections saved.');
+async function handleHqDisconnect(argv: { json: boolean }): Promise<void> {
+  const removed = disconnectPortal();
+  if (!removed) {
+    error('Not connected to a HAR HQ org.');
     return finishCommand(1);
   }
 
-  let record = argv.name ? findPortalTargetRecord(argv.name) : null;
-  if (argv.name && !record) {
-    error(`Unknown connection "${argv.name}".`);
-    info('See: har hq list');
-    return finishCommand(1);
-  }
-
-  if (!record) {
-    if (records.length === 1) {
-      record = records[0];
-    } else if (isInteractive() && !argv.yes) {
-      const { selected } = await inquirer.prompt<{ selected: string }>([
-        {
-          type: 'list',
-          name: 'selected',
-          message: 'Disconnect which connection?',
-          choices: records.map((entry) => ({
-            name: displayPortalTargetLabel(entry),
-            value: entry.alias,
-          })),
-        },
-      ]);
-      record = findPortalTargetRecord(selected);
-    } else {
-      error('Multiple connections saved — pass a workspace name (see har hq list).');
-      return finishCommand(1);
-    }
-  }
-
-  if (!record) {
-    error('Could not resolve which connection to disconnect.');
-    return finishCommand(1);
-  }
-
-  const label = displayPortalTargetLabel(record);
-  removePortalTarget(record.alias);
   if (argv.json) {
-    process.stdout.write(JSON.stringify({ removed: redactPortalTargetRecord(record) }, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({ removed: redactPortalTargetRecord(removed) }, null, 2) + '\n');
     return;
   }
   header('har hq disconnect');
-  success(`Disconnected ${label}`);
+  success(`Disconnected ${displayPortalTargetLabel(removed)}`);
 }

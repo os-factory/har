@@ -4,32 +4,31 @@ import * as path from 'path';
 
 import { getPortalTarget } from '../src/core/control-config';
 import {
-  attachRepoPortalTarget,
-  displayPortalTargetLabel,
-  getRepoPortalTargetAliases,
+  attachRepoToPortal,
+  connectPortal,
+  disconnectPortal,
+  getActivePortalConnection,
+  isPortalTargetActive,
+  isPortalTrajectoryEnabledForTarget,
+  listAttachedRepos,
   migrateLegacyCredentialsIfNeeded,
   portalTargetIdentityKey,
   portalTargetsPath,
-  readPortalTargetsStore,
+  readPortalConnectionState,
+  recordToPortalTarget,
   redactPortalTargetRecord,
-  removePortalTarget,
-  resolvePortalTargetsForRepo,
+  resolvePortalTarget,
   resolveWorkspaceId,
   updatePortalTargetTokens,
-  upsertPortalTarget,
-  writePortalTargetTrajectoryPreference,
+  writePortalConnectionTrajectoryPreference,
 } from '../src/core/portal-targets';
-import {
-  readPortalCredentials,
-} from '../src/core/portal-credentials';
-import {
-  readPortalWatermark,
-  writePortalWatermark,
-} from '../src/core/portal-watermark';
+import { readPortalCredentials } from '../src/core/portal-credentials';
+import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
 
 const ENV_KEYS = [
   'HAR_PORTAL_URL',
   'HAR_PORTAL_TOKEN',
+  'HAR_PORTAL_TRAJECTORY',
   'HAR_CREDENTIALS_PATH',
   'HAR_PORTAL_TARGETS_PATH',
   'HAR_PORTAL_SYNC_STATE_PATH',
@@ -54,92 +53,161 @@ afterEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];
 });
 
-describe('portal targets store', () => {
-  it('keeps multiple targets on the same portal with different workspace ids', () => {
-    upsertPortalTarget({
-      alias: 'org-a',
-      portalUrl: 'https://portal.example.com',
-      workspaceId: 'org_a',
-      token: 'token-a',
-    });
-    upsertPortalTarget({
-      alias: 'org-b',
-      portalUrl: 'https://portal.example.com',
-      workspaceId: 'org_b',
-      token: 'token-b',
-    });
+function makeRepo(name: string): string {
+  const repoPath = path.join(tmpDir, name);
+  fs.mkdirSync(repoPath, { recursive: true });
+  return fs.realpathSync(repoPath);
+}
 
-    const store = readPortalTargetsStore();
-    expect(store.targets).toHaveLength(2);
-    expect(store.targets.map((entry) => entry.alias).sort()).toEqual(['org-a', 'org-b']);
+function connectOrg(workspaceId: string, token = `${workspaceId}-token`) {
+  return connectPortal({
+    portalUrl: 'https://portal.example.com',
+    workspaceId,
+    workspaceName: workspaceId,
+    token,
+    refreshToken: `${workspaceId}-refresh`,
+  });
+}
+
+function readFile(): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(portalTargetsPath(), 'utf8')) as Record<string, unknown>;
+}
+
+describe('one org connection at a time', () => {
+  it('stores a single connection on disk', () => {
+    connectOrg('org_a');
+    const file = readFile();
+    expect(file.targets).toHaveLength(1);
+    expect(file.defaultTarget).toBe('org_a');
   });
 
-  it('updates an existing target identity in place without touching another alias', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev-1',
-    });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      token: 'prod-1',
-    });
+  it('replaces the connection when switching org', () => {
+    connectOrg('org_a');
+    const switched = connectOrg('org_b');
 
-    upsertPortalTarget({
-      alias: 'dev-renamed-ignored',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev-2',
-    });
-
-    expect(getPortalTarget()?.token).toBe('dev-2');
-    expect(readPortalTargetsStore().targets.find((entry) => entry.alias === 'prod')?.token).toBe(
-      'prod-1',
-    );
+    expect(switched.replaced?.workspaceId).toBe('org_a');
+    expect(getActivePortalConnection()?.workspaceId).toBe('org_b');
+    const raw = fs.readFileSync(portalTargetsPath(), 'utf8');
+    expect(raw).not.toContain('org_a-token');
+    expect(raw).not.toContain('org_a-refresh');
+    expect(readPortalCredentials()?.token).toBe('org_b-token');
   });
 
-  it('attaches a repository to a connection without replacing others', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      workspaceName: 'Dev',
-      token: 'dev',
-    });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      workspaceName: 'Prod',
-      token: 'prod',
-    });
-    const repoPath = path.join(tmpDir, 'repo-a');
-    fs.mkdirSync(repoPath, { recursive: true });
-    attachRepoPortalTarget(repoPath, 'dev');
-    attachRepoPortalTarget(repoPath, 'prod');
-    expect(getRepoPortalTargetAliases(repoPath).sort()).toEqual(['dev', 'prod']);
-    expect(displayPortalTargetLabel(readPortalTargetsStore().targets[0])).toContain(' @ ');
+  it('clears attached repos when switching org, so none syncs to the new org unasked', () => {
+    const repo = makeRepo('app');
+    connectOrg('org_a');
+    attachRepoToPortal(repo);
+
+    const switched = connectOrg('org_b');
+
+    expect(switched.detachedRepos).toEqual([repo]);
+    expect(listAttachedRepos()).toEqual([]);
+    expect(resolvePortalTarget(repo)).toBeNull();
+  });
+
+  it('keeps attached repos and trajectory setting on a same-org reconnect', () => {
+    const repo = makeRepo('app');
+    connectOrg('org_a', 'old');
+    attachRepoToPortal(repo);
+    writePortalConnectionTrajectoryPreference(true);
+
+    const again = connectOrg('org_a', 'new');
+
+    expect(again.replaced).toBeNull();
+    expect(again.detachedRepos).toEqual([]);
+    expect(listAttachedRepos()).toEqual([repo]);
+    expect(getActivePortalConnection()).toMatchObject({ token: 'new', trajectoryForwarding: true });
+  });
+
+  it('attaches repos to the active connection only, once each', () => {
+    const repo = makeRepo('app');
+    expect(() => attachRepoToPortal(repo)).toThrow(/har hq connect/);
+
+    connectOrg('org_a');
+    attachRepoToPortal(repo);
+    attachRepoToPortal(repo);
+    expect(listAttachedRepos()).toEqual([repo]);
+  });
+
+  it('disconnect removes the connection, its repos and the legacy credentials file', () => {
+    const repo = makeRepo('app');
+    connectOrg('org_a');
+    attachRepoToPortal(repo);
+
+    expect(disconnectPortal()?.workspaceId).toBe('org_a');
+    expect(readPortalConnectionState()).toEqual({ connection: null, attachedRepos: [] });
+    expect(fs.existsSync(process.env.HAR_CREDENTIALS_PATH!)).toBe(false);
+    expect(getPortalTarget(repo)).toBeNull();
+    expect(disconnectPortal()).toBeNull();
   });
 
   it('redacts tokens from list/show payloads', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'secret-token',
-      refreshToken: 'secret-refresh',
-    });
+    const { record } = connectOrg('org_a', 'secret-token');
+    expect(fs.readFileSync(portalTargetsPath(), 'utf8')).toContain('secret-token');
+    expect(redactPortalTargetRecord(record)).not.toHaveProperty('token');
+  });
+});
+
+describe('collapsing a store with several connections (older CLIs)', () => {
+  function writeMultiOrgStore(defaultTarget?: string) {
+    fs.writeFileSync(
+      portalTargetsPath(),
+      JSON.stringify({
+        version: 1,
+        ...(defaultTarget ? { defaultTarget } : {}),
+        targets: [
+          {
+            alias: 'dev',
+            portalUrl: 'https://portal.example.com',
+            workspaceId: 'org_dev',
+            token: 'dev-token',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            lastUsedAt: '2026-03-01T00:00:00.000Z',
+          },
+          {
+            alias: 'prod',
+            portalUrl: 'https://portal.example.com',
+            workspaceId: 'org_prod',
+            token: 'prod-token',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            lastUsedAt: '2026-02-01T00:00:00.000Z',
+          },
+        ],
+        repoTargets: {
+          '/repos/both': ['dev', 'prod'],
+          '/repos/dev-only': ['dev'],
+          '/repos/prod-only': ['prod'],
+        },
+      }),
+    );
+  }
+
+  it('keeps defaultTarget, drops the other connections and their repo attachments', () => {
+    writeMultiOrgStore('prod');
+
+    const state = readPortalConnectionState();
+
+    expect(state.connection?.alias).toBe('prod');
+    expect(state.attachedRepos.sort()).toEqual(['/repos/both', '/repos/prod-only']);
     const raw = fs.readFileSync(portalTargetsPath(), 'utf8');
-    expect(raw).toContain('secret-token');
-    expect(redactPortalTargetRecord(readPortalTargetsStore().targets[0])).not.toHaveProperty('token');
+    expect(raw).not.toContain('dev-token');
+    expect(readFile()).toEqual({
+      version: 1,
+      defaultTarget: 'prod',
+      targets: [expect.objectContaining({ alias: 'prod' })],
+      repoTargets: { '/repos/both': ['prod'], '/repos/prod-only': ['prod'] },
+    });
+    expect(readPortalCredentials()?.token).toBe('prod-token');
+  });
+
+  it('falls back to the most recently used connection without a defaultTarget', () => {
+    writeMultiOrgStore();
+    expect(getActivePortalConnection()?.alias).toBe('dev');
   });
 });
 
 describe('legacy credentials migration', () => {
-  it('migrates ~/.har/credentials.json into a default target', () => {
+  it('migrates ~/.har/credentials.json into the connection', () => {
     fs.writeFileSync(
       process.env.HAR_CREDENTIALS_PATH!,
       JSON.stringify({
@@ -153,20 +221,15 @@ describe('legacy credentials migration', () => {
 
     migrateLegacyCredentialsIfNeeded();
 
-    const store = readPortalTargetsStore();
-    expect(store.targets).toHaveLength(1);
-    expect(store.defaultTarget).toBe(store.targets[0].alias);
-    expect(store.targets[0].workspaceId).toBe('slug:acme');
+    const connection = getActivePortalConnection();
+    expect(connection?.workspaceId).toBe('slug:acme');
     expect(readPortalCredentials()?.token).toBe('legacy-token');
     expect(getPortalTarget()?.token).toBe('legacy-token');
   });
 
-  it('attaches registered repos to the migrated default target', () => {
+  it('attaches registered repos to the migrated connection', () => {
     const repoPath = path.join(__dirname, 'fixtures/minimal-harness');
-    fs.writeFileSync(
-      process.env.HAR_CONTROL_REGISTRY_PATH!,
-      JSON.stringify({ repos: [repoPath] }),
-    );
+    fs.writeFileSync(process.env.HAR_CONTROL_REGISTRY_PATH!, JSON.stringify({ repos: [repoPath] }));
     fs.writeFileSync(
       process.env.HAR_CREDENTIALS_PATH!,
       JSON.stringify({
@@ -179,16 +242,13 @@ describe('legacy credentials migration', () => {
 
     migrateLegacyCredentialsIfNeeded();
 
-    expect(getRepoPortalTargetAliases(repoPath)).toEqual([
-      readPortalTargetsStore().targets[0].alias,
-    ]);
+    expect(resolvePortalTarget(repoPath)?.token).toBe('legacy-token');
   });
 });
 
-describe('portal watermarks per target', () => {
-  it('does not share cursors between targets for the same repo', () => {
-    const repoPath = path.join(tmpDir, 'repo');
-    fs.mkdirSync(repoPath);
+describe('portal watermarks per org', () => {
+  it('does not share cursors between orgs for the same repo', () => {
+    const repoPath = makeRepo('repo');
     const devKey = portalTargetIdentityKey('https://portal.example.com', 'org_dev');
     const prodKey = portalTargetIdentityKey('https://portal.example.com', 'org_prod');
 
@@ -200,124 +260,67 @@ describe('portal watermarks per target', () => {
   });
 });
 
-describe('resolvePortalTargetsForRepo', () => {
-  it('prefers env overrides over saved targets', () => {
-    upsertPortalTarget({
-      alias: 'saved',
-      portalUrl: 'https://saved.example.com',
-      workspaceId: 'ws_saved',
-      token: 'saved',
-    });
-    process.env.HAR_PORTAL_URL = 'https://env.example.com';
+describe('resolvePortalTarget', () => {
+  it('prefers the HAR_PORTAL_URL + HAR_PORTAL_TOKEN override for the run', () => {
+    connectOrg('org_a');
+    process.env.HAR_PORTAL_URL = 'https://env.example.com/';
     process.env.HAR_PORTAL_TOKEN = 'env-token';
-    expect(resolvePortalTargetsForRepo()?.targets[0]).toMatchObject({
+
+    expect(resolvePortalTarget(makeRepo('any'))).toEqual({
       url: 'https://env.example.com',
       token: 'env-token',
+      identityKey: 'https://env.example.com',
     });
   });
 
-  it('uses explicit sync targets without changing stored defaults', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev',
-      setAsDefault: true,
-    });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      token: 'prod',
-    });
+  it('only resolves the connection for attached repos', () => {
+    const repo = makeRepo('app');
+    connectOrg('org_a');
+    expect(resolvePortalTarget(repo)).toBeNull();
 
-    const resolved = resolvePortalTargetsForRepo({ explicitTargets: ['prod'] });
-    expect(resolved?.targets[0].alias).toBe('prod');
-    expect(readPortalTargetsStore().defaultTarget).toBe('dev');
-  });
-
-  it('syncs a repo to every attached workspace, not every saved connection', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev',
-    });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      token: 'prod',
-    });
-    const repoPath = path.join(tmpDir, 'repo-b');
-    fs.mkdirSync(repoPath, { recursive: true });
-    expect(resolvePortalTargetsForRepo({ repoPath })).toBeNull();
-
-    attachRepoPortalTarget(repoPath, 'prod');
-    expect(resolvePortalTargetsForRepo({ repoPath })?.targets.map((entry) => entry.alias)).toEqual([
-      'prod',
-    ]);
-
-    attachRepoPortalTarget(repoPath, 'dev');
-    expect(
-      resolvePortalTargetsForRepo({ repoPath })?.targets.map((entry) => entry.alias).sort(),
-    ).toEqual(['dev', 'prod']);
-  });
-
-  it('does not fan an unattached repo out to the only saved connection', () => {
-    upsertPortalTarget({
-      alias: 'only',
-      portalUrl: 'https://app.harhq.com',
-      workspaceId: 'ws_only',
-      token: 't',
-    });
-    const repoPath = path.join(tmpDir, 'unattached');
-    fs.mkdirSync(repoPath, { recursive: true });
-    expect(resolvePortalTargetsForRepo({ repoPath })).toBeNull();
+    attachRepoToPortal(repo);
+    expect(resolvePortalTarget(repo)).toMatchObject({ workspaceId: 'org_a', alias: 'org_a' });
   });
 });
 
-describe('target-specific trajectory preference', () => {
-  it('stores trajectory forwarding per target', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev',
-    });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      token: 'prod',
-    });
+describe('isPortalTargetActive', () => {
+  it('goes stale after switching org or disconnecting', () => {
+    const { record } = connectOrg('org_a');
+    const target = recordToPortalTarget(record);
+    expect(isPortalTargetActive(target)).toBe(true);
 
-    writePortalTargetTrajectoryPreference('dev', true);
-    const store = readPortalTargetsStore();
-    expect(store.targets.find((entry) => entry.alias === 'dev')?.trajectoryForwarding).toBe(true);
-    expect(store.targets.find((entry) => entry.alias === 'prod')?.trajectoryForwarding).not.toBe(true);
+    connectOrg('org_b');
+    expect(isPortalTargetActive(target)).toBe(false);
+
+    const current = recordToPortalTarget(getActivePortalConnection()!);
+    disconnectPortal();
+    expect(isPortalTargetActive(current)).toBe(false);
+  });
+
+  it('accepts the env override only while it is still set', () => {
+    process.env.HAR_PORTAL_URL = 'https://env.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'env-token';
+    const target = resolvePortalTarget()!;
+    expect(isPortalTargetActive(target)).toBe(true);
+
+    delete process.env.HAR_PORTAL_URL;
+    expect(isPortalTargetActive(target)).toBe(false);
   });
 });
 
-describe('removePortalTarget', () => {
-  it('removes one target without deleting another', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev',
-      setAsDefault: true,
-    });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      token: 'prod',
-    });
+describe('trajectory preference', () => {
+  it('applies to the active connection and not to a replaced one', () => {
+    const { record } = connectOrg('org_a');
+    writePortalConnectionTrajectoryPreference(true);
+    expect(isPortalTrajectoryEnabledForTarget(recordToPortalTarget(record))).toBe(true);
 
-    expect(removePortalTarget('dev')).toBe(true);
-    expect(readPortalTargetsStore().targets.map((entry) => entry.alias)).toEqual(['prod']);
-    expect(getPortalTarget()?.alias).toBe('prod');
+    const next = connectOrg('org_b');
+    expect(isPortalTrajectoryEnabledForTarget(recordToPortalTarget(record))).toBe(false);
+    expect(isPortalTrajectoryEnabledForTarget(recordToPortalTarget(next.record))).toBe(false);
+  });
+
+  it('throws without a connection', () => {
+    expect(() => writePortalConnectionTrajectoryPreference(true)).toThrow(/har hq connect/);
   });
 });
 
@@ -328,30 +331,27 @@ describe('workspace identity compatibility', () => {
   });
 });
 
-describe('refresh isolation', () => {
-  it('rotates tokens for one target without touching another', () => {
-    upsertPortalTarget({
-      alias: 'dev',
-      portalUrl: 'https://dev.example.com',
-      workspaceId: 'ws_dev',
-      token: 'dev-old',
-      refreshToken: 'dev-refresh',
+describe('token refresh', () => {
+  it('rotates the active connection token', () => {
+    const { record } = connectOrg('org_a', 'old');
+    updatePortalTargetTokens(recordToPortalTarget(record).identityKey, {
+      token: 'new',
+      expiresAt: '2026-03-01T00:00:00.000Z',
     });
-    upsertPortalTarget({
-      alias: 'prod',
-      portalUrl: 'https://prod.example.com',
-      workspaceId: 'ws_prod',
-      token: 'prod-old',
-      refreshToken: 'prod-refresh',
+    expect(getActivePortalConnection()).toMatchObject({
+      token: 'new',
+      refreshToken: 'org_a-refresh',
+      expiresAt: '2026-03-01T00:00:00.000Z',
     });
+  });
 
-    updatePortalTargetTokens('dev', { token: 'dev-new', expiresAt: '2026-03-01T00:00:00.000Z' });
+  it('ignores a refresh for an org that is no longer active', () => {
+    const { record } = connectOrg('org_a', 'old');
+    connectOrg('org_b', 'b-token');
 
-    const store = readPortalTargetsStore();
-    expect(store.targets.find((entry) => entry.alias === 'dev')?.token).toBe('dev-new');
-    expect(store.targets.find((entry) => entry.alias === 'prod')).toMatchObject({
-      token: 'prod-old',
-      refreshToken: 'prod-refresh',
-    });
+    expect(
+      updatePortalTargetTokens(recordToPortalTarget(record).identityKey, { token: 'late' }),
+    ).toBeNull();
+    expect(getActivePortalConnection()).toMatchObject({ workspaceId: 'org_b', token: 'b-token' });
   });
 });

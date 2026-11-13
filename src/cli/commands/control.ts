@@ -8,12 +8,9 @@ import {
 } from '../../core/control-config';
 import {
   displayPortalTargetLabel,
-  findPortalTargetRecord,
-  getRepoPortalTargetAliases,
-  isPortalTrajectoryEnabledForTarget,
-  recordToPortalTarget,
-  resolvePortalTargetsForRepo,
-  writePortalTargetTrajectoryPreference,
+  getActivePortalConnection,
+  resolvePortalTarget,
+  writePortalConnectionTrajectoryPreference,
 } from '../../core/portal-targets';
 import { handleHqConnect } from './hq';
 import { inspectControlUpReadiness } from '../../core/control-port';
@@ -139,14 +136,6 @@ export const controlCommand = {
               type: 'boolean',
               default: false,
               describe: 'Ignore the portal watermark and resend the complete payload',
-            })
-            .option('target', {
-              type: 'string',
-              describe: 'Sync to a named portal target instead of the repository default',
-            })
-            .option('targets', {
-              type: 'string',
-              describe: 'Comma-separated portal targets for an explicit multi-destination sync',
             }),
         handleSync,
       )
@@ -211,11 +200,6 @@ export const controlCommand = {
               type: 'string',
               choices: ['on', 'off'] as const,
               describe: 'Omit to print the current setting',
-            })
-            .option('target', {
-              type: 'string',
-              describe:
-                'Apply to one saved HQ connection (required when this repo is attached to more than one)',
             }),
         handleTrajectory,
       );
@@ -504,8 +488,6 @@ async function handleSync(argv: {
   json: boolean;
   cloud?: boolean;
   full: boolean;
-  target?: string;
-  targets?: string;
 }): Promise<void> {
   const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const discovered = await discoverHarRepos({ apiUrl: argv.apiUrl, cwd: process.cwd() });
@@ -564,28 +546,11 @@ async function handleSync(argv: {
     return;
   }
 
-  if (argv.target && argv.targets) {
-    error('Use either --target or --targets, not both.');
-    return finishCommand(1);
-  }
-
-  const portalTargets = argv.targets
-    ? argv.targets.split(',').map((part) => part.trim()).filter(Boolean)
-    : argv.target
-      ? [argv.target]
-      : undefined;
-
   if (!argv.json) {
     header('har control sync');
     for (const repoPath of repoPaths) {
-      const resolved = resolvePortalTargetsForRepo({
-        repoPath,
-        explicitTargets: portalTargets,
-      });
-      if (!resolved || resolved.targets.length === 0) continue;
-      info(
-        `${repoPath} → ${resolved.targets.map((target) => describePortalTarget(target)).join(', ')}`,
-      );
+      const portal = resolvePortalTarget(repoPath);
+      if (portal) info(`${repoPath} → ${describePortalTarget(portal)}`);
     }
   }
 
@@ -595,7 +560,6 @@ async function handleSync(argv: {
     dryRun: argv.dryRun,
     cloud: argv.cloud,
     full: argv.full,
-    portalTargets,
   });
 
   if (argv.json) {
@@ -607,20 +571,6 @@ async function handleSync(argv: {
   }
 
   for (const result of results) {
-    if (result.targets && result.targets.length > 0) {
-      for (const target of result.targets) {
-        const record = findPortalTargetRecord(target.alias);
-        const label = record ? displayPortalTargetLabel(record) : target.alias;
-        if (!target.ok) {
-          warn(`Failed ${result.repoPath} → ${label}: ${target.error}`);
-        } else if (target.warnings && target.warnings.length > 0) {
-          warn(`Synced ${result.repoPath} → ${label} — incomplete`);
-        } else {
-          success(`Synced ${result.repoPath} → ${label}`);
-        }
-      }
-      continue;
-    }
     if (!result.ok) {
       warn(`Failed ${result.repoPath}: ${result.error}`);
     } else if (result.warnings && result.warnings.length > 0) {
@@ -644,42 +594,17 @@ async function handleSync(argv: {
   }
 }
 
-async function handleTrajectory(argv: { state?: string; target?: string }): Promise<void> {
+async function handleTrajectory(argv: { state?: string }): Promise<void> {
   header('har control trajectory');
 
-  const resolveNamed = (ref: string) => {
-    const record = findPortalTargetRecord(ref);
-    if (!record) {
-      error(`Unknown connection "${ref}".`);
-      info('See: har hq list');
-      return null;
-    }
-    return record;
-  };
+  const connection = getActivePortalConnection();
 
   if (!argv.state) {
-    if (argv.target) {
-      const record = resolveNamed(argv.target);
-      if (!record) return finishCommand(1);
-      const enabled = isPortalTrajectoryEnabledForTarget(recordToPortalTarget(record));
-      info(`Trajectory forwarding for ${displayPortalTargetLabel(record)}: ${enabled ? 'on' : 'off'}`);
-      return;
-    }
-    const attached = getRepoPortalTargetAliases(process.cwd())
-      .map((alias) => findPortalTargetRecord(alias))
-      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-    if (attached.length > 0) {
-      for (const record of attached) {
-        const enabled = isPortalTrajectoryEnabledForTarget(recordToPortalTarget(record));
-        info(`${displayPortalTargetLabel(record)}: ${enabled ? 'on' : 'off'}`);
-      }
-      if (!isTelemetryEnabled()) {
-        warn('Telemetry is off, so nothing is forwarded regardless of this setting.');
-      }
-      return;
-    }
-    const enabled = readTelemetryPreference().portalTrajectory === true;
-    info(`Trajectory forwarding: ${enabled ? 'on' : 'off'}`);
+    const enabled = connection
+      ? connection.trajectoryForwarding === true
+      : readTelemetryPreference().portalTrajectory === true;
+    const scope = connection ? ` for ${displayPortalTargetLabel(connection)}` : '';
+    info(`Trajectory forwarding${scope}: ${enabled ? 'on' : 'off'}`);
     if (!enabled) {
       info('Enable: har control trajectory on');
     }
@@ -690,42 +615,24 @@ async function handleTrajectory(argv: { state?: string; target?: string }): Prom
   }
 
   const enabled = argv.state === 'on';
-  if (argv.target) {
-    const record = resolveNamed(argv.target);
-    if (!record) return finishCommand(1);
-    writePortalTargetTrajectoryPreference(record.alias, enabled);
-    success(
-      `Trajectory forwarding ${enabled ? 'on' : 'off'} for ${displayPortalTargetLabel(record)}.`,
-    );
-    return;
-  }
-
-  const attachedAliases = getRepoPortalTargetAliases(process.cwd());
-  if (attachedAliases.length > 1) {
-    error('This repository is attached to more than one HQ workspace — pass --target.');
-    info('See: har hq list');
-    return finishCommand(1);
-  }
-  if (attachedAliases.length === 1) {
-    const record = findPortalTargetRecord(attachedAliases[0]);
-    if (record) {
-      writePortalTargetTrajectoryPreference(record.alias, enabled);
-      if (!enabled) {
-        success(
-          `Trajectory forwarding off for ${displayPortalTargetLabel(record)} — the portal receives token counts and events only.`,
-        );
-        return;
-      }
-      success(`Trajectory forwarding on for ${displayPortalTargetLabel(record)}.`);
-      info(
-        'Prompts, tool arguments and tool results now sync to that hosted workspace, ' +
-          'capped and redacted by the local policy (HAR_TRAJECTORY_MAX_PAYLOAD_BYTES).',
+  if (connection) {
+    writePortalConnectionTrajectoryPreference(enabled);
+    const label = displayPortalTargetLabel(connection);
+    if (!enabled) {
+      success(
+        `Trajectory forwarding off for ${label} — the portal receives token counts and events only.`,
       );
-      if (!isTelemetryEnabled()) {
-        warn('Telemetry is off, so nothing is forwarded yet — enable it with har telemetry on.');
-      }
       return;
     }
+    success(`Trajectory forwarding on for ${label}.`);
+    info(
+      'Prompts, tool arguments and tool results now sync to that HAR HQ org, ' +
+        'capped and redacted by the local policy (HAR_TRAJECTORY_MAX_PAYLOAD_BYTES).',
+    );
+    if (!isTelemetryEnabled()) {
+      warn('Telemetry is off, so nothing is forwarded yet — enable it with har telemetry on.');
+    }
+    return;
   }
 
   writePortalTrajectoryPreference(enabled);
