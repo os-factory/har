@@ -186,6 +186,40 @@ describe('ingestOtelTracesJson — evidence and usage', () => {
   });
 });
 
+describe('evidence time for a span exported when it ends', () => {
+  const sessionSpan = {
+    name: 'session.start',
+    spanId: '4'.repeat(16),
+    attributes: { 'gen_ai.client.workspace': SLOT_2, 'otelhook.session.id': SID },
+  };
+
+  it('records a span\'s cwd evidence at the span\'s end, not its start', async () => {
+    await ingestOtelTracesJson(traces({ 'otelhook.provider.id': 'claude-code' }, [sessionSpan]));
+
+    expect(state.bindings[0].bindings[0]).toMatchObject({ kind: 'workspace', slotId: 2 });
+    expect((state.bindings[0].bindings[0].at as Date).toISOString()).toBe('2025-11-12T10:00:30.000Z');
+  });
+
+  it('takes no evidence from the span.* log event that mirrors a span at its start time', async () => {
+    const logRecord = (name: string, spanId?: string) => ({
+      timeUnixNano: '1762941600000000000',
+      ...(spanId ? { spanId } : {}),
+      attributes: attrs({ 'event.name': name, 'gen_ai.client.workspace': SLOT_2, 'otelhook.session.id': SID, 'otelhook.provider.id': 'claude-code' }),
+    });
+    await ingestOtelLogsJson({
+      resourceLogs: [
+        {
+          resource: { attributes: attrs({ 'otelhook.provider.id': 'claude-code' }) },
+          scopeLogs: [{ logRecords: [logRecord('span.session', '4'.repeat(16)), logRecord('tool.start')] }],
+        },
+      ],
+    });
+
+    expect(state.bindings).toHaveLength(1);
+    expect(state.trajectory).toHaveLength(2);
+  });
+});
+
 describe('ingestOtelLogsJson — Claude Code api_request', () => {
   it('stores one request observation in the session\'s repository and no trajectory fact', async () => {
     state.knownSessions.set(SID, 'repo-1');
