@@ -1,6 +1,11 @@
 import type { AgentSessionEvent, AgentSessionUsage, AgentTool, UsageSource } from '../harness/schema';
 import { selectSince } from './portal-watermark';
 import {
+  selectAttributedUsage,
+  servesAttributedUsage,
+  type PortalUsageRow,
+} from './portal-attributed-usage';
+import {
   ChannelReadFailure,
   readControlJson,
   readControlPages,
@@ -114,6 +119,14 @@ function maxTimestamp(a: string | null, b: string | null): string | null {
 }
 
 export interface PersistedPortalTelemetry {
+  /**
+   * Mission Control's attributed usage rows for the portal, one array per
+   * provider session (`selectAttributedUsage`); null when this Mission Control
+   * serves no attributed usage (older, or the repo is unknown to it), and the
+   * portal gets the legacy totals in `usage` instead.
+   */
+  attributedUsage: PortalUsageRow[][] | null;
+  /** Legacy stored session totals; empty when `attributedUsage` is set. */
   usage: AgentSessionUsage[];
   events: AgentSessionEvent[];
   maxSyncedAt: string | null;
@@ -129,13 +142,15 @@ export interface PersistedPortalTelemetry {
 export async function fetchPersistedPortalTelemetry(
   repoPath: string,
   apiUrl: string,
-  options?: { since?: string | null },
+  options?: { since?: string | null; userEmail?: string },
 ): Promise<PersistedPortalTelemetry> {
-  const empty = { usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] };
+  const empty = { attributedUsage: null, usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] };
 
   const repo = await resolveControlRepoId(apiUrl, repoPath);
   if (!repo.ok) {
-    return { ...empty, failures: [{ channel: 'repos', reason: repo.error }] };
+    // Unreachable: no usage this time rather than the legacy totals (the
+    // failure holds the watermark).
+    return { ...empty, attributedUsage: [], failures: [{ channel: 'repos', reason: repo.error }] };
   }
   if (!repo.data) return empty;
 
@@ -153,11 +168,20 @@ export async function fetchPersistedPortalTelemetry(
   const failures: ChannelReadFailure[] = [];
   const truncated: string[] = [];
   if (!usageRead.ok) failures.push({ channel: 'usage', reason: usageRead.error });
+  // An unreadable usage view sends no usage this time (the failure holds the
+  // watermark); it never falls back to the legacy totals for an attributing
+  // Mission Control.
+  const attributed =
+    !usageRead.ok
+      ? { sessions: [], maxSyncedAt: null }
+      : servesAttributedUsage(usageRead.data)
+        ? selectAttributedUsage(usageRead.data, since, options?.userEmail)
+        : null;
   if (!eventsRead.ok) failures.push({ channel: 'events', reason: eventsRead.error });
   else if (eventsRead.truncated) truncated.push('events');
 
   const usage = selectSince(
-    usageRead.ok ? (usageRead.data?.usage ?? []) : [],
+    usageRead.ok && !attributed ? (usageRead.data?.usage ?? []) : [],
     since,
     (row) => row.updatedAt ?? row.lastSeenAt,
   );
@@ -174,9 +198,10 @@ export async function fetchPersistedPortalTelemetry(
   const maxSyncedAt =
     eventsRead.ok && eventsRead.truncated
       ? events.maxSyncedAt
-      : maxTimestamp(usage.maxSyncedAt, events.maxSyncedAt);
+      : maxTimestamp(attributed?.maxSyncedAt ?? usage.maxSyncedAt, events.maxSyncedAt);
 
   return {
+    attributedUsage: attributed?.sessions ?? null,
     usage: usage.selected.map(normalizeUsage),
     events: events.selected.map(normalizeEvent),
     maxSyncedAt,

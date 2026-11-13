@@ -85,9 +85,6 @@ vi.mock('@/lib/db', () => ({
 
 import {
   buildUsageView,
-  listReportedUsage,
-  listSessionBindingsPage,
-  listUsageObservationChanges,
   mergeRepeatedObservation,
   recordBindings,
   recordObservations,
@@ -374,81 +371,43 @@ describe('buildUsageView', () => {
     ]);
   });
 
+  it('names the main checkout as no worktree, and stamps each row with when its session last changed', () => {
+    expect(view.unassigned[0]).toMatchObject({ workDir: null, branch: null, changedAt: t(5), sources: ['otel'] });
+    expect(view.rows.find((row) => row.origin === 'legacy')?.changedAt).toEqual(t(-500));
+  });
+
+  it('splits usage in a non-slot worktree from the main checkout, and dates rows by their session\'s latest fact', () => {
+    const split = buildUsageView({
+      repositoryId: 'repo-1',
+      bindings: [
+        {
+          agentTool: 'claude_code',
+          sessionId: 'S1',
+          kind: 'workspace',
+          slotId: 0,
+          occupancyKey: 'worktree:/repo/.claude/worktrees/fix',
+          branch: 'fix',
+          at: t(10),
+        },
+      ],
+      observations: [fact(5), fact(15)],
+      slots: [],
+      attempts: [],
+      legacy: [],
+      reported: [],
+      // A late fact: stored long after the usage it is about.
+      sessionChangedAt: new Map([['claude_code\0S1', t(90)]]),
+    });
+    expect(split.rows).toEqual([]);
+    expect(split.unassigned.map((row) => [row.workDir, row.branch, row.costUsd, row.changedAt])).toEqual([
+      ['/repo/.claude/worktrees/fix', 'fix', 0.5, t(90)],
+      [null, null, 0.5, t(90)],
+    ]);
+  });
+
   it('cross-checks the observed sum against the reported session total', () => {
     expect(view.crossChecks).toEqual([
       expect.objectContaining({ sessionId: 'S1', observedCostUsd: 1.5, reportedCostUsd: 1.6, observationCount: 3 }),
-    ]);
-  });
-});
-
-describe('mirror reads (har-portal)', () => {
-  function stored(id: string, updatedAt: string, observedAt: string) {
-    return {
-      id,
-      repositoryId: 'repo-1',
-      agentTool: 'claude_code',
-      sessionId: 'S1',
-      subagentId: '',
-      observationKey: `req_${id}`,
-      observedAt: new Date(observedAt),
-      granularity: 'request',
-      source: 'otel',
-      producer: 'claude.api_request',
-      model: null,
-      tokensInput: BigInt(1),
-      tokensOutput: BigInt(2),
-      tokensCacheRead: BigInt(0),
-      tokensCacheCreation: BigInt(0),
-      costUsd: new Prisma.Decimal(0.5),
-      reportedTotals: null,
-      updatedAt: new Date(updatedAt),
-    };
-  }
-
-  it('pages observations in change order, so a late fact with an old observedAt is not skipped', async () => {
-    const t = '2026-11-12T10:00:00.000Z';
-    db.tables.observations.push(
-      stored('a', t, t),
-      stored('b', t, t),
-      // Harvested late: observed long before, changed after the cursor.
-      stored('c', '2026-11-12T11:00:00.000Z', '2026-11-11T09:00:00.000Z'),
-    );
-    const first = await listUsageObservationChanges('repo-1', { since: null, sinceId: null, limit: 1 });
-    expect(first.map((row) => row.id)).toEqual(['a']);
-    // A page boundary inside one millisecond loses nothing.
-    const next = await listUsageObservationChanges('repo-1', { since: t, sinceId: 'a', limit: 10 });
-    expect(next.map((row) => row.id)).toEqual(['b', 'c']);
-    expect(next[1]).toMatchObject({
-      observedAt: '2026-11-11T09:00:00.000Z',
-      updatedAt: '2026-11-12T11:00:00.000Z',
-      producer: 'claude.api_request',
-      costUsd: 0.5,
-    });
-  });
-
-  it('pages bindings in storage order with their cursor columns', async () => {
-    await syncSessionBindings('repo-1', {
-      bindings: [{ agentTool: 'codex', sessionId: 'T1', kind: 'launch', slotId: 2, at: AT }],
-    });
-    for (const row of db.tables.bindings) row.createdAt = new Date(AT);
-    const page = await listSessionBindingsPage('repo-1', { since: null, sinceId: null, limit: 10 });
-    expect(page).toEqual([
-      expect.objectContaining({ agentTool: 'codex', sessionId: 'T1', kind: 'launch', slotId: 2, createdAt: AT }),
-    ]);
-    expect(await listSessionBindingsPage('repo-1', { since: AT, sinceId: page[0].id, limit: 10 })).toEqual([]);
-  });
-
-  it('lists provider-reported session totals', async () => {
-    await recordReportedUsage('repo-1', {
-      agentTool: 'claude_code',
-      sessionId: 'S1',
-      costUsd: 1.5,
-      tokensTotal: 300,
-      at: new Date(AT),
-      temporality: 'cumulative',
-    });
-    expect(await listReportedUsage('repo-1')).toEqual([
-      { agentTool: 'claude_code', sessionId: 'S1', costUsd: 1.5, tokensTotal: 300, firstSeenAt: AT, lastSeenAt: AT },
     ]);
   });
 });

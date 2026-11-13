@@ -51,7 +51,6 @@ import {
   selectRunsForSync,
 } from './sync-sources';
 import { collectEnvironmentStatus } from './slot-status';
-import { readGitRemote } from './git-remote';
 import { listValidations } from './validations';
 import {
   listValidationBindings,
@@ -69,13 +68,7 @@ import {
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import { chunkBySerializedSize, maxSyncBatchBytes } from './sync-batches';
-import { resolveControlRepoId, type ChannelReadFailure } from './control-api-read';
-import {
-  buildPortalAttributionBodies,
-  combinePortalWatermark,
-  fetchMissionControlAttribution,
-  type MissionControlAttribution,
-} from './portal-session-attribution';
+import type { ChannelReadFailure } from './control-api-read';
 import { fetchPersistedTrajectory } from './control-persisted-trajectory';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
 import { enrichUsageWithPricing } from '../harness/schema';
@@ -184,11 +177,6 @@ function trajectoryWatermarkTarget(target: PortalTarget): string {
 
 function spansWatermarkTarget(target: PortalTarget): string {
   return `spans:${watermarkKeyForTarget(target)}`;
-}
-
-/** Its own watermark: a portal's first attribution sync takes Mission Control's whole history. */
-function attributionWatermarkTarget(target: PortalTarget): string {
-  return `attribution:${watermarkKeyForTarget(target)}`;
 }
 
 function runsWatermarkTarget(target: string): string {
@@ -429,31 +417,6 @@ async function postPortalIfSupported(
   return true;
 }
 
-/**
- * Post session-attribution facts; true only when the portal took them.
- *
- * Stricter than `postPortalIfSupported`: a portal that predates the route may
- * answer it with its browser-session guard — a redirect to the sign-in page,
- * which `fetch` follows to a 200 HTML page. Only an un-redirected JSON
- * `{ status: 'ok' }` counts as accepted; anything else means "send the legacy
- * per-slot totals", which loses nothing.
- */
-async function postPortalAttribution(
-  target: PortalTarget,
-  body: unknown,
-  dryRun?: boolean,
-): Promise<boolean> {
-  if (dryRun) return true;
-
-  const response = await postPortalWithRefresh(target, '/api/session-attribution', body);
-  if (response.redirected || response.status === 404 || (response.status >= 300 && response.status < 400)) {
-    return false;
-  }
-  if (!response.ok) await throwPortalFailure(response);
-  const payload = (await response.json().catch(() => null)) as { status?: unknown } | null;
-  return payload?.status === 'ok';
-}
-
 function resolvePortalUserEmail(target?: PortalTarget): string | undefined {
   if (target?.email) return target.email;
   return readPortalCredentials()?.email || undefined;
@@ -474,7 +437,8 @@ function modelsFromBreakdown(
 }
 
 interface TelemetryCollection {
-  usage: Record<string, unknown>[];
+  /** One array per provider session: a session's rows always travel in one request. */
+  usage: Array<Array<Record<string, unknown>>>;
   events: Record<string, unknown>[];
   maxSyncedAt: string | null;
   failures: ChannelReadFailure[];
@@ -482,8 +446,6 @@ interface TelemetryCollection {
 }
 
 function describeReadFailures(repoPath: string, failures: ChannelReadFailure[]): string {
-  // The usage and attribution readers both resolve the repo first, so one
-  // unreachable Mission Control would otherwise name `repos` twice.
   const detail = [...new Set(failures.map((f) => `${f.channel} (${f.reason})`))].join(', ');
   return (
     `${path.basename(repoPath)}: could not read ${detail} from Mission Control — ` +
@@ -499,10 +461,13 @@ function describeTruncatedReads(repoPath: string, channels: string[]): string {
 }
 
 /**
- * Usage and events for the portal sync. `legacyUsage` is the pre-ADR-0003
- * per-slot session totals, still sent to a portal (or read from a Mission
- * Control) that predates session attribution; a current portal gets usage as
- * facts on `/api/session-attribution` instead and none here.
+ * Usage and events for the portal sync.
+ *
+ * Usage is Mission Control's: the rows it attributed (slot, main checkout,
+ * non-slot worktree) and priced, sent unchanged (`portal-attributed-usage`).
+ * Only a Mission Control that predates attribution gets the legacy path —
+ * session totals harvested per slot (the lowest slot taking main-checkout
+ * sessions), max-merged with its stored totals and repriced.
  */
 async function collectPortalTelemetry(
   repoPath: string,
@@ -510,15 +475,16 @@ async function collectPortalTelemetry(
   controlApiUrl: string,
   since: string | null,
   portal?: PortalTarget,
-  legacyUsage = true,
 ): Promise<TelemetryCollection> {
   if (!isTelemetryEnabled()) {
     return { usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] };
   }
   try {
     const userEmail = resolvePortalUserEmail(portal);
-    // Legacy portals only: they have no unassigned bucket, so main-checkout
-    // sessions still land on the lowest slot there, as they always have.
+    const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl, { since, userEmail });
+    const legacyUsage = persisted.attributedUsage == null;
+    // Legacy only: no unassigned bucket there, so main-checkout sessions land
+    // on the lowest slot, as they always have.
     const fallbackAgentId =
       slots.length > 0 ? Math.min(...slots.map((slot) => slot.agentId)) : null;
     const liveUsage: AgentSessionUsage[] = !legacyUsage ? [] : slots.flatMap((slot) =>
@@ -563,23 +529,23 @@ async function collectPortalTelemetry(
       })),
     );
 
-    const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl, { since });
-
-    const persistedUsage = legacyUsage ? persisted.usage : [];
-    const harvestedUsage = omitHarvestWhenOtelPresent(liveUsage, persistedUsage);
     const harvestedEvents = omitHarvestEventsWhenOtelPresent(liveEvents, persisted.events);
 
-    const usage = mergePortalUsage(harvestedUsage, persistedUsage).map((row) => {
-      const priced = enrichUsageWithPricing(row);
-      const models = modelsFromBreakdown(
-        priced.modelBreakdown as Record<string, unknown> | undefined,
-      );
-      return {
-        ...priced,
-        ...(userEmail ? { userEmail } : {}),
-        ...(models.length > 0 ? { models } : {}),
-      };
-    });
+    const usage: Array<Array<Record<string, unknown>>> =
+      persisted.attributedUsage ??
+      mergePortalUsage(omitHarvestWhenOtelPresent(liveUsage, persisted.usage), persisted.usage).map((row) => {
+        const priced = enrichUsageWithPricing(row);
+        const models = modelsFromBreakdown(
+          priced.modelBreakdown as Record<string, unknown> | undefined,
+        );
+        return [
+          {
+            ...priced,
+            ...(userEmail ? { userEmail } : {}),
+            ...(models.length > 0 ? { models } : {}),
+          },
+        ];
+      });
 
     const events = dedupePortalEvents(harvestedEvents, persisted.events).map((event) =>
       dropNullFields({ ...event }),
@@ -648,9 +614,10 @@ async function buildPortalPayload(
   since: string | null,
   full = false,
   portal?: PortalTarget,
-  legacyUsage = true,
 ): Promise<{
   syncBody: Record<string, unknown>;
+  /** Usage beyond the first request's share, one request per batch. */
+  usageBatches: Array<Array<Record<string, unknown>>>;
   runs: RunRecord[];
   runsBySource: RunsBySource[];
   events: Record<string, unknown>[];
@@ -677,12 +644,15 @@ async function buildPortalPayload(
     controlApiUrl,
     since,
     portal,
-    legacyUsage,
+  );
+  // A provider session's rows stay in one request: the portal replaces a
+  // session's rows with what one request carries.
+  const [firstUsage = [], ...usageBatches] = chunkBySerializedSize(usage, maxSyncBatchBytes()).map(
+    (sessions) => sessions.flat(),
   );
 
   if (
     full &&
-    legacyUsage &&
     isTelemetryEnabled() &&
     failures.length === 0 &&
     usage.length === 0 &&
@@ -721,7 +691,7 @@ async function buildPortalPayload(
     ...(attempts.length > 0 ? { attempts } : {}),
     ...(validationBindings.length > 0 ? { validationBindings } : {}),
     ...(commitBindings.length > 0 ? { commitBindings } : {}),
-    ...(usage.length > 0 ? { usage } : {}),
+    ...(firstUsage.length > 0 ? { usage: firstUsage } : {}),
   };
 
   const runsBySource = userEmail
@@ -733,6 +703,7 @@ async function buildPortalPayload(
 
   return {
     syncBody,
+    usageBatches,
     runs: mergeRunsBySource(runsBySource),
     runsBySource,
     events,
@@ -977,23 +948,8 @@ async function syncRepoWithPortal(
     }
   }
   const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
-  const attribution = await syncSessionAttributionWithPortal(
-    portal,
-    repoPath,
-    controlApiUrl,
-    full,
-    dryRun,
-  );
-  const { syncBody, runsBySource, events, maxSyncedAt, failures, truncated } =
-    await buildPortalPayload(
-    repoPath,
-    sourcePaths,
-    controlApiUrl,
-    since,
-    full,
-    portal,
-    attribution.legacyUsage,
-  );
+  const { syncBody, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
+    await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal);
   const newRuns = selectRunsForSync(
     runsBySource,
     runsSince,
@@ -1031,6 +987,9 @@ async function syncRepoWithPortal(
     );
   }
 
+  for (const usage of usageBatches) {
+    await postPortal(portal, '/api/sync', { path: repoPath, usage }, dryRun);
+  }
   for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes())) {
     await postPortal(portal, '/api/otel', { path: repoPath, events: batch }, dryRun);
   }
@@ -1041,93 +1000,14 @@ async function syncRepoWithPortal(
   }
 
   const warnings: string[] = [];
-  const allFailures = [...failures, ...attribution.facts.failures];
-  const allTruncated = [...truncated, ...attribution.facts.truncated];
-  if (allFailures.length > 0) warnings.push(describeReadFailures(repoPath, allFailures));
-  if (allTruncated.length > 0) warnings.push(describeTruncatedReads(repoPath, allTruncated));
+  if (failures.length > 0) warnings.push(describeReadFailures(repoPath, failures));
+  if (truncated.length > 0) warnings.push(describeTruncatedReads(repoPath, truncated));
 
   warnings.push(
     ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),
   );
   for (const message of warnings) warn(message);
   return warnings;
-}
-
-let warnedPortalAttributionUnsupported = false;
-
-/**
- * Session → slot attribution for the portal (ADR 0003): send the facts
- * Mission Control holds — bindings, usage observations with the member who ran
- * them, provider-reported session totals — to `/api/session-attribution`.
- *
- * Runs before `/api/sync` so the payload knows which usage to carry: a portal
- * that took the facts gets no per-slot totals (it derives them, and counting
- * both would double the usage); a portal without the route (404), or a Mission
- * Control without the change feed, gets the legacy per-slot totals as before.
- */
-async function syncSessionAttributionWithPortal(
-  portal: PortalTarget,
-  repoPath: string,
-  controlApiUrl: string,
-  full: boolean | undefined,
-  dryRun: boolean | undefined,
-): Promise<{ legacyUsage: boolean; facts: MissionControlAttribution }> {
-  const none: MissionControlAttribution = {
-    available: false,
-    bindings: [],
-    observations: [],
-    reportedUsage: [],
-    maxSyncedAt: null,
-    truncatedAt: null,
-    failures: [],
-    truncated: [],
-  };
-  // A dry run reads nothing and posts nothing; it reports the legacy payload.
-  if (!isTelemetryEnabled() || dryRun) return { legacyUsage: true, facts: none };
-
-  const gitRemote = readGitRemote(resolveHarnessRoot(repoPath));
-  const repoRef = { path: repoPath, ...(gitRemote ? { gitRemote } : {}) };
-  const userEmail = resolvePortalUserEmail(portal);
-
-  const watermarkTarget = attributionWatermarkTarget(portal);
-  const since = full ? null : readScopedPortalWatermark(repoPath, watermarkTarget);
-  const repo = await resolveControlRepoId(controlApiUrl, repoPath);
-  let facts: MissionControlAttribution = repo.ok
-    ? repo.data
-      ? await fetchMissionControlAttribution(controlApiUrl, repo.data, since)
-      : none
-    : { ...none, available: true, failures: [{ channel: 'repos', reason: repo.error }] };
-  if (repo.ok && !facts.available) return { legacyUsage: true, facts };
-  if (facts.failures.length > 0) {
-    // Mission Control could not be read. An empty body still tells whether the
-    // portal takes facts: if it does, it gets no usage this time (the failure
-    // holds the watermark, so the next sync sends it); if not, it keeps
-    // getting the locally harvested per-slot totals, as before.
-    const supported = await postPortalAttribution(
-      portal,
-      buildPortalAttributionBodies(repoRef, none, userEmail, maxSyncBatchBytes())[0],
-      dryRun,
-    );
-    return { legacyUsage: !supported, facts };
-  }
-  if (!facts.available) facts = { ...none, available: true };
-
-  const bodies = buildPortalAttributionBodies(repoRef, facts, userEmail, maxSyncBatchBytes());
-  for (const body of bodies) {
-    const accepted = await postPortalAttribution(portal, body, dryRun);
-    if (accepted) continue;
-    if (!warnedPortalAttributionUnsupported) {
-      warnedPortalAttributionUnsupported = true;
-      warn(
-        `${portal.alias ?? portal.identityKey}: this portal predates session attribution ` +
-          '(no /api/session-attribution); it keeps receiving per-slot usage totals.',
-      );
-    }
-    return { legacyUsage: true, facts: { ...facts, maxSyncedAt: null, truncatedAt: null, truncated: [] } };
-  }
-  const watermark = combinePortalWatermark(null, facts);
-  if (watermark) writePortalWatermark(repoPath, watermarkTarget, watermark);
-  return { legacyUsage: false, facts };
 }
 
 async function syncTrajectoryWithPortal(

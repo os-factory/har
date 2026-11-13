@@ -147,40 +147,6 @@ export interface SessionBindingFilter {
   sessionId?: string;
 }
 
-/** A `(createdAt | updatedAt, id)` page request, as `readControlPages` sends it. */
-export interface KeysetPage {
-  since: string | null;
-  sinceId: string | null;
-  limit: number;
-}
-
-/** Rows strictly after the `(column, id)` cursor, so a page boundary inside one millisecond loses nothing. */
-function keysetAfter(column: 'createdAt' | 'updatedAt', page: KeysetPage) {
-  const since = page.since ? new Date(page.since) : null;
-  if (!since || !Number.isFinite(since.getTime())) return {};
-  const sinceId = page.sinceId?.trim();
-  if (!sinceId) return { [column]: { gt: since } };
-  return { OR: [{ [column]: { gt: since } }, { [column]: since, id: { gt: sinceId } }] };
-}
-
-/**
- * Bindings in storage order, paged on `(createdAt, id)`: how a downstream
- * mirror (har-portal) picks up every binding recorded since its last sync,
- * including late ones whose `at` lies in the past.
- */
-export async function listSessionBindingsPage(repositoryId: string, page: KeysetPage) {
-  const rows = await prisma.sessionSlotBinding.findMany({
-    where: { repositoryId, ...keysetAfter('createdAt', page) },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    take: page.limit,
-  });
-  return rows.map((row) => ({
-    ...bindingView(row),
-    id: row.id,
-    createdAt: row.createdAt.toISOString(),
-  }));
-}
-
 export async function listSessionBindings(repositoryId: string, filter: SessionBindingFilter = {}) {
   const rows = await prisma.sessionSlotBinding.findMany({
     where: { repositoryId, ...filter },
@@ -471,21 +437,6 @@ export async function listUsageObservations(
   return rows.map(observationView);
 }
 
-/**
- * Observations in change order, paged on `(updatedAt, id)`. A mirror reads
- * this rather than the `observedAt` list: a harvest that arrives late carries
- * an old `observedAt`, and a repeat that fills in a provider cost updates a
- * stored row — both must reach the mirror.
- */
-export async function listUsageObservationChanges(repositoryId: string, page: KeysetPage) {
-  const rows = await prisma.usageObservation.findMany({
-    where: { repositoryId, ...keysetAfter('updatedAt', page) },
-    orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
-    take: page.limit,
-  });
-  return rows.map((row) => ({ ...observationView(row), id: row.id, updatedAt: row.updatedAt.toISOString() }));
-}
-
 function observationView(row: {
   agentTool: string;
   sessionId: string;
@@ -566,22 +517,6 @@ export async function recordReportedUsage(repositoryId: string, input: ReportedU
   });
 }
 
-/** Provider-reported session totals, for a mirror's cross-check (one row per session). */
-export async function listReportedUsage(repositoryId: string) {
-  const rows = await prisma.sessionReportedUsage.findMany({
-    where: { repositoryId },
-    orderBy: [{ lastSeenAt: 'asc' }, { id: 'asc' }],
-  });
-  return rows.map((row) => ({
-    agentTool: row.agentTool,
-    sessionId: row.sessionId,
-    costUsd: row.costUsd == null ? null : Number(row.costUsd),
-    tokensTotal: Number(row.tokensTotal),
-    firstSeenAt: row.firstSeenAt.toISOString(),
-    lastSeenAt: row.lastSeenAt.toISOString(),
-  }));
-}
-
 // ---------------------------------------------------------------------------
 // Read model: the projection, merged with legacy session totals
 
@@ -590,12 +525,23 @@ export type UsageRowView = Omit<AgentSessionUsageRow, 'sources'> & {
   sources: string[];
   /** `observations`: derived from the timeline; `legacy`: a stored session total. */
   origin: 'observations' | 'legacy';
+  /**
+   * Last time anything this row is derived from was stored: the latest
+   * observation write or binding of its session (a late harvest or launch
+   * record changes a session's split without a newer `lastSeenAt`). A mirror
+   * re-reads every row of a session whose `changedAt` passed its watermark.
+   */
+  changedAt: Date;
 };
 
 export interface UnassignedUsageView {
   repositoryId: string;
   agentTool: string;
   sessionId: string;
+  /** The non-slot git worktree this usage happened in; null for the main checkout or when only its branch is known. */
+  workDir: string | null;
+  /** That worktree's branch; null for the main checkout. */
+  branch: string | null;
   tokensInput: number;
   tokensOutput: number;
   tokensCacheRead: number;
@@ -604,10 +550,15 @@ export interface UnassignedUsageView {
   costUsd: number | null;
   costSource: string | null;
   observationCount: number;
+  modelBreakdown: Record<string, unknown>;
+  sources: string[];
+  harvestVersion: number;
   /** False when the provider reported only a session total and no unit of it has been observed. */
   itemized: boolean;
   firstSeenAt: Date;
   lastSeenAt: Date;
+  /** See `UsageRowView.changedAt`. */
+  changedAt: Date;
 }
 
 export interface SessionCrossCheck {
@@ -663,6 +614,7 @@ export function slotRowFromBucket(
   bucket: SlotUsageBucket,
   slots: SlotContext[],
   attempts: AttemptContext[],
+  changedAt: Date = bucket.lastSeenAt,
 ): UsageRowView {
   const slot = slots.find(
     (candidate) =>
@@ -698,6 +650,7 @@ export function slotRowFromBucket(
     lastSeenAt: bucket.lastSeenAt,
     updatedAt: bucket.lastSeenAt,
     origin: 'observations',
+    changedAt,
   };
 }
 
@@ -747,6 +700,8 @@ export interface UsageViewInputs {
   attempts: AttemptContext[];
   legacy: AgentSessionUsageRow[];
   reported: Array<{ agentTool: string; sessionId: string; costUsd: number | null; tokensTotal: number; firstSeenAt: Date; lastSeenAt: Date }>;
+  /** Per session (`agentTool\0sessionId`): when its facts last changed; defaults to the row's `lastSeenAt`. */
+  sessionChangedAt?: Map<string, Date>;
 }
 
 /** Pure assembly of the read model from loaded facts (unit-tested). */
@@ -756,14 +711,32 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
   const projection = projectUsage(inputs.bindings, inputs.observations, occupancyEvents);
   const coverage = observationCoverage(inputs.observations);
 
+  const sessionKey = (agentTool: string, sessionId: string) => `${agentTool}\0${sessionId}`;
+  const changedAt = (agentTool: string, sessionId: string, lastSeenAt: Date) => {
+    const changed = inputs.sessionChangedAt?.get(sessionKey(agentTool, sessionId));
+    return changed && changed > lastSeenAt ? changed : lastSeenAt;
+  };
+
   const rows: UsageRowView[] = [
-    ...projection.slots.map((bucket) => slotRowFromBucket(repositoryId, bucket, inputs.slots, inputs.attempts)),
+    ...projection.slots.map((bucket) =>
+      slotRowFromBucket(
+        repositoryId,
+        bucket,
+        inputs.slots,
+        inputs.attempts,
+        changedAt(bucket.agentTool, bucket.sessionId, bucket.lastSeenAt),
+      ),
+    ),
     ...inputs.legacy
       .filter((row) => !legacyRowSuperseded(row, coverage))
-      .map((row) => ({ ...row, sources: toStringArray(row.sources), origin: 'legacy' as const })),
+      .map((row) => ({
+        ...row,
+        sources: toStringArray(row.sources),
+        origin: 'legacy' as const,
+        changedAt: row.updatedAt,
+      })),
   ].sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime());
 
-  const sessionKey = (agentTool: string, sessionId: string) => `${agentTool}\0${sessionId}`;
   const observed = new Map<string, { cost: number | null; count: number }>();
   for (const bucket of [...projection.slots, ...projection.unassigned]) {
     const key = sessionKey(bucket.agentTool, bucket.sessionId);
@@ -777,6 +750,8 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
     repositoryId,
     agentTool: bucket.agentTool,
     sessionId: bucket.sessionId,
+    workDir: bucket.workDir,
+    branch: bucket.branch,
     tokensInput: bucket.tokensInput,
     tokensOutput: bucket.tokensOutput,
     tokensCacheRead: bucket.tokensCacheRead,
@@ -785,9 +760,13 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
     costUsd: bucket.costUsd,
     costSource: bucketCostSource(bucket.costSource),
     observationCount: bucket.observationCount,
+    modelBreakdown: bucket.modelBreakdown,
+    sources: bucket.sources,
+    harvestVersion: USAGE_HARVEST_VERSION,
     itemized: true,
     firstSeenAt: bucket.firstSeenAt,
     lastSeenAt: bucket.lastSeenAt,
+    changedAt: changedAt(bucket.agentTool, bucket.sessionId, bucket.lastSeenAt),
   }));
   // A session the provider reported a total for, with no unit observed: its
   // cost exists but cannot be placed — shown with the unassigned usage.
@@ -797,6 +776,8 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
       repositoryId,
       agentTool: total.agentTool,
       sessionId: total.sessionId,
+      workDir: null,
+      branch: null,
       tokensInput: 0,
       tokensOutput: 0,
       tokensCacheRead: 0,
@@ -805,9 +786,13 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
       costUsd: total.costUsd,
       costSource: total.costUsd == null ? null : 'reported',
       observationCount: 0,
+      modelBreakdown: {},
+      sources: [],
+      harvestVersion: USAGE_HARVEST_VERSION,
       itemized: false,
       firstSeenAt: total.firstSeenAt,
       lastSeenAt: total.lastSeenAt,
+      changedAt: changedAt(total.agentTool, total.sessionId, total.lastSeenAt),
     });
   }
   unassigned.sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime());
@@ -850,6 +835,7 @@ export async function loadUsageView(repositoryId: string): Promise<UsageView> {
         tokensCacheRead: true,
         tokensCacheCreation: true,
         costUsd: true,
+        updatedAt: true,
       },
     }),
     prisma.agentSlot.findMany({
@@ -882,8 +868,34 @@ export async function loadUsageView(repositoryId: string): Promise<UsageView> {
     prisma.sessionReportedUsage.findMany({ where: { repositoryId } }),
   ]);
 
+  const sessionChangedAt = new Map<string, Date>();
+  const touch = (agentTool: string, sessionId: string, at: Date) => {
+    const key = `${agentTool}\0${sessionId}`;
+    const current = sessionChangedAt.get(key);
+    if (!current || at > current) sessionChangedAt.set(key, at);
+  };
+  for (const row of observations) touch(row.agentTool, row.sessionId, row.updatedAt);
+  // A release or launch also closes other sessions' bindings to its slot, so it
+  // changes every session bound to that slot. (Evidence bindings repeat on
+  // every record; they only move their own session.)
+  const sessionsBySlot = new Map<number, Map<string, { agentTool: string; sessionId: string }>>();
+  for (const row of bindings) {
+    const sessions = sessionsBySlot.get(row.slotId) ?? new Map();
+    sessions.set(`${row.agentTool}\0${row.sessionId}`, row);
+    sessionsBySlot.set(row.slotId, sessions);
+  }
+  for (const row of bindings) {
+    touch(row.agentTool, row.sessionId, row.createdAt);
+    if (row.kind !== 'release' && row.kind !== 'launch') continue;
+    for (const other of sessionsBySlot.get(row.slotId)?.values() ?? []) {
+      touch(other.agentTool, other.sessionId, row.createdAt);
+    }
+  }
+  for (const row of reported) touch(row.agentTool, row.sessionId, row.updatedAt);
+
   return buildUsageView({
     repositoryId,
+    sessionChangedAt,
     bindings: bindings.map((row) => ({
       agentTool: row.agentTool,
       sessionId: row.sessionId,

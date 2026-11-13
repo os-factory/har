@@ -821,6 +821,12 @@ export const PRE_DEDUPE_HARVEST_VERSION = 0;
 /** Per-session agent token/cost aggregates for Mission Control. */
 export const AgentSessionUsageSchema = z.object({
   sessionKey: z.string().min(1),
+  /**
+   * The provider's session id (Claude `session.id`, Codex conversation id) on
+   * a row Mission Control attributed (ADR 0003). har-portal replaces all of a
+   * provider session's rows with those one sync carries.
+   */
+  providerSessionId: z.string().min(1).optional(),
   agentId: z.number().int().min(HAR_AGENT_SLOT_MIN),
   agentTool: AgentToolSchema,
   userEmail: z.string().email().optional(),
