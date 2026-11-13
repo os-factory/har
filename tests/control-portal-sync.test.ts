@@ -1271,12 +1271,22 @@ describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
     };
   }
 
-  function attributionFetch(options: { portalAttribution: number; changeFeed?: number }): jest.Mock {
+  function attributionFetch(options: {
+    portalAttribution: number;
+    changeFeed?: number;
+    signInRedirect?: boolean;
+  }): jest.Mock {
     return jest.fn(async (url: string, init?: RequestInit) => {
       const u = String(url);
       const method = init?.method ?? 'GET';
       if (u.includes('portal.example.com')) {
-        if (u.endsWith('/api/session-attribution')) return respond(options.portalAttribution, {});
+        if (u.endsWith('/api/session-attribution')) {
+          if (options.signInRedirect) {
+            // An older portal's session guard: 302 to /sign-in, followed by fetch.
+            return { ...respond(200, {}), redirected: true, json: async () => { throw new Error('html'); } };
+          }
+          return respond(options.portalAttribution, { status: 'ok' });
+        }
         return respond(200, {});
       }
       if (u.endsWith('/api/repos') && method === 'POST') return respond(200, { id: 'mc-1' });
@@ -1382,6 +1392,16 @@ describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
     const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
     expect(syncBody.usage).toHaveLength(1);
     expect(syncBody.usage[0]).toMatchObject({ sessionKey: 'feat/x', userEmail: 'dev@example.com' });
+  });
+
+  it('treats a redirect to sign-in (an older portal) as unsupported', async () => {
+    const fetchMock = attributionFetch({ portalAttribution: 200, signInRedirect: true });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
+    expect(syncBody.usage).toHaveLength(1);
   });
 
   it('keeps sending per-slot totals when Mission Control has no change feed', async () => {

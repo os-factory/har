@@ -408,6 +408,31 @@ async function postPortalIfSupported(
   return true;
 }
 
+/**
+ * Post session-attribution facts; true only when the portal took them.
+ *
+ * Stricter than `postPortalIfSupported`: a portal that predates the route may
+ * answer it with its browser-session guard — a redirect to the sign-in page,
+ * which `fetch` follows to a 200 HTML page. Only an un-redirected JSON
+ * `{ status: 'ok' }` counts as accepted; anything else means "send the legacy
+ * per-slot totals", which loses nothing.
+ */
+async function postPortalAttribution(
+  target: PortalTarget,
+  body: unknown,
+  dryRun?: boolean,
+): Promise<boolean> {
+  if (dryRun) return true;
+
+  const response = await postPortalWithRefresh(target, '/api/session-attribution', body);
+  if (response.redirected || response.status === 404 || (response.status >= 300 && response.status < 400)) {
+    return false;
+  }
+  if (!response.ok) await throwPortalFailure(response);
+  const payload = (await response.json().catch(() => null)) as { status?: unknown } | null;
+  return payload?.status === 'ok';
+}
+
 function resolvePortalUserEmail(target?: PortalTarget): string | undefined {
   if (target?.email) return target.email;
   return readPortalCredentials()?.email || undefined;
@@ -1040,9 +1065,8 @@ async function syncSessionAttributionWithPortal(
     // portal takes facts: if it does, it gets no usage this time (the failure
     // holds the watermark, so the next sync sends it); if not, it keeps
     // getting the locally harvested per-slot totals, as before.
-    const supported = await postPortalIfSupported(
+    const supported = await postPortalAttribution(
       portal,
-      '/api/session-attribution',
       buildPortalAttributionBodies(repoRef, none, userEmail, maxSyncBatchBytes())[0],
       dryRun,
     );
@@ -1052,7 +1076,7 @@ async function syncSessionAttributionWithPortal(
 
   const bodies = buildPortalAttributionBodies(repoRef, facts, userEmail, maxSyncBatchBytes());
   for (const body of bodies) {
-    const accepted = await postPortalIfSupported(portal, '/api/session-attribution', body, dryRun);
+    const accepted = await postPortalAttribution(portal, body, dryRun);
     if (accepted) continue;
     if (!warnedPortalAttributionUnsupported) {
       warnedPortalAttributionUnsupported = true;
