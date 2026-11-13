@@ -7,6 +7,11 @@ import { buildSessionKey } from '../telemetry-env';
 import type { HarvestSlotContext } from './claude';
 import { workspaceMatchesTarget } from '../workspace-path-match';
 import { recordTimeRange, type RecordTimeRange } from './record-time-range';
+import {
+  persistTranscriptIndex,
+  readTranscriptRecords,
+  transcriptWorkspaces,
+} from './transcript-cache';
 
 function codexSessionsRoot(): string {
   return process.env.HAR_CODEX_SESSIONS_DIR
@@ -20,21 +25,6 @@ function walkJsonlFiles(dir: string, out: string[] = []): string[] {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walkJsonlFiles(full, out);
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) out.push(full);
-  }
-  return out;
-}
-
-function readJsonl(filePath: string): unknown[] {
-  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
-  const out: unknown[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{')) continue;
-    try {
-      out.push(JSON.parse(trimmed));
-    } catch {
-      // skip
-    }
   }
   return out;
 }
@@ -122,23 +112,23 @@ export function harvestCodexUsage(slot: HarvestSlotContext): AgentSessionUsage |
   let bestFallbackMtime = 0;
 
   for (const file of files) {
-    const records = readJsonl(file);
-    const extracted = extractCodexTokens(records);
-    if (!extracted.cwd) continue;
+    // Only a transcript whose last workspace is this slot's is parsed for tokens.
+    const { lastWorkspace, mtimeMs: mtime } = transcriptWorkspaces(file);
+    if (!lastWorkspace) continue;
+    const isPrimary = workspaceMatchesTarget(lastWorkspace, primaryTargets);
+    if (!isPrimary && !workspaceMatchesTarget(lastWorkspace, fallbackTargets)) continue;
+    if (isPrimary ? mtime < bestPrimaryMtime : mtime < bestFallbackMtime) continue;
+    const extracted = extractCodexTokens(readTranscriptRecords(file));
     if (extracted.tokensInput + extracted.tokensOutput + extracted.tokensCacheRead === 0) continue;
-    const mtime = fs.statSync(file).mtimeMs;
-    if (workspaceMatchesTarget(extracted.cwd, primaryTargets)) {
-      if (mtime >= bestPrimaryMtime) {
-        bestPrimaryMtime = mtime;
-        bestPrimary = extracted;
-      }
-    } else if (workspaceMatchesTarget(extracted.cwd, fallbackTargets)) {
-      if (mtime >= bestFallbackMtime) {
-        bestFallbackMtime = mtime;
-        bestFallback = extracted;
-      }
+    if (isPrimary) {
+      bestPrimaryMtime = mtime;
+      bestPrimary = extracted;
+    } else {
+      bestFallbackMtime = mtime;
+      bestFallback = extracted;
     }
   }
+  persistTranscriptIndex();
 
   const best = bestPrimary ?? bestFallback;
   if (!best) return null;

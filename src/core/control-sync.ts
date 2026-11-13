@@ -80,6 +80,16 @@ import {
   selectSince,
 } from './portal-watermark';
 import type { AgentSessionEvent, AgentSessionUsage } from '../harness/schema';
+import {
+  isRetryableStatus,
+  retryDelayMs,
+  runWithDeadline,
+  SyncDeadlineError,
+  syncFetch,
+  throwIfSyncAborted,
+} from './sync-request';
+import { readSyncSelection, resolveSyncSelection } from './control-sync-selection';
+import { recordSentObservations, unsentObservations } from './observation-ledger';
 
 export interface ControlSyncOptions {
   repoPath: string;
@@ -247,15 +257,24 @@ async function postForResponse(
 ): Promise<Response> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
+    // Every sync POST is an idempotent upsert, so a fresh attempt is safe.
+    let response: Response | undefined;
     try {
-      return await fetch(url, { method: 'POST', headers, body: payload });
+      response = await syncFetch(url, { method: 'POST', headers, body: payload });
     } catch (err) {
-      // Retry network throws (e.g. a keep-alive socket dropped after a big batch)
-      // — every sync POST is an idempotent upsert, so a fresh connection is safe.
+      // The sync's deadline passed: stop here, retrying cannot help.
+      if (err instanceof SyncDeadlineError) throw err;
+      // Network throws (e.g. a keep-alive socket dropped after a big batch).
       lastErr = err;
-      if (attempt < MAX_FETCH_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
-      }
+    }
+    if (response) {
+      // Rate limits and gateway errors are transient; anything else is the answer.
+      if (!isRetryableStatus(response.status) || attempt === MAX_FETCH_ATTEMPTS) return response;
+      await response.body?.cancel().catch(() => undefined);
+    }
+    if (attempt < MAX_FETCH_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt, response)));
+      throwIfSyncAborted();
     }
   }
   throw new Error(describeFetchFailure(url, Buffer.byteLength(payload, 'utf8'), lastErr));
@@ -341,11 +360,13 @@ async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
 
   let response: Response;
   try {
-    response = await fetch(portalEndpointUrl(target, '/api/cli/refresh'), {
+    response = await syncFetch(portalEndpointUrl(target, '/api/cli/refresh'), {
       method: 'POST',
       headers: { Authorization: `Bearer ${target.refreshToken}` },
     });
-  } catch {
+  } catch (err) {
+    // Out of time is not an auth problem — don't let it read as a rejected token.
+    if (err instanceof SyncDeadlineError) throw err;
     return false;
   }
   if (!response.ok) return false;
@@ -765,14 +786,15 @@ export async function syncReposWithControl(options: {
 
   for (const repoPath of options.repoPaths) {
     try {
-      const outcome = await withTimeout(
-        syncRepoWithControl({
-          repoPath,
-          apiUrl,
-          dryRun: options.dryRun,
-          cloud: options.cloud,
-          full: options.full,
-        }),
+      const outcome = await runWithDeadline(
+        () =>
+          syncRepoWithControl({
+            repoPath,
+            apiUrl,
+            dryRun: options.dryRun,
+            cloud: options.cloud,
+            full: options.full,
+          }),
         EXPLICIT_SYNC_TIMEOUT_MS,
         'control sync',
       );
@@ -792,6 +814,20 @@ export async function syncReposWithControl(options: {
   return { synced, failed, incomplete, results };
 }
 
+/**
+ * The repos an unattended all-repos sync may touch: the selection saved by
+ * `har control sync` when there is one (the same set that command syncs when it
+ * does not prompt), else every discovered repo.
+ */
+function selectedRepos(discovered: string[]): string[] {
+  return resolveSyncSelection({
+    discovered,
+    stored: readSyncSelection(),
+    forceSelect: false,
+    isTTY: false,
+  }).toSync;
+}
+
 export async function syncAllKnownReposWithControl(options?: {
   apiUrl?: string;
   cwd?: string;
@@ -803,7 +839,7 @@ export async function syncAllKnownReposWithControl(options?: {
     return { synced: 0, failed: 0 };
   }
 
-  const repoPaths = await discoverHarRepos({ apiUrl, cwd: options?.cwd });
+  const repoPaths = selectedRepos(await discoverHarRepos({ apiUrl, cwd: options?.cwd }));
   const { synced, failed } = await syncReposWithControl({ repoPaths, apiUrl });
   return { synced, failed };
 }
@@ -826,7 +862,7 @@ export async function registerRepoWithControl(
 
   if (options.dryRun) return null;
 
-  const response = await fetch(`${apiUrl}/api/repos`, {
+  const response = await syncFetch(`${apiUrl}/api/repos`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -877,7 +913,7 @@ async function syncRepoWithLocalControl(
   const repoId = registerResult?.id;
 
   if (!repoId && !dryRun) {
-    const listResponse = await fetch(`${apiUrl}/api/repos`);
+    const listResponse = await syncFetch(`${apiUrl}/api/repos`);
     if (!listResponse.ok) throw new Error('Failed to list repos from Control API');
     const repos = (await listResponse.json()) as { id: string; path: string }[];
     const existing = repos.find((r) => path.resolve(r.path) === repoPath);
@@ -1068,7 +1104,7 @@ export async function syncRepoWithControl(
     const status = collectEnvironmentStatusForSync(repoPath, sourcePaths);
     const cloudWork = collectWorkUnitsForSync(sourcePaths);
     const harnessRoot = resolveHarnessRoot(repoPath);
-    const response = await fetch(`${process.env.HAR_CLOUD_API_URL}/api/sync`, {
+    const response = await syncFetch(`${process.env.HAR_CLOUD_API_URL}/api/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1091,23 +1127,54 @@ export async function syncRepoWithControl(
     return { warnings: [] };
   }
 
-  await syncRepoWithLocalControl({ ...options, repoPath, workspacePath, apiUrl });
+  // A Mission Control failure (one bad endpoint, e.g. a 400 on commit
+  // bindings) must not also cost the repo its HQ sync: HQ still gets its runs
+  // and slots, and the error is reported once both legs ran.
+  let localError: unknown;
+  try {
+    await syncRepoWithLocalControl({ ...options, repoPath, workspacePath, apiUrl });
+  } catch (err) {
+    if (err instanceof SyncDeadlineError) throw err;
+    localError = err;
+  }
 
-  if (!isRepoPortalSyncEnabled(repoPath)) return { warnings: [] };
+  const portal = isRepoPortalSyncEnabled(repoPath) ? resolvePortalTarget(repoPath) : null;
+  let warnings: string[] = [];
+  let portalError: unknown;
+  if (portal) {
+    try {
+      warnings = await syncRepoWithPortal({ ...options, repoPath, workspacePath }, apiUrl, portal);
+    } catch (err) {
+      if (err instanceof SyncDeadlineError) throw err;
+      portalError = err;
+    }
+  }
 
-  const portal = resolvePortalTarget(repoPath);
-  if (!portal) return { warnings: [] };
+  const failures = [
+    ...(localError !== undefined ? [`Mission Control: ${errorMessage(localError)}`] : []),
+    ...(portalError !== undefined ? [`HQ: ${errorMessage(portalError)}`] : []),
+  ];
+  if (failures.length > 0) {
+    const landed =
+      portal && portalError === undefined
+        ? ' (HQ sync completed)'
+        : localError === undefined && portal
+          ? ' (Mission Control sync completed)'
+          : '';
+    throw new Error(`${failures.join('; ')}${landed}`);
+  }
+  return { warnings };
+}
 
-  return {
-    warnings: await syncRepoWithPortal({ ...options, repoPath, workspacePath }, apiUrl, portal),
-  };
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 let warnedSessionBindingsUnsupported = false;
 
 async function fetchRemoteSessionBindings(apiUrl: string, repoId: string) {
   try {
-    const response = await fetch(`${apiUrl}/api/repos/${repoId}/session-bindings`);
+    const response = await syncFetch(`${apiUrl}/api/repos/${repoId}/session-bindings`);
     if (!response.ok) return [];
     return parseRemoteSessionBindings(await response.json());
   } catch {
@@ -1157,17 +1224,25 @@ export async function syncSessionAttributionWithControl(
     }
 
     if (!harvest) return true;
-    // Posted even when empty: an older Mission Control answers 404, which is
-    // how the caller knows to fall back to per-slot totals.
-    const batches = chunkBySerializedSize(observations, maxSyncBatchBytes());
-    for (const batch of batches.length > 0 ? batches : [[]]) {
-      const body = SyncUsageObservationsInputSchema.parse({ observations: batch });
-      const accepted = await postJsonIfSupported(
-        `${apiUrl}/api/repos/${repoId}/usage-observations`,
-        body,
-        dryRun,
-      );
-      if (!accepted) return false;
+    // Only what Mission Control has not accepted in this form yet. Posted even
+    // when empty: an older Mission Control answers 404, which is how the caller
+    // knows to fall back to per-slot totals.
+    const unsent = unsentObservations(apiUrl, repoId, observations);
+    const batches = chunkBySerializedSize(unsent, maxSyncBatchBytes());
+    const accepted: typeof observations = [];
+    try {
+      for (const batch of batches.length > 0 ? batches : [[]]) {
+        const body = SyncUsageObservationsInputSchema.parse({ observations: batch });
+        const supported = await postJsonIfSupported(
+          `${apiUrl}/api/repos/${repoId}/usage-observations`,
+          body,
+          dryRun,
+        );
+        if (!supported) return false;
+        accepted.push(...batch);
+      }
+    } finally {
+      if (!dryRun) recordSentObservations(apiUrl, repoId, observations, accepted);
     }
     return true;
   } catch (err) {
@@ -1324,16 +1399,12 @@ async function syncRepoRunsAndSlots(
 const SYNC_TIMEOUT_MS = 15_000;
 const EXPLICIT_SYNC_TIMEOUT_MS = 120_000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: NodeJS.Timeout;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
 /**
  * Best-effort sync after harness operations. Never rejects.
+ *
+ * Only a repo in the saved `har control sync` selection is synced (every repo
+ * when there is none). A failure is reported on one stderr line — silently
+ * dropping it left HQ stale with no sign of why.
  *
  * Callers MUST await this before returning control to the CLI: commands call
  * process.exit() as soon as their work resolves, which kills any still-pending
@@ -1343,8 +1414,15 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
   if (process.env.HAR_CONTROL_DISABLED === 'true' || process.env.NODE_ENV === 'test') return;
 
   const verbose = process.env.HAR_CONTROL_VERBOSE === 'true';
+  const canonical = canonicalizeControlRepoPath(repoPath);
   try {
     recordRepoForControlSync(repoPath);
+    if (selectedRepos([canonical]).length === 0) {
+      if (verbose) {
+        process.stderr.write(`[har control] sync skipped: ${canonical} is not in the sync selection\n`);
+      }
+      return;
+    }
 
     const apiUrl = getControlApiUrl();
     if (!(await isControlApiReachable(apiUrl))) {
@@ -1353,17 +1431,16 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
       }
       return;
     }
-    const canonical = canonicalizeControlRepoPath(repoPath);
-    await withTimeout(
-      syncRepoWithControl({ repoPath: canonical }),
+    await runWithDeadline(
+      () => syncRepoWithControl({ repoPath: canonical }),
       SYNC_TIMEOUT_MS,
       'control sync',
     );
   } catch (err: unknown) {
-    if (verbose) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[har control] sync skipped: ${message}\n`);
-    }
+    process.stderr.write(
+      `[har control] sync of ${path.basename(canonical)} failed: ${errorMessage(err)} — ` +
+        'run `har control sync` to retry\n',
+    );
   }
 }
 
@@ -1376,7 +1453,7 @@ async function syncRunWithLocalControl(
   let repoId = registerResult?.id;
 
   if (!repoId) {
-    const listResponse = await fetch(`${apiUrl}/api/repos`);
+    const listResponse = await syncFetch(`${apiUrl}/api/repos`);
     if (!listResponse.ok) return;
     const repos = (await listResponse.json()) as { id: string; path: string }[];
     repoId = repos.find((r) => path.resolve(r.path) === repoPath)?.id;
@@ -1393,6 +1470,7 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
 
   const apiUrl = getControlApiUrl();
   const canonical = canonicalizeControlRepoPath(repoPath);
+  if (selectedRepos([canonical]).length === 0) return;
 
   try {
     if (await isControlApiReachable(apiUrl)) {
