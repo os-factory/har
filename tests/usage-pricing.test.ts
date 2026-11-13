@@ -218,3 +218,22 @@ describe('enrichUsageWithPricing', () => {
     expect(enrichUsageWithPricing(row)).toBe(row);
   });
 });
+
+describe('Claude Opus 5.5 pricing', () => {
+  // Real `claude_code.api_request` events: the cost Claude Code reported for
+  // each request. genai-prices < 0.2 matched `claude-opus-5-5` by prefix to
+  // Opus 5 and estimated about twice these. The remaining gap is cache writes:
+  // Claude Code writes the 1-hour cache (2x input), genai-prices prices the
+  // 5-minute one (1.25x input), so write-heavy requests read a few % low.
+  const reported = [
+    { tokensInput: 2, tokensCacheRead: 358_381, tokensCacheCreation: 315, tokensOutput: 383, costUsd: 0.0818642 },
+    { tokensInput: 2, tokensCacheRead: 172_535, tokensCacheCreation: 634, tokensOutput: 256, costUsd: 0.044707 },
+    { tokensInput: 2, tokensCacheRead: 114_228, tokensCacheCreation: 1_102, tokensOutput: 810, costUsd: 0.0478696 },
+  ];
+
+  it.each(reported)('estimates within 10% of the reported cost ($costUsd)', ({ costUsd, ...totals }) => {
+    const estimate = estimateModelCostUsd('claude-opus-5-5', totals, 'claude_code');
+    expect(estimate).not.toBeNull();
+    expect(Math.abs(estimate! - costUsd) / costUsd).toBeLessThan(0.1);
+  });
+});
