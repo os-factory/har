@@ -14,8 +14,7 @@ export async function syncCommitBindings(repositoryId: string, input: unknown) {
       refs: toJson(refs),
       sourceCreatedAt: new Date(createdAt),
     };
-    // Each worktree that validates a commit writes its own binding, so one
-    // commit can arrive under several bindingIds; the last one synced wins.
+    // Each worktree writes its own binding for a commit; the last one synced wins.
     await prisma.validationCommitBinding.upsert({
       where: {
         repositoryId_treeHash_commitSha: {
