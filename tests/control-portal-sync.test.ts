@@ -313,7 +313,12 @@ describe('syncRepoWithControl — portal push', () => {
         status: unavailable ? 503 : 200,
         headers: new Headers(unavailable ? { 'retry-after': '0' } : {}),
         text: async (): Promise<string> => '',
-        json: async (): Promise<unknown> => (register ? { id: 'local-repo-1' } : {}),
+        json: async (): Promise<unknown> => {
+          if (register) return { id: 'local-repo-1' };
+          // Mission Control lists repos as an array; this one does not know /repo/x.
+          if (String(url).endsWith('/api/repos')) return [];
+          return {};
+        },
       };
     });
     (global as unknown as { fetch: unknown }).fetch = fetchMock;

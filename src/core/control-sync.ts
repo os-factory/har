@@ -482,7 +482,9 @@ interface TelemetryCollection {
 }
 
 function describeReadFailures(repoPath: string, failures: ChannelReadFailure[]): string {
-  const detail = failures.map((f) => `${f.channel} (${f.reason})`).join(', ');
+  // The usage and attribution readers both resolve the repo first, so one
+  // unreachable Mission Control would otherwise name `repos` twice.
+  const detail = [...new Set(failures.map((f) => `${f.channel} (${f.reason})`))].join(', ');
   return (
     `${path.basename(repoPath)}: could not read ${detail} from Mission Control — ` +
     'that telemetry is missing from this sync and its watermark is held, so the next sync retries it.'
