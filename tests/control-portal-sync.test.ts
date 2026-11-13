@@ -1005,7 +1005,6 @@ describe('syncRepoWithControl — token refresh on 401', () => {
 
   function storedCreds(overrides: Record<string, unknown> = {}): void {
     connectPortal({
-      alias: 'test',
       portalUrl: 'https://portal.example.com',
       workspaceId: 'ws_test',
       token: 'har_ingest_old',

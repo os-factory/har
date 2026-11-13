@@ -549,9 +549,8 @@ async function handleSync(argv: {
   if (!argv.json) {
     header('har control sync');
     for (const repoPath of repoPaths) {
-      const resolved = resolvePortalTarget({ repoPath });
-      if (!resolved) continue;
-      info(`${repoPath} → ${describePortalTarget(resolved.target)}`);
+      const portal = resolvePortalTarget(repoPath);
+      if (portal) info(`${repoPath} → ${describePortalTarget(portal)}`);
     }
   }
 

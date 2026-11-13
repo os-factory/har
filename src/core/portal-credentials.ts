@@ -69,7 +69,6 @@ export function readPortalCredentials(): PortalCredentials | null {
 /** @deprecated Prefer connectPortal. Replaces the active org connection like any connect. */
 export function writePortalCredentials(creds: PortalCredentials): void {
   connectPortal({
-    alias: creds.targetAlias,
     portalUrl: creds.portalUrl,
     workspaceId: creds.workspaceId,
     workspace: creds.workspace,

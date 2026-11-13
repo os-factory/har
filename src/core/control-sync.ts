@@ -1061,15 +1061,11 @@ export async function syncRepoWithControl(
 
   if (!isRepoPortalSyncEnabled(repoPath)) return { warnings: [] };
 
-  const resolved = resolvePortalTarget({ repoPath });
-  if (!resolved) return { warnings: [] };
+  const portal = resolvePortalTarget(repoPath);
+  if (!portal) return { warnings: [] };
 
   return {
-    warnings: await syncRepoWithPortal(
-      { ...options, repoPath, workspacePath },
-      apiUrl,
-      resolved.target,
-    ),
+    warnings: await syncRepoWithPortal({ ...options, repoPath, workspacePath }, apiUrl, portal),
   };
 }
 
@@ -1284,11 +1280,10 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
     process.stderr.write(`[har control] run sync skipped: ${message}\n`);
   }
 
-  const resolved = resolvePortalTarget({ repoPath: canonical });
-  if (!resolved) return;
+  const portal = resolvePortalTarget(canonical);
+  if (!portal) return;
   if (!isRepoPortalSyncEnabled(canonical)) return;
 
-  const portal = resolved.target;
   try {
     if (!kernoApiUrlFor(portal.url) && !(await isControlApiReachable(portal.url))) return;
     await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });

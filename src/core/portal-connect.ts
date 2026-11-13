@@ -15,8 +15,6 @@ export interface PortalConnectInput {
   portalUrl: string;
   apiKey?: string;
   repoPath?: string;
-  /** Optional alias override. */
-  alias?: string;
 }
 
 export interface PortalConnectResult {
@@ -48,7 +46,6 @@ function workspaceIdForApiKey(token: string): string {
 export async function runPortalConnect(input: PortalConnectInput): Promise<PortalConnectResult> {
   const connected = input.apiKey
     ? connectPortal({
-        alias: input.alias,
         portalUrl: input.portalUrl,
         workspaceId: workspaceIdForApiKey(input.apiKey),
         token: input.apiKey,
@@ -68,7 +65,6 @@ async function connectViaBrowser(input: PortalConnectInput): Promise<ConnectPort
     repos: listRegisteredReposForConnect(input.repoPath),
   });
   return connectPortal({
-    alias: input.alias,
     portalUrl: input.portalUrl,
     workspaceId: creds.workspaceId,
     workspace: creds.workspace,

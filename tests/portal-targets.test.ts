@@ -6,12 +6,10 @@ import { getPortalTarget } from '../src/core/control-config';
 import {
   attachRepoToPortal,
   connectPortal,
-  detachRepoFromPortal,
   disconnectPortal,
   getActivePortalConnection,
   isPortalTargetActive,
   isPortalTrajectoryEnabledForTarget,
-  isRepoAttachedToPortal,
   listAttachedRepos,
   migrateLegacyCredentialsIfNeeded,
   portalTargetIdentityKey,
@@ -104,7 +102,7 @@ describe('one org connection at a time', () => {
 
     expect(switched.detachedRepos).toEqual([repo]);
     expect(listAttachedRepos()).toEqual([]);
-    expect(resolvePortalTarget({ repoPath: repo })).toBeNull();
+    expect(resolvePortalTarget(repo)).toBeNull();
   });
 
   it('keeps attached repos and trajectory setting on a same-org reconnect', () => {
@@ -121,7 +119,7 @@ describe('one org connection at a time', () => {
     expect(getActivePortalConnection()).toMatchObject({ token: 'new', trajectoryForwarding: true });
   });
 
-  it('attaches and detaches repos on the active connection only', () => {
+  it('attaches repos to the active connection only, once each', () => {
     const repo = makeRepo('app');
     expect(() => attachRepoToPortal(repo)).toThrow(/har hq connect/);
 
@@ -129,10 +127,6 @@ describe('one org connection at a time', () => {
     attachRepoToPortal(repo);
     attachRepoToPortal(repo);
     expect(listAttachedRepos()).toEqual([repo]);
-    expect(isRepoAttachedToPortal(repo)).toBe(true);
-
-    expect(detachRepoFromPortal(repo)).toBe(true);
-    expect(isRepoAttachedToPortal(repo)).toBe(false);
   });
 
   it('disconnect removes the connection, its repos and the legacy credentials file', () => {
@@ -248,7 +242,7 @@ describe('legacy credentials migration', () => {
 
     migrateLegacyCredentialsIfNeeded();
 
-    expect(isRepoAttachedToPortal(repoPath)).toBe(true);
+    expect(resolvePortalTarget(repoPath)?.token).toBe('legacy-token');
   });
 });
 
@@ -272,22 +266,20 @@ describe('resolvePortalTarget', () => {
     process.env.HAR_PORTAL_URL = 'https://env.example.com/';
     process.env.HAR_PORTAL_TOKEN = 'env-token';
 
-    const resolved = resolvePortalTarget({ repoPath: makeRepo('any') });
-
-    expect(resolved?.source).toBe('env');
-    expect(resolved?.target).toMatchObject({ url: 'https://env.example.com', token: 'env-token' });
+    expect(resolvePortalTarget(makeRepo('any'))).toEqual({
+      url: 'https://env.example.com',
+      token: 'env-token',
+      identityKey: 'https://env.example.com',
+    });
   });
 
   it('only resolves the connection for attached repos', () => {
     const repo = makeRepo('app');
     connectOrg('org_a');
-    expect(resolvePortalTarget({ repoPath: repo })).toBeNull();
+    expect(resolvePortalTarget(repo)).toBeNull();
 
     attachRepoToPortal(repo);
-    expect(resolvePortalTarget({ repoPath: repo })).toMatchObject({
-      source: 'connection',
-      target: { workspaceId: 'org_a' },
-    });
+    expect(resolvePortalTarget(repo)).toMatchObject({ workspaceId: 'org_a', alias: 'org_a' });
   });
 });
 
@@ -308,7 +300,7 @@ describe('isPortalTargetActive', () => {
   it('accepts the env override only while it is still set', () => {
     process.env.HAR_PORTAL_URL = 'https://env.example.com';
     process.env.HAR_PORTAL_TOKEN = 'env-token';
-    const target = resolvePortalTarget()!.target;
+    const target = resolvePortalTarget()!;
     expect(isPortalTargetActive(target)).toBe(true);
 
     delete process.env.HAR_PORTAL_URL;

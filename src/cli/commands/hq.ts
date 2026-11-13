@@ -7,7 +7,7 @@ import {
   type PortalUrlSource,
 } from '../../core/control-config';
 import { runPortalConnect } from '../../core/portal-connect';
-import { attachReposToPortal, planRepoWorkspaceMap } from '../../core/portal-repo-map';
+import { attachReposToPortal, unattachedRegisteredRepos } from '../../core/portal-repo-map';
 import {
   disconnectPortal,
   displayPortalTargetLabel,
@@ -62,7 +62,6 @@ export const hqCommand = {
               repo: string;
               json: boolean;
               yes: boolean;
-              alias?: string;
               deprecated?: boolean;
             },
           ),
@@ -122,20 +121,23 @@ async function resolveConnectPortalUrl(
   return resolvePortalUrl(url);
 }
 
-async function promptExtraRepoAttachments(currentRepo: string | null): Promise<string[]> {
-  const plan = planRepoWorkspaceMap({ currentRepo });
-  if (plan.kind === 'none') return [];
+async function promptExtraRepoAttachments(
+  currentRepo: string | null,
+  orgLabel: string,
+): Promise<string[]> {
+  const repos = unattachedRegisteredRepos(currentRepo);
+  if (repos.length === 0) return [];
 
-  const noun = plan.repos.length === 1 ? 'repository' : 'repositories';
-  info(`${plan.repos.length} other registered ${noun}:`);
-  for (const repoPath of plan.repos) info(`  ${repoPath}`);
+  const noun = repos.length === 1 ? 'repository' : 'repositories';
+  info(`${repos.length} other registered ${noun}:`);
+  for (const repoPath of repos) info(`  ${repoPath}`);
 
   const { selected } = await inquirer.prompt<{ selected: string[] }>([
     {
       type: 'checkbox',
       name: 'selected',
-      message: `Attach which of these ${plan.repos.length} ${noun} to ${plan.workspaceLabel}?`,
-      choices: plan.repos.map((repoPath) => ({
+      message: `Attach which of these ${repos.length} ${noun} to ${orgLabel}?`,
+      choices: repos.map((repoPath) => ({
         name: repoPath,
         value: repoPath,
         checked: true,
@@ -151,7 +153,6 @@ export async function handleHqConnect(argv: {
   repo?: string;
   json?: boolean;
   yes?: boolean;
-  alias?: string;
   deprecated?: boolean;
 }): Promise<void> {
   if (argv.deprecated) {
@@ -169,7 +170,6 @@ export async function handleHqConnect(argv: {
       portalUrl,
       apiKey: argv.apiKey,
       repoPath: argv.repo ?? '.',
-      alias: argv.alias,
     });
     const label = displayPortalTargetLabel(record);
     if (argv.json) {
@@ -208,7 +208,7 @@ export async function handleHqConnect(argv: {
     }
 
     if (!argv.yes && isInteractive()) {
-      const extra = await promptExtraRepoAttachments(attachedRepo);
+      const extra = await promptExtraRepoAttachments(attachedRepo, label);
       for (const repoPath of extra) {
         success(`Attached ${repoPath}`);
       }

@@ -2,12 +2,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { attachReposToPortal, planRepoWorkspaceMap } from '../src/core/portal-repo-map';
-import {
-  connectPortal,
-  isRepoAttachedToPortal,
-  type PortalTargetRecord,
-} from '../src/core/portal-targets';
+import { attachReposToPortal, unattachedRegisteredRepos } from '../src/core/portal-repo-map';
+import { connectPortal, listAttachedRepos } from '../src/core/portal-targets';
 
 const ENV_KEYS = ['HAR_PORTAL_TARGETS_PATH', 'HAR_CONTROL_REGISTRY_PATH', 'HAR_CREDENTIALS_PATH'] as const;
 
@@ -24,69 +20,28 @@ afterEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];
 });
 
-const ACME: PortalTargetRecord = {
-  alias: 'acme',
-  portalUrl: 'https://app.harhq.com',
-  workspaceId: 'org-1',
-  workspaceName: 'Acme',
-  token: 't',
-  createdAt: new Date().toISOString(),
-};
-
-describe('planRepoWorkspaceMap', () => {
-  it('is a no-op without a connection', () => {
-    const current = path.join(tmpDir, 'current');
-    const other = path.join(tmpDir, 'other');
-    expect(
-      planRepoWorkspaceMap({
-        currentRepo: current,
-        registeredRepos: [current, other],
-        connection: null,
-      }),
-    ).toEqual({ kind: 'none' });
-  });
-
-  it('is a no-op when there are no other registered repos', () => {
-    const repo = path.join(tmpDir, 'only');
-    expect(
-      planRepoWorkspaceMap({
-        currentRepo: repo,
-        registeredRepos: [repo],
-        connection: ACME,
-        attachedRepos: [],
-      }),
-    ).toEqual({ kind: 'none' });
-  });
-
-  it('offers the other, not-yet-attached repos for the one org', () => {
+describe('unattachedRegisteredRepos', () => {
+  it('offers registered repos other than the current one and those already attached', () => {
     const current = path.join(tmpDir, 'current');
     const other = path.join(tmpDir, 'other');
     const attached = path.join(tmpDir, 'attached');
-    const plan = planRepoWorkspaceMap({
-      currentRepo: current,
-      registeredRepos: [current, other, attached],
-      connection: ACME,
-      attachedRepos: [attached],
-    });
-    expect(plan).toEqual({
-      kind: 'attach-more',
-      workspaceAlias: 'acme',
-      workspaceLabel: 'Acme @ app.harhq.com',
-      repos: [other],
-    });
+    expect(unattachedRegisteredRepos(current, [current, other, attached, other], [attached])).toEqual([
+      other,
+    ]);
+  });
+
+  it('is empty when there is nothing else to offer', () => {
+    const repo = path.join(tmpDir, 'only');
+    expect(unattachedRegisteredRepos(repo, [repo], [])).toEqual([]);
   });
 });
 
 describe('attachReposToPortal', () => {
   it('attaches the selected repos to the active connection', () => {
-    connectPortal({ alias: 'acme', portalUrl: 'https://app.harhq.com', workspaceId: 'org-1', token: 't' });
-    const keep = path.join(tmpDir, 'keep');
-    const skip = path.join(tmpDir, 'skip');
-    fs.mkdirSync(keep, { recursive: true });
-    fs.mkdirSync(skip, { recursive: true });
+    connectPortal({ portalUrl: 'https://app.harhq.com', workspaceId: 'org-1', token: 't' });
+    const keep = fs.realpathSync(fs.mkdtempSync(path.join(tmpDir, 'keep-')));
 
-    expect(attachReposToPortal([keep])).toHaveLength(1);
-    expect(isRepoAttachedToPortal(keep)).toBe(true);
-    expect(isRepoAttachedToPortal(skip)).toBe(false);
+    expect(attachReposToPortal([keep])).toEqual([keep]);
+    expect(listAttachedRepos()).toEqual([keep]);
   });
 });

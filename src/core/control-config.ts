@@ -4,7 +4,7 @@ import {
   getActivePortalConnection,
   normalizePortalUrl,
   recordToPortalTarget,
-  resolvePortalTargetForRepo,
+  resolvePortalTarget,
   type PortalTargetResolution,
 } from './portal-targets';
 
@@ -45,7 +45,7 @@ export function resolvePortalUrl(explicit?: string): {
 }
 
 export function getPortalTarget(repoPath?: string): PortalTarget | null {
-  const resolved = resolvePortalTargetForRepo(repoPath);
+  const resolved = resolvePortalTarget(repoPath);
   if (resolved) return resolved;
 
   if (process.env.HAR_CLOUD_API_URL && process.env.HAR_CLOUD_API_KEY) {

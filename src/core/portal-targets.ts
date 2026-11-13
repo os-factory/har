@@ -58,9 +58,6 @@ export interface PortalTargetResolution {
   email?: string;
 }
 
-/** `env`: HAR_PORTAL_URL + HAR_PORTAL_TOKEN override. `connection`: the saved org connection. */
-export type PortalTargetSource = 'env' | 'connection';
-
 const ALIAS_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 
 export function normalizePortalUrl(url: string): string {
@@ -152,7 +149,9 @@ function writeState(state: PortalConnectionState): void {
   fs.chmodSync(file, 0o600);
 }
 
-const EMPTY_STATE: PortalConnectionState = { connection: null, attachedRepos: [] };
+function emptyState(): PortalConnectionState {
+  return { connection: null, attachedRepos: [] };
+}
 
 /** Read the active connection, collapsing (and persisting) a multi-connection store. */
 export function readPortalConnectionState(): PortalConnectionState {
@@ -160,10 +159,10 @@ export function readPortalConnectionState(): PortalConnectionState {
   const file = portalTargetsPath();
   let raw: unknown;
   try {
-    if (!fs.existsSync(file)) return { ...EMPTY_STATE };
+    if (!fs.existsSync(file)) return emptyState();
     raw = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
-    return { ...EMPTY_STATE };
+    return emptyState();
   }
 
   const state = collapsePortalTargetsFile(raw);
@@ -187,10 +186,6 @@ export function listAttachedRepos(): string[] {
   return readPortalConnectionState().attachedRepos;
 }
 
-export function isRepoAttachedToPortal(repoPath: string): boolean {
-  return readPortalConnectionState().attachedRepos.includes(canonicalizeControlRepoPath(repoPath));
-}
-
 export function resolveWorkspaceId(input: {
   workspaceId?: string;
   workspace?: string;
@@ -204,25 +199,19 @@ export function resolveWorkspaceId(input: {
   return 'legacy:default';
 }
 
-export function deriveTargetAlias(input: {
-  alias?: string;
+/** Internal tag for the connection (kept on disk for older CLIs). */
+function deriveTargetAlias(input: {
   portalUrl: string;
   workspace?: string;
   workspaceSlug?: string;
   workspaceName?: string;
 }): string {
-  if (input.alias?.trim()) {
-    const candidate = sanitizeAlias(input.alias.trim());
-    if (!candidate) throw new Error('Target alias must be alphanumeric (dots, dashes, underscores allowed).');
-    return candidate;
-  }
-
-  const slugBase =
+  return (
     sanitizeAlias(input.workspaceSlug ?? input.workspace ?? '') ||
     sanitizeAlias(input.workspaceName ?? '') ||
-    sanitizeAlias(new URL(input.portalUrl).hostname.replace(/\./g, '-'));
-
-  return slugBase || 'default';
+    sanitizeAlias(new URL(input.portalUrl).hostname.replace(/\./g, '-')) ||
+    'default'
+  );
 }
 
 function sanitizeAlias(raw: string): string {
@@ -234,15 +223,6 @@ function sanitizeAlias(raw: string): string {
     .slice(0, 64);
   if (!normalized || !ALIAS_PATTERN.test(normalized)) return '';
   return normalized;
-}
-
-export function validateTargetAlias(alias: string): void {
-  const sanitized = sanitizeAlias(alias);
-  if (!sanitized || sanitized !== alias.trim().toLowerCase()) {
-    throw new Error(
-      'Target alias must start with a letter or number and contain only letters, numbers, dots, dashes, or underscores.',
-    );
-  }
 }
 
 export function recordToPortalTarget(record: PortalTargetRecord): PortalTargetResolution {
@@ -288,7 +268,6 @@ export interface ConnectPortalResult {
  * replaces the connection and clears the attached repos.
  */
 export function connectPortal(input: {
-  alias?: string;
   portalUrl: string;
   workspaceId?: string;
   workspace?: string;
@@ -307,18 +286,9 @@ export function connectPortal(input: {
     recordIdentityKey(current.connection) === portalTargetIdentityKey(input.portalUrl, workspaceId);
   const previous = sameOrg ? current.connection : null;
 
-  const alias = deriveTargetAlias({
-    alias: input.alias ?? previous?.alias,
-    portalUrl: input.portalUrl,
-    workspace: input.workspace,
-    workspaceSlug: input.workspaceSlug,
-    workspaceName: input.workspaceName,
-  });
-  validateTargetAlias(alias);
-
   const now = new Date().toISOString();
   const record: PortalTargetRecord = {
-    alias,
+    alias: previous?.alias ?? deriveTargetAlias(input),
     portalUrl: normalizePortalUrl(input.portalUrl),
     workspaceId,
     workspaceName: input.workspaceName ?? input.workspace,
@@ -371,7 +341,7 @@ export function updatePortalTargetTokens(
 export function disconnectPortal(): PortalTargetRecord | null {
   const { connection } = readPortalConnectionState();
   if (!connection) return null;
-  writeState({ ...EMPTY_STATE });
+  writeState(emptyState());
   removeLegacyCredentialsFile();
   markAllRegisteredDirty();
   return connection;
@@ -386,17 +356,6 @@ export function attachRepoToPortal(repoPath: string): PortalTargetRecord {
     writeState({ ...state, attachedRepos: [...state.attachedRepos, canonical] });
   }
   return state.connection;
-}
-
-export function detachRepoFromPortal(repoPath: string): boolean {
-  const state = readPortalConnectionState();
-  const canonical = canonicalizeControlRepoPath(repoPath);
-  if (!state.attachedRepos.includes(canonical)) return false;
-  writeState({
-    ...state,
-    attachedRepos: state.attachedRepos.filter((entry) => entry !== canonical),
-  });
-  return true;
 }
 
 export function displayPortalTargetLabel(record: PortalTargetRecord): string {
@@ -429,23 +388,14 @@ function envPortalTarget(): PortalTargetResolution | null {
  * only applies when the repo is attached to it — unattached checkouts never
  * sync, so connecting does not ingest every registered repo.
  */
-export function resolvePortalTarget(options?: {
-  repoPath?: string;
-}): { target: PortalTargetResolution; source: PortalTargetSource } | null {
+export function resolvePortalTarget(repoPath?: string): PortalTargetResolution | null {
   const env = envPortalTarget();
-  if (env) return { target: env, source: 'env' };
+  if (env) return env;
 
-  const state = readPortalConnectionState();
-  if (!state.connection) return null;
-  if (options?.repoPath) {
-    const canonical = canonicalizeControlRepoPath(options.repoPath);
-    if (!state.attachedRepos.includes(canonical)) return null;
-  }
-  return { target: recordToPortalTarget(state.connection), source: 'connection' };
-}
-
-export function resolvePortalTargetForRepo(repoPath?: string): PortalTargetResolution | null {
-  return resolvePortalTarget({ repoPath })?.target ?? null;
+  const { connection, attachedRepos } = readPortalConnectionState();
+  if (!connection) return null;
+  if (repoPath && !attachedRepos.includes(canonicalizeControlRepoPath(repoPath))) return null;
+  return recordToPortalTarget(connection);
 }
 
 /**
