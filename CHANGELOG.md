@@ -1,3 +1,9 @@
+## [1.22.0](https://github.com/os-factory/har/compare/v1.21.0...v1.22.0) (2026-11-13)
+
+### Features
+
+* **telemetry:** attribute LLM usage to slots per request through an evidence timeline (ADR 0003) ([#382](https://github.com/os-factory/har/issues/382)) ([3b5cf24](https://github.com/os-factory/har/commit/3b5cf2408639105807b8581793d9a4e13a4885f7))
+
 ## [1.21.0](https://github.com/os-factory/har/compare/v1.20.0...v1.21.0) (2026-11-12)
 
 ### Features
