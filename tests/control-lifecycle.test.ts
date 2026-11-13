@@ -140,6 +140,14 @@ describe('shouldUpgradeControlImage', () => {
   it('leaves the default container alone while the CLI targets another Mission Control', () => {
     const running = `${DEFAULT_CONTROL_IMAGE}:1.16.0`;
     expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_API_URL: 'http://127.0.0.1:13847' })).toBe(false);
+    expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_API_URL: 'http://10.0.0.5:3847' })).toBe(false);
     expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_API_URL: 'http://localhost:3847' })).toBe(true);
+  });
+
+  it('treats any spelling of the default URL as the default container', () => {
+    const running = `${DEFAULT_CONTROL_IMAGE}:1.16.0`;
+    for (const url of ['http://127.0.0.1:3847', 'http://localhost:3847/', 'http://[::1]:3847']) {
+      expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_API_URL: url })).toBe(true);
+    }
   });
 });
