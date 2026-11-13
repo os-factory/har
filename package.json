@@ -22,6 +22,14 @@
   "bin": {
     "har": "dist/index.js"
   },
+  "exports": {
+    "./attribution": {
+      "types": "./dist/attribution/attribution.d.ts",
+      "import": "./dist/attribution.mjs",
+      "require": "./dist/attribution.cjs"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "scripts/ensure-telemetry-default.cjs",
@@ -29,7 +37,8 @@
     "control/docker-compose.build.yml"
   ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --banner:js='#!/usr/bin/env node' && rm -rf dist/templates && cp -r src/templates dist/templates",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --banner:js='#!/usr/bin/env node' && rm -rf dist/templates && cp -r src/templates dist/templates && npm run build:attribution",
+    "build:attribution": "esbuild packages/schemas/src/attribution.ts --bundle --platform=node --target=node20 --format=cjs --external:@pydantic/genai-prices --outfile=dist/attribution.cjs && esbuild packages/schemas/src/attribution.ts --bundle --platform=node --target=node20 --format=esm --external:@pydantic/genai-prices --outfile=dist/attribution.mjs && tsc -p tsconfig.attribution.json",
     "dev": "tsx src/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",

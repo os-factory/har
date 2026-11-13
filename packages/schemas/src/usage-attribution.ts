@@ -1,4 +1,4 @@
-import { estimateModelCostUsd, type AgentTool, type SessionBindingKind } from '@har/schemas';
+import { estimateModelCostUsd } from './model-pricing';
 
 /**
  * Evidence-timeline usage attribution (ADR 0003) — pure, no database.
@@ -8,14 +8,29 @@ import { estimateModelCostUsd, type AgentTool, type SessionBindingKind } from '@
  * into per-slot and per-session (unassigned = main checkout) usage. Attribution
  * is recomputed on every read, so a binding that arrives late re-attributes
  * usage already received.
+ *
+ * Mission Control and har-portal run this same code over the same facts, so
+ * the two derive the same split. It is free of zod and of the HAR domain
+ * schema on purpose: it ships as the `@osfactory/har/attribution` library
+ * entry, which a consumer on another zod major can import.
  */
+
+/**
+ * `agentId` of a span, event or trajectory record whose session had no slot
+ * binding in force when it happened: the main checkout. Never a slot number
+ * (slots start at `HAR_AGENT_SLOT_MIN`), so no slot page claims it.
+ */
+export const MAIN_CHECKOUT_AGENT_ID = 0;
+
+/** How a binding was established; mirrors `SessionBindingKindSchema`. */
+export type TimelineBindingKind = 'launch' | 'release' | 'workspace' | 'observed';
 
 export interface TimelineBinding {
   agentTool: string;
   sessionId: string;
   /** Null / empty for the session itself. */
   subagentId?: string | null;
-  kind: SessionBindingKind;
+  kind: TimelineBindingKind;
   slotId: number;
   occupancyKey?: string | null;
   branch?: string | null;
@@ -51,7 +66,7 @@ export interface ObservationFact {
   costUsd?: number | null;
 }
 
-const KIND_RANK: Record<SessionBindingKind, number> = {
+const KIND_RANK: Record<TimelineBindingKind, number> = {
   launch: 3,
   workspace: 2,
   observed: 1,
@@ -311,7 +326,7 @@ export function priceObservation(observation: ObservationFact): PricedObservatio
           tokensCacheRead: observation.tokensCacheRead,
           tokensCacheCreation: observation.tokensCacheCreation,
         },
-        observation.agentTool as AgentTool,
+        observation.agentTool,
       )
     : null;
   return {
@@ -515,4 +530,31 @@ export function legacyRowSuperseded(
   const from = row.firstSeenAt.getTime();
   const to = row.lastSeenAt.getTime();
   return tool.windows.some(([start, end]) => from <= end && to >= start);
+}
+
+/**
+ * How a repeat of a stored observation (same agentTool, sessionId,
+ * observationKey) merges into it. A key names one unit of usage, so a repeat
+ * is the same fact, possibly from another producer — e.g. Claude's live
+ * `api_request` and its transcript harvest share the API request id.
+ *
+ * - The live report (`otel`) is authoritative over a harvested copy: it
+ *   replaces a stored harvest copy, and a harvest never replaces it.
+ * - A provider-reported cost is never erased: a repeat without a cost keeps
+ *   the stored one, and a stored fact without a cost takes the repeat's.
+ * - The same producer may correct its own fact (a re-harvest).
+ *
+ * Returns the fields to write, or null when the stored fact stays as it is.
+ */
+export function mergeRepeatedObservation(
+  existing: { producer: string; source: string; costUsd: number | null },
+  incoming: { producer: string; source: string; costUsd: number | null },
+): { replace: boolean; costUsd: number | null } | null {
+  const costUsd = incoming.costUsd ?? existing.costUsd;
+  const replace =
+    existing.producer === incoming.producer ||
+    (incoming.source === 'otel' && existing.source !== 'otel');
+  if (replace) return { replace: true, costUsd };
+  if (existing.costUsd == null && incoming.costUsd != null) return { replace: false, costUsd };
+  return null;
 }

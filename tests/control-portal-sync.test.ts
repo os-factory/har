@@ -1153,6 +1153,10 @@ describe('syncRepoWithControl — attached destinations', () => {
       if (u.endsWith('/api/repos') && method === 'POST') {
         return { ok: true, status: 200, text: async () => '', json: async () => ({ id: 'local-repo-1' }) };
       }
+      // Local Mission Control does not know the repo: no attribution facts to read.
+      if (u.endsWith('/api/repos') && method === 'GET') {
+        return { ok: true, status: 200, text: async () => '', json: async () => [] };
+      }
       if (u.includes('portal.example.com') && method === 'POST') {
         onPortalPost?.(u, (init?.headers as Record<string, string>).Authorization);
       }
@@ -1215,5 +1219,194 @@ describe('syncRepoWithControl — attached destinations', () => {
 
     expect(switched).toBe(true);
     expect(portalPostAuths(fetchMock).filter((auth) => auth === 'Bearer token-a')).toHaveLength(1);
+  });
+});
+
+
+describe('syncRepoWithControl — session attribution (ADR 0003)', () => {
+  const realFetch = global.fetch;
+  const BINDING = {
+    id: 'b-1',
+    createdAt: '2026-03-01T10:05:00.000Z',
+    agentTool: 'claude_code',
+    sessionId: 'sess-1',
+    kind: 'launch',
+    slotId: 2,
+    occupancyKey: 'occ-2',
+    at: '2026-03-01T10:05:00.000Z',
+    origin: 'sync',
+  };
+  const OBSERVATION = {
+    id: 'o-1',
+    updatedAt: '2026-03-01T10:06:00.000Z',
+    agentTool: 'claude_code',
+    sessionId: 'sess-1',
+    observationKey: 'req_1',
+    observedAt: '2026-03-01T10:00:00.000Z',
+    granularity: 'request',
+    source: 'otel',
+    producer: 'claude.api_request',
+    model: 'claude-sonnet-4-5',
+    tokensInput: 100,
+    tokensOutput: 10,
+    tokensCacheRead: 0,
+    tokensCacheCreation: 0,
+    costUsd: 0.25,
+  };
+  const REPORTED = {
+    agentTool: 'claude_code',
+    sessionId: 'sess-1',
+    costUsd: 0.25,
+    tokensTotal: 110,
+    firstSeenAt: '2026-03-01T10:00:00.000Z',
+    lastSeenAt: '2026-03-01T10:00:00.000Z',
+  };
+
+  function respond(status: number, body: unknown) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+    };
+  }
+
+  function attributionFetch(options: { portalAttribution: number; changeFeed?: number }): jest.Mock {
+    return jest.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      const method = init?.method ?? 'GET';
+      if (u.includes('portal.example.com')) {
+        if (u.endsWith('/api/session-attribution')) return respond(options.portalAttribution, {});
+        return respond(200, {});
+      }
+      if (u.endsWith('/api/repos') && method === 'POST') return respond(200, { id: 'mc-1' });
+      if (u.endsWith('/api/repos')) return respond(200, [{ id: 'mc-1', path: '/repo/x' }]);
+      if (u.includes('/api/repos/mc-1/session-bindings?')) return respond(200, { bindings: [BINDING] });
+      if (u.includes('/api/repos/mc-1/usage-observations/changes')) {
+        return respond(options.changeFeed ?? 200, { observations: [OBSERVATION] });
+      }
+      if (u.endsWith('/api/repos/mc-1/reported-usage')) return respond(200, { reportedUsage: [REPORTED] });
+      return respond(200, {});
+    });
+  }
+
+  function legacyUsageRow() {
+    return {
+      sessionKey: 'feat/x',
+      agentId: 1,
+      agentTool: 'claude_code',
+      tokensTotal: 10,
+      sources: ['harvest'],
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  beforeEach(() => {
+    clearPortalEnv();
+    resetPayloadMocks();
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
+    readPortalCredentialsMock.mockReturnValue({
+      portalUrl: 'https://portal.example.com',
+      token: 'har_ingest_secret',
+      email: 'dev@example.com',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    collectEnvironmentStatusMock.mockReturnValue({
+      slots: [portalSlot({ branch: 'feat/x' })],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    harvestUsageForSlotMock.mockClear();
+    harvestUsageForSlotMock.mockReturnValue([legacyUsageRow()]);
+  });
+  afterEach(() => {
+    (global as unknown as { fetch: unknown }).fetch = realFetch;
+  });
+  afterAll(clearPortalEnv);
+
+  it('sends Mission Control facts, with the member, and no per-slot totals', async () => {
+    const fetchMock = attributionFetch({ portalAttribution: 200 });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const calls = portalCalls(fetchMock);
+    const attributionIndex = calls.findIndex(([url]) => url.endsWith('/api/session-attribution'));
+    const syncIndex = calls.findIndex(([url]) => url.endsWith('/api/sync'));
+    expect(attributionIndex).toBeGreaterThanOrEqual(0);
+    expect(attributionIndex).toBeLessThan(syncIndex);
+
+    const body = JSON.parse(calls[attributionIndex][1].body as string);
+    expect(body.path).toBe('/repo/x');
+    // Storage columns (id, createdAt, updatedAt, origin) stay in Mission Control.
+    expect(body.bindings).toEqual([
+      {
+        agentTool: 'claude_code',
+        sessionId: 'sess-1',
+        kind: 'launch',
+        slotId: 2,
+        occupancyKey: 'occ-2',
+        at: '2026-03-01T10:05:00.000Z',
+      },
+    ]);
+    expect(body.observations).toHaveLength(1);
+    expect(body.observations[0]).not.toHaveProperty('id');
+    expect(body.observations[0]).not.toHaveProperty('updatedAt');
+    expect(body.observations[0]).toMatchObject({
+      observationKey: 'req_1',
+      producer: 'claude.api_request',
+      costUsd: 0.25,
+      userEmail: 'dev@example.com',
+    });
+    expect(body.reportedUsage).toEqual([REPORTED]);
+
+    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
+    expect(syncBody).not.toHaveProperty('usage');
+    // No slot-guessing harvest runs for a portal that derives usage itself.
+    expect(harvestUsageForSlotMock).not.toHaveBeenCalled();
+    expect(writePortalWatermarkMock).toHaveBeenCalledWith(
+      '/repo/x',
+      expect.anything(),
+      '2026-03-01T10:06:00.000Z',
+    );
+  });
+
+  it('keeps sending per-slot totals to a portal without /api/session-attribution', async () => {
+    const fetchMock = attributionFetch({ portalAttribution: 404 });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
+    expect(syncBody.usage).toHaveLength(1);
+    expect(syncBody.usage[0]).toMatchObject({ sessionKey: 'feat/x', userEmail: 'dev@example.com' });
+  });
+
+  it('keeps sending per-slot totals when Mission Control has no change feed', async () => {
+    const fetchMock = attributionFetch({ portalAttribution: 200, changeFeed: 404 });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const calls = portalCalls(fetchMock);
+    expect(calls.some(([url]) => url.endsWith('/api/session-attribution'))).toBe(false);
+    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
+    expect(syncBody.usage).toHaveLength(1);
+  });
+
+  it('holds the watermark and sends no usage when Mission Control facts cannot be read', async () => {
+    const fetchMock = attributionFetch({ portalAttribution: 200, changeFeed: 503 });
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    await syncRepoWithControl({ repoPath: '/repo/x' });
+
+    const calls = portalCalls(fetchMock);
+    // An empty probe only: the portal takes facts, so it gets no guessed totals.
+    const probe = calls.find(([url]) => url.endsWith('/api/session-attribution'));
+    expect(JSON.parse(probe![1].body as string)).toMatchObject({ bindings: [], observations: [] });
+    const syncBody = JSON.parse(portalSyncCall(fetchMock)[1].body as string);
+    expect(syncBody).not.toHaveProperty('usage');
+    expect(writePortalWatermarkMock).not.toHaveBeenCalled();
   });
 });

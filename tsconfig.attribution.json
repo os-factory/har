@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "packages/schemas/src",
+    "outDir": "dist/attribution",
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true,
+    "sourceMap": false
+  },
+  "include": ["packages/schemas/src/attribution.ts"]
+}
