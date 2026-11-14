@@ -15,6 +15,13 @@ describe('otelWorkspaceIdForPath', () => {
     );
   });
 
+  it('keys a tool target\'s worktree root as a git-root id, never equal to the working-directory id (otel-hook ADR 0008)', () => {
+    // Precomputed: sha256("\0" + "workspace/git-root\0" + path)
+    expect(otelWorkspaceIdForPath('/home/antoine/Documents/osfactory/har-project', 'git-root')).toBe(
+      'sha256:98bd2924673b7c8b4997ae44425a4c110515e815db6a6fc26ef4d0725d124877',
+    );
+  });
+
   it('strips trailing slashes before hashing', () => {
     const a = otelWorkspaceIdForPath('/repo/foo');
     const b = otelWorkspaceIdForPath('/repo/foo/');
