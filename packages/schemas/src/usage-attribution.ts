@@ -1,4 +1,4 @@
-import { estimateModelCostUsd } from './model-pricing';
+import { UNPRICED_AGENT_TOOLS, estimateModelCostUsd } from './model-pricing';
 import { occupancyKeyForAttempt } from './occupancy';
 
 /**
@@ -392,6 +392,9 @@ export interface PricedObservation extends ObservationFact {
 }
 
 export function priceObservation(observation: ObservationFact): PricedObservation {
+  if (UNPRICED_AGENT_TOOLS.has(observation.agentTool)) {
+    return { ...observation, pricedCostUsd: null, costSource: null };
+  }
   if (observation.costUsd != null && Number.isFinite(observation.costUsd)) {
     return { ...observation, pricedCostUsd: observation.costUsd, costSource: 'reported' };
   }

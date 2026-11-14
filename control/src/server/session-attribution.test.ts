@@ -394,6 +394,12 @@ describe('buildUsageView', () => {
     expect(view.rows.filter((row) => row.origin === 'legacy').map((row) => row.sessionKey)).toEqual(['old-branch']);
   });
 
+  it('serves a Cursor legacy row with its tokens and no cost (FE-2058)', () => {
+    const cursor = { ...legacyRow('cursor-branch', -600, -500), agentTool: 'cursor' };
+    const rows = buildUsageView({ repositoryId: 'repo-1', bindings: [], observations: [], slots: [], attempts: [], legacy: [cursor], reported: [] }).rows;
+    expect(rows).toEqual([expect.objectContaining({ sessionKey: 'cursor-branch', tokensTotal: 2n, costUsd: null })]);
+  });
+
   it('shows usage before the launch as the session\'s unassigned usage, plus reported-only sessions', () => {
     expect(view.unassigned).toEqual([
       expect.objectContaining({ sessionId: 'S1', costUsd: 0.5, observationCount: 1, itemized: true }),

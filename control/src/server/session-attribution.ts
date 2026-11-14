@@ -8,6 +8,7 @@ import {
   type SessionSlotBinding,
   type UsageObservation,
   legacyRowSuperseded,
+  UNPRICED_AGENT_TOOLS,
   mergeRepeatedObservation,
   producerFamily,
   runningTotalDelta,
@@ -767,6 +768,7 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
       .filter((row) => !legacyRowSuperseded(row, coverage))
       .map((row) => ({
         ...row,
+        costUsd: UNPRICED_AGENT_TOOLS.has(row.agentTool) ? null : row.costUsd,
         sources: toStringArray(row.sources),
         origin: 'legacy' as const,
         changedAt: row.updatedAt,
