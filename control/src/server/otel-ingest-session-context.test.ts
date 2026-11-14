@@ -376,6 +376,46 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
     expect(evidence?.[0]?.slot).toMatchObject({ slotId: 0, branch: 'late', workDir: late });
   });
 
+  it('re-reads the listings at most once for a workspace id that matches nothing', async () => {
+    const unknown = { 'otelhook.workspace.id': otelWorkspaceIdForPath(path.join(root, 'nowhere')), ...session };
+    expect((await resolveSessionContext({}, unknown)).context).toBeNull();
+    clearLinkedWorktreeCache();
+    listLinkedWorktrees(repoPath, Date.now() - 2_000);
+    const added = path.join(repoPath, '.claude', 'worktrees', 'after-miss');
+    git('worktree', 'add', '-q', '-b', 'after-miss', added);
+
+    expect((await resolveSessionContext({}, unknown)).context).toBeNull();
+    expect(listLinkedWorktrees(repoPath).worktrees.map((worktree) => worktree.path)).not.toContain(added);
+  });
+
+  it('does not re-read an unreadable listing on a miss', async () => {
+    const unmounted = path.join(root, 'unmounted');
+    fs.mkdirSync(unmounted);
+    repos.push({ id: 'repo-unmounted', path: unmounted });
+    try {
+      listLinkedWorktrees(unmounted, Date.now() - 2_000);
+      execFileSync('git', ['init', '-q'], { cwd: unmounted, stdio: 'ignore' });
+      const unknown = { 'otelhook.workspace.id': otelWorkspaceIdForPath(path.join(root, 'elsewhere')), ...session };
+
+      expect((await resolveSessionContext({}, unknown)).context).toBeNull();
+      expect(listLinkedWorktrees(unmounted).readable).toBe(false);
+    } finally {
+      repos.splice(repos.findIndex((repo) => repo.id === 'repo-unmounted'), 1);
+    }
+  });
+
+  it('takes the worktree its workspace id matched as the cwd, not a stale har.work_dir', async () => {
+    const stale = { 'har.session_key': 'old-launch', 'har.repo_path': '/gone', 'har.work_dir': '/gone/old-slot' };
+    const { context, evidence } = await resolveSessionContext(stale, {
+      'otelhook.workspace.id': otelWorkspaceIdForPath(inside),
+      ...session,
+    });
+    expect(context).toMatchObject({ repositoryId: 'repo-wt', workDir: inside });
+    expect(evidence).toEqual([
+      { kind: 'workspace', slot: expect.objectContaining({ occupancyKey: `worktree:${inside}`, branch: 'fix' }) },
+    ]);
+  });
+
   it('records a tool event that targeted a non-slot worktree from the main checkout', async () => {
     const { context, evidence } = await resolveSessionContext(
       {},

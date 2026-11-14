@@ -34,7 +34,7 @@ import {
   hidesTrajectoryContent,
   redactSecretAttributes,
 } from '@/lib/trajectory-privacy';
-import { listLinkedWorktrees } from '@/server/git-worktrees';
+import { listLinkedWorktrees, type LinkedWorktrees } from '@/server/git-worktrees';
 import {
   isWorkspaceUnderPath,
   normalizeOtelPath,
@@ -399,6 +399,21 @@ async function resolveRepositoryByWorkspacePath(
 }
 
 const WORKTREE_MISS_REFRESH_MS = 1_000;
+/** A workspace id that matched nothing even after a refresh is not refreshed again for this long. */
+const WORKSPACE_ID_MISS_TTL_MS = 5_000;
+const missedWorkspaceIds = new Map<string, number>();
+
+function missedRecently(workspaceId: string, now: number): boolean {
+  const at = missedWorkspaceIds.get(workspaceId);
+  return at !== undefined && now - at < WORKSPACE_ID_MISS_TTL_MS;
+}
+
+function rememberMiss(workspaceId: string, now: number): void {
+  for (const [id, at] of missedWorkspaceIds) {
+    if (now - at >= WORKSPACE_ID_MISS_TTL_MS) missedWorkspaceIds.delete(id);
+  }
+  missedWorkspaceIds.set(workspaceId, now);
+}
 
 /**
  * Map otel-hook's opaque workspace id back to a registered path. A slot's work
@@ -434,10 +449,11 @@ async function resolveRepositoryByWorkspaceId(
   // worktree (`git worktree add`, Claude Code's EnterWorktree) is found only if
   // its path is a candidate too, as resolveRepositoryByWorkspacePath does for a
   // raw path. Slot work dirs were added first and keep winning on a tie.
-  const withWorktrees = (maxAgeMs?: number) => [
+  const now = Date.now();
+  const withWorktrees = (listings: Array<{ repo: (typeof repos)[number]; listing: LinkedWorktrees }>) => [
     ...candidates,
-    ...repos.flatMap((repo) =>
-      listLinkedWorktrees(repo.path, Date.now(), maxAgeMs).worktrees.map((worktree) => ({
+    ...listings.flatMap(({ repo, listing }) =>
+      listing.worktrees.map((worktree) => ({
         repositoryId: repo.id,
         path: repo.path,
         candidate: worktree.path,
@@ -445,13 +461,21 @@ async function resolveRepositoryByWorkspaceId(
       })),
     ),
   ];
-  let all = withWorktrees();
+  const listings = repos.map((repo) => ({ repo, listing: listLinkedWorktrees(repo.path, now) }));
+  let all = withWorktrees(listings);
   let matchedPath = pickPathForWorkspaceId(workspaceId, all.map((c) => c.candidate));
-  if (!matchedPath) {
+  if (!matchedPath && !missedRecently(workspaceId, now)) {
     // A session that just created its worktree (EnterWorktree) reports from it
-    // within the listing cache's lifetime: re-read listings older than a second.
-    all = withWorktrees(WORKTREE_MISS_REFRESH_MS);
+    // within the listing cache's lifetime: re-read readable listings older than
+    // a second, once per unknown id, not on every batch that misses.
+    all = withWorktrees(
+      listings.map(({ repo, listing }) => ({
+        repo,
+        listing: listing.readable ? listLinkedWorktrees(repo.path, now, WORKTREE_MISS_REFRESH_MS) : listing,
+      })),
+    );
     matchedPath = pickPathForWorkspaceId(workspaceId, all.map((c) => c.candidate));
+    if (!matchedPath) rememberMiss(workspaceId, now);
   }
   if (!matchedPath) return null;
   const hit = all.find((c) => normalizePath(c.candidate) === matchedPath);
@@ -509,6 +533,8 @@ export async function resolveSessionContext(
 
   let repository: { repositoryId: string; workDir?: string; sessionKey: string } | null = null;
   let workspaceSlot: WorkspaceSlotMatch | null = null;
+  // The session's cwd: its raw path, or the path its opaque workspace id matched.
+  let sessionCwd = workspace || undefined;
 
   // Prefer live workspace/slot matching over stale global har.session_key
   // resource attributes left behind by the last `har env launch`.
@@ -542,6 +568,7 @@ export async function resolveSessionContext(
     const byId = await resolveRepositoryByWorkspaceId(workspaceId);
     if (byId) {
       workspaceSlot = byId.slot;
+      sessionCwd = byId.matchedPath;
       repository = {
         repositoryId: byId.repositoryId,
         workDir: byId.matchedPath,
@@ -598,8 +625,6 @@ export async function resolveSessionContext(
   if (targetSlot) evidence.push({ kind: targetBindingKind(attributes), slot: targetSlot });
   // What no slot claimed may still be a non-slot git worktree: recorded so its
   // usage splits from the main checkout's, never placed on a slot.
-  // The session's cwd: its raw path, or the path its opaque workspace id matched.
-  const sessionCwd = workspace || (workspaceId ? repository.workDir : undefined);
   const worktree = await resolveNonSlotWorktree(repository.repositoryId, {
     workspace: workspaceSlot ? undefined : sessionCwd,
     attrs: targetSlot ? undefined : attributes,
