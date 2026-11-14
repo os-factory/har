@@ -482,14 +482,43 @@ export async function timelineSlotAt(
       };
 }
 
+/** Repository of a provider session's latest binding at or before `at`, in any repository. */
+export async function latestBindingRepositoryAt(ref: AgentSessionRef, at: Date): Promise<string | null> {
+  const latest = await prisma.sessionSlotBinding.findFirst({
+    where: { agentTool: ref.agentTool, sessionId: ref.sessionId, at: { lte: at } },
+    orderBy: [{ at: 'desc' }, { createdAt: 'desc' }],
+    select: { repositoryId: true },
+  });
+  return latest?.repositoryId ?? null;
+}
+
+/**
+ * Repository of a provider session's place at `at` (FE-2058: one request = one
+ * place = one repository). A session may work in A, a slot of B, then A again:
+ * its latest binding at or before `at` across all repositories, else the
+ * repository of its latest hook span then. Null when nothing places it yet.
+ */
+export async function repositoryOfPlaceAt(ref: AgentSessionRef, at: Date): Promise<string | null> {
+  const bound = await latestBindingRepositoryAt(ref, at);
+  if (bound) return bound;
+  const span = await prisma.agentSessionSpan.findFirst({
+    where: { sessionKey: ref.sessionId, startTime: { lte: at } },
+    orderBy: { startTime: 'desc' },
+    select: { repositoryId: true },
+  });
+  return span?.repositoryId ?? null;
+}
+
 /**
  * Repository of a provider session whose records carry no workspace (Claude
- * Code native logs and metrics): wherever its bindings, observations or hook
- * spans were already placed.
+ * Code native logs and metrics), when no place is known at their time:
+ * wherever its bindings (the first), observations or hook spans were already
+ * placed.
  */
 export async function repositoryForProviderSession(ref: AgentSessionRef): Promise<string | null> {
   const binding = await prisma.sessionSlotBinding.findFirst({
     where: { agentTool: ref.agentTool, sessionId: ref.sessionId },
+    orderBy: [{ at: 'asc' }],
     select: { repositoryId: true },
   });
   if (binding) return binding.repositoryId;
