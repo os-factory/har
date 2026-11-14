@@ -8,6 +8,7 @@ import {
   type SessionSlotBinding,
   type UsageObservation,
   legacyRowSuperseded,
+  UNPRICED_AGENT_TOOLS,
   mergeRepeatedObservation,
   producerFamily,
   runningTotalDelta,
@@ -560,6 +561,25 @@ export async function recordReportedUsage(repositoryId: string, input: ReportedU
 // ---------------------------------------------------------------------------
 // Read model: the projection, merged with legacy session totals
 
+/**
+ * A legacy row of an unpriced agent tool keeps its tokens and loses every cost:
+ * rows stored before the tool was unpriced still carry an estimate (FE-2058).
+ */
+function withoutUnpricedCost(row: AgentSessionUsageRow): AgentSessionUsageRow {
+  if (!UNPRICED_AGENT_TOOLS.has(row.agentTool)) return row;
+  const breakdown = row.modelBreakdown;
+  const modelBreakdown =
+    breakdown && typeof breakdown === 'object' && !Array.isArray(breakdown)
+      ? Object.fromEntries(
+          Object.entries(breakdown).map(([model, totals]) => [
+            model,
+            totals && typeof totals === 'object' && !Array.isArray(totals) ? { ...totals, costUsd: null } : totals,
+          ]),
+        )
+      : breakdown;
+  return { ...row, costUsd: null, costSource: null, modelBreakdown };
+}
+
 /** Same shape as a stored `AgentSessionUsage` row, so every usage reader takes either. */
 export type UsageRowView = Omit<AgentSessionUsageRow, 'sources'> & {
   sources: string[];
@@ -770,7 +790,7 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
     ...inputs.legacy
       .filter((row) => !legacyRowSuperseded(row, coverage))
       .map((row) => ({
-        ...row,
+        ...withoutUnpricedCost(row),
         sources: toStringArray(row.sources),
         origin: 'legacy' as const,
         changedAt: row.updatedAt,

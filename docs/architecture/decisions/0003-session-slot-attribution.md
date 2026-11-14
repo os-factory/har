@@ -157,7 +157,9 @@ How Mission Control resolves the timeline:
   (harvested only), in whichever repositories the session's turns were
   placed. A turn arriving out of order recomputes the next one.
 - **Cost:** the provider's cost when reported (Claude `cost_usd`), else the
-  genai-prices estimate for the observation's model and tokens.
+  genai-prices estimate for the observation's model and tokens. Cursor is
+  unpriced (`UNPRICED_AGENT_TOOLS`): its model ids map to no price HAR can
+  trust, so its rows carry tokens and a null cost.
 - **Provider totals:** Claude's `claude_code.cost.usage` / `token.usage`
   metrics are stored per session (`SessionReportedUsage`) and shown as a
   cross-check against the sum of the session's observations. A session with a
@@ -237,8 +239,9 @@ All types live in `packages/schemas/src/session-attribution.ts`.
 - **Cursor subagents** carry no subagent id in otel-hook yet: Cursor does not
   document which conversation id a subagent's hooks carry, so a Cursor subagent
   is attributed with its parent session.
-- **Cursor** reports no cost and no offline record; its cost is estimated from
-  model prices, and usage missed while otel-hook was not installed is lost.
+- **Cursor** reports no cost and no offline record; its rows carry no cost
+  until it is priced, and usage missed while otel-hook was not installed is
+  lost.
 - **Trajectory placement is re-attributed only for a late slot.** A span that
   arrives before the binding that explains it (a launch synced late) stays in
   the main checkout's trajectory; its usage is re-attributed, its timeline row
