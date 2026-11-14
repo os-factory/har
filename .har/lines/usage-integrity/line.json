@@ -1,0 +1,90 @@
+{
+  "contractVersion": 1,
+  "id": "usage-integrity",
+  "title": "Usage integrity",
+  "description": "LLM usage shipped to HAR HQ is counted exactly once and where it happened. Each station adds a question the gate keeps asking: do the usage invariants (I1-I5) catch every shape the usage audit found, and does the real path — OTLP into Mission Control, attribution, har control sync — ship usage that keeps them.",
+  "skills": [
+    {
+      "id": "factory-line",
+      "role": "orchestrator",
+      "install": "repo:.claude/skills/factory-line"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "linear",
+      "why": "FE-2058 is this line's traveler",
+      "required": false
+    }
+  ],
+  "plugins": [],
+  "stations": [
+    {
+      "id": "S0",
+      "title": "The invariants catch every audited shape",
+      "description": "One pure definition of right usage (@har/schemas usage-invariants) used by Mission Control, check-usage and the sync gate. Each audit root cause, rebuilt as a builder in code, fails its invariant; the current pipeline keeps them all.",
+      "work": {
+        "source": "linear",
+        "ids": [
+          "FE-2058"
+        ],
+        "optional": false
+      }
+    },
+    {
+      "id": "S1",
+      "title": "Real path, synthetic sessions",
+      "description": "Mission Control from source and the built CLI against a capture portal, with otel-hook-shaped OTLP and a Claude transcript: main, plain worktree, slot, main to worktree mid-session, two parallel worktrees, a session in two repositories, a nested repository, a relaunched slot, a retried request, one session across repositories (A main, a slot in B, back to A), and resend / --full resend. The invariants hold on Mission Control and on the captured usage[], and each request lands in the place it happened.",
+      "work": {
+        "source": "linear",
+        "ids": [
+          "FE-2058"
+        ],
+        "optional": false
+      }
+    }
+  ],
+  "gate": {
+    "cumulative": true,
+    "optInEnv": null,
+    "stages": [
+      {
+        "id": "usage-integrity-s0",
+        "fromStation": "S0",
+        "tier": "full"
+      },
+      {
+        "id": "usage-integrity-e2e",
+        "fromStation": "S1",
+        "tier": "full"
+      }
+    ]
+  },
+  "extraStages": [
+    {
+      "id": "usage-integrity-s0",
+      "kind": "test",
+      "tier": "full",
+      "description": "S0 — usage invariants and one regression per audit root cause"
+    },
+    {
+      "id": "usage-integrity-e2e",
+      "kind": "test",
+      "tier": "full",
+      "description": "S1 — Mission Control from source, har control sync, capture portal: invariants on the shipped usage (no Docker)"
+    }
+  ],
+  "handoff": {
+    "autonomousShip": false,
+    "waitFor": "human review before merge"
+  },
+  "traveler": {
+    "kind": "linear-issue",
+    "ref": "FE-2058",
+    "note": "Findings on real data go on FE-2058."
+  },
+  "prototypeNotes": [
+    "S1 needs node, git and control/node_modules; no Docker, no model, no network beyond 127.0.0.1.",
+    "Run the checker on any Mission Control: har control check-usage [--repo <path>] [--json]."
+  ]
+}
