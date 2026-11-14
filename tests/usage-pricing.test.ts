@@ -122,24 +122,13 @@ describe('estimateModelCostUsd', () => {
     ).toBeNull();
   });
 
-  it('prices cursor-native models from the bundled genai-prices catalog', () => {
-    const cost = estimateModelCostUsd(
-      'cursor-grok-4.5-high-fast',
-      { tokensInput: 1000, tokensOutput: 100 },
-      'cursor',
-    );
-    expect(cost).not.toBeNull();
-    expect(cost!).toBeGreaterThan(0);
+  // Cursor is unpriced until its model ids map to trusted prices (FE-2058).
+  it('does not price cursor-native models', () => {
+    expect(estimateModelCostUsd('cursor-grok-4.5-high-fast', { tokensInput: 1000, tokensOutput: 100 }, 'cursor')).toBeNull();
   });
 
-  it('prices composer models from the bundled genai-prices catalog', () => {
-    const cost = estimateModelCostUsd(
-      'composer-2.5',
-      { tokensInput: 10_000, tokensOutput: 1000 },
-      'cursor',
-    );
-    expect(cost).not.toBeNull();
-    expect(cost!).toBeGreaterThan(0);
+  it('does not price composer models', () => {
+    expect(estimateModelCostUsd('composer-2.5', { tokensInput: 10_000, tokensOutput: 1000 }, 'cursor')).toBeNull();
   });
 });
 
@@ -161,6 +150,22 @@ describe('enrichUsageWithPricing', () => {
     expect(enriched.costUsd!).toBeGreaterThan(0);
     const breakdown = enriched.modelBreakdown as Record<string, { costUsd?: number }>;
     expect(breakdown['claude-opus-4-8'].costUsd).toBeGreaterThan(0);
+  });
+
+  it('strips every cost from a Cursor row, keeping its tokens (FE-2058)', () => {
+    const enriched = enrichUsageWithPricing(
+      usage({
+        agentTool: 'cursor',
+        costUsd: 1.5,
+        tokensTotal: 1100,
+        modelBreakdown: { 'claude-opus-4-8': { tokensInput: 1000, tokensOutput: 100, tokensTotal: 1100, costUsd: 1.5 } },
+      }),
+    );
+    expect(enriched.costUsd).toBeNull();
+    expect(enriched.tokensTotal).toBe(1100);
+    expect(enriched.modelBreakdown).toEqual({
+      'claude-opus-4-8': { tokensInput: 1000, tokensOutput: 100, tokensTotal: 1100, costUsd: null },
+    });
   });
 
   it('keeps agent-reported session cost when it exceeds the estimate', () => {

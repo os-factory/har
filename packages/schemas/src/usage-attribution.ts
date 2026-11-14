@@ -1,4 +1,4 @@
-import { estimateModelCostUsd } from './model-pricing';
+import { UNPRICED_AGENT_TOOLS, estimateModelCostUsd } from './model-pricing';
 import { occupancyKeyForAttempt } from './occupancy';
 
 /**
@@ -41,6 +41,19 @@ export function worktreeOccupancyKey(worktree: { workDir?: string | null; branch
 /** The worktree path a non-slot worktree binding names, when it names one. */
 export function worktreeDirFromOccupancyKey(key: string | null | undefined): string | null {
   return key?.startsWith(WORKTREE_PATH_PREFIX) ? key.slice(WORKTREE_PATH_PREFIX.length) : null;
+}
+
+/**
+ * Occupancy key of a binding back to the main checkout (slot 0): the session,
+ * whose place was in another repository, works in this repository's main
+ * checkout again (FE-2058). Its usage is the session's ordinary main-checkout
+ * usage, not a bucket of its own.
+ */
+export const MAIN_CHECKOUT_OCCUPANCY_KEY = 'main-checkout';
+
+/** Whether a slot-0 binding names the main checkout itself (`MAIN_CHECKOUT_OCCUPANCY_KEY`). */
+export function isMainCheckoutBinding(binding: { slotId: number; occupancyKey?: string | null } | null | undefined): boolean {
+  return binding?.slotId === MAIN_CHECKOUT_AGENT_ID && binding.occupancyKey === MAIN_CHECKOUT_OCCUPANCY_KEY;
 }
 
 /** How a binding was established; mirrors `SessionBindingKindSchema`. */
@@ -379,6 +392,9 @@ export interface PricedObservation extends ObservationFact {
 }
 
 export function priceObservation(observation: ObservationFact): PricedObservation {
+  if (UNPRICED_AGENT_TOOLS.has(observation.agentTool)) {
+    return { ...observation, pricedCostUsd: null, costSource: null };
+  }
   if (observation.costUsd != null && Number.isFinite(observation.costUsd)) {
     return { ...observation, pricedCostUsd: observation.costUsd, costSource: 'reported' };
   }
@@ -533,7 +549,10 @@ export function projectUsage(
   const timeline = new BindingTimeline(bindings, occupancyEvents);
   const slots = new Map<string, SlotUsageBucket>();
   const unassigned = new Map<string, UnassignedUsageBucket>();
-  for (const { observation, binding } of attributeObservations(timeline, observations)) {
+  for (const attributed of attributeObservations(timeline, observations)) {
+    const { observation } = attributed;
+    // Back in the main checkout: the same bucket as unbound usage.
+    const binding = isMainCheckoutBinding(attributed.binding) ? null : attributed.binding;
     if (!binding || binding.slotId === MAIN_CHECKOUT_AGENT_ID) {
       const key = `${sessionKeyOf(observation)}\0${binding?.occupancyKey ?? ''}`;
       let bucket = unassigned.get(key);

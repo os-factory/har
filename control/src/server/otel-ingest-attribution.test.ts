@@ -15,7 +15,8 @@ const state = vi.hoisted(() => ({
   bindings: [] as Array<{ repositoryId: string; bindings: Array<Record<string, unknown>>; origin: string }>,
   observations: [] as Array<{ repositoryId: string; observations: Array<Record<string, unknown>> }>,
   trajectory: [] as Array<Record<string, unknown>>,
-  knownSessions: new Map<string, string>(),
+  /** Stored bindings, by session: only their repository and time matter here. */
+  placedBindings: [] as Array<{ sessionId: string; repositoryId: string; at: Date }>,
 }));
 
 const slot2 = {
@@ -44,8 +45,12 @@ vi.mock('@/lib/db', () => ({
     },
     sessionSlotBinding: {
       findMany: async () => [],
-      findFirst: async ({ where }: { where: { sessionId: string } }) =>
-        state.knownSessions.has(where.sessionId) ? { repositoryId: state.knownSessions.get(where.sessionId) } : null,
+      findFirst: async ({ where, orderBy }: { where: { sessionId: string; at?: { lte: Date } }; orderBy?: Array<{ at: 'asc' | 'desc' }> }) => {
+        const rows = state.placedBindings
+          .filter((b) => b.sessionId === where.sessionId && (!where.at || b.at <= where.at.lte))
+          .sort((a, b) => a.at.getTime() - b.at.getTime());
+        return (orderBy?.[0]?.at === 'desc' ? rows.reverse() : rows)[0] ?? null;
+      },
     },
     usageObservation: { findFirst: async () => null },
     workAttempt: { findMany: async () => [], findFirst: async () => null },
@@ -109,7 +114,7 @@ beforeEach(() => {
   state.bindings.length = 0;
   state.observations.length = 0;
   state.trajectory.length = 0;
-  state.knownSessions.clear();
+  state.placedBindings.length = 0;
 });
 
 describe('ingestOtelTracesJson — evidence and usage', () => {
@@ -220,34 +225,36 @@ describe('evidence time for a span exported when it ends', () => {
   });
 });
 
+function apiRequests(requests: Array<{ requestId: string; timeUnixNano: string }>) {
+  return {
+    resourceLogs: [
+      {
+        resource: { attributes: attrs({ 'service.name': 'claude-code' }) },
+        scopeLogs: [
+          {
+            logRecords: requests.map(({ requestId, timeUnixNano }) => ({
+              timeUnixNano,
+              body: { stringValue: 'claude_code.api_request' },
+              attributes: attrs({
+                'event.name': 'api_request',
+                'session.id': SID,
+                request_id: requestId,
+                model: 'claude-opus-5-5',
+                input_tokens: 5,
+                output_tokens: 6,
+              }),
+            })),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe('ingestOtelLogsJson — Claude Code api_request', () => {
   it('stores one request observation in the session\'s repository and no trajectory fact', async () => {
-    state.knownSessions.set(SID, 'repo-1');
-    const result = await ingestOtelLogsJson({
-      resourceLogs: [
-        {
-          resource: { attributes: attrs({ 'service.name': 'claude-code' }) },
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  timeUnixNano: '1762941600000000000',
-                  body: { stringValue: 'claude_code.api_request' },
-                  attributes: attrs({
-                    'event.name': 'api_request',
-                    'session.id': SID,
-                    request_id: 'req_1',
-                    model: 'claude-opus-5-5',
-                    input_tokens: 5,
-                    output_tokens: 6,
-                  }),
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
+    state.placedBindings.push({ sessionId: SID, repositoryId: 'repo-1', at: new Date('2025-11-12T09:00:00Z') });
+    const result = await ingestOtelLogsJson(apiRequests([{ requestId: 'req_1', timeUnixNano: '1762941600000000000' }]));
 
     expect(result).toMatchObject({ accepted: 1, dropped: 0 });
     expect(state.observations).toEqual([
@@ -257,5 +264,25 @@ describe('ingestOtelLogsJson — Claude Code api_request', () => {
       },
     ]);
     expect(state.trajectory).toHaveLength(0);
+  });
+
+  it('stores each request in the repository of the session\'s place at its time (FE-2058)', async () => {
+    // A's main checkout → a slot of B (10:30) → A's main checkout again (10:50).
+    state.placedBindings.push(
+      { sessionId: SID, repositoryId: 'repo-b', at: new Date('2025-11-12T10:30:00Z') },
+      { sessionId: SID, repositoryId: 'repo-1', at: new Date('2025-11-12T10:50:00Z') },
+    );
+    const ns = (iso: string) => `${BigInt(Date.parse(iso)) * 1_000_000n}`;
+    await ingestOtelLogsJson(
+      apiRequests([
+        { requestId: 'req_b', timeUnixNano: ns('2025-11-12T10:40:00Z') },
+        { requestId: 'req_a2', timeUnixNano: ns('2025-11-12T11:00:00Z') },
+      ]),
+    );
+
+    expect(state.observations.map((row) => [row.repositoryId, row.observations[0].observationKey])).toEqual([
+      ['repo-b', 'req_b'],
+      ['repo-1', 'req_a2'],
+    ]);
   });
 });

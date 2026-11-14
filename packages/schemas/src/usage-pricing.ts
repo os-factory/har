@@ -1,5 +1,5 @@
 import type { AgentSessionUsage } from './schema';
-import { estimateModelCostUsd, type ModelUsageTotals } from './model-pricing';
+import { UNPRICED_AGENT_TOOLS, estimateModelCostUsd, type ModelUsageTotals } from './model-pricing';
 
 export * from './model-pricing';
 
@@ -14,6 +14,21 @@ function resolveCostUsd(reported: number | null, computed: number | null): numbe
   return Math.max(reported, computed);
 }
 
+/** A row of an unpriced agent tool: tokens only, no cost on the row or its models. */
+function stripCosts<T extends Pick<AgentSessionUsage, 'agentTool' | 'costUsd' | 'modelBreakdown'>>(usage: T): T {
+  const breakdown = usage.modelBreakdown;
+  const models =
+    breakdown && typeof breakdown === 'object' && !Array.isArray(breakdown)
+      ? Object.fromEntries(
+          Object.entries(breakdown as Record<string, unknown>).map(([model, raw]) => [
+            model,
+            raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...(raw as object), costUsd: null } : raw,
+          ]),
+        )
+      : breakdown;
+  return { ...usage, costUsd: null, ...(models ? { modelBreakdown: models } : {}) };
+}
+
 /**
  * Attach per-model and session-level USD costs from genai-prices when modelBreakdown
  * has token data. Preserves agent-reported costUsd when present (max with estimate).
@@ -21,6 +36,7 @@ function resolveCostUsd(reported: number | null, computed: number | null): numbe
 export function enrichUsageWithPricing<
   T extends Pick<AgentSessionUsage, 'agentTool' | 'costUsd' | 'modelBreakdown'>,
 >(usage: T): T {
+  if (UNPRICED_AGENT_TOOLS.has(usage.agentTool)) return stripCosts(usage);
   const breakdown = usage.modelBreakdown;
   if (!breakdown || typeof breakdown !== 'object' || Array.isArray(breakdown)) {
     return usage;

@@ -66,12 +66,21 @@ export function pricingModelCandidates(modelId: string): string[] {
   return [...new Set(out)];
 }
 
+/**
+ * Agent tools whose usage HAR does not price (FE-2058): Cursor's model ids
+ * (`default`, `claude-opus-5-5-medium`, `grok-*-high-fast`) do not map to a
+ * catalog price HAR can trust, so its rows carry tokens and a null cost until
+ * they do: no cost is estimated, served or synced for them.
+ */
+export const UNPRICED_AGENT_TOOLS: ReadonlySet<string> = new Set(['cursor']);
+
 /** Estimate USD for one model row using bundled genai-prices catalog data. */
 export function estimateModelCostUsd(
   modelId: string,
   totals: ModelUsageTotals,
   agentTool: string,
 ): number | null {
+  if (UNPRICED_AGENT_TOOLS.has(agentTool)) return null;
   const usage = toGenaiPricesUsage(totals);
   const tokenSum = usage.input_tokens + usage.output_tokens;
   if (tokenSum <= 0) return null;

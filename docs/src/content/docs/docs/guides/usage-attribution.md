@@ -90,6 +90,7 @@ back to per-slot totals for sessions that ran inside a slot's work dir.
   events.
 - **Codex granularity.** A Codex observation is a whole turn, timestamped at its
   last response; a turn that launches a slot is booked on that slot.
-- **Cursor** reports no cost and keeps no offline record: its cost is estimated
-  from model prices, and usage missed while otel-hook was not installed is lost.
+- **Cursor** reports no cost and keeps no offline record: its rows carry tokens
+  and no cost until its model ids map to prices HAR can trust, and usage missed
+  while otel-hook was not installed is lost.
   Its session env was confirmed from the IDE bundle, not at runtime.

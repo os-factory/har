@@ -8,6 +8,7 @@ import {
   type SessionSlotBinding,
   type UsageObservation,
   legacyRowSuperseded,
+  UNPRICED_AGENT_TOOLS,
   mergeRepeatedObservation,
   producerFamily,
   runningTotalDelta,
@@ -24,6 +25,7 @@ import {
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { attemptIdFromOccupancyKey } from '@/server/occupancy';
+import { repositoryOfPlaceAt } from '@/server/otel-attribution';
 
 /**
  * Storage and read model of session → slot attribution (ADR 0003).
@@ -211,7 +213,31 @@ function toBigInt(value: number | undefined): bigint {
 
 export { mergeRepeatedObservation };
 
-/** Idempotent per (agentTool, sessionId, observationKey); repeats merge by `mergeRepeatedObservation`. */
+const STORED_OBSERVATION = { id: true, producer: true, source: true, costUsd: true } as const;
+
+/**
+ * One request = one place = one repository (FE-2058): a request another
+ * repository holds — stored before its place there was known — moves here,
+ * and the session's remaining rows there are touched so its next sync
+ * replaces them. A running total stays in its series.
+ */
+async function moveFromAnotherRepository(repositoryId: string, observation: ObservationInput) {
+  const session = { agentTool: observation.agentTool, sessionId: observation.sessionId };
+  const elsewhere = await prisma.usageObservation.findFirst({
+    where: { ...session, observationKey: observation.observationKey, reportsTotal: false, repositoryId: { not: repositoryId } },
+    select: { ...STORED_OBSERVATION, repositoryId: true },
+  });
+  if (!elsewhere) return null;
+  const { repositoryId: from, ...stored } = elsewhere;
+  await prisma.usageObservation.update({ where: { id: stored.id }, data: { repositoryId } });
+  await prisma.usageObservation.updateMany({ where: { ...session, repositoryId: from }, data: { updatedAt: new Date() } });
+  return stored;
+}
+
+/**
+ * Idempotent per (agentTool, sessionId, observationKey) across repositories;
+ * repeats merge by `mergeRepeatedObservation`.
+ */
 export async function recordObservations(
   repositoryId: string,
   observations: ObservationInput[],
@@ -248,10 +274,9 @@ export async function recordObservations(
     if (observation.runningTotal) {
       Object.assign(data, tokenColumns(await runningTotalUnit(repositoryId, observation, observation.runningTotal)));
     }
-    const existing = await prisma.usageObservation.findUnique({
-      where,
-      select: { id: true, producer: true, source: true, costUsd: true },
-    });
+    const existing =
+      (await prisma.usageObservation.findUnique({ where, select: STORED_OBSERVATION })) ??
+      (observation.runningTotal ? null : await moveFromAnotherRepository(repositoryId, observation));
     if (existing) {
       const merge = mergeRepeatedObservation(
         { ...existing, costUsd: existing.costUsd == null ? null : Number(existing.costUsd) },
@@ -408,9 +433,21 @@ export function observationInputFromContract(observation: UsageObservation): Obs
   };
 }
 
+/**
+ * Observations the CLI harvested for a repository. Each request is stored in
+ * the repository of its session's place at its time (FE-2058) — a session may
+ * span repositories, and each one harvesting it posts all of its requests —
+ * and in this one only when no place is known then.
+ */
 export async function syncUsageObservations(repositoryId: string, input: unknown) {
   const { observations } = SyncUsageObservationsInputSchema.parse(input);
-  return recordObservations(repositoryId, observations.map(observationInputFromContract));
+  let created = 0;
+  for (const contract of observations) {
+    const observation = observationInputFromContract(contract);
+    const placed = await repositoryOfPlaceAt(contract, observation.observedAt);
+    created += (await recordObservations(placed ?? repositoryId, [observation])).created;
+  }
+  return { synced: observations.length, created };
 }
 
 export interface UsageObservationFilter {
@@ -731,6 +768,7 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
       .filter((row) => !legacyRowSuperseded(row, coverage))
       .map((row) => ({
         ...row,
+        costUsd: UNPRICED_AGENT_TOOLS.has(row.agentTool) ? null : row.costUsd,
         sources: toStringArray(row.sources),
         origin: 'legacy' as const,
         changedAt: row.updatedAt,
