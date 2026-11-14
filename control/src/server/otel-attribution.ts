@@ -22,10 +22,11 @@ import { occupancyKeyForAttempt } from '@/server/occupancy';
 import {
   isWorkspaceUnderPath,
   normalizeOtelPath,
+  otelWorkspaceIdForPath,
   pathAsWrittenAndResolved,
   pickPathForWorkspaceId,
 } from '@/server/otel-workspace';
-import { listLinkedWorktrees } from '@/server/git-worktrees';
+import { WORKTREE_MISS_REFRESH_MS, listLinkedWorktrees } from '@/server/git-worktrees';
 import type { ObservationInput } from '@/server/session-attribution';
 
 /**
@@ -311,11 +312,48 @@ export function targetBindingKind(attrs: OtelAttrs): 'observed' | 'workspace' {
   return str([attrs], [TARGET_SOURCE_ATTR]) === 'session-cwd' ? 'workspace' : 'observed';
 }
 
+/**
+ * Whether a target in another repository is where the session now works: its
+ * own or its shell's cwd. A file it only touched there (`tool-path`, a Read of
+ * that repository's README) is not (FE-2058).
+ */
+export function targetMovesPlace(attrs: OtelAttrs): boolean {
+  const source = str([attrs], [TARGET_SOURCE_ATTR]);
+  return source === 'session-cwd' || source === 'shell-cwd';
+}
+
 /** Where a tool event's target is, by repository: its main checkout or a linked worktree of it. */
 export interface TargetRepository {
   repositoryId: string;
   path: string;
   linked: boolean;
+}
+
+interface RegisteredRepository {
+  id: string;
+  path: string;
+}
+
+let repositoryIndex: { key: string; byOtelId: Map<string, RegisteredRepository> } | null = null;
+
+/**
+ * Registered repositories by otel-hook repository id, each path hashed as
+ * written and resolved. Every tool event looks one up: the hashes (and
+ * `realpath`s) are computed again only when the registered repositories change.
+ */
+function repositoriesByOtelId(repos: RegisteredRepository[]): Map<string, RegisteredRepository> {
+  const key = JSON.stringify(repos.map((repo) => [repo.id, repo.path]));
+  if (repositoryIndex?.key !== key) {
+    const byOtelId = new Map<string, RegisteredRepository>();
+    for (const repo of repos) {
+      for (const candidate of pathAsWrittenAndResolved(repo.path)) {
+        const id = otelWorkspaceIdForPath(normalizeOtelPath(candidate), 'git-root');
+        if (!byOtelId.has(id)) byOtelId.set(id, repo);
+      }
+    }
+    repositoryIndex = { key, byOtelId };
+  }
+  return repositoryIndex.byOtelId;
 }
 
 /**
@@ -330,10 +368,8 @@ export interface TargetRepository {
 export async function resolveTargetRepository(attrs: OtelAttrs): Promise<TargetRepository | null> {
   const repositoryId = str([attrs], [TARGET_REPOSITORY_ID_ATTR]);
   if (!repositoryId) return null;
-  const repos: Array<{ id: string; path: string }> = await prisma.repository.findMany({ select: { id: true, path: true } });
-  const repo = repos.find((candidate) =>
-    pickPathForWorkspaceId(repositoryId, pathAsWrittenAndResolved(candidate.path), 'git-root'),
-  );
+  const repos: RegisteredRepository[] = await prisma.repository.findMany({ select: { id: true, path: true } });
+  const repo = repositoriesByOtelId(repos).get(repositoryId);
   if (!repo) return null;
   const kind = str([attrs], [TARGET_WORKTREE_KIND_ATTR]);
   const linked = kind ? kind === 'linked' : str([attrs], [TARGET_WORKSPACE_ID_ATTR]) !== repositoryId;
@@ -415,8 +451,11 @@ export async function resolveNonSlotWorktree(
     .flatMap((slot) => [slot.workDir, slot.worktreePath])
     .filter((p): p is string => Boolean(p))
     .map(normalizeOtelPath);
-  const { readable, worktrees } = listLinkedWorktrees(repo.path);
-  const candidates = worktrees.filter((worktree) => !slotPaths.includes(normalizeOtelPath(worktree.path)));
+  const listing = (maxAgeMs?: number) => {
+    const { readable, worktrees } = listLinkedWorktrees(repo.path, Date.now(), maxAgeMs);
+    return { readable, candidates: worktrees.filter((worktree) => !slotPaths.includes(normalizeOtelPath(worktree.path))) };
+  };
+  let { readable, candidates } = listing();
   const evidence = (kind: 'workspace' | 'observed', workDir: string | null, branch: string | null) => ({
     kind,
     slot: {
@@ -431,15 +470,24 @@ export async function resolveNonSlotWorktree(
   });
 
   if (workspaceId) {
-    const hit = pickPathForWorkspaceId(workspaceId, candidates.map((worktree) => worktree.path), 'git-root');
-    const worktree = hit ? candidates.find((candidate) => normalizeOtelPath(candidate.path) === hit) : undefined;
-    if (worktree) return evidence(targetBindingKind(attrs), worktree.path, worktree.branch ?? targetBranch ?? null);
-    // Not listed here (`.git` not mounted, or the worktree is newer than the
-    // listing): named by its branch, when otel-hook says the target is a
-    // linked worktree of a repository (without a repository id, of none it
-    // could name) — or, from an otel-hook that does not say, when its hash is
-    // neither the main checkout's nor a slot's and the listing is unreadable.
+    const listed = () => {
+      const hit = pickPathForWorkspaceId(workspaceId, candidates.map((worktree) => worktree.path), 'git-root');
+      return hit ? candidates.find((candidate) => normalizeOtelPath(candidate.path) === hit) : undefined;
+    };
     const kind = str([attrs], [TARGET_WORKTREE_KIND_ATTR]);
+    let worktree = listed();
+    if (!worktree && kind === 'linked' && readable) {
+      // A linked worktree newer than the listing: re-read it, or this event
+      // would name it by branch and later ones by path, two rows for one worktree.
+      ({ readable, candidates } = listing(WORKTREE_MISS_REFRESH_MS));
+      worktree = listed();
+    }
+    if (worktree) return evidence(targetBindingKind(attrs), worktree.path, worktree.branch ?? targetBranch ?? null);
+    // Not listed here (`.git` not mounted): named by its branch, when
+    // otel-hook says the target is a linked worktree of a repository (without
+    // a repository id, of none it could name) — or, from an otel-hook that
+    // does not say, when its hash is neither the main checkout's nor a slot's
+    // and the listing is unreadable.
     const linked = kind
       ? kind === 'linked' && Boolean(str([attrs], [TARGET_REPOSITORY_ID_ATTR]))
       : !readable && !pickPathForWorkspaceId(workspaceId, [repo.path, ...slotPaths], 'git-root');

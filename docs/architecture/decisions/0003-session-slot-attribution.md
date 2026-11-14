@@ -121,15 +121,21 @@ How Mission Control resolves the timeline:
   inside one of the repository's linked worktrees. A target carries
   `otelhook.target.repository.id` (the git-root hash of the repository's main
   checkout, matched against each registered path as written and resolved) and
-  `otelhook.target.worktree.kind` (`main` | `linked`): the record goes to that
-  repository whatever the session's cwd, and a `linked` target is named by
-  its path when `otelhook.target.workspace.id` matches a listed worktree, else
-  by its `vcs.ref.head.name`. A `linked` target without a repository id is no
-  evidence. The listing (`.git/worktrees/*`, no git spawn) is optional: it
-  names a worktree by path and places a session whose cwd is a worktree before
-  its first tool event; without it (the docker Mission Control mounts no
-  `.git`) such records stay with the session's known repository, in its main
-  checkout. Ids are derived by otel-hook's own `deriveWorkspaceIdentity`
+  `otelhook.target.worktree.kind` (`main` | `linked`). A target derived from
+  the session's or its shell's cwd (`otelhook.target.source` `session-cwd` |
+  `shell-cwd`) puts the record in that repository whatever the session's cwd;
+  a file the session only touched in another repository (`tool-path`, a Read
+  of its README) neither moves the record nor binds the session there. A
+  `linked` target is named by its path when `otelhook.target.workspace.id`
+  matches a listed worktree (a listing older than a second is re-read first),
+  else by its `vcs.ref.head.name`. A `linked` target without a repository id
+  is no evidence. The listing (`.git/worktrees/*`, no git spawn) is optional:
+  it names a worktree by path and places a session whose cwd is a worktree
+  before its first tool event. A record nothing places — its cwd is a
+  worktree Mission Control cannot list (the docker Mission Control mounts no
+  `.git`), or a directory no repository registers — stays with the session's
+  known repository (its place then, else where it was first placed), in that
+  repository's main checkout. Ids are derived by otel-hook's own `deriveWorkspaceIdentity`
   (`working-directory` for a session's workspace id, `git-root` for a
   target's). Such usage stays unassigned — never a slot's — but is split per
   worktree (`workDir`, `branch`); worktree bindings never close each other or

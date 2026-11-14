@@ -32,6 +32,13 @@ describe('otel-hook package pin', () => {
   it('installs the release with Claude response content support', () => {
     expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.4.1');
   });
+
+  it('is the version Mission Control derives otel-hook ids with', () => {
+    const control = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'control', 'package.json'), 'utf8')) as {
+      dependencies: Record<string, string>;
+    };
+    expect(`@osfactory/otel-hook@${control.dependencies['@osfactory/otel-hook']}`).toBe(OTEL_HOOKS_PACKAGE);
+  });
 });
 
 describe('telemetry preference', () => {
