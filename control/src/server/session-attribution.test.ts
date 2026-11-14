@@ -211,6 +211,20 @@ describe('syncUsageObservations', () => {
     expect(db.tables.observations.find((row) => row.observationKey === 'req_2')!.updatedAt).not.toEqual(before);
   });
 
+  it('keeps a request with no known place in its first repository, whichever repository syncs it (FE-2058)', async () => {
+    // A harvest-only session in A's main checkout launched a slot of B at 09:00:
+    // A and B both harvest its whole transcript.
+    await recordBindings('repo-b', [{ agentTool: 'claude_code', sessionId: 'S1', kind: 'launch', slotId: 1, at: new Date('2026-11-12T09:00:00Z') }], 'sync');
+    const transcript = { observations: [{ ...observation, observationKey: 'req_0', observedAt: '2026-11-12T08:00:00.000Z' }, observation] };
+    for (const repositoryId of ['repo-a', 'repo-b', 'repo-a', 'repo-b']) {
+      await syncUsageObservations(repositoryId, transcript);
+      expect(db.tables.observations.map((row) => [row.observationKey, row.repositoryId]).sort()).toEqual([
+        ['req_0', 'repo-a'],
+        ['req_1', 'repo-b'],
+      ]);
+    }
+  });
+
   it('never lets a harvested copy overwrite or erase the live cost', async () => {
     await recordObservations('repo-1', [live]);
     await syncUsageObservations('repo-1', { observations: [{ ...observation, tokensOutput: 999 }] });
@@ -282,6 +296,15 @@ describe('Codex running totals', () => {
     await recordObservations('repo-1', [turn(2, 250, 12), turn(3, 300, 30)]);
     expect(db.tables.observations).toHaveLength(3);
     expect(usage()).toEqual({ 'turn-1': [100, 10], 'turn-2': [150, 2], 'turn-3': [50, 18] });
+  });
+
+  it('computes a turn from the session\'s previous total in any repository, and stores a resent turn once (FE-2058)', async () => {
+    await recordObservations('repo-a', [turn(1, 100, 10)]);
+    await recordObservations('repo-b', [turn(2, 150, 15)]);
+    await recordObservations('repo-b', [turn(1, 100, 10)]);
+    expect(db.tables.observations).toHaveLength(2);
+    const total = db.tables.observations.reduce((sum, row) => sum + Number(row.tokensInput), 0);
+    expect(total).toBe(150);
   });
 
   it('corrects a later turn when a harvested earlier turn arrives after it', async () => {

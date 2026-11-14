@@ -164,6 +164,8 @@ model UsageObservation {
   @@unique([repositoryId, agentTool, sessionId, observationKey])
   @@index([repositoryId, observedAt])
   @@index([repositoryId, agentTool, sessionId, observedAt])
+  /// A session's units across repositories: its running-total series and the copy another repository holds (FE-2058).
+  @@index([agentTool, sessionId, observedAt])
 }
 
 /// A session total a provider reports itself (Claude Code `claude_code.cost.usage`).

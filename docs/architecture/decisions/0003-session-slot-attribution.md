@@ -83,8 +83,10 @@ else its latest hook span then — whether it arrives over OTLP (Claude's
 repository holding a binding of the session harvests its whole transcript).
 Only with no place known then does it go where the session was already placed
 (OTLP) or to the posting repository (sync). A key is one row across
-repositories: a repeat placed elsewhere moves the stored row there and marks
-the session changed in the repository it left. A hook event whose cwd is a
+repositories: a repeat whose place is known elsewhere moves the stored row
+there and marks the session changed in the repository it left; a repeat with
+no known place stays with the repository that holds it, so syncs from several
+repositories never move it back and forth. A hook event whose cwd is a
 repository's main checkout, while the session's place is in another
 repository, records the return as a slot-0 binding keyed `main-checkout`; its
 usage is the session's main-checkout usage.
@@ -138,7 +140,8 @@ How Mission Control resolves the timeline:
   (`otelhook.usage.temporality = cumulative`). Mission Control stores the
   reported total with the turn and the turn's own usage as the difference from
   the previous reported total, less the turns stored in between without one
-  (harvested only). A turn arriving out of order recomputes the next one.
+  (harvested only), in whichever repositories the session's turns were
+  placed. A turn arriving out of order recomputes the next one.
 - **Cost:** the provider's cost when reported (Claude `cost_usd`), else the
   genai-prices estimate for the observation's model and tokens.
 - **Provider totals:** Claude's `claude_code.cost.usage` / `token.usage`

@@ -889,19 +889,22 @@ export interface OtelIngestResult {
 }
 
 /**
- * Repository of a provider session: where its earlier evidence was placed, else
- * whatever the record's own resource/attributes resolve to.
+ * Repository of a provider session: its place at `at` (`placed`), else where
+ * its earlier evidence was placed, else whatever the record's own
+ * resource/attributes resolve to.
  */
 async function repositoryForRecord(
   ref: AgentSessionRef,
   resource: AttrMap,
   attributes: AttrMap,
   at?: Date,
-): Promise<{ repositoryId: string | null; reason?: string }> {
-  const known = (at ? await repositoryOfPlaceAt(ref, at) : null) ?? (await repositoryForProviderSession(ref));
-  if (known) return { repositoryId: known };
+): Promise<{ repositoryId: string | null; placed: boolean; reason?: string }> {
+  const place = at ? await repositoryOfPlaceAt(ref, at) : null;
+  if (place) return { repositoryId: place, placed: true };
+  const known = await repositoryForProviderSession(ref);
+  if (known) return { repositoryId: known, placed: false };
   const resolved = await resolveSessionContext(resource, attributes);
-  return { repositoryId: resolved.context?.repositoryId ?? null, reason: resolved.reason };
+  return { repositoryId: resolved.context?.repositoryId ?? null, placed: false, reason: resolved.reason };
 }
 
 function isClaudeCostPoint(point: ParsedMetricPoint): boolean {
@@ -973,7 +976,7 @@ async function storeObservations(
 ): Promise<OtelIngestResult> {
   const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
   for (const observation of observations) {
-    const { repositoryId, reason } = await repositoryForRecord(
+    const { repositoryId, placed, reason } = await repositoryForRecord(
       observation as AgentSessionRef,
       resource,
       attributes(observation),
@@ -984,7 +987,7 @@ async function storeObservations(
       result.reasons.push(reason ?? `no repository known for session ${observation.sessionId}`);
       continue;
     }
-    await recordObservations(repositoryId, [observation]);
+    await recordObservations(repositoryId, [observation], { placed });
     result.accepted += 1;
   }
   return result;
