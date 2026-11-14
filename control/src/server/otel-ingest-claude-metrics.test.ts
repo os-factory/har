@@ -25,10 +25,6 @@ vi.mock('@/lib/db', () => ({
     sessionSlotBinding: { findFirst: vi.fn(async () => null) },
     usageObservation: { findFirst: vi.fn(async () => null) },
     agentSessionSpan: {
-      findFirst: vi.fn(
-        async ({ where }: { where: { sessionKey: string } }) =>
-          spans.find((s) => s.sessionKey === where.sessionKey) ?? null,
-      ),
       findUnique: vi.fn(
         async ({ where }: { where: { id: string } }) =>
           spans.find((s) => s.id === where.id) ?? null,
@@ -54,9 +50,11 @@ vi.mock('@/lib/db', () => ({
             : null,
       ),
     },
-    // json_extract fallback: the template's values are the session id.
-    $queryRaw: vi.fn(async (_strings: TemplateStringsArray, sessionId: string) =>
-      spans.filter((s) => s.sessionId === sessionId).map((s) => ({ repositoryId: s.repositoryId })),
+    // The span lookup by provider session: its first values are the session id.
+    $queryRaw: vi.fn(async ({ values: [sessionId] }: { values: unknown[] }) =>
+      spans
+        .filter((s) => s.sessionKey === sessionId || s.sessionId === sessionId)
+        .map((s) => ({ repositoryId: s.repositoryId })),
     ),
   },
 }));

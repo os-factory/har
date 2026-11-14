@@ -82,7 +82,7 @@ vi.mock('@/lib/db', () => ({
     sessionSlotBinding: db.table('bindings'),
     usageObservation: db.table('observations'),
     sessionReportedUsage: db.table('reported'),
-    agentSessionSpan: { findFirst: async () => null },
+    $queryRaw: async () => [],
     agentSlot: {
       findUnique: async () => ({ branch: 'main-abcd-har-agent-2-xy12', occupancyKey: 'occ-2' }),
     },

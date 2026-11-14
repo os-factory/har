@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
   trajectory: [] as Array<Record<string, unknown>>,
   /** Stored bindings, by session: only their repository and time matter here. */
   placedBindings: [] as Array<{ sessionId: string; repositoryId: string; at: Date }>,
+  /** Stored hook spans: `sessionKey` is a `har.session_key` when one named the span. */
+  spans: [] as Array<{ repositoryId: string; sessionKey: string; attributes: Record<string, string>; startTime: Date }>,
 }));
 
 const slot2 = {
@@ -54,8 +56,17 @@ vi.mock('@/lib/db', () => ({
     },
     usageObservation: { findFirst: async () => null },
     workAttempt: { findMany: async () => [], findFirst: async () => null },
-    agentSessionSpan: { findFirst: async () => null },
-    $queryRaw: async () => [],
+    // The span lookup by provider session: its values are the session id
+    // (thrice), then the bound `at` of a latest-span query.
+    $queryRaw: async (query: { sql: string; values: unknown[] }) => {
+      const [sessionId] = query.values;
+      const at = query.values.find((value): value is Date => value instanceof Date);
+      const rows = state.spans
+        .filter((span) => [span.sessionKey, span.attributes['otelhook.session.id'], span.attributes['session.id']].includes(sessionId as string))
+        .filter((span) => !at || span.startTime <= at)
+        .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+      return (at ? rows.reverse() : rows).slice(0, 1).map((span) => ({ repositoryId: span.repositoryId }));
+    },
   },
 }));
 
@@ -115,6 +126,7 @@ beforeEach(() => {
   state.observations.length = 0;
   state.trajectory.length = 0;
   state.placedBindings.length = 0;
+  state.spans.length = 0;
 });
 
 describe('ingestOtelTracesJson — evidence and usage', () => {
@@ -225,6 +237,8 @@ describe('evidence time for a span exported when it ends', () => {
   });
 });
 
+const ns = (iso: string) => `${BigInt(Date.parse(iso)) * 1_000_000n}`;
+
 function apiRequests(requests: Array<{ requestId: string; timeUnixNano: string }>) {
   return {
     resourceLogs: [
@@ -272,7 +286,6 @@ describe('ingestOtelLogsJson — Claude Code api_request', () => {
       { sessionId: SID, repositoryId: 'repo-b', at: new Date('2025-11-12T10:30:00Z') },
       { sessionId: SID, repositoryId: 'repo-1', at: new Date('2025-11-12T10:50:00Z') },
     );
-    const ns = (iso: string) => `${BigInt(Date.parse(iso)) * 1_000_000n}`;
     await ingestOtelLogsJson(
       apiRequests([
         { requestId: 'req_b', timeUnixNano: ns('2025-11-12T10:40:00Z') },
@@ -284,5 +297,16 @@ describe('ingestOtelLogsJson — Claude Code api_request', () => {
       ['repo-b', 'req_b'],
       ['repo-1', 'req_a2'],
     ]);
+  });
+
+  it('places a request by the session\'s latest hook span, one keyed by a stale har.session_key too (FE-2058)', async () => {
+    // A's main checkout at 10:00, then a hook span in B at 10:30 keyed by a stale har.session_key.
+    state.spans.push(
+      { repositoryId: 'repo-1', sessionKey: SID, attributes: { 'otelhook.session.id': SID }, startTime: new Date('2025-11-12T10:00:00Z') },
+      { repositoryId: 'repo-b', sessionKey: 'old-launch', attributes: { 'otelhook.session.id': SID }, startTime: new Date('2025-11-12T10:30:00Z') },
+    );
+    await ingestOtelLogsJson(apiRequests([{ requestId: 'req_b', timeUnixNano: ns('2025-11-12T10:40:00Z') }]));
+
+    expect(state.observations.map((row) => row.repositoryId)).toEqual(['repo-b']);
   });
 });
