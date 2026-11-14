@@ -90,6 +90,13 @@ import {
   throwIfSyncAborted,
 } from './sync-request';
 import { readSyncSelection, resolveSyncSelection } from './control-sync-selection';
+import {
+  describeHeldUsage,
+  fetchUsageInvariantReport,
+  heldUnitsForRepo,
+  partitionHeldUsage,
+  type HeldUsageUnits,
+} from './usage-invariants-check';
 import { recordSentObservations, unsentObservations } from './observation-ledger';
 
 export { chunkBySerializedSize };
@@ -614,8 +621,11 @@ async function buildPortalPayload(
   since: string | null,
   full = false,
   portal?: PortalTarget,
+  heldUnits: HeldUsageUnits = new Map(),
 ): Promise<{
   syncBody: Record<string, unknown>;
+  /** Usage left out of this sync: sessions breaking a blocking invariant. */
+  held: Array<Array<Record<string, unknown>>>;
   /** Usage beyond the first request's share, one request per batch. */
   usageBatches: Array<Array<Record<string, unknown>>>;
   runs: RunRecord[];
@@ -638,13 +648,16 @@ async function buildPortalPayload(
   // Attribute runs/validations to the syncing member so the portal can resolve
   // a real user FK instead of the lossy (repo, agentId) derivation.
   const userEmail = resolvePortalUserEmail(portal);
-  const { usage, events, maxSyncedAt, failures, truncated } = await collectPortalTelemetry(
+  const { usage: collected, events, maxSyncedAt, failures, truncated } = await collectPortalTelemetry(
     repoPath,
     status.slots,
     controlApiUrl,
     since,
     portal,
   );
+  // A session breaking I1/I2 is left out whole: the portal replaces only the
+  // sessions a sync carries, so its stored rows stay as they are.
+  const { sent: usage, held } = partitionHeldUsage(collected, heldUnits);
   // A provider session's rows stay in one request: the portal replaces a
   // session's rows with what one request carries.
   const [firstUsage = [], ...usageBatches] = chunkBySerializedSize(usage, maxSyncBatchBytes()).map(
@@ -703,6 +716,7 @@ async function buildPortalPayload(
 
   return {
     syncBody,
+    held,
     usageBatches,
     runs: mergeRunsBySource(runsBySource),
     runsBySource,
@@ -948,8 +962,9 @@ async function syncRepoWithPortal(
     }
   }
   const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
-  const { syncBody, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
-    await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal);
+  const heldUnits: HeldUsageUnits = dryRun ? new Map() : await heldUsageUnits(controlApiUrl, repoPath);
+  const { syncBody, held, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
+    await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, heldUnits);
   const newRuns = selectRunsForSync(
     runsBySource,
     runsSince,
@@ -995,11 +1010,14 @@ async function syncRepoWithPortal(
   }
   // Usage and events share one watermark: advancing it on one channel's rows
   // strands the other's for good when its read failed.
-  if (!dryRun && maxSyncedAt && failures.length === 0) {
+  // A held-back session must be offered again once it is fixed, even if its
+  // own facts do not change (the copy may be removed from another repository).
+  if (!dryRun && maxSyncedAt && failures.length === 0 && held.length === 0) {
     writePortalWatermark(repoPath, watermarkKey, maxSyncedAt);
   }
 
   const warnings: string[] = [];
+  if (held.length > 0) warnings.push(describeHeldUsage(repoPath, held, heldUnits));
   if (failures.length > 0) warnings.push(describeReadFailures(repoPath, failures));
   if (truncated.length > 0) warnings.push(describeTruncatedReads(repoPath, truncated));
 
@@ -1164,6 +1182,29 @@ export async function syncRepoWithControl(
     throw new Error(`${failures.join('; ')}${landed}`);
   }
   return { warnings };
+}
+
+let warnedUsageCheckUnavailable = false;
+
+/**
+ * The sync units (provider sessions, legacy rows) of a repository that break
+ * a blocking usage invariant (I1, I2): the HQ sync leaves them out and sends
+ * the rest. A Mission Control without the check (older version) or a failed
+ * check holds nothing back: the sync warns once and goes on.
+ * `HAR_SYNC_ALLOW_USAGE_VIOLATIONS=1` sends everything.
+ */
+async function heldUsageUnits(apiUrl: string, repoPath: string): Promise<HeldUsageUnits> {
+  if (process.env.HAR_SYNC_ALLOW_USAGE_VIOLATIONS === '1' || !isTelemetryEnabled()) return new Map();
+  try {
+    return heldUnitsForRepo(await fetchUsageInvariantReport(apiUrl, repoPath), repoPath);
+  } catch (err) {
+    if (err instanceof SyncDeadlineError) throw err;
+    if (!warnedUsageCheckUnavailable) {
+      warnedUsageCheckUnavailable = true;
+      warn(`Usage invariants not checked before the HQ sync: ${errorMessage(err)}`);
+    }
+    return new Map();
+  }
 }
 
 function errorMessage(err: unknown): string {

@@ -54,6 +54,7 @@ import {
   writePortalTrajectoryPreference,
 } from '../../core/telemetry-config';
 import { finishCommand } from '../finish-command';
+import { checkUsageOptions, handleCheckUsage } from './control-check-usage';
 
 export const controlCommand = {
   command: 'control <subcommand>',
@@ -147,6 +148,18 @@ export const controlCommand = {
         handleSync,
       )
       .command(
+        'check-usage',
+        'Check the usage invariants over what Mission Control holds and would sync (read-only)',
+        checkUsageOptions,
+        (argv) =>
+          handleCheckUsage({
+            repo: argv.repo as string | undefined,
+            apiUrl: argv.apiUrl as string | undefined,
+            json: argv.json as boolean,
+            limit: argv.limit as number,
+          }),
+      )
+      .command(
         'login',
         'Deprecated alias for har hq connect',
         (y: Argv) =>
@@ -212,7 +225,7 @@ export const controlCommand = {
       );
     return chain.demandCommand(
       1,
-      'Please specify a subcommand: up, down, register, unregister, sync, login, reset, trajectory',
+      'Please specify a subcommand: up, down, register, unregister, sync, check-usage, login, reset, trajectory',
     );
   },
   handler: () => {},
