@@ -115,15 +115,23 @@ How Mission Control resolves the timeline:
 - **Non-slot worktrees:** a session working in a linked git worktree that is
   not a slot is bound to it as `MAIN_CHECKOUT_AGENT_ID` (0) with an occupancy
   key naming the worktree (`worktree:<path>`, or `worktree-branch:<branch>`).
-  Evidence: the session's cwd inside one of the repository's linked worktrees
-  (read from `.git/worktrees/*`, no git spawn; a worktree outside the checkout
-  also resolves the repository), or a tool event's
-  `otelhook.target.workspace.id` matching one (otel-hook ADR 0008). When
-  Mission Control cannot read the repository's git directory, a target that is
-  neither the main checkout's nor a slot's hash is named by its
-  `vcs.ref.head.name` alone. Such usage stays unassigned — never a slot's —
-  but is split per worktree (`workDir`, `branch`); worktree bindings never
-  close each other or a slot's.
+  Evidence: a tool event's target (otel-hook ADR 0008), or the session's cwd
+  inside one of the repository's linked worktrees. A target carries
+  `otelhook.target.repository.id` (the git-root hash of the repository's main
+  checkout, matched against each registered path as written and resolved) and
+  `otelhook.target.worktree.kind` (`main` | `linked`): the record goes to that
+  repository whatever the session's cwd, and a `linked` target is named by
+  its path when `otelhook.target.workspace.id` matches a listed worktree, else
+  by its `vcs.ref.head.name`. A `linked` target without a repository id is no
+  evidence. The listing (`.git/worktrees/*`, no git spawn) is optional: it
+  names a worktree by path and places a session whose cwd is a worktree before
+  its first tool event; without it (the docker Mission Control mounts no
+  `.git`) such records stay with the session's known repository, in its main
+  checkout. Ids are derived by otel-hook's own `deriveWorkspaceIdentity`
+  (`working-directory` for a session's workspace id, `git-root` for a
+  target's). Such usage stays unassigned — never a slot's — but is split per
+  worktree (`workDir`, `branch`); worktree bindings never close each other or
+  a slot's.
 - **Same unit, several producers:** observations are idempotent per key. A
   repeat of a key from the live stream replaces a harvested copy; a harvested
   copy never replaces the live one, and a provider-reported cost is never

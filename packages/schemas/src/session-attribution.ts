@@ -42,6 +42,14 @@ export const TARGET_BRANCH_ATTR = 'vcs.ref.head.name';
 export const TARGET_WORKSPACE_ID_ATTR = 'otelhook.target.workspace.id';
 /** What the target was derived from: `tool-path` | `shell-cwd` | `session-cwd`. */
 export const TARGET_SOURCE_ATTR = 'otelhook.target.source';
+/**
+ * The target's repository: the salted hash of its main worktree root (equal to
+ * `TARGET_WORKSPACE_ID_ATTR` on a main checkout), and whether the target is
+ * that `main` worktree or a `linked` one. A `linked` target without a
+ * repository id belongs to no repository otel-hook could name.
+ */
+export const TARGET_REPOSITORY_ID_ATTR = 'otelhook.target.repository.id';
+export const TARGET_WORKTREE_KIND_ATTR = 'otelhook.target.worktree.kind';
 /** The provider's own subagent id (Claude `agent_id`, Cursor subagent conversation id). */
 export const SUBAGENT_ID_ATTR = 'otelhook.subagent.id';
 

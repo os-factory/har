@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { otelWorkspaceIdForPath } from './otel-workspace';
 import { clearLinkedWorktreeCache, listLinkedWorktrees } from './git-worktrees';
 
@@ -97,6 +97,9 @@ vi.mock('@/lib/db', () => ({
           ),
       ),
     },
+    agentSessionSpan: { findFirst: vi.fn(async () => null) },
+    usageObservation: { findFirst: vi.fn(async () => null) },
+    $queryRaw: vi.fn(async () => []),
     workAttempt: {
       findMany: vi.fn(async () => []),
       findFirst: vi.fn(async () => null),
@@ -394,7 +397,7 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
       {
         'gen_ai.client.workspace': repoPath,
         ...session,
-        'otelhook.target.workspace.id': otelWorkspaceIdForPath(outside),
+        'otelhook.target.workspace.id': otelWorkspaceIdForPath(outside, 'git-root'),
         'vcs.ref.head.name': 'ext',
         'otelhook.target.source': 'tool-path',
       },
@@ -432,10 +435,110 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
       {
         'gen_ai.client.workspace': repoPath,
         ...session,
-        'otelhook.target.workspace.id': otelWorkspaceIdForPath(repoPath),
+        'otelhook.target.workspace.id': otelWorkspaceIdForPath(repoPath, 'git-root'),
         'vcs.ref.head.name': 'main',
       },
     );
     expect(evidence).toEqual([]);
   });
 });
+
+describe('resolveSessionContext — a target\'s repository from otel-hook\'s repository id (FE-2058)', () => {
+  // As in the docker Mission Control: the repository's `.git` is not mounted,
+  // so its linked worktrees cannot be listed.
+  const repoPath = '/host/src/app';
+  const linkedWorktree = '/host/src/app-feat';
+  const session = { 'session.id': 'S-docker', 'otelhook.provider.id': 'claude-code' };
+  const toolEvent = (worktree: string, kind: 'main' | 'linked', branch: string, repository = repoPath) => ({
+    'otelhook.target.workspace.id': otelWorkspaceIdForPath(worktree, 'git-root'),
+    'otelhook.target.repository.id': otelWorkspaceIdForPath(repository, 'git-root'),
+    'otelhook.target.worktree.kind': kind,
+    'otelhook.target.source': 'session-cwd',
+    'vcs.ref.head.name': branch,
+  });
+
+  beforeEach(() => {
+    repos.push({ id: 'repo-docker', path: repoPath });
+    bindings = [];
+    slots = [];
+  });
+  afterEach(() => {
+    repos.splice(repos.findIndex((repo) => repo.id === 'repo-docker'), 1);
+  });
+
+  it('places a session started in a linked worktree in its repository, as that worktree, without reading .git', async () => {
+    const { context, evidence } = await resolveSessionContext(
+      {},
+      { 'otelhook.workspace.id': otelWorkspaceIdForPath(linkedWorktree), ...session, ...toolEvent(linkedWorktree, 'linked', 'feat') },
+    );
+    expect(context).toMatchObject({ repositoryId: 'repo-docker', agentId: 0 });
+    expect(evidence).toEqual([
+      { kind: 'workspace', slot: expect.objectContaining({ slotId: 0, occupancyKey: 'worktree-branch:feat', branch: 'feat' }) },
+    ]);
+  });
+
+  it('places a tool event in the target\'s repository when the session\'s cwd is another repository', async () => {
+    const { context, evidence } = await resolveSessionContext(
+      {},
+      {
+        'gen_ai.client.workspace': '/home/user/project',
+        ...session,
+        ...toolEvent(linkedWorktree, 'linked', 'feat'),
+        'otelhook.target.source': 'tool-path',
+      },
+    );
+    expect(context).toMatchObject({ repositoryId: 'repo-docker', agentId: 0 });
+    expect(evidence).toEqual([
+      { kind: 'observed', slot: expect.objectContaining({ occupancyKey: 'worktree-branch:feat' }) },
+    ]);
+  });
+
+  it('keeps a record no evidence places with the session\'s known repository, in its main checkout', async () => {
+    bindings = [
+      {
+        repositoryId: 'repo-docker',
+        agentTool: 'claude_code',
+        sessionId: 'S-docker',
+        subagentId: '',
+        kind: 'observed',
+        slotId: 0,
+        occupancyKey: 'worktree-branch:feat',
+        branch: 'feat',
+        at: new Date(Date.now() - 60_000),
+      },
+    ];
+    // A prompt span from the unlisted worktree, and a tool event whose linked
+    // target has no repository id (its main checkout is gone).
+    for (const attributes of [
+      { 'otelhook.workspace.id': otelWorkspaceIdForPath(linkedWorktree), ...session },
+      {
+        'otelhook.workspace.id': otelWorkspaceIdForPath(linkedWorktree),
+        ...session,
+        'otelhook.target.workspace.id': otelWorkspaceIdForPath('/elsewhere/wt', 'git-root'),
+        'otelhook.target.worktree.kind': 'linked',
+        'vcs.ref.head.name': 'orphan',
+      },
+    ]) {
+      const { context, evidence } = await resolveSessionContext({}, attributes);
+      expect(context).toMatchObject({ repositoryId: 'repo-docker' });
+      expect(evidence).toEqual([]);
+    }
+  });
+
+  it('matches a repository registered through a symlink by its real path', async () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mc-symlink-')));
+    const real = path.join(root, 'real');
+    const link = path.join(root, 'link');
+    fs.mkdirSync(real);
+    fs.symlinkSync(real, link);
+    repos.push({ id: 'repo-link', path: link });
+    try {
+      const { context } = await resolveSessionContext({}, { ...session, ...toolEvent(path.join(root, 'real-feat'), 'linked', 'feat', real) });
+      expect(context?.repositoryId).toBe('repo-link');
+    } finally {
+      repos.splice(repos.findIndex((repo) => repo.id === 'repo-link'), 1);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
