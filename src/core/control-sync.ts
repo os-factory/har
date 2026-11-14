@@ -56,7 +56,7 @@ import {
   listValidationBindings,
 } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
-import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
+import { getTelemetryLevel, getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
 import { getHarPackageVersion } from './package-version';
 import { warn } from '../utils/logging';
 import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
@@ -680,8 +680,8 @@ async function buildPortalPayload(
 
   if (full && isTelemetryEnabled() && !getTelemetrySignals().prompts) {
     warn(
-      `${path.basename(repoPath)}: prompt capture is off, so no agent prompt or response text is ` +
-        'harvested — surfaces that show session content stay empty. Enable with `har telemetry on --prompts`.',
+      `${path.basename(repoPath)}: telemetry level is ${getTelemetryLevel()}, so no agent prompt or response text is ` +
+        'recorded — surfaces that show session content stay empty. Record it with `har telemetry on --level full`.',
     );
   }
 
@@ -1036,7 +1036,7 @@ async function syncTrajectoryWithPortal(
   full: boolean | undefined,
 ): Promise<string[]> {
   const wantRecords = isPortalTrajectoryEnabledForTarget(portal);
-  const wantSpans = isTelemetryEnabled();
+  const wantSpans = isTelemetryEnabled() && getTelemetrySignals().traces;
   if (!wantRecords && !wantSpans) return [];
 
   const recordsTarget = trajectoryWatermarkTarget(portal);
@@ -1156,8 +1156,16 @@ export async function syncRepoWithControl(
     localError = err;
   }
 
-  const portal = isRepoPortalSyncEnabled(repoPath) ? resolvePortalTarget(repoPath) : null;
+  const portalSyncEnabled = isRepoPortalSyncEnabled(repoPath);
+  const portal = portalSyncEnabled ? resolvePortalTarget(repoPath) : null;
   let warnings: string[] = [];
+  // Attached to HQ yet opted out: HQ stays empty with no sign of why, so say it.
+  if (!portalSyncEnabled && resolvePortalTarget(repoPath)) {
+    warnings.push(
+      `${path.basename(repoPath)}: attached to HAR HQ but kept local-only, so nothing is sent to HQ — ` +
+        `send it with \`har control register --repo ${repoPath} --portal\`.`,
+    );
+  }
   let portalError: unknown;
   if (portal) {
     try {

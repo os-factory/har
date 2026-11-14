@@ -9,10 +9,13 @@ import {
   runOnboarding,
 } from '../src/core/onboarding';
 import {
+  coerceTelemetryFlag,
   defaultAgentSlotMaxForProfile,
   defaultStartControl,
+  defaultTelemetryLevel,
   parseAgentSlotsFlag,
 } from '../src/cli/commands/onboard';
+import { telemetryLevelChoices } from '../src/cli/telemetry-prompts';
 import { DOCKER_INSTALL_URL, type DockerStatus } from '../src/core/docker-status';
 import {
   isTelemetryEnabled,
@@ -93,22 +96,88 @@ describe('applyOnboardingTelemetry', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('enables full telemetry including prompts', async () => {
-    await applyOnboardingTelemetry('on', { setupHooks: false });
-    expect(isTelemetryEnabled()).toBe(true);
-    expect(readTelemetryPreference().signals.prompts).toBe(true);
+  it('stores each level with its full signal set', async () => {
+    await applyOnboardingTelemetry('full', { setupHooks: false });
+    expect(readTelemetryPreference().level).toBe('full');
+    expect(readTelemetryPreference().signals).toEqual({
+      metrics: true,
+      traces: true,
+      logs: true,
+      prompts: true,
+    });
+
+    await applyOnboardingTelemetry('outline', { setupHooks: false });
+    expect(readTelemetryPreference().signals).toEqual({
+      metrics: true,
+      traces: true,
+      logs: true,
+      prompts: false,
+    });
+
+    await applyOnboardingTelemetry('usage', { setupHooks: false });
+    expect(readTelemetryPreference().signals).toEqual({
+      metrics: true,
+      traces: false,
+      logs: false,
+      prompts: false,
+    });
   });
 
-  it('enables telemetry without prompts', async () => {
-    await applyOnboardingTelemetry('on-no-prompts', { setupHooks: false });
-    expect(isTelemetryEnabled()).toBe(true);
-    expect(readTelemetryPreference().signals.prompts).toBe(false);
+  it('restores the full signal set over a preference that had dropped logs', async () => {
+    fs.writeFileSync(
+      process.env.HAR_TELEMETRY_CONFIG_PATH!,
+      JSON.stringify({ level: 'usage', signals: { logs: false } }),
+    );
+    await applyOnboardingTelemetry('full', { setupHooks: false });
+    expect(readTelemetryPreference().signals.logs).toBe(true);
   });
 
   it('disables telemetry', async () => {
-    await applyOnboardingTelemetry('on', { setupHooks: false });
+    await applyOnboardingTelemetry('full', { setupHooks: false });
     await applyOnboardingTelemetry('off', { setupHooks: false });
     expect(isTelemetryEnabled()).toBe(false);
+  });
+});
+
+describe('telemetry level defaults and flags', () => {
+  const originalPath = process.env.HAR_TELEMETRY_CONFIG_PATH;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-onboard-level-'));
+    process.env.HAR_TELEMETRY_CONFIG_PATH = path.join(tmpDir, 'telemetry.json');
+  });
+
+  afterEach(() => {
+    if (originalPath === undefined) delete process.env.HAR_TELEMETRY_CONFIG_PATH;
+    else process.env.HAR_TELEMETRY_CONFIG_PATH = originalPath;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('offers full on a machine with no choice yet', () => {
+    expect(defaultTelemetryLevel()).toBe('full');
+  });
+
+  it('offers the level already chosen on this machine', async () => {
+    await applyOnboardingTelemetry('usage', { setupHooks: false });
+    expect(defaultTelemetryLevel()).toBe('usage');
+  });
+
+  it('accepts levels and the older spellings for --telemetry', () => {
+    expect(coerceTelemetryFlag('outline')).toBe('outline');
+    expect(coerceTelemetryFlag('on')).toBe('full');
+    expect(coerceTelemetryFlag('on-no-prompts')).toBe('outline');
+    expect(coerceTelemetryFlag(undefined)).toBeUndefined();
+    expect(() => coerceTelemetryFlag('everything')).toThrow(/Unknown --telemetry value/);
+  });
+
+  it('offers the four levels, most detailed first', () => {
+    expect(telemetryLevelChoices().map((choice) => choice.value)).toEqual([
+      'full',
+      'outline',
+      'usage',
+      'off',
+    ]);
   });
 });
 
@@ -117,14 +186,14 @@ const DOCKER_MISSING: DockerStatus = { cliInstalled: false, daemonRunning: false
 
 describe('Mission Control start default', () => {
   it('is on when telemetry is on and Docker is usable', () => {
-    expect(defaultStartControl('on', DOCKER_OK)).toBe(true);
-    expect(defaultStartControl('on-no-prompts', DOCKER_OK)).toBe(true);
+    expect(defaultStartControl('full', DOCKER_OK)).toBe(true);
+    expect(defaultStartControl('usage', DOCKER_OK)).toBe(true);
   });
 
   it('is off when telemetry is off or Docker is unusable', () => {
     expect(defaultStartControl('off', DOCKER_OK)).toBe(false);
-    expect(defaultStartControl('on', DOCKER_MISSING)).toBe(false);
-    expect(defaultStartControl('on', { cliInstalled: true, daemonRunning: false })).toBe(false);
+    expect(defaultStartControl('full', DOCKER_MISSING)).toBe(false);
+    expect(defaultStartControl('full', { cliInstalled: true, daemonRunning: false })).toBe(false);
   });
 });
 

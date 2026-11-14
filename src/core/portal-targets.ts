@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { canonicalizeControlRepoPath } from './control-repo-path';
-import { listRegisteredRepos } from './control-registry';
+import { listRegisteredRepos, setRepoPortalSync } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
 import { markAllRegisteredDirty } from './sync-context';
 import { includeInSyncSelection } from './control-sync-selection';
@@ -358,6 +358,10 @@ export function attachRepoToPortal(repoPath: string): PortalTargetRecord {
   }
   // An attached repo outside a saved sync selection would never reach the workspace.
   includeInSyncSelection(canonical);
+  // Attaching is the explicit ask to send this repo to HQ: a local-only
+  // opt-out left from an earlier `register --no-portal` would otherwise keep
+  // it attached yet silently unsynced.
+  setRepoPortalSync(canonical, true);
   return state.connection;
 }
 

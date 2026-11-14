@@ -12,12 +12,15 @@ process.env.HAR_CONTROL_REGISTRY_PATH = path.join(harHome, 'repos.json');
 // Nor read the developer's saved `har control sync` selection, which scopes syncs.
 process.env.HAR_CONTROL_SYNC_SELECTION_PATH = path.join(harHome, 'sync-selection.json');
 process.env.HAR_OBSERVATION_LEDGER_PATH = path.join(harHome, 'observation-ledger.json');
+// Nor read (or write) the developer's real HAR HQ connection.
+process.env.HAR_PORTAL_TARGETS_PATH = path.join(harHome, 'portal-targets.json');
 
 afterAll(() => {
   fs.rmSync(harHome, { recursive: true, force: true });
   delete process.env.HAR_CONTROL_REGISTRY_PATH;
   delete process.env.HAR_CONTROL_SYNC_SELECTION_PATH;
   delete process.env.HAR_OBSERVATION_LEDGER_PATH;
+  delete process.env.HAR_PORTAL_TARGETS_PATH;
 });
 
 // Tests run inside coding agents: never let the developer's own agent session

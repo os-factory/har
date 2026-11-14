@@ -438,6 +438,22 @@ export function assembleTrajectory(records: SerializedTrajectoryRecord[]): Traje
   });
 }
 
+/**
+ * Nodes that happened in the main checkout before the session moved into the
+ * slot this stream belongs to — the session's lead-in (ADR 0003 places them
+ * at agentId 0). Empty when the stream has no slot records, so a main-checkout
+ * stream is never marked against itself.
+ */
+export function leadInNodeIds(nodes: TrajectoryNode[]): Set<string> {
+  const inSlot = nodes.some((node) => node.records.some((record) => record.agentId !== 0));
+  if (!inSlot) return new Set();
+  return new Set(
+    nodes
+      .filter((node) => node.records.length > 0 && node.records.every((record) => record.agentId === 0))
+      .map((node) => node.id),
+  );
+}
+
 export function safeTrajectoryBody(record: SerializedTrajectoryRecord): unknown | null {
   if (record.contentDisclosure === 'withheld' || record.contentDisclosure === 'metadata_only') {
     return null;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assembleTrajectory,
   formatDurationMs,
+  leadInNodeIds,
   mergeTrajectoryRecords,
   safeTrajectoryBody,
   trajectoryOverviewPlacement,
@@ -217,3 +218,28 @@ describe('trajectory assembler', () => {
     expect(formatDurationMs(21)).toBe('21 ms');
   });
 });
+
+describe('session lead-in', () => {
+  it('marks the prompt typed in the main checkout before the slot launch', () => {
+    const prompt = record('prompt', {
+      agentId: 0,
+      sequence: 1,
+      eventType: 'prompt.submitted',
+      contentKind: 'prompt',
+      payload: { body: 'fix issue #7560' },
+    });
+    const work = record('work', { agentId: 3, sequence: 2, eventType: 'agent.response', contentKind: 'response' });
+    const nodes = assembleTrajectory([work, prompt]);
+
+    expect(nodes.map((node) => node.kind)).toEqual(['prompt', 'response']);
+    expect([...leadInNodeIds(nodes)]).toEqual(['prompt']);
+  });
+
+  it('marks nothing in a stream that never entered a slot', () => {
+    const nodes = assembleTrajectory([
+      record('a', { agentId: 0, eventType: 'prompt.submitted', contentKind: 'prompt' }),
+    ]);
+    expect(leadInNodeIds(nodes).size).toBe(0);
+  });
+});
+

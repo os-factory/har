@@ -25,7 +25,25 @@ import {
   runOnboarding,
   TelemetryChoice,
 } from '../../core/onboarding';
+import {
+  displayPortalTargetLabel,
+  getActivePortalConnection,
+} from '../../core/portal-targets';
+import {
+  DEFAULT_TELEMETRY_LEVEL,
+  TELEMETRY_LEVELS,
+  describeTelemetryLevel,
+  hasTelemetryPreference,
+  parseTelemetryLevel,
+  readTelemetryPreference,
+} from '../../core/telemetry-config';
 import { divider, error, header, info, success, warn } from '../../utils/logging';
+import {
+  HQ_TRAJECTORY_CHOICES,
+  TELEMETRY_LEVEL_QUESTION,
+  hqTrajectoryQuestion,
+  telemetryLevelChoices,
+} from '../telemetry-prompts';
 import { applyAgentIntegrations, resolveOnboardingOptions } from './env';
 
 interface OnboardArgs {
@@ -33,6 +51,8 @@ interface OnboardArgs {
   yes: boolean;
   profile?: HarnessProfile;
   telemetry?: TelemetryChoice;
+  /** Forward the full trajectory to the connected HAR HQ org. */
+  hqTrajectory?: boolean;
   control?: boolean;
   plugins?: string | false;
   skipGuide: boolean;
@@ -109,24 +129,46 @@ export function defaultStartControl(telemetry: TelemetryChoice, docker: DockerSt
   return telemetry !== 'off' && isDockerUsable(docker);
 }
 
+/**
+ * The level onboarding offers by default: the one already chosen on this
+ * machine (telemetry is machine-wide, so re-onboarding another repo must not
+ * quietly change it), else the default.
+ */
+export function defaultTelemetryLevel(): TelemetryChoice {
+  return hasTelemetryPreference() ? readTelemetryPreference().level : DEFAULT_TELEMETRY_LEVEL;
+}
+
+/** `--telemetry` accepts a level, or the older on / on-no-prompts spellings. */
+export function coerceTelemetryFlag(raw: unknown): TelemetryChoice | undefined {
+  if (raw === undefined) return undefined;
+  const level = parseTelemetryLevel(raw);
+  if (!level) {
+    throw new Error(`Unknown --telemetry value: ${String(raw)}. Use one of: ${TELEMETRY_LEVELS.join(', ')}`);
+  }
+  return level;
+}
+
 async function promptChoices(
   args: OnboardArgs,
   docker: DockerStatus,
 ): Promise<{
   profile: HarnessProfile;
   telemetry: TelemetryChoice;
+  hqTrajectory?: boolean;
   startControl: boolean;
   plugins: PluginId[];
   agentSlotsMax?: number;
 }> {
   const flaggedSlots = parseAgentSlotsFlag(args.agentSlots);
   const shouldConfigureSlots = !args.skipInit;
+  const defaultLevel = defaultTelemetryLevel();
 
   if (args.yes) {
-    const telemetry = args.telemetry ?? 'on';
+    const telemetry = args.telemetry ?? defaultLevel;
     return {
       profile: args.profile ?? 'default',
       telemetry,
+      hqTrajectory: args.hqTrajectory,
       startControl: args.control ?? defaultStartControl(telemetry, docker),
       plugins: parsePluginsFlag(args.plugins) ?? [],
       agentSlotsMax: shouldConfigureSlots ? flaggedSlots : undefined,
@@ -146,10 +188,11 @@ async function promptChoices(
         'Interactive onboarding requires a TTY. Pass --yes or flags (--profile, --telemetry, --control/--no-control, --plugins, --agent-slots).',
       );
     }
-    const telemetry = args.telemetry ?? 'on';
+    const telemetry = args.telemetry ?? defaultLevel;
     return {
       profile: args.profile ?? 'default',
       telemetry,
+      hqTrajectory: args.hqTrajectory,
       startControl: args.control ?? defaultStartControl(telemetry, docker),
       plugins: parsePluginsFlag(args.plugins) ?? [],
       agentSlotsMax: shouldConfigureSlots ? flaggedSlots : undefined,
@@ -157,6 +200,7 @@ async function promptChoices(
   }
 
   const pluginChoices = listPluginChoices();
+  const hqConnection = getActivePortalConnection();
   const repoPath = path.resolve(args.repo);
   const alreadyPresent = harnessExists(repoPath);
   const needProfile = !alreadyPresent && !args.skipInit && args.profile === undefined;
@@ -171,6 +215,7 @@ async function promptChoices(
   const answers = await inquirer.prompt<{
     profile?: HarnessProfile;
     telemetry?: TelemetryChoice;
+    hqTrajectory?: boolean;
     startControl?: boolean;
     plugins?: PluginId[];
     agentSlotsMax?: number;
@@ -190,14 +235,22 @@ async function promptChoices(
     {
       type: 'list',
       name: 'telemetry',
-      message: 'Agent usage telemetry (Cursor / Claude / Codex → Mission Control)',
+      message: TELEMETRY_LEVEL_QUESTION,
       when: () => args.telemetry === undefined,
-      choices: [
-        { name: 'Full on (traces, logs, metrics, prompts) — recommended', value: 'on' },
-        { name: 'On without prompt text', value: 'on-no-prompts' },
-        { name: 'Off', value: 'off' },
-      ],
-      default: 'on',
+      choices: telemetryLevelChoices(),
+      default: defaultLevel,
+    },
+    {
+      // Only the Full level records text, so only then is forwarding a choice.
+      type: 'list',
+      name: 'hqTrajectory',
+      message: hqConnection ? hqTrajectoryQuestion(displayPortalTargetLabel(hqConnection)) : '',
+      when: (current: { telemetry?: TelemetryChoice }) =>
+        hqConnection !== null &&
+        args.hqTrajectory === undefined &&
+        (args.telemetry ?? current.telemetry) === 'full',
+      choices: [...HQ_TRAJECTORY_CHOICES],
+      default: hqConnection?.trajectoryForwarding === true ? 1 : 0,
     },
     {
       type: 'confirm',
@@ -207,7 +260,7 @@ async function promptChoices(
         : 'Start Mission Control now? (needs Docker — currently unavailable)',
       when: () => args.control === undefined,
       default: (current: { telemetry?: TelemetryChoice }) =>
-        defaultStartControl(args.telemetry ?? current.telemetry ?? 'on', docker),
+        defaultStartControl(args.telemetry ?? current.telemetry ?? defaultLevel, docker),
     },
     {
       type: 'checkbox',
@@ -244,7 +297,7 @@ async function promptChoices(
     },
   ]);
 
-  const telemetry = args.telemetry ?? answers.telemetry ?? 'on';
+  const telemetry = args.telemetry ?? answers.telemetry ?? defaultLevel;
   const profile = args.profile ?? answers.profile ?? 'default';
   let agentSlotsMax: number | undefined;
   if (shouldConfigureSlots) {
@@ -254,6 +307,7 @@ async function promptChoices(
   return {
     profile,
     telemetry,
+    hqTrajectory: args.hqTrajectory ?? answers.hqTrajectory,
     startControl:
       args.control ?? answers.startControl ?? defaultStartControl(telemetry, docker),
     plugins: parsePluginsFlag(args.plugins) ?? answers.plugins ?? [],
@@ -266,6 +320,7 @@ function printSummary(result: {
   harnessInitialized: boolean;
   harnessAlreadyPresent: boolean;
   telemetry: TelemetryChoice;
+  hqTrajectory: boolean | null;
   controlStarted: boolean;
   controlApiUrl: string;
   pluginsApplied: PluginId[];
@@ -286,7 +341,17 @@ function printSummary(result: {
           : 'skipped'
     }`,
   );
-  info(`Telemetry:      ${result.telemetry}`);
+  const level = describeTelemetryLevel(result.telemetry);
+  info(`Telemetry:      ${result.telemetry} — ${level.label}: ${level.summary}`);
+  if (result.hqTrajectory !== null) {
+    info(
+      `HAR HQ:         ${
+        result.hqTrajectory && result.telemetry === 'full'
+          ? 'full trajectory forwarded'
+          : 'usage and step outline only (har control trajectory on to forward the text)'
+      }`,
+    );
+  }
   info(`Docker:         ${describeDockerStatus(result.docker)}`);
   info(
     `Mission Control:${
@@ -349,6 +414,7 @@ export async function handleOnboard(argv: OnboardArgs): Promise<void> {
       docker,
       profile: choices.profile,
       telemetry: choices.telemetry,
+      hqTrajectory: choices.hqTrajectory,
       startControl: choices.startControl,
       plugins: choices.plugins,
       skipInit: argv.skipInit,
@@ -408,7 +474,7 @@ export const onboardCommand = {
         type: 'boolean',
         default: false,
         describe:
-          'Accept defaults without prompting (telemetry on, start Mission Control when Docker is available, no plugins)',
+          'Accept defaults without prompting (current telemetry level, else full; start Mission Control when Docker is available; no plugins)',
       })
       .option('profile', {
         type: 'string',
@@ -417,8 +483,14 @@ export const onboardCommand = {
       })
       .option('telemetry', {
         type: 'string',
-        choices: ['on', 'on-no-prompts', 'off'] as const,
-        describe: 'Telemetry preference',
+        describe:
+          'How much agent activity to record: full (prompts, replies, tool I/O) · outline (steps, no text) · usage (tokens, cost) · off. Older on / on-no-prompts still work.',
+        coerce: coerceTelemetryFlag,
+      })
+      .option('hq-trajectory', {
+        type: 'boolean',
+        describe:
+          'Forward the full trajectory to the connected HAR HQ org (asked interactively at level full when connected; off by default)',
       })
       .option('control', {
         type: 'boolean',

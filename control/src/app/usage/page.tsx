@@ -50,8 +50,8 @@ export default async function UsagePage() {
           >
             genai-prices
           </a>{' '}
-          estimates from modelBreakdown. Prompt bodies are included by default (opt out:
-          `har telemetry on --no-prompts`). Data stays in local SQLite.
+          estimates from modelBreakdown. Prompt bodies are included at the default level (record
+          less: `har telemetry on --level outline` or `--level usage`). Data stays in local SQLite.
         </p>
       </div>
 

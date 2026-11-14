@@ -8,8 +8,15 @@ import {
   ensureOtelHooks,
 } from './otel-hooks';
 import {
-  writeTelemetryPreference,
+  describeTelemetryLevel,
+  writeTelemetryLevel,
+  type TelemetryLevel,
 } from './telemetry-config';
+import {
+  displayPortalTargetLabel,
+  getActivePortalConnection,
+  writePortalConnectionTrajectoryPreference,
+} from './portal-targets';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
 import {
   DOCKER_INSTALL_URL,
@@ -36,7 +43,8 @@ import {
 import { applyAgentSlotMax, getAgentSlotRange } from '../harness/stages';
 import { divider, info, success, warn } from '../utils/logging';
 
-export type TelemetryChoice = 'on' | 'on-no-prompts' | 'off';
+/** The telemetry depth onboarding asks for — a {@link TelemetryLevel}. */
+export type TelemetryChoice = TelemetryLevel;
 
 export interface PluginChoice {
   id: PluginId;
@@ -81,7 +89,8 @@ export const ONBOARDING_GUIDE_STEPS: readonly { title: string; body: string }[] 
   {
     title: 'Mission Control and plugins',
     body: [
-      'Mission Control is a local dashboard for slots, runs, and (optional) agent usage telemetry.',
+      'Mission Control is a local dashboard for slots, runs, and agent telemetry — you choose how much is recorded:',
+      'usage (tokens, cost), outline (every step, no text) or the full trajectory (prompts, replies, tool output).',
       'Plugins (`har env add-plugin`) add optional verification stages such as Playwright browser-e2e.',
       'After setup, paste the adaptation prompt into your coding agent to tailor `.har/` to this repo.',
     ].join('\n'),
@@ -92,6 +101,11 @@ export interface OnboardOptions {
   repoPath: string;
   profile: HarnessProfile;
   telemetry: TelemetryChoice;
+  /**
+   * Forward the full trajectory to the connected HAR HQ org. Applied only when
+   * an HQ connection exists; undefined leaves the org's setting as it is.
+   */
+  hqTrajectory?: boolean;
   startControl: boolean;
   plugins: PluginId[];
   /** Do not scaffold `.har/` (even when missing). */
@@ -118,6 +132,8 @@ export interface OnboardResult {
   harnessInitialized: boolean;
   harnessAlreadyPresent: boolean;
   telemetry: TelemetryChoice;
+  /** HQ trajectory forwarding after onboarding; null when not connected to HQ. */
+  hqTrajectory: boolean | null;
   controlStarted: boolean;
   controlApiUrl: string;
   pluginsApplied: PluginId[];
@@ -183,9 +199,9 @@ export async function applyOnboardingTelemetry(
   options: { setupHooks?: boolean } = {},
 ): Promise<void> {
   const setupHooks = options.setupHooks !== false;
+  writeTelemetryLevel(choice);
 
   if (choice === 'off') {
-    writeTelemetryPreference(false);
     if (setupHooks) {
       try {
         disableOtelHooksExport();
@@ -197,18 +213,30 @@ export async function applyOnboardingTelemetry(
     return;
   }
 
-  const prompts = choice === 'on';
-  writeTelemetryPreference(true, { prompts, traces: true });
-  success(
-    prompts
-      ? 'Telemetry enabled (including prompts) → Mission Control via @osfactory/otel-hook'
-      : 'Telemetry enabled without prompt capture',
-  );
+  const described = describeTelemetryLevel(choice);
+  success(`Telemetry level: ${choice} — ${described.label}: ${described.summary}`);
   if (setupHooks) {
     const hooks = ensureOtelHooks({ setupAgents: true });
     if (hooks.message) success(hooks.message);
     if (hooks.warning) warn(hooks.warning);
   }
+}
+
+/**
+ * Apply the HQ trajectory choice to the active org connection. Returns the
+ * resulting setting, or null when not connected (nothing to apply).
+ */
+export function applyOnboardingHqTrajectory(forward: boolean | undefined): boolean | null {
+  const connection = getActivePortalConnection();
+  if (!connection) return null;
+  if (forward === undefined) return connection.trajectoryForwarding === true;
+  writePortalConnectionTrajectoryPreference(forward);
+  success(
+    forward
+      ? `Full trajectory forwarded to ${displayPortalTargetLabel(connection)}`
+      : `${displayPortalTargetLabel(connection)} receives usage and the step outline only`,
+  );
+  return forward;
 }
 
 export async function defaultEnsureControl(options: {
@@ -286,6 +314,7 @@ export async function runOnboarding(
   if (dockerWarning && !alreadyReported) warn(dockerWarning);
 
   await applyTelemetry(options.telemetry);
+  const hqTrajectory = applyOnboardingHqTrajectory(options.hqTrajectory);
 
   const control = await ensureControl({
     startControl: options.startControl,
@@ -378,6 +407,7 @@ export async function runOnboarding(
     harnessInitialized,
     harnessAlreadyPresent: alreadyPresent,
     telemetry: options.telemetry,
+    hqTrajectory,
     controlStarted: control.started,
     controlApiUrl: control.apiUrl,
     pluginsApplied,

@@ -17,7 +17,9 @@ before anything else (see [Installation](/docs/getting-started/installation/)).
 
 The guided wizard walks through how HAR works, then lets you:
 
-- choose agent telemetry (`on` / `on-no-prompts` / `off`)
+- choose how much agent activity to record: `full` (prompts, replies, tool I/O), `outline`
+  (every step, no text), `usage` (tokens, cost) or `off` — and, when connected to HAR HQ,
+  whether HQ also gets the full trajectory
 - start Mission Control
 - pick optional plugins (for example Playwright)
 - set how many agents may run in parallel (`--agent-slots`, or an interactive prompt)

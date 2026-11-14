@@ -112,6 +112,10 @@ describe('portal opt-out during sync', () => {
     expect(calls.some((c) => c.url.endsWith('/api/repos'))).toBe(true);
     expect(calls.filter((c) => c.url === 'https://portal.example.com/api/sync')).toHaveLength(0);
     expect(calls.filter((c) => c.url === 'https://portal.example.com/api/otel')).toHaveLength(0);
+    // ...and says so, instead of leaving HQ empty with no sign of why.
+    expect(result.results[0].warnings).toEqual([
+      expect.stringContaining('attached to HAR HQ but kept local-only'),
+    ]);
   });
 
   it('sends to the portal again after --portal re-enables sync', async () => {

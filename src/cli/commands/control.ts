@@ -49,6 +49,7 @@ import {
   setRepoPortalSync,
 } from '../../core/control-registry';
 import {
+  getTelemetryLevel,
   isTelemetryEnabled,
   readTelemetryPreference,
   writePortalTrajectoryPreference,
@@ -664,8 +665,12 @@ async function handleTrajectory(argv: { state?: string }): Promise<void> {
       'Prompts, tool arguments and tool results now sync to that HAR HQ org, ' +
         'capped and redacted by the local policy (HAR_TRAJECTORY_MAX_PAYLOAD_BYTES).',
     );
-    if (!isTelemetryEnabled()) {
-      warn('Telemetry is off, so nothing is forwarded yet — enable it with har telemetry on.');
+    const level = getTelemetryLevel();
+    if (level !== 'full') {
+      warn(
+        `Telemetry level is ${level}, so no text is recorded to forward — ` +
+          'record it with har telemetry on --level full.',
+      );
     }
     return;
   }

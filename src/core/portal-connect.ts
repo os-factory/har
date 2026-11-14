@@ -2,14 +2,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { canonicalizeControlRepoPath } from './control-repo-path';
-import { listRegisteredRepos, recordRepoForControlSync } from './control-registry';
+import { isRepoPortalSyncEnabled, listRegisteredRepos, recordRepoForControlSync } from './control-registry';
 import { loginViaBrowser } from './portal-login';
 import {
   attachRepoToPortal,
   connectPortal,
+  readPortalConnectionState,
   type ConnectPortalResult,
   type PortalTargetRecord,
 } from './portal-targets';
+import { getTelemetryLevel, type TelemetryLevel } from './telemetry-config';
 
 export interface PortalConnectInput {
   portalUrl: string;
@@ -81,4 +83,45 @@ function listRegisteredReposForConnect(repoPath?: string): string[] {
   const resolved = repoPath ? path.resolve(repoPath) : null;
   const current = resolved && fs.existsSync(resolved) ? canonicalizeControlRepoPath(resolved) : null;
   return [...new Set([...(current ? [current] : []), ...listRegisteredRepos()])];
+}
+
+export interface PortalRepoSyncState {
+  repoPath: string;
+  /** False when the repo is attached but kept local-only (`register --no-portal`). */
+  sendsToHq: boolean;
+}
+
+/** What HQ actually receives from this machine, as `har hq list` reports it. */
+export interface PortalSyncOverview {
+  connection: PortalTargetRecord | null;
+  repos: PortalRepoSyncState[];
+  /** Whether prompts and tool text are forwarded, when the level records them. */
+  trajectoryForwarding: boolean;
+  telemetryLevel: TelemetryLevel;
+  /** What a synced repo's sessions look like in HQ, from the two settings above. */
+  hqTrajectory: 'none' | 'usage' | 'outline' | 'full';
+}
+
+export function describePortalSync(): PortalSyncOverview {
+  const { connection, attachedRepos } = readPortalConnectionState();
+  const telemetryLevel = getTelemetryLevel();
+  const trajectoryForwarding = connection?.trajectoryForwarding === true;
+  const hqTrajectory: PortalSyncOverview['hqTrajectory'] =
+    telemetryLevel === 'off'
+      ? 'none'
+      : telemetryLevel === 'full'
+        ? trajectoryForwarding
+          ? 'full'
+          : 'outline'
+        : telemetryLevel;
+  return {
+    connection,
+    repos: attachedRepos.map((repoPath) => ({
+      repoPath,
+      sendsToHq: isRepoPortalSyncEnabled(repoPath),
+    })),
+    trajectoryForwarding,
+    telemetryLevel,
+    hqTrajectory,
+  };
 }
