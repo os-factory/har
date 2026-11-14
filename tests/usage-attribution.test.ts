@@ -2,6 +2,7 @@ import {
   BindingTimeline,
   dedupeProducers,
   legacyRowSuperseded,
+  MAIN_CHECKOUT_OCCUPANCY_KEY,
   observationCoverage,
   priceObservation,
   projectUsage,
@@ -388,5 +389,15 @@ describe('non-slot worktrees (state 2)', () => {
     const projection = projectUsage([worktree(0, 'S1', '/wt/a', 'a'), bind(10, 2)], [obs(5), obs(15)]);
     expect(projection.unassigned.map((bucket) => bucket.workDir)).toEqual(['/wt/a']);
     expect(projection.slots.map((bucket) => bucket.slotId)).toEqual([2]);
+  });
+
+  it('books usage after a main-checkout binding with the session\'s unbound main-checkout usage', () => {
+    // A session works in another repository's slot, then here again (FE-2058).
+    const projection = projectUsage(
+      [bind(10, 2), bind(20, 0, 'workspace', { occupancyKey: MAIN_CHECKOUT_OCCUPANCY_KEY })],
+      [obs(5), obs(15), obs(25)],
+    );
+    expect(projection.slots.map((bucket) => [bucket.slotId, bucket.costUsd])).toEqual([[2, 1]]);
+    expect(projection.unassigned.map((bucket) => [bucket.workDir, bucket.branch, bucket.costUsd])).toEqual([[null, null, 2]]);
   });
 });
