@@ -21,6 +21,7 @@ import {
   repositoryForProviderSession,
   repositoryOfPlaceAt,
   resolveNonSlotWorktree,
+  resolveTargetRepository,
   resolveTargetSlot,
   targetBindingKind,
   timelineSlotAt,
@@ -559,6 +560,30 @@ export async function resolveSessionContext(
     }
   }
 
+  // A tool event's target names its own repository (otel-hook's repository
+  // id), so the record happened there whatever the session's cwd: a linked
+  // worktree Mission Control cannot list, or another repository (FE-2058).
+  const target = await resolveTargetRepository(attributes);
+  const placedByTarget = target !== null && target.repositoryId !== repository?.repositoryId;
+  if (target && placedByTarget) {
+    workspaceSlot = null;
+    mainCheckoutPath = target.linked ? null : target.path;
+    repository = {
+      repositoryId: target.repositoryId,
+      workDir: target.linked ? undefined : target.path,
+      sessionKey: harSessionKey || providerSessionId || `ide:${normalizePath(target.path)}`,
+    };
+  }
+
+  // Nothing places this record (a linked worktree Mission Control cannot see,
+  // before the session's first tool event): it stays with the session's known
+  // repository, in its main checkout — never dropped.
+  const knownRef = !repository && tool ? providerSessionRef(tool, attributes, resource) : null;
+  if (knownRef) {
+    const known = (await repositoryOfPlaceAt(knownRef, at)) ?? (await repositoryForProviderSession(knownRef));
+    if (known) repository = { repositoryId: known, sessionKey: harSessionKey || knownRef.sessionId };
+  }
+
   if (!repository && harSessionKey) {
     const repositoryId = await resolveRepositoryId(repoPath || undefined);
     if (!repositoryId) {
@@ -608,7 +633,7 @@ export async function resolveSessionContext(
   // The session's cwd: its raw path, or the path its opaque workspace id matched.
   const sessionCwd = workspace || (workspaceId ? repository.workDir : undefined);
   const worktree = await resolveNonSlotWorktree(repository.repositoryId, {
-    workspace: workspaceSlot ? undefined : sessionCwd,
+    workspace: workspaceSlot || placedByTarget ? undefined : sessionCwd,
     attrs: targetSlot ? undefined : attributes,
   });
   if (worktree) evidence.push(worktree);

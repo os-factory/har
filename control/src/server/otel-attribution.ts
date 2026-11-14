@@ -2,8 +2,10 @@ import {
   AgentSessionRefSchema,
   SUBAGENT_ID_ATTR,
   TARGET_BRANCH_ATTR,
+  TARGET_REPOSITORY_ID_ATTR,
   TARGET_SOURCE_ATTR,
   TARGET_WORKSPACE_ID_ATTR,
+  TARGET_WORKTREE_KIND_ATTR,
   type AgentSessionRef,
   type AgentTool,
   type SessionBindingKind,
@@ -16,7 +18,12 @@ import {
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
-import { isWorkspaceUnderPath, normalizeOtelPath, pickPathForWorkspaceId } from '@/server/otel-workspace';
+import {
+  isWorkspaceUnderPath,
+  normalizeOtelPath,
+  pathAsWrittenAndResolved,
+  pickPathForWorkspaceId,
+} from '@/server/otel-workspace';
 import { listLinkedWorktrees } from '@/server/git-worktrees';
 import type { ObservationInput } from '@/server/session-attribution';
 
@@ -303,6 +310,35 @@ export function targetBindingKind(attrs: OtelAttrs): 'observed' | 'workspace' {
   return str([attrs], [TARGET_SOURCE_ATTR]) === 'session-cwd' ? 'workspace' : 'observed';
 }
 
+/** Where a tool event's target is, by repository: its main checkout or a linked worktree of it. */
+export interface TargetRepository {
+  repositoryId: string;
+  path: string;
+  linked: boolean;
+}
+
+/**
+ * The registered repository a tool event targeted, from otel-hook's
+ * `otelhook.target.repository.id` (the git-root hash of its main checkout),
+ * so a linked worktree is placed in its repository without reading `.git`.
+ * A registered path is hashed as written and resolved: git names a linked
+ * worktree's repository by its real path. Null without a repository id (a
+ * bare repository, or a linked worktree whose main checkout is gone) or for
+ * an unregistered repository.
+ */
+export async function resolveTargetRepository(attrs: OtelAttrs): Promise<TargetRepository | null> {
+  const repositoryId = str([attrs], [TARGET_REPOSITORY_ID_ATTR]);
+  if (!repositoryId) return null;
+  const repos: Array<{ id: string; path: string }> = await prisma.repository.findMany({ select: { id: true, path: true } });
+  const repo = repos.find((candidate) =>
+    pickPathForWorkspaceId(repositoryId, pathAsWrittenAndResolved(candidate.path), 'git-root'),
+  );
+  if (!repo) return null;
+  const kind = str([attrs], [TARGET_WORKTREE_KIND_ATTR]);
+  const linked = kind ? kind === 'linked' : str([attrs], [TARGET_WORKSPACE_ID_ATTR]) !== repositoryId;
+  return { repositoryId: repo.id, path: repo.path, linked };
+}
+
 /**
  * The slot a tool event targeted, from otel-hook's target attributes: the
  * worktree's branch (each occupancy has its own), else the salted hash of the
@@ -357,10 +393,9 @@ export async function resolveTargetSlot(
  * cwd inside one. Recorded as a binding to `MAIN_CHECKOUT_AGENT_ID` naming the
  * worktree, so its usage is unassigned yet split from the main checkout's.
  *
- * Callers pass only what no slot claimed. When Mission Control cannot read the
- * repository's worktrees (its git directory is not mounted), a target is named
- * by its branch alone — provided its hash is neither the main checkout's nor a
- * slot's.
+ * Callers pass only what no slot claimed. A linked target Mission Control
+ * cannot find among the repository's worktrees (its git directory is not
+ * mounted) is named by its branch alone.
  */
 export async function resolveNonSlotWorktree(
   repositoryId: string,
@@ -398,9 +433,16 @@ export async function resolveNonSlotWorktree(
     const hit = pickPathForWorkspaceId(workspaceId, candidates.map((worktree) => worktree.path), 'git-root');
     const worktree = hit ? candidates.find((candidate) => normalizeOtelPath(candidate.path) === hit) : undefined;
     if (worktree) return evidence(targetBindingKind(attrs), worktree.path, worktree.branch ?? targetBranch ?? null);
-    if (!readable && targetBranch && !pickPathForWorkspaceId(workspaceId, [repo.path, ...slotPaths], 'git-root')) {
-      return evidence(targetBindingKind(attrs), null, targetBranch);
-    }
+    // Not listed here (`.git` not mounted, or the worktree is newer than the
+    // listing): named by its branch, when otel-hook says the target is a
+    // linked worktree of a repository (without a repository id, of none it
+    // could name) — or, from an otel-hook that does not say, when its hash is
+    // neither the main checkout's nor a slot's and the listing is unreadable.
+    const kind = str([attrs], [TARGET_WORKTREE_KIND_ATTR]);
+    const linked = kind
+      ? kind === 'linked' && Boolean(str([attrs], [TARGET_REPOSITORY_ID_ATTR]))
+      : !readable && !pickPathForWorkspaceId(workspaceId, [repo.path, ...slotPaths], 'git-root');
+    if (linked && targetBranch) return evidence(targetBindingKind(attrs), null, targetBranch);
   }
   if (input.workspace) {
     const worktree = candidates.find((candidate) => isWorkspaceUnderPath(input.workspace!, candidate.path));

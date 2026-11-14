@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createPrivacyService, DEFAULT_PRIVACY_POLICY, deriveWorkspaceIdentity } from '@osfactory/otel-hook/privacy';
 
@@ -71,4 +72,13 @@ export function shouldPersistOtelUsage(usage: {
 }): boolean {
   if (usage.tokensTotal > 0) return true;
   return typeof usage.costUsd === 'number' && Number.isFinite(usage.costUsd) && usage.costUsd > 0;
+}
+
+/** A path as written and, when it exists here, its real path (symlinks resolved). */
+export function pathAsWrittenAndResolved(absolutePath: string): string[] {
+  try {
+    return [...new Set([absolutePath, fs.realpathSync(absolutePath)])];
+  } catch {
+    return [absolutePath];
+  }
 }
