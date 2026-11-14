@@ -1,0 +1,11 @@
+.env.local
+.venv/
+runs/
+results/
+.repo-cache/
+.har-cache/
+.vendor/
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/

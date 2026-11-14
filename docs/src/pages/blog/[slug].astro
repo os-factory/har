@@ -2,6 +2,7 @@
 import BlogLayout from '../../layouts/BlogLayout.astro';
 import Footer from '../../components/Footer.astro';
 import MigrationPrompt from '../../components/MigrationPrompt.astro';
+import PrPipeline from '../../components/blog/PrPipeline.astro';
 import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -43,6 +44,7 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 <div class="container">
 <article class="blog-prose">
 {post.data.migrationPrompt && <MigrationPrompt />}
+{post.data.leadFigure === 'pr-pipeline' && <PrPipeline />}
 <Content />
 </article>
 </div>
