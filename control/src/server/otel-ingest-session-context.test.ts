@@ -74,6 +74,18 @@ vi.mock('@/lib/db', () => ({
       ),
     },
     sessionSlotBinding: {
+      // The session's latest binding at a time, in any repository.
+      findFirst: vi.fn(
+        async ({ where }: { where: { agentTool: string; sessionId: string; at?: { lte: Date } } }) =>
+          bindings
+            .filter(
+              (b) =>
+                b.agentTool === where.agentTool &&
+                b.sessionId === where.sessionId &&
+                (!where.at || b.at <= where.at.lte),
+            )
+            .sort((a, b) => b.at.getTime() - a.at.getTime())[0] ?? null,
+      ),
       findMany: vi.fn(
         async ({ where }: { where: { repositoryId: string; sessionId?: string; kind?: string; at: { lte: Date } } }) =>
           bindings.filter(
@@ -390,6 +402,27 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
     expect(context?.agentId).toBe(0);
     expect(evidence).toEqual([
       { kind: 'observed', slot: expect.objectContaining({ slotId: 0, occupancyKey: `worktree:${outside}`, branch: 'ext' }) },
+    ]);
+  });
+
+  it('records the main checkout as a place for a session whose place was in another repository', async () => {
+    bindings = [
+      {
+        repositoryId: 'repo-other',
+        agentTool: 'claude_code',
+        sessionId: session['session.id'] as string,
+        subagentId: '',
+        kind: 'workspace',
+        slotId: 1,
+        occupancyKey: 'attempt::b1',
+        branch: null,
+        at: new Date('2026-11-12T10:00:00Z'),
+      },
+    ];
+    const { context, evidence } = await resolveSessionContext({}, { 'gen_ai.client.workspace': repoPath, ...session });
+    expect(context?.agentId).toBe(0);
+    expect(evidence).toEqual([
+      { kind: 'workspace', slot: expect.objectContaining({ slotId: 0, occupancyKey: 'main-checkout', workDir: repoPath }) },
     ]);
   });
 

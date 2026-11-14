@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import {
   AgentTrajectoryRecordSchema,
   MAIN_CHECKOUT_AGENT_ID,
+  MAIN_CHECKOUT_OCCUPANCY_KEY,
   type AgentSessionRef,
   type AgentTool,
 } from '@har/schemas';
@@ -14,9 +15,11 @@ import {
   claudeApiRequestObservation,
   codexSseObservation,
   isUsageOnlyLogRecord,
+  latestBindingRepositoryAt,
   otelHookGenerationObservation,
   providerSessionRef,
   repositoryForProviderSession,
+  repositoryOfPlaceAt,
   resolveNonSlotWorktree,
   resolveTargetSlot,
   targetBindingKind,
@@ -509,6 +512,8 @@ export async function resolveSessionContext(
 
   let repository: { repositoryId: string; workDir?: string; sessionKey: string } | null = null;
   let workspaceSlot: WorkspaceSlotMatch | null = null;
+  // The record's own cwd is a repository's main checkout itself (FE-2058).
+  let mainCheckoutPath: string | null = null;
 
   // Prefer live workspace/slot matching over stale global har.session_key
   // resource attributes left behind by the last `har env launch`.
@@ -528,6 +533,7 @@ export async function resolveSessionContext(
       };
     } else {
       const byRepo = await resolveRepositoryByWorkspacePath(workspace);
+      if (byRepo && isWorkspaceUnderPath(workspace, byRepo.path)) mainCheckoutPath = byRepo.path;
       if (byRepo) {
         repository = {
           repositoryId: byRepo.repositoryId,
@@ -540,6 +546,7 @@ export async function resolveSessionContext(
 
   if (!repository && workspaceId) {
     const byId = await resolveRepositoryByWorkspaceId(workspaceId);
+    if (byId && !byId.slot && normalizePath(byId.matchedPath) === normalizePath(byId.path)) mainCheckoutPath = byId.path;
     if (byId) {
       workspaceSlot = byId.slot;
       repository = {
@@ -605,6 +612,17 @@ export async function resolveSessionContext(
     attrs: targetSlot ? undefined : attributes,
   });
   if (worktree) evidence.push(worktree);
+  // Nothing else: the session works in this repository's main checkout. That
+  // is a place too (one request = one place = one repository) when the
+  // session's place in force is in another repository: it is back here. Not
+  // otherwise: its cwd stays the main checkout while it works in this
+  // repository's own slots, and would override them.
+  if (evidence.length === 0 && mainCheckoutPath && sessionRef) {
+    const placedIn = await latestBindingRepositoryAt(sessionRef, at);
+    if (placedIn !== null && placedIn !== repository.repositoryId) {
+      evidence.push({ kind: 'workspace', slot: mainCheckoutEvidence(mainCheckoutPath) });
+    }
+  }
 
   // With a provider session, the record goes where the session's timeline —
   // including this evidence — puts it at that time, so repeating cwd evidence
@@ -635,6 +653,18 @@ export async function resolveSessionContext(
       };
   if (workspaceSlot) context.workspaceSlot = workspaceSlot;
   return { context, evidence };
+}
+
+function mainCheckoutEvidence(repoPath: string): SlotEvidence {
+  return {
+    slotId: MAIN_CHECKOUT_AGENT_ID,
+    occupancyKey: MAIN_CHECKOUT_OCCUPANCY_KEY,
+    branch: null,
+    workDir: repoPath,
+    suffix: null,
+    workUnitId: null,
+    attemptId: null,
+  };
 }
 
 export interface SlotBindingEvidence {
@@ -841,8 +871,9 @@ async function repositoryForRecord(
   ref: AgentSessionRef,
   resource: AttrMap,
   attributes: AttrMap,
+  at?: Date,
 ): Promise<{ repositoryId: string | null; reason?: string }> {
-  const known = await repositoryForProviderSession(ref);
+  const known = (at ? await repositoryOfPlaceAt(ref, at) : null) ?? (await repositoryForProviderSession(ref));
   if (known) return { repositoryId: known };
   const resolved = await resolveSessionContext(resource, attributes);
   return { repositoryId: resolved.context?.repositoryId ?? null, reason: resolved.reason };
@@ -917,7 +948,12 @@ async function storeObservations(
 ): Promise<OtelIngestResult> {
   const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
   for (const observation of observations) {
-    const { repositoryId, reason } = await repositoryForRecord(observation as AgentSessionRef, resource, attributes(observation));
+    const { repositoryId, reason } = await repositoryForRecord(
+      observation as AgentSessionRef,
+      resource,
+      attributes(observation),
+      observation.observedAt,
+    );
     if (!repositoryId) {
       result.dropped += 1;
       result.reasons.push(reason ?? `no repository known for session ${observation.sessionId}`);
