@@ -320,6 +320,36 @@
       ],
       "requiresAgentId": true,
       "tier": "full"
+    },
+    {
+      "id": "usage-integrity-s0",
+      "kind": "test",
+      "description": "S0 — usage invariants and one regression per audit root cause",
+      "script": "stages/usage-integrity-s0.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/usage-integrity-s0",
+          "kind": "directory",
+          "description": "jest and vitest output for usage-integrity-s0"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
+    },
+    {
+      "id": "usage-integrity-e2e",
+      "kind": "test",
+      "description": "S1 — Mission Control from source, har control sync, capture portal: invariants on the shipped usage (no Docker)",
+      "script": "stages/usage-integrity-e2e.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/usage-integrity-e2e",
+          "kind": "directory",
+          "description": "End-to-end report"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
     }
   ],
   "commitGate": {

@@ -56,6 +56,36 @@ jobs:
       - run: node dist/index.js env launch 1
       - run: node dist/index.js env verify 1 --full
 
+  usage-integrity:
+    # Factory line usage-integrity, station S1 (FE-2058): Mission Control from
+    # source + the built CLI + a capture portal; no Docker, no model.
+    name: Usage integrity
+    needs: changes
+    if: needs.changes.outputs.cli == 'true' || needs.changes.outputs.control == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            control/package-lock.json
+            packages/schemas/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix packages/schemas
+          npm ci --prefix control
+      - run: npm run build
+      - name: Usage invariants end to end
+        env:
+          HAR_HARNESS_DIR: ${{ github.workspace }}/.har
+          WORK_DIR: ${{ github.workspace }}
+        run: ./.har/stages/usage-integrity-e2e.sh 1
+
   control:
     name: Mission Control
     needs: changes
