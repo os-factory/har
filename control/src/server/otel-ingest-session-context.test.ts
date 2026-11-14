@@ -394,7 +394,7 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
       {
         'gen_ai.client.workspace': repoPath,
         ...session,
-        'otelhook.target.workspace.id': otelWorkspaceIdForPath(outside),
+        'otelhook.target.workspace.id': otelWorkspaceIdForPath(outside, 'git-root'),
         'vcs.ref.head.name': 'ext',
         'otelhook.target.source': 'tool-path',
       },
@@ -432,7 +432,7 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
       {
         'gen_ai.client.workspace': repoPath,
         ...session,
-        'otelhook.target.workspace.id': otelWorkspaceIdForPath(repoPath),
+        'otelhook.target.workspace.id': otelWorkspaceIdForPath(repoPath, 'git-root'),
         'vcs.ref.head.name': 'main',
       },
     );

@@ -339,7 +339,7 @@ export async function resolveTargetSlot(
   }
   if (workspaceId) {
     const paths = slots.flatMap((slot) => [slot.workDir, slot.worktreePath]).filter((p): p is string => Boolean(p));
-    const hit = pickPathForWorkspaceId(workspaceId, paths);
+    const hit = pickPathForWorkspaceId(workspaceId, paths, 'git-root');
     if (hit) {
       const slot = slots.find((candidate) =>
         [candidate.workDir, candidate.worktreePath].some((p) => p && normalizeOtelPath(p) === hit),
@@ -395,10 +395,10 @@ export async function resolveNonSlotWorktree(
   });
 
   if (workspaceId) {
-    const hit = pickPathForWorkspaceId(workspaceId, candidates.map((worktree) => worktree.path));
+    const hit = pickPathForWorkspaceId(workspaceId, candidates.map((worktree) => worktree.path), 'git-root');
     const worktree = hit ? candidates.find((candidate) => normalizeOtelPath(candidate.path) === hit) : undefined;
     if (worktree) return evidence(targetBindingKind(attrs), worktree.path, worktree.branch ?? targetBranch ?? null);
-    if (!readable && targetBranch && !pickPathForWorkspaceId(workspaceId, [repo.path, ...slotPaths])) {
+    if (!readable && targetBranch && !pickPathForWorkspaceId(workspaceId, [repo.path, ...slotPaths], 'git-root')) {
       return evidence(targetBindingKind(attrs), null, targetBranch);
     }
   }
