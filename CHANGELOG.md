@@ -1,3 +1,10 @@
+## [1.27.2](https://github.com/os-factory/har/compare/v1.27.1...v1.27.2) (2026-11-15)
+
+### Bug Fixes
+
+* **control:** never replace the default Mission Control from a CLI that targets another ([#404](https://github.com/os-factory/har/issues/404)) ([de3e3ba](https://github.com/os-factory/har/commit/de3e3bac4482220187ebc535a49c7194a782cb6b))
+* **usage:** Cursor usage carries tokens and no cost until it is priced (FE-2058) ([#405](https://github.com/os-factory/har/issues/405)) ([eec49eb](https://github.com/os-factory/har/commit/eec49eb8fcf2e29d5e1fd011214ac5394a61d7b7))
+
 ## [1.27.1](https://github.com/os-factory/har/compare/v1.27.0...v1.27.1) (2026-11-15)
 
 ### Bug Fixes
