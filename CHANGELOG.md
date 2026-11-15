@@ -1,3 +1,9 @@
+## [1.27.3](https://github.com/os-factory/har/compare/v1.27.2...v1.27.3) (2026-11-15)
+
+### Bug Fixes
+
+* **telemetry:** install otel-hook 0.6.0 ([#406](https://github.com/os-factory/har/issues/406)) ([6ff7837](https://github.com/os-factory/har/commit/6ff7837bb1608654208293bf4af9385f65362e6e))
+
 ## [1.27.2](https://github.com/os-factory/har/compare/v1.27.1...v1.27.2) (2026-11-15)
 
 ### Bug Fixes
