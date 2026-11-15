@@ -242,6 +242,13 @@ describe('priceObservation', () => {
     expect(priced.pricedCostUsd).toBeGreaterThan(0);
   });
 
+  it('leaves a Cursor request unpriced, even for a catalog model (FE-2058)', () => {
+    expect(priceObservation(obs(1, { agentTool: 'cursor', model: 'composer-2.5', costUsd: null }))).toMatchObject({
+      pricedCostUsd: null,
+      costSource: null,
+    });
+  });
+
   it('leaves the cost unknown for an unpriced model', () => {
     expect(priceObservation(obs(1, { model: 'no-such-model-xyz', costUsd: null }))).toMatchObject({
       pricedCostUsd: null,
