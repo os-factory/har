@@ -1,3 +1,13 @@
+## [1.26.0](https://github.com/os-factory/har/compare/v1.25.2...v1.26.0) (2026-11-15)
+
+### Features
+
+* **control:** resolve a worktree's repository from otel-hook's repository id (FE-2058) ([#400](https://github.com/os-factory/har/issues/400)) ([41636e3](https://github.com/os-factory/har/commit/41636e3ab688643af3bac88e2e3a36dd9c6cac4c))
+
+### Bug Fixes
+
+* **control:** one request = one place = one repository (FE-2058) ([#399](https://github.com/os-factory/har/issues/399)) ([41d90a3](https://github.com/os-factory/har/commit/41d90a3988813f8029ef0757e2392867e200a8ea))
+
 ## [1.25.2](https://github.com/os-factory/har/compare/v1.25.1...v1.25.2) (2026-11-15)
 
 ### Bug Fixes
