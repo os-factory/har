@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import {
   AgentTrajectoryRecordSchema,
   MAIN_CHECKOUT_AGENT_ID,
+  MAIN_CHECKOUT_OCCUPANCY_KEY,
   type AgentSessionRef,
   type AgentTool,
 } from '@har/schemas';
@@ -14,9 +15,11 @@ import {
   claudeApiRequestObservation,
   codexSseObservation,
   isUsageOnlyLogRecord,
+  latestBindingRepositoryAt,
   otelHookGenerationObservation,
   providerSessionRef,
   repositoryForProviderSession,
+  repositoryOfPlaceAt,
   resolveNonSlotWorktree,
   resolveTargetSlot,
   targetBindingKind,
@@ -34,7 +37,7 @@ import {
   hidesTrajectoryContent,
   redactSecretAttributes,
 } from '@/lib/trajectory-privacy';
-import { listLinkedWorktrees } from '@/server/git-worktrees';
+import { listLinkedWorktrees, type LinkedWorktrees } from '@/server/git-worktrees';
 import {
   isWorkspaceUnderPath,
   normalizeOtelPath,
@@ -399,6 +402,21 @@ async function resolveRepositoryByWorkspacePath(
 }
 
 const WORKTREE_MISS_REFRESH_MS = 1_000;
+/** A workspace id that matched nothing even after a refresh is not refreshed again for this long. */
+const WORKSPACE_ID_MISS_TTL_MS = 5_000;
+const missedWorkspaceIds = new Map<string, number>();
+
+function missedRecently(workspaceId: string, now: number): boolean {
+  const at = missedWorkspaceIds.get(workspaceId);
+  return at !== undefined && now - at < WORKSPACE_ID_MISS_TTL_MS;
+}
+
+function rememberMiss(workspaceId: string, now: number): void {
+  for (const [id, at] of missedWorkspaceIds) {
+    if (now - at >= WORKSPACE_ID_MISS_TTL_MS) missedWorkspaceIds.delete(id);
+  }
+  missedWorkspaceIds.set(workspaceId, now);
+}
 
 /**
  * Map otel-hook's opaque workspace id back to a registered path. A slot's work
@@ -434,10 +452,11 @@ async function resolveRepositoryByWorkspaceId(
   // worktree (`git worktree add`, Claude Code's EnterWorktree) is found only if
   // its path is a candidate too, as resolveRepositoryByWorkspacePath does for a
   // raw path. Slot work dirs were added first and keep winning on a tie.
-  const withWorktrees = (maxAgeMs?: number) => [
+  const now = Date.now();
+  const withWorktrees = (listings: Array<{ repo: (typeof repos)[number]; listing: LinkedWorktrees }>) => [
     ...candidates,
-    ...repos.flatMap((repo) =>
-      listLinkedWorktrees(repo.path, Date.now(), maxAgeMs).worktrees.map((worktree) => ({
+    ...listings.flatMap(({ repo, listing }) =>
+      listing.worktrees.map((worktree) => ({
         repositoryId: repo.id,
         path: repo.path,
         candidate: worktree.path,
@@ -445,13 +464,21 @@ async function resolveRepositoryByWorkspaceId(
       })),
     ),
   ];
-  let all = withWorktrees();
+  const listings = repos.map((repo) => ({ repo, listing: listLinkedWorktrees(repo.path, now) }));
+  let all = withWorktrees(listings);
   let matchedPath = pickPathForWorkspaceId(workspaceId, all.map((c) => c.candidate));
-  if (!matchedPath) {
+  if (!matchedPath && !missedRecently(workspaceId, now)) {
     // A session that just created its worktree (EnterWorktree) reports from it
-    // within the listing cache's lifetime: re-read listings older than a second.
-    all = withWorktrees(WORKTREE_MISS_REFRESH_MS);
+    // within the listing cache's lifetime: re-read readable listings older than
+    // a second, once per unknown id, not on every batch that misses.
+    all = withWorktrees(
+      listings.map(({ repo, listing }) => ({
+        repo,
+        listing: listing.readable ? listLinkedWorktrees(repo.path, now, WORKTREE_MISS_REFRESH_MS) : listing,
+      })),
+    );
     matchedPath = pickPathForWorkspaceId(workspaceId, all.map((c) => c.candidate));
+    if (!matchedPath) rememberMiss(workspaceId, now);
   }
   if (!matchedPath) return null;
   const hit = all.find((c) => normalizePath(c.candidate) === matchedPath);
@@ -509,6 +536,10 @@ export async function resolveSessionContext(
 
   let repository: { repositoryId: string; workDir?: string; sessionKey: string } | null = null;
   let workspaceSlot: WorkspaceSlotMatch | null = null;
+  // The session's cwd: its raw path, or the path its opaque workspace id matched.
+  let sessionCwd = workspace || undefined;
+  // The record's own cwd is a repository's main checkout itself (FE-2058).
+  let mainCheckoutPath: string | null = null;
 
   // Prefer live workspace/slot matching over stale global har.session_key
   // resource attributes left behind by the last `har env launch`.
@@ -528,6 +559,7 @@ export async function resolveSessionContext(
       };
     } else {
       const byRepo = await resolveRepositoryByWorkspacePath(workspace);
+      if (byRepo && isWorkspaceUnderPath(workspace, byRepo.path)) mainCheckoutPath = byRepo.path;
       if (byRepo) {
         repository = {
           repositoryId: byRepo.repositoryId,
@@ -540,8 +572,10 @@ export async function resolveSessionContext(
 
   if (!repository && workspaceId) {
     const byId = await resolveRepositoryByWorkspaceId(workspaceId);
+    if (byId && !byId.slot && normalizePath(byId.matchedPath) === normalizePath(byId.path)) mainCheckoutPath = byId.path;
     if (byId) {
       workspaceSlot = byId.slot;
+      sessionCwd = byId.matchedPath;
       repository = {
         repositoryId: byId.repositoryId,
         workDir: byId.matchedPath,
@@ -598,13 +632,22 @@ export async function resolveSessionContext(
   if (targetSlot) evidence.push({ kind: targetBindingKind(attributes), slot: targetSlot });
   // What no slot claimed may still be a non-slot git worktree: recorded so its
   // usage splits from the main checkout's, never placed on a slot.
-  // The session's cwd: its raw path, or the path its opaque workspace id matched.
-  const sessionCwd = workspace || (workspaceId ? repository.workDir : undefined);
   const worktree = await resolveNonSlotWorktree(repository.repositoryId, {
     workspace: workspaceSlot ? undefined : sessionCwd,
     attrs: targetSlot ? undefined : attributes,
   });
   if (worktree) evidence.push(worktree);
+  // Nothing else: the session works in this repository's main checkout. That
+  // is a place too (one request = one place = one repository) when the
+  // session's place in force is in another repository: it is back here. Not
+  // otherwise: its cwd stays the main checkout while it works in this
+  // repository's own slots, and would override them.
+  if (evidence.length === 0 && mainCheckoutPath && sessionRef) {
+    const placedIn = await latestBindingRepositoryAt(sessionRef, at);
+    if (placedIn !== null && placedIn !== repository.repositoryId) {
+      evidence.push({ kind: 'workspace', slot: mainCheckoutEvidence(mainCheckoutPath) });
+    }
+  }
 
   // With a provider session, the record goes where the session's timeline —
   // including this evidence — puts it at that time, so repeating cwd evidence
@@ -635,6 +678,18 @@ export async function resolveSessionContext(
       };
   if (workspaceSlot) context.workspaceSlot = workspaceSlot;
   return { context, evidence };
+}
+
+function mainCheckoutEvidence(repoPath: string): SlotEvidence {
+  return {
+    slotId: MAIN_CHECKOUT_AGENT_ID,
+    occupancyKey: MAIN_CHECKOUT_OCCUPANCY_KEY,
+    branch: null,
+    workDir: repoPath,
+    suffix: null,
+    workUnitId: null,
+    attemptId: null,
+  };
 }
 
 export interface SlotBindingEvidence {
@@ -834,18 +889,22 @@ export interface OtelIngestResult {
 }
 
 /**
- * Repository of a provider session: where its earlier evidence was placed, else
- * whatever the record's own resource/attributes resolve to.
+ * Repository of a provider session: its place at `at` (`placed`), else where
+ * its earlier evidence was placed, else whatever the record's own
+ * resource/attributes resolve to.
  */
 async function repositoryForRecord(
   ref: AgentSessionRef,
   resource: AttrMap,
   attributes: AttrMap,
-): Promise<{ repositoryId: string | null; reason?: string }> {
+  at?: Date,
+): Promise<{ repositoryId: string | null; placed: boolean; reason?: string }> {
+  const place = at ? await repositoryOfPlaceAt(ref, at) : null;
+  if (place) return { repositoryId: place, placed: true };
   const known = await repositoryForProviderSession(ref);
-  if (known) return { repositoryId: known };
+  if (known) return { repositoryId: known, placed: false };
   const resolved = await resolveSessionContext(resource, attributes);
-  return { repositoryId: resolved.context?.repositoryId ?? null, reason: resolved.reason };
+  return { repositoryId: resolved.context?.repositoryId ?? null, placed: false, reason: resolved.reason };
 }
 
 function isClaudeCostPoint(point: ParsedMetricPoint): boolean {
@@ -917,13 +976,18 @@ async function storeObservations(
 ): Promise<OtelIngestResult> {
   const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
   for (const observation of observations) {
-    const { repositoryId, reason } = await repositoryForRecord(observation as AgentSessionRef, resource, attributes(observation));
+    const { repositoryId, placed, reason } = await repositoryForRecord(
+      observation as AgentSessionRef,
+      resource,
+      attributes(observation),
+      observation.observedAt,
+    );
     if (!repositoryId) {
       result.dropped += 1;
       result.reasons.push(reason ?? `no repository known for session ${observation.sessionId}`);
       continue;
     }
-    await recordObservations(repositoryId, [observation]);
+    await recordObservations(repositoryId, [observation], { placed });
     result.accepted += 1;
   }
   return result;

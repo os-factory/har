@@ -24,6 +24,7 @@ import {
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { attemptIdFromOccupancyKey } from '@/server/occupancy';
+import { repositoryOfPlaceAt } from '@/server/otel-attribution';
 
 /**
  * Storage and read model of session → slot attribution (ADR 0003).
@@ -211,10 +212,39 @@ function toBigInt(value: number | undefined): bigint {
 
 export { mergeRepeatedObservation };
 
-/** Idempotent per (agentTool, sessionId, observationKey); repeats merge by `mergeRepeatedObservation`. */
+const STORED_OBSERVATION = { id: true, producer: true, source: true, costUsd: true } as const;
+
+/**
+ * One request = one place = one repository (FE-2058): the copy another
+ * repository holds. When `repositoryId` is the request's place, that copy —
+ * stored before the place was known — moves here, and the session's remaining
+ * rows there are touched so its next sync replaces them. Otherwise the first
+ * holder keeps it: a repository that only harvested the request never takes it.
+ */
+async function storedElsewhere(repositoryId: string, observation: ObservationInput, placed: boolean) {
+  const session = { agentTool: observation.agentTool, sessionId: observation.sessionId };
+  const elsewhere = await prisma.usageObservation.findFirst({
+    where: { ...session, observationKey: observation.observationKey, repositoryId: { not: repositoryId } },
+    select: { ...STORED_OBSERVATION, repositoryId: true },
+  });
+  if (!elsewhere) return null;
+  const { repositoryId: from, ...stored } = elsewhere;
+  if (placed) {
+    await prisma.usageObservation.update({ where: { id: stored.id }, data: { repositoryId } });
+    await prisma.usageObservation.updateMany({ where: { ...session, repositoryId: from }, data: { updatedAt: new Date() } });
+  }
+  return stored;
+}
+
+/**
+ * Idempotent per (agentTool, sessionId, observationKey) across repositories;
+ * repeats merge by `mergeRepeatedObservation`. `placed`: `repositoryId` is the
+ * repository of the request's place, not only one that posted it.
+ */
 export async function recordObservations(
   repositoryId: string,
   observations: ObservationInput[],
+  { placed = true }: { placed?: boolean } = {},
 ): Promise<{ synced: number; created: number }> {
   let created = 0;
   for (const observation of observations) {
@@ -246,12 +276,11 @@ export async function recordObservations(
       },
     };
     if (observation.runningTotal) {
-      Object.assign(data, tokenColumns(await runningTotalUnit(repositoryId, observation, observation.runningTotal)));
+      Object.assign(data, tokenColumns(await runningTotalUnit(observation, observation.runningTotal)));
     }
-    const existing = await prisma.usageObservation.findUnique({
-      where,
-      select: { id: true, producer: true, source: true, costUsd: true },
-    });
+    const existing =
+      (await prisma.usageObservation.findUnique({ where, select: STORED_OBSERVATION })) ??
+      (await storedElsewhere(repositoryId, observation, placed));
     if (existing) {
       const merge = mergeRepeatedObservation(
         { ...existing, costUsd: existing.costUsd == null ? null : Number(existing.costUsd) },
@@ -280,7 +309,7 @@ export async function recordObservations(
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
     }
-    await refreshNextRunningTotalUnit(repositoryId, observation);
+    await refreshNextRunningTotalUnit(observation);
   }
   return { synced: observations.length, created };
 }
@@ -319,10 +348,11 @@ interface SeriesUnit {
  * previous unit that reported a total, less the units of the same keyspace
  * stored in between without one (turns only the harvest saw). The first
  * reported total of a session is thus not double-counted against harvested
- * turns before it.
+ * turns before it. The series is the session's, in whichever repositories its
+ * units were placed (FE-2058).
  */
-async function runningTotalUnit(repositoryId: string, unit: SeriesUnit, total: TokenTotals): Promise<TokenTotals> {
-  const sameSession = { repositoryId, agentTool: unit.agentTool, sessionId: unit.sessionId };
+async function runningTotalUnit(unit: SeriesUnit, total: TokenTotals): Promise<TokenTotals> {
+  const sameSession = { agentTool: unit.agentTool, sessionId: unit.sessionId };
   const previous = await prisma.usageObservation.findFirst({
     where: {
       ...sameSession,
@@ -361,11 +391,10 @@ async function runningTotalUnit(repositoryId: string, unit: SeriesUnit, total: T
  * that later unit's own usage is: recompute it, so out-of-order delivery and
  * late harvests never count the same tokens twice.
  */
-async function refreshNextRunningTotalUnit(repositoryId: string, unit: SeriesUnit): Promise<void> {
+async function refreshNextRunningTotalUnit(unit: SeriesUnit): Promise<void> {
   const family = producerFamily(unit.agentTool, unit.producer);
   const candidates = await prisma.usageObservation.findMany({
     where: {
-      repositoryId,
       agentTool: unit.agentTool,
       sessionId: unit.sessionId,
       reportsTotal: true,
@@ -379,7 +408,6 @@ async function refreshNextRunningTotalUnit(repositoryId: string, unit: SeriesUni
   const nextTotal = next ? asTokenTotals(next.reportedTotals) : null;
   if (!next || !nextTotal) return;
   const own = await runningTotalUnit(
-    repositoryId,
     { agentTool: unit.agentTool, sessionId: unit.sessionId, producer: next.producer, observationKey: next.observationKey, observedAt: next.observedAt },
     nextTotal,
   );
@@ -408,9 +436,21 @@ export function observationInputFromContract(observation: UsageObservation): Obs
   };
 }
 
+/**
+ * Observations the CLI harvested for a repository. Each request is stored in
+ * the repository of its session's place at its time (FE-2058) — a session may
+ * span repositories, and each one harvesting it posts all of its requests —
+ * and with no place known then, where it is already held, else in this one.
+ */
 export async function syncUsageObservations(repositoryId: string, input: unknown) {
   const { observations } = SyncUsageObservationsInputSchema.parse(input);
-  return recordObservations(repositoryId, observations.map(observationInputFromContract));
+  let created = 0;
+  for (const contract of observations) {
+    const observation = observationInputFromContract(contract);
+    const place = await repositoryOfPlaceAt(contract, observation.observedAt);
+    created += (await recordObservations(place ?? repositoryId, [observation], { placed: place !== null })).created;
+  }
+  return { synced: observations.length, created };
 }
 
 export interface UsageObservationFilter {

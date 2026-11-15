@@ -61,6 +61,11 @@ const db = vi.hoisted(() => {
       Object.assign(row, data);
       return row;
     },
+    updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      const rows = tables[name].filter((row) => matches(row, where));
+      for (const row of rows) Object.assign(row, data);
+      return { count: rows.length };
+    },
     upsert: async ({ where, create, update }: { where: Record<string, unknown>; create: Record<string, unknown>; update: Record<string, unknown> }) => {
       const row = tables[name].find((candidate) => matches(candidate, where));
       if (row) return Object.assign(row, update);
@@ -77,6 +82,7 @@ vi.mock('@/lib/db', () => ({
     sessionSlotBinding: db.table('bindings'),
     usageObservation: db.table('observations'),
     sessionReportedUsage: db.table('reported'),
+    $queryRaw: async () => [],
     agentSlot: {
       findUnique: async () => ({ branch: 'main-abcd-har-agent-2-xy12', occupancyKey: 'occ-2' }),
     },
@@ -181,6 +187,44 @@ describe('syncUsageObservations', () => {
     expect(Number(db.tables.observations[0].costUsd)).toBe(0.25);
   });
 
+  it('stores each request in the repository of its session\'s place at its time (FE-2058)', async () => {
+    // Harvested by A, whose session worked in a slot of B from 09:00.
+    await recordBindings('repo-b', [{ agentTool: 'claude_code', sessionId: 'S1', kind: 'workspace', slotId: 1, at: new Date('2026-11-12T09:00:00Z') }], 'otel');
+    await syncUsageObservations('repo-a', {
+      observations: [observation, { ...observation, observationKey: 'req_0', observedAt: '2026-11-12T08:00:00.000Z' }],
+    });
+    expect(db.tables.observations.map((row) => [row.observationKey, row.repositoryId]).sort()).toEqual([
+      ['req_0', 'repo-a'],
+      ['req_1', 'repo-b'],
+    ]);
+  });
+
+  it('keeps one copy of a request across repositories: a repeat placed elsewhere moves it (FE-2058)', async () => {
+    await recordObservations('repo-a', [live, { ...live, observationKey: 'req_2' }]);
+    const before = db.tables.observations.find((row) => row.observationKey === 'req_2')!.updatedAt;
+    await recordObservations('repo-b', [live]);
+    expect(db.tables.observations.map((row) => [row.observationKey, row.repositoryId]).sort()).toEqual([
+      ['req_1', 'repo-b'],
+      ['req_2', 'repo-a'],
+    ]);
+    // A's remaining rows of the session changed: its next sync replaces them.
+    expect(db.tables.observations.find((row) => row.observationKey === 'req_2')!.updatedAt).not.toEqual(before);
+  });
+
+  it('keeps a request with no known place in its first repository, whichever repository syncs it (FE-2058)', async () => {
+    // A harvest-only session in A's main checkout launched a slot of B at 09:00:
+    // A and B both harvest its whole transcript.
+    await recordBindings('repo-b', [{ agentTool: 'claude_code', sessionId: 'S1', kind: 'launch', slotId: 1, at: new Date('2026-11-12T09:00:00Z') }], 'sync');
+    const transcript = { observations: [{ ...observation, observationKey: 'req_0', observedAt: '2026-11-12T08:00:00.000Z' }, observation] };
+    for (const repositoryId of ['repo-a', 'repo-b', 'repo-a', 'repo-b']) {
+      await syncUsageObservations(repositoryId, transcript);
+      expect(db.tables.observations.map((row) => [row.observationKey, row.repositoryId]).sort()).toEqual([
+        ['req_0', 'repo-a'],
+        ['req_1', 'repo-b'],
+      ]);
+    }
+  });
+
   it('never lets a harvested copy overwrite or erase the live cost', async () => {
     await recordObservations('repo-1', [live]);
     await syncUsageObservations('repo-1', { observations: [{ ...observation, tokensOutput: 999 }] });
@@ -252,6 +296,15 @@ describe('Codex running totals', () => {
     await recordObservations('repo-1', [turn(2, 250, 12), turn(3, 300, 30)]);
     expect(db.tables.observations).toHaveLength(3);
     expect(usage()).toEqual({ 'turn-1': [100, 10], 'turn-2': [150, 2], 'turn-3': [50, 18] });
+  });
+
+  it('computes a turn from the session\'s previous total in any repository, and stores a resent turn once (FE-2058)', async () => {
+    await recordObservations('repo-a', [turn(1, 100, 10)]);
+    await recordObservations('repo-b', [turn(2, 150, 15)]);
+    await recordObservations('repo-b', [turn(1, 100, 10)]);
+    expect(db.tables.observations).toHaveLength(2);
+    const total = db.tables.observations.reduce((sum, row) => sum + Number(row.tokensInput), 0);
+    expect(total).toBe(150);
   });
 
   it('corrects a later turn when a harvested earlier turn arrives after it', async () => {

@@ -14,6 +14,7 @@ import {
   type TimelineBinding,
 } from '@har/schemas';
 import { createHash } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
 import { isWorkspaceUnderPath, normalizeOtelPath, pickPathForWorkspaceId } from '@/server/otel-workspace';
@@ -482,14 +483,53 @@ export async function timelineSlotAt(
       };
 }
 
+/** Repository of a provider session's latest binding at or before `at`, in any repository. */
+export async function latestBindingRepositoryAt(ref: AgentSessionRef, at: Date): Promise<string | null> {
+  const latest = await prisma.sessionSlotBinding.findFirst({
+    where: { agentTool: ref.agentTool, sessionId: ref.sessionId, at: { lte: at } },
+    orderBy: [{ at: 'desc' }, { createdAt: 'desc' }],
+    select: { repositoryId: true },
+  });
+  return latest?.repositoryId ?? null;
+}
+
+/**
+ * Repository of a provider session's place at `at` (FE-2058: one request = one
+ * place = one repository). A session may work in A, a slot of B, then A again:
+ * its latest binding at or before `at` across all repositories, else the
+ * repository of its latest hook span then. Null when nothing places it yet.
+ */
+export async function repositoryOfPlaceAt(ref: AgentSessionRef, at: Date): Promise<string | null> {
+  return (await latestBindingRepositoryAt(ref, at)) ?? (await sessionSpanRepository(ref, at));
+}
+
+/**
+ * Repository of a provider session's hook span: its latest at or before `at`,
+ * else its first. A span is keyed by the session id unless a `har.session_key`
+ * (a slot's, or a stale one) named it, so its session attributes match too.
+ */
+async function sessionSpanRepository(ref: AgentSessionRef, at?: Date): Promise<string | null> {
+  const sameSession = Prisma.sql`(sessionKey = ${ref.sessionId}
+    OR json_extract(attributes, '$."otelhook.session.id"') = ${ref.sessionId}
+    OR json_extract(attributes, '$."session.id"') = ${ref.sessionId})`;
+  const rows = await prisma.$queryRaw<{ repositoryId: string }[]>(
+    at
+      ? Prisma.sql`SELECT repositoryId FROM AgentSessionSpan WHERE ${sameSession} AND startTime <= ${at} ORDER BY startTime DESC LIMIT 1`
+      : Prisma.sql`SELECT repositoryId FROM AgentSessionSpan WHERE ${sameSession} ORDER BY startTime ASC LIMIT 1`,
+  );
+  return rows[0]?.repositoryId ?? null;
+}
+
 /**
  * Repository of a provider session whose records carry no workspace (Claude
- * Code native logs and metrics): wherever its bindings, observations or hook
- * spans were already placed.
+ * Code native logs and metrics), when no place is known at their time:
+ * wherever its bindings (the first), observations or hook spans were already
+ * placed.
  */
 export async function repositoryForProviderSession(ref: AgentSessionRef): Promise<string | null> {
   const binding = await prisma.sessionSlotBinding.findFirst({
     where: { agentTool: ref.agentTool, sessionId: ref.sessionId },
+    orderBy: [{ at: 'asc' }],
     select: { repositoryId: true },
   });
   if (binding) return binding.repositoryId;
@@ -498,16 +538,5 @@ export async function repositoryForProviderSession(ref: AgentSessionRef): Promis
     select: { repositoryId: true },
   });
   if (observation) return observation.repositoryId;
-  const span = await prisma.agentSessionSpan.findFirst({
-    where: { sessionKey: ref.sessionId },
-    orderBy: { startTime: 'asc' },
-    select: { repositoryId: true },
-  });
-  if (span) return span.repositoryId;
-  const rows = await prisma.$queryRaw<{ repositoryId: string }[]>`
-    SELECT repositoryId FROM AgentSessionSpan
-    WHERE json_extract(attributes, '$."otelhook.session.id"') = ${ref.sessionId}
-       OR json_extract(attributes, '$."session.id"') = ${ref.sessionId}
-    ORDER BY startTime ASC LIMIT 1`;
-  return rows[0]?.repositoryId ?? null;
+  return sessionSpanRepository(ref);
 }
