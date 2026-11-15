@@ -1,3 +1,10 @@
+## [1.27.1](https://github.com/os-factory/har/compare/v1.27.0...v1.27.1) (2026-11-15)
+
+### Bug Fixes
+
+* **control:** place a worktree session by the file it read when nothing else does (FE-2058) ([#403](https://github.com/os-factory/har/issues/403)) ([2c40de2](https://github.com/os-factory/har/commit/2c40de249c0bebc039adef0e0dc2878941d37eed))
+* **telemetry:** install otel-hook 0.5.0 ([#402](https://github.com/os-factory/har/issues/402)) ([32a4247](https://github.com/os-factory/har/commit/32a4247263a9dc0361d71cc17ec889964a2ad8ba))
+
 ## [1.27.0](https://github.com/os-factory/har/compare/v1.26.0...v1.27.0) (2026-11-15)
 
 ### Features
