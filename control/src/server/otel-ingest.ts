@@ -587,14 +587,25 @@ export async function resolveSessionContext(
     }
   }
 
+  // The session's own cwd names no repository (a linked worktree Mission
+  // Control cannot list): where its timeline or earlier records put it.
+  const knownRef = !repository && tool ? providerSessionRef(tool, attributes, resource) : null;
+  const knownRepositoryId = knownRef
+    ? ((await repositoryOfPlaceAt(knownRef, at)) ?? (await repositoryForProviderSession(knownRef)))
+    : null;
+
   // A tool event's target names its own repository (otel-hook's repository
   // id). When it is the session's or its shell's cwd, the record happened
   // there whatever the session's cwd: a linked worktree Mission Control cannot
-  // list, or another repository (FE-2058). A file it only touched in another
-  // repository is no evidence: the record stays where the session is.
+  // list, or another repository (FE-2058). A file it only touched places the
+  // record only where nothing else does, or in the session's own repository:
+  // a file read in another repository leaves the record where the session is.
   const target = await resolveTargetRepository(attributes);
   const targetElsewhere = target !== null && target.repositoryId !== repository?.repositoryId;
-  const placedByTarget = targetElsewhere && targetMovesPlace(attributes);
+  const sessionRepositoryId = repository?.repositoryId ?? knownRepositoryId;
+  const placedByTarget =
+    targetElsewhere &&
+    (targetMovesPlace(attributes) || sessionRepositoryId === null || sessionRepositoryId === target.repositoryId);
   const targetAttrs = targetElsewhere && !placedByTarget ? {} : attributes;
   if (target && placedByTarget) {
     workspaceSlot = null;
@@ -609,10 +620,8 @@ export async function resolveSessionContext(
   // Nothing places this record (a linked worktree Mission Control cannot see,
   // before the session's first tool event): it stays with the session's known
   // repository, in its main checkout — never dropped.
-  const knownRef = !repository && tool ? providerSessionRef(tool, attributes, resource) : null;
-  if (knownRef) {
-    const known = (await repositoryOfPlaceAt(knownRef, at)) ?? (await repositoryForProviderSession(knownRef));
-    if (known) repository = { repositoryId: known, sessionKey: harSessionKey || knownRef.sessionId };
+  if (!repository && knownRef && knownRepositoryId) {
+    repository = { repositoryId: knownRepositoryId, sessionKey: harSessionKey || knownRef.sessionId };
   }
 
   if (!repository && harSessionKey) {
