@@ -1,23 +1,23 @@
-import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createPrivacyService, DEFAULT_PRIVACY_POLICY, deriveWorkspaceIdentity } from '@osfactory/otel-hook/privacy';
 
 /**
- * Match @osfactory/otel-hook's default privacy hash (empty salt):
- *   sha256(salt + "\0" + `${namespace}\0${value}`)
- * with namespace `workspace/working-directory` and value = absolute path
- * (trailing slashes stripped). Used to map opaque `otelhook.workspace.id`
- * back to a registered repository path without storing filesystem paths in
- * OTLP payloads.
+ * How otel-hook keyed an id: a session's `otelhook.workspace.id` hashes its
+ * working directory; a tool target's `otelhook.target.workspace.id` and
+ * `otelhook.target.repository.id` hash a git worktree root (otel-hook ADR 0008).
  */
-export function otelWorkspaceIdForPath(absolutePath: string, hashSalt = ''): string {
-  const material = absolutePath.replace(/[/\\]+$/, '');
-  if (!material) return 'unknown:0000000000000000';
-  const digest = createHash('sha256')
-    .update(hashSalt)
-    .update('\0')
-    .update(`workspace/working-directory\0${material}`, 'utf8')
-    .digest('hex');
-  return `sha256:${digest}`;
+export type OtelWorkspaceKeyKind = 'working-directory' | 'git-root';
+
+// HAR installs otel-hook with its default privacy policy (empty salt).
+const privacy = createPrivacyService(DEFAULT_PRIVACY_POLICY);
+
+/**
+ * otel-hook's own opaque id for a path, so Mission Control maps the ids it
+ * receives back to registered paths without paths on the wire.
+ */
+export function otelWorkspaceIdForPath(absolutePath: string, kind: OtelWorkspaceKeyKind = 'working-directory'): string {
+  return deriveWorkspaceIdentity(privacy, { kind, absolutePath }).workspaceId;
 }
 
 export function normalizeOtelPath(value: string): string {
@@ -50,18 +50,18 @@ export function pickBestRepoPathMatch(
   return matches[0] ?? null;
 }
 
-/** First path (longest preferred) whose opaque workspace id equals `workspaceId`. */
+/** First path (longest preferred) whose opaque id of `kind` equals `workspaceId`. */
 export function pickPathForWorkspaceId(
   workspaceId: string,
   candidatePaths: string[],
-  hashSalt = '',
+  kind: OtelWorkspaceKeyKind = 'working-directory',
 ): string | null {
   if (!workspaceId || workspaceId === 'unknown:0000000000000000') return null;
   const unique = [...new Set(candidatePaths.map(normalizeOtelPath).filter(Boolean))];
   // Prefer longer paths so worktree dirs win over the parent checkout.
   unique.sort((a, b) => b.length - a.length);
   for (const path of unique) {
-    if (otelWorkspaceIdForPath(path, hashSalt) === workspaceId) return path;
+    if (otelWorkspaceIdForPath(path, kind) === workspaceId) return path;
   }
   return null;
 }
@@ -72,4 +72,13 @@ export function shouldPersistOtelUsage(usage: {
 }): boolean {
   if (usage.tokensTotal > 0) return true;
   return typeof usage.costUsd === 'number' && Number.isFinite(usage.costUsd) && usage.costUsd > 0;
+}
+
+/** A path as written and, when it exists here, its real path (symlinks resolved). */
+export function pathAsWrittenAndResolved(absolutePath: string): string[] {
+  try {
+    return [...new Set([absolutePath, fs.realpathSync(absolutePath)])];
+  } catch {
+    return [absolutePath];
+  }
 }

@@ -117,15 +117,29 @@ How Mission Control resolves the timeline:
 - **Non-slot worktrees:** a session working in a linked git worktree that is
   not a slot is bound to it as `MAIN_CHECKOUT_AGENT_ID` (0) with an occupancy
   key naming the worktree (`worktree:<path>`, or `worktree-branch:<branch>`).
-  Evidence: the session's cwd inside one of the repository's linked worktrees
-  (read from `.git/worktrees/*`, no git spawn; a worktree outside the checkout
-  also resolves the repository), or a tool event's
-  `otelhook.target.workspace.id` matching one (otel-hook ADR 0008). When
-  Mission Control cannot read the repository's git directory, a target that is
-  neither the main checkout's nor a slot's hash is named by its
-  `vcs.ref.head.name` alone. Such usage stays unassigned — never a slot's —
-  but is split per worktree (`workDir`, `branch`); worktree bindings never
-  close each other or a slot's.
+  Evidence: a tool event's target (otel-hook ADR 0008), or the session's cwd
+  inside one of the repository's linked worktrees. A target carries
+  `otelhook.target.repository.id` (the git-root hash of the repository's main
+  checkout, matched against each registered path as written and resolved) and
+  `otelhook.target.worktree.kind` (`main` | `linked`). A target derived from
+  the session's or its shell's cwd (`otelhook.target.source` `session-cwd` |
+  `shell-cwd`) puts the record in that repository whatever the session's cwd;
+  a file the session only touched in another repository (`tool-path`, a Read
+  of its README) neither moves the record nor binds the session there. A
+  `linked` target is named by its path when `otelhook.target.workspace.id`
+  matches a listed worktree (a listing older than a second is re-read first),
+  else by its `vcs.ref.head.name`. A `linked` target without a repository id
+  is no evidence. The listing (`.git/worktrees/*`, no git spawn) is optional:
+  it names a worktree by path and places a session whose cwd is a worktree
+  before its first tool event. A record nothing places — its cwd is a
+  worktree Mission Control cannot list (the docker Mission Control mounts no
+  `.git`), or a directory no repository registers — stays with the session's
+  known repository (its place then, else where it was first placed), in that
+  repository's main checkout. Ids are derived by otel-hook's own `deriveWorkspaceIdentity`
+  (`working-directory` for a session's workspace id, `git-root` for a
+  target's). Such usage stays unassigned — never a slot's — but is split per
+  worktree (`workDir`, `branch`); worktree bindings never close each other or
+  a slot's.
 - **Same unit, several producers:** observations are idempotent per key. A
   repeat of a key from the live stream replaces a harvested copy; a harvested
   copy never replaces the live one, and a provider-reported cost is never

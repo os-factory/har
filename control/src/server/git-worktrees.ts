@@ -20,6 +20,8 @@ export interface LinkedWorktrees {
 }
 
 const CACHE_TTL_MS = 10_000;
+/** How old a listing a caller that missed re-reads: a worktree may have been added since. */
+export const WORKTREE_MISS_REFRESH_MS = 1_000;
 const cache = new Map<string, { at: number; value: LinkedWorktrees }>();
 
 function readTrimmed(file: string): string | null {

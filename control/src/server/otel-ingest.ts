@@ -21,8 +21,10 @@ import {
   repositoryForProviderSession,
   repositoryOfPlaceAt,
   resolveNonSlotWorktree,
+  resolveTargetRepository,
   resolveTargetSlot,
   targetBindingKind,
+  targetMovesPlace,
   timelineSlotAt,
   type SlotEvidence,
 } from '@/server/otel-attribution';
@@ -37,7 +39,7 @@ import {
   hidesTrajectoryContent,
   redactSecretAttributes,
 } from '@/lib/trajectory-privacy';
-import { listLinkedWorktrees, type LinkedWorktrees } from '@/server/git-worktrees';
+import { WORKTREE_MISS_REFRESH_MS, listLinkedWorktrees, type LinkedWorktrees } from '@/server/git-worktrees';
 import {
   isWorkspaceUnderPath,
   normalizeOtelPath,
@@ -401,7 +403,6 @@ async function resolveRepositoryByWorkspacePath(
   return match ? { repositoryId: match.id, path: match.path } : null;
 }
 
-const WORKTREE_MISS_REFRESH_MS = 1_000;
 /** A workspace id that matched nothing even after a refresh is not refreshed again for this long. */
 const WORKSPACE_ID_MISS_TTL_MS = 5_000;
 const missedWorkspaceIds = new Map<string, number>();
@@ -586,6 +587,34 @@ export async function resolveSessionContext(
     }
   }
 
+  // A tool event's target names its own repository (otel-hook's repository
+  // id). When it is the session's or its shell's cwd, the record happened
+  // there whatever the session's cwd: a linked worktree Mission Control cannot
+  // list, or another repository (FE-2058). A file it only touched in another
+  // repository is no evidence: the record stays where the session is.
+  const target = await resolveTargetRepository(attributes);
+  const targetElsewhere = target !== null && target.repositoryId !== repository?.repositoryId;
+  const placedByTarget = targetElsewhere && targetMovesPlace(attributes);
+  const targetAttrs = targetElsewhere && !placedByTarget ? {} : attributes;
+  if (target && placedByTarget) {
+    workspaceSlot = null;
+    mainCheckoutPath = target.linked ? null : target.path;
+    repository = {
+      repositoryId: target.repositoryId,
+      workDir: target.linked ? undefined : target.path,
+      sessionKey: harSessionKey || providerSessionId || `ide:${normalizePath(target.path)}`,
+    };
+  }
+
+  // Nothing places this record (a linked worktree Mission Control cannot see,
+  // before the session's first tool event): it stays with the session's known
+  // repository, in its main checkout — never dropped.
+  const knownRef = !repository && tool ? providerSessionRef(tool, attributes, resource) : null;
+  if (knownRef) {
+    const known = (await repositoryOfPlaceAt(knownRef, at)) ?? (await repositoryForProviderSession(knownRef));
+    if (known) repository = { repositoryId: known, sessionKey: harSessionKey || knownRef.sessionId };
+  }
+
   if (!repository && harSessionKey) {
     const repositoryId = await resolveRepositoryId(repoPath || undefined);
     if (!repositoryId) {
@@ -628,13 +657,13 @@ export async function resolveSessionContext(
   // `workspace` when otel-hook derived the target from the session cwd).
   const evidence: SlotBindingEvidence[] = [];
   if (workspaceSlot) evidence.push({ kind: 'workspace', slot: workspaceSlot });
-  const targetSlot = await resolveTargetSlot(repository.repositoryId, attributes);
-  if (targetSlot) evidence.push({ kind: targetBindingKind(attributes), slot: targetSlot });
+  const targetSlot = await resolveTargetSlot(repository.repositoryId, targetAttrs);
+  if (targetSlot) evidence.push({ kind: targetBindingKind(targetAttrs), slot: targetSlot });
   // What no slot claimed may still be a non-slot git worktree: recorded so its
   // usage splits from the main checkout's, never placed on a slot.
   const worktree = await resolveNonSlotWorktree(repository.repositoryId, {
-    workspace: workspaceSlot ? undefined : sessionCwd,
-    attrs: targetSlot ? undefined : attributes,
+    workspace: workspaceSlot || placedByTarget ? undefined : sessionCwd,
+    attrs: targetSlot ? undefined : targetAttrs,
   });
   if (worktree) evidence.push(worktree);
   // Nothing else: the session works in this repository's main checkout. That
