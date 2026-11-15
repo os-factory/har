@@ -77,7 +77,7 @@ export async function ensureTelemetryInfrastructure(options?: {
   }
 
   try {
-    const { code } = await startMissionControl({ detach: true });
+    const { code, reason } = await startMissionControl({ detach: true });
     if (code !== 0) {
       return {
         telemetryEnabled: true,
@@ -86,7 +86,9 @@ export async function ensureTelemetryInfrastructure(options?: {
         reachable: false,
         started: false,
         otelReady: false,
-        warning: `Telemetry on — failed to start Mission Control (exit ${code}). OTEL export skipped; harvest may fill gaps later. Fix Docker / run: har control up`,
+        warning: reason
+          ? `Telemetry on — Mission Control not started: ${reason}. OTEL export skipped; harvest may fill gaps later.`
+          : `Telemetry on — failed to start Mission Control (exit ${code}). OTEL export skipped; harvest may fill gaps later. Fix Docker / run: har control up`,
       };
     }
   } catch (err) {

@@ -85,12 +85,26 @@ export async function startMissionControl(options: {
   detach?: boolean;
   build?: boolean;
   quiet?: boolean;
-}): Promise<{ code: number; apiUrl: string; imageRef: string }> {
+}): Promise<{ code: number; apiUrl: string; imageRef: string; reason?: string }> {
   const quiet = options.quiet ?? false;
   const build = options.build ?? shouldBuildControlLocally();
   const imageRef = getControlImageRef();
   const apiUrl = getControlApiUrl();
   const hostPort = parseControlHostPort(apiUrl);
+
+  // The CLI targets another Mission Control: the default container is not its
+  // own. Replacing it would delete the user's running instance and publish its
+  // data volume on that other instance's port.
+  if (!isDefaultControlUrl(apiUrl) && controlContainerExists()) {
+    return {
+      code: 1,
+      apiUrl,
+      imageRef,
+      reason:
+        `the ${CONTROL_CONTAINER_NAME} container serves ${DEFAULT_CONTROL_API_URL}, not ${apiUrl}; ` +
+        `start the Mission Control at ${apiUrl} yourself, or unset HAR_CONTROL_API_URL`,
+    };
+  }
 
   if (build) {
     const buildCode = runDocker(
@@ -133,6 +147,22 @@ export function controlContainerImage(name = CONTROL_CONTAINER_NAME): string | n
   return (result.stdout ?? '').trim() || null;
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** Whether `apiUrl` reaches the default container: a loopback host on the default port. */
+function isDefaultControlUrl(apiUrl: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(apiUrl).hostname;
+  } catch {
+    return false;
+  }
+  return (
+    LOOPBACK_HOSTS.has(hostname) &&
+    parseControlHostPort(apiUrl) === parseControlHostPort(DEFAULT_CONTROL_API_URL)
+  );
+}
+
 /** Only a released default image is replaced; overrides and custom tags are left alone. */
 export function shouldUpgradeControlImage(
   running: string,
@@ -142,7 +172,7 @@ export function shouldUpgradeControlImage(
   if (env.HAR_CONTROL_IMAGE || env.HAR_CONTROL_IMAGE_TAG) return false;
   // The CLI talks to another Mission Control: the default container is not its
   // own, and recreating it would publish it on that other instance's port.
-  if (env.HAR_CONTROL_API_URL && env.HAR_CONTROL_API_URL !== DEFAULT_CONTROL_API_URL) return false;
+  if (env.HAR_CONTROL_API_URL && !isDefaultControlUrl(env.HAR_CONTROL_API_URL)) return false;
   if (running === expected) return false;
   return new RegExp(`^${DEFAULT_CONTROL_IMAGE}:\\d+\\.\\d+\\.\\d+`).test(running);
 }

@@ -254,12 +254,14 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
     }
     return;
   }
-  const { code, apiUrl, imageRef } = await startMissionControl({
+  const { code, apiUrl, imageRef, reason } = await startMissionControl({
     detach: argv.detach,
     build: argv.build,
   });
   if (code !== 0) {
-    if (!argv.build) {
+    if (reason) {
+      warn(`Mission Control not started: ${reason}`);
+    } else if (!argv.build) {
       warn(
         `Could not pull ${imageRef}. For local development use har control up --build, or publish the matching image.`,
       );
