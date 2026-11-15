@@ -30,7 +30,7 @@ import {
 
 describe('otel-hook package pin', () => {
   it('installs the release with Claude response content support', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.5.0');
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.6.0');
   });
 
   it('is the version Mission Control derives otel-hook ids with', () => {
