@@ -35,9 +35,14 @@ function branchFromHead(head: string | null): string | null {
   return match ? match[1] : null;
 }
 
-export function listLinkedWorktrees(repoPath: string, now = Date.now()): LinkedWorktrees {
+/** `maxAgeMs` lets a caller that missed re-read a listing older than that (a worktree added since). */
+export function listLinkedWorktrees(
+  repoPath: string,
+  now = Date.now(),
+  maxAgeMs = CACHE_TTL_MS,
+): LinkedWorktrees {
   const cached = cache.get(repoPath);
-  if (cached && now - cached.at < CACHE_TTL_MS) return cached.value;
+  if (cached && now - cached.at < maxAgeMs) return cached.value;
 
   const gitDir = path.join(repoPath, '.git');
   let value: LinkedWorktrees;

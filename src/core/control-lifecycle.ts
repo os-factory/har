@@ -5,7 +5,7 @@ import {
   getControlImageRef,
   shouldBuildControlLocally,
 } from './control-image';
-import { getControlApiUrl, isControlEnabled } from './control-config';
+import { DEFAULT_CONTROL_API_URL, getControlApiUrl, isControlEnabled } from './control-config';
 import { parseControlHostPort } from './control-port';
 import { syncAllKnownReposWithControl, waitForControlApi } from './control-sync';
 
@@ -140,6 +140,9 @@ export function shouldUpgradeControlImage(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   if (env.HAR_CONTROL_IMAGE || env.HAR_CONTROL_IMAGE_TAG) return false;
+  // The CLI talks to another Mission Control: the default container is not its
+  // own, and recreating it would publish it on that other instance's port.
+  if (env.HAR_CONTROL_API_URL && env.HAR_CONTROL_API_URL !== DEFAULT_CONTROL_API_URL) return false;
   if (running === expected) return false;
   return new RegExp(`^${DEFAULT_CONTROL_IMAGE}:\\d+\\.\\d+\\.\\d+`).test(running);
 }
