@@ -85,12 +85,26 @@ export async function startMissionControl(options: {
   detach?: boolean;
   build?: boolean;
   quiet?: boolean;
-}): Promise<{ code: number; apiUrl: string; imageRef: string }> {
+}): Promise<{ code: number; apiUrl: string; imageRef: string; reason?: string }> {
   const quiet = options.quiet ?? false;
   const build = options.build ?? shouldBuildControlLocally();
   const imageRef = getControlImageRef();
   const apiUrl = getControlApiUrl();
   const hostPort = parseControlHostPort(apiUrl);
+
+  // The CLI targets another Mission Control: the default container is not its
+  // own. Replacing it would delete the user's running instance and publish its
+  // data volume on that other instance's port.
+  if (!isDefaultControlUrl(apiUrl) && controlContainerExists()) {
+    return {
+      code: 1,
+      apiUrl,
+      imageRef,
+      reason:
+        `the ${CONTROL_CONTAINER_NAME} container serves ${DEFAULT_CONTROL_API_URL}, not ${apiUrl}; ` +
+        `start the Mission Control at ${apiUrl} yourself, or unset HAR_CONTROL_API_URL`,
+    };
+  }
 
   if (build) {
     const buildCode = runDocker(
