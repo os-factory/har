@@ -1,3 +1,9 @@
+## [1.25.2](https://github.com/os-factory/har/compare/v1.25.1...v1.25.2) (2026-11-15)
+
+### Bug Fixes
+
+* **attribution:** attribute plain-worktree sessions reported by hashed workspace id (FE-2058) ([#396](https://github.com/os-factory/har/issues/396)) ([83a65ea](https://github.com/os-factory/har/commit/83a65eaacf283aba78ffbf54fb4881d1749c677b))
+
 ## [1.25.1](https://github.com/os-factory/har/compare/v1.25.0...v1.25.1) (2026-11-13)
 
 ### Bug Fixes
