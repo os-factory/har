@@ -382,6 +382,7 @@ har control register [--repo .] [--api-url <url>] [--dry-run] [--force] [--porta
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
 har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
+har control check-usage [--repo <path|id>] [--api-url <url>] [--json] [--limit 20]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
 har control login [--portal <url>] [--api-key <key>] [--repo .]
 har control trajectory [on|off]
@@ -394,6 +395,15 @@ repositories. `register` adds its repository to a saved selection. `--full` igno
 payload. Portal sync always goes to the one
 connected HAR HQ org; set `HAR_PORTAL_URL` and `HAR_PORTAL_TOKEN` to send a run to
 a different org instead.
+`check-usage` is read-only: Mission Control checks the usage invariants over
+everything it holds and would sync (I1 a request is stored in one repository,
+I2 a legacy session total is stored once, I3 a session's rows hold exactly its
+requests, I4 a slot is not the main checkout, I5 Cursor cache reads are counted
+once), listing each violation with its keys, tokens and cost. It exits 1 on a
+violation. `sync` runs the same check and leaves the sessions breaking I1 or I2
+(usage counted twice) out of the HQ post, names them with their cost, and
+offers them again once fixed; the rest of the repository still goes.
+`HAR_SYNC_ALLOW_USAGE_VIOLATIONS=1` posts everything.
 `register --no-portal` keeps the repo on local Mission Control only (skips hosted
 portal sync even when logged in); `--portal` re-enables portal sync for that repo.
 

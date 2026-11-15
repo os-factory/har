@@ -1,0 +1,60 @@
+{
+  "kind": "line",
+  "id": "usage-integrity",
+  "title": "Usage integrity",
+  "program": "line.json",
+  "files": [
+    {
+      "src": "stages/usage-integrity-s0.sh",
+      "dest": ".har/stages/usage-integrity-s0.sh",
+      "executable": true
+    },
+    {
+      "src": "stages/usage-integrity-e2e.sh",
+      "dest": ".har/stages/usage-integrity-e2e.sh",
+      "executable": true
+    },
+    {
+      "src": "README.md",
+      "dest": ".har/lines/usage-integrity/README.md"
+    }
+  ],
+  "stages": [
+    {
+      "id": "usage-integrity-s0",
+      "kind": "test",
+      "description": "S0 — usage invariants and one regression per audit root cause",
+      "script": "stages/usage-integrity-s0.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/usage-integrity-s0",
+          "kind": "directory",
+          "description": "jest and vitest output for usage-integrity-s0"
+        }
+      ],
+      "tier": "full"
+    },
+    {
+      "id": "usage-integrity-e2e",
+      "kind": "test",
+      "description": "S1 — Mission Control from source, har control sync, capture portal: invariants on the shipped usage (no Docker)",
+      "script": "stages/usage-integrity-e2e.sh",
+      "requiresAgentId": true,
+      "artifacts": [
+        {
+          "path": ".har/artifacts/usage-integrity-e2e",
+          "kind": "directory",
+          "description": "End-to-end report"
+        }
+      ],
+      "tier": "full"
+    }
+  ],
+  "nextSteps": [
+    "har line status usage-integrity",
+    "har line gate S0 --line usage-integrity",
+    "har line gate S1 --line usage-integrity"
+  ],
+  "docsPath": ".har/lines/usage-integrity/README.md"
+}

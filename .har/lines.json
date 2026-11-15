@@ -38,6 +38,17 @@
       ],
       "programPath": ".har/lines/session-history/line.json",
       "installedAt": "2026-08-31T17:00:00.000Z"
+    },
+    {
+      "id": "usage-integrity",
+      "source": "local",
+      "spec": "usage-integrity",
+      "stageIds": [
+        "usage-integrity-s0",
+        "usage-integrity-e2e"
+      ],
+      "programPath": ".har/lines/usage-integrity/line.json",
+      "installedAt": "2026-11-13T23:00:00.000Z"
     }
   ]
 }
