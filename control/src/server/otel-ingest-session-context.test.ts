@@ -552,6 +552,51 @@ describe('resolveSessionContext — a target\'s repository from otel-hook\'s rep
     ]);
   });
 
+  it('places a session in a linked worktree whose first evidence is a file it read there', async () => {
+    // `git worktree add`, then a session that only reads: otel-hook's target is
+    // the file's (`tool-path`), and nothing else names the session's place.
+    const { context, evidence } = await resolveSessionContext(
+      {},
+      {
+        'otelhook.workspace.id': otelWorkspaceIdForPath(linkedWorktree),
+        ...session,
+        ...toolEvent(linkedWorktree, 'linked', 'feat'),
+        'otelhook.target.source': 'tool-path',
+      },
+    );
+    expect(context).toMatchObject({ repositoryId: 'repo-docker', agentId: 0 });
+    expect(evidence).toEqual([
+      { kind: 'observed', slot: expect.objectContaining({ slotId: 0, occupancyKey: 'worktree-branch:feat', branch: 'feat' }) },
+    ]);
+  });
+
+  it('keeps a session placed in one repository there when it reads a file in another', async () => {
+    bindings = [
+      {
+        repositoryId: 'repo-1',
+        agentTool: 'claude_code',
+        sessionId: 'S-docker',
+        subagentId: '',
+        kind: 'workspace',
+        slotId: 0,
+        occupancyKey: 'main-checkout',
+        branch: null,
+        at: new Date(Date.now() - 60_000),
+      },
+    ];
+    const { context, evidence } = await resolveSessionContext(
+      {},
+      {
+        'otelhook.workspace.id': otelWorkspaceIdForPath('/host/src/unlisted'),
+        ...session,
+        ...toolEvent(linkedWorktree, 'linked', 'feat'),
+        'otelhook.target.source': 'tool-path',
+      },
+    );
+    expect(context?.repositoryId).toBe('repo-1');
+    expect(evidence).toEqual([]);
+  });
+
   it('places a shell that moved into another repository there, whatever the session\'s cwd', async () => {
     const { context, evidence } = await resolveSessionContext(
       {},
