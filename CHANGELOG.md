@@ -1,3 +1,9 @@
+## [1.27.0](https://github.com/os-factory/har/compare/v1.26.0...v1.27.0) (2026-11-15)
+
+### Features
+
+* **usage:** usage invariants, check-usage, sync gate and usage-integrity line (FE-2058) ([#398](https://github.com/os-factory/har/issues/398)) ([122e2a9](https://github.com/os-factory/har/commit/122e2a920e72cdc28c1fe1f8174e3d2091cc24aa))
+
 ## [1.26.0](https://github.com/os-factory/har/compare/v1.25.2...v1.26.0) (2026-11-15)
 
 ### Features
