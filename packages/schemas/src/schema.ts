@@ -365,6 +365,21 @@ export const WorkAttemptRecordSchema = z
     branch: z.string().optional(),
     baseCommit: z.string().optional(),
     createdAt: z.string(),
+    /**
+     * Set when the work was bound to an already-running slot (`har env
+     * work-bind`) instead of at launch. `createdAt` is then the start of the
+     * window the attempt owns: the slot's launch for a first binding, the bind
+     * time when it replaces another attempt.
+     */
+    boundAt: z.string().optional(),
+    /** Attempt this one replaced on the same slot occupancy (rebinding to another unit). */
+    previousAttemptId: WorkAttemptIdSchema.optional(),
+    /**
+     * Occupancy key the slot carried before this binding (#316) — the branch key
+     * of an unbound launch, or the replaced attempt's key — so evidence recorded
+     * under it can be traced to this attempt.
+     */
+    previousOccupancyKey: z.string().optional(),
   })
   .passthrough();
 

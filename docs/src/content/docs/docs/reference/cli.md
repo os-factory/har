@@ -139,6 +139,8 @@ har env launch 1 [--no-worktree] [--claude] [--resume]
 har env recover 1
 har env work-link --work-id <id> [--link <source|url|label>]
   [--source <name> --url <url> [--label <text>]]
+har env work-bind [<id>] --work-id <id> [--work-title <title>] [--work-url <url>]
+  [--work-source <name>] [--parent-work-id <id>] [--work-link <source|url|label> ...] [--json]
 ```
 
 Every `launch` creates a **new** session from the current HEAD of `--repo` (the
@@ -156,6 +158,25 @@ tracker issue or ticket: pass a short repo-scoped `--work-id`, plus `--work-sour
 `--work-url`, and `--work-title` when known. Add secondary links with repeatable
 `--work-link source|url|label`, or later with `har env work-link`. A fresh bound
 launch creates an immutable attempt UUID; `--resume` preserves the failed session's attempt.
+
+When the work id is only known after launch (a slot started from a panel, an
+agent that learns the ticket by reading the task), bind it to the running slot
+with `har env work-bind`. Without `<id>` it binds the slot whose work dir
+contains the current directory, so an agent can run it from its worktree:
+
+```bash
+har env work-bind --work-id FE-2071 --work-title "Bind work after launch" \
+  --work-url https://linear.app/acme/issue/FE-2071
+```
+
+A binding always mints a new attempt and writes it to the slot (`har env
+status` shows the unit). A first binding's attempt covers the slot since its
+launch. Rebinding to another unit starts a new attempt from now: the previous
+unit keeps its attempt, run records, validations and usage, and is closed as
+`abandoned`. Binding the unit the slot already carries only merges metadata.
+A unit already bound to another slot is refused. The `.env.agent.<id>`
+attribution is rewritten for processes started afterwards; agents already
+running are attributed through the slot record.
 
 A worktree only materializes what is in `HEAD`. Preflight and launch warn when
 untracked (not gitignored) paths will be missing from the session worktree —

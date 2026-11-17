@@ -64,6 +64,9 @@ Add secondary links (GitHub issue, PR, Bitbucket) with repeatable
 `har env work-link --work-id <id> --link …` / MCP `har_add_work_unit_link`. Bind the
 planning tracker (Jira/Linear) as `--work-url`; attach code-host links as related
 links. Include any remaining links in session handoff until attached.
+When the work id is only known after launch, bind it to the running slot with
+`har env work-bind --work-id <id> [--work-title …] [--work-url …]` (from the slot
+work dir) or MCP `har_bind_work_unit`.
 Default recommendation is complete + open a PR when tooling is available (still
 requires approval); never run `complete`, push, or PR autonomously.
 
@@ -204,7 +207,7 @@ First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
 | verify / run-stage / logs / status / artifacts | `har env verify`, `run-stage`, `logs`, `status`, `artifacts` | `har_run_verification`, `har_run_stage`, `har_get_logs`, `har_get_status`, `har_list_artifacts` |
 | doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
 | complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
-| runs / work links | `har env runs list\|get`, `work-link` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link` |
+| runs / work links / work binding | `har env runs list\|get`, `work-link`, `work-bind` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link`, `har_bind_work_unit` |
 | factory lines | `har line create\|add\|status\|gate\|list` | `har_line_create`, `har_add_line`, `har_line_status`, `har_run_line_gate` |
 | Mission Control | `har control up` | `har_control_up` |
 

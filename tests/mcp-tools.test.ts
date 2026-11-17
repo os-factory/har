@@ -12,6 +12,7 @@ describe('HAR MCP tool schemas', () => {
       'har_add_plugin',
       'har_launch_environment',
       'har_add_work_unit_link',
+      'har_bind_work_unit',
       'har_recover_environment',
       'har_preflight_environment',
       'har_run_stage',

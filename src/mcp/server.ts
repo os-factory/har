@@ -31,6 +31,7 @@ import {
   runLineGate,
 } from '../core/lines';
 import { addWorkUnitLinks } from '../core/work-units';
+import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
 import {
@@ -43,6 +44,7 @@ import { slimVerificationResult } from '../core/results';
 import { validateAgentId } from '../utils/validation';
 import {
   AddWorkUnitLinkInputSchema,
+  BindWorkUnitInputSchema,
   CompleteEnvironmentInputSchema,
   CompleteEnvironmentOutputSchema,
   DescribeProjectOutputSchema,
@@ -195,6 +197,55 @@ export const HAR_MCP_TOOLS: Tool[] = [
         label: { type: 'string', description: 'Optional display label.' },
       },
       ['workUnitId', 'source', 'url'],
+    ),
+  },
+  {
+    name: 'har_bind_work_unit',
+    description:
+      'Bind (or change) the work unit of a slot that is already running — use when the work id is only known after reading the task. Pass agentId, or cwd inside the slot work dir. Rebinding to another unit starts a new attempt; the previous unit keeps its attempt, evidence and usage and is closed as abandoned. Binding the same unit again only merges metadata.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        agentId: {
+          ...agentIdJsonProperty,
+          description: 'Slot to bind. Omit to use the slot whose work dir contains cwd.',
+        },
+        cwd: {
+          type: 'string',
+          description: 'Path inside the slot work dir (the agent working directory) when agentId is omitted.',
+        },
+        workUnitId: {
+          type: 'string',
+          description: 'Short repo-scoped work id (e.g. FE-2071).',
+        },
+        source: {
+          type: 'string',
+          description: 'Tracker provider (e.g. github, linear).',
+        },
+        sourceUrl: {
+          type: 'string',
+          description: 'Canonical URL for the work item.',
+        },
+        title: { type: 'string', description: 'Human-readable work title.' },
+        parentWorkUnitId: {
+          type: 'string',
+          description: 'Optional parent work unit identifier.',
+        },
+        relatedLinks: {
+          type: 'array',
+          description: 'Additional tracker links (append-only). Each item: source, url, optional label.',
+          items: {
+            type: 'object',
+            properties: {
+              source: { type: 'string' },
+              url: { type: 'string' },
+              label: { type: 'string' },
+            },
+            required: ['source', 'url'],
+          },
+        },
+      },
+      ['workUnitId'],
     ),
   },
   {
@@ -552,6 +603,34 @@ export async function handleMcpToolCall(
           workUnitId: record.workUnitId,
           relatedLinks: record.relatedLinks,
         });
+      } catch (err) {
+        return {
+          ...jsonContent({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+          isError: true,
+        };
+      }
+    }
+
+    case 'har_bind_work_unit': {
+      const input = BindWorkUnitInputSchema.parse({ ...args, repo });
+      try {
+        const agentId =
+          input.agentId !== undefined ? validateAgentId(input.agentId, repo) : undefined;
+        const result = bindWorkUnit({
+          repoPath: repo,
+          agentId,
+          cwd: input.cwd,
+          workUnitId: input.workUnitId,
+          source: input.source,
+          sourceUrl: input.sourceUrl,
+          title: input.title,
+          parentWorkUnitId: input.parentWorkUnitId,
+          relatedLinks: input.relatedLinks,
+        });
+        return jsonContent(result);
       } catch (err) {
         return {
           ...jsonContent({
