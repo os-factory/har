@@ -26,7 +26,9 @@ Pass `workUnitId`, `source`, and `sourceUrl` when the task names a tracker issue
 ticket (short repo-scoped id such as `widget-123`, not a provider-prefixed composite).
 Use `relatedLinks` or `har_add_work_unit_link` for secondary URLs (GitHub PR, mirrored
 issue, Bitbucket). Omit work metadata for ad-hoc work with no tracker identity.
+When the work id is only known after launch, call `har_bind_work_unit` from the slot.
 | `har_add_work_unit_link` | `workUnitId`, `source`, `url`, optional `label` | Append a related external link to an existing work unit |
+| `har_bind_work_unit` | `workUnitId`, `agentId` or `cwd` (path inside the slot work dir), optional `source`, `sourceUrl`, `title`, `parentWorkUnitId`, `relatedLinks` | Bind or change the work unit of a running slot (same as `har env work-bind`): a new attempt; a replaced unit keeps its attempt and evidence and is closed as abandoned |
 | `har_recover_environment` | `agentId` | Resumed failed or partial launch |
 | `har_get_status` | optional `agentId` | Structured slot status (same source as `har env status --json`): worktree, branch, dirty state, readiness, last run/verify. A pure read — writes no run records |
 | `har_get_logs` | `agentId`, optional `service` | Recent service output |

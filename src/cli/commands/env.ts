@@ -35,6 +35,7 @@ import {
 import { listRuns, getRun } from '../../core/runs';
 import { runAgentOp } from '../../runtime';
 import { addWorkUnitLinks, parseWorkLinkSpec } from '../../core/work-units';
+import { bindWorkUnit } from '../../core/work-bind';
 import { resolveHarnessRoot } from '../../harness/manifest';
 import { adoptHarness, ejectHarness } from '../../harness/eject';
 import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
@@ -318,6 +319,45 @@ export const envCommand = {
         'Append a related external link to an existing work unit',
         workLinkOptions,
         handleWorkLink,
+      )
+      .command(
+        'work-bind [id]',
+        'Bind (or change) the work unit of a running slot — default: the slot whose work dir contains the cwd',
+        (y: Argv) =>
+          y
+            .positional('id', {
+              type: 'number',
+              describe: 'Agent slot id (default: the slot whose work dir contains the current directory)',
+            })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('work-id', {
+              type: 'string',
+              demandOption: true,
+              describe: 'Short repo-scoped work id (e.g. FE-2071)',
+            })
+            .option('work-source', {
+              type: 'string',
+              describe: 'Tracker provider (for example github or linear)',
+            })
+            .option('work-url', {
+              type: 'string',
+              describe: 'Canonical URL for the work item',
+            })
+            .option('work-title', { type: 'string', describe: 'Human-readable work title' })
+            .option('parent-work-id', {
+              type: 'string',
+              describe: 'Optional parent work unit identifier',
+            })
+            .option('work-link', {
+              type: 'array',
+              string: true,
+              describe: 'Additional tracker link: source|url or source|url|label (repeatable)',
+            })
+            .option('json', { type: 'boolean', default: false, describe: 'Structured JSON output' })
+            .epilog(
+              'Rebinding a slot to another unit starts a new attempt; the previous unit keeps its attempt, evidence and usage and is closed as abandoned. Binding the unit the slot already carries only updates its metadata.',
+            ),
+        handleWorkBind,
       )
       .command(
         'recover <id>',
@@ -1103,6 +1143,50 @@ export async function handleWorkLink(argv: {
     return finishCommand(0);
   } catch (err) {
     error(err instanceof Error ? err.message : String(err));
+    return finishCommand(1);
+  }
+}
+
+export async function handleWorkBind(argv: {
+  id?: number;
+  repo: string;
+  workId: string;
+  workSource?: string;
+  workUrl?: string;
+  workTitle?: string;
+  parentWorkId?: string;
+  workLink?: string[];
+  json?: boolean;
+}): Promise<void> {
+  const repo = path.resolve(argv.repo);
+  try {
+    const agentId = argv.id !== undefined ? validateAgentId(argv.id, repo) : undefined;
+    const result = bindWorkUnit({
+      repoPath: repo,
+      agentId,
+      cwd: process.cwd(),
+      workUnitId: argv.workId,
+      source: argv.workSource,
+      sourceUrl: argv.workUrl,
+      title: argv.workTitle,
+      parentWorkUnitId: argv.parentWorkId,
+      relatedLinks: argv.workLink?.map(parseWorkLinkSpec),
+    });
+    if (argv.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return finishCommand(0);
+    }
+    for (const notice of result.notices) info(notice);
+    success(
+      result.changed
+        ? `Slot ${result.agentId} bound to work unit ${result.workUnitId} (attempt ${result.attemptId})`
+        : `Slot ${result.agentId} already on work unit ${result.workUnitId} (attempt ${result.attemptId})`,
+    );
+    return finishCommand(0);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (argv.json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+    else error(message);
     return finishCommand(1);
   }
 }

@@ -171,6 +171,50 @@ export function recordLaunchBinding(options: {
 }
 
 /**
+ * Binding work to a running slot (`har env work-bind`) mints a new attempt, and
+ * the occupancy key moves from the old key (branch, or the previous attempt) to
+ * the new attempt's key. The agent sessions that worked under the old key keep
+ * working in the slot, so each gets a `release` on the old key and a `launch` on
+ * the new one at the same instant; the agent running the bind gets a `launch`
+ * too. Without this, teardown would only release bindings under the new key and
+ * leave the old ones open forever.
+ */
+export function recordRebindBindings(options: {
+  harnessRoot: string;
+  before: SlotRegistryEntry;
+  after: SlotRegistryEntry;
+  env?: Env;
+  at?: string;
+  resolveInnermost?: InnermostAgentResolver;
+}): SessionSlotBinding[] {
+  const at = options.at ?? new Date().toISOString();
+  const oldFields = slotFields(options.before);
+  const newFields = slotFields(options.after);
+  if ((oldFields.occupancyKey ?? null) === (newFields.occupancyKey ?? null)) return [];
+  const carried = new Map<string, { agentTool: SessionSlotBinding['agentTool']; sessionId: string }>();
+  for (const binding of listSessionBindings(options.harnessRoot)) {
+    if (binding.slotId !== oldFields.slotId) continue;
+    if ((binding.occupancyKey ?? null) !== (oldFields.occupancyKey ?? null)) continue;
+    const key = `${binding.agentTool}\0${binding.sessionId}`;
+    if (binding.kind === 'launch') {
+      carried.set(key, { agentTool: binding.agentTool, sessionId: binding.sessionId });
+    } else if (binding.kind === 'release') {
+      carried.delete(key);
+    }
+  }
+  const out: SessionSlotBinding[] = [];
+  for (const agent of carried.values()) {
+    out.push(recordSessionBinding(options.harnessRoot, { ...agent, kind: 'release', ...oldFields, at }));
+  }
+  const current = currentAgentSession(options.env ?? process.env, options.resolveInnermost);
+  if (current) carried.set(`${current.agentTool}\0${current.sessionId}`, current);
+  for (const agent of carried.values()) {
+    out.push(recordSessionBinding(options.harnessRoot, { ...agent, kind: 'launch', ...newFields, at }));
+  }
+  return out;
+}
+
+/**
  * `release` bindings when a slot occupancy ends (teardown, complete): for the
  * agent session running the command, and for every session that launched this
  * occupancy — a human tearing down from a terminal still closes the launching
