@@ -1,3 +1,9 @@
+## [1.28.0](https://github.com/os-factory/har/compare/v1.27.3...v1.28.0) (2026-11-17)
+
+### Features
+
+* **env:** bind or change the work unit of a running slot ([#407](https://github.com/os-factory/har/issues/407)) ([b599949](https://github.com/os-factory/har/commit/b599949b40ad20c896948997d00916516017464f))
+
 ## [1.27.3](https://github.com/os-factory/har/compare/v1.27.2...v1.27.3) (2026-11-15)
 
 ### Bug Fixes
