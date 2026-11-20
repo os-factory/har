@@ -33,7 +33,7 @@ describe('defaultEnsureControl', () => {
 
     const result = await defaultEnsureControl({
       startControl: true,
-      telemetry: 'on',
+      telemetry: 'full',
       cwd: '/repos/demo',
     });
 
@@ -52,7 +52,7 @@ describe('defaultEnsureControl', () => {
       warning: 'not reachable',
     });
 
-    await defaultEnsureControl({ startControl: true, telemetry: 'on', cwd: '/repos/demo' });
+    await defaultEnsureControl({ startControl: true, telemetry: 'full', cwd: '/repos/demo' });
 
     expect(ensureRepoRegisteredWithControl).not.toHaveBeenCalled();
   });
@@ -61,7 +61,7 @@ describe('defaultEnsureControl', () => {
     ensureTelemetryInfrastructure.mockResolvedValue({ started: false, reachable: false });
     isControlApiReachable.mockResolvedValue(true);
 
-    await defaultEnsureControl({ startControl: false, telemetry: 'on', cwd: '/repos/demo' });
+    await defaultEnsureControl({ startControl: false, telemetry: 'full', cwd: '/repos/demo' });
 
     expect(ensureRepoRegisteredWithControl).toHaveBeenCalledWith(
       '/repos/demo',

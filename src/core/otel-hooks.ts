@@ -7,7 +7,13 @@ import {
   enableClaudeNativeTelemetry,
 } from './claude-native-telemetry';
 import { getControlApiUrl } from './control-config';
-import { getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
+import {
+  getTelemetryLevel,
+  getTelemetrySignals,
+  isTelemetryEnabled,
+  signalsForLevel,
+  type TelemetryLevel,
+} from './telemetry-config';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
 export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.6.0';
@@ -152,11 +158,14 @@ export function buildOtelHooksConfig(options?: {
   apiUrl?: string;
   resourceAttributes?: string;
 }): OtelHooksConfig {
-  const enabled = options?.enabled ?? isTelemetryEnabled();
-  const signals = getTelemetrySignals();
+  // Every switch comes from the level: the hook exports spans from Outline up,
+  // its event records (the only channel that carries text) alongside them,
+  // and the text itself only at Full.
+  const signals = options?.enabled === false ? signalsForLevel('off') : getTelemetrySignals();
+  const enabled = signals.traces;
   const apiUrl = (options?.apiUrl ?? getControlApiUrl()).replace(/\/$/, '');
   const resourceAttributes = parseResourceAttributesString(options?.resourceAttributes);
-  const capturePrompts = enabled && signals.prompts;
+  const capturePrompts = enabled && signals.logs && signals.prompts;
 
   return {
     exporter: {
@@ -632,21 +641,32 @@ export function ensureOtelHooks(options?: {
   // ready. If npm installation fails, an existing HAR hook remains usable.
   uninstallLegacyPythonHooks(hooksHome);
 
+  const signals = getTelemetrySignals();
   if (options?.setupAgents !== false && isTelemetryEnabled()) {
-    for (const provider of OTEL_HOOKS_PROVIDERS) {
-      const setup = runSetupProvider(provider.id, resolvedCommand, wrapperPath);
-      if (setup.ok) providersSetup.push(provider.id);
-      else errors.push(setup.detail);
+    // Hooks only export from Outline up; at Usage the agents' own telemetry
+    // and session files carry everything, so no hook needs to run.
+    if (signals.traces) {
+      for (const provider of OTEL_HOOKS_PROVIDERS) {
+        const setup = runSetupProvider(provider.id, resolvedCommand, wrapperPath);
+        if (setup.ok) providersSetup.push(provider.id);
+        else errors.push(setup.detail);
+      }
     }
     rewriteKnownHookRegistrations(wrapperPath);
+  }
+  if (options?.setupAgents !== false) {
     // Claude reports tokens/cost to no hook — its native metrics and
     // per-request `api_request` log events carry them (ADR 0003).
     try {
-      const claude = enableClaudeNativeTelemetry({ hooksHome });
-      if (claude.skipped.length > 0) {
-        errors.push(
-          `Claude native telemetry: left your own ${claude.skipped.join(', ')} in ${claude.settingsPath} — Claude cost needs them pointed at Mission Control`,
-        );
+      if (signals.metrics) {
+        const claude = enableClaudeNativeTelemetry({ hooksHome });
+        if (claude.skipped.length > 0) {
+          errors.push(
+            `Claude native telemetry: left your own ${claude.skipped.join(', ')} in ${claude.settingsPath} — Claude cost needs them pointed at Mission Control`,
+          );
+        }
+      } else {
+        disableClaudeNativeTelemetry({ hooksHome });
       }
     } catch (err) {
       errors.push(`Claude native telemetry not configured: ${err instanceof Error ? err.message : String(err)}`);
@@ -679,4 +699,42 @@ export function disableOtelHooksExport(): string {
     // best-effort: a malformed settings file must not block telemetry off
   }
   return writeOtelHooksConfig(buildOtelHooksConfig({ enabled: false }));
+}
+
+export interface TelemetryDrift {
+  level: TelemetryLevel;
+  configPath: string;
+  /** Each way the hook config on disk records more or less than the level asks for. */
+  mismatches: string[];
+}
+
+/**
+ * Compare the hook config agents actually read with what the effective level
+ * asks for. A preference changed by hand, or a level chosen before this
+ * version, leaves the file behind — agents then record less (or more) than
+ * `har telemetry status` claims.
+ */
+export function inspectTelemetryDrift(hooksHome = getOtelHooksHome()): TelemetryDrift {
+  const level = getTelemetryLevel();
+  const configPath = getOtelHooksConfigPath(hooksHome);
+  const expected = buildOtelHooksConfig();
+  const mismatches: string[] = [];
+  let actual: Partial<OtelHooksConfig> | null = null;
+  try {
+    actual = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Partial<OtelHooksConfig>;
+  } catch {
+    actual = null;
+  }
+  if (!actual) {
+    if (expected.exporter.enabled) mismatches.push('no hook config written yet');
+    return { level, configPath, mismatches };
+  }
+  const check = (label: string, want: unknown, got: unknown) => {
+    if (want !== got) mismatches.push(`${label}: ${String(got)} (level ${level} needs ${String(want)})`);
+  };
+  check('spans export', expected.exporter.enabled, actual.exporter?.enabled ?? false);
+  check('event records export', expected.exporter.logs.enabled, actual.exporter?.logs?.enabled ?? false);
+  check('text capture', expected.exporter.logs.includeContent, actual.exporter?.logs?.includeContent ?? false);
+  check('content mode', expected.privacy.contentMode, actual.privacy?.contentMode ?? 'omit');
+  return { level, configPath, mismatches };
 }

@@ -176,6 +176,73 @@ function scopeWhere(scope: TrajectoryScope): Prisma.AgentTrajectoryRecordWhereIn
   };
 }
 
+/** Main checkout (ADR 0003): records placed in no slot. */
+const MAIN_CHECKOUT_AGENT_ID = 0;
+
+/**
+ * The session's steps in the main checkout that led into this slot — typically
+ * the prompt that asked for the work and the `har env launch` call. ADR 0003
+ * places each record where it happened, so those rows belong to the main
+ * checkout (agentId 0) and a slot-scoped read never saw them: the slot's
+ * trajectory started mid-task, without the prompt.
+ *
+ * The lead-in is the session's main-checkout records from the last prompt
+ * before its first record in this slot (the request this slot's work answers)
+ * up to that record — never reaching back past its last record in another
+ * slot. With no such prompt it is everything in that window. Records are never
+ * moved; only the read widens.
+ */
+export async function leadInWhere(
+  scope: TrajectoryScope,
+): Promise<Prisma.AgentTrajectoryRecordWhereInput | null> {
+  if (scope.agentId === MAIN_CHECKOUT_AGENT_ID) return null;
+  const session = {
+    repositoryId: scope.repositoryId,
+    sessionKey: scope.sessionKey,
+    agentTool: scope.agentTool,
+  };
+  const first = await prisma.agentTrajectoryRecord.findFirst({
+    where: scopeWhere(scope),
+    orderBy: { eventTimestamp: 'asc' },
+    select: { eventTimestamp: true },
+  });
+  if (!first) return null;
+  const previousSlot = await prisma.agentTrajectoryRecord.findFirst({
+    where: {
+      ...session,
+      agentId: { notIn: [MAIN_CHECKOUT_AGENT_ID, scope.agentId] },
+      eventTimestamp: { lt: first.eventTimestamp },
+    },
+    orderBy: { eventTimestamp: 'desc' },
+    select: { eventTimestamp: true },
+  });
+  const window = {
+    ...session,
+    agentId: MAIN_CHECKOUT_AGENT_ID,
+    eventTimestamp: {
+      lt: first.eventTimestamp,
+      ...(previousSlot ? { gt: previousSlot.eventTimestamp } : {}),
+    },
+  } satisfies Prisma.AgentTrajectoryRecordWhereInput;
+  // `prompt.submitted` and its `span.prompt` mirror both name the prompt.
+  const lastPrompt = await prisma.agentTrajectoryRecord.findFirst({
+    where: { ...window, eventType: { contains: 'prompt' } },
+    orderBy: { eventTimestamp: 'desc' },
+    select: { eventTimestamp: true },
+  });
+  if (!lastPrompt) return window;
+  return {
+    ...window,
+    eventTimestamp: { lt: first.eventTimestamp, gte: lastPrompt.eventTimestamp },
+  };
+}
+
+/** A slot stream's records plus the session's lead-in from the main checkout. */
+async function readScopeWhere(scope: TrajectoryScope): Promise<Prisma.AgentTrajectoryRecordWhereInput> {
+  const leadIn = await leadInWhere(scope);
+  return leadIn ? { OR: [scopeWhere(scope), leadIn] } : scopeWhere(scope);
+}
+
 const globalRetention = globalThis as unknown as {
   trajectoryRetentionAt?: number;
 };
@@ -251,7 +318,7 @@ export async function listTrajectoryHistory(
   const before = options.before ? decodeTrajectoryCursor(options.before) : null;
   const rows = await prisma.agentTrajectoryRecord.findMany({
     where: {
-      ...scopeWhere(scope),
+      ...(await readScopeWhere(scope)),
       ...(before ? { AND: [cursorWhere(before, 'before')] } : {}),
     },
     orderBy: descendingOrder,
@@ -274,7 +341,7 @@ export async function listTrajectoryAfter(
 ): Promise<AgentTrajectoryRecord[]> {
   const cursor = decodeTrajectoryCursor(after);
   return prisma.agentTrajectoryRecord.findMany({
-    where: { ...scopeWhere(scope), AND: [cursorWhere(cursor, 'after')] },
+    where: { ...(await readScopeWhere(scope)), AND: [cursorWhere(cursor, 'after')] },
     orderBy: ascendingOrder,
     take: Math.max(1, Math.min(limit, 1_000)),
   });
@@ -352,7 +419,7 @@ export async function listTrajectoryExport(
   scope: TrajectoryScope,
 ): Promise<AgentTrajectoryRecord[]> {
   return prisma.agentTrajectoryRecord.findMany({
-    where: scopeWhere(scope),
+    where: await readScopeWhere(scope),
     orderBy: ascendingOrder,
   });
 }

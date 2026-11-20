@@ -14,7 +14,7 @@ parallel agent slot capacity, then the adaptation prompt (clipboard +
 ```bash
 har onboard [--repo .] [--yes] [--skip-guide] [--skip-init]
             [--profile default|cli|ios]
-            [--telemetry on|on-no-prompts|off]
+            [--telemetry full|outline|usage|off] [--hq-trajectory|--no-hq-trajectory]
             [--control|--no-control]
             [--plugins playwright,cypress,rocketsim,kerno,gitleaks,trivy,semgrep|--no-plugins]
             [--agent-slots <n>]
@@ -30,8 +30,14 @@ required — Mission Control runs as a container and harness infra uses Docker
 Compose — so a missing CLI or stopped daemon is warned about, reported in the
 summary, and Mission Control is not started by default until Docker works.
 
-`--yes` accepts defaults (telemetry on, start Mission Control when Docker is
-available, no plugins) without prompts. This is the first-run command for a
+`--yes` accepts defaults (the telemetry level already chosen on this machine, else
+`full`; start Mission Control when Docker is available; no plugins) without prompts.
+
+Onboarding asks **how much agent activity to record** — the same four levels as
+[`har telemetry`](#har-telemetry) — and, when connected to HAR HQ at the `full` level,
+whether HQ also receives the full trajectory (`--hq-trajectory`; off by default). The
+level is machine-wide: it applies to every repository on this machine. The older
+`--telemetry on` / `on-no-prompts` still work and mean `full` / `outline`. This is the first-run command for a
 new repository — do not substitute `har env init` in user-facing copy.
 
 `--agent-slots <n>` sets how many agents may run in parallel (`1`–`10`), written to
@@ -362,7 +368,7 @@ are internal hook workers invoked by Git, not day-to-day commands.
 ## `har hq`
 
 ```bash
-har hq connect [--portal <url>] [--api-key <key>] [--repo .] [--yes] [--json]
+har hq connect [--portal <url>] [--api-key <key>] [--repo .] [--trajectory|--no-trajectory] [--yes] [--json]
 har hq list [--json]
 har hq disconnect [--json]
 ```
@@ -453,7 +459,7 @@ available in the dashboard under **Settings → Danger zone**.
 
 ```bash
 har telemetry status [--json]
-har telemetry on [--prompts|--no-prompts]
+har telemetry on [--level full|outline|usage]
 har telemetry off
 har telemetry install-hooks
 har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
@@ -462,11 +468,22 @@ har telemetry print-env --agent-id <n> [--repo .]
                        [--work-dir path] [--branch name] [--suffix id]
 ```
 
-Controls agent usage telemetry (Cursor / Claude / Codex via `@osfactory/otel-hook` → Mission Control).
-**Default: full on** (traces, logs, metrics, prompts). Install and the first `har` invocation
-persist `~/.har/telemetry.json` when missing. `on` ensures Mission Control is running and
-installs/configures hooks. Use `--no-prompts` to keep telemetry without prompt text.
-Override with `HAR_TELEMETRY=0|1`. Hooks config: `~/.har/otel-hooks/otel_config.json`.
+Controls how much agent activity (Cursor / Claude / Codex) is recorded in Mission Control.
+One **level** is stored; each includes the ones below it:
+
+| Level | Records |
+|-------|---------|
+| `full` (default) | Everything in `outline`, plus prompts, agent replies and tool inputs/outputs |
+| `outline` | `usage`, plus one row per prompt, generation and tool call with timing — no text |
+| `usage` | Tokens and cost per request (Claude Code native telemetry, Claude / Codex session files at sync). Cursor reports usage only through the hook, so it needs `outline` |
+| `off` | Nothing |
+
+`on` stores the level (replacing the previous one outright), ensures Mission Control is
+running and rewrites the hook config; start a new agent session to pick it up. `--prompts`
+/ `--no-prompts` remain as spellings of `full` / `outline`. `status` prints the level and
+warns when `~/.har/otel-hooks/otel_config.json` records something else (for example a
+preference edited by hand). Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
+HAR HQ receives the text only with `har control trajectory on`.
 
 ## `har mcp`
 

@@ -7,9 +7,13 @@ import {
   getTelemetryPreferencePath,
   isPortalTrajectoryEnabled,
   isTelemetryEnabled,
+  getTelemetryLevel,
+  getTelemetrySignals,
+  parseTelemetryLevel,
   readTelemetryPreference,
+  signalsForLevel,
   writePortalTrajectoryPreference,
-  writeTelemetryPreference,
+  writeTelemetryLevel,
 } from '../src/core/telemetry-config';
 import {
   appendTelemetryEnvToFile,
@@ -21,6 +25,7 @@ import {
   buildOtelHookSetupArgs,
   buildOtelHooksConfig,
   HOOK_TIMEOUT_SECONDS,
+  inspectTelemetryDrift,
   OTEL_HOOKS_PACKAGE,
   pruneLegacyCursorHookEvents,
   rewriteHookCommandsToWrapper,
@@ -60,49 +65,93 @@ describe('telemetry preference', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('defaults to full telemetry (including prompts) when preference file is missing', () => {
+  it('defaults to the full level when the preference file is missing', () => {
     expect(readTelemetryPreference()).toEqual({
       enabled: true,
+      level: 'full',
       signals: { metrics: true, logs: true, prompts: true, traces: true },
     });
     expect(isTelemetryEnabled()).toBe(true);
   });
 
-  it('persists full defaults on first ensure without overwriting later', () => {
+  it('persists the default on first ensure without overwriting later', () => {
     const first = ensureDefaultTelemetryPreference();
-    expect(first.enabled).toBe(true);
-    expect(first.signals.prompts).toBe(true);
+    expect(first.level).toBe('full');
     expect(fs.existsSync(getTelemetryPreferencePath())).toBe(true);
 
-    writeTelemetryPreference(true, { prompts: false });
-    const second = ensureDefaultTelemetryPreference();
-    expect(second.signals.prompts).toBe(false);
+    writeTelemetryLevel('outline');
+    expect(ensureDefaultTelemetryPreference().level).toBe('outline');
   });
 
-  it('persists on/off', () => {
-    writeTelemetryPreference(false);
+  it('derives every signal from the level', () => {
+    expect(signalsForLevel('off')).toEqual({ metrics: false, traces: false, logs: false, prompts: false });
+    expect(signalsForLevel('usage')).toEqual({ metrics: true, traces: false, logs: false, prompts: false });
+    expect(signalsForLevel('outline')).toEqual({ metrics: true, traces: true, logs: true, prompts: false });
+    expect(signalsForLevel('full')).toEqual({ metrics: true, traces: true, logs: true, prompts: true });
+  });
+
+  it('never records prompts without the event records that carry them', () => {
+    for (const level of ['off', 'usage', 'outline', 'full'] as const) {
+      const signals = signalsForLevel(level);
+      if (signals.prompts) expect(signals.logs && signals.traces).toBe(true);
+    }
+  });
+
+  it('replaces the previous level outright', () => {
+    writeTelemetryLevel('usage');
+    writeTelemetryLevel('full');
+    expect(readTelemetryPreference().signals).toEqual(signalsForLevel('full'));
+    writeTelemetryLevel('off');
     expect(isTelemetryEnabled()).toBe(false);
-    expect(fs.existsSync(getTelemetryPreferencePath())).toBe(true);
-    writeTelemetryPreference(true, { prompts: true, traces: true });
-    expect(isTelemetryEnabled()).toBe(true);
-    expect(readTelemetryPreference().signals.prompts).toBe(true);
+    writeTelemetryLevel('outline');
+    expect(getTelemetrySignals()).toEqual(signalsForLevel('outline'));
   });
 
-  it('persists prompt opt-out and defaults traces on', () => {
-    writeTelemetryPreference(true, { prompts: false });
-    const preference = readTelemetryPreference();
-    expect(preference.signals.prompts).toBe(false);
-    expect(preference.signals.traces).toBe(true);
-    expect(preference.signals.metrics).toBe(true);
-    expect(preference.signals.logs).toBe(true);
+  it('reads a pre-level file that asked for prompts but disabled logs as full', () => {
+    // The state `har telemetry on` used to leave behind: prompts on, yet no
+    // channel to carry them, so agents recorded outlines only.
+    fs.writeFileSync(
+      getTelemetryPreferencePath(),
+      JSON.stringify({
+        enabled: true,
+        signals: { metrics: false, logs: false, prompts: true, traces: true },
+      }),
+    );
+    expect(readTelemetryPreference().level).toBe('full');
+    expect(getTelemetrySignals()).toEqual(signalsForLevel('full'));
+  });
+
+  it('maps the other pre-level files to the level they meant', () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ enabled: false, signals: { prompts: true } }, 'off'],
+      [{ enabled: true, signals: { prompts: false } }, 'outline'],
+      [{ enabled: true, signals: { prompts: false, traces: false, logs: false } }, 'usage'],
+      [{ enabled: true }, 'full'],
+    ];
+    for (const [file, level] of cases) {
+      fs.writeFileSync(getTelemetryPreferencePath(), JSON.stringify(file));
+      expect(readTelemetryPreference().level).toBe(level);
+    }
+  });
+
+  it('accepts levels and the older on / on-no-prompts spellings', () => {
+    expect(parseTelemetryLevel('outline')).toBe('outline');
+    expect(parseTelemetryLevel('on')).toBe('full');
+    expect(parseTelemetryLevel('on-no-prompts')).toBe('outline');
+    expect(parseTelemetryLevel('verbose')).toBeUndefined();
   });
 
   it('lets HAR_TELEMETRY override the file', () => {
-    writeTelemetryPreference(true);
+    writeTelemetryLevel('outline');
     process.env.HAR_TELEMETRY = 'off';
     expect(isTelemetryEnabled()).toBe(false);
     process.env.HAR_TELEMETRY = '1';
-    expect(isTelemetryEnabled()).toBe(true);
+    expect(getTelemetryLevel()).toBe('outline');
+    process.env.HAR_TELEMETRY = 'usage';
+    expect(getTelemetryLevel()).toBe('usage');
+    writeTelemetryLevel('off');
+    process.env.HAR_TELEMETRY = 'on';
+    expect(getTelemetryLevel()).toBe('full');
   });
 });
 
@@ -143,21 +192,21 @@ describe('portal trajectory opt-in', () => {
 
   it('stays off while telemetry is off', () => {
     writePortalTrajectoryPreference(true);
-    writeTelemetryPreference(false);
+    writeTelemetryLevel('off');
     expect(isPortalTrajectoryEnabled()).toBe(false);
   });
 
   it('survives a telemetry off/on cycle', () => {
     writePortalTrajectoryPreference(true);
-    writeTelemetryPreference(false);
-    writeTelemetryPreference(true);
+    writeTelemetryLevel('off');
+    writeTelemetryLevel('full');
     expect(isPortalTrajectoryEnabled()).toBe(true);
   });
 
-  it('keeps the telemetry signals when toggled', () => {
-    writeTelemetryPreference(true, { prompts: false });
+  it('keeps the telemetry level when toggled', () => {
+    writeTelemetryLevel('outline');
     writePortalTrajectoryPreference(true);
-    expect(readTelemetryPreference().signals.prompts).toBe(false);
+    expect(readTelemetryPreference().level).toBe('outline');
   });
 
   it('lets HAR_PORTAL_TRAJECTORY override the file', () => {
@@ -314,8 +363,8 @@ describe('otel hooks config', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('maps HAR signals to @osfactory/otel-hook config with protobuf endpoint', () => {
-    writeTelemetryPreference(true);
+  it('maps the full level to @osfactory/otel-hook config with protobuf endpoint', () => {
+    writeTelemetryLevel('full');
     const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
     expect(config.exporter.endpoint).toBe('http://localhost:3847/api/otel/v1/traces');
     expect(config.exporter.protocol).toBe('http/protobuf');
@@ -326,12 +375,38 @@ describe('otel hooks config', () => {
     expect(config.privacy.allowRawContent).toBe(true);
   });
 
-  it('disables prompt capture when prompts signal is off', () => {
-    writeTelemetryPreference(true, { prompts: false });
-    const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
+  it('exports steps without text at the outline level', () => {
+    writeTelemetryLevel('outline');
+    const config = buildOtelHooksConfig({ apiUrl: 'http://localhost:3847' });
+    expect(config.exporter.enabled).toBe(true);
+    expect(config.exporter.logs.enabled).toBe(true);
     expect(config.privacy.contentMode).toBe('omit');
     expect(config.privacy.allowRawContent).toBe(false);
     expect(config.exporter.logs.includeContent).toBe(false);
+  });
+
+  it('exports nothing from the hook at the usage level', () => {
+    writeTelemetryLevel('usage');
+    const config = buildOtelHooksConfig({ apiUrl: 'http://localhost:3847' });
+    expect(config.exporter.enabled).toBe(false);
+    expect(config.exporter.logs.enabled).toBe(false);
+    expect(config.privacy.contentMode).toBe('omit');
+  });
+
+  it('reports a hook config that records less than the level asks for', () => {
+    writeTelemetryLevel('full');
+    const hooksHome = path.join(tmpDir, 'hooks');
+    // The file the old `har telemetry on` left: text capture on, its channel off.
+    const stale = buildOtelHooksConfig({ apiUrl: 'http://localhost:3847' });
+    stale.exporter.logs.enabled = false;
+    delete stale.exporter.logs.endpoint;
+    writeOtelHooksConfig(stale, hooksHome);
+    const drift = inspectTelemetryDrift(hooksHome);
+    expect(drift.level).toBe('full');
+    expect(drift.mismatches).toEqual([expect.stringContaining('event records export: false')]);
+
+    writeOtelHooksConfig(buildOtelHooksConfig({ apiUrl: 'http://localhost:3847' }), hooksHome);
+    expect(inspectTelemetryDrift(hooksHome).mismatches).toEqual([]);
   });
 
   it('disables exporter when telemetry is off', () => {

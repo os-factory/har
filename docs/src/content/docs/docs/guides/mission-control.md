@@ -202,23 +202,36 @@ HAR attributes Cursor, Claude Code, and Codex activity to each worktree/session 
 Mission Control. Preference shape:
 
 ```json
-{ "enabled": true, "signals": { "metrics": true, "logs": true, "prompts": true, "traces": true } }
+{ "enabled": true, "level": "full", "signals": { "metrics": true, "traces": true, "logs": true, "prompts": true } }
 ```
 
-**Default: full telemetry on** (traces + logs + derived metrics + prompts). Install
-(`npm install -g @osfactory/har`) and the first `har` / MCP invocation persist this
-preference to `~/.har/telemetry.json` when the file is missing. Prompt text also fills
-the Mission Control **purpose** column from the first captured user prompt.
+You choose **how much agent activity is recorded** with one level (onboarding asks;
+each level includes the ones below it):
+
+| Level | What Mission Control gets |
+|-------|---------------------------|
+| `full` (default) | Prompts, agent replies, tool inputs and outputs — plus everything below |
+| `outline` | One row per prompt, generation and tool call, with timing and outcome — no text |
+| `usage` | Tokens and cost per request (Claude Code native telemetry; Claude / Codex session files at sync) |
+| `off` | Nothing |
+
+The `signals` in the file are derived from the level and never set on their own, so a
+preference can no longer ask for prompts while disabling the hook's event records that
+carry them. Install and the first `har` / MCP invocation persist the default when the
+file is missing. Prompt text also fills the Mission Control **purpose** column from the
+first captured user prompt.
 
 ```bash
-har telemetry status
-har telemetry on              # full telemetry + Mission Control + @osfactory/otel-hook
-har telemetry on --no-prompts # keep traces/logs/metrics; disable prompt text capture
-har telemetry install-hooks   # re-run Cursor / Claude / Codex hook registration
-har telemetry off             # clear hooks OTLP export + stop MC auto-start; keeps historical rows
+har telemetry status                  # level + warns when the hook config disagrees with it
+har telemetry on                      # full + Mission Control + @osfactory/otel-hook
+har telemetry on --level outline      # every step, no text
+har telemetry on --level usage        # tokens and cost only
+har telemetry install-hooks           # re-run Cursor / Claude / Codex hook registration
+har telemetry off                     # clear hooks OTLP export + stop MC auto-start; keeps historical rows
 ```
 
-Preference is stored in `~/.har/telemetry.json`. Override with `HAR_TELEMETRY=0|1`.
+Changing the level rewrites the hook config; agent sessions already running keep the
+old one, so start a new session. Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
 ### Hooks never cost you a turn
 
 Hooks fire on session start, every prompt, before and after every tool call,
@@ -265,22 +278,24 @@ When telemetry is on:
    [Usage attribution](/docs/guides/usage-attribution/).
 
 **Privacy:** prompt text is included by default and stays in local Mission Control (SQLite).
-Opt out with `har telemetry on --no-prompts` or disable everything with `har telemetry off`.
+Record less with `har telemetry on --level outline` / `--level usage`, or nothing with
+`har telemetry off`.
 
-### No agent content? Check the prompts signal
+### No agent content? Check the level
 
 Prompt capture **stays on by default** — that is a product choice, not an
 oversight: without it Mission Control and a hosted portal have no session content
 to show, and a surface with no turns is indistinguishable from a session that had
 none. Turning it off is the deliberate opt-out, and it is silent by design:
 
-- With `prompts` off (`har telemetry on --no-prompts`, or `har telemetry off`),
+- Below `full` (`har telemetry on --level outline`, or `usage` / `off`),
   the Claude transcript harvest contributes **zero** events — and it is the only
   event harvest there is, since the Codex one covers usage alone. Anything that
   still appears is mirrored from otel spans, so turn counts read 0 for sessions
   that really had turns.
-- `har telemetry status` prints the effective signals; `har control sync --full`
-  warns when prompt capture is the reason no content is leaving the machine.
+- `har telemetry status` prints the effective level and warns when the hook config
+  agents read disagrees with it; `har control sync --full` warns when the level is the
+  reason no content is leaving the machine.
 - A harvested stream longer than 1000 events keeps the most recent 1000 and marks
   the oldest surviving event with `har.harvest.truncated`,
   `har.harvest.dropped_events` and `har.harvest.total_events`, so a clipped
@@ -361,6 +376,21 @@ the connection — nothing more is sent to the previous org, and its repositorie
 stop syncing until you attach them again. The connection lives in
 `~/.har/portal-targets.json`; `har hq list` / `har hq disconnect` manage it. It is
 never committed into `.har/`. `har control login` still works as a deprecated alias.
+
+Attaching a repository clears a local-only opt-out left by `har control register
+--no-portal`, so an attached repository always syncs. `har hq list` shows, per
+repository, whether anything is sent, plus what HQ receives for agent sessions: usage
+and the step outline by default, the full trajectory only when the local level is
+`full` **and** forwarding is on (`har control trajectory on`, or answer yes when
+`har hq connect` / `har onboard` asks).
+
+### A slot's trajectory starts at the prompt
+
+An agent usually reads your prompt in the main checkout and only then runs
+`har env launch`. Those first steps are recorded in the main checkout (see
+[Usage attribution](/docs/guides/usage-attribution/)), yet a slot's trajectory still
+opens with them: it includes the session's main-checkout steps from the last prompt
+before the launch, marked **Before launch · main checkout**. Records are never moved.
 
 `har control sync --cloud` targets HAR Cloud. Hosted coordination is separate from
 the local open-source dashboard and portable `.har/` contract.

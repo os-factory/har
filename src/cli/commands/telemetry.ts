@@ -8,16 +8,22 @@ import {
   ensureOtelHooks,
   getOtelHooksConfigPath,
   getOtelHooksHome,
+  inspectTelemetryDrift,
 } from '../../core/otel-hooks';
 import { readSlotRegistry } from '../../core/slot-registry';
 import {
-  TELEMETRY_SIGNALS,
+  DEFAULT_TELEMETRY_LEVEL,
+  TELEMETRY_LEVELS,
+  TELEMETRY_LEVEL_DESCRIPTIONS,
+  describeTelemetryLevel,
   ensureDefaultTelemetryPreference,
+  getTelemetryLevel,
   getTelemetryPreferencePath,
   getTelemetrySignals,
   isTelemetryEnabled,
   readTelemetryPreference,
-  writeTelemetryPreference,
+  writeTelemetryLevel,
+  type TelemetryLevel,
 } from '../../core/telemetry-config';
 import {
   appendTelemetryEnvToFile,
@@ -27,24 +33,31 @@ import {
 import { ensureTelemetryInfrastructure } from '../../core/telemetry-ensure';
 import { error, header, info, success, warn } from '../../utils/logging';
 
-function printSignals(): void {
-  info('Collected when enabled (local Mission Control only):');
-  for (const signal of TELEMETRY_SIGNALS) {
-    info(`  • ${signal}`);
+function printLevels(current: TelemetryLevel): void {
+  info('Levels (each includes the ones below it; recorded in local Mission Control):');
+  for (const entry of TELEMETRY_LEVEL_DESCRIPTIONS) {
+    const marker = entry.level === current ? '❯' : ' ';
+    info(`  ${marker} ${entry.level.padEnd(7)} ${entry.label} — ${entry.detail}`);
   }
-  info('Disable anytime: har telemetry off');
+  info('Change: har telemetry on --level <full|outline|usage>   •   har telemetry off');
+  info('HAR HQ gets the text only with har control trajectory on.');
 }
 
 async function handleStatus(argv: { json: boolean }): Promise<void> {
   const preference = readTelemetryPreference();
   const enabled = isTelemetryEnabled();
+  const level = getTelemetryLevel();
   const signals = getTelemetrySignals();
+  const drift = inspectTelemetryDrift();
   const apiUrl = getControlApiUrl();
   const reachable = enabled ? await isControlApiReachable(apiUrl) : false;
   const payload = {
     enabled,
+    level,
     preferenceEnabled: preference.enabled,
+    preferenceLevel: preference.level,
     signals,
+    hookConfigDrift: drift.mismatches,
     preferencePath: getTelemetryPreferencePath(),
     updatedAt: preference.updatedAt ?? null,
     envOverride: process.env.HAR_TELEMETRY ?? null,
@@ -53,7 +66,7 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
     otelEndpoint: `${apiUrl.replace(/\/$/, '')}/api/otel`,
     otelHooksHome: getOtelHooksHome(),
     otelHooksConfig: getOtelHooksConfigPath(),
-    signalDescriptions: [...TELEMETRY_SIGNALS],
+    levels: TELEMETRY_LEVEL_DESCRIPTIONS.map((entry) => ({ ...entry })),
   };
 
   if (argv.json) {
@@ -62,11 +75,11 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   }
 
   header('har telemetry status');
-  info(`Enabled:       ${enabled ? 'yes' : 'no'}${process.env.HAR_TELEMETRY ? ' (HAR_TELEMETRY override)' : ''}`);
-  info(`Preference:    ${getTelemetryPreferencePath()}${preference.updatedAt ? ` (updated ${preference.updatedAt})` : ' (default on)'}`);
+  const described = describeTelemetryLevel(level);
   info(
-    `Signals:       metrics=${signals.metrics} logs=${signals.logs} prompts=${signals.prompts} traces=${signals.traces}`,
+    `Level:         ${level} — ${described.label}: ${described.summary}${process.env.HAR_TELEMETRY ? ' (HAR_TELEMETRY override)' : ''}`,
   );
+  info(`Preference:    ${getTelemetryPreferencePath()}${preference.updatedAt ? ` (updated ${preference.updatedAt})` : ` (default ${DEFAULT_TELEMETRY_LEVEL})`}`);
   info(`Mission Control: ${apiUrl} (${reachable ? 'reachable' : 'not reachable'})`);
   info(`OTLP endpoint: ${payload.otelEndpoint}`);
   info(`Hooks home:    ${payload.otelHooksHome}`);
@@ -80,25 +93,25 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
     info('Start it with: har control up   •   or stop exporting: har telemetry off');
   }
 
-  printSignals();
+  // The hook config agents read disagrees with the level: they record
+  // something other than what this command just claimed.
+  if (drift.mismatches.length > 0) {
+    warn(`Agents are not recording at level ${level} — ${drift.configPath} is out of date:`);
+    for (const mismatch of drift.mismatches) warn(`  • ${mismatch}`);
+    info(`Fix: har telemetry on --level ${level === 'off' ? DEFAULT_TELEMETRY_LEVEL : level}   (then start a new agent session)`);
+  }
+
+  printLevels(level);
 }
 
-async function handleOn(argv: { prompts: boolean }): Promise<void> {
+async function handleOn(argv: { level: TelemetryLevel }): Promise<void> {
   header('har telemetry on');
-  const preference = writeTelemetryPreference(true, {
-    prompts: argv.prompts,
-    traces: true,
-  });
-  success('Telemetry enabled. Cursor / Claude / Codex export via @osfactory/otel-hook → Mission Control.');
-  info(
-    `Signals: metrics=${preference.signals.metrics} logs=${preference.signals.logs} prompts=${preference.signals.prompts} traces=${preference.signals.traces}`,
-  );
+  const preference = writeTelemetryLevel(argv.level);
+  const described = describeTelemetryLevel(preference.level);
+  success(`Telemetry level: ${preference.level} — ${described.label}: ${described.summary}.`);
   if (preference.signals.prompts) {
-    warn('Prompt text will leave the agent machine for local Mission Control (also used as session purpose).');
-  } else {
-    info('Prompt capture is off — enable with: har telemetry on --prompts');
+    warn('Prompt and tool text will leave the agent for local Mission Control (also used as session purpose).');
   }
-  printSignals();
 
   const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
   if (result.message) success(result.message);
@@ -112,11 +125,23 @@ async function handleOn(argv: { prompts: boolean }): Promise<void> {
     info(`OTLP ingest: ${result.apiUrl.replace(/\/$/, '')}/api/otel`);
     info('Usage appears under Mission Control → Worktrees / Usage. Disable: har telemetry off');
   }
+  info('Agent sessions already running keep their old settings — start a new session to pick this up.');
+  printLevels(preference.level);
+}
+
+/**
+ * The level `har telemetry on` writes: `--level` wins; the older
+ * `--prompts` / `--no-prompts` flags map to full / outline.
+ */
+export function resolveOnLevel(argv: { level?: string; prompts?: boolean }): TelemetryLevel {
+  if (argv.level) return argv.level as TelemetryLevel;
+  if (argv.prompts === false) return 'outline';
+  return DEFAULT_TELEMETRY_LEVEL;
 }
 
 async function handleOff(): Promise<void> {
   header('har telemetry off');
-  writeTelemetryPreference(false);
+  writeTelemetryLevel('off');
   try {
     disableOtelHooksExport();
   } catch (err) {
@@ -208,8 +233,8 @@ async function handleInstallHooks(): Promise<void> {
   header('har telemetry install-hooks');
   ensureDefaultTelemetryPreference();
   if (!isTelemetryEnabled()) {
-    warn('Telemetry is off — enabling preference so hooks can export.');
-    writeTelemetryPreference(true, { traces: true, prompts: true });
+    warn(`Telemetry is off — setting level ${DEFAULT_TELEMETRY_LEVEL} so hooks can export.`);
+    writeTelemetryLevel(DEFAULT_TELEMETRY_LEVEL);
   }
   const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
   if (result.message) success(result.message);
@@ -243,23 +268,25 @@ export const telemetryCommand = {
       )
       .command(
         'on',
-        'Enable full telemetry (incl. prompts), ensure Mission Control, install/configure @osfactory/otel-hook',
+        'Turn telemetry on at a level (default full), ensure Mission Control, install/configure @osfactory/otel-hook',
         (y: Argv) =>
           y
+            .option('level', {
+              type: 'string',
+              choices: TELEMETRY_LEVELS.filter((level) => level !== 'off'),
+              describe:
+                'full: prompts, replies, tool I/O · outline: steps and timing, no text · usage: tokens and cost (default full)',
+            })
             .option('prompts', {
               type: 'boolean',
-              default: true,
-              describe: 'Ship user prompt text (also fills Mission Control purpose; default on)',
-            })
-            .option('no-prompts', {
-              type: 'boolean',
-              default: false,
-              describe: 'Disable prompt text capture (traces/logs/metrics still on)',
+              describe: 'Older spelling: --prompts = --level full, --no-prompts = --level outline',
             }),
         (argv) => {
-          const noPrompts = argv['no-prompts'] as boolean;
           void handleOn({
-            prompts: noPrompts ? false : (argv.prompts as boolean),
+            level: resolveOnLevel({
+              level: argv.level as string | undefined,
+              prompts: argv.prompts as boolean | undefined,
+            }),
           });
         },
       )

@@ -28,11 +28,12 @@ har --version
 HAR's CLI, MCP server, bundled harness profiles, and Mission Control launcher ship
 in the same `@osfactory/har` package.
 
-Install activates **full agent telemetry by default** (traces, logs, metrics, and
-prompts → local Mission Control). Preference is written to `~/.har/telemetry.json`
-when missing. Disable with `har telemetry off`, or keep usage without prompt text
-via `har telemetry on --no-prompts`. For a guided first-run in a repository
-(including telemetry and Mission Control choices), use `har onboard`.
+Install records agent telemetry at the **`full` level by default** (prompts, replies and
+tool I/O → local Mission Control). The level is written to `~/.har/telemetry.json` when
+missing. Record less with `har telemetry on --level outline` (every step, no text) or
+`--level usage` (tokens and cost), or nothing with `har telemetry off`. For a guided
+first-run in a repository (including the telemetry level and Mission Control), use
+`har onboard`.
 
 ## Install from source
 

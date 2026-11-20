@@ -6,14 +6,16 @@ import {
   resolvePortalUrl,
   type PortalUrlSource,
 } from '../../core/control-config';
-import { runPortalConnect } from '../../core/portal-connect';
+import { describePortalSync, runPortalConnect } from '../../core/portal-connect';
 import { attachReposToPortal, unattachedRegisteredRepos } from '../../core/portal-repo-map';
 import {
   disconnectPortal,
   displayPortalTargetLabel,
-  readPortalConnectionState,
   redactPortalTargetRecord,
+  writePortalConnectionTrajectoryPreference,
 } from '../../core/portal-targets';
+import { describeTelemetryLevel, getTelemetryLevel } from '../../core/telemetry-config';
+import { promptHqTrajectory } from '../telemetry-prompts';
 import { error, header, info, success, warn } from '../../utils/logging';
 import { finishCommand } from '../finish-command';
 
@@ -47,12 +49,17 @@ export const hqCommand = {
               default: '.',
               describe: 'Repository to attach to the chosen workspace',
             })
+            .option('trajectory', {
+              type: 'boolean',
+              describe:
+                'Forward the full trajectory (prompts, replies, tool output) to this org. Asked interactively when omitted; off by default.',
+            })
             .option('json', { type: 'boolean', default: false })
             .option('yes', {
               alias: 'y',
               type: 'boolean',
               default: false,
-              describe: 'Skip interactive prompts (portal URL and extra-repo mapping)',
+              describe: 'Skip interactive prompts (portal URL, extra-repo mapping, trajectory forwarding)',
             }),
         (argv) =>
           handleHqConnect(
@@ -60,6 +67,7 @@ export const hqCommand = {
               portal?: string;
               apiKey?: string;
               repo: string;
+              trajectory?: boolean;
               json: boolean;
               yes: boolean;
               deprecated?: boolean;
@@ -151,6 +159,7 @@ export async function handleHqConnect(argv: {
   portal?: string;
   apiKey?: string;
   repo?: string;
+  trajectory?: boolean;
   json?: boolean;
   yes?: boolean;
   deprecated?: boolean;
@@ -172,6 +181,9 @@ export async function handleHqConnect(argv: {
       repoPath: argv.repo ?? '.',
     });
     const label = displayPortalTargetLabel(record);
+    if (argv.trajectory !== undefined) {
+      writePortalConnectionTrajectoryPreference(argv.trajectory);
+    }
     if (argv.json) {
       process.stdout.write(
         JSON.stringify(
@@ -214,6 +226,14 @@ export async function handleHqConnect(argv: {
       }
     }
 
+    // Only the Full level records text, so only then is forwarding a choice.
+    const level = getTelemetryLevel();
+    if (argv.trajectory === undefined && level === 'full' && !argv.yes && isInteractive()) {
+      const forward = await promptHqTrajectory(label, record.trajectoryForwarding === true);
+      writePortalConnectionTrajectoryPreference(forward);
+    }
+
+    printHqTrajectorySummary();
     info('Sync: har control sync');
   } catch (err) {
     error(`Connect failed: ${(err as Error).message}`);
@@ -221,8 +241,27 @@ export async function handleHqConnect(argv: {
   }
 }
 
+const HQ_TRAJECTORY_LABEL = {
+  none: 'nothing (telemetry is off)',
+  usage: 'tokens and cost',
+  outline: 'tokens, cost and the step outline (no text)',
+  full: 'the full trajectory (prompts, replies, tool output)',
+} as const;
+
+/** One line on what HQ receives for agent sessions, and how to get more. */
+function printHqTrajectorySummary(): void {
+  const overview = describePortalSync();
+  const level = describeTelemetryLevel(overview.telemetryLevel);
+  info(`  telemetry: ${level.label} (local level — har telemetry on --level <level>)`);
+  info(`  HQ receives: ${HQ_TRAJECTORY_LABEL[overview.hqTrajectory]}`);
+  if (overview.telemetryLevel === 'full' && !overview.trajectoryForwarding) {
+    info('  Forward the text too: har control trajectory on');
+  }
+}
+
 async function handleHqList(argv: { json: boolean }): Promise<void> {
-  const { connection, attachedRepos } = readPortalConnectionState();
+  const overview = describePortalSync();
+  const { connection } = overview;
 
   if (argv.json) {
     process.stdout.write(
@@ -231,7 +270,11 @@ async function handleHqList(argv: { json: boolean }): Promise<void> {
           connection: connection
             ? { ...redactPortalTargetRecord(connection), label: displayPortalTargetLabel(connection) }
             : null,
-          attachedRepos,
+          attachedRepos: overview.repos.map((repo) => repo.repoPath),
+          repos: overview.repos,
+          telemetryLevel: overview.telemetryLevel,
+          trajectoryForwarding: overview.trajectoryForwarding,
+          hqTrajectory: overview.hqTrajectory,
         },
         null,
         2,
@@ -250,11 +293,22 @@ async function handleHqList(argv: { json: boolean }): Promise<void> {
   info(displayPortalTargetLabel(connection));
   info(`  portal: ${connection.portalUrl}`);
   if (connection.email) info(`  account: ${connection.email}`);
-  if (attachedRepos.length === 0) {
+  if (overview.repos.length === 0) {
     info('  repos: (none attached — run har hq connect from a repository)');
   } else {
-    info(`  repos: ${attachedRepos.join(', ')}`);
+    info('  repos:');
+    for (const repo of overview.repos) {
+      if (repo.sendsToHq) {
+        info(`    ${repo.repoPath}`);
+      } else {
+        warn(
+          `    ${repo.repoPath} — kept local-only, nothing is sent. ` +
+            `Send it: har control register --repo ${repo.repoPath} --portal`,
+        );
+      }
+    }
   }
+  printHqTrajectorySummary();
 }
 
 async function handleHqDisconnect(argv: { json: boolean }): Promise<void> {

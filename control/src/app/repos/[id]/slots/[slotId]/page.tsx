@@ -156,8 +156,8 @@ export default async function SlotDetailPage({
           <CardTitle>Timeline</CardTitle>
           <CardDescription>
             Agent sessions, verify runs, verified snapshots and commits of this session, newest first.
-            Click a row to open it. Prompts and usage are stored locally; disable prompt capture with{' '}
-            <code>har telemetry on --no-prompts</code>.
+            Click a row to open it. Prompts and usage are stored locally; record steps without text with{' '}
+            <code>har telemetry on --level outline</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>

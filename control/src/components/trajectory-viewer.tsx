@@ -20,6 +20,7 @@ import {
   countTrajectoryCalls,
   countTrajectoryTurns,
   formatDurationMs,
+  leadInNodeIds,
   mergeTrajectoryRecords,
   nodeDurationMs,
   nodeMatchesQuery,
@@ -246,6 +247,7 @@ function TrajectoryLog({
   onSelect: (id: string) => void;
 }) {
   let turn = 0;
+  const leadIn = leadInNodeIds(nodes);
 
   return (
     <ol className="relative space-y-0" aria-label="Agent trajectory timeline">
@@ -285,6 +287,14 @@ function TrajectoryLog({
                     {trajectoryRoleLabel(node.kind)}
                   </span>
                   <span className="truncate text-sm font-medium">{node.title}</span>
+                  {leadIn.has(node.id) ? (
+                    <span
+                      className="rounded border border-dashed px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                      title="Happened in the main checkout, before this slot was launched"
+                    >
+                      Before launch · main checkout
+                    </span>
+                  ) : null}
                   {duration != null ? (
                     <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
                       {formatDurationMs(duration)}

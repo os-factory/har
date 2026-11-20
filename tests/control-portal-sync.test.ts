@@ -62,6 +62,7 @@ jest.mock('../src/core/telemetry-config', () => ({
   isTelemetryEnabled: () => true,
   isPortalTrajectoryEnabled: jest.fn(() => false),
   getTelemetrySignals: jest.fn(() => ({ metrics: true, logs: true, prompts: true, traces: true })),
+  getTelemetryLevel: jest.fn(() => 'full'),
   readTelemetryPreference: jest.fn(() => ({
     enabled: true,
     signals: { metrics: true, logs: true, prompts: true, traces: true },
@@ -976,7 +977,7 @@ describe('syncRepoWithControl — portal watermark', () => {
     expect(outcome.warnings[0]).toContain('usage (HTTP 500)');
   });
 
-  it('warns on a full sync when prompt capture is off', async () => {
+  it('warns on a full sync when the level records no text', async () => {
     getTelemetrySignalsMock.mockReturnValue({
       metrics: true,
       logs: true,
@@ -995,7 +996,8 @@ describe('syncRepoWithControl — portal watermark', () => {
       spy.mockRestore();
     }
 
-    expect(logged.join('\n')).toContain('prompt capture is off');
+    expect(logged.join('\n')).toContain('so no agent prompt or response text is recorded');
+    expect(logged.join('\n')).toContain('har telemetry on --level full');
   });
 
   it('reports a truncated read while still advancing what it did send', async () => {
