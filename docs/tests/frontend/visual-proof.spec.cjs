@@ -107,6 +107,14 @@ test.describe('Visual proof screenshots', () => {
     await expect(page.locator('.pr-flow .lane-har .box')).toHaveCount(35);
     await expect(page.locator('.pr-flow .lane-raw .box.is-resolved')).toHaveCount(17);
     await expect(page.locator('.pr-flow .lane-har .box.is-resolved')).toHaveCount(19);
+    await expect(page.locator('.pr-flow .lane-raw .box.is-open')).toHaveCount(10);
+    // Counters tick up with the animation and must settle on the paper's numbers.
+    await expect(page.locator('.pr-flow .lane-har [data-count="pipeline"]')).toHaveText('35', { timeout: 10_000 });
+    await expect(page.locator('.pr-flow .lane-raw [data-count="none"]')).toHaveText('10', { timeout: 10_000 });
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+      'content',
+      /\/assets\/blog\/every-pull-request-left-a-proof\.png$/,
+    );
     await page.locator('.blog-prose').waitFor({ state: 'visible' });
     await page.waitForTimeout(400);
     const file = await capturePageScreenshot(page, testInfo, 'blog-every-pull-request-left-a-proof');

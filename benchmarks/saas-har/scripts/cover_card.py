@@ -73,7 +73,7 @@ def stat(y, big_l, big_r, cap):
     a(f'<text x="{sx}" y="{y+30}" font-family="{F}" font-size="17" fill="{MUTED}">{cap}</text>')
 
 stat(265, "0", "10", "pull requests shipped with no check run")
-stat(370, "3 KB", "510 KB", "to see what ran: run record vs transcript")
+stat(370, "35", "0", "full verification pipeline runs recorded")
 stat(475, "19", "17", "resolved by hidden tests: no loss in correctness")
 
 # footer

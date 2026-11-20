@@ -71,11 +71,17 @@ HAR coordinates the work around the model, so agents can focus on the code and r
 
 We replayed 35 merged pull requests with Claude Opus and the same prompt, twice: once on a repo with a HAR harness (adapted by a model that never saw the task), once on the plain repo. Neither prompt asked the agent to test.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/benchmark/pr-pipeline-dark.gif">
+    <img src="assets/benchmark/pr-pipeline-light.gif" alt="35 pull requests per side. With HAR every box is green: the full verification pipeline ran on all 35, 19 resolved. With plain Claude Code 25 left some check in the transcript, 10 ran no check at all, 17 resolved." width="720">
+  </picture>
+</p>
+
 | | With HAR | Plain Claude Code |
 | --- | ---: | ---: |
 | Ran the project's full verification pipeline | **35/35** | 0/35 |
 | Shipped with no check run at all | **0** | 10/35 |
-| Evidence of what ran | 3 KB run record | 510 KB transcript |
 | Resolved by hidden tests | 19/35 | 17/35 |
 
 Every HAR session that started ran the full pipeline without being told to. Resolve rates are within noise: HAR doesn't make the model smarter. It means every change comes with a record of which stages ran, whether they passed, and how long they took, so review doesn't depend on the agent's word.

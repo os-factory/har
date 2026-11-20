@@ -12,9 +12,8 @@ const blog = defineCollection({
 		kicker: z.string().optional(),
 		migrationPrompt: z.boolean().optional(),
 		leadFigure: z.enum(['pr-pipeline']).optional(),
-		/** Path under public/, used as the article cover and the social share image. */
-		cover: z.string().startsWith('/').optional(),
-		coverAlt: z.string().optional(),
+		/** Path under public/ for the social share card (og:image). */
+		shareImage: z.string().startsWith('/').optional(),
 	}),
 });
 

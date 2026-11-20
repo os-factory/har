@@ -4,8 +4,7 @@ description: On 35 paired SaaS tasks, HAR ran the full verification pipeline eve
 date: 2026-10-12
 kicker: Benchmark
 leadFigure: pr-pipeline
-cover: /assets/blog/every-pull-request-left-a-proof.png
-coverAlt: "35 pull requests per arm. With HAR every one ran the full verification pipeline; with plain Claude Code 25 left some check in the log and 10 ran none. 0 vs 10 PRs shipped with no check, 3 KB run record vs 510 KB transcript, 19 vs 17 resolved by hidden tests."
+shareImage: /assets/blog/every-pull-request-left-a-proof.png
 ---
 
 We took 35 merged pull requests and gave each one to the same model twice. `claude-opus-4-8`, one prompt, two checkouts. One checkout had a HAR harness, adapted earlier by another model that never saw the task. The other checkout was the repository as published. Nothing in the prompt asked either arm to install, start, or test.

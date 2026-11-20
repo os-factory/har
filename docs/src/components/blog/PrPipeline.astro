@@ -2,47 +2,46 @@
 import results from '@saas-har-results';
 
 const prs = results.instances;
-const harCost = results.arms.har.cost_usd;
-const rawCost = results.arms.raw.cost_usd;
-const harOut = results.arms.har.opus_tokens.output_tokens;
-const rawOut = results.arms.raw.opus_tokens.output_tokens;
-
-const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
+const n = prs.length;
+const harResolved = prs.filter((pr) => pr.har_resolved).length;
+const rawResolved = prs.filter((pr) => pr.raw_resolved).length;
+const rawChecked = prs.filter((pr) => pr.raw_verified_anything).length;
+const rawNone = n - rawChecked;
 ---
 
 <figure class="pr-flow">
   <div class="pr-window">
     <div class="pr-topbar">
       <div class="pr-lights" aria-hidden="true"><span></span><span></span><span></span></div>
-      <span class="pr-label">saas-har · protocol v2</span>
-      <span class="pr-count">{prs.length} pull requests</span>
+      <span class="pr-label">saas-har · same {n} pull requests, same prompt</span>
+      <span class="pr-count">pr <b data-pr-tick>{n}</b>/{n}</span>
     </div>
 
     <div class="pr-board">
       <div class="pr-lane lane-har">
         <header>
-          <strong>HAR</strong>
-          <span>verify --full</span>
+          <strong>With HAR</strong>
+          <span>verify --full recorded</span>
         </header>
         <div class="pr-grid" aria-hidden="true">
           {prs.map((pr, i) => (
             <span
               class:list={['box', 'is-pipeline', { 'is-resolved': pr.har_resolved }]}
               style={`--i:${i}`}
-              title={`${pr.short}${pr.har_resolved ? ' · resolved' : ''}`}
+              title={`${pr.short} · pipeline ran${pr.har_resolved ? ' · resolved' : ''}`}
             />
           ))}
         </div>
-        <footer>
-          <b>35/35</b> pipeline
-          <b>19</b> resolved
-          <span>${harCost.toFixed(0)} · {fmtK(harOut)} out</span>
-        </footer>
+        <dl class="pr-stats">
+          <div class="stat-good"><dt>pipeline</dt><dd><b data-count="pipeline">{n}</b>/{n}</dd></div>
+          <div class="stat-good"><dt>no check</dt><dd><b data-count="none">0</b></dd></div>
+          <div><dt>resolved</dt><dd><b data-count="resolved">{harResolved}</b>/{n}</dd></div>
+        </dl>
       </div>
 
       <div class="pr-lane lane-raw">
         <header>
-          <strong>Plain checkout</strong>
+          <strong>Plain Claude Code</strong>
           <span>transcript only</span>
         </header>
         <div class="pr-grid" aria-hidden="true">
@@ -54,41 +53,77 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
                 { 'is-resolved': pr.raw_resolved },
               ]}
               style={`--i:${i}`}
-              title={`${pr.short}${pr.raw_resolved ? ' · resolved' : ''}`}
+              title={`${pr.short} · ${pr.raw_verified_anything ? 'some check in transcript' : 'no check'}${pr.raw_resolved ? ' · resolved' : ''}`}
             />
           ))}
         </div>
-        <footer>
-          <b>25/35</b> some check
-          <b>17</b> resolved
-          <span>${rawCost.toFixed(0)} · {fmtK(rawOut)} out</span>
-        </footer>
+        <dl class="pr-stats">
+          <div><dt>pipeline</dt><dd><b data-count="pipeline">0</b>/{n}</dd></div>
+          <div class="stat-bad"><dt>no check</dt><dd><b data-count="none">{rawNone}</b></dd></div>
+          <div><dt>resolved</dt><dd><b data-count="resolved">{rawResolved}</b>/{n}</dd></div>
+        </dl>
       </div>
     </div>
 
     <div class="pr-legend">
-      <span><i class="swatch is-pipeline"></i> pipeline ran</span>
-      <span><i class="swatch is-checked"></i> transcript check</span>
-      <span><i class="swatch is-open"></i> no check found</span>
-      <span><i class="swatch is-pipeline is-resolved"></i> hidden tests passed</span>
+      <span><i class="swatch is-pipeline"></i> full pipeline ran</span>
+      <span><i class="swatch is-checked"></i> some check in transcript</span>
+      <span><i class="swatch is-open"></i> no check</span>
+      <span><i class="swatch is-mark" aria-hidden="true">✓</i> hidden tests passed</span>
       <button type="button" class="pr-replay">Replay</button>
     </div>
   </div>
   <figcaption>
-    Each box is one of 35 paired pull requests. The HAR side runs the verification pipeline on every one. Nineteen of those, and seventeen on the plain checkout, pass the hidden tests.
+    Each box is one of {n} pull requests, in the same position on both sides. With HAR every session ran the
+    project's full verification pipeline; on the plain checkout {rawNone} of {n} ran no check at all. Hidden tests
+    passed {harResolved} and {rawResolved} times — the same model, about as often. What changed is the proof.
   </figcaption>
 </figure>
 
 <script>
+  const STEP = 110;
   const root = document.querySelector('.pr-flow');
   const button = root?.querySelector('.pr-replay');
   if (root instanceof HTMLElement && button) {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const tick = root.querySelector<HTMLElement>('[data-pr-tick]');
+    const lanes = [...root.querySelectorAll<HTMLElement>('.pr-lane')].map((lane) => {
+      const boxes = [...lane.querySelectorAll<HTMLElement>('.box')];
+      const counter = (key: string) => lane.querySelector<HTMLElement>(`[data-count="${key}"]`);
+      return {
+        boxes,
+        pipeline: counter('pipeline'),
+        none: counter('none'),
+        resolved: counter('resolved'),
+      };
+    });
+    const total = lanes[0]?.boxes.length ?? 0;
+    let raf = 0;
+
+    const render = (shown: number) => {
+      if (tick) tick.textContent = String(shown);
+      for (const lane of lanes) {
+        const seen = lane.boxes.slice(0, shown);
+        const count = (cls: string) => String(seen.filter((b) => b.classList.contains(cls)).length);
+        if (lane.pipeline) lane.pipeline.textContent = count('is-pipeline');
+        if (lane.none) lane.none.textContent = count('is-open');
+        if (lane.resolved) lane.resolved.textContent = count('is-resolved');
+      }
+    };
+
     const replay = () => {
+      cancelAnimationFrame(raf);
       root.classList.remove('is-animated');
       // Restart CSS animations.
       void root.offsetWidth;
       root.classList.add('is-animated');
+      const start = performance.now();
+      const frame = (now: number) => {
+        const shown = Math.max(0, Math.min(total, Math.floor((now - start) / STEP) + 1));
+        render(shown);
+        if (shown < total) raf = requestAnimationFrame(frame);
+      };
+      raf = requestAnimationFrame(frame);
     };
     button.addEventListener('click', replay);
     if (!reduce) replay();
@@ -97,7 +132,22 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
 
 <style>
   .pr-flow {
+    /* Figure-local palette: readable on both site themes. */
+    --pp-pass: #1f9d57;
+    --pp-pass-mark: #ffffff;
+    --pp-check: #c3c8cf;
+    --pp-check-mark: #11161d;
+    --pp-none: #d93d42;
+    --pp-none-bg: color-mix(in srgb, #d93d42 8%, transparent);
     margin: 0 0 1.6em;
+  }
+  :global(:root[data-theme="dark"]) .pr-flow {
+    --pp-pass: #38c976;
+    --pp-pass-mark: #062012;
+    --pp-check: #4a5361;
+    --pp-check-mark: #f4f6f8;
+    --pp-none: #ff6b6b;
+    --pp-none-bg: color-mix(in srgb, #ff6b6b 10%, transparent);
   }
   .pr-flow figcaption {
     margin-top: 10px;
@@ -135,7 +185,8 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
   .pr-lights span:nth-child(2) { background: var(--amber); }
   .pr-lights span:nth-child(3) { background: var(--accent-bright); }
   .pr-label { flex: 1; letter-spacing: .04em; }
-  .pr-count { color: var(--text); }
+  .pr-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pr-count b { color: var(--text); font-weight: 650; }
   .pr-board {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -170,64 +221,64 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
   .box {
     aspect-ratio: 1;
     border-radius: 3px;
-    border: 1px solid var(--theme-border);
-    background: transparent;
     position: relative;
+    box-sizing: border-box;
   }
-  .box.is-pipeline {
-    background: color-mix(in srgb, var(--accent) 22%, transparent);
-    border-color: color-mix(in srgb, var(--accent) 55%, var(--theme-border));
-  }
-  .box.is-pipeline.is-resolved {
-    background: var(--accent);
-    border-color: var(--accent);
-  }
-  .box.is-checked {
-    background: color-mix(in srgb, var(--muted) 16%, transparent);
-    border-color: color-mix(in srgb, var(--muted) 45%, var(--theme-border));
-  }
-  .box.is-checked.is-resolved {
-    background: color-mix(in srgb, var(--accent) 78%, var(--paper));
-    border-color: var(--accent);
-  }
-  .box.is-open {
-    border-style: dashed;
-    background: transparent;
-  }
-  .box.is-open.is-resolved {
-    border-style: solid;
-    border-color: var(--accent);
+  .box.is-pipeline, .swatch.is-pipeline { background: var(--pp-pass); }
+  .box.is-checked, .swatch.is-checked { background: var(--pp-check); }
+  .box.is-open, .swatch.is-open {
+    background: var(--pp-none-bg);
+    border: 1.5px dashed var(--pp-none);
   }
   .box.is-resolved::after {
     content: "";
     position: absolute;
     left: 50%;
     top: 46%;
-    width: 34%;
-    height: 18%;
-    border-left: 1.5px solid #fff;
-    border-bottom: 1.5px solid #fff;
+    width: 36%;
+    height: 19%;
+    border-left: 2px solid var(--pp-pass-mark);
+    border-bottom: 2px solid var(--pp-pass-mark);
     transform: translate(-50%, -60%) rotate(-45deg);
   }
-  .lane-raw .box.is-checked.is-resolved::after {
-    border-color: var(--paper);
+  .box.is-checked.is-resolved::after { border-color: var(--pp-check-mark); }
+  .box.is-open.is-resolved::after { border-color: var(--pp-none); }
+
+  .pr-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0 0;
   }
-  .box.is-open.is-resolved::after {
-    border-color: var(--accent);
+  .pr-stats > div {
+    padding: 8px 10px;
+    border: 1px solid var(--theme-border-soft);
+    border-radius: 4px;
   }
-  .pr-lane footer {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    margin-top: 12px;
+  .pr-stats dt {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 9.5px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
     color: var(--muted);
   }
-  .pr-lane footer b {
-    color: var(--text);
-    font-weight: 650;
+  .pr-stats dd {
+    margin: 2px 0 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
   }
+  .pr-stats dd b {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -.03em;
+    color: var(--text);
+  }
+  .pr-stats .stat-good dd b { color: var(--pp-pass); }
+  .pr-stats .stat-bad dd b { color: var(--pp-none); }
+  .pr-stats .stat-bad { border-color: color-mix(in srgb, var(--pp-none) 45%, transparent); }
+
   .pr-legend {
     display: flex;
     flex-wrap: wrap;
@@ -247,8 +298,15 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
     height: 12px;
     border-radius: 2px;
     display: inline-block;
+    box-sizing: border-box;
   }
-  .swatch.is-resolved::after { display: none; }
+  .swatch.is-mark {
+    font-style: normal;
+    font-size: 12px;
+    line-height: 12px;
+    text-align: center;
+    color: var(--text);
+  }
   .pr-replay {
     margin-left: auto;
     border: 1px solid var(--theme-border);
@@ -262,7 +320,7 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
     text-transform: uppercase;
     cursor: pointer;
   }
-  .pr-replay:hover { border-color: var(--accent); color: var(--accent); }
+  .pr-replay:hover { border-color: var(--pp-pass); color: var(--pp-pass); }
 
   .pr-flow.is-animated .box {
     animation: box-in 420ms ease both;
@@ -273,7 +331,7 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
     animation-delay: calc(var(--i) * 110ms + 160ms);
   }
   @keyframes box-in {
-    0% { opacity: 0.2; transform: scale(.82); }
+    0% { opacity: 0; transform: scale(.7); }
     100% { opacity: 1; transform: none; }
   }
   @keyframes mark-in {
@@ -286,31 +344,10 @@ const fmtK = (n: number) => `${Math.round(n / 1000)}k`;
       animation: none;
     }
   }
-  :global(:root[data-theme="dark"]) .box.is-pipeline {
-    background: color-mix(in srgb, var(--accent-bright) 22%, transparent);
-    border-color: color-mix(in srgb, var(--accent-bright) 50%, transparent);
-  }
-  :global(:root[data-theme="dark"]) .box.is-pipeline.is-resolved {
-    background: var(--accent-bright);
-    border-color: var(--accent-bright);
-  }
-  :global(:root[data-theme="dark"]) .box.is-pipeline.is-resolved::after,
-  :global(:root[data-theme="dark"]) .lane-raw .box.is-checked.is-resolved::after {
-    border-color: #08140d;
-  }
-  :global(:root[data-theme="dark"]) .box.is-open.is-resolved {
-    border-color: var(--accent-bright);
-  }
-  :global(:root[data-theme="dark"]) .box.is-open.is-resolved::after {
-    border-color: var(--accent-bright);
-  }
-  :global(:root[data-theme="dark"]) .pr-replay:hover {
-    border-color: var(--accent-bright);
-    color: var(--accent-bright);
-  }
   @media (max-width: 680px) {
     .pr-board { grid-template-columns: 1fr; }
     .pr-lane + .pr-lane { border-left: 0; border-top: 1px solid var(--theme-border-soft); }
+    .pr-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .pr-replay { margin-left: 0; }
   }
 </style>
