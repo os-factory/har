@@ -11,7 +11,7 @@ Edit shared configuration in `.har/harness.env`. Launch expands resolved values 
 | Variable | Meaning |
 | --- | --- |
 | `HARNESS_PROJECT_NAME` | Stable project identifier used for processes and infrastructure |
-| `HARNESS_USE_WORKTREE` | Whether launch uses isolated worktrees by default |
+| `HARNESS_USE_WORKTREE` | The repository's default for isolated session worktrees. A user's `har worktree` setting, `HAR_WORKTREE=on\|off` and the `--worktree`/`--no-worktree` flag override it — see [`har worktree`](/docs/reference/cli/#har-worktree) |
 | `HARNESS_PRIMARY_APP` | Primary per-slot application in the web profile |
 | `HARNESS_AGENT_SLOT_MIN` / `MAX` | Legacy fallback for slot id range — canonical limits are in `.har/stages.json` (`agentSlots`) |
 

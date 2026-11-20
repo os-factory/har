@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { handleLaunch, handleStatus, handleVerify } from '../src/cli/commands/env';
+import { handleLaunch, handleRecover, handleStatus, handleVerify } from '../src/cli/commands/env';
 import { getEnvironmentStatus, launchEnvironment, runVerification } from '../src/core/run-service';
 
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
@@ -55,6 +55,13 @@ describe('env CLI delegation', () => {
       resume: false,
       capture: false,
     });
+  });
+
+  it('recover does not force a worktree; the slot keeps its stored mode', async () => {
+    await expect(handleRecover({ repo: FIXTURE, id: 2 })).rejects.toThrow('exit:0');
+
+    expect((launchEnvironment as jest.Mock).mock.calls[0][0].worktree).toBeUndefined();
+    expect((launchEnvironment as jest.Mock).mock.calls[0][0].resume).toBe(true);
   });
 
   it('delegates verification to the core verification runner', async () => {

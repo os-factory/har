@@ -10,6 +10,7 @@ import {
   StageKindSchema,
   StageResultSchema,
   VerificationResultSchema,
+  WorktreeModeSchema,
 } from '../harness/schema';
 
 export const RepoPathInputSchema = z.object({
@@ -65,7 +66,10 @@ export const InitHarnessInputSchema = z.object({
 export const LaunchEnvironmentInputSchema = z.object({
   repo: z.string().default('.'),
   agentId: agentIdSchema,
-  worktree: z.boolean().default(true),
+  worktree: z
+    .boolean()
+    .optional()
+    .describe('Omit to use the user/repo setting (reported back as worktreeMode); set only when the user asks'),
   claude: z.boolean().default(false),
   resume: z
     .boolean()
@@ -131,6 +135,7 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
     .optional()
     .describe('Where the session code lives — ALL file edits must go under this path'),
   worktreePath: z.string().optional(),
+  worktreeMode: WorktreeModeSchema.optional().describe('Whether this launch used a session worktree, and which setting decided it'),
   branch: z.string().optional(),
   workUnitId: z.string().optional(),
   attemptId: z.string().uuid().optional(),

@@ -27,8 +27,8 @@ import { readSlotRegistry, isSlotResumable } from './slot-registry';
 import {
   formatUntrackedWorktreeWarning,
   listUntrackedAbsentFromWorktree,
-  worktreeCheckEnabled,
 } from './worktree-untracked';
+import { resolveWorktreeMode } from './worktree-mode';
 import { execSync } from 'child_process';
 import { packageRunner } from '../utils/package-runner';
 
@@ -199,11 +199,8 @@ function checkInfraPort(
  * several slots should call this once and pass the result back through
  * `PreflightOptions.untrackedPaths`.
  */
-export function scanUntrackedWorktreePaths(
-  repoPath: string,
-  env: Record<string, string>,
-): string[] {
-  if (!worktreeCheckEnabled(env, undefined)) return [];
+export function scanUntrackedWorktreePaths(repoPath: string): string[] {
+  if (!resolveWorktreeMode(repoPath).enabled) return [];
   return listUntrackedAbsentFromWorktree(repoPath);
 }
 
@@ -379,9 +376,9 @@ export function inspectSlotReadiness(
     }
   }
 
-  if (worktreeCheckEnabled(env, options.worktree)) {
+  if (resolveWorktreeMode(repoPath, options.worktree).enabled) {
     const untracked =
-      options.untrackedPaths ?? scanUntrackedWorktreePaths(repoPath, env);
+      options.untrackedPaths ?? scanUntrackedWorktreePaths(repoPath);
     const untrackedWarning = formatUntrackedWorktreeWarning(untracked);
     if (untrackedWarning) warnings.push(untrackedWarning);
   }

@@ -5,7 +5,6 @@ import * as path from 'path';
 import {
   formatUntrackedWorktreeWarning,
   listUntrackedAbsentFromWorktree,
-  worktreeCheckEnabled,
 } from '../src/core/worktree-untracked';
 
 const tmpDirs: string[] = [];
@@ -109,14 +108,5 @@ describe('formatUntrackedWorktreeWarning', () => {
     const warning = formatUntrackedWorktreeWarning(many, 8);
     expect(warning).toContain('10 untracked paths');
     expect(warning).toContain('(+2 more)');
-  });
-});
-
-describe('worktreeCheckEnabled', () => {
-  it('follows the harness default and the per-launch override', () => {
-    expect(worktreeCheckEnabled({})).toBe(true);
-    expect(worktreeCheckEnabled({ HARNESS_USE_WORKTREE: 'false' })).toBe(false);
-    expect(worktreeCheckEnabled({}, false)).toBe(false);
-    expect(worktreeCheckEnabled({ HARNESS_USE_WORKTREE: 'false' }, true)).toBe(true);
   });
 });

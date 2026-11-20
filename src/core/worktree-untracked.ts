@@ -46,12 +46,3 @@ export function formatUntrackedWorktreeWarning(
     `${them} only in the main checkout — track them, or launch with --no-worktree.`
   );
 }
-
-export function worktreeCheckEnabled(
-  env: Record<string, string>,
-  worktree?: boolean,
-): boolean {
-  if (worktree === false) return false;
-  if (worktree === true) return true;
-  return (env.HARNESS_USE_WORKTREE ?? 'true').toLowerCase() !== 'false';
-}

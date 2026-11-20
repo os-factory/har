@@ -49,14 +49,39 @@ export function mergeOnboardingPreferences(
   });
 }
 
+/** Set or clear (`mode` undefined) the personal worktree setting — one repo key, or all repos without one. */
+export function mergeWorktreePreference(
+  current: OnboardingPreferences,
+  mode: 'on' | 'off' | undefined,
+  repoKey?: string,
+): OnboardingPreferences {
+  const repos = { ...current.worktree.repos };
+  if (repoKey !== undefined) {
+    if (mode) repos[repoKey] = mode;
+    else delete repos[repoKey];
+    return { ...current, worktree: { ...current.worktree, repos } };
+  }
+  return { ...current, worktree: { repos, ...(mode ? { default: mode } : {}) } };
+}
+
+export function writeWorktreePreference(
+  mode: 'on' | 'off' | undefined,
+  repoKey?: string,
+): OnboardingPreferences {
+  return writePreferences(mergeWorktreePreference(readOnboardingPreferences(), mode, repoKey));
+}
+
 export function writeOnboardingPreferences(
   overrides: OnboardingPreferenceOverrides,
 ): OnboardingPreferences {
-  const preference = {
-    ...mergeOnboardingPreferences(readOnboardingPreferences(), overrides),
+  return writePreferences(mergeOnboardingPreferences(readOnboardingPreferences(), overrides));
+}
+
+function writePreferences(preference: OnboardingPreferences): OnboardingPreferences {
+  const parsed = OnboardingPreferencesSchema.parse({
+    ...preference,
     updatedAt: new Date().toISOString(),
-  };
-  const parsed = OnboardingPreferencesSchema.parse(preference);
+  });
   const preferencePath = getOnboardingPreferencesPath();
   fs.mkdirSync(path.dirname(preferencePath), { recursive: true });
   fs.writeFileSync(preferencePath, `${JSON.stringify(parsed, null, 2)}\n`);
