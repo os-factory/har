@@ -70,6 +70,7 @@ export interface RecordValidationInput {
  * by its tree hash. Written to the checkout (where the pre-commit hook looks)
  * and mirrored to the harness root (central copy for Mission Control sync).
  */
+// (VER-3) validation keyed by the tree hash
 export function recordValidation(input: RecordValidationInput): ValidationRecord {
   if (!isCheckoutRoot(input.checkoutDir)) {
     throw new Error(`Not the root of a git checkout: ${input.checkoutDir}`);

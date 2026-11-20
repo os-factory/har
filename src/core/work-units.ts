@@ -113,6 +113,8 @@ export function findWorkUnit(
   }
 }
 
+// (VER-6) caller-provided work unit, stored in the main checkout
+// (VER-10) a new launch reopens a decided unit and keeps the old outcome
 export function upsertWorkUnit(
   harnessRoot: string,
   input: WorkUnitMetadata,
@@ -165,6 +167,7 @@ export function upsertWorkUnit(
   return record;
 }
 
+// (VER-8) secondary links
 export function addWorkUnitLinks(
   harnessRoot: string,
   workUnitId: string,
@@ -193,6 +196,7 @@ export function listWorkUnits(harnessRoot: string): WorkUnitRecord[] {
   ).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+// (VER-7) immutable attempt per fresh launch bound to work
 export function createWorkAttempt(
   harnessRoot: string,
   input: Omit<WorkAttemptRecord, 'version' | 'createdAt'> & { createdAt?: string },

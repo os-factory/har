@@ -115,7 +115,7 @@ describe('inspectSlotReadiness', () => {
     expect(readiness.canLaunch).toBe(true);
   });
 
-  it('warns about untracked paths that will be missing from the session worktree', () => {
+  it('[ENV-13] warns about untracked paths that will be missing from the session worktree', () => {
     const repo = makeHarness();
     const readiness = inspectSlotReadiness(repo, 1, {
       untrackedPaths: ['CLAUDE.md'],
@@ -134,7 +134,7 @@ describe('inspectSlotReadiness', () => {
     expect(formatPreflightReport(1, readiness)).toContain('WARN: 1 untracked path');
   });
 
-  it('skips the check when slots run in the repo root', () => {
+  it('[ENV-13] skips the check when slots run in the repo root', () => {
     const repo = makeHarness({ useWorktree: false });
     const readiness = inspectSlotReadiness(repo, 1, {
       untrackedPaths: ['CLAUDE.md'],
@@ -142,7 +142,7 @@ describe('inspectSlotReadiness', () => {
     expect(readiness.warnings).toBeUndefined();
   });
 
-  it('skips the check for a --no-worktree launch', () => {
+  it('[ENV-13] skips the check for a --no-worktree launch', () => {
     const repo = makeHarness();
     const readiness = inspectSlotReadiness(repo, 1, {
       worktree: false,
@@ -159,7 +159,7 @@ describe('inspectSlotReadiness', () => {
     expect(readiness.ports?.api).toBe(TEST_API_BASE + 20);
   });
 
-  it('allows the same agent id when another project already has that PM2 name', () => {
+  it('[ENV-12] allows the same agent id when another project already has that PM2 name', () => {
     const repo = makeHarness({ pm2: true });
     const readiness = inspectSlotReadiness(repo, 1, {
       pm2Processes: [
@@ -328,7 +328,7 @@ describe('runLaunchPreflight', () => {
     expect(result.errors.join('\n')).not.toContain('pm2 delete');
   });
 
-  it('blocks on a docker port conflict with bash-format lines', () => {
+  it('[ENV-7] blocks on a docker port conflict with bash-format lines', () => {
     const repo = makeHarness({ pm2: true });
     const fePort = TEST_FE_BASE + 10;
     const result = runLaunchPreflight({

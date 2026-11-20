@@ -39,6 +39,7 @@ function renderSkeleton(templatePath: string, tokens: Record<string, string>): s
  * package.json fragment. Installing it (`har env add-plugin <id>`) registers
  * its stages exactly like bundled/npm/git plugins.
  */
+// (EXT-7) scaffold a project-owned plugin under .har/plugins/
 export function createLocalPlugin(
   repoPath: string,
   options: CreateLocalPluginOptions,

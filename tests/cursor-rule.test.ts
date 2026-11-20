@@ -52,26 +52,26 @@ describe('cursor-rule', () => {
     expect(content).not.toContain('--replace');
   });
 
-  it('skips when not a Cursor workspace and no existing rule', async () => {
+  it('[CON-10] skips when not a Cursor workspace and no existing rule', async () => {
     const wrote = await handleCursorRule({ repoPath: tmpDir, mode: 'init' });
     expect(wrote).toBe(false);
     expect(cursorRuleExists(tmpDir)).toBe(false);
   });
 
-  it('writes without prompting when cursorRule is true', async () => {
+  it('[CON-10] writes without prompting when cursorRule is true', async () => {
     const wrote = await handleCursorRule({ repoPath: tmpDir, cursorRule: true, mode: 'init' });
     expect(wrote).toBe(true);
     expect(cursorRuleExists(tmpDir)).toBe(true);
   });
 
-  it('skips when noCursorRule is set via cursorRule false', async () => {
+  it('[CON-10] skips when noCursorRule is set via cursorRule false', async () => {
     fs.mkdirSync(path.join(tmpDir, '.cursor'), { recursive: true });
     const wrote = await handleCursorRule({ repoPath: tmpDir, cursorRule: false, mode: 'init' });
     expect(wrote).toBe(false);
     expect(cursorRuleExists(tmpDir)).toBe(false);
   });
 
-  it('silently refreshes an existing rule on maintain', async () => {
+  it('[CON-10] silently refreshes an existing rule on maintain', async () => {
     scaffoldCursorRule(tmpDir);
     const rulePath = getCursorRulePath(tmpDir);
     const before = fs.readFileSync(rulePath, 'utf8');

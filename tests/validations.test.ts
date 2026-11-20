@@ -31,7 +31,7 @@ function initRepo(): string {
 }
 
 describe('validation store', () => {
-  it('records a validation keyed by the worktree tree hash', () => {
+  it('[VER-3] records a validation keyed by the worktree tree hash', () => {
     const dir = initRepo();
     fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
 

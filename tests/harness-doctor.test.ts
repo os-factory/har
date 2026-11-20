@@ -73,7 +73,7 @@ describe('har env doctor (#232)', () => {
     expect(summarizeDoctorReport(report)).toBeNull();
   });
 
-  it('fails with an actionable message when a stage script is deleted', () => {
+  it('[CON-6] fails with an actionable message when a stage script is deleted', () => {
     const repo = makeRepo();
     fs.rmSync(path.join(repo, '.har', 'stages', 'unit-tests.sh'));
     const report = runDoctor(repo);
@@ -97,7 +97,7 @@ describe('har env doctor (#232)', () => {
     expect(finding?.message).toContain('unit-test');
   });
 
-  it('fails on corrupted stages.json even on a pre-1.0 harness', () => {
+  it('[CON-2] fails on corrupted stages.json even on a pre-1.0 harness', () => {
     const repo = makeRepo();
     fs.appendFileSync(path.join(repo, '.har', 'harness.env'), '\nhar_pg() {\n  true\n}\n');
     fs.writeFileSync(path.join(repo, '.har', 'stages.json'), '{"broken": true');
@@ -205,7 +205,7 @@ describe('har env doctor (#232)', () => {
     expect(report.findings[0].remedy).toContain('har onboard');
   });
 
-  it('fails with a single upgrade error when the CLI is older than the harness writer (#344)', () => {
+  it('[CON-14] fails with a single upgrade error when the CLI is older than the harness writer (#344)', () => {
     const repo = makeRepo();
     fs.writeFileSync(
       path.join(repo, '.har', 'manifest.json'),

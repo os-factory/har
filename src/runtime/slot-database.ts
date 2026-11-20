@@ -22,6 +22,7 @@ export interface SlotDatabaseStep {
  *
  * Simulator profiles have no database. Empty strings mean "not configured".
  */
+// (ENV-3) per-slot database
 export function planSlotDatabaseSteps(
   env: Record<string, string>,
   processManager: string,

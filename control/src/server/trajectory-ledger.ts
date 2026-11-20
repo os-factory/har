@@ -102,6 +102,7 @@ export function decodeTrajectoryCursor(value: string): TrajectoryCursor {
   }
 }
 
+// (TEL-4) producer sequence, then timestamp
 export function compareTrajectoryOrder(
   left: TrajectoryCursor,
   right: TrajectoryCursor,
@@ -180,6 +181,7 @@ const globalRetention = globalThis as unknown as {
   trajectoryRetentionAt?: number;
 };
 
+// (TEL-4) append-only, deduplicated on (source, sourceEventId, contentKey)
 export async function appendTrajectoryRecord(
   repositoryId: string,
   input: CanonicalTrajectoryRecord,
@@ -371,6 +373,7 @@ export async function listTrajectoryForRepo(
   });
 }
 
+// (TEL-6) egress re-applies redaction and the size cap
 export function serializeTrajectoryForEgress(
   record: AgentTrajectoryRecord,
 ): SerializedTrajectoryRecord {

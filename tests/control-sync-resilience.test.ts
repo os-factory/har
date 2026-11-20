@@ -103,7 +103,7 @@ describe('sync requests', () => {
     expect(started).toEqual(['http://mc/one']);
   });
 
-  it('times out a request that never answers', async () => {
+  it('[MC-3] times out a request that never answers', async () => {
     setFetch(
       jest.fn(
         (_url: string, init?: RequestInit) =>
@@ -119,7 +119,7 @@ describe('sync requests', () => {
 });
 
 describe('unattended all-repos sync', () => {
-  it('only touches the repos in the saved sync selection', async () => {
+  it('[MC-2] only touches the repos in the saved sync selection', async () => {
     writeSyncSelection(['/repo/selected']);
     const fetchMock = setFetch(
       jest.fn(async (url: string, init?: RequestInit) => {

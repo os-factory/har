@@ -117,6 +117,7 @@ export interface SessionWorktree {
  * Creates the suffixed session worktree from HEAD — the non-resume branch of
  * launch.sh: naming, `git worktree add -b`, monorepo prefix resolution.
  */
+// (ENV-2) fresh session: new branch + worktree outside the main checkout
 export function createSessionWorktree(options: SessionWorktreeOptions): SessionWorktree {
   const git = options.git ?? defaultGit;
   const repoRoot = options.repoRoot;
@@ -197,6 +198,7 @@ export type ResumeResolution =
  * validates resumability, work dir, and env file, and returns the typed
  * session state a resume launch continues from.
  */
+// (ENV-7) a partial launch is resumable
 export function resolveResumeSession(repoPath: string, agentId: number): ResumeResolution {
   const session = readSlotRegistry(repoPath, agentId);
   if (!isSlotResumable(session)) {
@@ -287,6 +289,7 @@ export interface TeardownWorktreeResult {
  * the session branch. Per-agent env/ecosystem files inside the worktree are
  * removed first, as the script does.
  */
+// (ENV-4) (ENV-5) teardown removes a HAR-owned worktree, keeps the branch, never removes an external checkout
 export function removeSessionWorktree(options: TeardownWorktreeOptions): TeardownWorktreeResult {
   const git = options.git ?? defaultGit;
   const homeDir = options.homeDir ?? os.homedir();

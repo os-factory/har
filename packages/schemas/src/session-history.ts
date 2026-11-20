@@ -130,6 +130,7 @@ function slotForBranch(branch: string | undefined, slots: HistorySlot[]): Histor
  * Pending validated trees become dashed snapshot nodes. Once a commit shares
  * that tree, the snapshot stays addressable but the commit is the primary node.
  */
+// (MC-11) pending snapshots; commits sharing a snapshot stay distinct
 export function buildSessionHistoryGraph(input: SessionHistoryInput): SessionHistoryGraph {
   const slots = input.slots ?? [];
   const nodes = new Map<string, HistoryGraphNode>();

@@ -114,7 +114,7 @@ describe('inspectSlotReadiness control conflicts', () => {
     }
   });
 
-  it('blocks when har control up occupies the allocated port', () => {
+  it('[MC-9] blocks when har control up occupies the allocated port', () => {
     const repo = makePm2Harness();
     const defaultPort = 59710;
     const readiness = inspectSlotReadiness(repo, 1, {
@@ -128,7 +128,7 @@ describe('inspectSlotReadiness control conflicts', () => {
     expect(readiness.remediations).toContain('har control down');
   });
 
-  it('warns when har control up holds default but alternate port is allocated', async () => {
+  it('[MC-9] warns when har control up holds default but alternate port is allocated', async () => {
     const repo = makePm2Harness();
     const defaultPort = 59710;
     const server = net.createServer();

@@ -87,7 +87,7 @@ beforeEach(() => {
 });
 
 describe('S0 — a relaunched slot does not keep the previous occupancy', () => {
-  it('derives a distinct key per occupancy and none when idle', () => {
+  it('[MC-10] derives a distinct key per occupancy and none when idle', () => {
     const a = deriveOccupancyKey(occupancy());
     const b = deriveOccupancyKey(OCCUPANCY_B);
 
@@ -97,7 +97,7 @@ describe('S0 — a relaunched slot does not keep the previous occupancy', () => 
     expect(deriveOccupancyKey(occupancy({ active: false }))).toBeNull();
   });
 
-  it('keeps the same key when the same worktree is resumed', () => {
+  it('[MC-10] keeps the same key when the same worktree is resumed', () => {
     // --resume / recover continues the occupancy: same attempt, same key.
     const first = deriveOccupancyKey(occupancy());
     const resumed = deriveOccupancyKey(occupancy({ dirty: true, ahead: 3 }));
@@ -225,7 +225,7 @@ describe('S0 / #256 — idle sync from a different occupancy does not clobber th
 });
 
 describe('S1 — trajectory and usage are scoped to the occupancy, not the slot id', () => {
-  it('filters trajectory streams by occupancyKey when the slot has one', async () => {
+  it('[MC-10] filters trajectory streams by occupancyKey when the slot has one', async () => {
     await listTrajectoryStreams('repo-1', 1, 'attempt::occupancy-b');
 
     expect(trajectoryGroupBy).toHaveBeenCalledWith(
@@ -257,7 +257,7 @@ describe('S1 — trajectory and usage are scoped to the occupancy, not the slot 
     ];
   }
 
-  it('filters usage rows by occupancyKey when the slot has one', async () => {
+  it('[MC-10] filters usage rows by occupancyKey when the slot has one', async () => {
     usageFindMany.mockResolvedValue(usageRows());
     slotFindMany.mockResolvedValue([]);
 

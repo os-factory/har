@@ -80,18 +80,18 @@ describe('claude worktree guard', () => {
     ).toHaveLength(1);
   });
 
-  it('blocks edits in the main checkout of a har repo (exit 2)', () => {
+  it('[ENV-9] blocks edits in the main checkout of a har repo (exit 2)', () => {
     expect(runGuard(repo, path.join(repo, 'a.txt'))).toBe(2);
   });
 
-  it('allows edits inside a linked session worktree', () => {
+  it('[ENV-9] allows edits inside a linked session worktree', () => {
     const worktree = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'har-guard-wt-')), 'wt');
     sh(repo, `git worktree add -q "${worktree}" -b har-agent-1`);
     expect(runGuard(repo, path.join(worktree, 'a.txt'))).toBe(0);
     fs.rmSync(path.dirname(worktree), { recursive: true, force: true });
   });
 
-  it('allows edits outside har-managed repos and fails open on malformed input', () => {
+  it('[ENV-9] allows edits outside har-managed repos and fails open on malformed input', () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'har-guard-outside-'));
     sh(outside, 'git init -q -b main');
     expect(runGuard(repo, path.join(outside, 'x.txt'))).toBe(0);
@@ -103,7 +103,7 @@ describe('claude worktree guard', () => {
     fs.rmSync(outside, { recursive: true, force: true });
   });
 
-  it('respects the HAR_SKIP_WT_GUARD bypass', () => {
+  it('[ENV-9] respects the HAR_SKIP_WT_GUARD bypass', () => {
     expect(runGuard(repo, path.join(repo, 'a.txt'), { HAR_SKIP_WT_GUARD: '1' })).toBe(0);
   });
 

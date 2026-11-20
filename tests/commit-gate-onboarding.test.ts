@@ -22,7 +22,7 @@ function initRepo(): string {
 }
 
 describe('commit gate onboarding', () => {
-  it('persists visible policy without installing hooks when preference is never', async () => {
+  it('[VER-12] persists visible policy without installing hooks when preference is never', async () => {
     const dir = initRepo();
     await handleCommitGateOnboarding({
       repoPath: dir,
@@ -39,7 +39,7 @@ describe('commit gate onboarding', () => {
     expect(getHooksStatus(dir).preCommitInstalled).toBe(false);
   });
 
-  it('installs repository-wide hooks for always', async () => {
+  it('[VER-12] installs repository-wide hooks for always', async () => {
     const dir = initRepo();
     await handleCommitGateOnboarding({
       repoPath: dir,

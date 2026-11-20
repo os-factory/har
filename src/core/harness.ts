@@ -124,6 +124,7 @@ export function describeProject(repoPath: string): ProjectDescription {
   };
 }
 
+// (CON-4) scaffold .har/ from a profile and hand back the adaptation prompt
 export async function initHarness(options: InitHarnessOptions): Promise<InitHarnessResult> {
   const repoPath = path.resolve(options.repoPath);
 

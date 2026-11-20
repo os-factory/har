@@ -39,6 +39,7 @@ export interface ScaffoldResult {
  * Scaffold `.har/` by composing ordered profile bundles (later overwrites earlier).
  * Profile manifests live under `templates/profiles/<id>/profile.manifest.json`.
  */
+// (CON-1) scaffold writes project-owned config only; the runtime stays in the package
 export function scaffoldHarnessBoilerplate(
   repoPath: string,
   options: ScaffoldOptions = {},

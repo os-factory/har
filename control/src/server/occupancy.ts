@@ -28,6 +28,7 @@ export {
  * Occupancy-derived state (purpose above all) must be cleared when this is
  * true, or slot N's page keeps describing the task the previous agent did.
  */
+// (MC-10) slot data belongs to the occupancy, not the slot number
 export function isNewOccupancy(
   previousKey: string | null | undefined,
   nextKey: string | null,
@@ -87,6 +88,7 @@ export interface OccupancyCandidate {
  * slot it ran in when it was produced: same work dir, started at or after the session
  * began. `candidates` are the slot rows of the repository as known at sync time.
  */
+// (MC-10) records are stamped with the occupancy key
 export function resolveRecordOccupancyKey(
   record: RecordOccupancyInput,
   candidates: OccupancyCandidate[],

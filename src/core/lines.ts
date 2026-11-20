@@ -101,6 +101,7 @@ function latestRunStatusByStage(repoPath: string, stageIds: string[]): Map<strin
   return statuses;
 }
 
+// (EXT-6) stations in order, cumulative gate, green stages
 export function getLineStatus(repoPath: string, lineId: string): LineStatus {
   const resolved = path.resolve(repoPath);
   const program = readInstalledLineProgram(resolved, lineId);
@@ -237,6 +238,7 @@ function resolveLineId(repoPath: string, lineId?: string): string {
  * the same `.har/runs/` records as any other stage. It never calls verify and
  * never adds these stages to the verify plan.
  */
+// (EXT-5) cumulative station gate, run through RunService
 export async function runLineGate(options: RunLineGateOptions): Promise<RunLineGateResult> {
   const repoPath = path.resolve(options.repoPath);
   const lineId = resolveLineId(repoPath, options.lineId);

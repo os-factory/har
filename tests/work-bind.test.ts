@@ -61,7 +61,7 @@ describe('bindWorkUnit', () => {
     expect(findSlotForPath(repo, repo)).toBeUndefined();
   });
 
-  it('binds an unbound slot: new attempt owning the occupancy since launch', () => {
+  it('[VER-8] binds an unbound slot: new attempt owning the occupancy since launch', () => {
     const before = readSlotRegistry(repo, 2)!;
     const result = bindWorkUnit({
       repoPath: repo,
@@ -149,7 +149,7 @@ describe('bindWorkUnit', () => {
     expect(findWorkUnit(repo, 'FE-1')?.title).toBe('Now with a title');
   });
 
-  it('refuses a unit bound to another slot, and leaves the slot untouched', () => {
+  it('[VER-7] refuses a unit bound to another slot, and leaves the slot untouched', () => {
     writeSlotRegistry(repo, {
       agentId: 3,
       projectName: 'fixture',
@@ -230,7 +230,7 @@ describe('work-bind CLI ↔ MCP parity', () => {
     process.exitCode = undefined;
   });
 
-  it('writes the same slot, unit and attempt records from both surfaces', async () => {
+  it('[SRF-2] writes the same slot, unit and attempt records from both surfaces', async () => {
     const cli = makeRepo();
     const mcp = makeRepo();
     try {

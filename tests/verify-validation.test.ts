@@ -44,7 +44,7 @@ function initHarnessRepo(): string {
 }
 
 describe('verify records validations', () => {
-  it('writes a pass validation for the current change batch on verify --full', async () => {
+  it('[VER-3] writes a pass validation for the current change batch on verify --full', async () => {
     const dir = initHarnessRepo();
     fs.writeFileSync(path.join(dir, 'app.txt'), 'v2\n');
 

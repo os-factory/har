@@ -139,7 +139,7 @@ describe('runOnboarding', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('scaffolds a harness, applies plugins, and finishes with an adapt prompt', async () => {
+  it('[SRF-6] scaffolds a harness, applies plugins, and finishes with an adapt prompt', async () => {
     fs.writeFileSync(
       path.join(tmpDir, 'package.json'),
       JSON.stringify({ name: 'onboard-fixture', version: '1.0.0' }, null, 2) + '\n',
@@ -209,7 +209,7 @@ describe('runOnboarding', () => {
     expect(env).toContain('export HARNESS_AGENT_SLOT_MAX=2');
   });
 
-  it('skips init when harness already exists and still offers a maintain prompt', async () => {
+  it('[SRF-6] skips init when harness already exists and still offers a maintain prompt', async () => {
     await runOnboarding(
       {
         repoPath: tmpDir,
@@ -249,7 +249,7 @@ describe('runOnboarding', () => {
     expect(fs.readFileSync(second.adaptationPromptPath!, 'utf8')).toContain('already exists');
   });
 
-  it('warns that Docker is required when the engine is unavailable', async () => {
+  it('[SRF-6] warns that Docker is required when the engine is unavailable', async () => {
     const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const result = await runOnboarding(

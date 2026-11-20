@@ -37,6 +37,7 @@ export interface CursorRuleScaffoldOptions {
   mode: 'init' | 'maintain';
 }
 
+// (CON-10) when the Cursor rule is scaffolded, skipped or refreshed
 export async function handleCursorRule(options: CursorRuleScaffoldOptions): Promise<boolean> {
   const { repoPath, cursorRule, autoYes, mode } = options;
 

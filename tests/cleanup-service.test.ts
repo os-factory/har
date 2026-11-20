@@ -38,7 +38,7 @@ describe('cleanup-service', () => {
     expect(plan.candidates).toEqual([]);
   });
 
-  it('classifies stale clean sessions as teardown', () => {
+  it('[ENV-14] classifies stale clean sessions as teardown', () => {
     const createdAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
     const candidate = classifySlotCandidate(repo, 'demo', {
       agentId: 1,
@@ -52,7 +52,7 @@ describe('cleanup-service', () => {
     expect(candidate?.recommendation).toBe('teardown');
   });
 
-  it('pins keep targets from repo:agent syntax', () => {
+  it('[ENV-14] pins keep targets from repo:agent syntax', () => {
     const candidate = classifySlotCandidate(
       repo,
       'demo',
@@ -69,7 +69,7 @@ describe('cleanup-service', () => {
     expect(candidate?.recommendation).toBe('keep');
   });
 
-  it('discovers orphan worktrees under ~/worktrees', async () => {
+  it('[ENV-14] discovers orphan worktrees under ~/worktrees', async () => {
     const worktreesRoot = path.join(tempHome, 'worktrees');
     fs.mkdirSync(worktreesRoot, { recursive: true });
     const orphan = path.join(worktreesRoot, 'main-deadbeef-har-agent-9-abcd');

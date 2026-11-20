@@ -22,7 +22,7 @@ describe('onboarding preferences', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('returns safe defaults when no preference file exists', () => {
+  it('[SRF-7] returns safe defaults when no preference file exists', () => {
     expect(getOnboardingPreferencesPath()).toBe(preferencePath);
     expect(readOnboardingPreferences()).toMatchObject({
       version: 1,
@@ -36,7 +36,7 @@ describe('onboarding preferences', () => {
     });
   });
 
-  it('persists partial updates without losing existing choices', () => {
+  it('[SRF-7] persists partial updates without losing existing choices', () => {
     writeOnboardingPreferences({
       cursorRule: 'off',
       agentSkills: ['cursor'],
@@ -59,7 +59,7 @@ describe('onboarding preferences', () => {
     expect(updated.updatedAt).toBeDefined();
   });
 
-  it('falls back to defaults for malformed files', () => {
+  it('[SRF-7] falls back to defaults for malformed files', () => {
     fs.writeFileSync(preferencePath, '{not-json');
     expect(readOnboardingPreferences().commitGate.mode).toBe('block');
   });

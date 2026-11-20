@@ -95,7 +95,7 @@ describe('resolveSyncSourcePaths (#255)', () => {
 });
 
 describe('collectRunsForSync (#255)', () => {
-  it('reads records written only in the workspace', () => {
+  it('[MC-1] reads records written only in the workspace', () => {
     const canonical = makeHarness('har-runs-canon-');
     const workspace = makeHarness('har-runs-ws-');
     writeRun(canonical, '11111111-1111-4111-8111-111111111111', '2026-08-31T10:00:00.000Z');

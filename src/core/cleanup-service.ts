@@ -217,6 +217,7 @@ function discoverOrphanWorktrees(knownPaths: Set<string>): CleanupCandidate[] {
   return orphans.sort((a, b) => (a.worktreePath ?? '').localeCompare(b.worktreePath ?? ''));
 }
 
+// (ENV-14) cleanup plans before it destroys
 export async function discoverCleanupCandidates(
   options: DiscoverCleanupOptions = {},
 ): Promise<CleanupPlan> {

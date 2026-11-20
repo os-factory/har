@@ -63,7 +63,7 @@ describe('slot launch guard', () => {
     expect(result.allowed).toBe(true);
   });
 
-  it('always blocks launch when the slot is occupied', () => {
+  it('[ENV-1] always blocks launch when the slot is occupied', () => {
     const { repoPath, harDir } = setupHarness('har-guard-block-');
 
     initGitRepo(repoPath);

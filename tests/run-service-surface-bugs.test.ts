@@ -98,7 +98,7 @@ function writeSlotRegistryEntry(
 }
 
 describe('MCP launch trigger parity (#228)', () => {
-  it('records trigger:"mcp" when launch is invoked from MCP', async () => {
+  it('[SRF-2] records trigger:"mcp" when launch is invoked from MCP', async () => {
     const tempRepo = makeTempRepo();
     const result = await launchEnvironment({
       repoPath: tempRepo,
@@ -134,7 +134,7 @@ describe('status execution (#228, #233)', () => {
     expect(result.status).toBe('pass');
   }, 20_000);
 
-  it('status is a structured pure read: text rendered from the collector, no run records', async () => {
+  it('[ENV-8] status is a structured pure read: text rendered from the collector, no run records', async () => {
     const tempRepo = makeTempRepo();
     const result = await getEnvironmentStatus({ repoPath: tempRepo, agentId: 1, capture: true });
     expect(result.code).toBe(0);
@@ -148,7 +148,7 @@ describe('status execution (#228, #233)', () => {
 describe('teardown closes the open work attempt (#228)', () => {
   const attemptId = '00000000-0000-4000-8000-000000000228';
 
-  it('marks an undecided work unit abandoned on teardown', async () => {
+  it('[ENV-6, VER-10] marks an undecided work unit abandoned on teardown', async () => {
     const tempRepo = makeTempRepo();
     upsertWorkUnit(tempRepo, { workUnitId: 'gh-228', source: 'github' });
     createWorkAttempt(tempRepo, { attemptId, workUnitId: 'gh-228', agentId: 1 });
@@ -162,7 +162,7 @@ describe('teardown closes the open work attempt (#228)', () => {
     expect(workUnit?.outcome?.attemptId).toBe(attemptId);
   }, 20_000);
 
-  it('does not overwrite an already-completed outcome', async () => {
+  it('[VER-10] does not overwrite an already-completed outcome', async () => {
     const tempRepo = makeTempRepo();
     upsertWorkUnit(tempRepo, { workUnitId: 'gh-228-done', source: 'github' });
     createWorkAttempt(tempRepo, { attemptId, workUnitId: 'gh-228-done', agentId: 1 });

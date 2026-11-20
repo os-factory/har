@@ -129,7 +129,7 @@ describe('PM2 lifecycle', () => {
     ).toThrow('pm2 start failed');
   });
 
-  it('deleteAgentProcesses is project-scoped', () => {
+  it('[ENV-12] deleteAgentProcesses is project-scoped', () => {
     const { exec, calls } = mockExec([{ match: () => true, code: 1 }]);
     expect(() => deleteAgentProcesses({ projectName: 'other', agentId: 9, exec })).not.toThrow();
     expect(calls[0].line).toBe('npx pm2 delete /^har-other-agent-9-/');

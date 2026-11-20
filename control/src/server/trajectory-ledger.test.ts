@@ -7,7 +7,7 @@ import {
 } from './trajectory-ledger';
 
 describe('trajectory ledger ordering', () => {
-  it('round-trips opaque cursors and orders content facts deterministically', () => {
+  it('[TEL-4] round-trips opaque cursors and orders content facts deterministically', () => {
     const first = {
       sequence: 8,
       eventTimestamp: new Date('2026-08-14T10:00:00.000Z'),

@@ -138,7 +138,7 @@ test.describe('Factory line board', () => {
     await expect(page.getByTestId('line-board-demo-line')).toBeVisible();
   });
 
-  test('shows an empty state that points at the CLI, not an install button', async ({
+  test('[MC-7] shows an empty state that points at the CLI, not an install button', async ({
     page,
     request,
   }) => {

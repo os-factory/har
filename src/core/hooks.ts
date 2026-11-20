@@ -258,6 +258,7 @@ export interface GateCheckResult {
 }
 
 /** Pre-commit gate: is the staged tree covered by a passing full verification? */
+// (VER-4) pre-commit: staged tree vs a passing full validation, per mode and scope
 export function checkCommitGate(cwd: string): GateCheckResult {
   if (process.env.HAR_SKIP_GATE === '1') {
     return { exitCode: 0, messages: ['har: commit gate skipped (HAR_SKIP_GATE=1)'] };
@@ -327,6 +328,7 @@ export function checkCommitGate(cwd: string): GateCheckResult {
 }
 
 /** Post-commit: associate the new commit with the validation for its tree. */
+// (VER-4) post-commit binds the commit SHA to the validation
 export async function recordCommitAssociation(
   cwd: string,
 ): Promise<{ attached: boolean; commitSha?: string }> {

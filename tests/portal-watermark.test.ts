@@ -39,7 +39,7 @@ describe('portal watermark store', () => {
     );
   });
 
-  it('keys independently by repo and by portal', () => {
+  it('[PRT-5] keys independently by repo and by portal', () => {
     writePortalWatermark('/repo/a', 'https://p1.example.com', '2026-01-01T00:00:00.000Z');
     writePortalWatermark('/repo/a', 'https://p2.example.com', '2026-02-01T00:00:00.000Z');
     writePortalWatermark('/repo/b', 'https://p1.example.com', '2026-03-01T00:00:00.000Z');

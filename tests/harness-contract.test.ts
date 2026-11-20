@@ -11,7 +11,7 @@ function makeTempRepo(name: string): string {
 }
 
 describe('harness stage contract', () => {
-  it('parses generic stage registry entries and runs a custom stage', async () => {
+  it('[CON-3] parses generic stage registry entries and runs a custom stage', async () => {
     const repoPath = makeTempRepo('har-stage');
     const stagesDir = path.join(repoPath, '.har', 'stages');
     fs.mkdirSync(stagesDir, { recursive: true });

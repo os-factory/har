@@ -11,6 +11,7 @@ import { ProfileCapabilities, readProfileCapabilities } from './profiles';
  */
 
 /** Capability set for the harness's recorded profile, or undefined (legacy harness). */
+// (CON-7) capabilities come from the profile manifest / marker files
 export function harnessCapabilities(repoPath: string): ProfileCapabilities | undefined {
   const harnessRoot = resolveHarnessRoot(repoPath);
   const profile = readManifest(harnessRoot)?.profile;

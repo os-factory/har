@@ -47,7 +47,7 @@ describe('two-signal drift (#237)', () => {
     expect(entry?.status).toBe('unchanged');
   });
 
-  it('post-finalize user edit reports user-adapted, not upstream drift', () => {
+  it('[CON-5] post-finalize user edit reports user-adapted, not upstream drift', () => {
     const repoPath = scaffoldRepo('har-two-signal-edit-');
     const readmePath = path.join(repoPath, '.har', 'README.md');
     fs.writeFileSync(readmePath, fs.readFileSync(readmePath, 'utf8') + '\n# later edit\n');
@@ -59,7 +59,7 @@ describe('two-signal drift (#237)', () => {
     expect(entry?.upstreamUpdated).toBe(false);
   });
 
-  it('upstream template update on a user-adapted file reports conflict', () => {
+  it('[CON-5] upstream template update on a user-adapted file reports conflict', () => {
     const repoPath = scaffoldRepo('har-two-signal-conflict-');
     const manifestPath = path.join(repoPath, '.har', 'manifest.json');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));

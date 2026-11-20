@@ -438,6 +438,7 @@ export function renderEnvironmentStatusText(status: EnvironmentStatus): string {
   return lines.join('\n') + '\n';
 }
 
+// (ENV-8) status is a pure read of every slot
 export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
   const harnessRoot = resolveHarnessRoot(repoPath);
   const runs = listRuns(harnessRoot, { limit: 200 });

@@ -94,7 +94,7 @@ describe('env CLI delegation', () => {
     writeSpy.mockRestore();
   });
 
-  it('prints slim verification JSON with --json', async () => {
+  it('[SRF-5] prints slim verification JSON with --json', async () => {
     (runVerification as jest.Mock).mockResolvedValue({
       code: 1,
       stdout: '{"status":"fail","agent_id":3,"stages":[]}',

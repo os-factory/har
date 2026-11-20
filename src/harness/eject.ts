@@ -73,6 +73,7 @@ Return to the packaged runtime (removes this directory):
 `;
 
 /** Vendors the runtime into .har/runtime/. Does not write wrapper scripts. */
+// (CON-12) vendor the runtime and record the choice
 export function ejectHarness(repoPath: string): EjectResult {
   const resolved = path.resolve(repoPath);
   const harnessDir = getHarnessDir(resolved);
@@ -115,6 +116,7 @@ export function ejectHarness(repoPath: string): EjectResult {
 }
 
 /** Reverses eject: removes .har/runtime/ and any leftover lifecycle wrappers. */
+// (CON-12) return ownership of the runtime, keep config
 export function adoptHarness(repoPath: string): AdoptResult {
   const resolved = path.resolve(repoPath);
   const harnessDir = getHarnessDir(resolved);

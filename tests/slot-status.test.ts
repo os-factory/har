@@ -5,7 +5,7 @@ import { collectEnvironmentStatus } from '../src/core/slot-status';
 import { createRun } from '../src/core/runs';
 
 describe('slot status', () => {
-  it('collectEnvironmentStatus returns slots for configured range', () => {
+  it('[ENV-8] collectEnvironmentStatus returns slots for configured range', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-status-'));
     const harDir = path.join(repoPath, '.har');
     fs.mkdirSync(harDir, { recursive: true });

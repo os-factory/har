@@ -152,7 +152,7 @@ describe('usage invariant gate before the HQ sync', () => {
       .flatMap((c) => (c.body.usage as Array<{ providerSessionId?: string }>).map((r) => r.providerSessionId));
   const warnings = () => warnSpy.mock.calls.map((args) => String(args.join(' ')));
 
-  it('leaves a session breaking I1/I2 out of the HQ post, sends the rest, and says what it held back', async () => {
+  it('[TEL-11] leaves a session breaking I1/I2 out of the HQ post, sends the rest, and says what it held back', async () => {
     invariants = () => ({ status: 200, body: report([BAD]) });
     const result = await syncReposWithControl({ repoPaths: [REPO] });
     expect(result.failed).toBe(0);

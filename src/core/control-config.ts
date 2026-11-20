@@ -44,6 +44,7 @@ export function resolvePortalUrl(explicit?: string): {
   return { url: DEFAULT_PORTAL_URL, source: 'default' };
 }
 
+// (PRT-3) URL and token are both required
 export function getPortalTarget(repoPath?: string): PortalTarget | null {
   const resolved = resolvePortalTarget(repoPath);
   if (resolved) return resolved;

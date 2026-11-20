@@ -100,7 +100,7 @@ describe('versioned harness migrations (#241)', () => {
     expect(pendingMigrations(clean)).toEqual([]);
   });
 
-  it('an ejected harness is never treated as pre-1.0', () => {
+  it('[CON-13] an ejected harness is never treated as pre-1.0', () => {
     const manifest = readManifest(proj())!;
     writeManifest(proj(), { ...manifest, ejected: true, ejectedVersion: '1.0.0' });
     expect(isPre10Harness(proj())).toBe(false);
@@ -282,7 +282,7 @@ describe('versioned harness migrations (#241)', () => {
     expect(result.content).toContain('export HARNESS_PROJECT_NAME=proj');
   });
 
-  it('plain maintain detects, writes plan + MIGRATE prompt, changes nothing (compat window)', async () => {
+  it('[CON-13] plain maintain detects, writes plan + MIGRATE prompt, changes nothing (compat window)', async () => {
     const vendoredLaunch = fs.readFileSync(har('launch.sh'), 'utf8');
     const result = await maintainHarness({ repoPath: proj() });
 
@@ -297,7 +297,7 @@ describe('versioned harness migrations (#241)', () => {
     expect(result.migration!.prompt).toContain('HARNESS_TEMPLATE_SQLITE');
   });
 
-  it('maintain --migrate applies mechanical steps with backups and stamps the manifest', async () => {
+  it('[CON-13] maintain --migrate applies mechanical steps with backups and stamps the manifest', async () => {
     const result = await maintainHarness({ repoPath: proj(), migrate: true });
     expect(result.migration?.applied).toBe(true);
 

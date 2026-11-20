@@ -68,7 +68,7 @@ describe('listUntrackedAbsentFromWorktree', () => {
     expect(listUntrackedAbsentFromWorktree(repo)).toEqual(['.claude/', 'CLAUDE.md']);
   });
 
-  it('does not list tracked or gitignored paths', () => {
+  it('[ENV-13] does not list tracked or gitignored paths', () => {
     const repo = makeRepo(
       {
         '.gitignore': 'node_modules/\n.env\n*.md\n!README.md\n',

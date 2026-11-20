@@ -20,6 +20,7 @@ function includesSource(row: UsageAuthorityRow | null | undefined, source: strin
  * OTLP rows are excluded on both sides: they accumulate one batch at a time
  * rather than being recomputed, so replacing one would drop every earlier batch.
  */
+// (TEL-9) only a newer harvest generation replaces a harvested row
 export function harvestSupersedes(
   existing: UsageAuthorityRow | null | undefined,
   incoming: UsageAuthorityRow | null | undefined,

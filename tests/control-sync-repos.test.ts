@@ -124,7 +124,7 @@ describe('syncReposWithControl', () => {
     ]);
   });
 
-  it('records per-repo failures without aborting the loop', async () => {
+  it('[MC-3] records per-repo failures without aborting the loop', async () => {
     const result = await syncReposWithControl({
       repoPaths: ['/repos/ok', '/repos/fail', '/repos/ok2'],
     });

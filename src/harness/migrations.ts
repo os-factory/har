@@ -704,6 +704,7 @@ export const HARNESS_MIGRATIONS: HarnessMigration[] = [PRE_1_0_MIGRATION];
  * that still has the old shape on disk (e.g. a finalize ran before the
  * migration did — the backups and prompt must survive that).
  */
+// (CON-13) detect the pre-1.0 shape; applying is opt-in
 export function pendingMigrations(repoPath: string): HarnessMigration[] {
   return HARNESS_MIGRATIONS.filter((m) => m.detect(repoPath)).sort((a, b) =>
     compareVersions(a.to, b.to),

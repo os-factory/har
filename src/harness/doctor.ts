@@ -156,6 +156,7 @@ function checkStatus(findings: DoctorFinding[], id: DoctorCheckId): DoctorCheck 
   return { id, label: CHECK_LABELS[id], status: 'pass' };
 }
 
+// (CON-6) structural harness checks
 export function runDoctor(repoPath: string): DoctorReport {
   const harnessDir = getHarnessDir(repoPath);
   const findings: DoctorFinding[] = [];
@@ -189,6 +190,7 @@ export function runDoctor(repoPath: string): DoctorReport {
 
   // 0. Stale CLI vs a newer harness (#344): one upgrade error, then stop.
   // Missing-stage noise is wrong once the writer is newer than this binary.
+  // (CON-14) a CLI older than the harness writer gets one upgrade error
   const writerVersion = readManifest(repoPath)?.cliVersion;
   const runningVersion = getHarPackageVersion();
   if (!writerVersion) {

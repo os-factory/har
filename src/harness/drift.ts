@@ -181,6 +181,7 @@ export function computeTemplateChecksums(
   return checksums;
 }
 
+// (CON-5) drift report: user edits vs upstream template updates
 export function compareHarnessToTemplate(repoPath: string): HarnessDriftResult {
   const resolved = path.resolve(repoPath);
   const manifest = readManifest(resolved);

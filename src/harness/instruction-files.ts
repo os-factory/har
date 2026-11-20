@@ -348,6 +348,7 @@ export function mergeAgentsMdContent(
 /**
  * Create AGENTS.md from template, or upsert the managed HAR section into an existing file.
  */
+// (CON-9) HAR owns only its marked AGENTS.md section
 export function upsertAgentsMdHarSection(
   repoPath: string,
   options: UpsertAgentsMdOptions = {},
@@ -453,6 +454,7 @@ function hasAgentsImport(content: string): boolean {
  *
  * Idempotent: a file that already imports AGENTS.md is left alone.
  */
+// (CON-9) CLAUDE.md is never created; an existing one gains the AGENTS.md import
 export function ensureClaudeMdPointer(
   repoPath: string,
   options: { force?: boolean } = {},

@@ -21,6 +21,7 @@ function readHookHarnessEnv(harnessDir: string): Record<string, string> {
  * launch/verify/teardown behavior — never drift-checked against templates.
  */
 
+// (CON-8) the five sanctioned hook points
 export const LIFECYCLE_HOOKS = [
   'pre-launch',
   'post-launch',
@@ -126,6 +127,7 @@ export function runLifecycleHook(hook: LifecycleHook, context: HookContext): Hoo
  * post-* hook failure policy (HARNESS_HOOK_POST_FAILURE): 'warn' (default)
  * reports and continues; 'fail' fails the operation like a pre-* hook.
  */
+// (CON-8) post-* hooks warn by default, fail on opt-in
 export function postHookFailureMode(env: Record<string, string>): 'warn' | 'fail' {
   return env.HARNESS_HOOK_POST_FAILURE === 'fail' ? 'fail' : 'warn';
 }

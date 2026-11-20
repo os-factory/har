@@ -99,7 +99,7 @@ afterEach(() => {
 });
 
 describe('factory line board', () => {
-  it('reads stations and the cumulative gate from the installed bundle', async () => {
+  it('[MC-7] reads stations and the cumulative gate from the installed bundle', async () => {
     repoPath = scaffoldRepo();
     repositoryFindUnique.mockResolvedValue({ path: repoPath });
 
@@ -147,7 +147,7 @@ describe('factory line board', () => {
     expect(board.verifyLeaks).toEqual([]);
   });
 
-  it('flags a line stage that leaked into verificationStages', async () => {
+  it('[MC-7] flags a line stage that leaked into verificationStages', async () => {
     repoPath = scaffoldRepo({ verificationStages: ['typecheck', 'demo-s1'] });
     repositoryFindUnique.mockResolvedValue({ path: repoPath });
 

@@ -152,6 +152,7 @@ function resolveTargetSlot(options: BindWorkUnitOptions): {
   return found;
 }
 
+// (VER-8) bind a running slot to a work unit after launch
 export function bindWorkUnit(options: BindWorkUnitOptions): BindWorkUnitResult {
   const { harnessRoot, session } = resolveTargetSlot(options);
   const agentId = session.agentId;

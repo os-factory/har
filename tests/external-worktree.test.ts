@@ -61,7 +61,7 @@ describe('detectInPlaceSlotMode', () => {
 });
 
 describe('removeSessionWorktree ownership guard (#254)', () => {
-  it('never removes an externally-owned worktree', () => {
+  it('[ENV-4] never removes an externally-owned worktree', () => {
     const { repo, external } = makeRepoWithExternalWorktree();
     fs.writeFileSync(path.join(external, 'uncommitted.txt'), 'precious\n');
 

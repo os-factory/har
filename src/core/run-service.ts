@@ -96,6 +96,7 @@ function resolveStageCommand(
 export class RunService {
   constructor(private readonly executor: StageExecutor = localScriptExecutor) {}
 
+  // (SRF-2) one core path for CLI and MCP; the surface only sets the trigger
   async runStage(options: StageRunOptions & { trigger?: ExecutionContext['trigger'] }): Promise<StageResult> {
     const activeSession =
       options.agentId !== undefined && options.kind !== 'launch'
@@ -160,6 +161,7 @@ export class RunService {
     }
   }
 
+  // (VER-9) declared stage artifacts are discoverable
   listArtifacts(options: { repoPath: string; stageId?: string }): ArtifactEntry[] {
     return this.executor.listArtifacts({ repoPath: options.repoPath }, { stageId: options.stageId });
   }
@@ -205,6 +207,7 @@ export class RunService {
     // adaptation is caught here, not mid-session. Pre-1.0 harnesses degrade
     // contract findings to warnings inside runDoctor, so only real breakage
     // (corrupt stages.json, missing stage scripts, phantom ids) blocks.
+    // (CON-6) doctor gates every launch
     const doctor = runDoctor(resolveHarnessRoot(options.repoPath));
     if (!doctor.ok) {
       const errors = doctor.findings
@@ -491,6 +494,7 @@ export class RunService {
     // Teardown is the only exit besides `complete`; close the open attempt so
     // work units don't linger as in-flight forever. `complete` records its
     // 'completed' outcome before tearing down, so an existing outcome wins.
+    // (VER-10) teardown closes an undecided work unit as abandoned
     if (envResult.code === 0 && session?.workUnitId) {
       try {
         const workUnit = findWorkUnit(harnessRoot, session.workUnitId);
@@ -514,6 +518,7 @@ export class RunService {
    * re-run verify when asked), then teardown. The session branch is kept so
    * the user can push it and open a PR.
    */
+  // (ENV-6) complete needs a passing full validation for the current tree
   async completeEnvironment(options: {
     repoPath: string;
     agentId: number;

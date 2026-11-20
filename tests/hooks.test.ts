@@ -50,7 +50,7 @@ describe('checkCommitGate', () => {
     expect(checkCommitGate(dir).exitCode).toBe(0);
   });
 
-  it('blocks unverified staged changes in an agent worktree', () => {
+  it('[VER-4] blocks unverified staged changes in an agent worktree', () => {
     const dir = initRepo();
     const worktree = addAgentWorktree(dir);
     fs.writeFileSync(path.join(worktree, 'a.txt'), 'changed\n');
@@ -62,7 +62,7 @@ describe('checkCommitGate', () => {
     expect(result.messages.join('\n')).toContain('har env verify');
   });
 
-  it('warns (exit 0) in the main checkout under default worktrees scope', () => {
+  it('[VER-4] warns (exit 0) in the main checkout under default worktrees scope', () => {
     const dir = initRepo();
     fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
     sh(dir, 'git add -A');
@@ -72,14 +72,14 @@ describe('checkCommitGate', () => {
     expect(result.messages.join('\n')).toContain('warning');
   });
 
-  it('blocks in the main checkout with scope=all', () => {
+  it('[VER-4] blocks in the main checkout with scope=all', () => {
     const dir = initRepo({ scope: 'all' });
     fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
     sh(dir, 'git add -A');
     expect(checkCommitGate(dir).exitCode).toBe(1);
   });
 
-  it('allows a batch with a passing full validation', () => {
+  it('[VER-4] allows a batch with a passing full validation', () => {
     const dir = initRepo();
     const worktree = addAgentWorktree(dir);
     fs.writeFileSync(path.join(worktree, 'a.txt'), 'verified change\n');
@@ -108,7 +108,7 @@ describe('checkCommitGate', () => {
     expect(partial.messages.join('\n')).toContain('partial verify');
   });
 
-  it('partial staging of a verified batch is blocked', () => {
+  it('[VER-5] partial staging of a verified batch is blocked', () => {
     const dir = initRepo();
     const worktree = addAgentWorktree(dir);
     fs.writeFileSync(path.join(worktree, 'a.txt'), 'change one\n');
@@ -271,7 +271,7 @@ describe('end-to-end git commit with installed hooks', () => {
 });
 
 describe('recordCommitAssociation', () => {
-  it('attaches the commit sha to the matching validation', async () => {
+  it('[VER-4] attaches the commit sha to the matching validation', async () => {
     const dir = initRepo();
     fs.writeFileSync(path.join(dir, 'a.txt'), 'change\n');
     const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });

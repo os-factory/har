@@ -242,6 +242,7 @@ async function storedElsewhere(repositoryId: string, observation: ObservationInp
  * repeats merge by `mergeRepeatedObservation`. `placed`: `repositoryId` is the
  * repository of the request's place, not only one that posted it.
  */
+// (TEL-2) idempotent usage observations, never merged into each other
 export async function recordObservations(
   repositoryId: string,
   observations: ObservationInput[],

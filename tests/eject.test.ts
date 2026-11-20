@@ -38,7 +38,7 @@ describe('har env eject / adopt (#239 / #314)', () => {
   const proj = () => path.join(repo, 'proj');
   const har = (...p: string[]) => path.join(repo, 'proj', '.har', ...p);
 
-  it('vendors the runtime and records the choice without writing wrappers', () => {
+  it('[CON-12] vendors the runtime and records the choice without writing wrappers', () => {
     const result = ejectHarness(proj());
 
     expect(result.version).toBe(getHarPackageVersion());
@@ -54,7 +54,7 @@ describe('har env eject / adopt (#239 / #314)', () => {
     expect(manifest?.ejectedVersion).toBe(getHarPackageVersion());
   });
 
-  it('refuses to eject twice and to adopt a non-ejected harness', () => {
+  it('[CON-12] refuses to eject twice and to adopt a non-ejected harness', () => {
     expect(() => adoptHarness(proj())).toThrow(/not ejected/);
     ejectHarness(proj());
     expect(() => ejectHarness(proj())).toThrow(/already ejected/);
@@ -80,7 +80,7 @@ describe('har env eject / adopt (#239 / #314)', () => {
     expect(report.checks.find((c) => c.id === 'ejected-runtime')?.status).toBe('skip');
   });
 
-  it('doctor validates the ejected contract: green when intact, error on missing runtime', () => {
+  it('[CON-12] doctor validates the ejected contract: green when intact, error on missing runtime', () => {
     ejectHarness(proj());
     let report = runDoctor(proj());
     expect(report.ok).toBe(true);
@@ -94,7 +94,7 @@ describe('har env eject / adopt (#239 / #314)', () => {
     ).toBe(true);
   });
 
-  it('adopt removes the runtime, prunes leftover wrappers, and preserves config files', () => {
+  it('[CON-12] adopt removes the runtime, prunes leftover wrappers, and preserves config files', () => {
     const envBefore = fs.readFileSync(har('harness.env'), 'utf8');
     const stagesBefore = fs.readFileSync(har('stages.json'), 'utf8');
 

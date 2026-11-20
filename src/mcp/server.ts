@@ -77,6 +77,7 @@ import {
   StageResultSchema,
 } from './schemas';
 
+// (SRF-1) MCP side of the operation x surface matrix
 export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_describe_project',
@@ -473,6 +474,7 @@ function jsonContent(data: unknown) {
   };
 }
 
+// (SRF-3) MCP inputs are Zod-parsed at the boundary
 export async function handleMcpToolCall(
   toolName: string,
   args: Record<string, unknown>,

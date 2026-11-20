@@ -11,6 +11,7 @@ import { defaultExec, ExecFn, LogFn, SleepFn, realSleep } from './exec';
 // ── Project-scoped PM2 names (agent-slot.sh) ─────────────────────────────────
 // Pattern: har-<project>-agent-<id>-<service> (machine-global PM2 namespace).
 
+// (ENV-12) PM2 names are project-scoped
 export function pm2SlotPrefix(projectName: string, agentId: number): string {
   return `har-${projectName}-agent-${agentId}`;
 }

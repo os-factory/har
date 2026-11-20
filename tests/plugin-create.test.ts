@@ -26,7 +26,7 @@ function scaffoldRepo(name: string): string {
 }
 
 describe('har plugin create (local plugins)', () => {
-  it('scaffolds a complete local plugin with a schema-valid manifest', () => {
+  it('[EXT-7] scaffolds a complete local plugin with a schema-valid manifest', () => {
     const repoPath = scaffoldRepo('har-plugin-create');
 
     const result = createLocalPlugin(repoPath, {
@@ -84,7 +84,7 @@ describe('har plugin create (local plugins)', () => {
     expect(manifest.merge).toEqual({ 'package.json': 'package.fragment.json' });
   });
 
-  it('rejects invalid ids, missing harness, and existing dirs without --force', () => {
+  it('[EXT-7] rejects invalid ids, missing harness, and existing dirs without --force', () => {
     const repoPath = scaffoldRepo('har-plugin-create-guards');
     expect(() => createLocalPlugin(repoPath, { id: 'Bad Id' })).toThrow(/Invalid plugin id/);
     expect(() => createLocalPlugin(repoPath, { id: 'x', kind: 'nope' as never })).toThrow(
@@ -99,7 +99,7 @@ describe('har plugin create (local plugins)', () => {
     expect(() => createLocalPlugin(bare, { id: 'x' })).toThrow(/har onboard/);
   });
 
-  it('resolves and installs a local plugin by bare id with ledger source "local"', () => {
+  it('[EXT-7] resolves and installs a local plugin by bare id with ledger source "local"', () => {
     const repoPath = scaffoldRepo('har-plugin-local-install');
     createLocalPlugin(repoPath, { id: 'db-integrity' });
 
@@ -134,7 +134,7 @@ describe('har plugin create (local plugins)', () => {
     expect(source.id).toBe('by-path');
   });
 
-  it('covers local plugin files with drift against the project-owned baseline', () => {
+  it('[EXT-7] covers local plugin files with drift against the project-owned baseline', () => {
     const repoPath = scaffoldRepo('har-plugin-local-drift');
     createLocalPlugin(repoPath, { id: 'db-integrity' });
     applyPlugin(repoPath, 'db-integrity');

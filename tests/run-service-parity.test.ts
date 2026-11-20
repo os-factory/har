@@ -125,7 +125,7 @@ describe('run service parity', () => {
     expect(stdout).toContain('log line for agent 2');
   });
 
-  it('persists a run record under .har/runs', async () => {
+  it('[VER-2] persists a run record under .har/runs', async () => {
     const tempRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'har-run-record-'));
     fs.cpSync(path.join(FIXTURE, '.har'), path.join(tempRepo, '.har'), { recursive: true });
 
@@ -162,7 +162,7 @@ describe('run service parity', () => {
 });
 
 describe('trigger tagging parity (#233)', () => {
-  it('tags run records with the surface trigger for generic stages', async () => {
+  it('[SRF-2] tags run records with the surface trigger for generic stages', async () => {
     const tempRepo = makeTempRepo('har-trigger-parity-');
 
     await runStage({ repoPath: tempRepo, stageId: 'logs', agentId: 1, capture: true, trigger: 'mcp' });
@@ -175,7 +175,7 @@ describe('trigger tagging parity (#233)', () => {
 });
 
 describe('status parity (#233)', () => {
-  it('renders text from the same structured source on every surface and writes no run records', async () => {
+  it('[ENV-8] renders text from the same structured source on every surface and writes no run records', async () => {
     const tempRepo = makeTempRepo('har-status-parity-');
     writeSlotRegistryEntry(tempRepo, 1, 'active');
 
@@ -258,7 +258,7 @@ describe('synthesizeStageRegistry fallback', () => {
 });
 
 describe('doctor gate before launch (#232)', () => {
-  it('blocks launch with actionable findings when the harness contract is broken', async () => {
+  it('[CON-6] blocks launch with actionable findings when the harness contract is broken', async () => {
     const tempRepo = makeTempRepo('har-doctor-gate-');
     const stagesPath = path.join(tempRepo, '.har', 'stages.json');
     const registry = JSON.parse(fs.readFileSync(stagesPath, 'utf8'));

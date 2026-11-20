@@ -144,7 +144,7 @@ describe('canonical OTLP log facts', () => {
     });
   });
 
-  it('keeps reasoning disclosure metadata without exposing a withheld body', () => {
+  it('[TEL-4] keeps reasoning disclosure metadata without exposing a withheld body', () => {
     const canonical = canonicalizeOtelLogRecord({
       resource: {},
       eventName: 'log',
@@ -263,7 +263,7 @@ describe('canonical OTLP log facts', () => {
 });
 
 describe('canonical OTLP span facts', () => {
-  it('uses producer sequence when present and never a span-id hash', () => {
+  it('[TEL-4] uses producer sequence when present and never a span-id hash', () => {
     expect(canonicalSpanSequence({
       'otelhook.event.sequence': 6,
       sequence: 99,

@@ -74,6 +74,7 @@ export function isMergeOrRebaseInProgress(checkoutDir: string): boolean {
  * Tree SHA of the real index — exactly what `git commit` would record.
  * Throws on unmerged entries (conflict in progress).
  */
+// (VER-5) the gate compares content hashes only
 export function computeStagedTree(checkoutDir: string): string {
   return git(checkoutDir, 'write-tree');
 }
@@ -101,6 +102,7 @@ function parseNameStatus(output: string): ChangedFile[] {
  * pipeline, the result is byte-comparable with `computeStagedTree` at commit
  * time for the same content.
  */
+// (VER-3) hash of the complete working-tree state
 export function computeWorktreeSnapshot(checkoutDir: string): ChangeBatchSnapshot {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-idx-'));
   const tmpIndex = path.join(tmpDir, 'index');

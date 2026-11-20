@@ -267,6 +267,7 @@ export async function defaultEnsureControl(options: {
 /**
  * Run the non-interactive parts of onboarding after the CLI has collected choices.
  */
+// (SRF-6) human first-run flow: scaffold, plugins, adaptation prompt
 export async function runOnboarding(
   options: OnboardOptions,
   deps: OnboardingDeps = {},

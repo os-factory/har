@@ -10,7 +10,7 @@ import {
 } from './trajectory-privacy';
 
 describe('secret attribute keys', () => {
-  it('redacts credential leaves without treating token counters as secrets', () => {
+  it('[TEL-5] redacts credential leaves without treating token counters as secrets', () => {
     expect(isSecretAttributeKey('authorization')).toBe(true);
     expect(isSecretAttributeKey('gen_ai.request.api_key')).toBe(true);
     expect(isSecretAttributeKey('openai.access_token')).toBe(true);
@@ -73,7 +73,7 @@ describe('payload bounds and disclosure', () => {
     expect(bounded.payload.binaryOmitted).toBe(true);
   });
 
-  it('truncates oversized tool payloads and marks disclosure', () => {
+  it('[TEL-5] truncates oversized tool payloads and marks disclosure', () => {
     const bounded = boundTrajectoryPayload({
       body: 'x'.repeat(8_000),
       attributes: {},

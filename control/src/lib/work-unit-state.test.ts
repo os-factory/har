@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { deriveWorkUnitState, formatDurationMs } from './work-unit-state';
 
 describe('deriveWorkUnitState', () => {
-  it('honours explicit decisions first', () => {
+  it('[MC-5] honours explicit decisions first', () => {
     expect(deriveWorkUnitState({ decision: 'completed', hasActiveSlot: true, hasFullProof: false })).toBe('completed');
     expect(deriveWorkUnitState({ decision: 'abandoned', hasActiveSlot: false, hasFullProof: true })).toBe('abandoned');
   });
-  it('derives active, verified, failed, pending from evidence', () => {
+  it('[MC-5] derives active, verified, failed, pending from evidence', () => {
     expect(deriveWorkUnitState({ hasActiveSlot: true, hasFullProof: false })).toBe('active');
     expect(deriveWorkUnitState({ hasActiveSlot: false, hasFullProof: true })).toBe('verified');
     expect(deriveWorkUnitState({ hasActiveSlot: false, hasFullProof: false, latestRunStatus: 'fail' })).toBe('failed');

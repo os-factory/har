@@ -12,7 +12,7 @@ const COMMIT_A = 'c'.repeat(40);
 const COMMIT_B = 'd'.repeat(40);
 
 describe('session history graph', () => {
-  it('renders a validated but uncommitted tree as a pending snapshot', () => {
+  it('[MC-11] renders a validated but uncommitted tree as a pending snapshot', () => {
     const graph = buildSessionHistoryGraph({
       snapshots: [
         {
@@ -66,7 +66,7 @@ describe('session history graph', () => {
     });
   });
 
-  it('keeps two commits that share one content snapshot', () => {
+  it('[MC-11] keeps two commits that share one content snapshot', () => {
     const graph = buildSessionHistoryGraph({
       snapshots: [
         {

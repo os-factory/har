@@ -82,7 +82,7 @@ describe('writeSlotRegistry', () => {
     expect(tsBytes).toBe(goldenBytes);
   });
 
-  it('writes an entry readSlotRegistry accepts and preserves optional omissions', () => {
+  it('[ENV-2] writes an entry readSlotRegistry accepts and preserves optional omissions', () => {
     const repo = makeRepo('har-reg-min-');
     writeSlotRegistry(repo, {
       agentId: 1,

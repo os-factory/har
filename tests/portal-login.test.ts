@@ -35,7 +35,7 @@ function hitCallback(
 }
 
 describe('loginViaBrowser', () => {
-  it('captures the token from the loopback callback', async () => {
+  it('[PRT-1] captures the token from the loopback callback', async () => {
     const creds = await loginViaBrowser('https://portal.example.com', (url) =>
       hitCallback(url, { token: 'har_ingest_abc', workspace: 'acme' }),
     );
@@ -108,7 +108,7 @@ describe('loginViaBrowser', () => {
     expect(creds).not.toHaveProperty('targets');
   });
 
-  it('rejects on state mismatch', async () => {
+  it('[PRT-1] rejects on state mismatch', async () => {
     await expect(
       loginViaBrowser('https://portal.example.com', (url) =>
         hitCallback(url, { token: 'har_ingest_abc', state: 'wrong-state' }),

@@ -49,7 +49,7 @@ describe('registerRepository tombstone', () => {
     deleteManyRepository.mockResolvedValue({ count: 0 });
   });
 
-  it('blocks re-register when path is tombstoned', async () => {
+  it('[MC-4] blocks re-register when path is tombstoned', async () => {
     findUniqueUnregistered.mockResolvedValue({
       path: '/tmp/main',
       unregisteredAt: new Date(),
@@ -120,7 +120,7 @@ describe('deleteRepository tombstone', () => {
     vi.clearAllMocks();
   });
 
-  it('writes tombstone before deleting repository row', async () => {
+  it('[MC-4] writes tombstone before deleting repository row', async () => {
     findUniqueRepository.mockResolvedValue({
       id: 'repo-1',
       path: '/tmp/main',

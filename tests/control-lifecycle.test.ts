@@ -56,7 +56,7 @@ describe('control image', () => {
     }
   });
 
-  it('defaults image name and tag to CLI version', () => {
+  it('[MC-8] defaults image name and tag to CLI version', () => {
     expect(getControlImageName()).toBe(DEFAULT_CONTROL_IMAGE);
     expect(DEFAULT_CONTROL_IMAGE).toBe('theosfactory/har-control');
     expect(getControlImageTag()).toBe(getHarPackageVersion());
@@ -80,7 +80,7 @@ describe('control lifecycle docker run', () => {
     expect(resolveControlDir()).toBe(`${context}/control`);
   });
 
-  it('builds detached run args with the named volume and port mapping', () => {
+  it('[MC-8] builds detached run args with the named volume and port mapping', () => {
     const args = buildDockerRunArgs({
       imageRef: 'theosfactory/har-control:1.2.3',
       hostPort: 3847,
@@ -118,7 +118,7 @@ describe('control lifecycle docker run', () => {
 describe('shouldUpgradeControlImage', () => {
   const expected = `${DEFAULT_CONTROL_IMAGE}:1.23.0`;
 
-  it('upgrades a container on an older released image', () => {
+  it('[MC-8] upgrades a container on an older released image', () => {
     expect(shouldUpgradeControlImage(`${DEFAULT_CONTROL_IMAGE}:1.16.0`, expected, {})).toBe(true);
   });
 
@@ -126,18 +126,18 @@ describe('shouldUpgradeControlImage', () => {
     expect(shouldUpgradeControlImage(expected, expected, {})).toBe(false);
   });
 
-  it('leaves a container started from another image or a custom tag', () => {
+  it('[MC-8] leaves a container started from another image or a custom tag', () => {
     expect(shouldUpgradeControlImage('my-registry/har-control:1.16.0', expected, {})).toBe(false);
     expect(shouldUpgradeControlImage(`${DEFAULT_CONTROL_IMAGE}:dev`, expected, {})).toBe(false);
   });
 
-  it('leaves the container alone while an image override is set', () => {
+  it('[MC-8] leaves the container alone while an image override is set', () => {
     const running = `${DEFAULT_CONTROL_IMAGE}:1.16.0`;
     expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_IMAGE_TAG: '1.16.0' })).toBe(false);
     expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_IMAGE: 'x/har-control' })).toBe(false);
   });
 
-  it('leaves the default container alone while the CLI targets another Mission Control', () => {
+  it('[MC-8] leaves the default container alone while the CLI targets another Mission Control', () => {
     const running = `${DEFAULT_CONTROL_IMAGE}:1.16.0`;
     expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_API_URL: 'http://127.0.0.1:13847' })).toBe(false);
     expect(shouldUpgradeControlImage(running, expected, { HAR_CONTROL_API_URL: 'http://10.0.0.5:3847' })).toBe(false);

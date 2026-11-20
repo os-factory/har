@@ -102,6 +102,7 @@ function groupKey(group: PortalRows): string {
 }
 
 /** Split a sync's usage groups into sent and held back. */
+// (TEL-11) sessions breaking the usage invariants are held back
 export function partitionHeldUsage(
   groups: PortalRows[],
   held: HeldUsageUnits,
