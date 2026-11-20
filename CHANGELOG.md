@@ -1,3 +1,9 @@
+## [1.30.0](https://github.com/os-factory/har/compare/v1.29.0...v1.30.0) (2026-11-20)
+
+### Features
+
+* **env:** personal worktree on/off setting; honour HARNESS_USE_WORKTREE ([#412](https://github.com/os-factory/har/issues/412)) ([17be831](https://github.com/os-factory/har/commit/17be8310aefd46fe829e965890e0334f3a60d295))
+
 ## [1.29.0](https://github.com/os-factory/har/compare/v1.28.0...v1.29.0) (2026-11-20)
 
 ### Features
