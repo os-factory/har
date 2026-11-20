@@ -6,15 +6,17 @@ interface Props {
   title: string;
   description: string;
   canonicalPath: string;
+  ogImagePath?: string;
 }
 
-const { title, description, canonicalPath } = Astro.props;
+const { title, description, canonicalPath, ogImagePath } = Astro.props;
 ---
 <BaseLayout
   title={title}
   description={description}
   bodyClass="home-page blog-page"
   canonicalPath={canonicalPath}
+  ogImagePath={ogImagePath}
 >
   <Header active="blog" />
   <main>

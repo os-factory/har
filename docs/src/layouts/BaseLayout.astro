@@ -10,6 +10,8 @@ interface Props {
   description?: string;
   bodyClass?: string;
   canonicalPath?: string;
+  /** Absolute path under public/ for og:image; defaults to the HAR logo. */
+  ogImagePath?: string;
 }
 
 const {
@@ -17,9 +19,10 @@ const {
   description = 'HAR is an open-source agent harness — CLI and MCP server — for multi-agent coding workflows. Isolated worktrees, deterministic verification, and software-factory observability for Claude Code, Cursor, and Codex.',
   bodyClass = '',
   canonicalPath = Astro.url.pathname,
+  ogImagePath,
 } = Astro.props;
 const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
-const ogImage = new URL('/assets/har-logo.png', Astro.site ?? Astro.url.origin);
+const ogImage = new URL(ogImagePath ?? '/assets/har-logo.png', Astro.site ?? Astro.url.origin);
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -47,7 +50,7 @@ const jsonLd = {
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content={ogImagePath ? 'summary_large_image' : 'summary'} />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />

@@ -26,6 +26,7 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
   title={`${post.data.title} — HAR`}
   description={post.data.description}
   canonicalPath={`/blog/${post.id}/`}
+  ogImagePath={post.data.cover}
 >
 <section class="hero blueprint-surface blog-hero blog-hero-article">
 <div class="container">
@@ -43,6 +44,9 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 <section class="section blog-article-section">
 <div class="container">
 <article class="blog-prose">
+{post.data.cover && (
+<img class="blog-cover" src={post.data.cover} alt={post.data.coverAlt ?? ''} width="2400" height="1350" />
+)}
 {post.data.migrationPrompt && <MigrationPrompt />}
 {post.data.leadFigure === 'pr-pipeline' && <PrPipeline />}
 <Content />
