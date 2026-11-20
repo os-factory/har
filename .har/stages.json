@@ -106,7 +106,7 @@
       "id": "unit-tests",
       "kind": "test",
       "description": "Unit tests",
-      "command": "${NPM_BIN:-npm} test",
+      "command": "${NPM_BIN:-npm} test -- --coverage --coverageReporters=text-summary",
       "artifacts": [],
       "requiresAgentId": true,
       "tier": "full"
