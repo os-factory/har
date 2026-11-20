@@ -50,25 +50,17 @@ export function mergeOnboardingPreferences(
 }
 
 /** Set or clear (`mode` undefined) the personal worktree setting — one repo key, or all repos without one. */
-export function mergeWorktreePreference(
-  current: OnboardingPreferences,
-  mode: 'on' | 'off' | undefined,
-  repoKey?: string,
-): OnboardingPreferences {
-  const repos = { ...current.worktree.repos };
-  if (repoKey !== undefined) {
-    if (mode) repos[repoKey] = mode;
-    else delete repos[repoKey];
-    return { ...current, worktree: { ...current.worktree, repos } };
-  }
-  return { ...current, worktree: { repos, ...(mode ? { default: mode } : {}) } };
-}
-
 export function writeWorktreePreference(
   mode: 'on' | 'off' | undefined,
   repoKey?: string,
 ): OnboardingPreferences {
-  return writePreferences(mergeWorktreePreference(readOnboardingPreferences(), mode, repoKey));
+  const current = readOnboardingPreferences();
+  const repos = { ...current.worktree.repos };
+  let fallback = current.worktree.default;
+  if (repoKey === undefined) fallback = mode;
+  else if (mode) repos[repoKey] = mode;
+  else delete repos[repoKey];
+  return writePreferences({ ...current, worktree: { repos, default: fallback } });
 }
 
 export function writeOnboardingPreferences(

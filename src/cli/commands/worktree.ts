@@ -36,10 +36,15 @@ function handleSet(mode: 'on' | 'off' | undefined, argv: ScopeArgv): void {
   info(describeWorktreeMode(resolveWorktreeMode(repo)));
 }
 
-const scopeOptions = (y: Argv) =>
-  y
-    .option('repo', { type: 'string', default: '.', describe: 'Repository the setting applies to' })
-    .option('global', { type: 'boolean', default: false, describe: 'Apply to all repositories' });
+const setCommand = (name: 'on' | 'off' | 'reset', describe: string) => ({
+  command: name,
+  describe,
+  builder: (y: Argv) =>
+    y
+      .option('repo', { type: 'string', default: '.', describe: 'Repository the setting applies to' })
+      .option('global', { type: 'boolean', default: false, describe: 'Apply to all repositories' }),
+  handler: (argv: ScopeArgv) => handleSet(name === 'reset' ? undefined : name, argv),
+});
 
 export const worktreeCommand = {
   command: 'worktree <subcommand>',
@@ -55,15 +60,9 @@ export const worktreeCommand = {
             .option('json', { type: 'boolean', default: false }),
         (argv) => handleStatus(argv as unknown as { repo: string; json: boolean }),
       )
-      .command('on', 'Launch slots in a session worktree', scopeOptions, (argv) =>
-        handleSet('on', argv as unknown as ScopeArgv),
-      )
-      .command('off', 'Launch slots in the checkout itself (no worktree, no session branch)', scopeOptions, (argv) =>
-        handleSet('off', argv as unknown as ScopeArgv),
-      )
-      .command('reset', 'Clear your setting and fall back to the repo default', scopeOptions, (argv) =>
-        handleSet(undefined, argv as unknown as ScopeArgv),
-      )
+      .command(setCommand('on', 'Launch slots in a session worktree'))
+      .command(setCommand('off', 'Launch slots in the checkout itself (no worktree, no session branch)'))
+      .command(setCommand('reset', 'Clear your setting and fall back to the repo default'))
       .demandCommand(1, 'Specify a subcommand: status, on, off or reset'),
   handler: () => {},
 };

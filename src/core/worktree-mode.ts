@@ -2,9 +2,8 @@ import { readHarnessEnv } from '../harness/env';
 import { resolveHarnessRoot } from '../harness/manifest';
 import type { WorktreeMode } from '../harness/schema';
 import { resolveMainWorkingTree } from './control-repo-path';
+import { parseBoolean } from '../utils/parse-boolean';
 import { readOnboardingPreferences } from './onboarding-preferences';
-
-export type { WorktreeMode };
 
 /** Key of a repository in `preferences.worktree.repos`: its main checkout. */
 export function worktreePreferenceKey(repoPath: string): string {
@@ -21,9 +20,8 @@ export function worktreePreferenceKey(repoPath: string): string {
 export function resolveWorktreeMode(repoPath: string, explicit?: boolean): WorktreeMode {
   if (explicit !== undefined) return { enabled: explicit, source: 'flag' };
 
-  // Not telemetry-config's parser: tests mock that module wholesale.
-  const fromEnv = process.env.HAR_WORKTREE?.trim().toLowerCase();
-  if (fromEnv === 'on' || fromEnv === 'off') return { enabled: fromEnv === 'on', source: 'env' };
+  const fromEnv = parseBoolean(process.env.HAR_WORKTREE);
+  if (fromEnv !== undefined) return { enabled: fromEnv, source: 'env' };
 
   const preference = readOnboardingPreferences().worktree;
   const forRepo = preference.repos[worktreePreferenceKey(repoPath)];
@@ -32,7 +30,7 @@ export function resolveWorktreeMode(repoPath: string, explicit?: boolean): Workt
 
   const harnessEnv = readHarnessEnv(resolveHarnessRoot(repoPath)).HARNESS_USE_WORKTREE;
   if (harnessEnv !== undefined) {
-    return { enabled: harnessEnv.toLowerCase() !== 'false', source: 'harness-env' };
+    return { enabled: parseBoolean(harnessEnv, true), source: 'harness-env' };
   }
   return { enabled: true, source: 'default' };
 }

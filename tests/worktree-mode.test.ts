@@ -8,6 +8,7 @@ import {
   worktreePreferenceKey,
 } from '../src/core/worktree-mode';
 import { LaunchEnvironmentInputSchema } from '../src/mcp/schemas';
+import { parseBoolean } from '../src/utils/parse-boolean';
 
 describe('worktree mode', () => {
   let tmpDir: string;
@@ -37,8 +38,10 @@ describe('worktree mode', () => {
   it('resolves flag, HAR_WORKTREE, repo setting, global setting, harness.env, then on', () => {
     expect(resolveWorktreeMode(repo)).toEqual({ enabled: true, source: 'default' });
 
-    harnessEnv('false');
-    expect(resolveWorktreeMode(repo)).toEqual({ enabled: false, source: 'harness-env' });
+    for (const off of ['false', 'off', '0', 'no']) {
+      harnessEnv(off);
+      expect(resolveWorktreeMode(repo)).toEqual({ enabled: false, source: 'harness-env' });
+    }
 
     writeWorktreePreference('on');
     expect(resolveWorktreeMode(repo)).toEqual({ enabled: true, source: 'global-preference' });
@@ -68,6 +71,14 @@ describe('worktree mode', () => {
     // A schema default of true would shadow every setting below the flag.
     expect(LaunchEnvironmentInputSchema.parse({ agentId: 1 }).worktree).toBeUndefined();
     expect(LaunchEnvironmentInputSchema.parse({ agentId: 1, worktree: false }).worktree).toBe(false);
+  });
+
+  it('parseBoolean accepts the usual spellings and falls back otherwise', () => {
+    for (const on of ['1', 'true', 'ON', ' yes ', 'enabled']) expect(parseBoolean(on)).toBe(true);
+    for (const off of ['0', 'false', 'Off', 'no', 'disabled']) expect(parseBoolean(off)).toBe(false);
+    expect(parseBoolean(undefined)).toBeUndefined();
+    expect(parseBoolean('')).toBeUndefined();
+    expect(parseBoolean('maybe', true)).toBe(true);
   });
 
   it('names the mode, who decided it and how to change it', () => {

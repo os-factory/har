@@ -378,7 +378,7 @@ export function inspectSlotReadiness(
 
   if (resolveWorktreeMode(repoPath, options.worktree).enabled) {
     const untracked =
-      options.untrackedPaths ?? scanUntrackedWorktreePaths(repoPath);
+      options.untrackedPaths ?? listUntrackedAbsentFromWorktree(repoPath);
     const untrackedWarning = formatUntrackedWorktreeWarning(untracked);
     if (untrackedWarning) warnings.push(untrackedWarning);
   }
