@@ -1,3 +1,9 @@
+## [1.29.0](https://github.com/os-factory/har/compare/v1.28.0...v1.29.0) (2026-11-20)
+
+### Features
+
+* **telemetry:** choose a telemetry level, ask it at onboarding, show what HQ receives ([#411](https://github.com/os-factory/har/issues/411)) ([90384e6](https://github.com/os-factory/har/commit/90384e65b4e021c0bb9aad7c4c7ce32c9c80beb7))
+
 ## [1.28.0](https://github.com/os-factory/har/compare/v1.27.3...v1.28.0) (2026-11-17)
 
 ### Features
