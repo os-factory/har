@@ -187,8 +187,8 @@ running are attributed through the slot record.
 A worktree only materializes what is in `HEAD`. Preflight and launch warn when
 untracked (not gitignored) paths will be missing from the session worktree —
 the count plus a few examples. Track them, or launch with `--no-worktree`. The
-check is skipped when `HARNESS_USE_WORKTREE=false` and for a `--no-worktree`
-launch. The same warning appears in `har env status --json`, MCP launch
+check is skipped when worktrees are off (see [`har worktree`](#har-worktree)) and
+for a `--no-worktree` launch. The same warning appears in `har env status --json`, MCP launch
 `stderr`, and `har env launch`.
 
 ### Verify and finish
@@ -484,6 +484,34 @@ running and rewrites the hook config; start a new agent session to pick it up. `
 warns when `~/.har/otel-hooks/otel_config.json` records something else (for example a
 preference edited by hand). Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
 HAR HQ receives the text only with `har control trajectory on`.
+
+## `har worktree`
+
+```bash
+har worktree status [--json] [--repo .]
+har worktree off [--global] [--repo .]
+har worktree on [--global] [--repo .]
+har worktree reset [--global] [--repo .]
+```
+
+Your personal choice between launching slots in an isolated session worktree
+(default) or in the checkout itself. `off` / `on` apply to the current
+repository (keyed by its main checkout path), or to all repositories with
+`--global`; `reset` clears that setting. Stored in `~/.har/preferences.json`.
+
+A launch resolves the mode once, highest first:
+
+1. `--worktree` / `--no-worktree`, or the MCP `worktree` parameter
+2. `HAR_WORKTREE=on|off`
+3. your setting for this repository
+4. your setting for all repositories
+5. `HARNESS_USE_WORKTREE` in `.har/harness.env` (the team default)
+6. on
+
+`har env launch`, `har env status`, `har env doctor` and `har worktree status`
+print the effective mode and which of these decided it; `status --json` and the
+MCP launch result carry it as `worktreeMode`. `har env recover` keeps the mode
+the slot was launched with. There is no MCP tool for this setting.
 
 ## `har mcp`
 

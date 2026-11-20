@@ -29,6 +29,7 @@ import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
 import { isTelemetryEnabled } from './telemetry-config';
+import { resolveWorktreeMode } from './worktree-mode';
 import { recordLaunchBinding, recordReleaseBindings } from './session-bindings';
 import {
   appendTelemetryEnvToFile,
@@ -177,9 +178,13 @@ export class RunService {
   }
 
   async launchEnvironment(options: LaunchOptions): Promise<EnvironmentRunResult> {
+    // Resolved once here; a resume keeps the mode stored for the slot
+    const worktreeMode = options.resume
+      ? undefined
+      : resolveWorktreeMode(options.repoPath, options.worktree);
     const guard = checkLaunchGuard(options.repoPath, options.agentId, {
       resume: options.resume,
-      worktree: options.worktree,
+      worktree: worktreeMode?.enabled,
     });
     if (!guard.allowed) {
       const slot = guard.slot;
@@ -300,7 +305,7 @@ export class RunService {
       attemptId,
       capture: options.capture ?? false,
       launchFlags: {
-        worktree: options.worktree,
+        worktree: worktreeMode?.enabled,
         claude: options.claude,
         resume: options.resume,
         workUnitId,
@@ -316,6 +321,7 @@ export class RunService {
       if (session) {
         envResult.workDir = session.workDir;
         envResult.worktreePath = session.worktreePath;
+        envResult.worktreeMode = worktreeMode;
         envResult.branch = session.branch;
         envResult.previewUrls = envResult.previewUrls ?? session.previewUrls;
         envResult.workUnitId = session.workUnitId;

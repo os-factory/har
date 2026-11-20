@@ -118,7 +118,7 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
   const agentId = options.agentId;
   const pm = detectProcessManager(repoRoot);
   const resume = options.resume ?? false;
-  const useWorktree = options.worktree ?? (env.HARNESS_USE_WORKTREE ?? 'true') !== 'false';
+  const useWorktree = options.worktree ?? true;
   const projectName = env.HARNESS_PROJECT_NAME ?? '';
   const exec = options.exec ?? defaultExec;
   const ops = options.ops ?? realSystemOps;

@@ -14,6 +14,7 @@ import { lineCommand } from './commands/line';
 import { pluginCommand } from './commands/plugin';
 import { preferencesCommand } from './commands/preferences';
 import { telemetryCommand } from './commands/telemetry';
+import { worktreeCommand } from './commands/worktree';
 import { HAR_ROOT_EPILOG } from './help-text';
 
 export async function runCli(): Promise<void> {
@@ -32,6 +33,7 @@ export async function runCli(): Promise<void> {
     .command(lineCommand)
     .command(preferencesCommand)
     .command(telemetryCommand)
+    .command(worktreeCommand)
     .demandCommand(1, 'Please specify a command. Try: har onboard   or   har env --help')
     .epilog(HAR_ROOT_EPILOG)
     .strict()

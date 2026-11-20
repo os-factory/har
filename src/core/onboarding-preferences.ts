@@ -49,14 +49,31 @@ export function mergeOnboardingPreferences(
   });
 }
 
+/** Set or clear (`mode` undefined) the personal worktree setting — one repo key, or all repos without one. */
+export function writeWorktreePreference(
+  mode: 'on' | 'off' | undefined,
+  repoKey?: string,
+): OnboardingPreferences {
+  const current = readOnboardingPreferences();
+  const repos = { ...current.worktree.repos };
+  let fallback = current.worktree.default;
+  if (repoKey === undefined) fallback = mode;
+  else if (mode) repos[repoKey] = mode;
+  else delete repos[repoKey];
+  return writePreferences({ ...current, worktree: { repos, default: fallback } });
+}
+
 export function writeOnboardingPreferences(
   overrides: OnboardingPreferenceOverrides,
 ): OnboardingPreferences {
-  const preference = {
-    ...mergeOnboardingPreferences(readOnboardingPreferences(), overrides),
+  return writePreferences(mergeOnboardingPreferences(readOnboardingPreferences(), overrides));
+}
+
+function writePreferences(preference: OnboardingPreferences): OnboardingPreferences {
+  const parsed = OnboardingPreferencesSchema.parse({
+    ...preference,
     updatedAt: new Date().toISOString(),
-  };
-  const parsed = OnboardingPreferencesSchema.parse(preference);
+  });
   const preferencePath = getOnboardingPreferencesPath();
   fs.mkdirSync(path.dirname(preferencePath), { recursive: true });
   fs.writeFileSync(preferencePath, `${JSON.stringify(parsed, null, 2)}\n`);

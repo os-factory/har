@@ -138,7 +138,11 @@ export const HAR_MCP_TOOLS: Tool[] = [
       {
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
-        worktree: { type: 'boolean' },
+        worktree: {
+          type: 'boolean',
+          description:
+            'Omit to use the user/repo setting (reported back as worktreeMode); set only when the user asks.',
+        },
         claude: { type: 'boolean' },
         resume: {
           type: 'boolean',

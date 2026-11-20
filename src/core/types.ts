@@ -8,6 +8,7 @@ import type {
   ValidationRecord,
   VerificationResult,
   WorkUnitRelatedLink,
+  WorktreeMode,
 } from '../harness/schema';
 import { z } from 'zod';
 
@@ -83,6 +84,8 @@ export interface EnvironmentRunResult {
   /** Where the session's code lives — all agent edits must go under this path. */
   workDir?: string;
   worktreePath?: string;
+  /** Whether this launch used a session worktree, and which setting decided it. */
+  worktreeMode?: WorktreeMode;
   branch?: string;
   workUnitId?: string;
   attemptId?: string;

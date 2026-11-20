@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { parseBoolean } from '../utils/parse-boolean';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { listRegisteredRepos, setRepoPortalSync } from './control-registry';
 import { readTelemetryPreference } from './telemetry-config';
@@ -421,10 +422,7 @@ export function isPortalTargetActive(target: PortalTargetResolution): boolean {
 }
 
 function trajectoryEnvOverride(): boolean | null {
-  const envOverride = process.env.HAR_PORTAL_TRAJECTORY?.trim().toLowerCase();
-  if (envOverride === 'on' || envOverride === 'true' || envOverride === '1') return true;
-  if (envOverride === 'off' || envOverride === 'false' || envOverride === '0') return false;
-  return null;
+  return parseBoolean(process.env.HAR_PORTAL_TRAJECTORY) ?? null;
 }
 
 export function isPortalTrajectoryEnabledForTarget(target?: PortalTargetResolution): boolean {

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { parseBoolean } from '../utils/parse-boolean';
 
 /**
  * How much agent activity HAR records, from nothing to the full trajectory.
@@ -136,14 +137,6 @@ function getPreferencePath(): string {
   return path.join(os.homedir(), '.har', 'telemetry.json');
 }
 
-function parseEnvOverride(raw: string | undefined): boolean | undefined {
-  if (raw === undefined || raw === '') return undefined;
-  const normalized = raw.trim().toLowerCase();
-  if (['0', 'false', 'off', 'no', 'disabled'].includes(normalized)) return false;
-  if (['1', 'true', 'on', 'yes', 'enabled'].includes(normalized)) return true;
-  return undefined;
-}
-
 function preferenceFor(
   level: TelemetryLevel,
   rest: Pick<TelemetryPreference, 'portalTrajectory' | 'updatedAt'> = {},
@@ -208,7 +201,7 @@ export function writeTelemetryLevel(level: TelemetryLevel): TelemetryPreference 
  */
 export function ensureDefaultTelemetryPreference(): TelemetryPreference {
   if (fs.existsSync(getPreferencePath())) return readTelemetryPreference();
-  if (parseEnvOverride(process.env.HAR_TELEMETRY) === false) return preferenceFor('off');
+  if (parseBoolean(process.env.HAR_TELEMETRY) === false) return preferenceFor('off');
   return writeTelemetryLevel(DEFAULT_TELEMETRY_LEVEL);
 }
 
@@ -227,7 +220,7 @@ export function getTelemetryLevel(): TelemetryLevel {
   const raw = process.env.HAR_TELEMETRY?.trim().toLowerCase();
   if (!raw) return stored;
   if (isTelemetryLevel(raw)) return raw;
-  const toggle = parseEnvOverride(raw);
+  const toggle = parseBoolean(raw);
   if (toggle === false) return 'off';
   if (toggle === true) return stored === 'off' ? DEFAULT_TELEMETRY_LEVEL : stored;
   return stored;
@@ -249,7 +242,7 @@ export function getTelemetryPreferencePath(): string {
 
 export function isPortalTrajectoryEnabled(): boolean {
   if (!isTelemetryEnabled()) return false;
-  const envOverride = parseEnvOverride(process.env.HAR_PORTAL_TRAJECTORY);
+  const envOverride = parseBoolean(process.env.HAR_PORTAL_TRAJECTORY);
   if (envOverride !== undefined) return envOverride;
   return readTelemetryPreference().portalTrajectory === true;
 }

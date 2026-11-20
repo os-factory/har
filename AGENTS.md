@@ -221,8 +221,9 @@ Intentional holes (human-only, no MCP tool):
   scripts is a deliberate human policy decision with an interactive confirmation.
 - Hooks / commit-gate onboarding (`har hooks …`, init/maintain onboarding prompts) —
   installs git hooks and records user policy preferences; a policy decision for humans.
-- Onboarding/preferences, telemetry toggles, and portal login (`har onboard`,
-  `har preferences`, `har telemetry`, `har hq`) — account- and machine-level state.
+- Onboarding/preferences, telemetry toggles, the personal worktree setting, and portal
+  login (`har onboard`, `har preferences`, `har telemetry`, `har worktree`, `har hq`) —
+  account- and machine-level state.
 
 ## Anti-patterns
 

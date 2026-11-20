@@ -39,6 +39,7 @@ import { bindWorkUnit } from '../../core/work-bind';
 import { resolveHarnessRoot } from '../../harness/manifest';
 import { adoptHarness, ejectHarness } from '../../harness/eject';
 import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
+import { describeWorktreeMode, resolveWorktreeMode } from '../../core/worktree-mode';
 import {
   confirmCleanupSelection,
   discoverCleanupCandidates,
@@ -275,8 +276,8 @@ export const envCommand = {
             })
             .option('worktree', {
               type: 'boolean',
-              default: true,
-              describe: 'Use an isolated git worktree (default)',
+              describe:
+                'Use an isolated git worktree; --no-worktree runs in this checkout (default: har worktree status)',
             })
             .option('claude', { type: 'boolean', default: false })
             .option('resume', {
@@ -1068,7 +1069,7 @@ export async function handlePreflight(argv: {
 export async function handleLaunch(argv: {
   id?: number;
   repo: string;
-  worktree: boolean;
+  worktree?: boolean;
   claude: boolean;
   resume: boolean;
   workId?: string;
@@ -1115,6 +1116,7 @@ export async function handleLaunch(argv: {
     divider();
     success(`Session ready — make ALL file edits under: ${result.workDir}`);
     if (result.branch) info(`Branch: ${result.branch}`);
+    if (result.worktreeMode) info(describeWorktreeMode(result.worktreeMode));
   }
   return finishCommand(result.code);
 }
@@ -1195,7 +1197,6 @@ export async function handleRecover(argv: { id?: number; repo: string }): Promis
   return handleLaunch({
     id: argv.id,
     repo: argv.repo,
-    worktree: true,
     claude: false,
     resume: true,
     workId: undefined,
@@ -1328,6 +1329,7 @@ export async function handleDoctor(argv: { repo: string; json?: boolean }): Prom
 
   header('har env doctor');
   info(`Repository: ${repoPath}`);
+  info(describeWorktreeMode(resolveWorktreeMode(repoPath)));
   divider();
   for (const line of formatDoctorReport(report).split('\n')) {
     info(line);

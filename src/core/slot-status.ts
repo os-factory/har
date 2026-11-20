@@ -17,6 +17,8 @@ import { listRuns, resolveAgentWorkDir } from './runs';
 import { readSlotRegistry } from './slot-registry';
 import { allocateAppPorts } from './slot-ports';
 import { inspectSlotReadiness, scanUntrackedWorktreePaths } from './slot-preflight';
+import { describeWorktreeMode, resolveWorktreeMode } from './worktree-mode';
+import { listUntrackedAbsentFromWorktree } from './worktree-untracked';
 import { packageRunner } from '../utils/package-runner';
 import { readGitRemote } from './git-remote';
 
@@ -297,6 +299,7 @@ function collectSlotStatus(
   runs: RunRecord[],
   pm2Procs: Array<{ name?: string }> | undefined,
   untrackedPaths?: string[],
+  worktree?: boolean,
 ): AgentSlotStatus {
   const env = readHarnessEnv(harnessRoot);
   const projectName = env.HARNESS_PROJECT_NAME ?? path.basename(harnessRoot);
@@ -347,7 +350,8 @@ function collectSlotStatus(
   const readiness = inspectSlotReadiness(harnessRoot, agentId, {
     allocatePorts: true,
     occupied: { active, dirty: drift.dirty },
-    untrackedPaths: untrackedPaths ?? scanUntrackedWorktreePaths(harnessRoot, env),
+    untrackedPaths: untrackedPaths ?? scanUntrackedWorktreePaths(harnessRoot),
+    worktree,
   });
 
   const resumeHint =
@@ -392,6 +396,7 @@ function collectSlotStatus(
 export function renderEnvironmentStatusText(status: EnvironmentStatus): string {
   const lines: string[] = [];
   lines.push(`Harness: ${status.harnessRoot}${status.profile ? ` (profile: ${status.profile})` : ''}`);
+  if (status.worktreeMode) lines.push(describeWorktreeMode(status.worktreeMode));
 
   for (const slot of status.slots) {
     const state = slot.active ? (slot.sessionStatus ?? 'active') : 'free';
@@ -445,14 +450,16 @@ export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
   const slotIds = getAgentSlotIds(harnessRoot);
   const pm2Procs = listPm2Processes();
   // Repo-wide and identical for every slot — scanned once, like pm2Procs above.
-  const untrackedPaths = scanUntrackedWorktreePaths(harnessRoot, readHarnessEnv(harnessRoot));
+  const worktreeMode = resolveWorktreeMode(harnessRoot);
+  const untrackedPaths = worktreeMode.enabled ? listUntrackedAbsentFromWorktree(harnessRoot) : [];
 
   return {
     repoPath: path.resolve(repoPath),
     harnessRoot,
     gitRemote: readGitRemote(harnessRoot),
     profile: manifest?.profile,
-    slots: slotIds.map((id) => collectSlotStatus(harnessRoot, id, runs, pm2Procs, untrackedPaths)),
+    worktreeMode,
+    slots: slotIds.map((id) => collectSlotStatus(harnessRoot, id, runs, pm2Procs, untrackedPaths, worktreeMode.enabled)),
     generatedAt: new Date().toISOString(),
   };
 }

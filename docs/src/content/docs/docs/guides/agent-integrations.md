@@ -92,9 +92,22 @@ the model does not have to parse. Run history is identical on every surface —
 ## External worktree managers
 
 HAR also runs inside a checkout it did not create — a Conductor workspace, a
-Cursor worktree, a cloud sandbox, or a hand-rolled `git worktree add`. Launch
-with `--no-worktree` in that checkout; HAR records `mode: external` and will
-not delete the orchestrator's tree on teardown.
+Cursor worktree, a cloud sandbox, or a hand-rolled `git worktree add`. Turn
+HAR's own session worktrees off once, in the main checkout:
+
+```bash
+har worktree off
+```
+
+The setting is yours and is keyed by the main checkout, so every linked
+worktree of the repository picks it up. Agents then call a plain
+`har env launch <id>` / `har_launch_environment` in the orchestrator's
+checkout; HAR records `mode: external` and will not delete the orchestrator's
+tree on teardown. It also applies to launches from the main checkout itself,
+which then run in place. `har worktree status` shows the effective mode, and
+`har worktree reset` undoes it — see [`har worktree`](/docs/reference/cli/#har-worktree).
+
+For a one-off, pass `--no-worktree` to a single launch instead.
 
 The `.har/` contract has to live on the **branch / commit the orchestrator
 branches from**. Many managers pin a base SHA when the repository is added and
@@ -108,7 +121,8 @@ Before creating workspaces:
    base.
 2. If the orchestrator caches the base SHA, remove and re-add the repository
    (or otherwise refresh the pin) so new workspaces inherit that commit.
-3. Then create workspaces and launch with `--no-worktree`.
+3. Then create workspaces and launch in them (with `har worktree off` set, or
+   `--no-worktree` for a single launch).
 
 Mission Control still keeps **one repository row** per git repo. Slot occupancy
 is read from every linked worktree that stores its own `.har/` evidence, so a

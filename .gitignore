@@ -6,6 +6,8 @@ bun.lockb
 .bun-cache/
 dist/
 .astro/
+.codegraph/
+.idea/
 *.tsbuildinfo
 *.js.map
 .env

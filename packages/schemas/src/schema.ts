@@ -182,8 +182,32 @@ export const OnboardingPreferencesSchema = z.object({
       scope: z.enum(['worktrees', 'all']).default('worktrees'),
     })
     .default({}),
+  /** Personal session-worktree setting: all repos, and per main-checkout path. */
+  worktree: z
+    .object({
+      default: z.enum(['on', 'off']).optional(),
+      repos: z.record(z.enum(['on', 'off'])).default({}),
+    })
+    .default({}),
   updatedAt: z.string().optional(),
 });
+
+/** Effective session-worktree setting and what decided it (highest precedence first). */
+export const WORKTREE_MODE_SOURCES = [
+  'flag',
+  'env',
+  'repo-preference',
+  'global-preference',
+  'harness-env',
+  'default',
+] as const;
+
+export const WorktreeModeSchema = z.object({
+  enabled: z.boolean(),
+  source: z.enum(WORKTREE_MODE_SOURCES),
+});
+
+export type WorktreeMode = z.infer<typeof WorktreeModeSchema>;
 
 export type OnboardingPreferences = z.infer<typeof OnboardingPreferencesSchema>;
 
@@ -534,6 +558,8 @@ export const EnvironmentStatusSchema = z.object({
   harnessRoot: z.string(),
   gitRemote: z.string().optional(),
   profile: z.enum(['default', 'cli', 'ios']).optional(),
+  /** What a new launch would do; a running slot reports its own `mode`. */
+  worktreeMode: WorktreeModeSchema.optional(),
   slots: z.array(AgentSlotStatusSchema),
   generatedAt: z.string(),
 });
