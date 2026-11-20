@@ -39,11 +39,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { syncReposWithControl } from '../src/core/control-sync';
-import { listRuns } from '../src/core/runs';
-import type { RunRecord } from '../src/harness/schema';
 
 const realFetch = global.fetch;
-const mockedListRuns = listRuns as jest.MockedFunction<typeof listRuns>;
 
 function jsonResponse(body: unknown) {
   return {

@@ -34,7 +34,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src tests packages/schemas/src --ext .ts",
+    "check": "npm run typecheck && npm run lint && npm test",
     "postinstall": "node scripts/ensure-telemetry-default.cjs",
     "prepublishOnly": "npm run build",
     "release": "semantic-release"

@@ -36,6 +36,7 @@ describe('clipboard', () => {
 
     expect(writeOsc52Clipboard('hello', stream as unknown as NodeJS.WriteStream)).toBe(true);
     expect(chunks).toHaveLength(1);
+    // eslint-disable-next-line no-control-regex
     expect(chunks[0]).toMatch(/^\x1b]52;c;[A-Za-z0-9+/=]+\x07$/);
     expect(Buffer.from(chunks[0].slice('\x1b]52;c;'.length, -1), 'base64').toString('utf8')).toBe(
       'hello',
@@ -91,6 +92,7 @@ describe('clipboard', () => {
     Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: true });
 
     expect(copyTextToClipboard('remote ssh')).toEqual({ ok: true, method: 'osc52' });
+    // eslint-disable-next-line no-control-regex
     expect(write).toHaveBeenCalledWith(expect.stringMatching(/^\x1b]52;c;/));
 
     write.mockRestore();
