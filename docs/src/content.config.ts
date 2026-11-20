@@ -11,6 +11,9 @@ const blog = defineCollection({
 		date: z.coerce.date(),
 		kicker: z.string().optional(),
 		migrationPrompt: z.boolean().optional(),
+		leadFigure: z.enum(['pr-pipeline']).optional(),
+		/** Path under public/ for the social share card (og:image). */
+		shareImage: z.string().startsWith('/').optional(),
 	}),
 });
 

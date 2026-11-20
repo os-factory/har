@@ -1,0 +1,66 @@
+# Paired benchmark. ARM A = repository made agent-ready with HAR (harness adapted
+# task-blind by a stronger model); ARM B = the same solve model on a plain checkout.
+# Protocol v2: both arms receive a byte-identical, minimal task prompt; no slot is
+# pre-launched; every workflow behaviour must come from the repository itself.
+protocol: v2
+
+datasets:
+  newtypebench:
+    kind: prototypebench
+    # Snapshot of HF newtype-2038/newtypebench-v1 (formerly banyaaiofficial/prototypebench-v1,
+    # the dataset behind github.com/prototypebench/prototypebench). 123 rows, all held_out.
+    instances_file: .vendor/newtypebench-instances.jsonl
+    hf_name: newtype-2038/newtypebench-v1
+  swebench-mm-dev:
+    kind: swebench
+    hf_name: SWE-bench/SWE-bench_Multimodal
+    # swebench >=5.0.2 also grades the test split locally; dev is used for the pilot.
+    split: dev
+
+# Models (Claude Code CLI aliases / ids)
+solve_model: claude-opus-4-8        # both arms solve with this model
+setup_model: claude-sonnet-5        # ARM A harness adaptation + drift fixes only
+
+# Budgets
+solve_timeout_minutes: 45
+adapt_timeout_minutes: 40           # one task-blind adaptation session
+adapt_max_rounds: 3                 # adaptation sessions before giving up on a repo/commit
+adapt_budget_minutes: 100           # total wall clock for adaptation at one commit
+drift_timeout_minutes: 25           # one drift-fix session (cache hit but gate failed)
+drift_max_rounds: 2
+gate_timeout_minutes: 45            # launch + verify --full wall clock (large suites need this)
+
+# Unattended operation: a usage-capped plan returns an immediate is_error session.
+# Wait and retry instead of losing the instance.
+usage_limit_retries: 5
+usage_limit_wait_minutes: 20
+
+har_profile_override: {}            # repo -> default|cli (else inferred)
+har_init_extra_args: ["--yes", "--no-cursor-rule", "--agents", "claude", "--commit-gate", "never"]
+
+# Checkouts and downloaded assets live outside this repository so that no working
+# directory path can reveal HAR or the experiment to a solving agent.
+work_root: /home/antoine/agentbench-work
+base_branch_name: task-base
+# Checkouts are large (a mcp-context-forge pair plus venvs is >1 GB). They are deleted once the
+# instance is scored; the raw diff, the graded patch and every transcript stay under runs/.
+keep_work_dirs: false
+min_free_gb: 8                      # a campaign stops cleanly below this
+
+runs_dir: runs                      # metadata, transcripts, predictions, scores
+results_dir: results
+har_cache_dir: .har-cache
+repo_cache_dir: .repo-cache
+vendor_dir: .vendor
+
+# Scoring mechanics, not instructions to the agent: harness scaffolding can never be
+# part of a graded patch, and files the hidden test patch touches must not conflict
+# with it at score time (same convention as the datasets' own reference runners).
+patch_exclude_prefixes:
+  - .har/
+  - .claude/
+  - .cursor/
+  - .codex/
+  - AGENTS.md
+  - CLAUDE.md
+  - .har-mcp-setup.json

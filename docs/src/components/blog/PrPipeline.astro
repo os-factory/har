@@ -1,0 +1,353 @@
+---
+import results from '@saas-har-results';
+
+const prs = results.instances;
+const n = prs.length;
+const harResolved = prs.filter((pr) => pr.har_resolved).length;
+const rawResolved = prs.filter((pr) => pr.raw_resolved).length;
+const rawChecked = prs.filter((pr) => pr.raw_verified_anything).length;
+const rawNone = n - rawChecked;
+---
+
+<figure class="pr-flow">
+  <div class="pr-window">
+    <div class="pr-topbar">
+      <div class="pr-lights" aria-hidden="true"><span></span><span></span><span></span></div>
+      <span class="pr-label">saas-har · same {n} pull requests, same prompt</span>
+      <span class="pr-count">pr <b data-pr-tick>{n}</b>/{n}</span>
+    </div>
+
+    <div class="pr-board">
+      <div class="pr-lane lane-har">
+        <header>
+          <strong>With HAR</strong>
+          <span>verify --full recorded</span>
+        </header>
+        <div class="pr-grid" aria-hidden="true">
+          {prs.map((pr, i) => (
+            <span
+              class:list={['box', 'is-pipeline', { 'is-resolved': pr.har_resolved }]}
+              style={`--i:${i}`}
+              title={`${pr.short} · pipeline ran${pr.har_resolved ? ' · resolved' : ''}`}
+            />
+          ))}
+        </div>
+        <dl class="pr-stats">
+          <div class="stat-good"><dt>pipeline</dt><dd><b data-count="pipeline">{n}</b>/{n}</dd></div>
+          <div class="stat-good"><dt>no check</dt><dd><b data-count="none">0</b></dd></div>
+          <div><dt>resolved</dt><dd><b data-count="resolved">{harResolved}</b>/{n}</dd></div>
+        </dl>
+      </div>
+
+      <div class="pr-lane lane-raw">
+        <header>
+          <strong>Plain Claude Code</strong>
+          <span>transcript only</span>
+        </header>
+        <div class="pr-grid" aria-hidden="true">
+          {prs.map((pr, i) => (
+            <span
+              class:list={[
+                'box',
+                pr.raw_verified_anything ? 'is-checked' : 'is-open',
+                { 'is-resolved': pr.raw_resolved },
+              ]}
+              style={`--i:${i}`}
+              title={`${pr.short} · ${pr.raw_verified_anything ? 'some check in transcript' : 'no check'}${pr.raw_resolved ? ' · resolved' : ''}`}
+            />
+          ))}
+        </div>
+        <dl class="pr-stats">
+          <div><dt>pipeline</dt><dd><b data-count="pipeline">0</b>/{n}</dd></div>
+          <div class="stat-bad"><dt>no check</dt><dd><b data-count="none">{rawNone}</b></dd></div>
+          <div><dt>resolved</dt><dd><b data-count="resolved">{rawResolved}</b>/{n}</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <div class="pr-legend">
+      <span><i class="swatch is-pipeline"></i> full pipeline ran</span>
+      <span><i class="swatch is-checked"></i> some check in transcript</span>
+      <span><i class="swatch is-open"></i> no check</span>
+      <span><i class="swatch is-mark" aria-hidden="true">✓</i> hidden tests passed</span>
+      <button type="button" class="pr-replay">Replay</button>
+    </div>
+  </div>
+  <figcaption>
+    Each box is one of {n} pull requests, in the same position on both sides. With HAR every session ran the
+    project's full verification pipeline; on the plain checkout {rawNone} of {n} ran no check at all. Hidden tests
+    passed {harResolved} and {rawResolved} times — the same model, about as often. What changed is the proof.
+  </figcaption>
+</figure>
+
+<script>
+  const STEP = 110;
+  const root = document.querySelector('.pr-flow');
+  const button = root?.querySelector('.pr-replay');
+  if (root instanceof HTMLElement && button) {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const tick = root.querySelector<HTMLElement>('[data-pr-tick]');
+    const lanes = [...root.querySelectorAll<HTMLElement>('.pr-lane')].map((lane) => {
+      const boxes = [...lane.querySelectorAll<HTMLElement>('.box')];
+      const counter = (key: string) => lane.querySelector<HTMLElement>(`[data-count="${key}"]`);
+      return {
+        boxes,
+        pipeline: counter('pipeline'),
+        none: counter('none'),
+        resolved: counter('resolved'),
+      };
+    });
+    const total = lanes[0]?.boxes.length ?? 0;
+    let raf = 0;
+
+    const render = (shown: number) => {
+      if (tick) tick.textContent = String(shown);
+      for (const lane of lanes) {
+        const seen = lane.boxes.slice(0, shown);
+        const count = (cls: string) => String(seen.filter((b) => b.classList.contains(cls)).length);
+        if (lane.pipeline) lane.pipeline.textContent = count('is-pipeline');
+        if (lane.none) lane.none.textContent = count('is-open');
+        if (lane.resolved) lane.resolved.textContent = count('is-resolved');
+      }
+    };
+
+    const replay = () => {
+      cancelAnimationFrame(raf);
+      root.classList.remove('is-animated');
+      // Restart CSS animations.
+      void root.offsetWidth;
+      root.classList.add('is-animated');
+      const start = performance.now();
+      const frame = (now: number) => {
+        const shown = Math.max(0, Math.min(total, Math.floor((now - start) / STEP) + 1));
+        render(shown);
+        if (shown < total) raf = requestAnimationFrame(frame);
+      };
+      raf = requestAnimationFrame(frame);
+    };
+    button.addEventListener('click', replay);
+    if (!reduce) replay();
+  }
+</script>
+
+<style>
+  .pr-flow {
+    /* Figure-local palette: readable on both site themes. */
+    --pp-pass: #1f9d57;
+    --pp-pass-mark: #ffffff;
+    --pp-check: #c3c8cf;
+    --pp-check-mark: #11161d;
+    --pp-none: #d93d42;
+    --pp-none-bg: color-mix(in srgb, #d93d42 8%, transparent);
+    margin: 0 0 1.6em;
+  }
+  :global(:root[data-theme="dark"]) .pr-flow {
+    --pp-pass: #38c976;
+    --pp-pass-mark: #062012;
+    --pp-check: #4a5361;
+    --pp-check-mark: #f4f6f8;
+    --pp-none: #ff6b6b;
+    --pp-none-bg: color-mix(in srgb, #ff6b6b 10%, transparent);
+  }
+  .pr-flow figcaption {
+    margin-top: 10px;
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .pr-window {
+    border: 1px solid var(--theme-border);
+    border-radius: 5px;
+    background: var(--theme-surface-solid);
+    box-shadow: 0 24px 50px var(--theme-shadow);
+    overflow: hidden;
+  }
+  .pr-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 42px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--theme-border-soft);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .pr-lights { display: flex; gap: 5px; }
+  .pr-lights span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--line);
+  }
+  .pr-lights span:first-child { background: var(--red); }
+  .pr-lights span:nth-child(2) { background: var(--amber); }
+  .pr-lights span:nth-child(3) { background: var(--accent-bright); }
+  .pr-label { flex: 1; letter-spacing: .04em; }
+  .pr-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pr-count b { color: var(--text); font-weight: 650; }
+  .pr-board {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .pr-lane { padding: 16px 16px 14px; }
+  .pr-lane + .pr-lane { border-left: 1px solid var(--theme-border-soft); }
+  .pr-lane header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .pr-lane header strong {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: -.02em;
+  }
+  .pr-lane header span {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pr-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .box {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    position: relative;
+    box-sizing: border-box;
+  }
+  .box.is-pipeline, .swatch.is-pipeline { background: var(--pp-pass); }
+  .box.is-checked, .swatch.is-checked { background: var(--pp-check); }
+  .box.is-open, .swatch.is-open {
+    background: var(--pp-none-bg);
+    border: 1.5px dashed var(--pp-none);
+  }
+  .box.is-resolved::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    width: 36%;
+    height: 19%;
+    border-left: 2px solid var(--pp-pass-mark);
+    border-bottom: 2px solid var(--pp-pass-mark);
+    transform: translate(-50%, -60%) rotate(-45deg);
+  }
+  .box.is-checked.is-resolved::after { border-color: var(--pp-check-mark); }
+  .box.is-open.is-resolved::after { border-color: var(--pp-none); }
+
+  .pr-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0 0;
+  }
+  .pr-stats > div {
+    padding: 8px 10px;
+    border: 1px solid var(--theme-border-soft);
+    border-radius: 4px;
+  }
+  .pr-stats dt {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pr-stats dd {
+    margin: 2px 0 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .pr-stats dd b {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -.03em;
+    color: var(--text);
+  }
+  .pr-stats .stat-good dd b { color: var(--pp-pass); }
+  .pr-stats .stat-bad dd b { color: var(--pp-none); }
+  .pr-stats .stat-bad { border-color: color-mix(in srgb, var(--pp-none) 45%, transparent); }
+
+  .pr-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--theme-border-soft);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pr-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: inline-block;
+    box-sizing: border-box;
+  }
+  .swatch.is-mark {
+    font-style: normal;
+    font-size: 12px;
+    line-height: 12px;
+    text-align: center;
+    color: var(--text);
+  }
+  .pr-replay {
+    margin-left: auto;
+    border: 1px solid var(--theme-border);
+    background: transparent;
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .pr-replay:hover { border-color: var(--pp-pass); color: var(--pp-pass); }
+
+  .pr-flow.is-animated .box {
+    animation: box-in 420ms ease both;
+    animation-delay: calc(var(--i) * 110ms);
+  }
+  .pr-flow.is-animated .box.is-resolved::after {
+    animation: mark-in 220ms ease both;
+    animation-delay: calc(var(--i) * 110ms + 160ms);
+  }
+  @keyframes box-in {
+    0% { opacity: 0; transform: scale(.7); }
+    100% { opacity: 1; transform: none; }
+  }
+  @keyframes mark-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pr-flow.is-animated .box,
+    .pr-flow.is-animated .box.is-resolved::after {
+      animation: none;
+    }
+  }
+  @media (max-width: 680px) {
+    .pr-board { grid-template-columns: 1fr; }
+    .pr-lane + .pr-lane { border-left: 0; border-top: 1px solid var(--theme-border-soft); }
+    .pr-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pr-replay { margin-left: 0; }
+  }
+</style>
