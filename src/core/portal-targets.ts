@@ -238,6 +238,7 @@ export function recordToPortalTarget(record: PortalTargetRecord): PortalTargetRe
   };
 }
 
+// (PRT-6) tokens never appear in list/show payloads
 export function redactPortalTargetRecord(record: PortalTargetRecord): Record<string, unknown> {
   return {
     alias: record.alias,
@@ -268,6 +269,7 @@ export interface ConnectPortalResult {
  * its tokens and keeps its attached repos; connecting to a different org
  * replaces the connection and clears the attached repos.
  */
+// (PRT-2) one org connection; switching org clears attached repos
 export function connectPortal(input: {
   portalUrl: string;
   workspaceId?: string;
@@ -339,6 +341,7 @@ export function updatePortalTargetTokens(
 }
 
 /** Remove the connection and every repo attachment. Returns the removed connection. */
+// (PRT-2) disconnect removes the connection and its repos
 export function disconnectPortal(): PortalTargetRecord | null {
   const { connection } = readPortalConnectionState();
   if (!connection) return null;
@@ -391,6 +394,7 @@ function envPortalTarget(): PortalTargetResolution | null {
  * only applies when the repo is attached to it — unattached checkouts never
  * sync, so connecting does not ingest every registered repo.
  */
+// (PRT-3) env override for the run, else the connection for attached repos only
 export function resolvePortalTarget(repoPath?: string): PortalTargetResolution | null {
   const env = envPortalTarget();
   if (env) return env;

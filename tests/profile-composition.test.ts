@@ -107,7 +107,7 @@ describe('adaptation prompt is generated, not templated', () => {
 });
 
 describe('lifecycle hooks are user-owned (#238)', () => {
-  it('.har/hooks/ scripts never appear in drift', () => {
+  it('[CON-8] .har/hooks/ scripts never appear in drift', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-hooks-drift-'));
     tmpDirs.push(repoPath);
     scaffoldHarnessBoilerplate(repoPath, { profile: 'cli' });

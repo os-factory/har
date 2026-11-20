@@ -98,7 +98,7 @@ describe('completeEnvironment (#324)', () => {
     mockedTeardown.mockClear();
   });
 
-  it('reuses a matching passing full validation and does not re-run verify', async () => {
+  it('[ENV-6] reuses a matching passing full validation and does not re-run verify', async () => {
     const dir = initRepo();
     writeActiveSlot(dir);
     const validation = recordValidation({
@@ -118,7 +118,7 @@ describe('completeEnvironment (#324)', () => {
     expect(result.stdout).toContain('Branch kept: session-branch');
   });
 
-  it('refuses when the tree drifted since the last passing full validation', async () => {
+  it('[ENV-6, VER-3] refuses when the tree drifted since the last passing full validation', async () => {
     const dir = initRepo();
     writeActiveSlot(dir);
     recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
@@ -133,7 +133,7 @@ describe('completeEnvironment (#324)', () => {
     expect(mockedTeardown).not.toHaveBeenCalled();
   });
 
-  it('refuses a quick-only validation for the current tree', async () => {
+  it('[ENV-6] refuses a quick-only validation for the current tree', async () => {
     const dir = initRepo();
     writeActiveSlot(dir);
     recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: false });
@@ -144,7 +144,7 @@ describe('completeEnvironment (#324)', () => {
     expect(mockedTeardown).not.toHaveBeenCalled();
   });
 
-  it('re-runs full verify when verify is true', async () => {
+  it('[ENV-6] re-runs full verify when verify is true', async () => {
     const dir = initRepo();
     writeActiveSlot(dir);
     fs.writeFileSync(path.join(dir, 'app.txt'), 'v2\n');

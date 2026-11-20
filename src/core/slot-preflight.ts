@@ -509,6 +509,7 @@ export interface LaunchPreflightOptions extends PreflightOptions {
  * short-circuit with exit code 2 (bash parity: no PM2 or port checks run);
  * machine blockers map to exit code 1 with bash-format error lines.
  */
+// (ENV-7) preflight reports launch blockers before launching
 export function runLaunchPreflight(options: LaunchPreflightOptions): LaunchPreflightResult {
   const { repoPath, agentId, ...preflightOptions } = options;
   const harnessRoot = resolveHarnessRoot(repoPath);

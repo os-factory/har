@@ -31,7 +31,7 @@ describe('MCP tool schemas', () => {
     expect(parsed.harnessPresent).toBe(true);
   });
 
-  it('validates launch and verification outputs', () => {
+  it('[SRF-5] validates launch and verification outputs', () => {
     LaunchEnvironmentOutputSchema.parse({
       code: 0,
       stdout: '',
@@ -57,7 +57,7 @@ describe('MCP tool schemas', () => {
     });
   });
 
-  it('validates artifact listing output', () => {
+  it('[VER-9] validates artifact listing output', () => {
     ListArtifactsOutputSchema.parse({
       artifacts: [
         {

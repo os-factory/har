@@ -22,6 +22,7 @@ export interface VerificationPlan {
  * registered stage of a runnable kind. Quick mode keeps tier 'quick' stages
  * only; full mode runs the whole list.
  */
+// (VER-1) quick vs full verification plan from verificationStages
 export function resolveVerificationPlan(
   registry: HarnessStageRegistry,
   options: { full?: boolean } = {},

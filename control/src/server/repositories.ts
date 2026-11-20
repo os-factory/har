@@ -78,6 +78,7 @@ export async function registerRepository(input: unknown) {
   return repo;
 }
 
+// (MC-4) unregister deletes synced data and blocklists the path
 export async function deleteRepository(
   id: string,
   input: unknown = {},

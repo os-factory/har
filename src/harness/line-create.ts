@@ -49,6 +49,7 @@ function renderSkeleton(templatePath: string, tokens: Record<string, string>): s
  * `os-factory/har-line` ships (#322) — so `har line add <id>` installs it
  * unchanged and publishing it to npm/git later needs no format change.
  */
+// (EXT-8) scaffold a project-owned line
 export function createLine(repoPath: string, options: CreateLineOptions): CreateLineResult {
   const resolved = path.resolve(repoPath);
   if (!harnessExists(resolved)) {

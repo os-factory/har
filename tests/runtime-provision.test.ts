@@ -115,7 +115,7 @@ describe('runtime/provision', () => {
   });
 
   describe('detectEcosystem', () => {
-    it('honors an explicit HARNESS_ECOSYSTEM over manifests', () => {
+    it('[ENV-10] honors an explicit HARNESS_ECOSYSTEM over manifests', () => {
       fs.writeFileSync(path.join(dir, 'package.json'), '{}');
       expect(detectEcosystem(dir, { HARNESS_ECOSYSTEM: 'python' })).toBe('python');
     });
@@ -213,7 +213,7 @@ describe('runtime/provision', () => {
       expect(logs).toContain('Installing Node dependencies with npm...');
     });
 
-    it('HARNESS_INSTALL_CMD overrides the default install', async () => {
+    it('[ENV-10] HARNESS_INSTALL_CMD overrides the default install', async () => {
       fs.writeFileSync(path.join(dir, 'package.json'), '{}');
       const ops = fakeOps({ installed: ['npm', 'node'] });
 
@@ -223,7 +223,7 @@ describe('runtime/provision', () => {
       expect(ops.calls).not.toContainEqual({ cmd: 'npm', args: ['install', '--silent'], cwd: dir });
     });
 
-    it('throws when the install fails (set -e parity)', async () => {
+    it('[ENV-10] throws when the install fails (set -e parity)', async () => {
       fs.writeFileSync(path.join(dir, 'package.json'), '{}');
       const ops = fakeOps({ installed: ['npm'], exitCodes: { 'npm install --silent': 1 } });
       await expect(provision(ops)).rejects.toThrow(ProvisionError);

@@ -10,6 +10,7 @@ import { scrubLocalHarnessForRepos } from './harness-scrub';
  * history dirs so a later register/sync does not re-pollute the UI.
  * Preserves CloudConfig (API keys / portal settings).
  */
+// (MC-4) reset wipes repositories and the blocklist, keeps portal credentials
 export async function resetMissionControl(input: unknown): Promise<ResetMissionControlResult> {
   const options = ResetMissionControlInputSchema.parse(input);
 

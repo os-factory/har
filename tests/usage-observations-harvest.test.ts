@@ -62,7 +62,7 @@ function assistant(
 }
 
 describe('Claude observations', () => {
-  it('emits one request observation per message, keyed by request id, last split record wins', () => {
+  it('[TEL-2] emits one request observation per message, keyed by request id, last split record wins', () => {
     const records = [
       {
         type: 'user',
@@ -270,7 +270,7 @@ describe('Codex observations', () => {
     tokenCount('2026-11-12T10:01:05.000Z', { input_tokens: 10, output_tokens: 1 }, 32276),
   ];
 
-  it('emits one turn observation per turn, cached input split out, reasoning not added twice', () => {
+  it('[TEL-2] emits one turn observation per turn, cached input split out, reasoning not added twice', () => {
     const observations = codexObservationsFromRecords({ sessionId: 'thread-1' }, records);
     expect(observations).toEqual([
       {

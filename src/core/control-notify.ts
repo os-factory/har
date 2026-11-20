@@ -42,6 +42,7 @@ export function controlSyncLockPath(): string {
  * protocol matches the bash har_notify_control byte-for-byte, so shell and
  * package callers coalesce against each other.
  */
+// (MC-2) sync fires at every activity edge
 export function notifyControlSync(repoPath: string): void {
   let root: string;
   try {

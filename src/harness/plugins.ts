@@ -149,6 +149,7 @@ function resolveBundledPluginDir(pluginId: PluginId): string {
   return dir;
 }
 
+// (EXT-4) add-plugin refuses a line bundle
 export function readPluginManifestFromDir(pluginDir: string, expectedId?: string): PluginManifest {
   const manifestPath = findManifestPath(pluginDir, PLUGIN_BUNDLE_CONFIG);
   if (!manifestPath) {
@@ -413,6 +414,7 @@ function applyPluginFromDir(
 /**
  * Install a plugin by id (bundled), path, npm package, or git URL.
  */
+// (EXT-1) install a plugin bundle: register stages, record in plugins.json
 export function applyPlugin(
   repoPath: string,
   pluginSpec: PluginId,
@@ -449,6 +451,7 @@ export function applyStageTemplate(
 }
 
 /** Discover bundled plugin ids from templates/plugins/<id>/template.manifest.json */
+// (EXT-2) bundled plugins are discovered from disk, no closed enum
 export function listPluginIds(): PluginId[] {
   return listBundledPluginIds();
 }

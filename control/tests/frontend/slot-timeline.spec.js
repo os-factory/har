@@ -20,7 +20,7 @@ async function openFirstSlot(page, { needSession = false } = {}) {
 }
 
 test.describe('Slot timeline', () => {
-  test('slot page collapses to header, verify and one timeline table', async ({ page }) => {
+  test('[MC-12] slot page collapses to header, verify and one timeline table', async ({ page }) => {
     // (#340) the header offers the exact next har commands to copy
     if (!(await openFirstSlot(page))) test.skip(true, 'No slot fixture exists');
 
@@ -53,7 +53,7 @@ test.describe('Slot timeline', () => {
     await expect(timeline.getByText(/rows per page/i)).toHaveCount(0);
   });
 
-  test('rows expand in place per kind and collapse again', async ({ page }) => {
+  test('[MC-12] rows expand in place per kind and collapse again', async ({ page }) => {
     if (!(await openFirstSlot(page))) test.skip(true, 'No slot fixture exists');
     const timeline = page.getByTestId('slot-timeline');
     const table = timeline.getByRole('table').first();
@@ -81,7 +81,7 @@ test.describe('Slot timeline', () => {
     expect(expandedSomething).toBe(true);
   });
 
-  test('agent sessions open the trajectory inline and raw events stay behind a debug toggle', async ({ page }) => {
+  test('[MC-12] agent sessions open the trajectory inline and raw events stay behind a debug toggle', async ({ page }) => {
     if (!(await openFirstSlot(page, { needSession: true }))) test.skip(true, 'No slot with an agent session exists');
     const timeline = page.getByTestId('slot-timeline');
 

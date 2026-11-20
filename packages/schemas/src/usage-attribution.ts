@@ -391,6 +391,7 @@ export interface PricedObservation extends ObservationFact {
   costSource: 'reported' | 'estimated' | null;
 }
 
+// (TEL-8) provider cost wins, else catalog estimate, else unknown
 export function priceObservation(observation: ObservationFact): PricedObservation {
   if (observation.costUsd != null && Number.isFinite(observation.costUsd)) {
     return { ...observation, pricedCostUsd: observation.costUsd, costSource: 'reported' };
@@ -512,6 +513,7 @@ export interface AttributedObservation {
 }
 
 /** Normalize (one producer per instant), price, and assign each observation. */
+// (TEL-3) attribute by the binding in force at the timestamp: subagent first, then parent
 export function attributeObservations(
   timeline: BindingTimeline,
   observations: ObservationFact[],

@@ -101,6 +101,7 @@ export interface ControlUpReadiness {
 /**
  * Preflight for `har control up` — surfaces port 3847 conflicts with the control harness.
  */
+// (MC-9) port conflicts between har control up and slots
 export function inspectControlUpReadiness(repoPath: string): ControlUpReadiness {
   const resolved = path.resolve(repoPath);
   const port = parseControlHostPort();

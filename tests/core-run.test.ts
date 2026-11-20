@@ -86,7 +86,7 @@ describe('core run delegation', () => {
     expect(result.stageId).toBe('smoke');
   });
 
-  it('lists artifacts under .har/artifacts', () => {
+  it('[VER-9] lists artifacts under .har/artifacts', () => {
     const artifactPath = path.join(FIXTURE, '.har', 'artifacts', 'smoke', 'output.txt');
     fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
     fs.writeFileSync(artifactPath, 'fixture artifact\n');

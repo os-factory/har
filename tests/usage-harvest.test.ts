@@ -305,7 +305,7 @@ describe('usage harvest claude', () => {
     ).toBeNull();
   });
 
-  it('harvests only the slot whose worktree matches among parallel slots', () => {
+  it('[TEL-10] harvests only the slot whose worktree matches among parallel slots', () => {
     const homeDir = '/home/alice';
     const slot1Dir = '/home/alice/worktrees/main-abcd-har-agent-1-aa11';
     const slot2Dir = '/home/alice/worktrees/main-abcd-har-agent-2-bb22';
@@ -705,7 +705,7 @@ describe('usage harvest codex', () => {
 });
 
 describe('omit harvest when otel present', () => {
-  it('drops harvested usage when otel already attributed the session/tool', () => {
+  it('[TEL-10] drops harvested usage when otel already attributed the session/tool', () => {
     const harvested = [
       {
         sessionKey: 'main-abcd-har-agent-2-bb22',

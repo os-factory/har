@@ -25,7 +25,7 @@ describe('durable work identity', () => {
 
   afterEach(() => fs.rmSync(repo, { recursive: true, force: true }));
 
-  it('persists metadata and immutable attempt identity', () => {
+  it('[VER-6, VER-7] persists metadata and immutable attempt identity', () => {
     upsertWorkUnit(repo, {
       workUnitId: 'har-123',
       source: 'github',
@@ -80,7 +80,7 @@ describe('durable work identity', () => {
     );
   });
 
-  it('reopens a decided unit on the next launch and keeps the old outcome (#352)', () => {
+  it('[VER-10] reopens a decided unit on the next launch and keeps the old outcome (#352)', () => {
     upsertWorkUnit(repo, { workUnitId: '338', title: 'Phase 2' });
     decideWorkUnitOutcome(repo, '338', {
       decision: 'abandoned',
@@ -115,7 +115,7 @@ describe('durable work identity', () => {
     ).toThrow('completed work must reference');
   });
 
-  it('merges append-only related links and dedupes by url', () => {
+  it('[VER-8] merges append-only related links and dedupes by url', () => {
     upsertWorkUnit(repo, {
       workUnitId: 'har-217',
       source: 'jira',

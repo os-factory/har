@@ -15,7 +15,7 @@ import { createManifest } from '../src/harness/manifest';
 import { HarnessManifestSchema } from '../src/harness/schema';
 
 describe('run storage layout', () => {
-  it('buildRunRelativePath uses date folder and stage id filename', () => {
+  it('[VER-2] buildRunRelativePath uses date folder and stage id filename', () => {
     const runsDir = path.join(os.tmpdir(), 'har-runs-test');
     const relative = buildRunRelativePath(
       'verify',
@@ -27,7 +27,7 @@ describe('run storage layout', () => {
     expect(relative).toBe('2026-06-30/17-45-32_verify_agent-1.json');
   });
 
-  it('creates run under date subfolder and finds by runId', () => {
+  it('[VER-2] creates run under date subfolder and finds by runId', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-runs-create-'));
     fs.mkdirSync(path.join(repoPath, '.har'));
     fs.writeFileSync(
@@ -51,7 +51,7 @@ describe('run storage layout', () => {
     expect(finished?.command).toBe('./.har/launch.sh 1');
   });
 
-  it('listRuns reads nested date folders and legacy flat uuid files', () => {
+  it('[VER-11] listRuns reads nested date folders and legacy flat uuid files', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-runs-list-'));
     const runsDir = path.join(repoPath, '.har', 'runs');
     fs.mkdirSync(path.join(runsDir, '2026-06-28'), { recursive: true });

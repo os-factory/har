@@ -41,13 +41,13 @@ describe('resolveVerificationPlan', () => {
     ],
   });
 
-  it('honors verificationStages order and resolves every id', () => {
+  it('[VER-1] honors verificationStages order and resolves every id', () => {
     const plan = resolveVerificationPlan(registry, { full: true });
     expect(plan.steps.map((s) => s.id)).toEqual(['b', 'a', 'c']);
     expect(plan.phantomIds).toEqual(['ghost']);
   });
 
-  it('quick mode keeps only tier "quick" stages', () => {
+  it('[VER-1] quick mode keeps only tier "quick" stages', () => {
     const plan = resolveVerificationPlan(registry, { full: false });
     expect(plan.steps.map((s) => s.id)).toEqual(['a']);
   });
@@ -180,7 +180,7 @@ describe('verify-runner.mjs', () => {
     expect(out.stages[0].output).toContain(`it's a "quoted"  failure`);
   });
 
-  it('full mode runs the whole plan in order and passes stage env without eval', () => {
+  it('[VER-1] full mode runs the whole plan in order and passes stage env without eval', () => {
     const registry = {
       verificationStages: ['second', 'first'],
       stages: [

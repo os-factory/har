@@ -166,6 +166,7 @@ function formatOccupiedSlot(
 }
 
 /** Occupied-slot guard only — used by inspectSlotReadiness and the combined launch guard. */
+// (ENV-1) an occupied slot always refuses a launch
 export function checkLaunchGuard(
   repoPath: string,
   agentId: number,

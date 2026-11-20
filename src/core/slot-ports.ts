@@ -59,6 +59,7 @@ export function portStep(env: Record<string, string>): number {
   return Number(env.HARNESS_PORT_STEP ?? 10);
 }
 
+// (ENV-3) each slot gets its own port lane
 export function defaultAppPort(base: number, agentId: number, step: number): number {
   return base + agentId * step;
 }

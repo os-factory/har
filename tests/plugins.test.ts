@@ -27,7 +27,7 @@ function makeTempRepo(name: string): string {
 import { findPhantomVerificationStageIds } from '../src/harness/verification';
 
 describe('plugins', () => {
-  it('applies playwright plugin to a scaffolded harness', () => {
+  it('[EXT-1] applies playwright plugin to a scaffolded harness', () => {
     const repoPath = makeTempRepo('har-playwright');
     fs.writeFileSync(
       path.join(repoPath, 'package.json'),
@@ -279,7 +279,7 @@ describe('plugins', () => {
     );
   });
 
-  it('every shipped plugin manifest passes schema validation', () => {
+  it('[EXT-2] every shipped plugin manifest passes schema validation', () => {
     const ids = listPluginIds();
     expect(ids).toEqual(
       expect.arrayContaining(['playwright', 'rocketsim', 'kerno', 'gitleaks', 'trivy', 'semgrep', 'cypress']),
@@ -294,7 +294,7 @@ describe('plugins', () => {
     }
   });
 
-  it('writes .har/plugins.json ledger on apply', () => {
+  it('[EXT-1] writes .har/plugins.json ledger on apply', () => {
     const repoPath = makeTempRepo('har-plugin-ledger');
     fs.writeFileSync(
       path.join(repoPath, 'package.json'),
@@ -317,7 +317,7 @@ describe('plugins', () => {
     );
   });
 
-  it('applies a multi-stage plugin from a local path', () => {
+  it('[EXT-1] applies a multi-stage plugin from a local path', () => {
     const pluginDir = makeTempRepo('har-multi-plugin-src');
     fs.writeFileSync(
       path.join(pluginDir, 'template.manifest.json'),

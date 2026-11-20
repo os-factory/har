@@ -154,6 +154,7 @@ export interface CreateRunMeta {
   command?: string;
 }
 
+// (VER-2) every stage execution writes a run record under the main checkout
 export function createRun(ctx: ExecutionContext, meta: CreateRunMeta): RunRecord {
   const harnessRoot = resolveHarnessRoot(ctx.repoPath);
   const runsDir = getRunsDir(harnessRoot);
@@ -232,6 +233,7 @@ export interface ListRunsFilter {
   limit?: number;
 }
 
+// (VER-11) run history, including the legacy flat layout
 export function listRuns(repoPath: string, filter: ListRunsFilter = {}): RunRecord[] {
   const runsDir = getRunsDir(resolveHarnessRoot(repoPath));
   if (!fs.existsSync(runsDir)) return [];

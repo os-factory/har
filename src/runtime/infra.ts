@@ -187,6 +187,7 @@ export interface ResolveInfraPortOptions {
  * har_resolve_infra_port: keep the persisted port when it is free or its
  * compose service already holds it; otherwise allocate from the lane.
  */
+// (ENV-11) keep a persisted port while free or held by its own service, else scan the lane
 export function resolveInfraPort(
   lane: string,
   fallback: number,
@@ -222,6 +223,7 @@ export function resolveInfraPort(
 }
 
 /** Resolve all six infra lanes against persisted state, setup-infra.sh order. */
+// (ENV-11) only enabled services need a port
 export function resolveInfraPorts(
   env: Record<string, string>,
   persisted: Partial<Record<string, number>>,

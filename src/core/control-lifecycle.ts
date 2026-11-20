@@ -26,6 +26,7 @@ export function resolveControlBuildContext(): string {
 }
 
 /** Pure arg builder for `docker run` — kept separate so it can be unit-tested. */
+// (MC-8) Mission Control container: CLI-versioned image, named volume
 export function buildDockerRunArgs(options: {
   imageRef: string;
   hostPort: number;
@@ -164,6 +165,7 @@ function isDefaultControlUrl(apiUrl: string): boolean {
 }
 
 /** Only a released default image is replaced; overrides and custom tags are left alone. */
+// (MC-8) upgrade only a container on an older released image
 export function shouldUpgradeControlImage(
   running: string,
   expected: string,

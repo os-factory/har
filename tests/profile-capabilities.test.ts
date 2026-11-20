@@ -77,7 +77,7 @@ describe('capability resolution precedence', () => {
     return repo;
   }
 
-  it('manifest capability wins over file presence (default profile)', () => {
+  it('[CON-7] manifest capability wins over file presence (default profile)', () => {
     const repo = scaffold('default');
     expect(harnessUsesPm2(repo)).toBe(true);
     expect(detectProcessManager(repo)).toBe('pm2');
@@ -149,7 +149,7 @@ describe('assembled profile docs', () => {
 });
 
 describe('synthetic 4th profile (acceptance)', () => {
-  it('a manifest plus profile assets works with zero profile-named branches', () => {
+  it('[CON-7] a manifest plus profile assets works with zero profile-named branches', () => {
     const templates = tmpDir('har-templates-');
     const profileDir = path.join(templates, 'profiles', 'tui');
     const bundleDir = path.join(templates, 'bundles', 'tui-runtime');

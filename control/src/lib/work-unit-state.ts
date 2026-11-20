@@ -5,6 +5,7 @@ export type WorkUnitState = (typeof WORK_UNIT_STATES)[number];
  * State is derived from execution evidence; only completion and abandonment are explicit.
  * Mirrors the rule the Factory home page used before the redesign.
  */
+// (MC-5) state derived from evidence; only business outcomes are explicit
 export function deriveWorkUnitState(input: {
   decision?: string | null;
   hasActiveSlot: boolean;

@@ -42,7 +42,7 @@ describe('lifecycle wrappers are not generated (#314)', () => {
     ).toBe(false);
   });
 
-  it('scaffold writes no lifecycle wrappers for every profile', () => {
+  it('[CON-1] scaffold writes no lifecycle wrappers for every profile', () => {
     for (const profile of ['default', 'cli', 'ios'] as const) {
       const repo = fs.mkdtempSync(path.join(os.tmpdir(), `har-shim-${profile}-`));
       try {

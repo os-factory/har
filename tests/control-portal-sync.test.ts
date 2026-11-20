@@ -260,7 +260,7 @@ describe('getPortalTarget', () => {
     expect(getPortalTarget()?.url).toBe('https://portal.example.com');
   });
 
-  it('returns null when only one of URL/token is set (opt-in)', () => {
+  it('[PRT-3] returns null when only one of URL/token is set (opt-in)', () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     expect(getPortalTarget()).toBeNull();
     delete process.env.HAR_PORTAL_URL;
@@ -277,7 +277,7 @@ describe('syncRepoWithControl — portal push', () => {
   });
   afterAll(clearPortalEnv);
 
-  it('still syncs HQ when Mission Control fails, then reports the Mission Control error', async () => {
+  it('[PRT-4] still syncs HQ when Mission Control fails, then reports the Mission Control error', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
     const fetchMock = jest.fn(async (url: string): Promise<Partial<Response>> => {
@@ -299,7 +299,7 @@ describe('syncRepoWithControl — portal push', () => {
     expect(portalSyncCall(fetchMock)[0]).toBe('https://portal.example.com/api/sync');
   });
 
-  it('retries an HQ 503 instead of failing the repo', async () => {
+  it('[PRT-4] retries an HQ 503 instead of failing the repo', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
     let hqCalls = 0;
@@ -375,7 +375,7 @@ describe('syncRepoWithControl — portal push', () => {
     expect(JSON.parse(init.body as string).cliVersion).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it('syncs to local Mission Control before pushing to the portal', async () => {
+  it('[PRT-4] syncs to local Mission Control before pushing to the portal', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
     const fetchMock = mockFetch({ status: 200 });
@@ -901,7 +901,7 @@ describe('syncRepoWithControl — portal watermark', () => {
   });
   afterAll(clearPortalEnv);
 
-  it('passes the stored watermark as `since` and advances it to the max sent', async () => {
+  it('[PRT-5] passes the stored watermark as `since` and advances it to the max sent', async () => {
     readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
     fetchPersistedPortalTelemetryMock.mockResolvedValue({
       usage: [],
@@ -924,7 +924,7 @@ describe('syncRepoWithControl — portal watermark', () => {
     );
   });
 
-  it('--full ignores the stored watermark (since=null) but still advances it', async () => {
+  it('[PRT-5] --full ignores the stored watermark (since=null) but still advances it', async () => {
     readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
     fetchPersistedPortalTelemetryMock.mockResolvedValue({
       usage: [],
@@ -958,7 +958,7 @@ describe('syncRepoWithControl — portal watermark', () => {
     expect(writePortalWatermarkMock).not.toHaveBeenCalled();
   });
 
-  it('holds the watermark and warns when a telemetry channel could not be read', async () => {
+  it('[PRT-5] holds the watermark and warns when a telemetry channel could not be read', async () => {
     readPortalWatermarkMock.mockReturnValue('2026-01-02T00:00:00.000Z');
     fetchPersistedPortalTelemetryMock.mockResolvedValue({
       usage: [],
@@ -1018,7 +1018,7 @@ describe('syncRepoWithControl — portal watermark', () => {
     expect(outcome.warnings[0]).toContain('page cap');
   });
 
-  it('does not advance the watermark on dry-run', async () => {
+  it('[PRT-5] does not advance the watermark on dry-run', async () => {
     fetchPersistedPortalTelemetryMock.mockResolvedValue({
       usage: [],
       events: [],
@@ -1107,7 +1107,7 @@ describe('syncRepoWithControl — token refresh on 401', () => {
     ) as [string, RequestInit][];
   }
 
-  it('rotates the ingest token on 401 and retries the sync with it', async () => {
+  it('[PRT-4] rotates the ingest token on 401 and retries the sync with it', async () => {
     storedCreds();
     const fetchMock = refreshFetch({
       syncStatuses: [401, 200],
@@ -1141,7 +1141,7 @@ describe('syncRepoWithControl — token refresh on 401', () => {
     );
   });
 
-  it('surfaces the 401 without refreshing when there is no refresh token', async () => {
+  it('[PRT-4] surfaces the 401 without refreshing when there is no refresh token', async () => {
     storedCreds({ refreshToken: undefined });
     const fetchMock = refreshFetch({ syncStatuses: [401], refreshStatus: 200 });
 
@@ -1395,7 +1395,7 @@ describe("syncRepoWithControl — Mission Control's attributed usage (ADR 0003)"
   });
   afterAll(clearPortalEnv);
 
-  it("sends Mission Control's rows unchanged — no harvest, no repricing, no /session-attribution", async () => {
+  it("[PRT-7] sends Mission Control's rows unchanged — no harvest, no repricing, no /session-attribution", async () => {
     const fetchMock = missionControlFetch({
       status: 200,
       body: { usage: [SLOT_ROW], unassigned: [MAIN_ROW, OTHER_SESSION], crossChecks: [] },
@@ -1425,7 +1425,7 @@ describe("syncRepoWithControl — Mission Control's attributed usage (ADR 0003)"
     expect(writePortalWatermarkMock).toHaveBeenCalledWith('/repo/x', expect.not.stringMatching(/^attribution:/), NEW);
   });
 
-  it('sends every row of a changed session, and none of an unchanged one', async () => {
+  it('[PRT-7] sends every row of a changed session, and none of an unchanged one', async () => {
     readPortalWatermarkMock.mockReturnValue('2026-03-01T11:00:00.000Z');
     const fetchMock = missionControlFetch({
       status: 200,
@@ -1439,7 +1439,7 @@ describe("syncRepoWithControl — Mission Control's attributed usage (ADR 0003)"
     expect(sentUsage(fetchMock).map((row) => row.sessionKey)).toEqual(['sess-1@2:occ-2', 'sess-1@main']);
   });
 
-  it("never splits a session's rows across two requests", async () => {
+  it("[PRT-7] never splits a session's rows across two requests", async () => {
     process.env.HAR_SYNC_MAX_BATCH_BYTES = '600';
     const fetchMock = missionControlFetch({
       status: 200,

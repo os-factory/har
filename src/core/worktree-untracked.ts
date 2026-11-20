@@ -9,6 +9,7 @@ const MAX_LISTED = 8;
  * to one entry so a dirty `node_modules/` is a single line, not a walk.
  * Returns `[]` outside a git checkout and never throws.
  */
+// (ENV-13) untracked paths a session worktree will not have
 export function listUntrackedAbsentFromWorktree(repoPath: string): string[] {
   const toplevel = resolveCheckoutRoot(repoPath);
   if (!toplevel) return [];

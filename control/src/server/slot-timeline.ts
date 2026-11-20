@@ -166,6 +166,7 @@ export async function commitBindingsFor(repositoryId: string, snapshots: ChangeB
  * rows for this slot number from before that instant, or from another worktree, belong
  * to an earlier occupant and live in the repository History instead.
  */
+// (MC-12) one timeline per slot occupancy
 export async function getSlotTimeline(repositoryId: string, slot: AgentSlot): Promise<TimelineRow[]> {
   const since = slot.sessionCreatedAt;
   const workDir = slot.workDir;

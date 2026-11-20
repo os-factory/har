@@ -75,14 +75,14 @@ function readFile(): Record<string, unknown> {
 }
 
 describe('one org connection at a time', () => {
-  it('stores a single connection on disk', () => {
+  it('[PRT-2] stores a single connection on disk', () => {
     connectOrg('org_a');
     const file = readFile();
     expect(file.targets).toHaveLength(1);
     expect(file.defaultTarget).toBe('org_a');
   });
 
-  it('replaces the connection when switching org', () => {
+  it('[PRT-2] replaces the connection when switching org', () => {
     connectOrg('org_a');
     const switched = connectOrg('org_b');
 
@@ -94,7 +94,7 @@ describe('one org connection at a time', () => {
     expect(readPortalCredentials()?.token).toBe('org_b-token');
   });
 
-  it('clears attached repos when switching org, so none syncs to the new org unasked', () => {
+  it('[PRT-2] clears attached repos when switching org, so none syncs to the new org unasked', () => {
     const repo = makeRepo('app');
     connectOrg('org_a');
     attachRepoToPortal(repo);
@@ -106,7 +106,7 @@ describe('one org connection at a time', () => {
     expect(resolvePortalTarget(repo)).toBeNull();
   });
 
-  it('keeps attached repos and trajectory setting on a same-org reconnect', () => {
+  it('[PRT-2] keeps attached repos and trajectory setting on a same-org reconnect', () => {
     const repo = makeRepo('app');
     connectOrg('org_a', 'old');
     attachRepoToPortal(repo);
@@ -141,7 +141,7 @@ describe('one org connection at a time', () => {
     expect(readSyncSelection()).toEqual([other, repo]);
   });
 
-  it('disconnect removes the connection, its repos and the legacy credentials file', () => {
+  it('[PRT-2] disconnect removes the connection, its repos and the legacy credentials file', () => {
     const repo = makeRepo('app');
     connectOrg('org_a');
     attachRepoToPortal(repo);
@@ -153,7 +153,7 @@ describe('one org connection at a time', () => {
     expect(disconnectPortal()).toBeNull();
   });
 
-  it('redacts tokens from list/show payloads', () => {
+  it('[PRT-6] redacts tokens from list/show payloads', () => {
     const { record } = connectOrg('org_a', 'secret-token');
     expect(fs.readFileSync(portalTargetsPath(), 'utf8')).toContain('secret-token');
     expect(redactPortalTargetRecord(record)).not.toHaveProperty('token');
@@ -259,7 +259,7 @@ describe('legacy credentials migration', () => {
 });
 
 describe('portal watermarks per org', () => {
-  it('does not share cursors between orgs for the same repo', () => {
+  it('[PRT-5] does not share cursors between orgs for the same repo', () => {
     const repoPath = makeRepo('repo');
     const devKey = portalTargetIdentityKey('https://portal.example.com', 'org_dev');
     const prodKey = portalTargetIdentityKey('https://portal.example.com', 'org_prod');
@@ -273,7 +273,7 @@ describe('portal watermarks per org', () => {
 });
 
 describe('resolvePortalTarget', () => {
-  it('prefers the HAR_PORTAL_URL + HAR_PORTAL_TOKEN override for the run', () => {
+  it('[PRT-3] prefers the HAR_PORTAL_URL + HAR_PORTAL_TOKEN override for the run', () => {
     connectOrg('org_a');
     process.env.HAR_PORTAL_URL = 'https://env.example.com/';
     process.env.HAR_PORTAL_TOKEN = 'env-token';
@@ -285,7 +285,7 @@ describe('resolvePortalTarget', () => {
     });
   });
 
-  it('only resolves the connection for attached repos', () => {
+  it('[PRT-3] only resolves the connection for attached repos', () => {
     const repo = makeRepo('app');
     connectOrg('org_a');
     expect(resolvePortalTarget(repo)).toBeNull();

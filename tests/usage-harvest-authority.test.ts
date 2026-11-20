@@ -42,7 +42,7 @@ describe('usageHarvestVersion', () => {
 });
 
 describe('harvestSupersedes', () => {
-  it('lets a newer harvest replace an older one', () => {
+  it('[TEL-9] lets a newer harvest replace an older one', () => {
     expect(
       harvestSupersedes(
         { sources: ['harvest'], harvestVersion: 0 },
@@ -51,7 +51,7 @@ describe('harvestSupersedes', () => {
     ).toBe(true);
   });
 
-  it('refuses the same version — a partial re-read is not authoritative', () => {
+  it('[TEL-9] refuses the same version — a partial re-read is not authoritative', () => {
     expect(
       harvestSupersedes(
         { sources: ['harvest'], harvestVersion: 1 },
@@ -60,7 +60,7 @@ describe('harvestSupersedes', () => {
     ).toBe(false);
   });
 
-  it('refuses an older harvest arriving after a newer one', () => {
+  it('[TEL-9] refuses an older harvest arriving after a newer one', () => {
     expect(
       harvestSupersedes(
         { sources: ['harvest'], harvestVersion: 1 },
@@ -69,7 +69,7 @@ describe('harvestSupersedes', () => {
     ).toBe(false);
   });
 
-  it('never replaces a row OTLP contributed to (batches accumulate in place)', () => {
+  it('[TEL-9] never replaces a row OTLP contributed to (batches accumulate in place)', () => {
     expect(
       harvestSupersedes(
         { sources: ['harvest', 'otel'], harvestVersion: 0 },

@@ -29,7 +29,7 @@ describe('factory lines', () => {
     expect(listBundledLineIds()).toContain('example-line');
   });
 
-  it('applies a line without changing verificationStages', () => {
+  it('[EXT-3] applies a line without changing verificationStages', () => {
     const repoPath = makeTempRepo('har-line-apply');
     const before = readStageRegistry(repoPath);
     const verificationBefore = [...(before.verificationStages ?? [])];
@@ -66,7 +66,7 @@ describe('factory lines', () => {
     expect(readManifest(repoPath)?.cliVersion).toBe(getHarPackageVersion());
   });
 
-  it('records the install in .har/lines.json', () => {
+  it('[EXT-3] records the install in .har/lines.json', () => {
     const repoPath = makeTempRepo('har-line-ledger');
     applyLine(repoPath, 'example-line');
 
@@ -92,7 +92,7 @@ describe('factory lines', () => {
     expect(readStageRegistry(repoPath).verificationStages).toEqual(verificationBefore);
   });
 
-  it('refuses a line bundle from add-plugin', () => {
+  it('[EXT-4] refuses a line bundle from add-plugin', () => {
     const repoPath = makeTempRepo('har-line-poka-plugin');
     const bundleDir = path.join(
       __dirname,
@@ -115,7 +115,7 @@ describe('factory lines', () => {
     expect(() => applyPlugin(repoPath, disguised)).toThrow(/har line add/);
   });
 
-  it('refuses a verification plugin from line add', () => {
+  it('[EXT-4] refuses a verification plugin from line add', () => {
     const repoPath = makeTempRepo('har-line-poka-line');
     const pluginDir = path.join(__dirname, '..', 'src', 'templates', 'plugins', 'playwright');
 
@@ -123,7 +123,7 @@ describe('factory lines', () => {
     expect(() => applyLine(repoPath, pluginDir)).toThrow(/har env add-plugin/);
   });
 
-  it('scaffolds a project-owned line that installs unchanged', () => {
+  it('[EXT-8] scaffolds a project-owned line that installs unchanged', () => {
     const repoPath = makeTempRepo('har-line-create');
     const created = createLine(repoPath, { id: 'my-line', stations: ['A', 'B', 'C'] });
 
@@ -149,7 +149,7 @@ describe('factory lines', () => {
     ]);
   });
 
-  it('rejects a manifest that declares verificationStages', () => {
+  it('[EXT-8] rejects a manifest that declares verificationStages', () => {
     const repoPath = makeTempRepo('har-line-reject-verify');
     const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-line-bad-'));
     fs.cpSync(
@@ -166,7 +166,7 @@ describe('factory lines', () => {
   });
 
   describe('the ratchet', () => {
-    it('accumulates gate stages forward, never backward', () => {
+    it('[EXT-5] accumulates gate stages forward, never backward', () => {
       const repoPath = makeTempRepo('har-line-ratchet');
       applyLine(repoPath, 'example-line');
       const program = readInstalledLineProgram(repoPath, 'example-line');
@@ -178,7 +178,7 @@ describe('factory lines', () => {
       expect(cumulativeGateStages(program!, 'S3').map((s) => s.id)).toEqual(['example-gate']);
     });
 
-    it('reports station progress with no green stations before any run', () => {
+    it('[EXT-6] reports station progress with no green stations before any run', () => {
       const repoPath = makeTempRepo('har-line-status');
       applyLine(repoPath, 'example-line');
 
@@ -199,7 +199,7 @@ describe('factory lines', () => {
       expect(status.currentStationId).toBe('S1');
     });
 
-    it('flags a line stage that leaked onto the verify plan', () => {
+    it('[EXT-4] flags a line stage that leaked onto the verify plan', () => {
       const repoPath = makeTempRepo('har-line-leak');
       applyLine(repoPath, 'example-line');
 
@@ -240,7 +240,7 @@ describe('factory lines', () => {
   describe('CLI', () => {
     const cli = path.join(__dirname, '..', 'dist', 'index.js');
 
-    it('installs a line and leaves the verify plan byte-identical', () => {
+    it('[EXT-3] installs a line and leaves the verify plan byte-identical', () => {
       const repoPath = makeTempRepo('har-line-cli');
       const registryPath = path.join(repoPath, '.har', 'stages.json');
       const before = JSON.parse(fs.readFileSync(registryPath, 'utf8')).verificationStages;

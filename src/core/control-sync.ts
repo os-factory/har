@@ -335,6 +335,7 @@ function postPortalOnce(
 // Rotate an expired ingest token via the stored refresh token: on success
 // mutates target.token and persists the rotated credential, else returns false
 // so the caller surfaces the original 401.
+// (PRT-4) rotate the ingest token once on 401
 async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
   if (!target.refreshToken) return false;
   if (!isPortalTargetActive(target)) return false;
@@ -777,6 +778,7 @@ export async function discoverHarRepos(options?: {
  * Push a specific set of repos, one per timeout-guarded call. Returns the
  * summary counts plus a per-repo result so callers can print outcomes.
  */
+// (MC-3) one repo's failure is reported and does not block the rest
 export async function syncReposWithControl(options: {
   repoPaths: string[];
   apiUrl?: string;
@@ -839,6 +841,7 @@ function selectedRepos(discovered: string[]): string[] {
   }).toSync;
 }
 
+// (MC-2) only the saved sync selection is touched
 export async function syncAllKnownReposWithControl(options?: {
   apiUrl?: string;
   cwd?: string;
@@ -1104,6 +1107,7 @@ async function syncTrajectoryWithPortal(
   ];
 }
 
+// (MC-1) project one repository's .har/ evidence into Mission Control
 export async function syncRepoWithControl(
   options: ControlSyncOptions,
 ): Promise<{ warnings: string[] }> {

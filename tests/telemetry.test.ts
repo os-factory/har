@@ -129,7 +129,7 @@ describe('portal trajectory opt-in', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('is off by default even with telemetry fully on', () => {
+  it('[TEL-6] is off by default even with telemetry fully on', () => {
     expect(isTelemetryEnabled()).toBe(true);
     expect(isPortalTrajectoryEnabled()).toBe(false);
   });
@@ -314,7 +314,7 @@ describe('otel hooks config', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('maps HAR signals to @osfactory/otel-hook config with protobuf endpoint', () => {
+  it('[TEL-1] maps HAR signals to @osfactory/otel-hook config with protobuf endpoint', () => {
     writeTelemetryPreference(true);
     const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
     expect(config.exporter.endpoint).toBe('http://localhost:3847/api/otel/v1/traces');
@@ -326,7 +326,7 @@ describe('otel hooks config', () => {
     expect(config.privacy.allowRawContent).toBe(true);
   });
 
-  it('disables prompt capture when prompts signal is off', () => {
+  it('[TEL-7] disables prompt capture when prompts signal is off', () => {
     writeTelemetryPreference(true, { prompts: false });
     const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
     expect(config.privacy.contentMode).toBe('omit');
@@ -334,7 +334,7 @@ describe('otel hooks config', () => {
     expect(config.exporter.logs.includeContent).toBe(false);
   });
 
-  it('disables exporter when telemetry is off', () => {
+  it('[TEL-7] disables exporter when telemetry is off', () => {
     const config = buildOtelHooksConfig({ enabled: false, apiUrl: 'http://localhost:3847' });
     expect(config.exporter.enabled).toBe(false);
     expect(config.exporter.endpoint).toBeUndefined();
@@ -462,7 +462,7 @@ describe('otel hooks config', () => {
   // call and on stop. An unbounded export turns an unreachable Mission Control
   // into a stalled agent session, which reads exactly like a broken model API.
   describe('hook budgets', () => {
-    it('bounds the export so an unreachable collector cannot stall a turn', () => {
+    it('[TEL-1] bounds the export so an unreachable collector cannot stall a turn', () => {
       const hooksHome = path.join(tmpDir, 'hooks-budget');
       const binary = path.join(hooksHome, 'node_modules', '.bin', 'otel-hook');
       const script = fs.readFileSync(writeOtelHooksWrapper(binary, hooksHome), 'utf8');
@@ -480,7 +480,7 @@ describe('otel hooks config', () => {
       );
     });
 
-    it('never fails an agent turn because telemetry failed', () => {
+    it('[TEL-1] never fails an agent turn because telemetry failed', () => {
       const hooksHome = path.join(tmpDir, 'hooks-exit');
       const binary = path.join(hooksHome, 'node_modules', '.bin', 'otel-hook');
       const script = fs.readFileSync(writeOtelHooksWrapper(binary, hooksHome), 'utf8');
@@ -502,7 +502,7 @@ describe('otel hooks config', () => {
       expect(Number(args[index + 1])).toBeGreaterThan(0);
     });
 
-    it('runs the wrapper successfully even when the hook binary is missing', () => {
+    it('[TEL-1] runs the wrapper successfully even when the hook binary is missing', () => {
       const hooksHome = path.join(tmpDir, 'hooks-missing-binary');
       const wrapper = writeOtelHooksWrapper(
         path.join(hooksHome, 'node_modules', '.bin', 'does-not-exist'),

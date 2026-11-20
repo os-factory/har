@@ -13,6 +13,7 @@ export const HAR_SLOT_MODES = ['worktree', 'root', 'external'] as const;
 
 export type HarSlotMode = (typeof HAR_SLOT_MODES)[number];
 
+// (CON-3) the closed set of generic stage kinds
 export const HAR_STAGE_KINDS = [
   'setup',
   'launch',

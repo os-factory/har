@@ -289,6 +289,7 @@ export interface HarnessEnvValidation {
  * and malformed values produce actionable errors; legacy port triplets and
  * non-HARNESS custom exports are tolerated with warnings.
  */
+// (CON-2) harness.env is schema-validated; problems are reported, not ignored
 export function validateHarnessEnv(values: Record<string, string>): HarnessEnvValidation {
   const issues: HarnessEnvIssue[] = [];
   const known: Record<string, string> = {};

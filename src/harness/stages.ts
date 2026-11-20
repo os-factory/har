@@ -112,6 +112,7 @@ function addKindDispatchedStage(stages: HarnessStage[], stage: Record<string, un
   stages.push(HarnessStageSchema.parse(stage));
 }
 
+// (CON-2) stages.json is schema-validated on read
 export function readStageRegistry(repoPath: string): HarnessStageRegistry {
   const registryPath = getStageRegistryPath(repoPath);
   if (!fs.existsSync(registryPath)) {
@@ -139,6 +140,7 @@ export function listStages(repoPath: string): HarnessStage[] {
   return readStageRegistry(repoPath).stages;
 }
 
+// (ENV-1) allowed slot range comes from agentSlots in stages.json
 export function getAgentSlotRange(repoPath: string): { min: number; max: number } {
   const registry = readStageRegistry(repoPath);
   if (registry.agentSlots) {

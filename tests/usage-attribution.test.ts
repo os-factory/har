@@ -92,7 +92,7 @@ describe('projectUsage — evidence timeline', () => {
     expect(costBySlot(projection)).toEqual({ 'S1@2': 2, 'S2@3': 3 });
   });
 
-  it('books a subagent observed in another slot on that slot, and the parent on its own', () => {
+  it('[TEL-3] books a subagent observed in another slot on that slot, and the parent on its own', () => {
     const projection = projectUsage(
       [bind(1, 2), bind(5, 4, 'observed', { subagentId: 'A1', occupancyKey: 'occ-4' })],
       [
@@ -105,7 +105,7 @@ describe('projectUsage — evidence timeline', () => {
     expect(costBySlot(projection)).toEqual({ 'S1@2': 3, 'S1@4': 1 });
   });
 
-  it('falls back to the parent when the subagent has no binding', () => {
+  it('[TEL-3] falls back to the parent when the subagent has no binding', () => {
     const projection = projectUsage([bind(1, 2)], [obs(3, { subagentId: 'A9' })]);
     expect(costBySlot(projection)).toEqual({ 'S1@2': 1 });
   });
@@ -158,7 +158,7 @@ describe('projectUsage — evidence timeline', () => {
     });
   });
 
-  it('leaves an observation before any binding unassigned', () => {
+  it('[TEL-3] leaves an observation before any binding unassigned', () => {
     const projection = projectUsage([bind(10, 2)], [obs(9)]);
     expect(projection.slots).toEqual([]);
     expect(projection.unassigned).toHaveLength(1);
@@ -221,14 +221,14 @@ describe('projectUsage — evidence timeline', () => {
 });
 
 describe('priceObservation', () => {
-  it('uses the provider cost when given', () => {
+  it('[TEL-8] uses the provider cost when given', () => {
     expect(priceObservation(obs(1, { costUsd: 0.42 }))).toMatchObject({
       pricedCostUsd: 0.42,
       costSource: 'reported',
     });
   });
 
-  it('estimates from the model price when no cost is reported', () => {
+  it('[TEL-8] estimates from the model price when no cost is reported', () => {
     const priced = priceObservation(
       obs(1, {
         agentTool: 'claude_code',
@@ -242,14 +242,14 @@ describe('priceObservation', () => {
     expect(priced.pricedCostUsd).toBeGreaterThan(0);
   });
 
-  it('leaves a Cursor request unpriced, even for a catalog model (FE-2058)', () => {
+  it('[TEL-8] leaves a Cursor request unpriced, even for a catalog model (FE-2058)', () => {
     expect(priceObservation(obs(1, { agentTool: 'cursor', model: 'composer-2.5', costUsd: null }))).toMatchObject({
       pricedCostUsd: null,
       costSource: null,
     });
   });
 
-  it('leaves the cost unknown for an unpriced model', () => {
+  it('[TEL-8] leaves the cost unknown for an unpriced model', () => {
     expect(priceObservation(obs(1, { model: 'no-such-model-xyz', costUsd: null }))).toMatchObject({
       pricedCostUsd: null,
       costSource: null,

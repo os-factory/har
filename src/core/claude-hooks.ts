@@ -52,6 +52,7 @@ export interface ClaudeGuardResult {
 }
 
 /** Install the Claude Code worktree guard: worker script + PreToolUse entry in .claude/settings.json. */
+// (ENV-9) guard that keeps agent edits out of the main checkout
 export function installClaudeGuard(repoPath: string): ClaudeGuardResult {
   const templatePath = resolveTemplateFile('claude-worktree-guard.sh.template');
   if (!templatePath) {

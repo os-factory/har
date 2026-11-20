@@ -40,7 +40,7 @@ describe('harness.env pure-config contract (#230)', () => {
     expect(result.config?.HARNESS_PROJECT_NAME).toBe('x');
   });
 
-  it('flags unknown HARNESS_* keys with a suggestion', () => {
+  it('[CON-2] flags unknown HARNESS_* keys with a suggestion', () => {
     const result = validateHarnessEnvSource(
       'export HARNESS_PROJECT_NAME=x\nexport HARNESS_ECOSYSTM=node\n',
     );
@@ -49,7 +49,7 @@ describe('harness.env pure-config contract (#230)', () => {
     expect(issue?.message).toContain('HARNESS_ECOSYSTEM');
   });
 
-  it('reports missing required keys', () => {
+  it('[CON-2] reports missing required keys', () => {
     const result = validateHarnessEnvSource('export HARNESS_ECOSYSTEM=node\n');
     expect(result.ok).toBe(false);
     expect(

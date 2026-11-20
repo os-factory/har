@@ -126,7 +126,7 @@ describe('resolveInfraPort', () => {
     HARNESS_INFRA_PORT_LANES: 'db=15432:15432-15435',
   };
 
-  it('keeps a persisted port that is free', () => {
+  it('[ENV-11] keeps a persisted port that is free', () => {
     const { exec } = mockExec();
     const port = resolveInfraPort('db', 15432, 'db', {
       env,
@@ -137,7 +137,7 @@ describe('resolveInfraPort', () => {
     expect(port).toBe(15433);
   });
 
-  it('keeps a persisted busy port when its compose service holds it', () => {
+  it('[ENV-11] keeps a persisted busy port when its compose service holds it', () => {
     const { exec } = mockExec([
       { match: (c) => c.startsWith('docker ps'), stdout: 'har-proj-db-1\n' },
     ]);
@@ -150,7 +150,7 @@ describe('resolveInfraPort', () => {
     expect(port).toBe(15433);
   });
 
-  it('scans the lane when the persisted port is held by something else', () => {
+  it('[ENV-11] scans the lane when the persisted port is held by something else', () => {
     const { exec } = mockExec(); // docker ps returns nothing
     const busy = new Set([15433, 15432]);
     const port = resolveInfraPort('db', 15432, 'db', {
@@ -174,7 +174,7 @@ describe('resolveInfraPort', () => {
 });
 
 describe('resolveInfraPorts', () => {
-  it('does not require a free port for lanes whose service is disabled (#241)', () => {
+  it('[ENV-11] does not require a free port for lanes whose service is disabled (#241)', () => {
     const { exec } = mockExec();
     // Everything reads busy; no services enabled — pre-1.0 harnesses that
     // dropped their unused legacy triplets must still launch.
@@ -187,7 +187,7 @@ describe('resolveInfraPorts', () => {
     expect(ports.AGENT_MINIO_PORT).toBe(19000);
   });
 
-  it('still scans (and fails loudly) for an enabled service with no free port', () => {
+  it('[ENV-11] still scans (and fails loudly) for an enabled service with no free port', () => {
     const { exec } = mockExec();
     expect(() =>
       resolveInfraPorts(

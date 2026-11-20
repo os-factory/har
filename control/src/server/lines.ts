@@ -114,6 +114,7 @@ function readVerificationStages(repoPath: string): { ids: string[]; registered: 
  * from synced run records. Returns [] when the repo has no line bundle — the
  * board's empty state, not an error.
  */
+// (MC-7) read-only board from the repo's own lines.json and program
 export async function listLineBoards(repositoryId: string): Promise<LineBoard[]> {
   const repo = await prisma.repository.findUnique({
     where: { id: repositoryId },

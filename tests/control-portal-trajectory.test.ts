@@ -209,7 +209,7 @@ describe('trajectory forwarding', () => {
     expect((body.spans as Record<string, unknown>[])[0].spanId).toBe('span-1');
   });
 
-  it('skips records but still sends spans when the opt-in is off', async () => {
+  it('[TEL-6] skips records but still sends spans when the opt-in is off', async () => {
     isPortalTrajectoryEnabledForTargetMock.mockReturnValue(false);
     fetchPersistedTrajectoryMock.mockResolvedValue({
       records: [],

@@ -162,7 +162,7 @@ describe('syncUsageObservations', () => {
     ).rejects.toThrow();
   });
 
-  it('is idempotent per key, and the same producer may correct its fact', async () => {
+  it('[TEL-2] is idempotent per key, and the same producer may correct its fact', async () => {
     await syncUsageObservations('repo-1', { observations: [observation] });
     await syncUsageObservations('repo-1', { observations: [{ ...observation, tokensOutput: 25 }] });
     expect(db.tables.observations).toHaveLength(1);

@@ -81,7 +81,7 @@ describe('agent-skills', () => {
     expect(byId('factory-line')).toContain('cumulative gate');
   });
 
-  it('scaffolds files, records them in the harness manifest, and is idempotent', () => {
+  it('[CON-11] scaffolds files, records them in the harness manifest, and is idempotent', () => {
     writeHarnessManifest(tmpDir);
 
     const first = scaffoldAgentSkills(tmpDir, ['claude', 'cursor']);
@@ -107,7 +107,7 @@ describe('agent-skills', () => {
     expect(fs.existsSync(path.join(tmpHome, '.codex', 'prompts', 'har-factory-line.md'))).toBe(true);
   });
 
-  it('skips user-modified files unless forced', () => {
+  it('[CON-11] skips user-modified files unless forced', () => {
     const skillPath = path.join(tmpDir, '.claude', 'skills', 'har-wt', 'SKILL.md');
     fs.mkdirSync(path.dirname(skillPath), { recursive: true });
     fs.writeFileSync(skillPath, '# my own skill, no managed header\n');
@@ -121,7 +121,7 @@ describe('agent-skills', () => {
     expect(fs.readFileSync(skillPath, 'utf8')).toContain(MANAGED_HEADER);
   });
 
-  it('removes managed files but keeps user-modified ones', () => {
+  it('[CON-11] removes managed files but keeps user-modified ones', () => {
     writeHarnessManifest(tmpDir);
     scaffoldAgentSkills(tmpDir, ['claude']);
 

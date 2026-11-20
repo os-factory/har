@@ -147,6 +147,7 @@ export function parseResourceAttributesString(
 }
 
 /** Build HAR-managed otel-hook config from current telemetry signals. */
+// (TEL-1) OTLP export to {HAR_CONTROL_API_URL}/api/otel with a bounded timeout
 export function buildOtelHooksConfig(options?: {
   enabled?: boolean;
   apiUrl?: string;
@@ -190,6 +191,7 @@ export function writeOtelHooksConfig(
   return configPath;
 }
 
+// (TEL-1) the wrapper always exits 0
 export function writeOtelHooksWrapper(
   otelHookCommand: string,
   hooksHome = getOtelHooksHome(),

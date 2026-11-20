@@ -80,6 +80,7 @@ export function readTelemetryPreference(): TelemetryPreference {
   }
 }
 
+// (TEL-7) telemetry off / --no-prompts preference
 export function writeTelemetryPreference(
   enabled: boolean,
   signals?: Partial<TelemetrySignals>,
@@ -134,6 +135,7 @@ export function getTelemetryPreferencePath(): string {
   return getPreferencePath();
 }
 
+// (TEL-6) trajectory bodies leave the machine only after explicit opt-in
 export function isPortalTrajectoryEnabled(): boolean {
   if (!isTelemetryEnabled()) return false;
   const envOverride = parseEnvOverride(process.env.HAR_PORTAL_TRAJECTORY);

@@ -22,6 +22,7 @@ export function getOnboardingPreferencesPath(): string {
   return path.join(os.homedir(), '.har', 'preferences.json');
 }
 
+// (SRF-7) safe defaults for a missing or malformed file
 export function readOnboardingPreferences(): OnboardingPreferences {
   const preferencePath = getOnboardingPreferencesPath();
   try {
@@ -32,6 +33,7 @@ export function readOnboardingPreferences(): OnboardingPreferences {
   }
 }
 
+// (SRF-7) partial updates keep earlier choices
 export function mergeOnboardingPreferences(
   current: OnboardingPreferences,
   overrides: OnboardingPreferenceOverrides,

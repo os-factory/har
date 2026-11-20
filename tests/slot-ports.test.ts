@@ -119,7 +119,7 @@ describe('computePreviewUrls', () => {
 // in src/runtime/process.ts, covered by tests/runtime-process.test.ts).
 
 describe('port formulas', () => {
-  it('computes default app ports and lane ends (step 10)', () => {
+  it('[ENV-3] computes default app ports and lane ends (step 10)', () => {
     expect(defaultAppPort(3000, 2, 10)).toBe(3020);
     expect(slotPortLaneEnd(3020, 10)).toBe(3029);
     expect(portStep({})).toBe(10);

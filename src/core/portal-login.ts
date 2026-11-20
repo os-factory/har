@@ -41,6 +41,7 @@ export function encodeCliReposQuery(repos: string[]): string | null {
   return encoded;
 }
 
+// (PRT-1) loopback callback login with state check
 export async function loginViaBrowser(
   portalUrl: string,
   openUrlOrOptions: ((url: string) => void) | LoginViaBrowserOptions = openBrowser,

@@ -35,6 +35,7 @@ export function isSecretAttributeKey(key: string): boolean {
   return SECRET_LEAF.test(leaf);
 }
 
+// (TEL-5) secret attributes are stored as [redacted]
 export function redactSecretAttributes(
   attributes: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -96,6 +97,7 @@ export interface BoundTrajectoryPayload {
  * Drop withheld/binary bodies, redact secret attributes, and cap stored JSON.
  * Disclosure is upgraded to truncated/metadata_only when content is removed.
  */
+// (TEL-5) bodies over the payload cap are truncated
 export function boundTrajectoryPayload(
   payload: Record<string, unknown>,
   disclosure: AgentTrajectoryContentDisclosure,

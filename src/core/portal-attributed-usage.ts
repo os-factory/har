@@ -242,6 +242,7 @@ export interface AttributedUsageSelection {
  * between the main checkout and a slot). `since` null (first sync, `--full`)
  * sends everything.
  */
+// (PRT-7) Mission Control's attributed rows, whole sessions only
 export function selectAttributedUsage(
   view: MissionControlUsageView,
   since: string | null,

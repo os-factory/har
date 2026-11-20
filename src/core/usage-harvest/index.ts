@@ -11,6 +11,7 @@ function sessionToolKey(sessionKey: string, agentTool: string): string {
 }
 
 /** Skip harvest rows when Mission Control already has OTLP usage for that session/tool. */
+// (TEL-10) OTLP-attributed sessions are not harvested again
 export function omitHarvestWhenOtelPresent(
   harvested: AgentSessionUsage[],
   existing: AgentSessionUsage[],
@@ -40,6 +41,7 @@ export function omitHarvestEventsWhenOtelPresent(
   );
 }
 
+// (TEL-10) harvest only transcripts whose cwd is this slot's work dir
 export function harvestUsageForSlot(slot: HarvestSlotContext): AgentSessionUsage[] {
   const out: AgentSessionUsage[] = [];
   const claude = harvestClaudeUsage(slot);

@@ -60,6 +60,7 @@ export function lineProgramPathRel(lineId: string): string {
  * `plugins.ts`. The two apply paths are deliberately not interchangeable —
  * `add-plugin` appends to `verificationStages`, `line add` must never do that.
  */
+// (EXT-4) line add refuses a plugin manifest
 export function readLineManifestFromDir(bundleDir: string, expectedId?: string): LineManifest {
   const manifestPath = findManifestPath(bundleDir, LINE_BUNDLE_CONFIG);
   if (!manifestPath) {
@@ -327,6 +328,7 @@ function applyLineFromDir(
 }
 
 /** Install a factory line by bundled id, local id, path, npm package, or git URL. */
+// (EXT-3) install a line: register stages, never touch verificationStages
 export function applyLine(
   repoPath: string,
   lineSpec: string,

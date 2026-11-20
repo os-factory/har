@@ -32,7 +32,7 @@ function writeHook(harnessDir: string, name: string, body: string): string {
 }
 
 describe('lifecycle hooks (#238)', () => {
-  it('exposes the five sanctioned hook points', () => {
+  it('[CON-8] exposes the five sanctioned hook points', () => {
     expect([...LIFECYCLE_HOOKS]).toEqual([
       'pre-launch',
       'post-launch',
@@ -106,7 +106,7 @@ describe('lifecycle hooks (#238)', () => {
     expect(fs.readFileSync(marker, 'utf8').trim()).toBe(`post-teardown:4:${HOOK_CONTRACT_VERSION}`);
   });
 
-  it('post-hook failure policy defaults to warn, opt-in fail', () => {
+  it('[CON-8] post-hook failure policy defaults to warn, opt-in fail', () => {
     expect(postHookFailureMode({})).toBe('warn');
     expect(postHookFailureMode({ HARNESS_HOOK_POST_FAILURE: 'warn' })).toBe('warn');
     expect(postHookFailureMode({ HARNESS_HOOK_POST_FAILURE: 'fail' })).toBe('fail');
@@ -141,7 +141,7 @@ describe('pre-verify hook in the verify plan (#238)', () => {
     expect(plan.shellCommand).toContain('ERROR: pre-verify hook failed');
   });
 
-  it('a failing pre-verify hook aborts verify with its exit code', () => {
+  it('[CON-8] a failing pre-verify hook aborts verify with its exit code', () => {
     const { repo, harnessDir } = makeVerifyRepo();
     writeHook(harnessDir, 'pre-verify', 'echo "hook says no" >&2; exit 9');
     const plan = buildVerifyPlan(repo, 1, [], process.env);
@@ -179,7 +179,7 @@ describe('pre-verify hook in the verify plan (#238)', () => {
 });
 
 describe('teardown hooks (#238)', () => {
-  it('a failing pre-teardown hook aborts teardown before any resource is touched', async () => {
+  it('[CON-8] a failing pre-teardown hook aborts teardown before any resource is touched', async () => {
     const { repo, harnessDir } = makeRepo();
     writeHook(harnessDir, 'pre-teardown', 'exit 3');
     const lines: string[] = [];

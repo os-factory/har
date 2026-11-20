@@ -1401,6 +1401,7 @@ export async function handleAdopt(argv: { repo: string }): Promise<void> {
   return finishCommand(0);
 }
 
+// (SRF-5) --json alongside human-readable text
 export async function handleStatus(argv: { repo: string; json?: boolean }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
 

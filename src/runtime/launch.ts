@@ -111,6 +111,7 @@ function heredocEnvFile(
  * the generated launch.sh scripts used to do, across all three profiles.
  * Ordering, registry writes, and key log lines match the retired bash.
  */
+// (ENV-2) launch writes .env.agent.<id> and the slot registry entry
 export async function launchSession(options: LaunchSessionOptions): Promise<LaunchSessionResult> {
   const repoRoot = resolveHarnessRoot(options.repoPath);
   const harnessDir = getHarnessDir(repoRoot);

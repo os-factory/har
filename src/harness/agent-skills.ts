@@ -121,6 +121,7 @@ export interface ScaffoldAgentSkillsResult {
   skipped: string[];
 }
 
+// (CON-11) managed skills are recorded; user-modified files are not overwritten
 export function scaffoldAgentSkills(
   repoPath: string,
   agents: AgentSkillTarget[],
@@ -171,6 +172,7 @@ function recordScaffoldedFiles(
   });
 }
 
+// (CON-11) user-modified skill files are kept
 export function removeAgentSkills(repoPath: string, agents: AgentSkillTarget[]): string[] {
   const removed: string[] = [];
   for (const file of renderSkillFiles(agents)) {

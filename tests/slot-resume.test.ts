@@ -73,7 +73,7 @@ describe('slot resume', () => {
     expect(readiness.blockers[0]?.remediation).toContain('--resume');
   });
 
-  it('allows resume launch for failed slots', () => {
+  it('[ENV-7] allows resume launch for failed slots', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-resume-'));
     const harDir = writeHarness(repoPath);
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-workdir-'));

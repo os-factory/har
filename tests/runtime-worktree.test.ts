@@ -70,7 +70,7 @@ describe('session naming', () => {
 });
 
 describe('createSessionWorktree', () => {
-  it('creates the suffixed worktree and branch from HEAD', () => {
+  it('[ENV-2] creates the suffixed worktree and branch from HEAD', () => {
     const repo = makeRepo('main');
     const home = tmpDir('har-home-');
     const session = createSessionWorktree({
@@ -278,7 +278,7 @@ describe('isToolchainReady', () => {
 });
 
 describe('removeSessionWorktree', () => {
-  it('removes the worktree, prunes, and keeps the branch by default', () => {
+  it('[ENV-5] removes the worktree, prunes, and keeps the branch by default', () => {
     const repo = makeRepo();
     const home = tmpDir('har-home-');
     const session = createSessionWorktree({

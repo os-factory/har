@@ -10,7 +10,7 @@ import {
 import { initHarness } from '../src/core/harness';
 
 describe('adaptation prompts', () => {
-  it('init prompt includes AGENTS.md guidance and profile-specific hints', () => {
+  it('[CON-4] init prompt includes AGENTS.md guidance and profile-specific hints', () => {
     const defaultPrompt = buildInitAdaptationPrompt('/tmp/app', 'default');
     expect(defaultPrompt).toContain('AGENTS.md');
     expect(defaultPrompt).toContain('Profile: default');
@@ -52,7 +52,7 @@ describe('adaptation prompts', () => {
 });
 
 describe('initHarness scaffold', () => {
-  it('scaffolds without external API keys', async () => {
+  it('[CON-4] scaffolds without external API keys', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-init-'));
 
     const result = await initHarness({

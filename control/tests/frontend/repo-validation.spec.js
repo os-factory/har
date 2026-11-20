@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 // Resilient to an empty DB by skipping when no repository rows exist.
 
 test.describe('Repository validation stages', () => {
-  test('validation tab lists stages with a status per row', async ({ page }) => {
+  test('[MC-6] validation tab lists stages with a status per row', async ({ page }) => {
     await page.goto('/repos');
 
     const repoLink = page.locator('tbody a[href^="/repos/"]').first();

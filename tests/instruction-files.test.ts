@@ -50,7 +50,7 @@ describe('instruction-files', () => {
     expect(formatDetectionReport(detection)).toContain('AGENTS.md (exists)');
   });
 
-  it('creates AGENTS.md from template with HAR section markers', () => {
+  it('[CON-9] creates AGENTS.md from template with HAR section markers', () => {
     const repoPath = makeTempRepo('har-agents-create');
     const action = upsertAgentsMdHarSection(repoPath);
     expect(action).toBe('created');
@@ -60,7 +60,7 @@ describe('instruction-files', () => {
     expect(content).not.toContain('/factory-line');
   });
 
-  it('appends HAR section to existing AGENTS.md without wiping content', () => {
+  it('[CON-9] appends HAR section to existing AGENTS.md without wiping content', () => {
     const repoPath = makeTempRepo('har-agents-append');
     fs.writeFileSync(path.join(repoPath, AGENTS_MD), '# Project agents\n\nKeep me.\n');
     const action = upsertAgentsMdHarSection(repoPath);
@@ -70,7 +70,7 @@ describe('instruction-files', () => {
     expect(content).toContain(HAR_SECTION_START);
   });
 
-  it('updates existing marked HAR section', () => {
+  it('[CON-9] updates existing marked HAR section', () => {
     const repoPath = makeTempRepo('har-agents-update');
     fs.writeFileSync(
       path.join(repoPath, AGENTS_MD),
@@ -96,7 +96,7 @@ describe('instruction-files', () => {
 
   // Claude Code reads AGENTS.md directly, so the pointer is deprecated: HAR
   // keeps an existing CLAUDE.md current but never creates one.
-  it('never creates CLAUDE.md when it is absent', () => {
+  it('[CON-9] never creates CLAUDE.md when it is absent', () => {
     const repoPath = makeTempRepo('har-claude-thin');
     const action = ensureClaudeMdPointer(repoPath);
     expect(action).toBe('skipped');
@@ -113,7 +113,7 @@ describe('instruction-files', () => {
     expect(fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8').trim()).toBe('@AGENTS.md');
   });
 
-  it("preserves a user's own CLAUDE.md and prepends the import", () => {
+  it("[CON-9] preserves a user's own CLAUDE.md and prepends the import", () => {
     const repoPath = makeTempRepo('har-claude-rich');
     const rich = '# My project\n\n' + 'x'.repeat(700) + '\n\n## Style\nUse tabs.\n';
     fs.writeFileSync(path.join(repoPath, CLAUDE_MD), rich);
@@ -236,7 +236,7 @@ describe('instruction-files', () => {
     expect(content.match(/har:agent-environment:start/g)?.length).toBe(2);
   });
 
-  it('rejects finalize refresh that would shrink outside-marker content', () => {
+  it('[CON-9] rejects finalize refresh that would shrink outside-marker content', () => {
     const repoPath = makeTempRepo('har-shrink');
     const outside = Array.from({ length: 20 }, (_, i) => `- item ${i}`).join('\n');
     fs.writeFileSync(

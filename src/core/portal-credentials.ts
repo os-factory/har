@@ -67,6 +67,7 @@ export function readPortalCredentials(): PortalCredentials | null {
 }
 
 /** @deprecated Prefer connectPortal. Replaces the active org connection like any connect. */
+// (PRT-1) credentials file is 0600
 export function writePortalCredentials(creds: PortalCredentials): void {
   connectPortal({
     portalUrl: creds.portalUrl,

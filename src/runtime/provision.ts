@@ -73,6 +73,7 @@ export function toolchainReady(workDir: string): boolean {
 }
 
 /** Ecosystem for a work dir: explicit HARNESS_ECOSYSTEM wins, else manifest detection. */
+// (ENV-10) explicit HARNESS_ECOSYSTEM wins over manifest detection
 export function detectEcosystem(dir: string, env: HarnessEnv = {}): Ecosystem {
   const configured = env.HARNESS_ECOSYSTEM ?? 'auto';
   if (configured && configured !== 'auto') return configured as Ecosystem;
@@ -708,6 +709,7 @@ class Provisioner {
  * paths to the agent env file. Returns the ecosystem that was provisioned.
  * Throws ProvisionError on install/generation failures (the script's `set -e`).
  */
+// (ENV-10) install the ecosystem toolchain; a failed install fails the launch
 export async function provisionToolchain(options: ProvisionOptions): Promise<Ecosystem> {
   return new Provisioner(options).provision();
 }

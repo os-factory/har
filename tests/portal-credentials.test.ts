@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('portal credentials store', () => {
-  it('round-trips credentials and writes the file 0600', () => {
+  it('[PRT-1] round-trips credentials and writes the file 0600', () => {
     writePortalCredentials({
       portalUrl: 'https://portal.example.com',
       token: 'har_ingest_x',

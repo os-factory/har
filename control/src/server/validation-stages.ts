@@ -102,6 +102,7 @@ export interface ValidationStagesScope {
   runIds?: string[];
 }
 
+// (MC-6) expected validation stages with latest results
 export async function getValidationStages(
   repositoryId: string,
   options?: ValidationStagesScope,

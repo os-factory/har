@@ -23,6 +23,7 @@ function askYesNo(question: string): Promise<boolean> {
   });
 }
 
+// (VER-12) record the commit-gate policy; install hooks only when chosen
 export async function handleCommitGateOnboarding(
   options: CommitGateOnboardingOptions,
 ): Promise<boolean> {

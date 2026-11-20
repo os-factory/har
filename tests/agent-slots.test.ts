@@ -20,7 +20,7 @@ describe('agent slot limits', () => {
     expect(msg).toContain('raise agentSlots.max');
   });
 
-  it('uses agentSlots from stages.json', () => {
+  it('[ENV-1] uses agentSlots from stages.json', () => {
     const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slots-'));
     fs.mkdirSync(path.join(repoPath, '.har'), { recursive: true });
     fs.writeFileSync(

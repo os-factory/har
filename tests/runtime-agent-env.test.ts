@@ -218,7 +218,7 @@ describe('generateAgentEnvFile', () => {
     expect(fs.existsSync(envFile)).toBe(false);
   });
 
-  it('renders env.template into the env file', () => {
+  it('[ENV-2] renders env.template into the env file', () => {
     const dir = tmpDir('har-agent-env-');
     const harDir = path.join(dir, '.har');
     fs.mkdirSync(harDir, { recursive: true });

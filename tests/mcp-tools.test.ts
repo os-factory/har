@@ -2,7 +2,7 @@ import { HAR_MCP_TOOLS } from '../src/mcp/server';
 import { HAR_STAGE_KINDS } from '../src/harness/schema';
 
 describe('HAR MCP tool schemas', () => {
-  it('exposes a small generic tool surface', () => {
+  it('[SRF-1, EXT-2] exposes a small generic tool surface', () => {
     const names = HAR_MCP_TOOLS.map((tool) => tool.name);
 
     expect(names).toEqual([

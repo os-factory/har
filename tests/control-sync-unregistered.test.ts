@@ -34,7 +34,7 @@ describe('registerRepoWithControl unregistered tombstone', () => {
     (global as unknown as { fetch: unknown }).fetch = realFetch;
   });
 
-  it('drops path from local registry on 409 and returns null', async () => {
+  it('[MC-4] drops path from local registry on 409 and returns null', async () => {
     expect(listRegisteredRepos().length).toBeGreaterThan(0);
 
     (global as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({

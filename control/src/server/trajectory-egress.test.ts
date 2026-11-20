@@ -104,7 +104,7 @@ describe('serializeTrajectoryForEgress', () => {
     expect(serialized.createdAt).toBe('2026-01-02T00:00:00.000Z');
   });
 
-  it('re-applies a tightened payload cap to already-stored content', () => {
+  it('[TEL-6] re-applies a tightened payload cap to already-stored content', () => {
     process.env.HAR_TRAJECTORY_MAX_PAYLOAD_BYTES = '1024';
     const stored = record({ payload: { promptText: 'x'.repeat(20_000), attributes: {} } });
 

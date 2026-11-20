@@ -66,6 +66,7 @@ export function readPortalWatermark(repoPath: string, portalUrl: string): string
   return entry?.lastSyncedAt ?? null;
 }
 
+// (PRT-5) one watermark per repo and portal
 export function writePortalWatermark(
   repoPath: string,
   portalUrl: string,
@@ -139,6 +140,7 @@ export function coveredSources(repoPath: string, entry: RunsWatermark | null): s
  * Rows without a comparable timestamp are always included (can't tell → send;
  * the portal upsert is idempotent). `since === null` selects everything.
  */
+// (PRT-5) send what is newer than the watermark, advance to the max sent
 export function selectSince<T>(
   rows: T[],
   since: string | null,
