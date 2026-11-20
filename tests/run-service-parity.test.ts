@@ -5,6 +5,7 @@ import { getEnvironmentStatus, launchEnvironment, runStage } from '../src/core/r
 import { collectEnvironmentStatus, renderEnvironmentStatusText } from '../src/core/slot-status';
 import { getSlotRegistryPath } from '../src/core/slot-registry';
 import { synthesizeStageRegistry } from '../src/harness/stages';
+import * as packageRunnerModule from '../src/utils/package-runner';
 
 
 // #234: launch/teardown/setup/verify/agent ops run in the package runtime.
@@ -175,6 +176,16 @@ describe('trigger tagging parity (#233)', () => {
 });
 
 describe('status parity (#233)', () => {
+  // Each status collection probes the machine's live pm2 (`<runner> pm2 jlist`,
+  // 3s timeout). Two collections can disagree under load, so make the probe
+  // fail fast and identically for both.
+  beforeEach(() => {
+    jest.spyOn(packageRunnerModule, 'packageRunner').mockReturnValue('false');
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('renders text from the same structured source on every surface and writes no run records', async () => {
     const tempRepo = makeTempRepo('har-status-parity-');
     writeSlotRegistryEntry(tempRepo, 1, 'active');
