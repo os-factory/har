@@ -34,6 +34,8 @@ Works with **Claude Code** · **Cursor** · **Codex** · any MCP agent.
 - **Mission Control.** HAR's open-source local dashboard. It gives you one place to keep track of every repository, worktree, run, validation, and artifact across your projects.
 - **Plugins.** A growing ecosystem of open source plugins that further expand HAR's customizability and functionality.
 
+Optional, installed separately: **[herdr-har-ui](https://github.com/os-factory/herdr-har-ui)**, a layout for the [herdr](https://herdr.dev) desktop app that puts your HAR projects, their slots, the agents running in them, verification health and OTel cost next to your terminals. It can start a slot with Claude Code or Codex in one click, or chat with an agent in a repo without taking a slot.
+
 ## Install
 
 ```bash
