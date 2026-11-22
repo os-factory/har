@@ -48,7 +48,7 @@ active session.
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_run_stage` | `stageId` or `kind`, optional `agentId`, `args` | Normalized generic stage result |
-| `har_run_verification` | `agentId`, `full` | Status, timing, and failed-step output (passing steps omit logs) |
+| `har_run_verification` | `agentId`, `full` | Status, timing, and failed-step output (passing steps omit logs); `proof` outcome after a full verify when Factory Commits proofs are on |
 | `har_doctor` | `repo` | Harness contract validation (same report as `har env doctor --json`): pass/fail checks plus findings with remedies; `isError` when the contract is broken |
 
 Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,

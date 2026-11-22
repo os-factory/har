@@ -111,7 +111,7 @@ exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage
               "endTimeUnixNano": "1795341603500000000",
               "kind": 2,
               "name": "har verify --full",
-              "spanId": "632954006018ac34",
+              "spanId": "9f48c60bbc441723",
               "startTimeUnixNano": "1795341600000000000",
               "status": {
                 "code": 2,
@@ -148,8 +148,8 @@ exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage
               "endTimeUnixNano": "1795341601000000000",
               "kind": 1,
               "name": "typecheck",
-              "parentSpanId": "632954006018ac34",
-              "spanId": "681f35842977ea48",
+              "parentSpanId": "9f48c60bbc441723",
+              "spanId": "b1079403ed32696d",
               "startTimeUnixNano": "1795341600000000000",
               "status": {
                 "code": 0,
@@ -192,8 +192,8 @@ exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage
               "endTimeUnixNano": "1795341603000000000",
               "kind": 1,
               "name": "unit-tests",
-              "parentSpanId": "632954006018ac34",
-              "spanId": "509744ede16e1ab3",
+              "parentSpanId": "9f48c60bbc441723",
+              "spanId": "c13ecb4ece10143b",
               "startTimeUnixNano": "1795341601000000000",
               "status": {
                 "code": 2,

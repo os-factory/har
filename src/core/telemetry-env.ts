@@ -56,12 +56,24 @@ function harVersionOrUndefined(): string | undefined {
   }
 }
 
+/** The correlation values both agent sessions and verification spans carry. */
+export interface FactoryCorrelationInput {
+  workUnitId?: string;
+  workUnitSource?: string;
+  attemptId?: string;
+  repositoryUrl?: string;
+  branch?: string;
+  producerVersion?: string;
+}
+
 /**
  * Factory Commits telemetry-profile Resource attributes (#416), emitted
  * alongside the har.* ones with the same values. An unknown value is omitted,
- * never sent as an empty string.
+ * never sent as an empty string. The single source for these values: agent
+ * sessions (OTEL_RESOURCE_ATTRIBUTES) and verification spans both use it, so a
+ * backend can join on them.
  */
-function factoryCorrelationAttributes(attrs: TelemetrySessionAttrs): string[] {
+export function factoryCorrelationResource(attrs: FactoryCorrelationInput): Record<string, string> {
   const pairs: Array<[string, string | undefined]> = [
     ['factory.work_unit.id', attrs.workUnitId],
     ['factory.work_unit.source', attrs.workUnitSource],
@@ -71,10 +83,16 @@ function factoryCorrelationAttributes(attrs: TelemetrySessionAttrs): string[] {
     ['factory.producer.name', FACTORY_PRODUCER_NAME],
     ['factory.producer.version', attrs.producerVersion ?? harVersionOrUndefined()],
   ];
-  return pairs.flatMap(([key, value]) => {
+  const resource: Record<string, string> = {};
+  for (const [key, value] of pairs) {
     const trimmed = value?.trim();
-    return trimmed ? [`${key}=${escapeAttrValue(trimmed)}`] : [];
-  });
+    if (trimmed) resource[key] = escapeAttrValue(trimmed);
+  }
+  return resource;
+}
+
+function factoryCorrelationAttributes(attrs: TelemetrySessionAttrs): string[] {
+  return Object.entries(factoryCorrelationResource(attrs)).map(([key, value]) => `${key}=${value}`);
 }
 
 /**

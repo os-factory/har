@@ -205,8 +205,17 @@ export const RunVerificationInputSchema = z.object({
   full: z.boolean().default(false),
 });
 
+/** Factory Commits proof outcome of a full verify (present only when the repo opted in). */
+export const FactoryProofOutcomeSchema = z.object({
+  status: z.enum(['attested', 'skipped', 'failed']),
+  message: z.string(),
+  digest: z.string().optional(),
+  attestationFile: z.string().optional(),
+});
+
 export const RunVerificationOutputSchema = ShellRunOutputSchema.extend({
   verification: VerificationResultSchema.nullable(),
+  proof: FactoryProofOutcomeSchema.optional(),
 });
 
 export const GetLogsInputSchema = z.object({

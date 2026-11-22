@@ -140,6 +140,8 @@ export interface FactoryRunPredicate {
   verdict: 'pass' | 'fail';
   producer: { name: string; version: string };
   environment: { trust: 'local' | 'ci'; executor?: string };
+  /** OTel trace of the verification run (telemetry profile); only when that trace is exported. */
+  telemetry?: { traceId: string };
 }
 
 export interface BuildFactoryRunPredicateInput {
@@ -151,8 +153,12 @@ export interface BuildFactoryRunPredicateInput {
   run?: { startedAt?: string; finishedAt?: string };
   workUnit?: { id: string; source?: string; attemptId?: string };
   producerVersion: string;
+  /** Set only when the verification trace will actually be exported. */
+  telemetry?: { traceId: string };
   env?: NodeJS.ProcessEnv;
 }
+
+const TRACE_ID_RE = /^[0-9a-f]{32}$/;
 
 /** The verify-runner's marker for a registered stage that cannot run at all. */
 const UNRUNNABLE_STAGE_OUTPUT = 'stage has neither script nor command';
@@ -247,6 +253,9 @@ export function buildFactoryRunPredicate(input: BuildFactoryRunPredicateInput): 
     verdict: computeFactoryVerdict(required, stages),
     producer: { name: 'har', version: input.producerVersion },
     environment: { trust: ci ? 'ci' : 'local', ...(executor ? { executor } : {}) },
+    ...(input.telemetry && TRACE_ID_RE.test(input.telemetry.traceId)
+      ? { telemetry: { traceId: input.telemetry.traceId } }
+      : {}),
   };
 }
 
@@ -378,6 +387,8 @@ export interface ProduceValidationProofInput {
   verification: VerificationResult;
   run?: { startedAt?: string; finishedAt?: string };
   workUnit?: { id: string; source?: string; attemptId?: string };
+  /** Verification trace to link from the predicate; pass only when it will be exported. */
+  telemetry?: { traceId: string };
   bin?: string;
   env?: NodeJS.ProcessEnv;
 }
@@ -406,6 +417,7 @@ export function produceValidationProof(input: ProduceValidationProofInput): Prod
       run: input.run,
       workUnit: input.workUnit,
       producerVersion: getHarPackageVersion(),
+      telemetry: input.telemetry,
       env: input.env,
     });
     const outcome = attestFactoryRun({

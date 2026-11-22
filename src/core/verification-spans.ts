@@ -12,11 +12,12 @@ import {
   OTLP_STATUS_CODE,
   type OtlpSpanInput,
 } from '../utils/otlp-json';
-import { readGitRemote } from './git-remote';
+import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { getHarPackageVersion } from './package-version';
 import { getRun } from './runs';
 import { isTelemetryEnabled } from './telemetry-config';
 import { readTelemetryDestinations } from './telemetry-destinations';
+import { FACTORY_PRODUCER_NAME, factoryCorrelationResource } from './telemetry-env';
 import { findWorkUnit } from './work-units';
 
 /**
@@ -28,8 +29,8 @@ import { findWorkUnit } from './work-units';
  * results and timings only: no command lines, log text or local paths.
  */
 
-/** `factory.producer.name` / `service.name`. */
-const PRODUCER_NAME = 'har';
+/** `service.name`, the same as `factory.producer.name`. */
+const PRODUCER_NAME = FACTORY_PRODUCER_NAME;
 const SCOPE_NAME = 'har.verification';
 const DEFAULT_TIMEOUT_MS = 3_000;
 
@@ -38,15 +39,16 @@ function sha256Hex(input: string): string {
 }
 
 /**
- * Trace id of a verification run — derived from the validation id (or the run
- * id when no validation was recorded) so a proof or another HAR surface can
- * reference the trace without coordination.
+ * Trace id of a verification — derived from the validation id (or the run id
+ * when no validation was recorded) so a proof or another HAR surface can
+ * reference the trace without coordination. Every verify of the same tree
+ * lands in the same trace.
  */
 export function verificationTraceId(id: string): string {
   return sha256Hex(`har-verify:${id}`).slice(0, 32);
 }
 
-/** Span id of the run span. */
+/** Span id of the run span — keyed on the run id, so repeated verifies of one tree never collide. */
 export function verificationRunSpanId(id: string): string {
   return sha256Hex(`har-verify-span:${id}`).slice(0, 16);
 }
@@ -84,8 +86,12 @@ export function cicdTaskType(stageId: string): 'build' | 'test' | undefined {
 }
 
 export interface VerificationTraceInput {
-  /** Validation id when one was recorded, else the run id. */
+  /** Validation id when one was recorded, else the run id. Keys the trace id. */
   id: string;
+  /** Run record id of this verify; keys the span ids. Falls back to `id`. */
+  runId?: string;
+  /** Statement digest when this run's Factory Commits proof was attested. */
+  attestationDigest?: string;
   full: boolean;
   /** Parsed verify result; null when verify produced none (→ `error`). */
   verification: VerificationResult | null;
@@ -117,7 +123,8 @@ function statusCodeFor(result: CicdResult): number {
 /** One verification run → an OTLP/JSON `ExportTraceServiceRequest`. Pure. */
 export function buildVerificationTrace(input: VerificationTraceInput): Record<string, unknown> {
   const traceId = verificationTraceId(input.id);
-  const runSpanId = verificationRunSpanId(input.id);
+  const spanKey = input.runId ?? input.id;
+  const runSpanId = verificationRunSpanId(spanKey);
   const pipelineName = input.full ? 'har verify --full' : 'har verify';
   const result = runResult(input);
   const runEnd = Math.max(input.startedAtMs, input.finishedAtMs);
@@ -139,6 +146,7 @@ export function buildVerificationTrace(input: VerificationTraceInput): Record<st
       'factory.verdict':
         input.full && input.verification ? (input.verification.status === 'pass' ? 'pass' : 'fail') : undefined,
       'vcs.ref.head.revision': input.headRevision,
+      'factory.attestation.digest': input.attestationDigest,
     },
   };
 
@@ -151,7 +159,7 @@ export function buildVerificationTrace(input: VerificationTraceInput): Record<st
     const stageResult = stageStatusToCicdResult(stage.pass ? 'passed' : 'failed');
     return {
       traceId,
-      spanId: verificationStageSpanId(input.id, stage.name),
+      spanId: verificationStageSpanId(spanKey, stage.name),
       parentSpanId: runSpanId,
       name: stage.name,
       kind: OTLP_SPAN_KIND.internal,
@@ -171,44 +179,19 @@ export function buildVerificationTrace(input: VerificationTraceInput): Record<st
   return encodeOtlpTraces({
     resource: {
       'service.name': PRODUCER_NAME,
-      'factory.work_unit.id': input.workUnitId,
-      'factory.work_unit.source': input.workUnitSource,
-      'factory.attempt.id': input.attemptId,
-      'vcs.repository.url.full': input.repositoryUrl,
-      'vcs.ref.head.name': input.branch,
-      'factory.producer.name': PRODUCER_NAME,
-      'factory.producer.version': input.producerVersion,
+      // Same helper as agent sessions' OTEL_RESOURCE_ATTRIBUTES: identical join keys.
+      ...factoryCorrelationResource({
+        workUnitId: input.workUnitId,
+        workUnitSource: input.workUnitSource,
+        attemptId: input.attemptId,
+        repositoryUrl: input.repositoryUrl,
+        branch: input.branch,
+        producerVersion: input.producerVersion,
+      }),
     },
     scope: { name: SCOPE_NAME, version: input.producerVersion },
     spans: [runSpan, ...stageSpans],
   });
-}
-
-/**
- * A remote as a repository URL safe to export: user, password, query and
- * fragment dropped; scp-style `user@host:path` → `ssh://host/path`; a local
- * path → undefined.
- * TODO(#416): unify with the shared remote sanitizer once the semconv
- * attributes branch lands (same rules).
- */
-export function sanitizeRepositoryUrl(remote: string | undefined): string | undefined {
-  const raw = remote?.trim();
-  if (!raw) return undefined;
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
-    try {
-      const url = new URL(raw);
-      url.username = '';
-      url.password = '';
-      url.search = '';
-      url.hash = '';
-      return url.host ? url.toString() : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  const scp = /^(?:[^@/]+@)?([^:/]+):(?!\/\/)(.+)$/.exec(raw);
-  if (scp) return `ssh://${scp[1]}/${scp[2].replace(/^\/+/, '')}`;
-  return undefined;
 }
 
 function commitTree(checkoutDir: string, commit: string): string | undefined {
@@ -240,6 +223,8 @@ export interface VerificationTraceContext {
   verification: VerificationResult | null;
   runId?: string;
   validation?: { validationId: string; treeHash: string; headSha?: string; branch?: string };
+  /** Digest of the Factory Commits statement attested for this run, if any. */
+  attestationDigest?: string;
   workUnitId?: string;
   attemptId?: string;
   branch?: string;
@@ -267,6 +252,8 @@ export function collectVerificationTraceInput(context: VerificationTraceContext)
       : undefined;
   return {
     id: validation?.validationId ?? context.runId ?? crypto.randomUUID(),
+    ...(context.runId ? { runId: context.runId } : {}),
+    ...(context.attestationDigest ? { attestationDigest: context.attestationDigest } : {}),
     full: context.full,
     verification: context.verification,
     startedAtMs,
@@ -276,7 +263,7 @@ export function collectVerificationTraceInput(context: VerificationTraceContext)
     workUnitId: context.workUnitId,
     workUnitSource,
     attemptId: context.attemptId,
-    repositoryUrl: sanitizeRepositoryUrl(safely(() => readGitRemote(context.checkoutDir ?? context.repoPath))),
+    repositoryUrl: sanitizeGitRemoteUrl(safely(() => readGitRemote(context.checkoutDir ?? context.repoPath))),
     branch: validation?.branch ?? context.branch,
     producerVersion: safely(getHarPackageVersion),
   };
@@ -312,6 +299,20 @@ async function postTrace(
     // Drain so the socket is released; the body is never surfaced.
     await response.text().catch(() => '');
     return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a verification trace will be exported: telemetry is not off and at
+ * least one enabled destination subscribes to `traces`. Cheap (reads one small
+ * config file), never throws. A proof only names a trace when this is true.
+ */
+export function willExportVerificationSpans(env?: NodeJS.ProcessEnv): boolean {
+  try {
+    if (!isTelemetryEnabled()) return false;
+    return destinationsForSignal(readTelemetryDestinations(env), 'traces').length > 0;
   } catch {
     return false;
   }

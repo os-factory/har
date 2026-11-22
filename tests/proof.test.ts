@@ -116,6 +116,24 @@ describe('buildFactoryRunPredicate', () => {
     expect(predicate.verdict).toBe('fail');
   });
 
+  it('links the verification trace only with a well-formed trace id', () => {
+    const base = {
+      validation,
+      verification: verification([{ name: 'typecheck', pass: true }]),
+      registry,
+      producerVersion: '2.0.0',
+      env: {},
+    };
+    const traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
+    const linked = buildFactoryRunPredicate({ ...base, telemetry: { traceId } });
+    expect(linked.telemetry).toEqual({ traceId });
+    expectValidPredicate(linked);
+    expect(buildFactoryRunPredicate(base)).not.toHaveProperty('telemetry');
+    expect(buildFactoryRunPredicate({ ...base, telemetry: { traceId: 'not-a-trace' } })).not.toHaveProperty(
+      'telemetry',
+    );
+  });
+
   it('drops work-unit fields that do not fit the standard grammar', () => {
     const predicate = buildFactoryRunPredicate({
       validation,
