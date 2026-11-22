@@ -81,4 +81,58 @@ describe('otlp-forward local path stripping', () => {
     expect(await drainOtlpSpool({ destinationsDir, spoolDir, fetchImpl })).toMatchObject({ sent: 0, dropped: 1 });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  const LOGS_WITH_IDENTITY = JSON.stringify({
+    resourceLogs: [
+      {
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: 'claude-code' } }] },
+        scopeLogs: [
+          {
+            scope: { name: 'com.anthropic.claude_code.events' },
+            logRecords: [
+              {
+                body: { stringValue: 'claude_code.api_request' },
+                attributes: [
+                  { key: 'user.email', value: { stringValue: 'someone@example.com' } },
+                  { key: 'user.account_uuid', value: { stringValue: '0000-acct' } },
+                  { key: 'session.id', value: { stringValue: 's-1' } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  it('strips account identity before the spool unless the destination opted in', async () => {
+    writeDestinations([
+      { name: 'lf', endpoint: 'https://lf.example.com' },
+      { name: 'paths', endpoint: 'http://paths:4318', includeLocalPaths: true },
+      { name: 'mine', endpoint: 'http://collector:4318', includeAccountIdentity: true },
+    ]);
+    const body = Buffer.from(LOGS_WITH_IDENTITY);
+    expect(enqueueOtlpForward('logs', body, { contentType: 'application/json' }, { destinationsDir, spoolDir })).toBe(3);
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    await drainOtlpSpool({ destinationsDir, spoolDir, fetchImpl });
+    const sent = Object.fromEntries(
+      fetchImpl.mock.calls.map(([url, init]) => [String(url), Buffer.from((init as RequestInit).body as Uint8Array).toString()]),
+    );
+    for (const url of ['https://lf.example.com/v1/logs', 'http://paths:4318/v1/logs']) {
+      expect(sent[url]).not.toContain('someone@example.com');
+      expect(sent[url]).not.toContain('0000-acct');
+      expect(sent[url]).toContain('s-1');
+    }
+    expect(sent['http://collector:4318/v1/logs']).toBe(LOGS_WITH_IDENTITY);
+  });
+
+  it('drops a spooled copy with account identity once the destination withdraws the opt-in', async () => {
+    writeDestinations([{ name: 'mine', endpoint: 'http://collector:4318', includeAccountIdentity: true }]);
+    enqueueOtlpForward('logs', Buffer.from(LOGS_WITH_IDENTITY), { contentType: 'application/json' }, { destinationsDir, spoolDir });
+    // A distinct size so the cached config is re-read.
+    writeDestinations([{ name: 'mine', endpoint: 'http://collector:4318', includeAccountIdentity: false }]);
+    const fetchImpl = vi.fn();
+    expect(await drainOtlpSpool({ destinationsDir, spoolDir, fetchImpl })).toMatchObject({ sent: 0, dropped: 1 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

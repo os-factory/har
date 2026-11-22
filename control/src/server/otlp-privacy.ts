@@ -3,9 +3,10 @@ import * as zlib from 'node:zlib';
 import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, type OtlpSignal } from '@har/schemas';
 
 /**
- * Remove attributes that hold absolute local paths (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`)
- * from an OTLP/HTTP body before Mission Control forwards a copy of it to a
- * third-party destination.
+ * Remove denied attributes from an OTLP/HTTP body before Mission Control
+ * forwards a copy of it to a third-party destination: absolute local paths
+ * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`) and account identity
+ * (`TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES`), per `forwardDeniedAttributes`.
  *
  * Attributes are removed wherever OTLP carries them: resource, instrumentation
  * scope, span, span event, span link, log record, metric data point and
@@ -22,8 +23,7 @@ import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, type OtlpSignal } from '@har/schemas';
 export type OtlpBodyHeaders = { contentType: string; contentEncoding?: string };
 export type StrippedOtlpBody = OtlpBodyHeaders & { body: Buffer; removed: number };
 
-const DENIED = new Set<string>(TELEMETRY_LOCAL_PATH_ATTRIBUTES);
-const DENIED_BYTES = TELEMETRY_LOCAL_PATH_ATTRIBUTES.map((key) => Buffer.from(key, 'utf8'));
+const LOCAL_PATHS = new Set<string>(TELEMETRY_LOCAL_PATH_ATTRIBUTES);
 const ATTRIBUTE_FIELDS = new Set(['attributes', 'filteredAttributes']);
 
 type ProtobufType = {
@@ -62,14 +62,15 @@ const CODECS: Record<string, Codec> = {
   br: { decode: (b) => zlib.brotliDecompressSync(b), encode: (b) => zlib.brotliCompressSync(b) },
 };
 
-function mentionsDeniedKey(body: Buffer): boolean {
-  return DENIED_BYTES.some((key) => body.includes(key));
+function mentionsDeniedKey(body: Buffer, denied: ReadonlySet<string>): boolean {
+  for (const key of denied) if (body.includes(Buffer.from(key, 'utf8'))) return true;
+  return false;
 }
 
 /** Filter every `attributes` / `filteredAttributes` list in place; returns how many entries were removed. */
-export function removeDeniedAttributes(node: unknown): number {
+export function removeDeniedAttributes(node: unknown, denied: ReadonlySet<string> = LOCAL_PATHS): number {
   if (node === null || typeof node !== 'object' || ArrayBuffer.isView(node)) return 0;
-  if (Array.isArray(node)) return node.reduce((sum: number, item) => sum + removeDeniedAttributes(item), 0);
+  if (Array.isArray(node)) return node.reduce((sum: number, item) => sum + removeDeniedAttributes(item, denied), 0);
   const record = node as Record<string, unknown>;
   let removed = 0;
   for (const field of Object.keys(record)) {
@@ -77,13 +78,13 @@ export function removeDeniedAttributes(node: unknown): number {
     if (ATTRIBUTE_FIELDS.has(field) && Array.isArray(value)) {
       const kept = value.filter((kv) => {
         const key = kv && typeof kv === 'object' ? (kv as { key?: unknown }).key : undefined;
-        return !(typeof key === 'string' && DENIED.has(key));
+        return !(typeof key === 'string' && denied.has(key));
       });
       removed += value.length - kept.length;
       if (kept.length !== value.length) record[field] = kept;
       continue;
     }
-    removed += removeDeniedAttributes(value);
+    removed += removeDeniedAttributes(value, denied);
   }
   return removed;
 }
@@ -92,12 +93,25 @@ function isJson(contentType: string, body: Buffer): boolean {
   return contentType.toLowerCase().includes('json') || body[0] === 0x7b; // same rule as the receivers
 }
 
+/** Strip local path attributes only (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`). */
 export function stripLocalPathAttributes(
   signal: OtlpSignal,
   original: Buffer,
   headers: OtlpBodyHeaders,
 ): StrippedOtlpBody | null {
+  return stripDeniedAttributes(signal, original, headers, TELEMETRY_LOCAL_PATH_ATTRIBUTES);
+}
+
+/** Strip the given attribute keys; an empty list returns the original body. */
+export function stripDeniedAttributes(
+  signal: OtlpSignal,
+  original: Buffer,
+  headers: OtlpBodyHeaders,
+  deniedKeys: readonly string[],
+): StrippedOtlpBody | null {
+  const denied = new Set(deniedKeys);
   const unchanged: StrippedOtlpBody = { ...headers, body: original, removed: 0 };
+  if (denied.size === 0) return unchanged;
   const encoding = (headers.contentEncoding ?? 'identity').trim().toLowerCase() || 'identity';
   const codec = CODECS[encoding];
   // An encoding we cannot read may hide anything: do not forward it.
@@ -114,7 +128,7 @@ export function stripLocalPathAttributes(
   const json = isJson(headers.contentType, plain);
   // Protobuf strings are raw UTF-8, so a key absent from the bytes is absent
   // from the message. JSON may spell a key with escapes, so any backslash means parse.
-  if (!mentionsDeniedKey(plain) && !(json && plain.includes(0x5c /* \ */))) return unchanged;
+  if (!mentionsDeniedKey(plain, denied) && !(json && plain.includes(0x5c /* \ */))) return unchanged;
 
   let rewritten: Buffer;
   let removed: number;
@@ -125,7 +139,7 @@ export function stripLocalPathAttributes(
     } catch {
       return null;
     }
-    removed = removeDeniedAttributes(payload);
+    removed = removeDeniedAttributes(payload, denied);
     if (removed === 0) return unchanged;
     rewritten = Buffer.from(JSON.stringify(payload), 'utf8');
   } else {
@@ -137,7 +151,7 @@ export function stripLocalPathAttributes(
     } catch {
       return null;
     }
-    removed = removeDeniedAttributes(message);
+    removed = removeDeniedAttributes(message, denied);
     if (removed === 0) return unchanged;
     rewritten = Buffer.from(type.encode(message).finish());
   }

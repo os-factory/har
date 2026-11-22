@@ -21,7 +21,10 @@ import { destinationFromAddArgs } from '../src/cli/commands/telemetry-destinatio
 import {
   destinationsForSignal,
   otlpSignalUrl,
+  forwardDeniedAttributes,
   telemetryDestinationSchema,
+  TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES,
+  TELEMETRY_FORWARD_DENIED_ATTRIBUTES,
   TELEMETRY_LOCAL_PATH_ATTRIBUTES,
 } from '../src/harness/schema';
 
@@ -237,5 +240,40 @@ describe('privacy defaults', () => {
       .map(([key]) => key);
     expect(pathKeys.sort()).toEqual(['har.repo_path', 'har.work_dir']);
     for (const key of pathKeys) expect(TELEMETRY_LOCAL_PATH_ATTRIBUTES).toContain(key);
+  });
+
+  it('strips account identity unless --include-account-identity is given', () => {
+    const lfEnv = { LANGFUSE_PUBLIC_KEY: 'pk', LANGFUSE_SECRET_KEY: 'sk' };
+    const otlp = destinationFromAddArgs({ name: 'c', preset: 'otlp', endpoint: 'https://c.example.com' }, {});
+    const lf = destinationFromAddArgs({ name: 'lf', preset: 'langfuse' }, lfEnv);
+    expect(otlp.includeAccountIdentity).toBeUndefined();
+    expect(lf.includeAccountIdentity).toBeUndefined();
+    expect(
+      destinationFromAddArgs({ name: 'c', preset: 'otlp', endpoint: 'https://c.example.com', includeAccountIdentity: true }, {})
+        .includeAccountIdentity,
+    ).toBe(true);
+    expect(destinationFromAddArgs({ name: 'lf', preset: 'langfuse', includeAccountIdentity: true }, lfEnv).includeAccountIdentity).toBe(true);
+    // Independent of the local paths opt-in.
+    expect(destinationFromAddArgs({ name: 'c', preset: 'otlp', endpoint: 'https://c.example.com', includeLocalPaths: true }, {}).includeAccountIdentity)
+      .toBeUndefined();
+    expect(telemetryDestinationSchema.parse({ name: 'old', endpoint: 'https://o.example.com', signals: ['traces'] }).includeAccountIdentity).toBeUndefined();
+  });
+
+  it("denies Claude Code's account identity attributes by default", () => {
+    for (const key of ['user.email', 'user.account_uuid', 'user.account_id', 'user.id', 'organization.id', 'enduser.id']) {
+      expect(TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES).toContain(key);
+      expect(TELEMETRY_FORWARD_DENIED_ATTRIBUTES).toContain(key);
+    }
+    // Correlation keys stay: they are opaque ids, not the person.
+    for (const key of ['session.id', 'factory.work_unit.id', 'factory.attempt.id']) {
+      expect(TELEMETRY_FORWARD_DENIED_ATTRIBUTES).not.toContain(key);
+    }
+  });
+
+  it('computes the per-destination denylist from the two opt-ins', () => {
+    expect([...forwardDeniedAttributes({})].sort()).toEqual([...TELEMETRY_FORWARD_DENIED_ATTRIBUTES].sort());
+    expect(forwardDeniedAttributes({ includeLocalPaths: true })).toEqual([...TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES]);
+    expect(forwardDeniedAttributes({ includeAccountIdentity: true })).toEqual([...TELEMETRY_LOCAL_PATH_ATTRIBUTES]);
+    expect(forwardDeniedAttributes({ includeLocalPaths: true, includeAccountIdentity: true })).toEqual([]);
   });
 });

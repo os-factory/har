@@ -52,9 +52,63 @@ export const TELEMETRY_LOCAL_PATH_ATTRIBUTES = [
   'code.file.path',
 ] as const;
 
+/**
+ * Attribute keys that identify the person or account behind the telemetry.
+ * Claude Code attaches `user.email`, `user.account_uuid`, `user.account_id`,
+ * `user.id` and `organization.id` to its own metrics and events (and
+ * `user.groups` through a sign-in gateway); `enduser.*` and the other `user.*`
+ * keys are their OpenTelemetry semantic-convention counterparts. Mission Control
+ * keeps them locally and strips them, at every level, from every copy forwarded
+ * to a destination unless that destination sets `includeAccountIdentity: true`.
+ */
+export const TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES = [
+  // Claude Code standard attributes (metrics and events).
+  'user.email',
+  'user.account_uuid',
+  'user.account_id',
+  'user.id',
+  'user.groups',
+  'organization.id',
+  // OpenTelemetry semantic conventions for the end user.
+  'user.name',
+  'user.full_name',
+  'user.hash',
+  'user.roles',
+  'enduser.id',
+  'enduser.pseudo.id',
+  'enduser.role',
+  'enduser.scope',
+] as const;
+
+/**
+ * Every key stripped from a copy forwarded with default settings: local paths
+ * and account identity. `forwardDeniedAttributes` gives the set for one destination.
+ */
+export const TELEMETRY_FORWARD_DENIED_ATTRIBUTES = [
+  ...TELEMETRY_LOCAL_PATH_ATTRIBUTES,
+  ...TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES,
+] as const;
+
 /** Whether a destination receives local path attributes (opt-in, default false). */
 export function destinationIncludesLocalPaths(destination: Pick<TelemetryDestination, 'includeLocalPaths'>): boolean {
   return destination.includeLocalPaths === true;
+}
+
+/** Whether a destination receives account identity attributes (opt-in, default false). */
+export function destinationIncludesAccountIdentity(
+  destination: Pick<TelemetryDestination, 'includeAccountIdentity'>,
+): boolean {
+  return destination.includeAccountIdentity === true;
+}
+
+/** Attribute keys stripped from every copy forwarded to this destination (empty: forward as received). */
+export function forwardDeniedAttributes(
+  destination: Pick<TelemetryDestination, 'includeLocalPaths' | 'includeAccountIdentity'>,
+): readonly string[] {
+  return [
+    ...(destinationIncludesLocalPaths(destination) ? [] : TELEMETRY_LOCAL_PATH_ATTRIBUTES),
+    ...(destinationIncludesAccountIdentity(destination) ? [] : TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES),
+  ];
 }
 
 export const telemetryDestinationNameSchema = z
@@ -100,6 +154,12 @@ export const telemetryDestinationSchema = z.object({
    * Control strips them before the copy is spooled or sent.
    */
   includeLocalPaths: z.boolean().optional(),
+  /**
+   * Forward attributes that identify the account (`TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES`:
+   * email, account and user ids, organization id). Absent or false (the default):
+   * Mission Control strips them before the copy is spooled or sent.
+   */
+  includeAccountIdentity: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
 export type TelemetryDestination = z.infer<typeof telemetryDestinationSchema>;

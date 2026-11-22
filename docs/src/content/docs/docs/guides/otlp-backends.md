@@ -34,6 +34,9 @@ har telemetry destination test collector
   verbatim, so `add` prints a warning when you subscribe to them.
 - `--include-local-paths` keeps the attributes that hold absolute local paths. By
   default Mission Control strips them (see [Privacy](#privacy)).
+- `--include-account-identity` keeps the attributes that identify your account
+  (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …). By default
+  Mission Control strips them too.
 - `--disabled` stores the destination without forwarding to it. `--overwrite`
   replaces a destination with the same name.
 
@@ -49,7 +52,7 @@ har telemetry destination add vendor --preset otlp \
 Manage destinations:
 
 ```bash
-har telemetry destination list          # header values masked, local paths stripped or included
+har telemetry destination list          # header values masked, local paths and account identity stripped or included
 har telemetry destination test vendor   # one OTLP/JSON test record, prints the HTTP status
 har telemetry destination remove vendor
 ```
@@ -115,8 +118,9 @@ docker run --rm -p 4318:4318 -v "$PWD/otelcol.yaml:/etc/otelcol/config.yaml" \
 
 Replace `debug` with your real exporter. Add an
 [`attributes` or `transform` processor](https://opentelemetry.io/docs/collector/configuration/#processors)
-to drop anything else you don't want to keep. Local paths are already stripped
-unless you added the destination with `--include-local-paths`.
+to drop anything else you don't want to keep. Local paths and account identity are
+already stripped unless you added the destination with `--include-local-paths` or
+`--include-account-identity`.
 
 :::caution[Mission Control runs in Docker]
 Mission Control forwards from inside its container, where `localhost` is the
@@ -131,11 +135,12 @@ Linux, with the Collector listening on `0.0.0.0`.
 
 Agent session telemetry goes through Mission Control:
 
-- **OTLP as received, minus local paths.** Each receiver (`/api/otel/v1/traces`,
-  `/logs`, `/metrics`) first stores the data for Mission Control. Then it forwards
-  the request, with its content type and encoding, to every enabled destination
-  subscribed to that signal. Before a copy is spooled, Mission Control removes the
-  attributes that hold absolute local paths (see [Privacy](#privacy)). A body that
+- **OTLP as received, minus local paths and account identity.** Each receiver
+  (`/api/otel/v1/traces`, `/logs`, `/metrics`) first stores the data for Mission
+  Control. Then it forwards the request, with its content type and encoding, to
+  every enabled destination subscribed to that signal. Before a copy is spooled,
+  Mission Control removes the attributes that hold absolute local paths or identify
+  your account (see [Privacy](#privacy)). A body that
   has none is forwarded byte for byte. One that has some is decoded, filtered and
   re-encoded in the same format and encoding. A body that may hold one but cannot be
   decoded is not forwarded. Forwarding never changes the receiver's response, so a
@@ -151,7 +156,8 @@ Agent session telemetry goes through Mission Control:
   values are read from the destination file at send time and never written to the
   spool.
 - **Withdrawal wins.** Removing or disabling a destination, unsubscribing a signal,
-  or turning `--include-local-paths` back off drops its queued copies.
+  or turning `--include-local-paths` or `--include-account-identity` back off drops
+  its queued copies.
 
 Verification traces don't go through Mission Control. The CLI sends them as OTLP/JSON
 straight to every enabled destination subscribed to `traces`, in parallel, with
@@ -200,8 +206,8 @@ An unknown value is left out, never sent empty. A slot launched without
 
 ## Privacy
 
-With the default settings, no absolute local path and no prompt, reply or tool text
-leaves the machine:
+With the default settings, no absolute local path, no account identity and no
+prompt, reply or tool text leaves the machine:
 
 - **Logs are opt-in.** Only logs can carry text, and `--preset otlp` subscribes to
   `traces` and `metrics` unless you name `logs` in `--signals`. The Langfuse preset
@@ -215,6 +221,14 @@ leaves the machine:
   `process.executable.path`, `process.command`, `process.command_line`,
   `process.command_args`, `code.filepath` and `code.file.path`. A destination added
   with `--include-local-paths` receives them.
+- **Account identity is stripped.** Claude Code attaches your email, account and
+  organization ids to its own metrics and events. Mission Control keeps them locally
+  and removes these attributes, at the same levels, from every forwarded copy:
+  `user.email`, `user.account_uuid`, `user.account_id`, `user.id`, `user.groups`,
+  `organization.id`, `user.name`, `user.full_name`, `user.hash`, `user.roles`,
+  `enduser.id`, `enduser.pseudo.id`, `enduser.role` and `enduser.scope`. A
+  destination added with `--include-account-identity` receives them, for example to
+  group usage by person in your own backend.
 
 Apart from that, a destination receives what Mission Control's receivers get for
 its signals. Mission Control's local redaction and size limits apply to what it
@@ -228,21 +242,20 @@ What each signal carries once it reaches a destination:
   model names, token counts, tool names, branch names and HAR's resource attributes
   (work unit, attempt, repository URL, branch, HAR version, slot number).
 - **Metrics** are Claude Code's token and cost counters, with Claude Code's standard
-  attributes (session and account identifiers, which can include your account
-  email).
+  attributes minus account identity: session id, terminal type and, if you enabled
+  them in Claude Code, app version and entrypoint.
 - **Logs**, if you subscribe to them, carry at the `full` level your prompts, the
   agent's replies and tool inputs and outputs **verbatim, without secret
   redaction**, truncated by otel-hook (1,024 characters per piece by default). At
   `outline` they carry the kind, length and a hash of each piece, never the text.
-  Claude Code's own log events carry token and cost data and the same identifiers
-  as its metrics.
+  Claude Code's own log events carry token and cost data and the same session id
+  as its metrics, without account identity.
 
 To send less:
 
 - leave `logs` out of `--signals` (the default) to keep text out of a destination at
   every level;
-- `--signals traces` also leaves out Claude Code's metrics and their account
-  identifiers;
+- `--signals traces` also leaves out Claude Code's metrics and their session ids;
 - `har telemetry on --level outline` stops recording text for Mission Control and every
   destination;
 - `--disabled` or `har telemetry destination remove <name>` stops forwarding.

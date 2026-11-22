@@ -43,6 +43,7 @@ export interface DestinationAddArgs {
   secretKey?: string;
   disabled?: boolean;
   includeLocalPaths?: boolean;
+  includeAccountIdentity?: boolean;
   overwrite?: boolean;
 }
 
@@ -66,6 +67,7 @@ export function destinationFromAddArgs(
       protocol: argv.protocol,
       enabled: !argv.disabled,
       includeLocalPaths: argv.includeLocalPaths,
+      includeAccountIdentity: argv.includeAccountIdentity,
     });
   }
   if (!argv.endpoint) throw new Error('--preset otlp needs --endpoint <base OTLP/HTTP URL>');
@@ -80,6 +82,7 @@ export function destinationFromAddArgs(
     protocol: argv.protocol,
     enabled: !argv.disabled,
     includeLocalPaths: argv.includeLocalPaths,
+    includeAccountIdentity: argv.includeAccountIdentity,
   });
 }
 
@@ -97,6 +100,10 @@ function localPathsLabel(destination: TelemetryDestination): string {
   return destination.includeLocalPaths ? 'included (--include-local-paths)' : 'stripped';
 }
 
+function accountIdentityLabel(destination: TelemetryDestination): string {
+  return destination.includeAccountIdentity ? 'included (--include-account-identity)' : 'stripped';
+}
+
 function handleAdd(argv: DestinationAddArgs): void {
   header('har telemetry destination add');
   const destination = destinationFromAddArgs(argv);
@@ -105,6 +112,7 @@ function handleAdd(argv: DestinationAddArgs): void {
   info(`Signals: ${destination.signals.join(', ')}${destination.enabled ? '' : ' (disabled)'}`);
   if (destination.signals.includes('logs')) warn(DESTINATION_LOGS_WARNING);
   info(`Local paths: ${localPathsLabel(destination)}`);
+  info(`Account identity: ${accountIdentityLabel(destination)}`);
   info(`Config:  ${result.path} (mode 0600)`);
   info(`Check it: har telemetry destination test ${destination.name}`);
   controlMountHint();
@@ -128,6 +136,7 @@ function handleList(argv: { json: boolean }): void {
     info(`  endpoint: ${destination.endpoint} (${destination.protocol})`);
     info(`  signals:  ${destination.signals.join(', ')}`);
     info(`  local paths: ${localPathsLabel(destination)}`);
+    info(`  account identity: ${accountIdentityLabel(destination)}`);
     const headers = Object.entries(destination.headers);
     if (headers.length > 0) info(`  headers:  ${headers.map(([key, value]) => `${key}: ${value}`).join(', ')}`);
   }
@@ -201,6 +210,11 @@ export const telemetryDestinationCommand = {
               default: false,
               describe: 'Forward attributes holding absolute local paths (har.repo_path, har.work_dir, …); stripped by default',
             })
+            .option('include-account-identity', {
+              type: 'boolean',
+              default: false,
+              describe: 'Forward account identity attributes (user.email, user.account_uuid, user.id, organization.id, …); stripped by default',
+            })
             .option('overwrite', { type: 'boolean', default: false, describe: 'Replace a destination with the same name' }),
         (argv) =>
           run(() =>
@@ -216,6 +230,7 @@ export const telemetryDestinationCommand = {
               secretKey: argv['secret-key'] as string | undefined,
               disabled: argv.disabled as boolean,
               includeLocalPaths: argv['include-local-paths'] as boolean,
+              includeAccountIdentity: argv['include-account-identity'] as boolean,
               overwrite: argv.overwrite as boolean,
             }),
           ),

@@ -5,14 +5,16 @@ import * as path from 'node:path';
 import {
   HAR_DESTINATIONS_DIR_ENV,
   TELEMETRY_DESTINATIONS_FILE,
+  destinationIncludesAccountIdentity,
   destinationIncludesLocalPaths,
   destinationsForSignal,
+  forwardDeniedAttributes,
   otlpSignalUrl,
   telemetryDestinationsFileSchema,
   type OtlpSignal,
   type TelemetryDestination,
 } from '@har/schemas';
-import { stripLocalPathAttributes, type StrippedOtlpBody } from '@/server/otlp-privacy';
+import { stripDeniedAttributes, type StrippedOtlpBody } from '@/server/otlp-privacy';
 
 /**
  * Forward what the OTLP receivers accepted to the destinations configured with
@@ -20,9 +22,10 @@ import { stripLocalPathAttributes, type StrippedOtlpBody } from '@/server/otlp-p
  *
  * The request body is forwarded with its content type and encoding to
  * `<endpoint>/v1/<signal>`. Attributes holding absolute local paths
- * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`) are stripped before the copy is written
- * to the spool, unless the destination opted in with `includeLocalPaths`; a
- * body with none of them is forwarded byte for byte. Forwarding never touches the receiver
+ * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`) and account identity
+ * (`TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES`) are stripped before the copy is
+ * written to the spool, unless the destination opted in with `includeLocalPaths`
+ * / `includeAccountIdentity`; a body with none of them is forwarded byte for byte. Forwarding never touches the receiver
  * response: the route schedules it and returns. Each copy goes through a small
  * file spool so a destination that is down gets bounded retries with backoff,
  * and the spool is capped by size and age so a dead destination cannot grow the
@@ -60,6 +63,8 @@ interface SpoolEntry {
   nextAttemptAt: number;
   /** Set when the body still carries local path attributes (destination opted in). */
   includesLocalPaths?: true;
+  /** Set when the body still carries account identity attributes (destination opted in). */
+  includesAccountIdentity?: true;
 }
 
 // Each copy is two files: `<id>.json` (small metadata, rewritten on retry) and
@@ -219,17 +224,22 @@ export function enqueueOtlpForward(
     ...(headers.contentEncoding ? { contentEncoding: headers.contentEncoding } : {}),
     removed: 0,
   };
-  let stripped: StrippedOtlpBody | null | undefined;
+  // One stripped copy per distinct denylist (at most four: paths and identity opt-ins).
+  const copies = new Map<string, StrippedOtlpBody | null>();
   let queued = 0;
   for (const destination of destinations) {
     const includesLocalPaths = destinationIncludesLocalPaths(destination);
-    if (!includesLocalPaths && stripped === undefined) {
-      stripped = stripLocalPathAttributes(signal, body, original);
+    const includesAccountIdentity = destinationIncludesAccountIdentity(destination);
+    const denied = forwardDeniedAttributes(destination);
+    const cacheKey = denied.join('\n');
+    if (!copies.has(cacheKey)) {
+      const stripped = stripDeniedAttributes(signal, body, original, denied);
       if (stripped === null) {
-        console.warn(`[otlp-forward] not forwarding a ${signal} batch: its local paths could not be checked`);
+        console.warn(`[otlp-forward] not forwarding a ${signal} batch: its attributes could not be checked`);
       }
+      copies.set(cacheKey, stripped);
     }
-    const copy = includesLocalPaths ? original : stripped;
+    const copy = copies.get(cacheKey);
     if (!copy) continue;
     const entry: SpoolEntry = {
       destination: destination.name,
@@ -237,6 +247,7 @@ export function enqueueOtlpForward(
       contentType: copy.contentType,
       ...(copy.contentEncoding ? { contentEncoding: copy.contentEncoding } : {}),
       ...(includesLocalPaths ? { includesLocalPaths: true as const } : {}),
+      ...(includesAccountIdentity ? { includesAccountIdentity: true as const } : {}),
       createdAt: now,
       attempts: 0,
       nextAttemptAt: now,
@@ -290,12 +301,13 @@ export async function drainOtlpSpool(options: OtlpForwardOptions = {}): Promise<
       continue;
     }
     const destination = destinations.get(entry.destination);
-    // Removed, disabled, no longer subscribed or no longer opted in to local paths: the user withdrew it.
+    // Removed, disabled, no longer subscribed or no longer opted in: the user withdrew it.
     if (
       !destination ||
       !destination.enabled ||
       !destination.signals.includes(entry.signal) ||
       (entry.includesLocalPaths && !destinationIncludesLocalPaths(destination)) ||
+      (entry.includesAccountIdentity && !destinationIncludesAccountIdentity(destination)) ||
       now() - entry.createdAt > maxAge
     ) {
       removeEntry(spoolDir, name);

@@ -483,10 +483,10 @@ har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
 har telemetry print-env --agent-id <n> [--repo .]
                        [--work-dir path] [--branch name] [--suffix id]
 har telemetry destination add <name> --preset langfuse [--host url] [--public-key pk] [--secret-key sk]
-                       [--include-local-paths]
+                       [--include-local-paths] [--include-account-identity]
 har telemetry destination add <name> --preset otlp --endpoint url [--header Name=value]…
                        [--signals traces,metrics,logs] [--protocol http/protobuf|http/json]
-                       [--include-local-paths] [--disabled] [--overwrite]
+                       [--include-local-paths] [--include-account-identity] [--disabled] [--overwrite]
 har telemetry destination list [--json]
 har telemetry destination remove <name>
 har telemetry destination test <name> [--json]
@@ -528,8 +528,11 @@ is configured by default, and nothing leaves the machine until you add one.
 - Mission Control strips attributes that hold absolute local paths (`har.repo_path`,
   `har.work_dir`, `process.cwd`, `code.filepath`, …) from every forwarded copy.
   `--include-local-paths` keeps them for that destination.
+- Mission Control also strips account identity attributes (`user.email`,
+  `user.account_uuid`, `user.account_id`, `user.id`, `organization.id`, `enduser.id`, …).
+  `--include-account-identity` keeps them for that destination.
 
-`list` masks header values and shows whether local paths are stripped. `test` sends one small OTLP/JSON record to the destination
+`list` masks header values and shows whether local paths and account identity are stripped. `test` sends one small OTLP/JSON record to the destination
 and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-only
 into the Mission Control container. Guides: [Langfuse](/docs/guides/langfuse/),
 [any OTLP backend](/docs/guides/otlp-backends/).

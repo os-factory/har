@@ -107,10 +107,12 @@ A session span can contain:
 - HAR's resource attributes: work unit id and source, attempt id, repository URL
   (credentials stripped), branch, HAR version and slot number.
 
-A session span never reaches Langfuse with absolute local paths. Mission Control
-keeps them for its own attribution, but it removes every attribute that holds one
-(`har.repo_path`, `har.work_dir`, `process.cwd`, `code.filepath`, …) before it
-spools or sends a copy. Verification spans never carry them.
+A session span never reaches Langfuse with absolute local paths or your account
+identity. Mission Control keeps them for its own attribution, but it removes every
+attribute that holds a local path (`har.repo_path`, `har.work_dir`, `process.cwd`,
+`code.filepath`, …) or identifies your account (`user.email`, `user.account_uuid`,
+`user.id`, `organization.id`, …) before it spools or sends a copy. Verification
+spans never carry them.
 
 The telemetry level changes what Langfuse receives only at the edges: `outline` and
 `full` send the same spans, `usage` sends verification spans only, and `off` sends
@@ -123,12 +125,15 @@ none. To send less:
   Mission Control; `har telemetry off` stops verification spans too.
 
 To send the local paths anyway, for example to a self-hosted Langfuse on your own
-network, add the destination with `--include-local-paths`:
+network, add the destination with `--include-local-paths`. To send account identity,
+for example to see sessions per person, add `--include-account-identity`. The two
+opt-ins are independent:
 
 ```bash
 har telemetry destination add langfuse --preset langfuse --include-local-paths --overwrite
+har telemetry destination add langfuse --preset langfuse --include-account-identity --overwrite
 ```
 
-`har telemetry destination list` shows whether a destination's local paths are
-stripped or included. The full list of stripped attributes is in
+`har telemetry destination list` shows whether a destination's local paths and
+account identity are stripped or included. The full list of stripped attributes is in
 [Send telemetry to any OTLP backend](/docs/guides/otlp-backends/#privacy).

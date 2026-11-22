@@ -145,6 +145,7 @@ export function buildOtlpDestination(options: {
   protocol?: OtlpDestinationProtocol;
   enabled?: boolean;
   includeLocalPaths?: boolean;
+  includeAccountIdentity?: boolean;
 }): TelemetryDestination {
   return telemetryDestinationSchema.parse({
     name: options.name,
@@ -155,6 +156,7 @@ export function buildOtlpDestination(options: {
     signals: options.signals ?? [...OTLP_PRESET_DEFAULT_SIGNALS],
     enabled: options.enabled ?? true,
     ...(options.includeLocalPaths ? { includeLocalPaths: true } : {}),
+    ...(options.includeAccountIdentity ? { includeAccountIdentity: true } : {}),
     createdAt: new Date().toISOString(),
   });
 }
@@ -171,6 +173,7 @@ export function buildLangfuseDestination(options: {
   protocol?: OtlpDestinationProtocol;
   enabled?: boolean;
   includeLocalPaths?: boolean;
+  includeAccountIdentity?: boolean;
 }): TelemetryDestination {
   if (!options.publicKey || !options.secretKey) {
     throw new Error('Langfuse needs --public-key and --secret-key (or LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY)');
@@ -186,6 +189,7 @@ export function buildLangfuseDestination(options: {
     signals: ['traces'],
     enabled: options.enabled ?? true,
     ...(options.includeLocalPaths ? { includeLocalPaths: true } : {}),
+    ...(options.includeAccountIdentity ? { includeAccountIdentity: true } : {}),
     createdAt: new Date().toISOString(),
   });
 }

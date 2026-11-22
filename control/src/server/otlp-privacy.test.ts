@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { TELEMETRY_LOCAL_PATH_ATTRIBUTES } from '@har/schemas';
-import { stripLocalPathAttributes } from './otlp-privacy';
+import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, forwardDeniedAttributes } from '@har/schemas';
+import { stripDeniedAttributes, stripLocalPathAttributes } from './otlp-privacy';
 
 type PbType = {
   fromObject: (value: unknown) => unknown;
@@ -199,5 +199,78 @@ describe('stripLocalPathAttributes', () => {
     expect(stripLocalPathAttributes('logs', Buffer.from('{"har.repo_path": oops'), { contentType: 'application/json' })).toBeNull();
     const corrupt = Buffer.concat([Buffer.from([0x0a, 0xff, 0xff, 0xff, 0x0f]), Buffer.from('har.work_dir')]);
     expect(stripLocalPathAttributes('traces', corrupt, { contentType: 'application/x-protobuf' })).toBeNull();
+  });
+});
+
+describe('stripDeniedAttributes (account identity)', () => {
+  // Claude Code's metric data point attributes, as it exports them.
+  const metrics = () => ({
+    resourceMetrics: [
+      {
+        resource: { attributes: [str('service.name', 'claude-code'), str('har.repo_path', '/home/me/repo')] },
+        scopeMetrics: [
+          {
+            scope: { name: 'com.anthropic.claude_code' },
+            metrics: [
+              {
+                name: 'claude_code.token.usage',
+                sum: {
+                  aggregationTemporality: 1,
+                  dataPoints: [
+                    {
+                      asInt: 42,
+                      attributes: [
+                        str('session.id', 's-1'),
+                        str('user.email', 'someone@example.com'),
+                        str('user.account_uuid', '0000-acct'),
+                        str('user.account_id', 'user_01abc'),
+                        str('user.id', 'anon-device'),
+                        str('organization.id', 'org-1'),
+                        str('type', 'input'),
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  for (const format of ['protobuf', 'json'] as const) {
+    it(`removes identity and paths by default from a ${format} metrics body, keeping session and usage`, () => {
+      const original = format === 'json' ? Buffer.from(JSON.stringify(metrics())) : encodePb('metrics', metrics());
+      const contentType = format === 'json' ? 'application/json' : 'application/x-protobuf';
+      const out = stripDeniedAttributes('metrics', original, { contentType }, forwardDeniedAttributes({}))!;
+      expect(out.removed).toBe(6);
+      const text = out.body.toString('latin1');
+      for (const leak of ['someone@example.com', '0000-acct', 'user_01abc', 'anon-device', 'org-1', '/home/me']) {
+        expect(text).not.toContain(leak);
+      }
+      expect(text).toContain('s-1');
+      expect(text).toContain('claude_code.token.usage');
+    });
+  }
+
+  it('keeps identity for a destination that opted in, and still strips paths', () => {
+    const original = Buffer.from(JSON.stringify(metrics()));
+    const out = stripDeniedAttributes(
+      'metrics',
+      original,
+      { contentType: 'application/json' },
+      forwardDeniedAttributes({ includeAccountIdentity: true }),
+    )!;
+    expect(out.removed).toBe(1);
+    expect(out.body.toString()).toContain('someone@example.com');
+    expect(out.body.toString()).not.toContain('/home/me');
+  });
+
+  it('returns the original bytes when nothing is denied (both opt-ins)', () => {
+    const original = Buffer.from(JSON.stringify(metrics()));
+    const denied = forwardDeniedAttributes({ includeLocalPaths: true, includeAccountIdentity: true });
+    expect(denied).toEqual([]);
+    expect(stripDeniedAttributes('metrics', original, { contentType: 'application/json' }, denied)!.body).toBe(original);
   });
 });
