@@ -8,3 +8,4 @@ export * from './session-attribution';
 export * from './occupancy';
 export * from './usage-attribution';
 export * from './usage-invariants';
+export * from './telemetry-destinations';

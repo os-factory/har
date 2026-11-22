@@ -7,3 +7,4 @@ export * from '../../packages/schemas/src/line';
 export * from '../../packages/schemas/src/session-attribution';
 export * from '../../packages/schemas/src/occupancy';
 export * from '../../packages/schemas/src/usage-invariants';
+export * from '../../packages/schemas/src/telemetry-destinations';

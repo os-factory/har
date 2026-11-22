@@ -224,6 +224,9 @@ Intentional holes (human-only, no MCP tool):
 - Onboarding/preferences, telemetry toggles, the personal worktree setting, and portal
   login (`har onboard`, `har preferences`, `har telemetry`, `har worktree`, `har hq`) —
   account- and machine-level state.
+- OTLP destinations (`har telemetry destination add|list|remove|test`) — machine-level
+  config that holds backend credentials and decides where telemetry leaves the machine;
+  a human choice, never an agent tool call.
 
 ## Anti-patterns
 
