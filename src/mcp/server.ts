@@ -31,6 +31,7 @@ import {
   runLineGate,
 } from '../core/lines';
 import { addWorkUnitLinks } from '../core/work-units';
+import { FACTORY_PROOF_LEVELS, runFactoryProofQuery } from '../core/proof';
 import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
@@ -62,6 +63,9 @@ import {
   ListRunsOutputSchema,
   GetRunInputSchema,
   GetRunOutputSchema,
+  ProofQueryOutputSchema,
+  ProofShowInputSchema,
+  ProofVerifyInputSchema,
   ControlUpInputSchema,
   ControlUpOutputSchema,
   GetStatusOutputSchema,
@@ -388,6 +392,26 @@ export const HAR_MCP_TOOLS: Tool[] = [
       },
       ['runId'],
     ),
+  },
+  {
+    name: 'har_proof_show',
+    description:
+      'Read-only. Show the Factory Commits note and trailers on a commit (passes through `git factory show --json`). Needs the git-factory executable (HAR_FACTORY_PROOF_BIN or PATH).',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      rev: { type: 'string', description: 'Commit (default HEAD)' },
+    }),
+  },
+  {
+    name: 'har_proof_verify',
+    description:
+      'Read-only. Verify Factory Commits proofs on a commit or range A..B (passes through `git factory verify --json`: per-commit level none|L0..L3 and problem codes). code 1 = below minLevel or problems found.',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      rev: { type: 'string', description: 'Commit or range A..B (default HEAD)' },
+      minLevel: { type: 'string', enum: [...FACTORY_PROOF_LEVELS] },
+      allowedSigners: { type: 'string', description: 'ssh allowed_signers file (relative to repo) for L2' },
+    }),
   },
   {
     name: 'har_control_up',
@@ -781,6 +805,26 @@ export async function handleMcpToolCall(
         };
       }
       return jsonContent(GetRunOutputSchema.parse({ run }));
+    }
+
+    case 'har_proof_show':
+    case 'har_proof_verify': {
+      const query =
+        toolName === 'har_proof_show'
+          ? { command: 'show' as const, ...ProofShowInputSchema.parse({ ...args, repo }) }
+          : { command: 'verify' as const, ...ProofVerifyInputSchema.parse({ ...args, repo }) };
+      const result = runFactoryProofQuery({ ...query, repoPath: path.resolve(query.repo) });
+      return {
+        ...jsonContent(
+          ProofQueryOutputSchema.parse({
+            code: result.code,
+            available: result.available,
+            result: result.result,
+            stderr: result.stderr,
+          }),
+        ),
+        ...(result.code === 2 ? { isError: true } : {}),
+      };
     }
 
     case 'har_control_up': {

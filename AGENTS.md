@@ -208,6 +208,7 @@ First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
 | doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
 | complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
 | runs / work links / work binding | `har env runs list\|get`, `work-link`, `work-bind` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link`, `har_bind_work_unit` |
+| Factory Commits proofs (read-only) | `har proof show\|verify` | `har_proof_show`, `har_proof_verify` |
 | factory lines | `har line create\|add\|status\|gate\|list` | `har_line_create`, `har_add_line`, `har_line_status`, `har_run_line_gate` |
 | Mission Control | `har control up` | `har_control_up` |
 

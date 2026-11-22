@@ -61,6 +61,8 @@ Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
 | `har_list_artifacts` | optional `stageId` | Files, reports, screenshots, traces, videos, and URLs |
 | `har_list_runs` | optional `stageId`, `limit` | Persisted run records |
 | `har_get_run` | `runId` | One normalized run record |
+| `har_proof_show` | optional `rev` | Read-only: `git factory show --json` output (note and trailers) with its exit `code`; `isError` when `git-factory` is unavailable |
+| `har_proof_verify` | optional `rev` (or `A..B`), `minLevel`, `allowedSigners` | Read-only: `git factory verify --json` output (level and problems for each commit) with its exit `code` |
 
 ## Factory lines
 

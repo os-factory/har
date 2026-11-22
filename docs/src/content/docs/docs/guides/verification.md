@@ -78,6 +78,38 @@ Stage everything that was verified. A partially staged tree is a different batch
 and should not pass the gate. Never bypass hooks to force an agent commit; run the
 required validation against the intended state.
 
+## Factory Commits proofs (opt-in)
+
+HAR can record its validations as [Factory Commits](https://github.com/os-factory/factory-commits)
+proofs in git. HAR builds a `factory-run` predicate from each full validation.
+The `git-factory` executable (`HAR_FACTORY_PROOF_BIN`, else `PATH`) builds the
+statement and writes notes, trailers and verification. Opt in per repository in
+`.har/harness.env`:
+
+```bash
+HAR_FACTORY_PROOF=notes            # off (default) | notes | notes+trailers
+```
+
+- `off` changes nothing.
+- `notes`:
+  - every `har env verify --full` attests the validated tree, stored next to
+    the validation record;
+  - post-commit adds that attestation to `refs/notes/factory` on the new commit;
+  - `har hooks install` runs `git factory setup` (fetch refspec,
+    `notes.rewriteRef`), and `har hooks uninstall` undoes it.
+- `notes+trailers`: everything in `notes`, plus a managed commit-msg hook that
+  adds `Work-Unit`, `Factory-Run` and `Factory-Attestation` trailers for a
+  verified tree. Re-run `har hooks install` after changing the mode.
+
+Proofs never block verify or a commit. When `git-factory` is missing or fails,
+HAR prints one line and carries on. Predicates never contain absolute paths,
+prompts, or work-unit titles or URLs.
+
+Inspect and verify proofs with `har proof show [rev]` and
+`har proof verify [rev|A..B] [--min-level L0|L1|L2|L3] [--allowed-signers <file>] [--json]`.
+MCP agents use `har_proof_show` and `har_proof_verify`. Both pass `git factory`
+output and exit codes through.
+
 ## Completion
 
 `har env complete 1` reuses the last passing **full** validation whose tree hash

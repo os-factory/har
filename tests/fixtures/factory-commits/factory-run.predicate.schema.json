@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-factory.dev/factory-commits/schemas/v0.1/factory-run.predicate.schema.json",
+  "title": "Factory Commits factory-run predicate v0.1",
+  "type": "object",
+  "required": ["run", "policy", "stages", "verdict", "producer", "environment"],
+  "properties": {
+    "run": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/token" },
+        "startedOn": { "type": "string", "format": "date-time" },
+        "finishedOn": { "type": "string", "format": "date-time" }
+      }
+    },
+    "workUnit": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/token" },
+        "source": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "attemptId": { "$ref": "#/$defs/token" },
+        "url": { "type": "string", "format": "uri" },
+        "title": { "type": "string", "maxLength": 512 }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "required": ["required"],
+      "properties": {
+        "id": { "$ref": "#/$defs/token" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "digest": { "$ref": "#/$defs/digestSet" },
+        "required": { "type": "array", "items": { "$ref": "#/$defs/token" }, "uniqueItems": true }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "$ref": "#/$defs/token" },
+          "status": { "enum": ["passed", "failed", "error", "skipped"] },
+          "addedBy": { "enum": ["policy", "agent"] },
+          "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "digest"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "digest": { "$ref": "#/$defs/digestSet" },
+                "uri": { "type": "string", "format": "uri" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "verdict": { "enum": ["pass", "fail"] },
+    "producer": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "$ref": "#/$defs/token" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/token" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "model": { "$ref": "#/$defs/token" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["trust"],
+      "properties": {
+        "trust": { "enum": ["local", "ci"] },
+        "executor": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "spanId": { "type": "string", "pattern": "^[0-9a-f]{16}$" }
+      }
+    },
+    "extensions": { "type": "object" }
+  },
+  "$defs": {
+    "token": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\s;]+$" },
+    "digestSet": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": { "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } },
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}
