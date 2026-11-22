@@ -14,12 +14,15 @@ import {
   readTelemetryDestinations,
   removeTelemetryDestination,
   testTelemetryDestination,
+  OTLP_PRESET_DEFAULT_SIGNALS,
 } from '../src/core/telemetry-destinations';
+import { buildOtelResourceAttributes } from '../src/core/telemetry-env';
 import { destinationFromAddArgs } from '../src/cli/commands/telemetry-destination';
 import {
   destinationsForSignal,
   otlpSignalUrl,
   telemetryDestinationSchema,
+  TELEMETRY_LOCAL_PATH_ATTRIBUTES,
 } from '../src/harness/schema';
 
 describe('telemetry destinations', () => {
@@ -57,7 +60,7 @@ describe('telemetry destinations', () => {
       endpoint: 'http://localhost:4318',
       protocol: 'http/protobuf',
       headers: { 'x-api-key': 'secret' },
-      signals: ['traces', 'logs', 'metrics'],
+      signals: ['traces', 'metrics'],
       enabled: true,
     });
   });
@@ -141,7 +144,7 @@ describe('telemetry destinations', () => {
       ],
     };
     expect(destinationsForSignal(file, 'traces').map((d) => d.name)).toEqual(['all']);
-    expect(destinationsForSignal(file, 'logs').map((d) => d.name)).toEqual(['all', 'logs']);
+    expect(destinationsForSignal(file, 'logs').map((d) => d.name)).toEqual(['logs']);
   });
 
   it('test sends one OTLP/JSON span with the destination headers and reports the status', async () => {
@@ -187,5 +190,52 @@ describe('Mission Control container: destinations mount', () => {
     expect(args.join(' ')).toContain(`-v /home/u/.har/destinations:${CONTROL_DESTINATIONS_MOUNT}:ro`);
     expect(args.join(' ')).toContain(`-e HAR_DESTINATIONS_DIR=${CONTROL_DESTINATIONS_MOUNT}`);
     expect(args[args.length - 1]).toBe('img:1');
+  });
+});
+
+describe('privacy defaults', () => {
+  it('the otlp preset forwards traces and metrics; logs only when --signals names them', () => {
+    expect(OTLP_PRESET_DEFAULT_SIGNALS).toEqual(['traces', 'metrics']);
+    const defaults = destinationFromAddArgs({ name: 'c', preset: 'otlp', endpoint: 'https://c.example.com' }, {});
+    expect(defaults.signals).toEqual(['traces', 'metrics']);
+    const withLogs = destinationFromAddArgs(
+      { name: 'c', preset: 'otlp', endpoint: 'https://c.example.com', signals: ['traces,metrics,logs'] },
+      {},
+    );
+    expect(withLogs.signals).toEqual(['traces', 'metrics', 'logs']);
+  });
+
+  it('strips local paths unless --include-local-paths is given', () => {
+    const otlp = destinationFromAddArgs({ name: 'c', preset: 'otlp', endpoint: 'https://c.example.com' }, {});
+    expect(otlp.includeLocalPaths).toBeUndefined();
+    const lf = destinationFromAddArgs({ name: 'lf', preset: 'langfuse' }, { LANGFUSE_PUBLIC_KEY: 'pk', LANGFUSE_SECRET_KEY: 'sk' });
+    expect(lf.includeLocalPaths).toBeUndefined();
+    expect(
+      destinationFromAddArgs({ name: 'c', preset: 'otlp', endpoint: 'https://c.example.com', includeLocalPaths: true }, {}).includeLocalPaths,
+    ).toBe(true);
+    expect(
+      destinationFromAddArgs({ name: 'lf', preset: 'langfuse', includeLocalPaths: true }, { LANGFUSE_PUBLIC_KEY: 'pk', LANGFUSE_SECRET_KEY: 'sk' })
+        .includeLocalPaths,
+    ).toBe(true);
+    // A file written before the field existed still parses and keeps the default.
+    expect(telemetryDestinationSchema.parse({ name: 'old', endpoint: 'https://o.example.com', signals: ['traces'] }).includeLocalPaths).toBeUndefined();
+  });
+
+  it('denies every HAR resource attribute that holds a local path', () => {
+    const attrs = buildOtelResourceAttributes({
+      sessionKey: 'k',
+      agentId: 1,
+      repoPath: '/home/me/repo',
+      workDir: '/home/me/worktrees/slot-1',
+      branch: 'b',
+      producerVersion: '2.0.0',
+    });
+    const pathKeys = attrs
+      .split(',')
+      .map((pair) => pair.split('='))
+      .filter(([, value]) => value?.startsWith('/'))
+      .map(([key]) => key);
+    expect(pathKeys.sort()).toEqual(['har.repo_path', 'har.work_dir']);
+    for (const key of pathKeys) expect(TELEMETRY_LOCAL_PATH_ATTRIBUTES).toContain(key);
   });
 });

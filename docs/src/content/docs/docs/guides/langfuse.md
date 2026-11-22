@@ -105,9 +105,12 @@ A session span can contain:
 - the branch name of the worktree a tool touched, and opaque, hashed workspace and
   repository ids;
 - HAR's resource attributes: work unit id and source, attempt id, repository URL
-  (credentials stripped), branch, HAR version, slot number, and the absolute
-  local paths of the main checkout and the slot's work dir (`har.repo_path`,
-  `har.work_dir`).
+  (credentials stripped), branch, HAR version and slot number.
+
+A session span never reaches Langfuse with absolute local paths. Mission Control
+keeps them for its own attribution, but it removes every attribute that holds one
+(`har.repo_path`, `har.work_dir`, `process.cwd`, `code.filepath`, …) before it
+spools or sends a copy. Verification spans never carry them.
 
 The telemetry level changes what Langfuse receives only at the edges: `outline` and
 `full` send the same spans, `usage` sends verification spans only, and `off` sends
@@ -119,6 +122,13 @@ none. To send less:
 - `har telemetry on --level usage` stops session spans for every destination and for
   Mission Control; `har telemetry off` stops verification spans too.
 
-If local paths in `har.repo_path` and `har.work_dir` are a concern, send traces
-through an OpenTelemetry Collector that drops them before Langfuse. See
-[Send telemetry to any OTLP backend](/docs/guides/otlp-backends/).
+To send the local paths anyway, for example to a self-hosted Langfuse on your own
+network, add the destination with `--include-local-paths`:
+
+```bash
+har telemetry destination add langfuse --preset langfuse --include-local-paths --overwrite
+```
+
+`har telemetry destination list` shows whether a destination's local paths are
+stripped or included. The full list of stripped attributes is in
+[Send telemetry to any OTLP backend](/docs/guides/otlp-backends/#privacy).

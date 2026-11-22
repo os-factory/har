@@ -126,6 +126,17 @@ export function parseSignals(values: readonly string[] | undefined): OtlpSignal[
   return [...new Set(signals)] as OtlpSignal[];
 }
 
+/**
+ * Signals `--preset otlp` subscribes to when `--signals` is not given. Logs are
+ * opt-in: at the `full` telemetry level they carry prompts, replies and tool
+ * input/output verbatim.
+ */
+export const OTLP_PRESET_DEFAULT_SIGNALS: readonly OtlpSignal[] = ['traces', 'metrics'];
+
+/** One-line warning printed when a destination subscribes to logs. */
+export const DESTINATION_LOGS_WARNING =
+  'Logs are subscribed: at the full telemetry level they carry prompts, replies and tool input/output verbatim.';
+
 export function buildOtlpDestination(options: {
   name: string;
   endpoint: string;
@@ -133,6 +144,7 @@ export function buildOtlpDestination(options: {
   signals?: OtlpSignal[];
   protocol?: OtlpDestinationProtocol;
   enabled?: boolean;
+  includeLocalPaths?: boolean;
 }): TelemetryDestination {
   return telemetryDestinationSchema.parse({
     name: options.name,
@@ -140,8 +152,9 @@ export function buildOtlpDestination(options: {
     endpoint: options.endpoint,
     protocol: options.protocol ?? 'http/protobuf',
     headers: options.headers ?? {},
-    signals: options.signals ?? [...OTLP_SIGNALS],
+    signals: options.signals ?? [...OTLP_PRESET_DEFAULT_SIGNALS],
     enabled: options.enabled ?? true,
+    ...(options.includeLocalPaths ? { includeLocalPaths: true } : {}),
     createdAt: new Date().toISOString(),
   });
 }
@@ -157,6 +170,7 @@ export function buildLangfuseDestination(options: {
   secretKey: string;
   protocol?: OtlpDestinationProtocol;
   enabled?: boolean;
+  includeLocalPaths?: boolean;
 }): TelemetryDestination {
   if (!options.publicKey || !options.secretKey) {
     throw new Error('Langfuse needs --public-key and --secret-key (or LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY)');
@@ -171,6 +185,7 @@ export function buildLangfuseDestination(options: {
     headers: { Authorization: `Basic ${token}` },
     signals: ['traces'],
     enabled: options.enabled ?? true,
+    ...(options.includeLocalPaths ? { includeLocalPaths: true } : {}),
     createdAt: new Date().toISOString(),
   });
 }

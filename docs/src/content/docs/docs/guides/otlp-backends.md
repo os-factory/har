@@ -28,8 +28,12 @@ har telemetry destination test collector
   `<endpoint>/v1/traces`, `/v1/logs` or `/v1/metrics`.
 - `--header Name=value` adds a request header, for an API key or a tenant. Repeat it
   for several headers. Put credentials in a header, never in the URL.
-- `--signals traces,logs,metrics` narrows what the destination receives. The
-  default is all three.
+- `--signals` picks what the destination receives. The default is
+  `traces,metrics`. Logs are opt-in: pass `--signals traces,metrics,logs` to add
+  them. At the `full` level logs carry prompts, replies and tool input/output
+  verbatim, so `add` prints a warning when you subscribe to them.
+- `--include-local-paths` keeps the attributes that hold absolute local paths. By
+  default Mission Control strips them (see [Privacy](#privacy)).
 - `--disabled` stores the destination without forwarding to it. `--overwrite`
   replaces a destination with the same name.
 
@@ -45,7 +49,7 @@ har telemetry destination add vendor --preset otlp \
 Manage destinations:
 
 ```bash
-har telemetry destination list          # header values are masked
+har telemetry destination list          # header values masked, local paths stripped or included
 har telemetry destination test vendor   # one OTLP/JSON test record, prints the HTTP status
 har telemetry destination remove vendor
 ```
@@ -60,8 +64,8 @@ the same destinations.
 |---|---|---|
 | `traces` | `@osfactory/otel-hook` (`outline`, `full`) | One span per session, prompt, generation and tool call, with `gen_ai.*` attributes. No text at any level |
 | `traces` | `har env verify` (every level except `off`) | One run span and one child span per stage, with `cicd.pipeline.*` and `factory.*` attributes. Ids, results and timings only |
-| `logs` | otel-hook event records (`outline`, `full`) | At `full`, prompts, agent replies and tool inputs and outputs (see [Privacy](#privacy)). At `outline`, metadata only |
-| `logs` | Claude Code `claude_code.api_request` events (`usage` and up) | Model, tokens, cost and duration per request. No prompt text: HAR never sets `OTEL_LOG_USER_PROMPTS` |
+| `logs` (opt-in) | otel-hook event records (`outline`, `full`) | At `full`, prompts, agent replies and tool inputs and outputs (see [Privacy](#privacy)). At `outline`, metadata only |
+| `logs` (opt-in) | Claude Code `claude_code.api_request` events (`usage` and up) | Model, tokens, cost and duration per request. No prompt text: HAR never sets `OTEL_LOG_USER_PROMPTS` |
 | `metrics` | Claude Code native metrics (`usage` and up) | Token and cost counters |
 
 Verification traces follow the telemetry profile's
@@ -111,7 +115,8 @@ docker run --rm -p 4318:4318 -v "$PWD/otelcol.yaml:/etc/otelcol/config.yaml" \
 
 Replace `debug` with your real exporter. Add an
 [`attributes` or `transform` processor](https://opentelemetry.io/docs/collector/configuration/#processors)
-to drop what you don't want to keep, for example `har.repo_path` and `har.work_dir`.
+to drop anything else you don't want to keep. Local paths are already stripped
+unless you added the destination with `--include-local-paths`.
 
 :::caution[Mission Control runs in Docker]
 Mission Control forwards from inside its container, where `localhost` is the
@@ -126,11 +131,15 @@ Linux, with the Collector listening on `0.0.0.0`.
 
 Agent session telemetry goes through Mission Control:
 
-- **Raw OTLP.** Each receiver (`/api/otel/v1/traces`, `/logs`, `/metrics`) first
-  stores the data for Mission Control. Then it forwards the request body unchanged,
-  with its content type and encoding, to every enabled destination subscribed to that
-  signal. Forwarding never changes the receiver's response, so a slow or failing
-  destination never slows an agent down.
+- **OTLP as received, minus local paths.** Each receiver (`/api/otel/v1/traces`,
+  `/logs`, `/metrics`) first stores the data for Mission Control. Then it forwards
+  the request, with its content type and encoding, to every enabled destination
+  subscribed to that signal. Before a copy is spooled, Mission Control removes the
+  attributes that hold absolute local paths (see [Privacy](#privacy)). A body that
+  has none is forwarded byte for byte. One that has some is decoded, filtered and
+  re-encoded in the same format and encoding. A body that may hold one but cannot be
+  decoded is not forwarded. Forwarding never changes the receiver's response, so a
+  slow or failing destination never slows an agent down.
 - **Durable spool.** Each copy is written to a spool on Mission Control's data
   volume before it is sent, so a queued copy is kept across a Mission Control
   restart.
@@ -141,8 +150,8 @@ Agent session telemetry goes through Mission Control:
 - **Secrets never spooled.** The spool holds the body and its content type. Header
   values are read from the destination file at send time and never written to the
   spool.
-- **Withdrawal wins.** Removing or disabling a destination, or unsubscribing a
-  signal, drops its queued copies.
+- **Withdrawal wins.** Removing or disabling a destination, unsubscribing a signal,
+  or turning `--include-local-paths` back off drops its queued copies.
 
 Verification traces don't go through Mission Control. The CLI sends them as OTLP/JSON
 straight to every enabled destination subscribed to `traces`, in parallel, with
@@ -183,33 +192,57 @@ proof's tree. Session spans carry the OpenTelemetry GenAI attributes (`gen_ai.re
 HAR still emits its older `har.*` attributes with the same values, for
 compatibility: `har.work_unit_id`, `har.attempt_id`, `har.branch`,
 `har.session_key`, `har.agent_id`, `har.repo_path` and `har.work_dir`. New queries
-should use the `factory.*` and `vcs.*` names.
+should use the `factory.*` and `vcs.*` names. `har.repo_path` and `har.work_dir` are
+absolute local paths, so destinations receive them only with `--include-local-paths`.
 
 An unknown value is left out, never sent empty. A slot launched without
 `--work-id` has no work unit attributes.
 
 ## Privacy
 
-A destination receives exactly what Mission Control's receivers get for its
-signals. Mission Control's local redaction and size limits apply to what it stores,
-not to what it forwards.
+With the default settings, no absolute local path and no prompt, reply or tool text
+leaves the machine:
+
+- **Logs are opt-in.** Only logs can carry text, and `--preset otlp` subscribes to
+  `traces` and `metrics` unless you name `logs` in `--signals`. The Langfuse preset
+  never forwards logs.
+- **Local paths are stripped.** Mission Control keeps them locally for attribution,
+  but removes these attributes from every forwarded copy, at resource, scope, span,
+  span event, span link, log record, metric data point and exemplar level, before
+  the copy is spooled:
+  `har.repo_path`, `har.work_dir`, `gen_ai.client.workspace`,
+  `gen_ai.client.repository_root`, `cwd`, `process.cwd`,
+  `process.executable.path`, `process.command`, `process.command_line`,
+  `process.command_args`, `code.filepath` and `code.file.path`. A destination added
+  with `--include-local-paths` receives them.
+
+Apart from that, a destination receives what Mission Control's receivers get for
+its signals. Mission Control's local redaction and size limits apply to what it
+stores, not to what it forwards.
+
+What each signal carries once it reaches a destination:
 
 - **Verification traces** carry ids, results and timings only: no commands, logs or
   local paths.
-- **Session traces** carry no prompt, reply or tool text at any level. They do carry model
-  names, token counts, tool names, branch names and HAR's resource attributes,
-  including the local paths in `har.repo_path` and `har.work_dir`.
-- **Logs** at the `full` level carry your prompts, the agent's replies and tool
-  inputs and outputs **verbatim, without secret redaction**, truncated by otel-hook
-  (1,024 characters per piece by default). At `outline` they carry the kind, length
-  and a hash of each piece, never the text.
-- **Claude Code's own logs and metrics** carry token and cost data, plus Claude
-  Code's standard attributes (session and account identifiers, which can include
-  your account email).
+- **Session traces** carry no prompt, reply or tool text at any level. They do carry
+  model names, token counts, tool names, branch names and HAR's resource attributes
+  (work unit, attempt, repository URL, branch, HAR version, slot number).
+- **Metrics** are Claude Code's token and cost counters, with Claude Code's standard
+  attributes (session and account identifiers, which can include your account
+  email).
+- **Logs**, if you subscribe to them, carry at the `full` level your prompts, the
+  agent's replies and tool inputs and outputs **verbatim, without secret
+  redaction**, truncated by otel-hook (1,024 characters per piece by default). At
+  `outline` they carry the kind, length and a hash of each piece, never the text.
+  Claude Code's own log events carry token and cost data and the same identifiers
+  as its metrics.
 
 To send less:
 
-- `--signals traces` keeps text out of a destination at every level;
+- leave `logs` out of `--signals` (the default) to keep text out of a destination at
+  every level;
+- `--signals traces` also leaves out Claude Code's metrics and their account
+  identifiers;
 - `har telemetry on --level outline` stops recording text for Mission Control and every
   destination;
 - `--disabled` or `har telemetry destination remove <name>` stops forwarding.

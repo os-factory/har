@@ -483,9 +483,10 @@ har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
 har telemetry print-env --agent-id <n> [--repo .]
                        [--work-dir path] [--branch name] [--suffix id]
 har telemetry destination add <name> --preset langfuse [--host url] [--public-key pk] [--secret-key sk]
+                       [--include-local-paths]
 har telemetry destination add <name> --preset otlp --endpoint url [--header Name=value]…
-                       [--signals traces,logs,metrics] [--protocol http/protobuf|http/json]
-                       [--disabled] [--overwrite]
+                       [--signals traces,metrics,logs] [--protocol http/protobuf|http/json]
+                       [--include-local-paths] [--disabled] [--overwrite]
 har telemetry destination list [--json]
 har telemetry destination remove <name>
 har telemetry destination test <name> [--json]
@@ -520,9 +521,15 @@ is configured by default, and nothing leaves the machine until you add one.
   The keys default to `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`, the host to
   `LANGFUSE_BASE_URL`, `LANGFUSE_HOST` or `https://cloud.langfuse.com`.
 - `--preset otlp` takes a base `--endpoint` (signals go to `<endpoint>/v1/<signal>`),
-  any `--header Name=value`, and all three signals unless `--signals` narrows them.
+  any `--header Name=value`, and `traces` and `metrics` unless `--signals` says
+  otherwise. Logs are opt-in: name `logs` in `--signals` to forward them. At the
+  `full` level they carry prompts, replies and tool input/output verbatim, and `add`
+  prints a warning.
+- Mission Control strips attributes that hold absolute local paths (`har.repo_path`,
+  `har.work_dir`, `process.cwd`, `code.filepath`, …) from every forwarded copy.
+  `--include-local-paths` keeps them for that destination.
 
-`list` masks header values. `test` sends one small OTLP/JSON record to the destination
+`list` masks header values and shows whether local paths are stripped. `test` sends one small OTLP/JSON record to the destination
 and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-only
 into the Mission Control container. Guides: [Langfuse](/docs/guides/langfuse/),
 [any OTLP backend](/docs/guides/otlp-backends/).

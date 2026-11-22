@@ -6,6 +6,8 @@ import {
 } from '../../core/control-lifecycle';
 import {
   DEFAULT_LANGFUSE_HOST,
+  DESTINATION_LOGS_WARNING,
+  OTLP_PRESET_DEFAULT_SIGNALS,
   addTelemetryDestination,
   buildLangfuseDestination,
   buildOtlpDestination,
@@ -40,6 +42,7 @@ export interface DestinationAddArgs {
   publicKey?: string;
   secretKey?: string;
   disabled?: boolean;
+  includeLocalPaths?: boolean;
   overwrite?: boolean;
 }
 
@@ -62,6 +65,7 @@ export function destinationFromAddArgs(
       secretKey: argv.secretKey ?? env.LANGFUSE_SECRET_KEY ?? '',
       protocol: argv.protocol,
       enabled: !argv.disabled,
+      includeLocalPaths: argv.includeLocalPaths,
     });
   }
   if (!argv.endpoint) throw new Error('--preset otlp needs --endpoint <base OTLP/HTTP URL>');
@@ -75,6 +79,7 @@ export function destinationFromAddArgs(
     signals: parseSignals(argv.signals),
     protocol: argv.protocol,
     enabled: !argv.disabled,
+    includeLocalPaths: argv.includeLocalPaths,
   });
 }
 
@@ -88,12 +93,18 @@ function controlMountHint(): void {
   }
 }
 
+function localPathsLabel(destination: TelemetryDestination): string {
+  return destination.includeLocalPaths ? 'included (--include-local-paths)' : 'stripped';
+}
+
 function handleAdd(argv: DestinationAddArgs): void {
   header('har telemetry destination add');
   const destination = destinationFromAddArgs(argv);
   const result = addTelemetryDestination(destination, { replace: argv.overwrite });
   success(`${result.replaced ? 'Replaced' : 'Added'} destination "${destination.name}" (${destination.preset ?? 'otlp'}) → ${destination.endpoint}`);
   info(`Signals: ${destination.signals.join(', ')}${destination.enabled ? '' : ' (disabled)'}`);
+  if (destination.signals.includes('logs')) warn(DESTINATION_LOGS_WARNING);
+  info(`Local paths: ${localPathsLabel(destination)}`);
   info(`Config:  ${result.path} (mode 0600)`);
   info(`Check it: har telemetry destination test ${destination.name}`);
   controlMountHint();
@@ -116,6 +127,7 @@ function handleList(argv: { json: boolean }): void {
     info(`${destination.name}${destination.enabled ? '' : ' (disabled)'} — ${destination.preset ?? 'otlp'}`);
     info(`  endpoint: ${destination.endpoint} (${destination.protocol})`);
     info(`  signals:  ${destination.signals.join(', ')}`);
+    info(`  local paths: ${localPathsLabel(destination)}`);
     const headers = Object.entries(destination.headers);
     if (headers.length > 0) info(`  headers:  ${headers.map(([key, value]) => `${key}: ${value}`).join(', ')}`);
   }
@@ -178,12 +190,17 @@ export const telemetryDestinationCommand = {
             .option('preset', { type: 'string', choices: TELEMETRY_DESTINATION_PRESETS, default: 'otlp' })
             .option('endpoint', { type: 'string', describe: 'otlp: base OTLP/HTTP URL (signals go to <endpoint>/v1/<signal>)' })
             .option('header', { type: 'string', array: true, describe: 'otlp: Name=value request header (repeatable; stored 0600)' })
-            .option('signals', { type: 'string', array: true, describe: `Comma list of ${OTLP_SIGNALS.join(', ')} (otlp default: all; langfuse: traces)` })
+            .option('signals', { type: 'string', array: true, describe: `Comma list of ${OTLP_SIGNALS.join(', ')} (otlp default: ${OTLP_PRESET_DEFAULT_SIGNALS.join(', ')}; add logs explicitly; langfuse: traces)` })
             .option('protocol', { type: 'string', choices: OTLP_DESTINATION_PROTOCOLS })
             .option('host', { type: 'string', describe: `langfuse: host (default $LANGFUSE_BASE_URL, $LANGFUSE_HOST or ${DEFAULT_LANGFUSE_HOST})` })
             .option('public-key', { type: 'string', describe: 'langfuse: public key (default $LANGFUSE_PUBLIC_KEY)' })
             .option('secret-key', { type: 'string', describe: 'langfuse: secret key (default $LANGFUSE_SECRET_KEY)' })
             .option('disabled', { type: 'boolean', default: false, describe: 'Store it without forwarding to it' })
+            .option('include-local-paths', {
+              type: 'boolean',
+              default: false,
+              describe: 'Forward attributes holding absolute local paths (har.repo_path, har.work_dir, …); stripped by default',
+            })
             .option('overwrite', { type: 'boolean', default: false, describe: 'Replace a destination with the same name' }),
         (argv) =>
           run(() =>
@@ -198,6 +215,7 @@ export const telemetryDestinationCommand = {
               publicKey: argv['public-key'] as string | undefined,
               secretKey: argv['secret-key'] as string | undefined,
               disabled: argv.disabled as boolean,
+              includeLocalPaths: argv['include-local-paths'] as boolean,
               overwrite: argv.overwrite as boolean,
             }),
           ),
