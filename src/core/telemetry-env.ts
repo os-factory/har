@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveHarnessRoot } from '../harness/manifest';
 import { getControlApiUrl } from './control-config';
+import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
+import { getHarPackageVersion } from './package-version';
+import { findWorkUnit } from './work-units';
 import { quoteShellArg } from '../utils/shell';
 
 export interface TelemetrySessionAttrs {
@@ -12,7 +16,16 @@ export interface TelemetrySessionAttrs {
   suffix?: string;
   workUnitId?: string;
   attemptId?: string;
+  /** Tracker of the work unit (`github`, `linear`, …) → `factory.work_unit.source`. */
+  workUnitSource?: string;
+  /** Credential-free repository URL → `vcs.repository.url.full`. */
+  repositoryUrl?: string;
+  /** HAR version → `factory.producer.version`; defaults to the running package. */
+  producerVersion?: string;
 }
+
+/** `factory.producer.name` for everything HAR attributes (telemetry profile). */
+export const FACTORY_PRODUCER_NAME = 'har';
 
 function escapeAttrValue(value: string): string {
   return value.replace(/[,=]/g, '_');
@@ -31,7 +44,62 @@ export function buildOtelResourceAttributes(attrs: TelemetrySessionAttrs): strin
     parts.push(`har.work_unit_id=${escapeAttrValue(attrs.workUnitId)}`);
   }
   if (attrs.attemptId) parts.push(`har.attempt_id=${attrs.attemptId}`);
+  parts.push(...factoryCorrelationAttributes(attrs));
   return parts.join(',');
+}
+
+function harVersionOrUndefined(): string | undefined {
+  try {
+    return getHarPackageVersion();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Factory Commits telemetry-profile Resource attributes (#416), emitted
+ * alongside the har.* ones with the same values. An unknown value is omitted,
+ * never sent as an empty string.
+ */
+function factoryCorrelationAttributes(attrs: TelemetrySessionAttrs): string[] {
+  const pairs: Array<[string, string | undefined]> = [
+    ['factory.work_unit.id', attrs.workUnitId],
+    ['factory.work_unit.source', attrs.workUnitSource],
+    ['factory.attempt.id', attrs.attemptId],
+    ['vcs.repository.url.full', attrs.repositoryUrl],
+    ['vcs.ref.head.name', attrs.branch],
+    ['factory.producer.name', FACTORY_PRODUCER_NAME],
+    ['factory.producer.version', attrs.producerVersion ?? harVersionOrUndefined()],
+  ];
+  return pairs.flatMap(([key, value]) => {
+    const trimmed = value?.trim();
+    return trimmed ? [`${key}=${escapeAttrValue(trimmed)}`] : [];
+  });
+}
+
+/**
+ * Fill the correlation values a caller did not pass from the checkout: the
+ * origin remote (credentials stripped) and the work unit's tracker. Best
+ * effort — a lookup failure leaves the attribute out.
+ */
+export function withCorrelationDefaults(attrs: TelemetrySessionAttrs): TelemetrySessionAttrs {
+  let repositoryUrl = attrs.repositoryUrl;
+  if (repositoryUrl === undefined) {
+    repositoryUrl = sanitizeGitRemoteUrl(readGitRemote(attrs.repoPath));
+  }
+  let workUnitSource = attrs.workUnitSource;
+  if (workUnitSource === undefined && attrs.workUnitId) {
+    try {
+      workUnitSource = findWorkUnit(resolveHarnessRoot(attrs.repoPath), attrs.workUnitId)?.source;
+    } catch {
+      workUnitSource = undefined;
+    }
+  }
+  return {
+    ...attrs,
+    ...(repositoryUrl ? { repositoryUrl } : {}),
+    ...(workUnitSource ? { workUnitSource } : {}),
+  };
 }
 
 export function buildSessionKey(input: {
@@ -49,7 +117,8 @@ export function buildSessionKey(input: {
  * Session attribution for .env.agent.<id>.
  * Agent OTEL export is owned by @osfactory/otel-hook (har telemetry on) — not Claude/Codex native exporters.
  */
-export function buildTelemetryEnvBlock(attrs: TelemetrySessionAttrs): string {
+export function buildTelemetryEnvBlock(input: TelemetrySessionAttrs): string {
+  const attrs = withCorrelationDefaults(input);
   const apiUrl = getControlApiUrl().replace(/\/$/, '');
   // Quote every value so the file stays safe to `source` even when a value
   // contains a space or shell metacharacter (e.g. a repo path with a space).
