@@ -3,11 +3,6 @@ title: Record Factory Commits proofs
 description: Record each full verification as a Factory Commits proof in git notes, then show and verify it.
 ---
 
-:::note[2.0 (in development)]
-Factory Commits proofs are part of HAR 2.0, which is not released yet. The settings
-and commands below exist on the 2.0 development branches only.
-:::
-
 [Factory Commits](https://github.com/os-factory/factory-commits) is an open
 convention for recording in git how each change was produced and verified. A proof
 says which work unit a change belongs to, which checks ran on the exact tree and
@@ -15,9 +10,10 @@ whether they passed. It uses git trailers, git notes and
 [in-toto](https://in-toto.io/) statements. HAR is one producer. Any tool that
 follows the spec can write or verify the same proofs.
 
-With proofs on, every `har env verify --full` becomes a `factory-run` statement
-about the verified tree, and the commit of that tree gets the statement as a note in
-`refs/notes/factory`.
+Since HAR 2.0, when `git factory` is installed, every `har env verify --full`
+becomes a `factory-run` statement about the verified tree, and the commit of that
+tree gets the statement as a note in `refs/notes/factory`. The note stays local
+until you push it.
 
 ## Levels
 
@@ -51,29 +47,37 @@ HAR looks for `git-factory` on `PATH`. To use a copy that is not on `PATH`, expo
 `HAR_FACTORY_PROOF_BIN` with the path to the executable. If that path is not
 executable, HAR treats `git-factory` as missing and does not fall back to `PATH`.
 
-## Turn proofs on
+## Choose a mode
 
-Proofs are off by default. Opt in per repository in `.har/harness.env`:
+The mode is set per repository in `.har/harness.env`:
 
 ```bash
-HAR_FACTORY_PROOF=notes            # off (default) | notes | notes+trailers
+HAR_FACTORY_PROOF=notes            # off | notes | notes+trailers (unset: notes, local only)
 ```
 
-Then install, or re-install, the commit hooks:
+- **Unset (the 2.0 default)** behaves like `notes`, but only locally and only when
+  `git-factory` is installed. Without `git-factory`, HAR stays silent: no hint on
+  verify or commit. `har hooks install` does not run `git factory setup`, so your
+  git config and fetch refspecs are unchanged.
+- **`off`** turns proofs off: no attestation, no note.
+- **`notes`**, set explicitly, writes a note for each commit of a verified tree.
+  `har hooks install` also runs `git factory setup`, which adds the
+  `refs/notes/factory` fetch refspec and sets `notes.rewriteRef` so notes survive
+  rebase and amend. When `git-factory` is missing, HAR prints a one-line hint.
+- **`notes+trailers`** does the same, and adds a `commit-msg` hook that writes
+  `Work-Unit`, `Factory-Run` and `Factory-Attestation` trailers on commits of a
+  verified tree. Trailers rewrite commit messages, so they are never on by default.
+
+The `post-commit` hook writes the notes, so install, or re-install, the commit hooks:
 
 ```bash
 har hooks install
 ```
 
-- `notes` writes a note for each commit of a verified tree. `har hooks install` also
-  runs `git factory setup`, which adds the `refs/notes/factory` fetch refspec and sets
-  `notes.rewriteRef` so notes survive rebase and amend.
-- `notes+trailers` does the same, and adds a `commit-msg` hook that writes
-  `Work-Unit`, `Factory-Run` and `Factory-Attestation` trailers on commits of a
-  verified tree.
-
 Re-run `har hooks install` after changing the mode. `har hooks uninstall` removes the
-hooks and undoes `git factory setup`.
+hooks, and undoes `git factory setup` when the mode was set explicitly.
+`har hooks status` shows the mode and whether it comes from `harness.env` or the
+default.
 
 ## What happens on verify and commit
 
@@ -157,9 +161,10 @@ paths, or work unit titles or URLs.
 
 ## Fail-open
 
-Proofs never block verify, a commit or a launch. When `git-factory` is missing or
-fails, HAR prints one line and carries on. The commit is made without a note, and
+Proofs never block verify, a commit or a launch. When `git-factory` fails, HAR
+prints one line and carries on. A missing `git-factory` also gets one line when you
+set the mode explicitly, and none under the default. The commit is made without a note, and
 the validation is recorded as usual. Install `git-factory` and re-run
 `har env verify --full` before your next commit to get a proof for it.
 
-See also [Verification & commit gate](/docs/guides/verification/#factory-commits-proofs-opt-in).
+See also [Verification & commit gate](/docs/guides/verification/#factory-commits-proofs).

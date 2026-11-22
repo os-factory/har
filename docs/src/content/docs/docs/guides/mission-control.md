@@ -282,7 +282,7 @@ Record less with `har telemetry on --level outline` / `--level usage`, or nothin
 `har telemetry off`.
 
 To send a copy to another backend, see [Send telemetry to Langfuse](/docs/guides/langfuse/)
-and [Send telemetry to any OTLP backend](/docs/guides/otlp-backends/) (2.0, in development).
+and [Send telemetry to any OTLP backend](/docs/guides/otlp-backends/) (HAR 2.0).
 
 ### No agent content? Check the level
 

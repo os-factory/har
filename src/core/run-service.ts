@@ -454,7 +454,7 @@ export class RunService {
         }
         validation = recorded;
         if (options.full) {
-          // Opt-in Factory Commits proof (HAR_FACTORY_PROOF); a no-op when off, never throws.
+          // Factory Commits proof (HAR_FACTORY_PROOF, default notes); a no-op when off, never throws.
           const runRecord = runId ? getRun(harnessRoot, runId) : null;
           const workUnitId = session?.workUnitId;
           const produced = produceValidationProof({

@@ -41,18 +41,42 @@ const SOURCE_RE = /^[a-z0-9][a-z0-9-]*$/;
 const TOKEN_RE = /^[^\s;]+$/;
 const CALL_TIMEOUT_MS = 60_000;
 
-/** Read the per-repo opt-in. Anything other than a known mode means `off`. */
-export function readFactoryProofMode(harnessRoot: string): FactoryProofMode {
+/**
+ * Mode used when `HAR_FACTORY_PROOF` is unset (HAR 2.0.0): local notes, written
+ * only when `git factory` is installed. Under the default HAR never prints a
+ * hint about a missing binary and `har hooks install` leaves git config alone.
+ */
+export const DEFAULT_FACTORY_PROOF_MODE: FactoryProofMode = 'notes';
+
+export interface FactoryProofModeResolution {
+  mode: FactoryProofMode;
+  /** True when `HAR_FACTORY_PROOF` is set in harness.env (the user chose the mode). */
+  explicit: boolean;
+}
+
+/**
+ * Resolve the per-repo mode. Unset or empty → the default (`notes`, not
+ * explicit). A set value that is not a known mode means `off`, as in 1.x. An
+ * unreadable harness.env means `off`.
+ */
+export function resolveFactoryProofMode(harnessRoot: string): FactoryProofModeResolution {
   let raw: string | undefined;
   try {
     raw = readHarnessEnv(harnessRoot)[FACTORY_PROOF_ENV_KEY];
   } catch {
-    return 'off';
+    return { mode: 'off', explicit: false };
   }
   const value = raw?.trim();
-  return (FACTORY_PROOF_MODES as readonly string[]).includes(value ?? '')
-    ? (value as FactoryProofMode)
-    : 'off';
+  if (!value) return { mode: DEFAULT_FACTORY_PROOF_MODE, explicit: false };
+  return {
+    mode: (FACTORY_PROOF_MODES as readonly string[]).includes(value) ? (value as FactoryProofMode) : 'off',
+    explicit: true,
+  };
+}
+
+/** The effective mode (see `resolveFactoryProofMode`). */
+export function readFactoryProofMode(harnessRoot: string): FactoryProofMode {
+  return resolveFactoryProofMode(harnessRoot).mode;
 }
 
 function isExecutable(file: string): boolean {
@@ -394,20 +418,27 @@ export interface ProduceValidationProofInput {
 }
 
 export interface ProduceValidationProofResult {
-  /** Undefined when the repo has not opted in (mode `off`): nothing was done. */
+  /**
+   * Undefined when nothing was done: mode `off`, or the default mode with no
+   * `git-factory` installed (silent, no hint).
+   */
   outcome?: FactoryProofOutcome;
   /** The validation record, with attestationDigest when an attestation was produced. */
   validation: ValidationRecord;
 }
 
 /**
- * After a full validation is recorded: when the repo opted in, build the
- * predicate, attest it and store the digest on the record. Mode `off` is a
- * no-op that touches nothing. Never throws.
+ * After a full validation is recorded: build the predicate, attest it and store
+ * the digest on the record. Mode `off` is a no-op that touches nothing, and so
+ * is the default mode when `git-factory` is not installed. Never throws.
  */
 export function produceValidationProof(input: ProduceValidationProofInput): ProduceValidationProofResult {
   try {
-    if (readFactoryProofMode(input.harnessRoot) === 'off') return { validation: input.validation };
+    const { mode, explicit } = resolveFactoryProofMode(input.harnessRoot);
+    if (mode === 'off') return { validation: input.validation };
+    const bin = input.bin ?? resolveFactoryProofBin(input.env);
+    // Under the default, a missing binary is not worth a line on every verify.
+    if (!bin && !explicit) return { validation: input.validation };
 
     const predicate = buildFactoryRunPredicate({
       validation: input.validation,
@@ -425,7 +456,7 @@ export function produceValidationProof(input: ProduceValidationProofInput): Prod
       checkoutDir: input.checkoutDir,
       predicate,
       treeHash: input.validation.treeHash,
-      bin: input.bin,
+      bin,
       env: input.env,
     });
     if (outcome.status !== 'attested' || !outcome.digest) return { outcome, validation: input.validation };
@@ -484,11 +515,16 @@ export function addFactoryNoteForCommit(
   options: { bin?: string; env?: NodeJS.ProcessEnv } = {},
 ): FactoryProofOutcome | undefined {
   try {
-    if (!proofModeIncludesNotes(readFactoryProofMode(checkoutDir))) return undefined;
+    const { mode, explicit } = resolveFactoryProofMode(checkoutDir);
+    if (!proofModeIncludesNotes(mode)) return undefined;
     const attestation = findPassingAttestation(checkoutDir, treeHash);
     if (!attestation) return undefined;
     const bin = options.bin ?? resolveFactoryProofBin(options.env);
-    if (!bin) return { status: 'skipped', message: `har: factory note skipped: ${FACTORY_PROOF_UNAVAILABLE_HINT}` };
+    if (!bin) {
+      return explicit
+        ? { status: 'skipped', message: `har: factory note skipped: ${FACTORY_PROOF_UNAVAILABLE_HINT}` }
+        : undefined;
+    }
     const call = callFactoryProof(bin, ['note', 'add', 'HEAD', '--attestation', attestation.file, '--json'], {
       cwd: checkoutDir,
       env: options.env,

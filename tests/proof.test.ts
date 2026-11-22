@@ -11,6 +11,8 @@ import {
   produceValidationProof,
   readAttestationEntry,
   readFactoryProofMode,
+  resolveFactoryProofMode,
+  DEFAULT_FACTORY_PROOF_MODE,
   resolveFactoryProofBin,
 } from '../src/core/proof';
 import { findValidation, recordValidation } from '../src/core/validations';
@@ -179,9 +181,9 @@ const passing = verification([
 ]);
 
 describe('readFactoryProofMode / resolveFactoryProofBin', () => {
-  it('defaults to off and ignores unknown values', () => {
-    expect(readFactoryProofMode(initHarnessRepo())).toBe('off');
-    expect(readFactoryProofMode(initHarnessRepo('HARNESS_PROJECT_NAME=x\n'))).toBe('off');
+  it('defaults to notes (2.0) and ignores unknown values', () => {
+    expect(readFactoryProofMode(initHarnessRepo())).toBe('notes');
+    expect(readFactoryProofMode(initHarnessRepo('HARNESS_PROJECT_NAME=x\n'))).toBe('notes');
     expect(readFactoryProofMode(initHarnessRepo('HAR_FACTORY_PROOF=yes\n'))).toBe('off');
     expect(readFactoryProofMode(initHarnessRepo('HAR_FACTORY_PROOF=notes\n'))).toBe('notes');
     expect(readFactoryProofMode(initHarnessRepo('export HAR_FACTORY_PROOF="notes+trailers"\n'))).toBe(
@@ -207,8 +209,8 @@ describe('produceValidationProof', () => {
     return recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
   }
 
-  it('does nothing at all when the repo has not opted in', () => {
-    const dir = initHarnessRepo('HARNESS_PROJECT_NAME=x\n');
+  it('does nothing at all when the repo opted out (off)', () => {
+    const dir = initHarnessRepo('HARNESS_PROJECT_NAME=x\nHAR_FACTORY_PROOF=off\n');
     const record = recordPass(dir);
     const log = path.join(tmp('har-proof-log-'), 'calls.jsonl');
 
@@ -327,5 +329,63 @@ const realBin = process.env.HAR_FACTORY_PROOF_BIN;
     });
     expect(result.outcome?.status).toBe('attested');
     expect(result.validation.attestationDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+});
+
+describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
+  it('resolves to notes, not explicit; a set value is explicit', () => {
+    expect(DEFAULT_FACTORY_PROOF_MODE).toBe('notes');
+    expect(resolveFactoryProofMode(initHarnessRepo())).toEqual({ mode: 'notes', explicit: false });
+    expect(resolveFactoryProofMode(initHarnessRepo('HAR_FACTORY_PROOF=\n'))).toEqual({ mode: 'notes', explicit: false });
+    expect(resolveFactoryProofMode(initHarnessRepo('HAR_FACTORY_PROOF=notes\n'))).toEqual({ mode: 'notes', explicit: true });
+    expect(resolveFactoryProofMode(initHarnessRepo('HAR_FACTORY_PROOF=off\n'))).toEqual({ mode: 'off', explicit: true });
+    expect(resolveFactoryProofMode(initHarnessRepo('HAR_FACTORY_PROOF=yes\n'))).toEqual({ mode: 'off', explicit: true });
+  });
+
+  it('is silent when git-factory is unavailable: no outcome, no hint, no files', () => {
+    const dir = initHarnessRepo('HARNESS_PROJECT_NAME=x\n');
+    const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
+    const result = produceValidationProof({
+      harnessRoot: dir,
+      checkoutDir: dir,
+      validation: record,
+      verification: passing,
+      env: { PATH: '/nonexistent' },
+    });
+    expect(result.outcome).toBeUndefined();
+    expect(result.validation).toBe(record);
+    expect(fs.existsSync(attestationFilePath(dir, record.treeHash))).toBe(false);
+  });
+
+  it('hints when the repo explicitly opted in and git-factory is unavailable', () => {
+    const dir = initHarnessRepo('HAR_FACTORY_PROOF=notes\n');
+    const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
+    const result = produceValidationProof({
+      harnessRoot: dir,
+      checkoutDir: dir,
+      validation: record,
+      verification: passing,
+      env: { PATH: '/nonexistent' },
+    });
+    expect(result.outcome?.status).toBe('skipped');
+    expect(result.outcome?.message).toContain('git-factory not found');
+  });
+
+  it('attests locally when git-factory is installed', () => {
+    const dir = initHarnessRepo();
+    const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
+    const log = path.join(tmp('har-proof-log-'), 'calls.jsonl');
+    const result = produceValidationProof({
+      harnessRoot: dir,
+      checkoutDir: dir,
+      validation: record,
+      verification: passing,
+      bin: FAKE_BIN,
+      env: { FAKE_GIT_FACTORY_LOG: log },
+    });
+    expect(result.outcome?.status).toBe('attested');
+    expect(result.validation.attestationDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { argv: string[] });
+    expect(calls.map((c) => c.argv[0])).toEqual(['attest']);
   });
 });

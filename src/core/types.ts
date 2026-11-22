@@ -113,7 +113,7 @@ export interface EnvironmentStatusRunResult extends EnvironmentRunResult {
 export interface VerificationRunResult extends EnvironmentRunResult {
   verification: VerificationResult | null;
   validation?: ValidationRecord;
-  /** Factory Commits proof outcome; present only when the repo opted in (HAR_FACTORY_PROOF). */
+  /** Factory Commits proof outcome; absent when HAR_FACTORY_PROOF=off, or under the default (notes) when git-factory is not installed. */
   proof?: FactoryProofOutcome;
   /** Set only when verification spans were sent to at least one trace destination. */
   spanExport?: VerificationSpanExportResult;

@@ -3,11 +3,6 @@ title: Send telemetry to any OTLP backend
 description: Forward HAR telemetry to an OpenTelemetry Collector, Datadog or any OTLP/HTTP endpoint.
 ---
 
-:::note[2.0 (in development)]
-Telemetry destinations are part of HAR 2.0, which is not released yet. The
-commands below exist on the 2.0 development branches only.
-:::
-
 HAR's agent telemetry is standard OpenTelemetry. Mission Control receives it
 locally and can forward a copy to any backend that speaks OTLP over HTTP: an
 [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/), Datadog,

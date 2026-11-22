@@ -112,6 +112,7 @@ export default defineConfig({
 						{ label: 'Factory Commits proofs', slug: 'docs/guides/factory-commits' },
 						{ label: 'Eject', slug: 'docs/guides/eject' },
 						{ label: 'Upgrade a harness', slug: 'docs/guides/upgrading' },
+						{ label: 'Upgrading to 2.0', slug: 'docs/guides/upgrading-to-2-0' },
 						{ label: 'Migrating to 1.0', slug: 'docs/guides/migrating-to-1-0' },
 					],
 				},

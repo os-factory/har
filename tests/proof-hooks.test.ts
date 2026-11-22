@@ -92,7 +92,7 @@ afterEach(() => {
   delete process.env.FAKE_GIT_FACTORY_EXIT;
 });
 
-describe('har hooks with HAR_FACTORY_PROOF=off (default)', () => {
+describe('har hooks with HAR_FACTORY_PROOF=off, and with it unset (2.0 default)', () => {
   it('installs exactly the same hook files and never touches git config or git-factory', () => {
     const baseline = initRepo();
     const optedOut = initRepo('HARNESS_PROJECT_NAME=x\nHAR_FACTORY_PROOF=off\n');
@@ -315,5 +315,61 @@ describe('end-to-end git commit with factory proofs (built CLI)', () => {
     sh(dir, 'git add -A');
     sh(dir, 'git commit -q -m "fix: again"', { FAKE_GIT_FACTORY_EXIT: '2' });
     expect(sh(dir, 'git log -1 --format=%s')).toBe('fix: again');
+  });
+});
+
+describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
+  it('hooks install and uninstall never change git config or call git-factory', () => {
+    const dir = initRepo('HARNESS_PROJECT_NAME=x\n');
+    const configBefore = localConfig(dir);
+
+    const result = installHooks({ repoPath: dir, harInvocation: 'har' });
+    expect(result.factoryProof).toBeUndefined();
+    expect(result.commitMsg).toBeUndefined();
+    expect(localConfig(dir)).toBe(configBefore);
+    expect(getHooksStatus(dir)).toMatchObject({
+      commitMsgInstalled: false,
+      factoryProofMode: 'notes',
+      factoryProofModeSource: 'default',
+    });
+
+    expect(uninstallHooks(dir).factoryProof).toBeUndefined();
+    expect(localConfig(dir)).toBe(configBefore);
+    expect(logLines(log)).toEqual([]);
+  });
+
+  it('writes the local note on commit when git-factory is installed', async () => {
+    const dir = initRepo();
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+    const validation = attestedValidation(dir);
+    sh(dir, 'git add -A');
+    sh(dir, 'git commit -q -m change');
+
+    const result = await recordCommitAssociation(dir);
+    expect(result.proof?.status).toBe('attested');
+    const note = JSON.parse(sh(dir, 'git notes --ref refs/notes/factory show HEAD'));
+    expect(note.attestations.map((a: { digest: string }) => a.digest)).toEqual([validation.attestationDigest]);
+    expect(logLines(log).map((l) => l.argv[0])).toEqual(['attest', 'note']);
+  });
+
+  it('is silent on commit when git-factory disappears, but hints under an explicit opt-in', async () => {
+    for (const [harnessEnv, expectHint] of [[undefined, false], ['HAR_FACTORY_PROOF=notes\n', true]] as const) {
+      process.env.HAR_FACTORY_PROOF_BIN = FAKE_BIN;
+      const dir = initRepo(harnessEnv);
+      fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+      attestedValidation(dir);
+      sh(dir, 'git add -A');
+      sh(dir, 'git commit -q -m change');
+      process.env.HAR_FACTORY_PROOF_BIN = '/nonexistent/git-factory';
+
+      const result = await recordCommitAssociation(dir);
+      expect(result.attached).toBe(true);
+      if (expectHint) {
+        expect(result.proof?.status).toBe('skipped');
+        expect(result.proof?.message).toContain('git-factory not found');
+      } else {
+        expect(result.proof).toBeUndefined();
+      }
+    }
   });
 });

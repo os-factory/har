@@ -3,11 +3,6 @@ title: Send telemetry to Langfuse
 description: Forward HAR agent session traces to Langfuse Cloud or a self-hosted Langfuse.
 ---
 
-:::note[2.0 (in development)]
-Telemetry destinations are part of HAR 2.0, which is not released yet. The
-commands below exist on the 2.0 development branches only.
-:::
-
 HAR can send a copy of its agent telemetry to [Langfuse](https://langfuse.com).
 Mission Control receives the telemetry locally, as it does today, and forwards the
 traces to Langfuse. Nothing leaves the machine until you add a destination.

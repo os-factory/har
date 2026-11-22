@@ -205,7 +205,7 @@ export const RunVerificationInputSchema = z.object({
   full: z.boolean().default(false),
 });
 
-/** Factory Commits proof outcome of a full verify (present only when the repo opted in). */
+/** Factory Commits proof outcome of a full verify (present only when a proof was attempted). */
 export const FactoryProofOutcomeSchema = z.object({
   status: z.enum(['attested', 'skipped', 'failed']),
   message: z.string(),

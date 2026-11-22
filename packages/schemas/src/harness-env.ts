@@ -101,7 +101,7 @@ export const HarnessEnvSchema = z.object({
   HARNESS_IOS_DESTINATION: z.string().optional(),
   HARNESS_SWIFTLINT_CMD: z.string().optional(),
 
-  // Factory Commits proofs (opt-in): off | notes | notes+trailers
+  // Factory Commits proofs: off | notes | notes+trailers (unset: notes, local only, silent without git-factory)
   HAR_FACTORY_PROOF: z.enum(['off', 'notes', 'notes+trailers']).optional(),
 });
 

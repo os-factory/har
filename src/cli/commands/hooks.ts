@@ -94,9 +94,11 @@ function handleStatus(argv: RepoArgs & { json: boolean }): void {
     }
     info(`pre-commit:    ${status.preCommitInstalled ? 'installed' : 'not installed'}`);
     info(`post-commit:   ${status.postCommitInstalled ? 'installed' : 'not installed'}`);
-    if (status.factoryProofMode !== 'off' || status.commitMsgInstalled) {
+    if ((status.factoryProofModeSource === 'harness.env' && status.factoryProofMode !== 'off') || status.commitMsgInstalled) {
       info(`commit-msg:    ${status.commitMsgInstalled ? 'installed' : 'not installed'} (factory trailers)`);
       info(`Factory proof: ${status.factoryProofMode} (HAR_FACTORY_PROOF in .har/harness.env)`);
+    } else if (status.factoryProofModeSource === 'default') {
+      info(`Factory proof: ${status.factoryProofMode} (default: local notes when git factory is installed)`);
     }
     info(
       `Gate:          enabled=${status.gate.enabled} mode=${status.gate.mode} scope=${status.gate.scope}`,

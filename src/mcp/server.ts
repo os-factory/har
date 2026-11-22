@@ -294,7 +294,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_run_verification',
     description:
-      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump), plus `proof` (Factory Commits outcome) after a full verify when the repo opted in.',
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump), plus `proof` (Factory Commits outcome) after a full verify when a proof was attempted (HAR_FACTORY_PROOF not off; under the default only when git-factory is installed).',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
