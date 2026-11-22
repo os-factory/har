@@ -12,6 +12,7 @@ import {
   VerificationResultSchema,
   WorktreeModeSchema,
 } from '../harness/schema';
+import { FACTORY_PROOF_LEVELS } from '../core/proof';
 
 export const RepoPathInputSchema = z.object({
   repo: z.string().default('.').describe('Path to the repository'),
@@ -279,6 +280,31 @@ export const GetRunInputSchema = z.object({
 
 export const GetRunOutputSchema = z.object({
   run: RunRecordSchema,
+});
+
+const FactoryProofRevSchema = z
+  .string()
+  .min(1)
+  .refine((rev) => !rev.startsWith('-'), 'revision must not start with "-"');
+
+export const ProofShowInputSchema = z.object({
+  repo: z.string().default('.'),
+  rev: FactoryProofRevSchema.optional().describe('Commit to show (default HEAD)'),
+});
+
+export const ProofVerifyInputSchema = z.object({
+  repo: z.string().default('.'),
+  rev: FactoryProofRevSchema.optional().describe('Commit or range A..B (default HEAD)'),
+  minLevel: z.enum(FACTORY_PROOF_LEVELS).optional(),
+  allowedSigners: z.string().optional().describe('ssh allowed_signers file (relative to repo) for L2'),
+});
+
+/** git-factory's exit code and its parsed `--json` output, passed through. */
+export const ProofQueryOutputSchema = z.object({
+  code: z.number().int(),
+  available: z.boolean(),
+  result: z.unknown(),
+  stderr: z.string(),
 });
 
 export const ControlUpInputSchema = z.object({

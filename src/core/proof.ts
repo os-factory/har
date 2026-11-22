@@ -573,3 +573,63 @@ export function runFactoryProofSetup(
   }
   return { status: 'attested', message: `${label}: done` };
 }
+
+// ---------------------------------------------------------------------------
+// Read-only queries: `har proof show|verify` and the matching MCP tools
+// ---------------------------------------------------------------------------
+
+export const FACTORY_PROOF_LEVELS = ['L0', 'L1', 'L2', 'L3'] as const;
+export type FactoryProofLevel = (typeof FACTORY_PROOF_LEVELS)[number];
+
+export interface FactoryProofQueryInput {
+  repoPath: string;
+  command: 'show' | 'verify';
+  /** A rev for show/verify, or an `A..B` range for verify. */
+  rev?: string;
+  minLevel?: FactoryProofLevel;
+  allowedSigners?: string;
+  bin?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface FactoryProofQueryResult {
+  /** False when no git-factory executable was found. */
+  available: boolean;
+  /** git-factory's exit code (0 ok, 1 verification failed, 2 usage/environment); 2 when unavailable. */
+  code: number;
+  /** Raw `--json` stdout from git-factory, passed through untouched. */
+  stdout: string;
+  stderr: string;
+  /** Parsed `--json` output, or null when it was not JSON. */
+  result: unknown;
+}
+
+/**
+ * Pass `git factory show|verify … --json` through. HAR adds nothing to the
+ * verification itself; exit codes are git-factory's.
+ */
+export function runFactoryProofQuery(input: FactoryProofQueryInput): FactoryProofQueryResult {
+  const bin = input.bin ?? resolveFactoryProofBin(input.env);
+  if (!bin) {
+    return { available: false, code: 2, stdout: '', stderr: FACTORY_PROOF_UNAVAILABLE_HINT, result: null };
+  }
+  if (input.rev?.startsWith('-')) {
+    return { available: true, code: 2, stdout: '', stderr: `invalid revision: ${input.rev}`, result: null };
+  }
+  const args: string[] = [input.command];
+  if (input.rev) args.push(input.rev);
+  if (input.command === 'verify') {
+    if (input.minLevel) args.push('--min-level', input.minLevel);
+    if (input.allowedSigners) args.push('--allowed-signers', path.resolve(input.repoPath, input.allowedSigners));
+  }
+  args.push('--json');
+
+  const call = callFactoryProof(bin, args, { cwd: input.repoPath, env: input.env });
+  let result: unknown = null;
+  try {
+    result = call.stdout.trim() ? JSON.parse(call.stdout) : null;
+  } catch {
+    result = null;
+  }
+  return { available: true, code: call.code, stdout: call.stdout, stderr: call.stderr, result };
+}
