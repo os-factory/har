@@ -59,12 +59,15 @@ the same destinations.
 | Signal | Source | Content |
 |---|---|---|
 | `traces` | `@osfactory/otel-hook` (`outline`, `full`) | One span per session, prompt, generation and tool call, with `gen_ai.*` attributes. No text at any level |
+| `traces` | `har env verify` (every level except `off`) | One run span and one child span per stage, with `cicd.pipeline.*` and `factory.*` attributes. Ids, results and timings only |
 | `logs` | otel-hook event records (`outline`, `full`) | At `full`, prompts, agent replies and tool inputs and outputs (see [Privacy](#privacy)). At `outline`, metadata only |
 | `logs` | Claude Code `claude_code.api_request` events (`usage` and up) | Model, tokens, cost and duration per request. No prompt text: HAR never sets `OTEL_LOG_USER_PROMPTS` |
 | `metrics` | Claude Code native metrics (`usage` and up) | Token and cost counters |
 
-Verification runs (`har env verify`) are not emitted as spans yet. They will be
-added in a later 2.0 change, following the profile's verification spans.
+Verification traces follow the telemetry profile's
+[verification spans](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md#verification-spans).
+The trace id is derived from the validation id. Details are in the
+[CLI reference](/docs/reference/cli/#har-telemetry).
 
 ## Example: OpenTelemetry Collector
 
@@ -121,6 +124,8 @@ Linux, with the Collector listening on `0.0.0.0`.
 
 ## How forwarding works
 
+Agent session telemetry goes through Mission Control:
+
 - **Raw OTLP.** Each receiver (`/api/otel/v1/traces`, `/logs`, `/metrics`) first
   stores the data for Mission Control. Then it forwards the request body unchanged,
   with its content type and encoding, to every enabled destination subscribed to that
@@ -139,7 +144,12 @@ Linux, with the Collector listening on `0.0.0.0`.
 - **Withdrawal wins.** Removing or disabling a destination, or unsubscribing a
   signal, drops its queued copies.
 
-Mission Control must be running with `~/.har/destinations` mounted. `har telemetry
+Verification traces don't go through Mission Control. The CLI sends them as OTLP/JSON
+straight to every enabled destination subscribed to `traces`, in parallel, with
+about 3 seconds per destination. There is no spool or retry: a destination that is
+down misses that run, and verify's result never changes.
+
+For session telemetry, Mission Control must be running with `~/.har/destinations` mounted. `har telemetry
 on` and `har env launch` start it. If `destination add` says the running container
 predates destinations, run `har control up` to recreate it. Mission Control re-reads
 the destination file when it changes, so adding or removing a destination needs no
@@ -149,8 +159,9 @@ restart.
 
 HAR follows the Factory Commits
 [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md).
-These resource attributes are set on every agent session HAR launches, so any
-backend can group sessions by work unit, attempt, repository and branch. The values
+These resource attributes are set on every agent session HAR launches and on every
+verification trace, so any backend can group sessions and runs by work unit,
+attempt, repository and branch. The values
 are the same ones HAR writes into [Factory Commits proofs](/docs/guides/factory-commits/).
 
 | Attribute | Value |
@@ -163,7 +174,9 @@ are the same ones HAR writes into [Factory Commits proofs](/docs/guides/factory-
 | `factory.producer.name` | `har` |
 | `factory.producer.version` | The HAR version |
 
-Spans also carry the OpenTelemetry GenAI attributes (`gen_ai.request.model`,
+Verification run spans add `factory.run.id`, `factory.git.tree`, `factory.verdict`
+(on `--full`) and `cicd.pipeline.*`. These match the `Factory-Run` trailer and the
+proof's tree. Session spans carry the OpenTelemetry GenAI attributes (`gen_ai.request.model`,
 `gen_ai.usage.*`, `gen_ai.tool.name`, `gen_ai.conversation.id`) and `session.id`
 (the HAR session key).
 
@@ -181,7 +194,9 @@ A destination receives exactly what Mission Control's receivers get for its
 signals. Mission Control's local redaction and size limits apply to what it stores,
 not to what it forwards.
 
-- **Traces** carry no prompt, reply or tool text at any level. They do carry model
+- **Verification traces** carry ids, results and timings only: no commands, logs or
+  local paths.
+- **Session traces** carry no prompt, reply or tool text at any level. They do carry model
   names, token counts, tool names, branch names and HAR's resource attributes,
   including the local paths in `har.repo_path` and `har.work_dir`.
 - **Logs** at the `full` level carry your prompts, the agent's replies and tool

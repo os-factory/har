@@ -23,11 +23,16 @@ traces to Langfuse. Nothing leaves the machine until you add a destination.
   (`factory.work_unit.id`, `factory.attempt.id`), the repository URL and the branch.
   Filter on them to see every session that worked on one issue. The full list is in
   [Send telemetry to any OTLP backend](/docs/guides/otlp-backends/#correlation-attributes).
-- **Verification runs** (`har env verify`) are not traces yet. They will be added
-  in a later 2.0 change.
+- **Verification runs.** Each `har env verify` sends one trace: a run span with the
+  verdict and verified tree (`factory.run.id`, `factory.git.tree`, `factory.verdict`
+  on `--full`) and one child span per stage. They carry the same work unit, attempt,
+  repository and branch, so they sit next to the agent sessions that produced the
+  change. See [verification spans](/docs/reference/cli/#har-telemetry) in the CLI
+  reference.
 
-Traces come from `@osfactory/otel-hook`, which HAR installs at the `outline` and
-`full` telemetry levels. At `usage` there are no hook spans, so Langfuse gets nothing.
+Session traces come from `@osfactory/otel-hook`, which HAR installs at the `outline`
+and `full` telemetry levels. At `usage` there are no session traces. Verification
+traces are sent at every level except `off`.
 
 ## Set it up
 
@@ -64,8 +69,9 @@ Traces come from `@osfactory/otel-hook`, which HAR installs at the `outline` and
 
 ## When to run `har control up`
 
-Mission Control does the forwarding, so it must be running and able to read
-`~/.har/destinations`. `har telemetry on` and `har env launch` start it when it is
+Mission Control forwards the agent session traces, so it must be running and able
+to read `~/.har/destinations`. Verification traces go straight from the CLI to
+Langfuse and don't need Mission Control. `har telemetry on` and `har env launch` start it when it is
 not running. Run `har control up` yourself when:
 
 - `destination add` prints that the running container predates destinations. A
@@ -85,12 +91,13 @@ destination. It re-reads the file when it changes.
 
 ## Privacy: what leaves the machine
 
-Only what Mission Control receives on its traces endpoint is forwarded to Langfuse.
-Those are otel-hook spans, and otel-hook puts **no prompt, reply or tool text on
-spans at any level**. The text that `full` records travels in OTLP log records,
+Langfuse receives two kinds of spans. Agent session spans come from otel-hook
+through Mission Control, and otel-hook puts **no prompt, reply or tool text on spans
+at any level**. Verification spans come from the CLI and carry ids, results and
+timings only: no commands, logs or local paths. The text that `full` records travels in OTLP log records,
 which the Langfuse preset never forwards.
 
-A forwarded span can contain:
+A session span can contain:
 
 - the agent name and version, model names, token counts, timing and outcome;
 - tool names (`Bash`, `Edit`, …) and tool call ids;
@@ -103,13 +110,14 @@ A forwarded span can contain:
   `har.work_dir`).
 
 The telemetry level changes what Langfuse receives only at the edges: `outline` and
-`full` send the same spans, and `usage` or `off` sends none. To send less:
+`full` send the same spans, `usage` sends verification spans only, and `off` sends
+none. To send less:
 
 - `har telemetry destination add langfuse --preset langfuse --disabled --overwrite`
   keeps the destination but stops forwarding;
 - `har telemetry destination remove langfuse` deletes it;
-- `har telemetry on --level usage` (or `har telemetry off`) stops the spans for every
-  destination and for Mission Control.
+- `har telemetry on --level usage` stops session spans for every destination and for
+  Mission Control; `har telemetry off` stops verification spans too.
 
 If local paths in `har.repo_path` and `har.work_dir` are a concern, send traces
 through an OpenTelemetry Collector that drops them before Langfuse. See

@@ -86,6 +86,10 @@ hooks and undoes `git factory setup`.
 3. The `post-commit` hook adds the attestation to the new commit's note in
    `refs/notes/factory`.
 
+If you [send telemetry to a backend](/docs/guides/otlp-backends/), the same verify
+also emits a verification trace whose `factory.run.id` and `factory.git.tree` match
+the proof's run id and tree.
+
 Only a passing full validation of the exact committed tree gets a note or trailers.
 Commit a different tree, or commit after a failed verify, and nothing is added.
 
