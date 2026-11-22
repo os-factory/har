@@ -54,7 +54,7 @@ import { readOnboardingPreferences } from '../../core/onboarding-preferences';
 import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/schema';
 import { validateAgentId } from '../../utils/validation';
 import { slimVerificationResult } from '../../core/results';
-import { info, success, error, header, divider, warn } from '../../utils/logging';
+import { info, success, error, header, divider, warn, dim } from '../../utils/logging';
 import {
   HAR_ENV_EPILOG,
   LAUNCH_COMMAND_DESCRIBE,
@@ -1241,6 +1241,9 @@ export async function handleVerify(argv: {
     } else {
       success(`Verification ${result.verification.status}${elapsed}`);
     }
+  }
+  if (result.spanExport && result.spanExport.failed.length > 0) {
+    dim(`  verification trace not delivered to: ${result.spanExport.failed.join(', ')}`);
   }
 
   return finishCommand(result.code);

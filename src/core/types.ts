@@ -10,6 +10,7 @@ import type {
   WorkUnitRelatedLink,
   WorktreeMode,
 } from '../harness/schema';
+import type { VerificationSpanExportResult } from './verification-spans';
 import { z } from 'zod';
 
 export type ShellRunResult = ShellResult;
@@ -111,6 +112,8 @@ export interface EnvironmentStatusRunResult extends EnvironmentRunResult {
 export interface VerificationRunResult extends EnvironmentRunResult {
   verification: VerificationResult | null;
   validation?: ValidationRecord;
+  /** Set only when verification spans were sent to at least one trace destination. */
+  spanExport?: VerificationSpanExportResult;
 }
 
 export interface LogsOptions {
