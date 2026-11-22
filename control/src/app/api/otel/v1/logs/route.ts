@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ingestOtelLogsBody } from '@/server/otel-ingest';
+import { scheduleOtlpForward } from '@/server/otlp-forward';
 
 export const runtime = 'nodejs';
 
@@ -7,6 +8,8 @@ export async function POST(request: Request) {
   try {
     const body = Buffer.from(await request.arrayBuffer());
     const result = await ingestOtelLogsBody(body, request.headers.get('content-type'));
+    // Copy to configured OTLP destinations after the response; never affects it.
+    scheduleOtlpForward('logs', body, request);
     return NextResponse.json(
       {
         partialSuccess: {
