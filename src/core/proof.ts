@@ -8,7 +8,8 @@ import { HarnessStageRegistry, ValidationRecord, VerificationResult } from '../h
 import { readStageRegistry } from '../harness/stages';
 import { resolveVerificationPlan } from '../harness/verification';
 import { getHarPackageVersion } from './package-version';
-import { setValidationAttestationDigest } from './validations';
+import { findValidation, setValidationAttestationDigest } from './validations';
+import { findWorkUnit, listValidationBindings } from './work-units';
 
 /**
  * HAR as a Factory Commits producer (https://github.com/os-factory/factory-commits).
@@ -433,4 +434,142 @@ export function produceValidationProof(input: ProduceValidationProofInput): Prod
       validation: input.validation,
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Commit-time hooks (post-commit note, commit-msg trailers, git config setup)
+// ---------------------------------------------------------------------------
+
+export function proofModeIncludesNotes(mode: FactoryProofMode): boolean {
+  return mode === 'notes' || mode === 'notes+trailers';
+}
+
+/**
+ * The attestation entry file for a passing full validation of `treeHash`,
+ * when one exists and still matches the digest on the record.
+ */
+export function findPassingAttestation(
+  checkoutDir: string,
+  treeHash: string,
+): { validation: ValidationRecord; file: string; digest: string } | undefined {
+  const validation = findValidation(checkoutDir, treeHash);
+  if (!validation || validation.status !== 'pass' || !validation.full) return undefined;
+  if (!validation.attestationDigest) return undefined;
+  const file = attestationFilePath(checkoutDir, treeHash);
+  const entry = readAttestationEntry(file);
+  if (!entry || entry.digest !== validation.attestationDigest) return undefined;
+  return { validation, file, digest: entry.digest };
+}
+
+/**
+ * post-commit: `git factory note add HEAD --attestation <file>` when the repo
+ * opted in (mode ≥ notes) and HEAD's tree has a passing attested validation.
+ * Returns a one-line message, or undefined when there was nothing to do.
+ */
+export function addFactoryNoteForCommit(
+  checkoutDir: string,
+  treeHash: string,
+  options: { bin?: string; env?: NodeJS.ProcessEnv } = {},
+): FactoryProofOutcome | undefined {
+  try {
+    if (!proofModeIncludesNotes(readFactoryProofMode(checkoutDir))) return undefined;
+    const attestation = findPassingAttestation(checkoutDir, treeHash);
+    if (!attestation) return undefined;
+    const bin = options.bin ?? resolveFactoryProofBin(options.env);
+    if (!bin) return { status: 'skipped', message: `har: factory note skipped: ${FACTORY_PROOF_UNAVAILABLE_HINT}` };
+    const call = callFactoryProof(bin, ['note', 'add', 'HEAD', '--attestation', attestation.file, '--json'], {
+      cwd: checkoutDir,
+      env: options.env,
+    });
+    if (call.code !== 0) {
+      const detail = firstLine(call.stderr);
+      return {
+        status: 'failed',
+        message: `har: factory note not written (git factory note add exited ${call.code}${detail ? `: ${detail}` : ''})`,
+      };
+    }
+    return {
+      status: 'attested',
+      message: `har: factory note ${attestation.digest.slice(0, 19)}… added to HEAD`,
+      digest: attestation.digest,
+      attestationFile: attestation.file,
+    };
+  } catch (err) {
+    return { status: 'failed', message: `har: factory note not written (${firstLine(String(err))})` };
+  }
+}
+
+/** `[source:]id` for the Work-Unit trailer, from HAR's own validation bindings. */
+function workUnitTrailerValue(validation: ValidationRecord, checkoutDir: string): string | undefined {
+  const roots = [validation.harnessRoot, checkoutDir].filter(
+    (root, index, all) => root && all.indexOf(root) === index && fs.existsSync(path.join(root, '.har')),
+  );
+  for (const root of roots) {
+    const binding = listValidationBindings(root).find((b) => b.validationId === validation.validationId);
+    if (!binding) continue;
+    if (!TOKEN_RE.test(binding.workUnitId)) return undefined;
+    const source = findWorkUnit(root, binding.workUnitId)?.source;
+    if (source && SOURCE_RE.test(source)) return `${source}:${binding.workUnitId}`;
+    // An id containing ':' would be read as `source:id`; omit rather than mislabel.
+    return binding.workUnitId.includes(':') ? undefined : binding.workUnitId;
+  }
+  return undefined;
+}
+
+/**
+ * commit-msg: add Factory trailers for the tree being committed when the repo
+ * opted in to `notes+trailers` and that tree has a passing full validation.
+ * Never fails the commit.
+ */
+export function addFactoryTrailers(
+  checkoutDir: string,
+  messageFile: string,
+  treeHash: string,
+  options: { bin?: string; env?: NodeJS.ProcessEnv } = {},
+): FactoryProofOutcome | undefined {
+  try {
+    if (readFactoryProofMode(checkoutDir) !== 'notes+trailers') return undefined;
+    const validation = findValidation(checkoutDir, treeHash);
+    if (!validation || validation.status !== 'pass' || !validation.full) return undefined;
+    const bin = options.bin ?? resolveFactoryProofBin(options.env);
+    if (!bin) return { status: 'skipped', message: `har: factory trailers skipped: ${FACTORY_PROOF_UNAVAILABLE_HINT}` };
+
+    const args = ['trailers', messageFile];
+    const workUnit = workUnitTrailerValue(validation, checkoutDir);
+    if (workUnit) args.push('--work-unit', workUnit);
+    args.push('--run', validation.validationId);
+    const attestation = findPassingAttestation(checkoutDir, treeHash);
+    if (attestation) args.push('--attestation', attestation.digest);
+
+    const call = callFactoryProof(bin, args, { cwd: checkoutDir, env: options.env });
+    if (call.code !== 0) {
+      const detail = firstLine(call.stderr);
+      return {
+        status: 'failed',
+        message: `har: factory trailers not added (git factory trailers exited ${call.code}${detail ? `: ${detail}` : ''})`,
+      };
+    }
+    return { status: 'attested', message: 'har: factory trailers added' };
+  } catch (err) {
+    return { status: 'failed', message: `har: factory trailers not added (${firstLine(String(err))})` };
+  }
+}
+
+/** `git factory setup [--undo]` — notes fetch refspec + notes.rewriteRef. Never throws. */
+export function runFactoryProofSetup(
+  checkoutDir: string,
+  options: { undo?: boolean; bin?: string; env?: NodeJS.ProcessEnv } = {},
+): FactoryProofOutcome {
+  const bin = options.bin ?? resolveFactoryProofBin(options.env);
+  const label = options.undo ? 'git factory setup --undo' : 'git factory setup';
+  if (!bin) return { status: 'skipped', message: `${label} skipped: ${FACTORY_PROOF_UNAVAILABLE_HINT}` };
+  const call = callFactoryProof(bin, options.undo ? ['setup', '--undo'] : ['setup'], {
+    cwd: checkoutDir,
+    env: options.env,
+  });
+  if (call.code !== 0) {
+    const detail = firstLine(call.stderr);
+    return { status: 'failed', message: `${label} exited ${call.code}${detail ? `: ${detail}` : ''}` };
+  }
+  return { status: 'attested', message: `${label}: done` };
 }
