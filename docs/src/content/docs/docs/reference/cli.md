@@ -466,6 +466,13 @@ har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
                        [--work-dir path] [--branch name] [--suffix id] [--session-key key]
 har telemetry print-env --agent-id <n> [--repo .]
                        [--work-dir path] [--branch name] [--suffix id]
+har telemetry destination add <name> --preset langfuse [--host url] [--public-key pk] [--secret-key sk]
+har telemetry destination add <name> --preset otlp --endpoint url [--header Name=value]…
+                       [--signals traces,logs,metrics] [--protocol http/protobuf|http/json]
+                       [--disabled] [--overwrite]
+har telemetry destination list [--json]
+har telemetry destination remove <name>
+har telemetry destination test <name> [--json]
 ```
 
 Controls how much agent activity (Cursor / Claude / Codex) is recorded in Mission Control.
@@ -484,6 +491,24 @@ running and rewrites the hook config; start a new agent session to pick it up. `
 warns when `~/.har/otel-hooks/otel_config.json` records something else (for example a
 preference edited by hand). Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
 HAR HQ receives the text only with `har control trajectory on`.
+
+### Destinations (any OTLP backend)
+
+`har telemetry destination` stores OTLP/HTTP backends that receive a copy of the
+telemetry — an OpenTelemetry Collector, Langfuse, Datadog, … — in
+`~/.har/destinations/telemetry.json` (mode `0600`: header values are secrets). Nothing
+is configured by default, and nothing leaves the machine until you add one.
+
+- `--preset langfuse` sends traces to `<host>/api/public/otel` with
+  `Authorization: Basic base64(public:secret)`. Langfuse ingests OTLP traces only.
+  The keys default to `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`, the host to
+  `LANGFUSE_BASE_URL`, `LANGFUSE_HOST` or `https://cloud.langfuse.com`.
+- `--preset otlp` takes a base `--endpoint` (signals go to `<endpoint>/v1/<signal>`),
+  any `--header Name=value`, and all three signals unless `--signals` narrows them.
+
+`list` masks header values. `test` sends one small OTLP/JSON record to the destination
+and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-only
+into the Mission Control container.
 
 ## `har worktree`
 

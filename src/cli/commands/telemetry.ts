@@ -32,6 +32,7 @@ import {
 } from '../../core/telemetry-env';
 import { ensureTelemetryInfrastructure } from '../../core/telemetry-ensure';
 import { error, header, info, success, warn } from '../../utils/logging';
+import { telemetryDestinationCommand } from './telemetry-destination';
 
 function printLevels(current: TelemetryLevel): void {
   info('Levels (each includes the ones below it; recorded in local Mission Control):');
@@ -354,6 +355,7 @@ export const telemetryCommand = {
             suffix: argv.suffix as string | undefined,
           }),
       )
-      .demandCommand(1, 'Please specify a subcommand: status, on, off, install-hooks, write-env, print-env'),
+      .command(telemetryDestinationCommand)
+      .demandCommand(1, 'Please specify a subcommand: status, on, off, install-hooks, write-env, print-env, destination'),
   handler: () => {},
 };

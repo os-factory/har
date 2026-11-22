@@ -8,12 +8,16 @@ import {
 import { DEFAULT_CONTROL_API_URL, getControlApiUrl, isControlEnabled } from './control-config';
 import { parseControlHostPort } from './control-port';
 import { syncAllKnownReposWithControl, waitForControlApi } from './control-sync';
+import { ensureDestinationsDir } from './telemetry-destinations';
+import { HAR_DESTINATIONS_DIR_ENV } from '../harness/schema';
 
 /** Mission Control runs as a single self-contained container (SQLite on a volume). */
 export const CONTROL_CONTAINER_NAME = 'har-control';
 export const CONTROL_DATA_VOLUME = 'har_control_data';
 const CONTROL_CONTAINER_PORT = 3847;
 const CONTROL_DATA_DB_URL = 'file:/data/har_control.db';
+/** Where the host's `~/.har/destinations` appears inside the container (read-only). */
+export const CONTROL_DESTINATIONS_MOUNT = '/har/destinations';
 
 export function resolveControlDir(): string {
   // dist/index.js → package root/control (npm install or source checkout)
@@ -32,6 +36,8 @@ export function buildDockerRunArgs(options: {
   detach: boolean;
   containerName?: string;
   volume?: string;
+  /** Host directory holding OTLP destination config, mounted read-only when given. */
+  destinationsDir?: string;
 }): string[] {
   const name = options.containerName ?? CONTROL_CONTAINER_NAME;
   const volume = options.volume ?? CONTROL_DATA_VOLUME;
@@ -48,8 +54,16 @@ export function buildDockerRunArgs(options: {
     `${volume}:/data`,
     '-e',
     `DATABASE_URL=${CONTROL_DATA_DB_URL}`,
-    options.imageRef,
   );
+  if (options.destinationsDir) {
+    args.push(
+      '-v',
+      `${options.destinationsDir}:${CONTROL_DESTINATIONS_MOUNT}:ro`,
+      '-e',
+      `${HAR_DESTINATIONS_DIR_ENV}=${CONTROL_DESTINATIONS_MOUNT}`,
+    );
+  }
+  args.push(options.imageRef);
   return args;
 }
 
@@ -134,8 +148,32 @@ export async function startMissionControl(options: {
   }
 
   const detach = options.detach !== false;
-  const code = runDocker(buildDockerRunArgs({ imageRef, hostPort, detach }), quiet);
+  // Mission Control forwards received OTLP to the destinations configured with
+  // `har telemetry destination add`. The directory is created up front so
+  // Docker does not create it as root; with no destinations it stays empty.
+  let destinationsDir: string | undefined;
+  try {
+    destinationsDir = ensureDestinationsDir();
+  } catch {
+    destinationsDir = undefined;
+  }
+  const code = runDocker(buildDockerRunArgs({ imageRef, hostPort, detach, destinationsDir }), quiet);
   return { code, apiUrl, imageRef };
+}
+
+/** Whether the running container mounts the destinations directory (false when absent or unknown). */
+export function controlContainerMountsDestinations(name = CONTROL_CONTAINER_NAME): boolean | null {
+  const result = spawnSync('docker', ['inspect', '-f', '{{json .Mounts}}', name], {
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  if (result.error || result.status !== 0) return null;
+  try {
+    const mounts = JSON.parse((result.stdout ?? '').trim() || '[]') as Array<{ Destination?: string }>;
+    return mounts.some((mount) => mount.Destination === CONTROL_DESTINATIONS_MOUNT);
+  } catch {
+    return null;
+  }
 }
 
 export function controlContainerImage(name = CONTROL_CONTAINER_NAME): string | null {
