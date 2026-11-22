@@ -1,0 +1,209 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage children 1`] = `
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "har",
+            },
+          },
+          {
+            "key": "factory.work_unit.id",
+            "value": {
+              "stringValue": "FE-42",
+            },
+          },
+          {
+            "key": "factory.work_unit.source",
+            "value": {
+              "stringValue": "linear",
+            },
+          },
+          {
+            "key": "factory.attempt.id",
+            "value": {
+              "stringValue": "66666666-7777-4888-8999-000000000000",
+            },
+          },
+          {
+            "key": "vcs.repository.url.full",
+            "value": {
+              "stringValue": "https://github.com/acme/app.git",
+            },
+          },
+          {
+            "key": "vcs.ref.head.name",
+            "value": {
+              "stringValue": "feat/x-har-agent-2",
+            },
+          },
+          {
+            "key": "factory.producer.name",
+            "value": {
+              "stringValue": "har",
+            },
+          },
+          {
+            "key": "factory.producer.version",
+            "value": {
+              "stringValue": "2.0.0",
+            },
+          },
+        ],
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "har.verification",
+            "version": "2.0.0",
+          },
+          "spans": [
+            {
+              "attributes": [
+                {
+                  "key": "cicd.pipeline.name",
+                  "value": {
+                    "stringValue": "har verify --full",
+                  },
+                },
+                {
+                  "key": "cicd.pipeline.run.id",
+                  "value": {
+                    "stringValue": "11111111-2222-4333-8444-555555555555",
+                  },
+                },
+                {
+                  "key": "cicd.pipeline.result",
+                  "value": {
+                    "stringValue": "failure",
+                  },
+                },
+                {
+                  "key": "factory.run.id",
+                  "value": {
+                    "stringValue": "11111111-2222-4333-8444-555555555555",
+                  },
+                },
+                {
+                  "key": "factory.git.tree",
+                  "value": {
+                    "stringValue": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  },
+                },
+                {
+                  "key": "factory.verdict",
+                  "value": {
+                    "stringValue": "fail",
+                  },
+                },
+                {
+                  "key": "vcs.ref.head.revision",
+                  "value": {
+                    "stringValue": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  },
+                },
+              ],
+              "endTimeUnixNano": "1795341603500000000",
+              "kind": 2,
+              "name": "har verify --full",
+              "spanId": "632954006018ac34",
+              "startTimeUnixNano": "1795341600000000000",
+              "status": {
+                "code": 2,
+              },
+              "traceId": "c1c9822e96e9d214019f51b02ccf4d2e",
+            },
+            {
+              "attributes": [
+                {
+                  "key": "cicd.pipeline.task.name",
+                  "value": {
+                    "stringValue": "typecheck",
+                  },
+                },
+                {
+                  "key": "cicd.pipeline.task.run.id",
+                  "value": {
+                    "stringValue": "11111111-2222-4333-8444-555555555555:typecheck",
+                  },
+                },
+                {
+                  "key": "cicd.pipeline.task.run.result",
+                  "value": {
+                    "stringValue": "success",
+                  },
+                },
+                {
+                  "key": "factory.stage.added_by",
+                  "value": {
+                    "stringValue": "policy",
+                  },
+                },
+              ],
+              "endTimeUnixNano": "1795341601000000000",
+              "kind": 1,
+              "name": "typecheck",
+              "parentSpanId": "632954006018ac34",
+              "spanId": "681f35842977ea48",
+              "startTimeUnixNano": "1795341600000000000",
+              "status": {
+                "code": 0,
+              },
+              "traceId": "c1c9822e96e9d214019f51b02ccf4d2e",
+            },
+            {
+              "attributes": [
+                {
+                  "key": "cicd.pipeline.task.name",
+                  "value": {
+                    "stringValue": "unit-tests",
+                  },
+                },
+                {
+                  "key": "cicd.pipeline.task.run.id",
+                  "value": {
+                    "stringValue": "11111111-2222-4333-8444-555555555555:unit-tests",
+                  },
+                },
+                {
+                  "key": "cicd.pipeline.task.run.result",
+                  "value": {
+                    "stringValue": "failure",
+                  },
+                },
+                {
+                  "key": "cicd.pipeline.task.type",
+                  "value": {
+                    "stringValue": "test",
+                  },
+                },
+                {
+                  "key": "factory.stage.added_by",
+                  "value": {
+                    "stringValue": "policy",
+                  },
+                },
+              ],
+              "endTimeUnixNano": "1795341603000000000",
+              "kind": 1,
+              "name": "unit-tests",
+              "parentSpanId": "632954006018ac34",
+              "spanId": "509744ede16e1ab3",
+              "startTimeUnixNano": "1795341601000000000",
+              "status": {
+                "code": 2,
+              },
+              "traceId": "c1c9822e96e9d214019f51b02ccf4d2e",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}
+`;

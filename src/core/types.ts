@@ -11,6 +11,7 @@ import type {
   WorkUnitRelatedLink,
   WorktreeMode,
 } from '../harness/schema';
+import type { VerificationSpanExportResult } from './verification-spans';
 import { z } from 'zod';
 
 export type ShellRunResult = ShellResult;
@@ -114,6 +115,8 @@ export interface VerificationRunResult extends EnvironmentRunResult {
   validation?: ValidationRecord;
   /** Factory Commits proof outcome; present only when the repo opted in (HAR_FACTORY_PROOF). */
   proof?: FactoryProofOutcome;
+  /** Set only when verification spans were sent to at least one trace destination. */
+  spanExport?: VerificationSpanExportResult;
 }
 
 export interface LogsOptions {
