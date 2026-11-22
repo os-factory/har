@@ -80,6 +80,9 @@ required validation against the intended state.
 
 ## Factory Commits proofs (opt-in)
 
+Setup, levels, pushing notes and squash merges are covered in
+[Record Factory Commits proofs](/docs/guides/factory-commits/). In short:
+
 HAR can record its validations as [Factory Commits](https://github.com/os-factory/factory-commits)
 proofs in git. HAR builds a `factory-run` predicate from each full validation.
 The `git-factory` executable (`HAR_FACTORY_PROOF_BIN`, else `PATH`) builds the

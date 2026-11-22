@@ -379,7 +379,7 @@ else `PATH`) for [Factory Commits](https://github.com/os-factory/factory-commits
 proofs. `--json` passes `git factory`'s JSON through. Otherwise HAR prints the
 level and problems for each commit. Exit codes come from `git factory`: `0` ok,
 `1` verification failed, `2` usage or environment error (including a missing
-`git-factory`).
+`git-factory`). See [Record Factory Commits proofs](/docs/guides/factory-commits/).
 
 ## `har hq`
 
@@ -524,7 +524,8 @@ is configured by default, and nothing leaves the machine until you add one.
 
 `list` masks header values. `test` sends one small OTLP/JSON record to the destination
 and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-only
-into the Mission Control container.
+into the Mission Control container. Guides: [Langfuse](/docs/guides/langfuse/),
+[any OTLP backend](/docs/guides/otlp-backends/).
 
 ## `har worktree`
 
