@@ -54,6 +54,8 @@ import { StageResult, ValidationRecord, VerificationResult } from '../harness/sc
 import {
   collectVerificationTraceInput,
   exportVerificationTrace,
+  verificationTraceId,
+  willExportVerificationSpans,
   type VerificationTraceInput,
 } from './verification-spans';
 
@@ -470,6 +472,10 @@ export class RunService {
                   attemptId: session?.attemptId,
                 }
               : undefined,
+            // Link the proof to the verification trace only when that trace is sent.
+            ...(willExportVerificationSpans()
+              ? { telemetry: { traceId: verificationTraceId(recorded.validationId) } }
+              : {}),
           });
           validation = produced.validation;
           proof = produced.outcome;
@@ -491,7 +497,13 @@ export class RunService {
     // OTel CI/CD spans to the user's own trace destinations, after the result
     // is final. Fail-open and bounded; no destination → no work at all.
     const spanExport = await exportVerificationTrace(() =>
-      this.verificationTraceInput(options, verification, runId, validation),
+      this.verificationTraceInput(
+        options,
+        verification,
+        runId,
+        validation,
+        proof?.status === 'attested' ? proof.digest : undefined,
+      ),
     );
     if (spanExport) runResult.spanExport = spanExport;
     return runResult;
@@ -502,6 +514,7 @@ export class RunService {
     verification: VerificationResult | null,
     runId: string | undefined,
     validation: ValidationRecord | undefined,
+    attestationDigest?: string,
   ): VerificationTraceInput {
     const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
     const harnessRoot = registry?.harnessRoot ?? resolveHarnessRoot(options.repoPath);
@@ -514,6 +527,7 @@ export class RunService {
       verification,
       runId,
       validation,
+      attestationDigest,
       workUnitId: session?.workUnitId,
       attemptId: session?.attemptId,
       branch: session?.branch,

@@ -7,13 +7,15 @@ import {
   buildVerificationTrace,
   cicdTaskType,
   exportVerificationTrace,
-  sanitizeRepositoryUrl,
   stageStatusToCicdResult,
   verificationRunSpanId,
   verificationStageSpanId,
   verificationTraceId,
+  willExportVerificationSpans,
   type VerificationTraceInput,
 } from '../src/core/verification-spans';
+import { sanitizeGitRemoteUrl } from '../src/core/git-remote';
+import { buildOtelResourceAttributes } from '../src/core/telemetry-env';
 import { encodeOtlpAttributes, unixNanoString } from '../src/utils/otlp-json';
 import { buildOtlpDestination, writeTelemetryDestinations } from '../src/core/telemetry-destinations';
 import { runVerification } from '../src/core/run-service';
@@ -45,12 +47,14 @@ jest.mock('../src/runtime', () => {
 });
 
 const VALIDATION_ID = '11111111-2222-4333-8444-555555555555';
+const RUN_ID = '2026-11-22/10-00-00_verify_agent-2';
 const ATTEMPT_ID = '66666666-7777-4888-8999-000000000000';
 const TREE = 'a'.repeat(40);
 
 function sampleInput(overrides: Partial<VerificationTraceInput> = {}): VerificationTraceInput {
   return {
     id: VALIDATION_ID,
+    runId: RUN_ID,
     full: true,
     verification: {
       status: 'fail',
@@ -163,11 +167,78 @@ describe('OTLP/JSON encoding', () => {
   });
 
   it('strips credentials from repository URLs', () => {
-    expect(sanitizeRepositoryUrl('https://user:tok@github.com/acme/app.git?x=1')).toBe(
+    expect(sanitizeGitRemoteUrl('https://user:tok@github.com/acme/app.git?x=1')).toBe(
       'https://github.com/acme/app.git',
     );
-    expect(sanitizeRepositoryUrl('git@github.com:acme/app.git')).toBe('ssh://github.com/acme/app.git');
-    expect(sanitizeRepositoryUrl('/srv/git/app')).toBeUndefined();
+    expect(sanitizeGitRemoteUrl('git@github.com:acme/app.git')).toBe('ssh://github.com/acme/app.git');
+    expect(sanitizeGitRemoteUrl('/srv/git/app')).toBeUndefined();
+  });
+
+  it('keys the trace on the validation and the span ids on the run', () => {
+    const first = spansOf(buildVerificationTrace(sampleInput()) as Json);
+    const second = spansOf(buildVerificationTrace(sampleInput({ runId: `${RUN_ID}-b` })) as Json);
+    expect(first[0].traceId).toBe(verificationTraceId(VALIDATION_ID));
+    expect(second[0].traceId).toBe(first[0].traceId);
+    expect(first[0].spanId).toBe(verificationRunSpanId(RUN_ID));
+    expect(first[1].spanId).toBe(verificationStageSpanId(RUN_ID, 'typecheck'));
+    expect(second[0].spanId).not.toBe(first[0].spanId);
+    expect(second[1].spanId).not.toBe(first[1].spanId);
+    // The factory run id stays the validation id (= predicate.run.id).
+    expect(attrs(second[0].attributes)['factory.run.id']).toBe(VALIDATION_ID);
+  });
+
+  it('falls back to the id for span ids when no run id is known', () => {
+    const [run, stage] = spansOf(buildVerificationTrace(sampleInput({ runId: undefined })) as Json);
+    expect(run.spanId).toBe(verificationRunSpanId(VALIDATION_ID));
+    expect(stage.spanId).toBe(verificationStageSpanId(VALIDATION_ID, 'typecheck'));
+  });
+
+  it('carries the attestation digest on the run span only when one was attested', () => {
+    const digest = `sha256:${'c'.repeat(64)}`;
+    const [run, stage] = spansOf(buildVerificationTrace(sampleInput({ attestationDigest: digest })) as Json);
+    expect(attrs(run.attributes)['factory.attestation.digest']).toBe(digest);
+    expect(attrs(stage.attributes)).not.toHaveProperty('factory.attestation.digest');
+    const [plain] = spansOf(buildVerificationTrace(sampleInput()) as Json);
+    expect(attrs(plain.attributes)).not.toHaveProperty('factory.attestation.digest');
+  });
+});
+
+describe('correlation keys', () => {
+  // A backend joins agent sessions and verification traces on these.
+  const CORRELATION_KEYS = [
+    'factory.work_unit.id',
+    'factory.work_unit.source',
+    'factory.attempt.id',
+    'vcs.repository.url.full',
+    'vcs.ref.head.name',
+    'factory.producer.name',
+    'factory.producer.version',
+  ];
+
+  it('are identical on agent sessions and verification spans for the same session', () => {
+    const input = sampleInput();
+    const sessionAttrs = Object.fromEntries(
+      buildOtelResourceAttributes({
+        sessionKey: input.branch!,
+        agentId: 2,
+        repoPath: '/repo',
+        workDir: '/repo-worktree',
+        branch: input.branch,
+        workUnitId: input.workUnitId,
+        workUnitSource: input.workUnitSource,
+        attemptId: input.attemptId,
+        repositoryUrl: input.repositoryUrl,
+        producerVersion: input.producerVersion,
+      })
+        .split(',')
+        .map((pair) => pair.split('=') as [string, string])
+        .filter(([key]) => CORRELATION_KEYS.includes(key)),
+    );
+    const resource = attrs((buildVerificationTrace(input) as Json).resourceSpans[0].resource.attributes);
+    const spanAttrs = Object.fromEntries(Object.entries(resource).filter(([key]) => CORRELATION_KEYS.includes(key)));
+
+    expect(Object.keys(sessionAttrs).sort()).toEqual([...CORRELATION_KEYS].sort());
+    expect(spanAttrs).toEqual(sessionAttrs);
   });
 });
 
@@ -187,6 +258,28 @@ describe('exportVerificationTrace', () => {
   function okFetch() {
     return jest.fn().mockResolvedValue(new Response('{}', { status: 200 }));
   }
+
+  it('willExportVerificationSpans needs telemetry on and an enabled traces destination', () => {
+    expect(willExportVerificationSpans(env)).toBe(false);
+    writeTelemetryDestinations(
+      {
+        version: 1,
+        destinations: [
+          buildOtlpDestination({ name: 'logs-only', endpoint: 'http://127.0.0.1:4319', signals: ['logs'] }),
+          buildOtlpDestination({ name: 'disabled', endpoint: 'http://127.0.0.1:4320', enabled: false }),
+        ],
+      },
+      env,
+    );
+    expect(willExportVerificationSpans(env)).toBe(false);
+    writeTelemetryDestinations(
+      { version: 1, destinations: [buildOtlpDestination({ name: 'col', endpoint: 'http://127.0.0.1:4318' })] },
+      env,
+    );
+    expect(willExportVerificationSpans(env)).toBe(true);
+    process.env.HAR_TELEMETRY = 'off';
+    expect(willExportVerificationSpans(env)).toBe(false);
+  });
 
   it('does nothing without destinations', async () => {
     const fetchImpl = okFetch();
@@ -324,6 +417,27 @@ describe('runVerification emits verification spans', () => {
     expect(JSON.stringify(payload)).not.toContain(dir);
   });
 
+  it('puts every verify of one tree in one trace, with a run span per verify', async () => {
+    writeTelemetryDestinations({
+      version: 1,
+      destinations: [buildOtlpDestination({ name: 'col', endpoint: 'http://127.0.0.1:4318' })],
+    });
+    fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 200 }));
+    const dir = initHarnessRepo();
+    const first = await runVerification({ repoPath: dir, agentId: 1, full: true, capture: true });
+    const second = await runVerification({ repoPath: dir, agentId: 1, full: true, capture: true });
+    const [runA] = spansOf(JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string) as Json);
+    const [runB] = spansOf(JSON.parse((fetchSpy.mock.calls[1][1] as RequestInit).body as string) as Json);
+
+    expect(first.validation!.treeHash).toBe(second.validation!.treeHash);
+    expect(runA.traceId).toBe(runB.traceId);
+    expect(runA.traceId).toBe(verificationTraceId(second.validation!.validationId));
+    expect(first.validation!.runId).toBeTruthy();
+    expect(first.validation!.runId).not.toBe(second.validation!.runId);
+    expect(runA.spanId).toBe(verificationRunSpanId(first.validation!.runId!));
+    expect(runB.spanId).toBe(verificationRunSpanId(second.validation!.runId!));
+  });
+
   it('omits the HEAD commit when the verified tree has uncommitted changes', async () => {
     writeTelemetryDestinations({
       version: 1,
@@ -338,5 +452,83 @@ describe('runVerification emits verification spans', () => {
     expect(runAttrs['factory.git.tree']).toBe(result.validation!.treeHash);
     expect(runAttrs).not.toHaveProperty('vcs.ref.head.revision');
     expect(runAttrs).not.toHaveProperty('factory.verdict');
+  });
+});
+
+describe('Factory Commits proof <-> verification trace', () => {
+  const FAKE_BIN = path.join(__dirname, 'fixtures', 'factory-commits', 'fake-git-factory');
+  const saved = { telemetry: process.env.HAR_TELEMETRY, bin: process.env.HAR_FACTORY_PROOF_BIN };
+  let fetchSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    process.env.HAR_TELEMETRY = 'full';
+    process.env.HAR_FACTORY_PROOF_BIN = FAKE_BIN;
+    fs.rmSync(process.env.HAR_DESTINATIONS_DIR!, { recursive: true, force: true });
+    fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 200 }));
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    fs.rmSync(process.env.HAR_DESTINATIONS_DIR!, { recursive: true, force: true });
+    for (const [key, value] of [
+      ['HAR_TELEMETRY', saved.telemetry],
+      ['HAR_FACTORY_PROOF_BIN', saved.bin],
+    ] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  function initProofRepo(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-vspans-proof-'));
+    fs.cpSync(path.join(FIXTURE, '.har'), path.join(dir, '.har'), { recursive: true });
+    fs.appendFileSync(path.join(dir, '.har', 'harness.env'), '\nHAR_FACTORY_PROOF=notes\n');
+    const sh = (command: string) => execSync(command, { cwd: dir, stdio: 'pipe' });
+    sh('git init -q -b main');
+    sh('git config user.email har@test.local');
+    sh('git config user.name har');
+    fs.writeFileSync(path.join(dir, 'app.txt'), 'v1\n');
+    sh('git add -A');
+    sh('git commit -q -m init');
+    return dir;
+  }
+
+  function attestedPredicate(attestationFile: string): Json {
+    const entry = JSON.parse(fs.readFileSync(attestationFile, 'utf8')) as { envelope: { payload: string } };
+    return JSON.parse(Buffer.from(entry.envelope.payload, 'base64').toString('utf8')).predicate;
+  }
+
+  it('links the predicate to the exported trace and the run span to the statement digest', async () => {
+    writeTelemetryDestinations({
+      version: 1,
+      destinations: [buildOtlpDestination({ name: 'col', endpoint: 'http://127.0.0.1:4318' })],
+    });
+    const result = await runVerification({ repoPath: initProofRepo(), agentId: 1, full: true, capture: true });
+    expect(result.proof?.status).toBe('attested');
+
+    const predicate = attestedPredicate(result.proof!.attestationFile!);
+    const [run] = spansOf(JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string) as Json);
+    expect(predicate.telemetry).toEqual({ traceId: run.traceId });
+    expect(predicate.run.id).toBe(attrs(run.attributes)['factory.run.id']);
+    expect(attrs(run.attributes)['factory.attestation.digest']).toBe(result.proof!.digest);
+  });
+
+  it('never names a trace in the predicate when no trace is sent', async () => {
+    const result = await runVerification({ repoPath: initProofRepo(), agentId: 1, full: true, capture: true });
+    expect(result.proof?.status).toBe('attested');
+    expect(result.spanExport).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(attestedPredicate(result.proof!.attestationFile!)).not.toHaveProperty('telemetry');
+  });
+
+  it('never names a trace when telemetry is off, even with a destination', async () => {
+    writeTelemetryDestinations({
+      version: 1,
+      destinations: [buildOtlpDestination({ name: 'col', endpoint: 'http://127.0.0.1:4318' })],
+    });
+    process.env.HAR_TELEMETRY = 'off';
+    const result = await runVerification({ repoPath: initProofRepo(), agentId: 1, full: true, capture: true });
+    expect(result.proof?.status).toBe('attested');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(attestedPredicate(result.proof!.attestationFile!)).not.toHaveProperty('telemetry');
   });
 });

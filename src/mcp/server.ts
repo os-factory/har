@@ -294,7 +294,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_run_verification',
     description:
-      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump).',
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump), plus `proof` (Factory Commits outcome) after a full verify when the repo opted in.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -715,6 +715,7 @@ export async function handleMcpToolCall(
           stdout: '',
           stderr: result.stderr,
           verification: slimVerificationResult(result.verification),
+          ...(result.proof ? { proof: result.proof } : {}),
         }),
       );
     }

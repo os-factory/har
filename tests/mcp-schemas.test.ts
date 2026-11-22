@@ -45,6 +45,18 @@ describe('MCP tool schemas', () => {
       stderr: '',
       verification: { status: 'pass', agent_id: 1, stages: [] },
     });
+
+    const withProof = RunVerificationOutputSchema.parse({
+      code: 0,
+      stdout: '',
+      stderr: '',
+      verification: { status: 'pass', agent_id: 1, stages: [] },
+      proof: { status: 'attested', message: 'Factory Commits proof: sha256:…', digest: `sha256:${'a'.repeat(64)}` },
+    });
+    expect(withProof.proof?.status).toBe('attested');
+    expect(
+      RunVerificationOutputSchema.parse({ code: 0, stdout: '', stderr: '', verification: null }),
+    ).not.toHaveProperty('proof');
   });
 
   it('validates run stage input and output', () => {
