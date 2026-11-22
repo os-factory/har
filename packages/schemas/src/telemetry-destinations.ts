@@ -26,6 +26,37 @@ export const TELEMETRY_DESTINATIONS_FILE = 'telemetry.json';
 /** Environment variable naming the destinations directory (set inside the Mission Control container). */
 export const HAR_DESTINATIONS_DIR_ENV = 'HAR_DESTINATIONS_DIR';
 
+/**
+ * Attribute keys whose values are absolute paths on the user's machine (repo
+ * checkout, slot worktree, agent workspace, process cwd, source file). Mission
+ * Control keeps them locally for attribution and strips them — at resource,
+ * scope, span, span event/link, log record and metric data point (and exemplar)
+ * level — from every copy forwarded to a destination unless that destination
+ * sets `includeLocalPaths: true`.
+ */
+export const TELEMETRY_LOCAL_PATH_ATTRIBUTES = [
+  // HAR session resource attributes (src/core/telemetry-env.ts).
+  'har.repo_path',
+  'har.work_dir',
+  // Agent workspace attributes Mission Control reads for attribution.
+  'gen_ai.client.workspace',
+  'gen_ai.client.repository_root',
+  'cwd',
+  // OpenTelemetry semantic conventions that carry local paths.
+  'process.cwd',
+  'process.executable.path',
+  'process.command',
+  'process.command_line',
+  'process.command_args',
+  'code.filepath',
+  'code.file.path',
+] as const;
+
+/** Whether a destination receives local path attributes (opt-in, default false). */
+export function destinationIncludesLocalPaths(destination: Pick<TelemetryDestination, 'includeLocalPaths'>): boolean {
+  return destination.includeLocalPaths === true;
+}
+
 export const telemetryDestinationNameSchema = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, 'use letters, digits, ".", "_" or "-" (max 64)');
@@ -63,6 +94,12 @@ export const telemetryDestinationSchema = z.object({
   headers: z.record(headerNameSchema, z.string().max(8192)).default({}),
   signals: z.array(z.enum(OTLP_SIGNALS)).min(1),
   enabled: z.boolean().default(true),
+  /**
+   * Forward attributes that hold absolute local paths
+   * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`). Absent or false (the default): Mission
+   * Control strips them before the copy is spooled or sent.
+   */
+  includeLocalPaths: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
 export type TelemetryDestination = z.infer<typeof telemetryDestinationSchema>;
