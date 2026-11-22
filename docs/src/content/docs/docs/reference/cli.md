@@ -526,6 +526,16 @@ is configured by default, and nothing leaves the machine until you add one.
 and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-only
 into the Mission Control container.
 
+**Verification spans.** Each `har env verify` (and MCP `har_run_verification`) sends
+one OTel CI/CD trace straight from the CLI to every enabled destination subscribed to
+`traces`: a run span (`cicd.pipeline.*`, `factory.run.id`, `factory.git.tree`,
+`factory.verdict` on `--full`) with one child span per stage, plus the work unit,
+attempt, repository and branch on the resource. The trace id is derived from the
+validation id, so it sits next to the agent's session traces in the same backend.
+Spans carry ids, results and timings only: no commands, logs or local paths. Delivery
+is best-effort (about 3 s per destination, in parallel) and never changes verify's
+result; a failed delivery prints one dim line. `har telemetry off` sends none.
+
 ## `har worktree`
 
 ```bash

@@ -50,7 +50,12 @@ import {
   StageRunOptions,
   VerificationRunResult,
 } from './types';
-import { StageResult, VerificationResult } from '../harness/schema';
+import { StageResult, ValidationRecord, VerificationResult } from '../harness/schema';
+import {
+  collectVerificationTraceInput,
+  exportVerificationTrace,
+  type VerificationTraceInput,
+} from './verification-spans';
 
 function extractShellOutput(result: StageResult): { stdout: string; stderr: string; code: number } {
   const stdout =
@@ -414,6 +419,12 @@ export class RunService {
       }
     }
 
+    const runId =
+      typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
+        ? (result.data as { runId?: string }).runId
+        : undefined;
+    let validation: ValidationRecord | undefined;
+    let proof: VerificationRunResult['proof'];
     if (verification) {
       try {
         const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
@@ -424,11 +435,7 @@ export class RunService {
           workDir: resolveAgentWorkDir(harnessRoot, options.agentId),
           harnessRoot,
         });
-        const runId =
-          typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
-            ? (result.data as { runId?: string }).runId
-            : undefined;
-        let validation = recordValidation({
+        const recorded = recordValidation({
           checkoutDir,
           harnessRoot,
           status: verification.status,
@@ -440,10 +447,10 @@ export class RunService {
           bindValidationToAttempt(harnessRoot, {
             workUnitId: session.workUnitId,
             attemptId: session.attemptId,
-            validation,
+            validation: recorded,
           });
         }
-        let proof: VerificationRunResult['proof'];
+        validation = recorded;
         if (options.full) {
           // Opt-in Factory Commits proof (HAR_FACTORY_PROOF); a no-op when off, never throws.
           const runRecord = runId ? getRun(harnessRoot, runId) : null;
@@ -451,7 +458,7 @@ export class RunService {
           const produced = produceValidationProof({
             harnessRoot,
             checkoutDir,
-            validation,
+            validation: recorded,
             verification,
             run: runRecord
               ? { startedAt: runRecord.startedAt, finishedAt: runRecord.finishedAt }
@@ -467,25 +474,50 @@ export class RunService {
           validation = produced.validation;
           proof = produced.outcome;
         }
-        return {
-          code: shell.code,
-          stdout: shell.stdout,
-          stderr: shell.stderr,
-          verification,
-          validation,
-          ...(proof ? { proof } : {}),
-        };
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
       }
     }
 
-    return {
+    const runResult: VerificationRunResult = {
       code: shell.code,
       stdout: shell.stdout,
       stderr: shell.stderr,
       verification,
+      ...(validation ? { validation } : {}),
+      ...(proof ? { proof } : {}),
     };
+
+    // OTel CI/CD spans to the user's own trace destinations, after the result
+    // is final. Fail-open and bounded; no destination → no work at all.
+    const spanExport = await exportVerificationTrace(() =>
+      this.verificationTraceInput(options, verification, runId, validation),
+    );
+    if (spanExport) runResult.spanExport = spanExport;
+    return runResult;
+  }
+
+  private verificationTraceInput(
+    options: { repoPath: string; agentId: number; full?: boolean },
+    verification: VerificationResult | null,
+    runId: string | undefined,
+    validation: ValidationRecord | undefined,
+  ): VerificationTraceInput {
+    const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
+    const harnessRoot = registry?.harnessRoot ?? resolveHarnessRoot(options.repoPath);
+    const session = registry?.session;
+    return collectVerificationTraceInput({
+      repoPath: options.repoPath,
+      harnessRoot,
+      checkoutDir: validation?.workDir ?? session?.worktreePath,
+      full: options.full ?? false,
+      verification,
+      runId,
+      validation,
+      workUnitId: session?.workUnitId,
+      attemptId: session?.attemptId,
+      branch: session?.branch,
+    });
   }
 
   async teardownEnvironment(options: {
