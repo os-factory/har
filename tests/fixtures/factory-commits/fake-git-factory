@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+// Minimal stand-in for the `git-factory` executable, following the CLI
+// contract in https://github.com/os-factory/factory-commits/blob/main/packages/factory-proof/CLI.md
+// Test controls:
+//   FAKE_GIT_FACTORY_LOG   append one JSON line per call ({ argv, cwd })
+//   FAKE_GIT_FACTORY_EXIT  exit with this code (after logging) instead of working
+'use strict';
+const fs = require('fs');
+const crypto = require('crypto');
+
+const argv = process.argv.slice(2);
+if (process.env.FAKE_GIT_FACTORY_LOG) {
+  fs.appendFileSync(process.env.FAKE_GIT_FACTORY_LOG, JSON.stringify({ argv, cwd: process.cwd() }) + '\n');
+}
+if (process.env.FAKE_GIT_FACTORY_EXIT) {
+  process.stderr.write('fake git-factory: forced failure\n');
+  process.exit(Number(process.env.FAKE_GIT_FACTORY_EXIT));
+}
+
+function opt(name) {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : undefined;
+}
+
+const command = argv[0];
+if (command === '--version') {
+  process.stdout.write('factory-proof 0.0.0-fake (factory-commits v0.1)\n');
+  process.exit(0);
+}
+
+if (command === 'attest') {
+  const source = opt('--predicate');
+  const predicate = JSON.parse(fs.readFileSync(source === '-' ? 0 : source, 'utf8'));
+  const tree = opt('--tree');
+  if (!tree) {
+    process.stderr.write('fake git-factory: --tree required\n');
+    process.exit(2);
+  }
+  const statement = {
+    _type: 'https://in-toto.io/Statement/v1',
+    subject: [{ name: 'git+local', digest: { gitTree: tree } }],
+    predicateType: 'https://os-factory.dev/factory-commits/factory-run/v0.1',
+    predicate,
+  };
+  const bytes = Buffer.from(JSON.stringify(statement), 'utf8');
+  const digest = 'sha256:' + crypto.createHash('sha256').update(bytes).digest('hex');
+  const attestation = {
+    predicateType: statement.predicateType,
+    digest,
+    envelope: { payloadType: 'application/vnd.in-toto+json', payload: bytes.toString('base64'), signatures: [] },
+  };
+  const out = opt('--out');
+  if (out) fs.writeFileSync(out, JSON.stringify(attestation, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ digest, tree, attestation, noteWritten: null }) + '\n');
+  process.exit(0);
+}
+
+process.stderr.write(`fake git-factory: unsupported command ${command}\n`);
+process.exit(2);

@@ -1,7 +1,8 @@
 import { parseVerificationResult } from './results';
 import * as crypto from 'crypto';
 import { localScriptExecutor } from './local-executor';
-import { createRun, finishRun, resolveAgentWorkDir } from './runs';
+import { createRun, finishRun, getRun, resolveAgentWorkDir } from './runs';
+import { produceValidationProof } from './proof';
 import {
   listSlotRegistryEntries,
   readSlotRegistry,
@@ -427,7 +428,7 @@ export class RunService {
           typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
             ? (result.data as { runId?: string }).runId
             : undefined;
-        const validation = recordValidation({
+        let validation = recordValidation({
           checkoutDir,
           harnessRoot,
           status: verification.status,
@@ -442,12 +443,37 @@ export class RunService {
             validation,
           });
         }
+        let proof: VerificationRunResult['proof'];
+        if (options.full) {
+          // Opt-in Factory Commits proof (HAR_FACTORY_PROOF); a no-op when off, never throws.
+          const runRecord = runId ? getRun(harnessRoot, runId) : null;
+          const workUnitId = session?.workUnitId;
+          const produced = produceValidationProof({
+            harnessRoot,
+            checkoutDir,
+            validation,
+            verification,
+            run: runRecord
+              ? { startedAt: runRecord.startedAt, finishedAt: runRecord.finishedAt }
+              : undefined,
+            workUnit: workUnitId
+              ? {
+                  id: workUnitId,
+                  source: findWorkUnit(harnessRoot, workUnitId)?.source,
+                  attemptId: session?.attemptId,
+                }
+              : undefined,
+          });
+          validation = produced.validation;
+          proof = produced.outcome;
+        }
         return {
           code: shell.code,
           stdout: shell.stdout,
           stderr: shell.stderr,
           verification,
           validation,
+          ...(proof ? { proof } : {}),
         };
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)

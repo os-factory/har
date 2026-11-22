@@ -1,4 +1,5 @@
 import type { ShellResult } from '../utils/shell';
+import type { FactoryProofOutcome } from './proof';
 import type {
   EnvironmentStatus,
   RunRecordTriggerSchema,
@@ -111,6 +112,8 @@ export interface EnvironmentStatusRunResult extends EnvironmentRunResult {
 export interface VerificationRunResult extends EnvironmentRunResult {
   verification: VerificationResult | null;
   validation?: ValidationRecord;
+  /** Factory Commits proof outcome; present only when the repo opted in (HAR_FACTORY_PROOF). */
+  proof?: FactoryProofOutcome;
 }
 
 export interface LogsOptions {

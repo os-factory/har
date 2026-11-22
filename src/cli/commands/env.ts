@@ -1242,6 +1242,10 @@ export async function handleVerify(argv: {
       success(`Verification ${result.verification.status}${elapsed}`);
     }
   }
+  if (result.proof) {
+    if (result.proof.status === 'attested') info(result.proof.message);
+    else warn(result.proof.message);
+  }
 
   return finishCommand(result.code);
 }
