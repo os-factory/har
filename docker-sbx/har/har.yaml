@@ -12,7 +12,7 @@ args:
   telemetry:
     default: "0"
     env: HAR_TELEMETRY
-    description: "0 = off. On makes `har env launch` try to start Mission Control via Docker."
+    description: "0 = off. On makes `har env launch` start a separate Mission Control on the sandbox's Docker Engine."
 
 # Installed with create-time hooks rather than a `build:` overlay so the kit
 # needs no image build (and so no `docker buildx`) on the host.

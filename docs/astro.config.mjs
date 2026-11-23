@@ -101,6 +101,7 @@ export default defineConfig({
 						{ label: 'Plugins', slug: 'docs/guides/plugins' },
 						{ label: 'Local plugins', slug: 'docs/guides/local-plugins' },
 						{ label: 'Agent integrations', slug: 'docs/guides/agent-integrations' },
+						{ label: 'Docker Sandboxes', slug: 'docs/guides/docker-sandboxes' },
 						{ label: 'Skill-pack compatibility', slug: 'docs/guides/skill-pack-compatibility' },
 						{ label: 'Factory lines', slug: 'docs/guides/factory-lines' },
 						{ label: 'Verification & commit gate', slug: 'docs/guides/verification' },

@@ -3,6 +3,7 @@
 `har/` is a [v3 sandbox kit](https://docs.docker.com/ai/sandboxes/customize/author/) (mixin)
 that installs Node 24 and the published `@osfactory/har` CLI into any workload at sandbox
 creation (install hooks, so no image build / `docker buildx` on the host).
+User guide: [Docker Sandboxes](https://harproject.dev/docs/guides/docker-sandboxes/).
 
 ```bash
 sbx run claude --kit ./docker-sbx/har     # or: shell, codex, …
@@ -19,7 +20,7 @@ Requires `sbx` ≥ 0.45.
 | Arg | Default | |
 |-----|---------|---|
 | `version` | `latest` | `@osfactory/har` npm version or dist-tag |
-| `telemetry` | `0` | Sets `HAR_TELEMETRY`. Off by default: with it on, `har env launch` tries to start Mission Control through Docker, which the sandbox does not provide. |
+| `telemetry` | `0` | Sets `HAR_TELEMETRY`. Off by default: HAR's default level (`full`) records prompt text, and with it on `har env launch` pulls and starts a separate Mission Control on the sandbox's own Docker Engine. Accepts `off`/`usage`/`outline`/`full`. |
 
 ## Test
 
