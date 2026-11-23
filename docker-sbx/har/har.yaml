@@ -1,0 +1,44 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: HAR
+description: Node 24 and the @osfactory/har CLI for coding agents
+sourceUrl: https://github.com/os-factory/har
+
+args:
+  version:
+    default: latest
+    description: "@osfactory/har npm version or dist-tag"
+  telemetry:
+    default: "0"
+    env: HAR_TELEMETRY
+    description: "0 = off. On makes `har env launch` start a separate Mission Control on the sandbox's Docker Engine."
+
+# Installed with create-time hooks rather than a `build:` overlay so the kit
+# needs no image build (and so no `docker buildx`) on the host.
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      install:
+        allow: [nodejs.org, registry.npmjs.org]
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        - description: Install Node 24
+          user: "0"
+          command: |
+            set -e
+            case "$(uname -m)" in x86_64) arch=x64 ;; aarch64|arm64) arch=arm64 ;; *) echo "unsupported arch $(uname -m)" >&2; exit 1 ;; esac
+            base=https://nodejs.org/dist/latest-v24.x
+            cd "$(mktemp -d)"
+            curl -fsSLO "$base/SHASUMS256.txt"
+            tarball=$(grep -o "node-v[0-9.]*-linux-$arch\.tar\.gz" SHASUMS256.txt)
+            curl -fsSLO "$base/$tarball"
+            grep " $tarball\$" SHASUMS256.txt | sha256sum -c -
+            dir=${tarball%.tar.gz}
+            tar -xzf "$tarball" -C /usr/local --strip-components=1 "$dir/bin" "$dir/lib"
+            rm -rf "$PWD"
+        - description: Install har
+          user: "0"
+          # throwaway cache: a root-owned ~/.npm would break npm for the agent user
+          command: HAR_SKIP_TELEMETRY_POSTINSTALL=1 npm install -g --cache /tmp/har-npm-cache @osfactory/har@${{ kit.args.version }} && rm -rf /tmp/har-npm-cache
