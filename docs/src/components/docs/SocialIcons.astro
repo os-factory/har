@@ -4,10 +4,8 @@
  * right-hand cluster (replacing the sidebar's Website entry). The configured
  * social icons render unchanged after it.
  */
-import config from 'virtual:starlight/user-config';
 import { Icon } from '@astrojs/starlight/components';
-
-const links = config.social || [];
+import { socialLinks as links } from './social-links';
 ---
 
 <a href="/" class="har-site-link">harproject.dev</a>
