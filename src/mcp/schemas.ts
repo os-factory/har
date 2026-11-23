@@ -129,7 +129,7 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
     .array(z.string())
     .optional()
     .describe('Advisory readiness warnings — never block the launch'),
-  previewUrls: z.record(z.string()).optional(),
+  previewUrls: z.record(z.string(), z.string()).optional(),
   workDir: z
     .string()
     .optional()
@@ -138,7 +138,7 @@ export const LaunchEnvironmentOutputSchema = ShellRunOutputSchema.extend({
   worktreeMode: WorktreeModeSchema.optional().describe('Whether this launch used a session worktree, and which setting decided it'),
   branch: z.string().optional(),
   workUnitId: z.string().optional(),
-  attemptId: z.string().uuid().optional(),
+  attemptId: z.guid().optional(),
   blocked: z.boolean().optional(),
   occupiedSlot: z
     .object({
@@ -274,7 +274,7 @@ export const ListRunsOutputSchema = z.object({
 
 export const GetRunInputSchema = z.object({
   repo: z.string().default('.'),
-  runId: z.string().uuid(),
+  runId: z.guid(),
 });
 
 export const GetRunOutputSchema = z.object({
