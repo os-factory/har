@@ -32,6 +32,10 @@ updates:
         patterns: [astro, '@astrojs/*']
       minor-and-patch:
         update-types: [minor, patch]
+        # The "first matching group" order above did not hold in practice:
+        # #447 still pulled otlp-transformer 0.57 → 0.301 in here. Exclude the
+        # risky families explicitly so they only ever land in their own group.
+        exclude-patterns: ['@opentelemetry/*', astro, '@astrojs/*']
       # Majors land as one PR per dependency across every directory, so a
       # shared package (zod in / + /control + /packages/schemas) moves in step.
       majors:
