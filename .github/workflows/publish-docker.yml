@@ -148,7 +148,10 @@ jobs:
             type=semver,pattern={{version}},value=${{ needs.prepare.outputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.tag }}
             type=semver,pattern={{major}},value=${{ needs.prepare.outputs.tag }}
-            type=raw,value=latest
+            # Prereleases (vX.Y.Z-next.N) get only their exact version and `next`;
+            # metadata-action already skips the major/minor tags for them.
+            type=raw,value=latest,enable=${{ !contains(needs.prepare.outputs.tag, '-') }}
+            type=raw,value=next,enable=${{ contains(needs.prepare.outputs.tag, '-') }}
 
       - uses: docker/build-push-action@v7
         id: build
@@ -199,7 +202,10 @@ jobs:
             type=semver,pattern={{version}},value=${{ needs.prepare.outputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.tag }}
             type=semver,pattern={{major}},value=${{ needs.prepare.outputs.tag }}
-            type=raw,value=latest
+            # Prereleases (vX.Y.Z-next.N) get only their exact version and `next`;
+            # metadata-action already skips the major/minor tags for them.
+            type=raw,value=latest,enable=${{ !contains(needs.prepare.outputs.tag, '-') }}
+            type=raw,value=next,enable=${{ contains(needs.prepare.outputs.tag, '-') }}
 
       - uses: actions/download-artifact@v8
         with:

@@ -1,6 +1,8 @@
 /** @type {import('semantic-release').GlobalConfig} */
 module.exports = {
-  branches: ['main'],
+  // `next` publishes prereleases (e.g. 2.0.0-next.1) to the npm `next` dist-tag
+  // and Docker Hub without moving `latest`, so a major can be dogfooded first.
+  branches: ['main', { name: 'next', prerelease: 'next', channel: 'next' }],
   plugins: [
     [
       '@semantic-release/commit-analyzer',
