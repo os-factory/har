@@ -1,3 +1,9 @@
+## [1.30.1](https://github.com/os-factory/har/compare/v1.30.0...v1.30.1) (2026-11-23)
+
+### Bug Fixes
+
+* **deps:** patch vulnerable runtime dependencies; enforce coverage and wider lint ([#413](https://github.com/os-factory/har/issues/413)) ([1f64da3](https://github.com/os-factory/har/commit/1f64da305fbe7258036094c82fdd08a317d19996))
+
 ## [1.30.0](https://github.com/os-factory/har/compare/v1.29.0...v1.30.0) (2026-11-20)
 
 ### Features
