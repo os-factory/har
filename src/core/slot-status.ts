@@ -21,6 +21,7 @@ import { describeWorktreeMode, resolveWorktreeMode } from './worktree-mode';
 import { listUntrackedAbsentFromWorktree } from './worktree-untracked';
 import { packageRunner } from '../utils/package-runner';
 import { readGitRemote } from './git-remote';
+import { snapshotMemo } from './status-snapshot';
 
 const BYPASS_WARNING_MS = 15 * 60 * 1000;
 
@@ -41,8 +42,10 @@ function readWorktreeBranch(worktreePath: string): string | undefined {
 }
 
 function gitCommonDir(cwd: string): string | undefined {
-  const out = runGit(cwd, 'rev-parse --git-common-dir');
-  return out ? path.resolve(cwd, out) : undefined;
+  return snapshotMemo(`git-common-dir\0${path.resolve(cwd)}`, () => {
+    const out = runGit(cwd, 'rev-parse --git-common-dir');
+    return out ? path.resolve(cwd, out) : undefined;
+  });
 }
 
 function sameGitCheckout(a: string, b: string): boolean {
@@ -52,8 +55,7 @@ function sameGitCheckout(a: string, b: string): boolean {
 }
 
 function gitPrefix(cwd: string): string {
-  const out = runGit(cwd, 'rev-parse --show-prefix');
-  return out ?? '';
+  return snapshotMemo(`git-prefix\0${path.resolve(cwd)}`, () => runGit(cwd, 'rev-parse --show-prefix') ?? '');
 }
 
 function discoverSessionWorktreePath(harnessRoot: string, agentId: number): string | undefined {
@@ -254,6 +256,10 @@ function lastBuildPass(run: RunRecord | undefined): boolean | undefined {
 }
 
 function listPm2Processes(): Array<{ name?: string }> | undefined {
+  return snapshotMemo('pm2-jlist', readPm2Processes);
+}
+
+function readPm2Processes(): Array<{ name?: string }> | undefined {
   try {
     const raw = execSync(`${packageRunner()} pm2 jlist`, {
       encoding: 'utf8',

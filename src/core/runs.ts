@@ -7,12 +7,17 @@ import { readHarnessEnv } from '../harness/env';
 import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
 import { RunRecord, RunRecordSchema, StageResult } from '../harness/schema';
 import { readSlotRegistry } from './slot-registry';
+import { snapshotMemo } from './status-snapshot';
 import { markDirty } from './sync-context';
 import { ExecutionContext } from './types';
 
 const RUNS_DIR = 'runs';
 
 function gitCommonDir(cwd: string): string | undefined {
+  return snapshotMemo(`git-common-dir\0${path.resolve(cwd)}`, () => readGitCommonDir(cwd));
+}
+
+function readGitCommonDir(cwd: string): string | undefined {
   try {
     const out = execSync('git rev-parse --git-common-dir', {
       cwd,
@@ -32,6 +37,10 @@ function sameGitCheckout(a: string, b: string): boolean {
 }
 
 function gitPrefix(cwd: string): string {
+  return snapshotMemo(`git-prefix\0${path.resolve(cwd)}`, () => readGitPrefix(cwd));
+}
+
+function readGitPrefix(cwd: string): string {
   try {
     return execSync('git rev-parse --show-prefix', {
       cwd,
