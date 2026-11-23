@@ -47,7 +47,7 @@
     "inquirer": "^12.11.1",
     "js-yaml": "^4.1.0",
     "ora": "^8.0.1",
-    "yargs": "^17.7.2",
+    "yargs": "^18.2.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
