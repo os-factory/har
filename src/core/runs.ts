@@ -8,28 +8,10 @@ import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
 import { RunRecord, RunRecordSchema, StageResult } from '../harness/schema';
 import { readSlotRegistry } from './slot-registry';
 import { markDirty } from './sync-context';
+import { sameGitCheckout } from '../utils/git-checkout';
 import { ExecutionContext } from './types';
 
 const RUNS_DIR = 'runs';
-
-function gitCommonDir(cwd: string): string | undefined {
-  try {
-    const out = execSync('git rev-parse --git-common-dir', {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-    }).trim();
-    return out ? path.resolve(cwd, out) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function sameGitCheckout(a: string, b: string): boolean {
-  const left = gitCommonDir(a);
-  const right = gitCommonDir(b);
-  return left !== undefined && right !== undefined && left === right;
-}
 
 function gitPrefix(cwd: string): string {
   try {

@@ -11,7 +11,7 @@ const RUNNERS = ['npx --yes', 'bunx', 'pnpm dlx', 'yarn dlx'] as const;
 
 let cached: string | undefined;
 
-function commandExists(command: string): boolean {
+export function commandExists(command: string): boolean {
   const result = spawnSync('sh', ['-c', `command -v ${JSON.stringify(command)}`], {
     encoding: 'utf8',
   });
