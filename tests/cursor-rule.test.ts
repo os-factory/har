@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-  CURSOR_RULE_RELATIVE_PATH,
   cursorRuleExists,
   getCursorRulePath,
   handleCursorRule,
