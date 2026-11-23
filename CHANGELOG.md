@@ -1,3 +1,9 @@
+## [1.30.3](https://github.com/os-factory/har/compare/v1.30.2...v1.30.3) (2026-11-23)
+
+### Bug Fixes
+
+* **control:** read slot status once per sync and skip the usage check when nothing is sent ([#452](https://github.com/os-factory/har/issues/452)) ([fd0784d](https://github.com/os-factory/har/commit/fd0784d32266c6fd2f30f0ab2bd41d66e1b6b8ca))
+
 ## [1.30.2](https://github.com/os-factory/har/compare/v1.30.1...v1.30.2) (2026-11-23)
 
 ### Bug Fixes
