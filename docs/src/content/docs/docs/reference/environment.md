@@ -33,6 +33,22 @@ Provisioning records resolved values such as `NODE_BIN`, `NPM_BIN`, `PYTHON_BIN`
 `GO_BIN`, `CARGO_BIN`, `RUSTC_BIN`, `JAVA_HOME`, `RUBY_BIN`, and
 `XCODEBUILD_BIN` in the slot environment.
 
+### Node version
+
+Launch checks the Node on `PATH` against the harness's declared requirements:
+`engines.node` (and `volta.node`) in the harness root `package.json`, `.nvmrc` /
+`.node-version` at the harness root, and `engines.node` of npm/yarn workspaces
+and of directories the harness runs in (`cd <dir>`, `--prefix <dir>`,
+`-C`/`--dir`/`--cwd <dir>` in stage commands, `.har/stages/*.sh` and
+`.har/hooks/*.sh`). All must hold.
+
+When the `PATH` Node falls short, launch pins the highest installed Node that
+satisfies them (found under nvm, fnm, volta, mise, asdf or n) into `NODE_BIN`,
+`NPM_BIN` and `PATH` of `.env.agent.<id>`, and logs why. When none does, launch
+continues with the `PATH` Node and prints the install command to run.
+[`har env doctor`](/docs/reference/doctor/) shows the same decision and flags
+running slots pinned to a Node that no longer fits.
+
 ### Node package managers
 
 `node` projects install with bun, pnpm, yarn, or npm. The manager is taken from

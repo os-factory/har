@@ -67,7 +67,8 @@ describe('har env doctor (#232)', () => {
       report.checks.every(
         (c) =>
           c.status === 'pass' ||
-          ((c.id === 'ejected-runtime' || c.id === 'cli-version') && c.status === 'skip'),
+          ((c.id === 'ejected-runtime' || c.id === 'cli-version' || c.id === 'node-toolchain') &&
+            c.status === 'skip'),
       ),
     ).toBe(true);
     expect(summarizeDoctorReport(report)).toBeNull();
