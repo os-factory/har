@@ -29,6 +29,23 @@ const REAL_NPM = path.join(REAL_BIN_DIR, 'npm');
 const PROBE =
   'node -e "require(\'fs\').writeFileSync(process.argv[1], JSON.stringify({ wrapper: process.env.HAR_E2E_NODE || null, npm: process.env.HAR_E2E_NPM || null, version: process.version }))"';
 
+/**
+ * The CLI may boot a PM2 daemon in the sandbox PM2_HOME even for a cli-profile
+ * harness (older status/preflight code runs `pm2 jlist` unconditionally, and
+ * jlist starts a daemon). Deleting PM2_HOME orphans it, so stop every daemon
+ * whose title names this sandbox before the temp dir goes — never any other.
+ */
+function stopSandboxPm2Daemons(pm2Home: string): void {
+  const found = spawnSync('pgrep', ['-f', `God Daemon \\(${pm2Home}\\)`], { encoding: 'utf8' });
+  for (const pid of (found.stdout ?? '').split(/\s+/).filter(Boolean).map(Number)) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // already gone
+    }
+  }
+}
+
 interface Probe {
   wrapper: string | null;
   npm: string | null;
@@ -198,6 +215,7 @@ run('node toolchain pinning end to end: built CLI → launch → stage', () => {
         // best effort — the temp dir goes regardless
       }
     }
+    stopSandboxPm2Daemons(path.join(base, '.pm2'));
     fs.rmSync(base, { recursive: true, force: true });
   });
 
