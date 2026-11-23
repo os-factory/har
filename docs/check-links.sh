@@ -21,8 +21,15 @@ fi
 #
 # Remap GitHub blob/main links to this checkout so docs can link to files added
 # in the same PR (e.g. RELEASING.md) without waiting for merge to main.
+#
+# Gateway errors and rate limits (429, 502-504) are the remote host's outage,
+# not a dead link: a GitHub 503 once failed every open PR at the same time.
+# Retry them with backoff, then accept them; a 404 still fails the check.
 lychee \
   --no-progress \
+  --max-retries 5 \
+  --retry-wait-time 5 \
+  --accept '100..=103,200..=299,429,502..=504' \
   --root-dir "$DIST" \
   --remap "https://github.com/os-factory/har/blob/main/(.*) file://${REPO_ROOT}/\$1" \
   --exclude '^https://harproject\.dev' \

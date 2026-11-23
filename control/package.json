@@ -1,6 +1,6 @@
 {
   "name": "@har/control",
-  "version": "1.30.2",
+  "version": "1.30.4",
   "private": true,
   "scripts": {
     "postinstall": "npm install --prefix ../packages/schemas --omit=dev --silent",
@@ -51,7 +51,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
-    "next": "^15.0.0",
+    "next": "^15.5.29",
     "next-themes": "^0.4.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -75,6 +75,6 @@
     "prisma": "^6.0.0",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.5.4",
-    "vitest": "^2.1.0"
+    "vitest": "^5.1.1"
   }
 }

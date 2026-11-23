@@ -4,8 +4,9 @@ jest.mock('../src/core/control-repo-path', () => ({
 }));
 jest.mock('../src/core/portal-credentials', () => ({ readPortalCredentials: jest.fn(() => null) }));
 jest.mock('../src/core/runs', () => ({ listRuns: jest.fn(() => []) }));
+const collectEnvironmentStatus = jest.fn((_repoPath: string) => ({ slots: [], generatedAt: '2026-01-01T00:00:00.000Z' }));
 jest.mock('../src/core/slot-status', () => ({
-  collectEnvironmentStatus: () => ({ slots: [], generatedAt: '2026-01-01T00:00:00.000Z' }),
+  collectEnvironmentStatus: (repoPath: string) => collectEnvironmentStatus(repoPath),
 }));
 jest.mock('../src/core/validations', () => ({ listValidations: () => [] }));
 jest.mock('../src/core/work-units', () => ({
@@ -105,10 +106,13 @@ describe('usage invariant gate before the HQ sync', () => {
   const calls: Array<{ call: string; body: Record<string, unknown> }> = [];
   let stateDir: string;
   let invariants: () => { status: number; body: unknown };
+  let usageView: () => unknown;
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
     calls.length = 0;
+    collectEnvironmentStatus.mockClear();
+    usageView = () => ({ usage: [], unassigned: [unassigned(BAD, 1.5), unassigned(GOOD, 0.25)] });
     stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-usage-gate-'));
     process.env.HAR_CONTROL_REGISTRY_PATH = path.join(stateDir, 'repos.json');
     process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(stateDir, 'state.json');
@@ -124,7 +128,7 @@ describe('usage invariant gate before the HQ sync', () => {
         return { ...jsonResponse(body), ok: status < 400, status };
       }
       if (String(url).endsWith(`/api/repos/${REPO_ID}/usage`)) {
-        return jsonResponse({ usage: [], unassigned: [unassigned(BAD, 1.5), unassigned(GOOD, 0.25)] });
+        return jsonResponse(usageView());
       }
       if (String(url).endsWith('/api/repos') && method === 'POST') return jsonResponse({ id: REPO_ID });
       if (String(url).endsWith('/api/repos') && method === 'GET') return jsonResponse([{ id: REPO_ID, path: REPO }]);
@@ -175,5 +179,26 @@ describe('usage invariant gate before the HQ sync', () => {
     process.env.HAR_SYNC_ALLOW_USAGE_VIOLATIONS = '1';
     await syncReposWithControl({ repoPaths: [REPO], full: true });
     expect(sentSessions().sort()).toEqual([BAD, GOOD].sort());
+  });
+
+  it('does not ask Mission Control for the check when there is no usage to send', async () => {
+    usageView = () => ({ usage: [], unassigned: [] });
+    invariants = () => ({ status: 200, body: report([BAD]) });
+    const result = await syncReposWithControl({ repoPaths: [REPO] });
+    expect(result.failed).toBe(0);
+    expect(calls.some((c) => c.call.includes('/api/usage/invariants'))).toBe(false);
+    expect(calls.some((c) => c.call === 'POST https://portal.example.com/api/sync')).toBe(true);
+  });
+
+  it('reads slot status once per sync, for Mission Control and HQ together', async () => {
+    invariants = () => ({ status: 200, body: report([]) });
+    await syncReposWithControl({ repoPaths: [REPO] });
+    expect(calls.some((c) => c.call.endsWith(`/api/repos/${REPO_ID}/slots`))).toBe(true);
+    expect(calls.some((c) => c.call === 'POST https://portal.example.com/api/sync')).toBe(true);
+    expect(collectEnvironmentStatus).toHaveBeenCalledTimes(1);
+
+    // The next sync reads it again: nothing is kept between syncs.
+    await syncReposWithControl({ repoPaths: [REPO] });
+    expect(collectEnvironmentStatus).toHaveBeenCalledTimes(2);
   });
 });

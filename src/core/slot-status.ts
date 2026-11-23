@@ -24,6 +24,7 @@ import { listPm2Processes } from '../utils/pm2';
 import { harnessUsesPm2 } from '../harness/capabilities';
 import { readGitRemote } from './git-remote';
 import { listDockerContainers, type DockerRow } from './control-port';
+import { snapshotMemo } from './status-snapshot';
 
 const BYPASS_WARNING_MS = 15 * 60 * 1000;
 
@@ -44,8 +45,7 @@ function readWorktreeBranch(worktreePath: string): string | undefined {
 }
 
 function gitPrefix(cwd: string): string {
-  const out = runGit(cwd, 'rev-parse --show-prefix');
-  return out ?? '';
+  return snapshotMemo(`git-prefix\0${path.resolve(cwd)}`, () => runGit(cwd, 'rev-parse --show-prefix') ?? '');
 }
 
 function discoverSessionWorktreePath(harnessRoot: string, agentId: number): string | undefined {
@@ -436,9 +436,11 @@ export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
   // One PM2 query per status, shared by every slot (and skipped for harnesses
   // that never start PM2 processes) — readiness must not re-query per slot.
   const usesPm2 = harnessUsesPm2(harnessRoot);
-  const pm2Procs = usesPm2 ? listPm2Processes() : undefined;
+  // snapshotMemo: one machine-wide read per Mission Control sync (#452).
+  const pm2Procs = usesPm2 ? snapshotMemo('pm2-jlist', listPm2Processes) : undefined;
   let dockerRows: DockerRow[] | undefined;
-  const sharedDocker = (): DockerRow[] => (dockerRows ??= listDockerContainers());
+  const sharedDocker = (): DockerRow[] =>
+    (dockerRows ??= snapshotMemo('docker-ps', listDockerContainers));
   // Repo-wide and identical for every slot — scanned once, like pm2Procs above.
   const worktreeMode = resolveWorktreeMode(harnessRoot);
   const untrackedPaths = worktreeMode.enabled ? listUntrackedAbsentFromWorktree(harnessRoot) : [];

@@ -1,6 +1,6 @@
 {
   "name": "@osfactory/har",
-  "version": "1.30.2",
+  "version": "1.30.4",
   "description": "HAR: open agent harness CLI and MCP server for coding agents, isolated worktrees, and software-factory workflows",
   "keywords": [
     "har",
@@ -63,7 +63,7 @@
     "@typescript-eslint/eslint-plugin": "^8.62.0",
     "@typescript-eslint/parser": "^8.62.0",
     "conventional-changelog-conventionalcommits": "^9.3.1",
-    "esbuild": "^0.23.0",
+    "esbuild": "^0.28.1",
     "eslint": "^8.57.1",
     "jest": "^29.7.0",
     "semantic-release": "^25.0.9",
