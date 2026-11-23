@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, forwardDeniedAttributes } from '@har/schemas';
+import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, attributeKeyDenied, forwardDeniedAttributes } from '@har/schemas';
 import { stripDeniedAttributes, stripLocalPathAttributes } from './otlp-privacy';
 
 type PbType = {
@@ -22,7 +22,13 @@ const TYPES = {
 const TO_OBJECT = { longs: String, enums: Number, bytes: String, arrays: true };
 
 const str = (key: string, value: string) => ({ key, value: { stringValue: value } });
-const local = () => [str('har.repo_path', '/home/me/repo'), str('har.work_dir', '/home/me/worktrees/x')];
+// The whole factory.local.* namespace is local-only, including keys no producer emits yet.
+const local = () => [
+  str('factory.local.checkout_path', '/home/me/repo'),
+  str('factory.local.work_dir', '/home/me/worktrees/x'),
+  str('factory.local.future_fact', '/home/me/other'),
+  str('process.cwd', '/home/me/repo'),
+];
 const kept = (prefix: string) => [str(`${prefix}.kept`, 'yes'), { key: `${prefix}.n`, value: { intValue: 7 } }];
 const attrs = (prefix: string) => [...kept(prefix), ...local()];
 
@@ -46,7 +52,7 @@ function request(signal: 'traces' | 'logs' | 'metrics', ids: 'hex' | 'base64') {
                 {
                   traceId: id(TRACE_ID),
                   spanId: id(SPAN_ID),
-                  name: 'har.verify',
+                  name: 'verify',
                   kind: 1,
                   startTimeUnixNano: '1700000000000000000',
                   endTimeUnixNano: '1700000001000000000',
@@ -95,7 +101,7 @@ function request(signal: 'traces' | 'logs' | 'metrics', ids: 'hex' | 'base64') {
             scope,
             metrics: [
               {
-                name: 'har.tokens',
+                name: 'agent.tokens',
                 sum: {
                   aggregationTemporality: 2,
                   isMonotonic: true,
@@ -110,7 +116,7 @@ function request(signal: 'traces' | 'logs' | 'metrics', ids: 'hex' | 'base64') {
                 },
               },
               {
-                name: 'har.duration',
+                name: 'agent.duration',
                 histogram: {
                   aggregationTemporality: 2,
                   dataPoints: [{ count: '1', sum: 2, bucketCounts: ['1'], explicitBounds: [], attributes: attrs('hist') }],
@@ -132,7 +138,7 @@ function withoutLocalPaths(value: unknown): unknown {
     Object.entries(value).map(([field, child]) => [
       field,
       (field === 'attributes' || field === 'filteredAttributes') && Array.isArray(child)
-        ? child.filter((kv: { key: string }) => !(TELEMETRY_LOCAL_PATH_ATTRIBUTES as readonly string[]).includes(kv.key)).map(withoutLocalPaths)
+        ? child.filter((kv: { key: string }) => !attributeKeyDenied(kv.key, TELEMETRY_LOCAL_PATH_ATTRIBUTES)).map(withoutLocalPaths)
         : withoutLocalPaths(child),
     ]),
   );
@@ -152,7 +158,8 @@ describe('stripLocalPathAttributes', () => {
       expect(out).not.toBeNull();
       expect(out!.contentType).toBe('application/x-protobuf');
       expect(out!.removed).toBeGreaterThan(0);
-      for (const key of TELEMETRY_LOCAL_PATH_ATTRIBUTES) expect(out!.body.includes(key)).toBe(false);
+      expect(out!.body.includes('factory.local.')).toBe(false);
+      expect(out!.body.includes('process.cwd')).toBe(false);
       expect(out!.body.includes('/home/me')).toBe(false);
       expect(decodePb(signal, out!.body)).toEqual(withoutLocalPaths(decodePb(signal, original)));
     });
@@ -180,13 +187,13 @@ describe('stripLocalPathAttributes', () => {
     const out = stripLocalPathAttributes('traces', original, { contentType: 'application/x-protobuf', contentEncoding: 'gzip' })!;
     expect(out.contentEncoding).toBe('gzip');
     const plain = zlib.gunzipSync(out.body);
-    expect(plain.includes('har.repo_path')).toBe(false);
+    expect(plain.includes('factory.local.checkout_path')).toBe(false);
     expect(decodePb('traces', plain)).toEqual(withoutLocalPaths(decodePb('traces', zlib.gunzipSync(original))));
   });
 
   it('catches keys spelled with JSON escapes', () => {
     const body = Buffer.from(
-      '{"resourceLogs":[{"resource":{"attributes":[{"key":"har.repo\\u005fpath","value":{"stringValue":"/home/me/repo"}}]},"scopeLogs":[]}]}',
+      '{"resourceLogs":[{"resource":{"attributes":[{"key":"factory.local.checkout\\u005fpath","value":{"stringValue":"/home/me/repo"}}]},"scopeLogs":[]}]}',
     );
     const out = stripLocalPathAttributes('logs', body, { contentType: 'application/json' })!;
     expect(out.removed).toBe(1);
@@ -196,8 +203,8 @@ describe('stripLocalPathAttributes', () => {
   it('refuses a body it cannot check', () => {
     const pb = encodePb('traces', request('traces', 'base64'));
     expect(stripLocalPathAttributes('traces', pb, { contentType: 'application/x-protobuf', contentEncoding: 'zstd' })).toBeNull();
-    expect(stripLocalPathAttributes('logs', Buffer.from('{"har.repo_path": oops'), { contentType: 'application/json' })).toBeNull();
-    const corrupt = Buffer.concat([Buffer.from([0x0a, 0xff, 0xff, 0xff, 0x0f]), Buffer.from('har.work_dir')]);
+    expect(stripLocalPathAttributes('logs', Buffer.from('{"factory.local.checkout_path": oops'), { contentType: 'application/json' })).toBeNull();
+    const corrupt = Buffer.concat([Buffer.from([0x0a, 0xff, 0xff, 0xff, 0x0f]), Buffer.from('factory.local.work_dir')]);
     expect(stripLocalPathAttributes('traces', corrupt, { contentType: 'application/x-protobuf' })).toBeNull();
   });
 });
@@ -207,7 +214,7 @@ describe('stripDeniedAttributes (account identity)', () => {
   const metrics = () => ({
     resourceMetrics: [
       {
-        resource: { attributes: [str('service.name', 'claude-code'), str('har.repo_path', '/home/me/repo')] },
+        resource: { attributes: [str('service.name', 'claude-code'), str('factory.local.checkout_path', '/home/me/repo')] },
         scopeMetrics: [
           {
             scope: { name: 'com.anthropic.claude_code' },

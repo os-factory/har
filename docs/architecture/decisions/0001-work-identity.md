@@ -89,8 +89,9 @@ sync schemas. Launch without work metadata behaves as before.
 
 ### Telemetry
 
-Stable bounded identifiers may be emitted as `har.work_unit_id` and
-`har.attempt_id`. Titles, URLs, and mutable tracker metadata are not OTEL resource
+Stable bounded identifiers may be emitted as `factory.work_unit.id` and
+`factory.attempt.id` (HAR 1.x emitted them as `har.work_unit_id` and
+`har.attempt_id`; HAR 2.0 removed the `har.*` names). Titles, URLs, and mutable tracker metadata are not OTEL resource
 attributes, avoiding sensitive data leakage and unbounded cardinality.
 
 ## Consequences

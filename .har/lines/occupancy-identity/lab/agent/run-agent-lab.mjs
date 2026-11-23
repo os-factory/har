@@ -111,14 +111,14 @@ function activeSlot(repoDir, env) {
   return (status.slots ?? []).find((slot) => slot.agentId === 1) ?? null;
 }
 
-/** The `har.session_key` an otel-hook export would carry right now. */
+/** The Resource `session.id` (the launch's session key) an otel-hook export would carry right now. */
 function harSessionKeyFromConfig(homeDir) {
   const configPath = path.join(homeDir, '.har', 'otel-hooks', 'otel_config.json');
   if (!existsSync(configPath)) return null;
   try {
     const raw = JSON.parse(readFileSync(configPath, 'utf8'));
     const flat = JSON.stringify(raw);
-    const match = flat.match(/"har\.session_key"\s*:\s*"([^"]+)"/);
+    const match = flat.match(/"session\.id"\s*:\s*"([^"]+)"/);
     return match ? match[1] : null;
   } catch {
     return null;
@@ -301,12 +301,12 @@ async function main() {
       `${slotA.workUnitId} / ${slotB.workUnitId}`,
     );
 
-    // This is the leak the bug rode in on: the har.session_key an otel export
+    // This is the leak the bug rode in on: the session key (Resource session.id) an otel export
     // carries is per-launch. If it still names occupancy A after B launched,
     // every ingest that trusts it merges B into A.
     check(
       harKeyA === null || harKeyB === null || harKeyA !== harKeyB,
-      'har.session_key changed with the occupancy',
+      'the Resource session.id changed with the occupancy',
       `A=${harKeyA} B=${harKeyB}`,
     );
 

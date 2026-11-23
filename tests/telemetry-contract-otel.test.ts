@@ -1,37 +1,47 @@
 /**
- * Outward OpenTelemetry contracts — guards for the HAR 2.0 non-breaking rule (#416).
+ * Outward OpenTelemetry contracts (#416).
  *
- * Mission Control, HQ and existing dashboards read the `har.*` resource
- * attributes HAR writes into `OTEL_RESOURCE_ATTRIBUTES`, and the otel-hook
- * exports to the Mission Control OTLP routes below. HAR 2.0 may add attributes
- * and routes; it must not rename or remove these.
+ * HAR 2.0 replaced every `har.*` attribute with OTel semantic-convention and
+ * Factory Commits telemetry-profile names (a documented major-version break).
+ * Mission Control reads the session Resource attributes HAR writes into
+ * `OTEL_RESOURCE_ATTRIBUTES`, and the otel-hook exports to the Mission Control
+ * OTLP routes below. These names are the 2.0 contract: rename or remove one
+ * only in a major version, and never bring a `har.*` key back.
  *
  * Assertions allow additions ("contains at least these keys") and use exact
  * equality only where the value itself is the contract (a route, an encoding
- * rule, a pinned package). If one fails, add the new shape alongside the old
- * one instead of editing the expectation.
+ * rule, a pinned package).
  */
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { buildClaudeNativeTelemetryEnv } from '../src/core/claude-native-telemetry';
-import { buildOtelHooksConfig, OTEL_HOOKS_PACKAGE, parseResourceAttributesString } from '../src/core/otel-hooks';
+import {
+  buildOtelHooksConfig,
+  OTEL_HOOKS_PACKAGE,
+  OTEL_HOOKS_PACKAGE_ENV,
+  otelHooksPackageSpec,
+  parseResourceAttributesString,
+} from '../src/core/otel-hooks';
 import { writeTelemetryLevel } from '../src/core/telemetry-config';
+import { buildTestPayload } from '../src/core/telemetry-destinations';
 import {
   buildOtelResourceAttributes,
   buildTelemetryEnvBlock,
   type TelemetrySessionAttrs,
 } from '../src/core/telemetry-env';
+import { buildVerificationTrace } from '../src/core/verification-spans';
 
-const HAR_RESOURCE_KEYS = [
-  'har.session_key',
-  'har.agent_id',
-  'har.repo_path',
-  'har.work_dir',
-  'har.branch',
-  'har.suffix',
-  'har.work_unit_id',
-  'har.attempt_id',
+/** Session Resource keys HAR 2.0 writes for every launched agent. */
+const SESSION_RESOURCE_KEYS = [
+  'session.id',
+  'factory.slot.id',
+  'factory.local.checkout_path',
+  'factory.local.work_dir',
+  'vcs.ref.head.name',
+  'factory.work_unit.id',
+  'factory.attempt.id',
+  'factory.producer.name',
 ];
 
 const FULL_ATTRS: TelemetrySessionAttrs = {
@@ -43,6 +53,9 @@ const FULL_ATTRS: TelemetrySessionAttrs = {
   suffix: 'xy12',
   workUnitId: 'ISSUE-416',
   attemptId: '11111111-1111-4111-8111-111111111111',
+  repositoryUrl: 'https://github.com/acme/app.git',
+  workUnitSource: 'github',
+  producerVersion: '2.0.0',
 };
 
 /** Decode `k=v,k=v` the way a consumer splits it: on every comma, then the first `=`. */
@@ -55,33 +68,70 @@ function decode(raw: string): Record<string, string> {
   return out;
 }
 
+/** Every attribute key, metric, scope and span name anywhere in an OTLP/JSON payload. */
+function otlpNames(node: unknown, out: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const item of node) otlpNames(item, out);
+  } else if (node && typeof node === 'object') {
+    for (const [field, value] of Object.entries(node)) {
+      if ((field === 'key' || field === 'name') && typeof value === 'string') out.push(value);
+      otlpNames(value, out);
+    }
+  }
+  return out;
+}
+
 describe('OTEL_RESOURCE_ATTRIBUTES contract (#416)', () => {
-  it('carries every har.* key with its value', () => {
+  it('carries the session, slot, local paths and correlation keys with their values', () => {
     const attrs = decode(buildOtelResourceAttributes(FULL_ATTRS));
-    expect(Object.keys(attrs)).toEqual(expect.arrayContaining(HAR_RESOURCE_KEYS));
+    expect(Object.keys(attrs)).toEqual(expect.arrayContaining(SESSION_RESOURCE_KEYS));
     expect(attrs).toMatchObject({
-      'har.session_key': 'main-abcd-har-agent-1-xy12',
-      'har.agent_id': '1',
-      'har.repo_path': '/repo',
-      'har.work_dir': '/repo/wt',
-      'har.branch': 'main-abcd-har-agent-1-xy12',
-      'har.suffix': 'xy12',
-      'har.work_unit_id': 'ISSUE-416',
-      'har.attempt_id': '11111111-1111-4111-8111-111111111111',
+      'session.id': 'main-abcd-har-agent-1-xy12',
+      'factory.slot.id': '1',
+      'factory.local.checkout_path': '/repo',
+      'factory.local.work_dir': '/repo/wt',
+      'vcs.ref.head.name': 'main-abcd-har-agent-1-xy12',
+      'factory.work_unit.id': 'ISSUE-416',
+      'factory.work_unit.source': 'github',
+      'factory.attempt.id': '11111111-1111-4111-8111-111111111111',
+      'vcs.repository.url.full': 'https://github.com/acme/app.git',
+      'factory.producer.name': 'har',
+      'factory.producer.version': '2.0.0',
     });
+  });
+
+  it('emits no har.* key (removed in 2.0)', () => {
+    const keys = Object.keys(decode(buildOtelResourceAttributes(FULL_ATTRS)));
+    expect(keys.filter((key) => key.startsWith('har.'))).toEqual([]);
+    // The slot suffix has no reader; it is not emitted under any name.
+    expect(keys.some((key) => key.includes('suffix'))).toBe(false);
+  });
+
+  it('puts absolute paths only under the local-only factory.local.* namespace', () => {
+    const attrs = decode(buildOtelResourceAttributes(FULL_ATTRS));
+    const pathKeys = Object.entries(attrs)
+      .filter(([, value]) => value.startsWith('/'))
+      .map(([key]) => key);
+    expect(pathKeys.sort()).toEqual(['factory.local.checkout_path', 'factory.local.work_dir']);
   });
 
   it('always carries the session identity, and omits optional keys when unknown', () => {
     const attrs = decode(
-      buildOtelResourceAttributes({ sessionKey: 's1', agentId: 2, repoPath: '/r', workDir: '/r' }),
+      buildOtelResourceAttributes({
+        sessionKey: 's1',
+        agentId: 2,
+        repoPath: '/r',
+        workDir: '/r',
+        producerVersion: '2.0.0',
+      }),
     );
     expect(attrs).toMatchObject({
-      'har.session_key': 's1',
-      'har.agent_id': '2',
-      'har.repo_path': '/r',
-      'har.work_dir': '/r',
+      'session.id': 's1',
+      'factory.slot.id': '2',
+      'factory.local.checkout_path': '/r',
+      'factory.local.work_dir': '/r',
     });
-    for (const key of ['har.branch', 'har.suffix', 'har.work_unit_id', 'har.attempt_id']) {
+    for (const key of ['vcs.ref.head.name', 'factory.work_unit.id', 'factory.attempt.id']) {
       expect(attrs).not.toHaveProperty(key);
     }
     expect(Object.values(attrs)).not.toContain('');
@@ -96,22 +146,54 @@ describe('OTEL_RESOURCE_ATTRIBUTES contract (#416)', () => {
       branch: 'feat/a,b',
     });
     const attrs = decode(raw);
-    expect(attrs['har.session_key']).toBe('a_b_c');
-    expect(attrs['har.repo_path']).toBe('/repo_x');
-    expect(attrs['har.work_dir']).toBe('/wt_y');
-    expect(attrs['har.branch']).toBe('feat/a_b');
+    expect(attrs['session.id']).toBe('a_b_c');
+    expect(attrs['factory.local.checkout_path']).toBe('/repo_x');
+    expect(attrs['factory.local.work_dir']).toBe('/wt_y');
+    expect(attrs['vcs.ref.head.name']).toBe('feat/a_b');
     // The otel-hook config reader parses the same encoding back.
     expect(parseResourceAttributesString(raw)).toMatchObject(attrs);
   });
 
-  it('is written to the agent env file as OTEL_RESOURCE_ATTRIBUTES', () => {
+  it('is written to the agent env file as OTEL_RESOURCE_ATTRIBUTES, with no HAR_SESSION_KEY', () => {
     const block = buildTelemetryEnvBlock(FULL_ATTRS);
     const line = block.split('\n').find((l) => l.startsWith('OTEL_RESOURCE_ATTRIBUTES='));
     expect(line).toBeDefined();
     const value = (line as string).slice('OTEL_RESOURCE_ATTRIBUTES='.length).replace(/^'|'$/g, '');
-    expect(Object.keys(decode(value))).toEqual(expect.arrayContaining(HAR_RESOURCE_KEYS));
-    for (const name of ['HAR_SESSION_KEY', 'HAR_WORK_UNIT_ID', 'HAR_ATTEMPT_ID', 'HAR_CONTROL_API_URL']) {
+    expect(Object.keys(decode(value))).toEqual(expect.arrayContaining(SESSION_RESOURCE_KEYS));
+    for (const name of ['HAR_WORK_UNIT_ID', 'HAR_ATTEMPT_ID', 'HAR_CONTROL_API_URL']) {
       expect(block).toMatch(new RegExp(`^${name}=`, 'm'));
+    }
+    // otel-hook <= 0.6 turns HAR_SESSION_KEY into a `har.session_key` attribute.
+    expect(block).not.toMatch(/^HAR_SESSION_KEY=/m);
+    expect(block).not.toMatch(/\bhar\.[a-z_]/);
+  });
+});
+
+describe('HAR-built OTLP payloads (#416)', () => {
+  it('verification spans use the @osfactory/har scope and no har.* name', () => {
+    const payload = buildVerificationTrace({
+      id: 'v-1',
+      runId: 'r-1',
+      full: true,
+      verification: { status: 'pass', agent_id: 1, total_ms: 1, stages: [{ name: 'build', pass: true, ms: 1 }] },
+      startedAtMs: 0,
+      finishedAtMs: 1,
+      treeHash: 'a'.repeat(40),
+      workUnitId: 'W-1',
+      attemptId: 'a-1',
+      branch: 'b',
+      producerVersion: '2.0.0',
+    });
+    const names = otlpNames(payload);
+    expect(names).toContain('@osfactory/har');
+    expect(names.filter((name) => name.startsWith('har.'))).toEqual([]);
+  });
+
+  it('destination test payloads use no har.* name', () => {
+    for (const signal of ['traces', 'logs', 'metrics'] as const) {
+      const names = otlpNames(buildTestPayload(signal, 0));
+      expect(names).toContain('@osfactory/har');
+      expect(names.filter((name) => name.startsWith('har.'))).toEqual([]);
     }
   });
 });
@@ -135,8 +217,12 @@ describe('otel-hook exporter contract (#416)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('pins the otel-hook package', () => {
+  it('pins the otel-hook package, overridable for an unreleased build', () => {
     expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.6.0');
+    expect(OTEL_HOOKS_PACKAGE_ENV).toBe('HAR_OTEL_HOOKS_PACKAGE');
+    expect(otelHooksPackageSpec({})).toBe(OTEL_HOOKS_PACKAGE);
+    expect(otelHooksPackageSpec({ HAR_OTEL_HOOKS_PACKAGE: ' /tmp/otel-hook.tgz ' })).toBe('/tmp/otel-hook.tgz');
+    expect(otelHooksPackageSpec({ HAR_OTEL_HOOKS_PACKAGE: '' })).toBe(OTEL_HOOKS_PACKAGE);
   });
 
   it('exports traces and logs to the Mission Control OTLP routes over http/protobuf', () => {
@@ -155,7 +241,7 @@ describe('otel-hook exporter contract (#416)', () => {
       resourceAttributes: buildOtelResourceAttributes(FULL_ATTRS),
     });
     expect(Object.keys(config.exporter.resourceAttributes ?? {})).toEqual(
-      expect.arrayContaining(HAR_RESOURCE_KEYS),
+      expect.arrayContaining(SESSION_RESOURCE_KEYS),
     );
   });
 

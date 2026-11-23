@@ -12,8 +12,8 @@ import {
 } from '../src/core/telemetry-env';
 import { upsertWorkUnit } from '../src/core/work-units';
 
-// Telemetry-profile Resource attributes (#416) are emitted alongside har.*.
-// The har.* contract itself is pinned in telemetry-contract-otel.test.ts.
+// Telemetry-profile Resource attributes (#416). HAR 2.0 emits no har.* key;
+// the full session contract is pinned in telemetry-contract-otel.test.ts.
 
 const BASE: TelemetrySessionAttrs = {
   sessionKey: 'main-abcd-har-agent-1-xy12',
@@ -40,7 +40,7 @@ describe('factory.* / vcs.* resource attributes', () => {
     else process.env.HAR_PACKAGE_VERSION = originalVersion;
   });
 
-  it('mirrors the har.* values under the semconv names', () => {
+  it('carries the correlation values under the semconv and factory.* names only', () => {
     const attrs = decode(
       buildOtelResourceAttributes({
         ...BASE,
@@ -49,15 +49,15 @@ describe('factory.* / vcs.* resource attributes', () => {
       }),
     );
     expect(attrs).toMatchObject({
-      'factory.work_unit.id': attrs['har.work_unit_id'],
+      'factory.work_unit.id': 'ISSUE-416',
       'factory.work_unit.source': 'github',
-      'factory.attempt.id': attrs['har.attempt_id'],
+      'factory.attempt.id': BASE.attemptId,
       'vcs.repository.url.full': 'https://github.com/example/fixture.git',
-      'vcs.ref.head.name': attrs['har.branch'],
+      'vcs.ref.head.name': BASE.branch,
       'factory.producer.name': 'har',
       'factory.producer.version': '2.0.0-test',
     });
-    expect(attrs['factory.work_unit.id']).toBe('ISSUE-416');
+    expect(Object.keys(attrs).filter((key) => key.startsWith('har.'))).toEqual([]);
   });
 
   it('omits every attribute whose value is unknown, and never emits an empty value', () => {
@@ -85,11 +85,10 @@ describe('factory.* / vcs.* resource attributes', () => {
     expect(Object.values(attrs)).not.toContain('');
   });
 
-  it('uses the same encoding as har.* (, and = become _)', () => {
+  it('encodes values the OTEL_RESOURCE_ATTRIBUTES way (, and = become _)', () => {
     const raw = buildOtelResourceAttributes({ ...BASE, branch: 'feat/a,b=c', workUnitSource: 'a,b' });
     const attrs = decode(raw);
     expect(attrs['vcs.ref.head.name']).toBe('feat/a_b_c');
-    expect(attrs['vcs.ref.head.name']).toBe(attrs['har.branch']);
     expect(attrs['factory.work_unit.source']).toBe('a_b');
   });
 });

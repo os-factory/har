@@ -1,6 +1,6 @@
 ---
 title: Upgrading to 2.0
-description: What HAR 2.0 adds, the one default it changes, what it sends by default, and what is deprecated. Nothing is removed.
+description: What HAR 2.0 adds, the default it changes, what it sends by default, and the har.* telemetry attributes it removes.
 ---
 
 HAR 2.0 makes HAR a producer of open standards: standard OpenTelemetry that any
@@ -8,9 +8,11 @@ OTLP backend can read, and [Factory Commits](https://github.com/os-factory/facto
 proofs recorded in git. Both are correlated by the same keys: work unit, attempt,
 factory run, git tree, commit and trace.
 
-The major version marks one changed default. **Nothing is removed**: every 1.x
-command, flag, config key, `har.*` telemetry attribute, HQ sync payload and Mission
-Control route still works with the same shape.
+The major version marks two breaks: one changed default, and **the removal of every
+`har.*` telemetry attribute** in favor of OpenTelemetry semantic-convention and
+`factory.*` names ([removed attributes](#removed-telemetry-attributes)). Every 1.x
+command, flag, config key, HQ sync payload and Mission Control route still works
+with the same shape.
 
 ```bash
 npm install -g @osfactory/har@latest
@@ -31,7 +33,7 @@ har env verify 1 --full
 - **Semantic-convention attributes.** Agent sessions and verification traces carry
   `factory.*`, `vcs.*`, `cicd.*` and `gen_ai.*` attributes from the Factory Commits
   [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md),
-  next to the existing `har.*` ones (see [Deprecations](#deprecations)).
+  in place of the `har.*` ones (see [Removed telemetry attributes](#removed-telemetry-attributes)).
 - **Factory Commits proofs.** A full verify becomes an in-toto `factory-run`
   statement for the exact verified tree. The commit of that tree gets it as a note
   in `refs/notes/factory`, and optionally as trailers. `har proof show|verify`
@@ -69,7 +71,7 @@ Code metrics, without local paths, account identity or prompt, reply and tool te
 
 | Data | Forwarded by default? | Opt in with |
 |---|---|---|
-| Absolute local paths (`har.repo_path`, `har.work_dir`, `process.cwd`, `code.filepath`, …) | No, Mission Control strips them | `--include-local-paths` |
+| Absolute local paths (every `factory.local.*` key, `process.cwd`, `code.filepath`, …) | No, Mission Control strips them | `--include-local-paths` |
 | Account identity (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) | No, Mission Control strips them | `--include-account-identity` |
 | Logs (at the `full` level they carry prompts, replies and tool input/output) | No, no preset subscribes to logs | `--signals traces,metrics,logs` |
 
@@ -78,31 +80,55 @@ locally as before. The full lists of stripped attributes are in
 [Send telemetry to any OTLP backend](/docs/guides/otlp-backends/#privacy). Proofs
 never contain prompts, stage logs, absolute paths or work unit titles.
 
-## Deprecations
+## Removed telemetry attributes
 
-The `har.*` telemetry attributes are still emitted with the same values. They are
-deprecated, and removal is planned for a future major version. New dashboards and
-queries should use the replacement names:
+HAR 2.0 no longer emits or reads any `har.*` OpenTelemetry attribute. There is no
+dual emission: a dashboard, alert or query that filters on a `har.*` key matches
+nothing after the upgrade. Mission Control reads only the new names, so upgrade
+HAR and Mission Control together (`har control up` after installing 2.0).
 
-| Deprecated | Replacement |
+| Removed (1.x) | 2.0 name |
 |---|---|
+| `har.session_key` | `session.id` (OTel semconv) on the agent session's Resource |
 | `har.work_unit_id` | `factory.work_unit.id` (and `factory.work_unit.source` for the tracker) |
 | `har.attempt_id` | `factory.attempt.id` |
 | `har.branch` | `vcs.ref.head.name` |
-| `har.session_key` | `session.id` on session spans |
-| `har.agent_id` | none yet: the slot number has no standard name |
-| `har.suffix` | none yet |
-| `har.repo_path`, `har.work_dir` | none: local paths, never forwarded by default |
+| `har.agent_id` | `factory.slot.id` |
+| `har.suffix` | removed, nothing read it |
+| `har.repo_path` | `factory.local.checkout_path` |
+| `har.work_dir` | `factory.local.work_dir` |
+| `har.harvest.truncated`, `har.harvest.dropped_events`, `har.harvest.total_events` | `factory.usage.harvest.truncated`, `factory.usage.harvest.dropped_events`, `factory.usage.harvest.total_events` |
+| `har.destination_test` (`har telemetry destination test`) | `factory.telemetry.destination_test` |
+| Instrumentation scope `har.verification` (and `har.telemetry.destination-test`) | Scope `@osfactory/har` |
 
-`factory.producer.name` (`har`), `factory.producer.version` and
-`vcs.repository.url.full` have no `har.*` counterpart.
+`factory.local.*` is a **local-only** namespace: absolute paths and other
+machine-local facts Mission Control needs for attribution. Mission Control strips
+every `factory.local.*` key from each copy it forwards, unless the destination was
+added with `--include-local-paths`.
 
-## Nothing removed
+The agent env file (`.env.agent.<id>`) no longer sets `HAR_SESSION_KEY`: the
+session key travels only as `session.id` in `OTEL_RESOURCE_ATTRIBUTES`.
+`HAR_WORK_UNIT_ID`, `HAR_ATTEMPT_ID` and `HAR_CONTROL_API_URL` are unchanged.
+
+### Agent hooks (`@osfactory/otel-hook`)
+
+The otel-hook package HAR installs (`@osfactory/otel-hook@0.6.0`) still looks for
+`har.session_key` to name the session on each span. With 2.0 it does not find it,
+so span-level `session.id` is the agent's own session id; the HAR session key is on
+the span's Resource as `session.id`, which is where Mission Control reads it. A
+backend that groups by the span attribute groups by agent session instead of HAR
+session until an otel-hook release that reads the Resource `session.id`. To try an
+unreleased otel-hook build, set `HAR_OTEL_HOOKS_PACKAGE` to any spec your package
+manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
+
+## Everything else is unchanged
 
 - No command, flag, config key or MCP tool was renamed or removed. MCP output
   schemas only gained optional fields (for example `proof` on
   `har_run_verification`).
-- HQ sync payloads and Mission Control's OTLP receivers keep their shapes.
+- HQ sync payloads and Mission Control's OTLP receivers keep their shapes. Only the
+  attribute keys inside the synced event and span `attributes` maps change, as in
+  the table above.
 - Proofs and telemetry are fail-open: a missing `git-factory`, a notes error or an
   unreachable destination never blocks verify, a commit or a launch. The commit
   gate is unchanged.

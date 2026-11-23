@@ -1,6 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveHarnessRoot } from '../harness/manifest';
+import {
+  LOCAL_CHECKOUT_PATH_ATTR,
+  LOCAL_WORK_DIR_ATTR,
+  SESSION_ID_ATTR,
+  SLOT_ID_ATTR,
+} from '../harness/schema';
 import { getControlApiUrl } from './control-config';
 import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { getHarPackageVersion } from './package-version';
@@ -31,19 +37,19 @@ function escapeAttrValue(value: string): string {
   return value.replace(/[,=]/g, '_');
 }
 
+/**
+ * Session Resource attributes for an agent HAR launched (telemetry profile):
+ * `session.id` (OTel semconv) correlates everything the session emits,
+ * `factory.slot.id` names the slot, and the local-only `factory.local.*` keys
+ * hold the absolute paths Mission Control needs for attribution.
+ */
 export function buildOtelResourceAttributes(attrs: TelemetrySessionAttrs): string {
   const parts = [
-    `har.session_key=${escapeAttrValue(attrs.sessionKey)}`,
-    `har.agent_id=${attrs.agentId}`,
-    `har.repo_path=${escapeAttrValue(attrs.repoPath)}`,
-    `har.work_dir=${escapeAttrValue(attrs.workDir)}`,
+    `${SESSION_ID_ATTR}=${escapeAttrValue(attrs.sessionKey)}`,
+    `${SLOT_ID_ATTR}=${attrs.agentId}`,
+    `${LOCAL_CHECKOUT_PATH_ATTR}=${escapeAttrValue(attrs.repoPath)}`,
+    `${LOCAL_WORK_DIR_ATTR}=${escapeAttrValue(attrs.workDir)}`,
   ];
-  if (attrs.branch) parts.push(`har.branch=${escapeAttrValue(attrs.branch)}`);
-  if (attrs.suffix) parts.push(`har.suffix=${escapeAttrValue(attrs.suffix)}`);
-  if (attrs.workUnitId) {
-    parts.push(`har.work_unit_id=${escapeAttrValue(attrs.workUnitId)}`);
-  }
-  if (attrs.attemptId) parts.push(`har.attempt_id=${attrs.attemptId}`);
   parts.push(...factoryCorrelationAttributes(attrs));
   return parts.join(',');
 }
@@ -67,8 +73,8 @@ export interface FactoryCorrelationInput {
 }
 
 /**
- * Factory Commits telemetry-profile Resource attributes (#416), emitted
- * alongside the har.* ones with the same values. An unknown value is omitted,
+ * Factory Commits telemetry-profile correlation attributes (#416). An unknown
+ * value is omitted,
  * never sent as an empty string. The single source for these values: agent
  * sessions (OTEL_RESOURCE_ATTRIBUTES) and verification spans both use it, so a
  * backend can join on them.
@@ -141,10 +147,12 @@ export function buildTelemetryEnvBlock(input: TelemetrySessionAttrs): string {
   // Quote every value so the file stays safe to `source` even when a value
   // contains a space or shell metacharacter (e.g. a repo path with a space).
   // quoteShellArg leaves plain tokens unquoted, so ordinary values are unchanged.
+  // The session key travels only as `session.id` in OTEL_RESOURCE_ATTRIBUTES:
+  // no HAR_SESSION_KEY, which otel-hook <= 0.6 turns into a `har.session_key`
+  // resource attribute.
   const lines: string[] = [
     '',
     '# HAR session attribution (generated)',
-    `HAR_SESSION_KEY=${quoteShellArg(attrs.sessionKey)}`,
     ...(attrs.workUnitId ? [`HAR_WORK_UNIT_ID=${quoteShellArg(attrs.workUnitId)}`] : []),
     ...(attrs.attemptId ? [`HAR_ATTEMPT_ID=${quoteShellArg(attrs.attemptId)}`] : []),
     `HAR_CONTROL_API_URL=${quoteShellArg(apiUrl)}`,

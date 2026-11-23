@@ -933,9 +933,9 @@ describe('harvest claude events', () => {
     expect(events[0].sequence).toBe(6);
     expect(events[events.length - 1].sequence).toBe(total);
     expect(events[0].attributes).toEqual({
-      'har.harvest.truncated': true,
-      'har.harvest.dropped_events': 5,
-      'har.harvest.total_events': total,
+      'factory.usage.harvest.truncated': true,
+      'factory.usage.harvest.dropped_events': 5,
+      'factory.usage.harvest.total_events': total,
     });
     expect(events[1].attributes).toBeUndefined();
   });

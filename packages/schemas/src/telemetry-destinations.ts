@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LOCAL_ATTR_PREFIX } from './session-attribution';
 
 /**
  * Machine-level OTLP destinations: third-party backends (an OpenTelemetry
@@ -33,11 +34,13 @@ export const HAR_DESTINATIONS_DIR_ENV = 'HAR_DESTINATIONS_DIR';
  * scope, span, span event/link, log record and metric data point (and exemplar)
  * level — from every copy forwarded to a destination unless that destination
  * sets `includeLocalPaths: true`.
+ *
+ * An entry ending in `*` is a prefix rule: `factory.local.*` strips every key in
+ * the local-only namespace (`attributeKeyDenied`).
  */
 export const TELEMETRY_LOCAL_PATH_ATTRIBUTES = [
-  // HAR session resource attributes (src/core/telemetry-env.ts).
-  'har.repo_path',
-  'har.work_dir',
+  // The local-only namespace HAR's session attributes use (src/core/telemetry-env.ts).
+  `${LOCAL_ATTR_PREFIX}*`,
   // Agent workspace attributes Mission Control reads for attribution.
   'gen_ai.client.workspace',
   'gen_ai.client.repository_root',
@@ -88,6 +91,14 @@ export const TELEMETRY_FORWARD_DENIED_ATTRIBUTES = [
   ...TELEMETRY_LOCAL_PATH_ATTRIBUTES,
   ...TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES,
 ] as const;
+
+/** Whether `key` matches a denied entry: an exact key, or a `prefix.*` rule. */
+export function attributeKeyDenied(key: string, denied: readonly string[]): boolean {
+  for (const entry of denied) {
+    if (entry.endsWith('*') ? key.startsWith(entry.slice(0, -1)) : key === entry) return true;
+  }
+  return false;
+}
 
 /** Whether a destination receives local path attributes (opt-in, default false). */
 export function destinationIncludesLocalPaths(destination: Pick<TelemetryDestination, 'includeLocalPaths'>): boolean {

@@ -314,11 +314,53 @@ describe('resolveSessionContext — no guessing (ADR 0003)', () => {
     expect(context).toMatchObject({ agentId: 2, workspaceSlot: { slotId: 2 } });
   });
 
+  // HAR 2.0: the launch writes its session key as the Resource `session.id`
+  // and its paths under factory.local.*; a record's own `session.id` is the
+  // provider's session (Claude Code native events, otel-hook <= 0.6 spans).
+  const launchResource = {
+    'service.name': 'claude-code',
+    'session.id': 'main-abcd-har-agent-1-xy12',
+    'factory.slot.id': 1,
+    'factory.local.checkout_path': '/home/user/project',
+    'factory.local.work_dir': '/elsewhere/old-slot',
+    'vcs.ref.head.name': 'main-abcd-har-agent-1-xy12',
+  };
+
+  it('keys a record by the Resource session.id and its provider session by the record\'s own', async () => {
+    const { context } = await resolveSessionContext(launchResource, { 'session.id': 'claude-session-1' });
+    expect(context).toMatchObject({
+      repositoryId: 'repo-1',
+      sessionKey: 'main-abcd-har-agent-1-xy12',
+      workDir: '/elsewhere/old-slot',
+      branch: 'main-abcd-har-agent-1-xy12',
+      sessionRef: { agentTool: 'claude_code', sessionId: 'claude-session-1' },
+    });
+  });
+
+  it('never takes the Resource session.id for a provider session', async () => {
+    const { context } = await resolveSessionContext(launchResource, {});
+    expect(context?.sessionKey).toBe('main-abcd-har-agent-1-xy12');
+    expect(context?.sessionRef).toBeUndefined();
+  });
+
+  it('reads no 1.x har.* attribute', async () => {
+    const { context, reason } = await resolveSessionContext(
+      {
+        'service.name': 'claude-code',
+        'har.session_key': 'main-abcd-har-agent-1-xy12',
+        'har.repo_path': '/home/user/project',
+      },
+      {},
+    );
+    expect(context).toBeNull();
+    expect(reason).toMatch(/no repository matched/);
+  });
+
   it('refuses harSessionKey-only attribution when agent tool is unknown', async () => {
     const { context, reason } = await resolveSessionContext(
       {
-        'har.session_key': 'main-abcd-har-agent-1-xy12',
-        'har.repo_path': '/home/user/project',
+        'session.id': 'main-abcd-har-agent-1-xy12',
+        'factory.local.checkout_path': '/home/user/project',
       },
       { 'gen_ai.client.workspace': '/tmp/unrelated-workspace' },
     );
@@ -433,8 +475,8 @@ describe('resolveSessionContext — non-slot git worktrees (ADR 0003, state 2)',
     }
   });
 
-  it('takes the worktree its workspace id matched as the cwd, not a stale har.work_dir', async () => {
-    const stale = { 'har.session_key': 'old-launch', 'har.repo_path': '/gone', 'har.work_dir': '/gone/old-slot' };
+  it('takes the worktree its workspace id matched as the cwd, not a stale factory.local.work_dir', async () => {
+    const stale = { 'session.id': 'old-launch', 'factory.local.checkout_path': '/gone', 'factory.local.work_dir': '/gone/old-slot' };
     const { context, evidence } = await resolveSessionContext(stale, {
       'otelhook.workspace.id': otelWorkspaceIdForPath(inside),
       ...session,

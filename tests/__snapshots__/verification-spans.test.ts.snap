@@ -59,7 +59,7 @@ exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage
       "scopeSpans": [
         {
           "scope": {
-            "name": "har.verification",
+            "name": "@osfactory/har",
             "version": "2.0.0",
           },
           "spans": [

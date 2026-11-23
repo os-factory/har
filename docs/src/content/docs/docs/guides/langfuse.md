@@ -104,7 +104,7 @@ A session span can contain:
 
 A session span never reaches Langfuse with absolute local paths or your account
 identity. Mission Control keeps them for its own attribution, but it removes every
-attribute that holds a local path (`har.repo_path`, `har.work_dir`, `process.cwd`,
+attribute that holds a local path (every `factory.local.*` key, `process.cwd`,
 `code.filepath`, …) or identifies your account (`user.email`, `user.account_uuid`,
 `user.id`, `organization.id`, …) before it spools or sends a copy. Verification
 spans never carry them.

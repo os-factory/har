@@ -1,11 +1,12 @@
 import { createRequire } from 'node:module';
 import * as zlib from 'node:zlib';
-import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, type OtlpSignal } from '@har/schemas';
+import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, attributeKeyDenied, type OtlpSignal } from '@har/schemas';
 
 /**
  * Remove denied attributes from an OTLP/HTTP body before Mission Control
  * forwards a copy of it to a third-party destination: absolute local paths
- * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`) and account identity
+ * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`, including every `factory.local.*` key)
+ * and account identity
  * (`TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES`), per `forwardDeniedAttributes`.
  *
  * Attributes are removed wherever OTLP carries them: resource, instrumentation
@@ -23,7 +24,6 @@ import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, type OtlpSignal } from '@har/schemas';
 export type OtlpBodyHeaders = { contentType: string; contentEncoding?: string };
 export type StrippedOtlpBody = OtlpBodyHeaders & { body: Buffer; removed: number };
 
-const LOCAL_PATHS = new Set<string>(TELEMETRY_LOCAL_PATH_ATTRIBUTES);
 const ATTRIBUTE_FIELDS = new Set(['attributes', 'filteredAttributes']);
 
 type ProtobufType = {
@@ -62,13 +62,20 @@ const CODECS: Record<string, Codec> = {
   br: { decode: (b) => zlib.brotliDecompressSync(b), encode: (b) => zlib.brotliCompressSync(b) },
 };
 
-function mentionsDeniedKey(body: Buffer, denied: ReadonlySet<string>): boolean {
-  for (const key of denied) if (body.includes(Buffer.from(key, 'utf8'))) return true;
+/** A denied key, or a `prefix.*` rule's prefix, appears in the bytes. */
+function mentionsDeniedKey(body: Buffer, denied: readonly string[]): boolean {
+  for (const entry of denied) {
+    const needle = entry.endsWith('*') ? entry.slice(0, -1) : entry;
+    if (body.includes(Buffer.from(needle, 'utf8'))) return true;
+  }
   return false;
 }
 
 /** Filter every `attributes` / `filteredAttributes` list in place; returns how many entries were removed. */
-export function removeDeniedAttributes(node: unknown, denied: ReadonlySet<string> = LOCAL_PATHS): number {
+export function removeDeniedAttributes(
+  node: unknown,
+  denied: readonly string[] = TELEMETRY_LOCAL_PATH_ATTRIBUTES,
+): number {
   if (node === null || typeof node !== 'object' || ArrayBuffer.isView(node)) return 0;
   if (Array.isArray(node)) return node.reduce((sum: number, item) => sum + removeDeniedAttributes(item, denied), 0);
   const record = node as Record<string, unknown>;
@@ -78,7 +85,7 @@ export function removeDeniedAttributes(node: unknown, denied: ReadonlySet<string
     if (ATTRIBUTE_FIELDS.has(field) && Array.isArray(value)) {
       const kept = value.filter((kv) => {
         const key = kv && typeof kv === 'object' ? (kv as { key?: unknown }).key : undefined;
-        return !(typeof key === 'string' && denied.has(key));
+        return !(typeof key === 'string' && attributeKeyDenied(key, denied));
       });
       removed += value.length - kept.length;
       if (kept.length !== value.length) record[field] = kept;
@@ -102,16 +109,16 @@ export function stripLocalPathAttributes(
   return stripDeniedAttributes(signal, original, headers, TELEMETRY_LOCAL_PATH_ATTRIBUTES);
 }
 
-/** Strip the given attribute keys; an empty list returns the original body. */
+/** Strip the given attribute keys (`prefix.*` entries match a namespace); an empty list returns the original body. */
 export function stripDeniedAttributes(
   signal: OtlpSignal,
   original: Buffer,
   headers: OtlpBodyHeaders,
   deniedKeys: readonly string[],
 ): StrippedOtlpBody | null {
-  const denied = new Set(deniedKeys);
+  const denied = deniedKeys;
   const unchanged: StrippedOtlpBody = { ...headers, body: original, removed: 0 };
-  if (denied.size === 0) return unchanged;
+  if (denied.length === 0) return unchanged;
   const encoding = (headers.contentEncoding ?? 'identity').trim().toLowerCase() || 'identity';
   const codec = CODECS[encoding];
   // An encoding we cannot read may hide anything: do not forward it.

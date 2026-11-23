@@ -1,5 +1,6 @@
 import {
   AgentSessionRefSchema,
+  SESSION_ID_ATTR,
   SUBAGENT_ID_ATTR,
   TARGET_BRANCH_ATTR,
   TARGET_REPOSITORY_ID_ATTR,
@@ -58,8 +59,29 @@ function int(value: unknown): number {
 }
 
 /**
+ * The launch's session key: the Resource `session.id` HAR puts on every agent
+ * session it launches (`OTEL_RESOURCE_ATTRIBUTES`). Empty when none was set.
+ */
+export function harnessSessionKey(resource: OtelAttrs): string {
+  const raw = resource[SESSION_ID_ATTR];
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+/**
+ * A Resource without the launch's `session.id`, for provider session lookups:
+ * that key names the HAR session, never the provider's, so it must not stand
+ * in for a record that carries no provider session id of its own.
+ */
+export function providerResource(resource: OtelAttrs): OtelAttrs {
+  if (!(SESSION_ID_ATTR in resource)) return resource;
+  const rest: OtelAttrs = {};
+  for (const [key, value] of Object.entries(resource)) if (key !== SESSION_ID_ATTR) rest[key] = value;
+  return rest;
+}
+
+/**
  * Provider session ids, most specific first. otel-hook puts a HAR session key
- * on `session.id` when one is configured and keeps the provider's own id on
+ * on a record's `session.id` when one is configured and keeps the provider's own id on
  * `otelhook.session.id` / `gen_ai.conversation.id`; Claude Code native events
  * carry it on `session.id`; Codex native events on `conversation.id`.
  */
@@ -125,7 +147,7 @@ export function isUsageOnlyLogRecord(record: OtelLogLike): boolean {
 export function claudeApiRequestObservation(record: OtelLogLike): ObservationInput | null {
   if (!eventIs(record, 'claude_code.api_request')) return null;
   const attrs = record.attributes;
-  const ref = providerSessionRef('claude_code', attrs, record.resource);
+  const ref = providerSessionRef('claude_code', attrs, providerResource(record.resource));
   if (!ref) return null;
   const requestId = str([attrs], ['request_id', 'client_request_id']);
   const observedAt = isoAttr(attrs['event.timestamp']) ?? record.timestamp;
@@ -168,7 +190,7 @@ function isCodexCompletedResponse(record: OtelLogLike): boolean {
 export function codexSseObservation(record: OtelLogLike): ObservationInput | null {
   if (!isCodexCompletedResponse(record)) return null;
   const attrs = record.attributes;
-  const ref = providerSessionRef('codex', attrs, record.resource);
+  const ref = providerSessionRef('codex', attrs, providerResource(record.resource));
   if (!ref) return null;
   const input = int(attrs.input_token_count);
   const cached = Math.min(int(attrs.cached_token_count), input);
@@ -222,7 +244,7 @@ export function otelHookGenerationObservation(
   const attrs = span.attributes;
   const hasUsage = Object.keys(attrs).some((key) => key.startsWith('gen_ai.usage.'));
   if (!hasUsage) return null;
-  const ref = providerSessionRef(agentTool, attrs, span.resource);
+  const ref = providerSessionRef(agentTool, attrs, providerResource(span.resource));
   if (!ref) return null;
   const input = int(attrs['gen_ai.usage.input_tokens'] ?? attrs['gen_ai.usage.prompt_tokens']);
   const cacheRead = int(attrs['gen_ai.usage.cache_read.input_tokens']);
@@ -595,8 +617,8 @@ export async function repositoryOfPlaceAt(ref: AgentSessionRef, at: Date): Promi
 
 /**
  * Repository of a provider session's hook span: its latest at or before `at`,
- * else its first. A span is keyed by the session id unless a `har.session_key`
- * (a slot's, or a stale one) named it, so its session attributes match too.
+ * else its first. A span is keyed by the session id unless a launch's session
+ * key (a slot's, or a stale one) named it, so its session attributes match too.
  */
 async function sessionSpanRepository(ref: AgentSessionRef, at?: Date): Promise<string | null> {
   const sameSession = Prisma.sql`(sessionKey = ${ref.sessionId}

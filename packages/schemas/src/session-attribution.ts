@@ -53,6 +53,20 @@ export const TARGET_WORKTREE_KIND_ATTR = 'otelhook.target.worktree.kind';
 /** The provider's own subagent id (Claude `agent_id`, Cursor subagent conversation id). */
 export const SUBAGENT_ID_ATTR = 'otelhook.subagent.id';
 
+/**
+ * Resource attributes HAR puts on every agent session it launches
+ * (`OTEL_RESOURCE_ATTRIBUTES`, Factory Commits telemetry profile). The Resource
+ * `session.id` is the launch's session key; a record's own `session.id` is the
+ * provider's session. `factory.local.*` is local-only: absolute paths Mission
+ * Control reads for attribution and strips from every forwarded copy unless a
+ * destination sets `includeLocalPaths`.
+ */
+export const SESSION_ID_ATTR = 'session.id';
+export const SLOT_ID_ATTR = 'factory.slot.id';
+export const LOCAL_ATTR_PREFIX = 'factory.local.';
+export const LOCAL_CHECKOUT_PATH_ATTR = `${LOCAL_ATTR_PREFIX}checkout_path`;
+export const LOCAL_WORK_DIR_ATTR = `${LOCAL_ATTR_PREFIX}work_dir`;
+
 /** Identity of one agent context: a session, or one subagent inside it. */
 export const AgentSessionRefSchema = z.object({
   agentTool: AgentToolSchema,

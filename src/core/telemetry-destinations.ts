@@ -211,8 +211,8 @@ export function buildTestPayload(signal: OtlpSignal, now = Date.now()): Record<s
   const resource = {
     attributes: [{ key: 'service.name', value: { stringValue: 'har' } }],
   };
-  const scope = { name: 'har.telemetry.destination-test' };
-  const attributes = [{ key: 'har.destination_test', value: { boolValue: true } }];
+  const scope = { name: '@osfactory/har' };
+  const attributes = [{ key: 'factory.telemetry.destination_test', value: { boolValue: true } }];
   if (signal === 'traces') {
     return {
       resourceSpans: [
@@ -270,7 +270,7 @@ export function buildTestPayload(signal: OtlpSignal, now = Date.now()): Record<s
             scope,
             metrics: [
               {
-                name: 'har.destination_test',
+                name: 'factory.telemetry.destination_test',
                 gauge: { dataPoints: [{ timeUnixNano: nanos(now), asInt: '1', attributes }] },
               },
             ],
