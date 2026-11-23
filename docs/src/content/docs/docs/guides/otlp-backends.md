@@ -121,24 +121,29 @@ already stripped unless you added the destination with `--include-local-paths` o
 Mission Control forwards from inside its container, where `localhost` is the
 container itself. `destination test` runs from your terminal, so it can pass against
 `http://localhost:4318` while forwarding fails. For a Collector on the same machine,
-use an address the container can reach: `http://host.docker.internal:4318` on
-Docker Desktop, or the Docker bridge address (usually `http://172.17.0.1:4318`) on
-Linux, with the Collector listening on `0.0.0.0`.
+use `http://host.docker.internal:4318`, with the Collector listening on `0.0.0.0`.
+Docker Desktop resolves that name, and on Linux `har control up` adds it to the
+container (`--add-host=host.docker.internal:host-gateway`). A container started by an
+older HAR lacks it: run `har control down`, then `har control up`.
 :::
 
 ## How forwarding works
 
-Agent session telemetry goes through Mission Control:
+Agent session telemetry goes through Mission Control, which receives OTLP on
+`grpc://localhost:4317` and `http://localhost:3847/api/otel` (see
+[Receive OpenTelemetry](/docs/guides/mission-control/#receive-opentelemetry-otlp)).
+Anything that exports OTLP can send there and be forwarded with HAR's own sessions:
 
 - **OTLP as received, minus local paths and account identity.** Each receiver
-  (`/api/otel/v1/traces`, `/logs`, `/metrics`) first stores the data for Mission
+  (`/api/otel/v1/traces`, `/logs`, `/metrics`, and the gRPC `Export` services) first stores the data for Mission
   Control. Then it forwards the request, with its content type and encoding, to
   every enabled destination subscribed to that signal. Before a copy is spooled,
   Mission Control removes the attributes that hold absolute local paths or identify
   your account (see [Privacy](#privacy)). A body that
   has none is forwarded byte for byte. One that has some is decoded, filtered and
   re-encoded in the same format and encoding. A body that may hold one but cannot be
-  decoded is not forwarded. Forwarding never changes the receiver's response, so a
+  decoded is not forwarded. Data received over gRPC is forwarded as OTLP/HTTP
+  protobuf. Forwarding never changes the receiver's response, so a
   slow or failing destination never slows an agent down.
 - **Durable spool.** Each copy is written to a spool on Mission Control's data
   volume before it is sent, so a queued copy is kept across a Mission Control

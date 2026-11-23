@@ -27,6 +27,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@grpc/grpc-js": "^1.14.7",
     "@har/schemas": "file:../packages/schemas",
     "@headless-tree/core": "^1.7.0",
     "@headless-tree/react": "^1.7.0",

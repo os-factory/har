@@ -22,6 +22,35 @@ har control up --build
 
 Stop it with `har control down`.
 
+## Receive OpenTelemetry (OTLP)
+
+Mission Control is a standard OTLP receiver. Point any OpenTelemetry SDK, agent or
+Collector at it, with JSON or protobuf:
+
+| Transport | Endpoint |
+|---|---|
+| OTLP/gRPC | `grpc://localhost:4317` (the OTLP default) |
+| OTLP/HTTP | `http://localhost:3847/api/otel` (`/v1/traces`, `/v1/metrics`, `/v1/logs`) |
+
+```bash
+# gRPC
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+# or HTTP
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3847/api/otel
+```
+
+`har control up` prints both endpoints. It publishes the gRPC port on `4317`; set
+`HAR_CONTROL_OTLP_GRPC_PORT` to use another host port, or `off` to not publish it.
+If the port is already taken, `up` prints a hint and starts without it: OTLP/HTTP
+keeps working.
+
+Responses follow the OTLP spec: every export is answered `200` with an
+`Export*ServiceResponse` in the request's encoding. Records Mission Control cannot
+attribute to a registered repository are not stored. They are counted in
+`partial_success` (`rejected_spans`, `rejected_data_points`, `rejected_log_records`)
+with a short `error_message`, and are still forwarded to your
+[destinations](/docs/guides/otlp-backends/).
+
 ## Register and sync
 
 Onboarding a repository remembers it for synchronization. You can also register

@@ -7,7 +7,7 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { addPlugin, describeProject, initHarness, maintainHarness } from '../core/harness';
-import { startControlAndSync } from '../core/control-lifecycle';
+import { controlOtlpEndpoints, startControlAndSync } from '../core/control-lifecycle';
 import { getHarPackageVersion } from '../core/package-version';
 import { detectDockerStatus, formatDockerRequirementWarning } from '../core/docker-status';
 import { ensureDefaultTelemetryPreference } from '../core/telemetry-config';
@@ -845,12 +845,15 @@ export async function handleMcpToolCall(
           isError: true,
         };
       }
+      const otlp = controlOtlpEndpoints(result.apiUrl, result.otlpGrpc?.hostPort ?? null);
       return jsonContent(
         ControlUpOutputSchema.parse({
           apiUrl: result.apiUrl,
           synced: result.synced,
           failed: result.failed,
           apiReady: result.apiReady,
+          otlpHttpUrl: otlp.http,
+          ...(otlp.grpc ? { otlpGrpcUrl: otlp.grpc } : {}),
         }),
       );
     }
