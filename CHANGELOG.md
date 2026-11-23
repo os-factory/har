@@ -1,3 +1,9 @@
+## [1.30.4](https://github.com/os-factory/har/compare/v1.30.3...v1.30.4) (2026-11-23)
+
+### Bug Fixes
+
+* **ios:** report xcodebuild status, keep failure tail, skip test diagnostics ([#472](https://github.com/os-factory/har/issues/472)) ([f322c8b](https://github.com/os-factory/har/commit/f322c8b272c38d24465ae97a210619f03bf25e21)), closes [#368](https://github.com/os-factory/har/issues/368) [#359](https://github.com/os-factory/har/issues/359)
+
 ## [1.30.3](https://github.com/os-factory/har/compare/v1.30.2...v1.30.3) (2026-11-23)
 
 ### Bug Fixes
