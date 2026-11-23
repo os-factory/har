@@ -1,3 +1,9 @@
+## [1.30.2](https://github.com/os-factory/har/compare/v1.30.1...v1.30.2) (2026-11-23)
+
+### Bug Fixes
+
+* **deps:** migrate to zod 4.6.7 for GHSA-mrhx-c7xc-m3w5 ([#442](https://github.com/os-factory/har/issues/442)) ([e64f036](https://github.com/os-factory/har/commit/e64f0366a7d51a53b58b81e0062c40443816e379))
+
 ## [1.30.1](https://github.com/os-factory/har/compare/v1.30.0...v1.30.1) (2026-11-23)
 
 ### Bug Fixes
