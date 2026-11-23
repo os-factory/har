@@ -1,3 +1,9 @@
+## [1.30.5](https://github.com/os-factory/har/compare/v1.30.4...v1.30.5) (2026-11-23)
+
+### Bug Fixes
+
+* **status:** make har env status cheap enough to poll ([#474](https://github.com/os-factory/har/issues/474)) ([46c1805](https://github.com/os-factory/har/commit/46c1805d9806d2bb59275ea82fc8c9fb2f805f6d))
+
 ## [1.30.4](https://github.com/os-factory/har/compare/v1.30.3...v1.30.4) (2026-11-23)
 
 ### Bug Fixes
