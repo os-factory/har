@@ -317,6 +317,49 @@ describe('doctor node-toolchain check', () => {
     expect(text).toContain('· next launch pins: v24.14.0 (nvm,');
   });
 
+  it('flags a slot whose NODE_BIN satisfies but whose PATH runs an older node', () => {
+    const { root, home, nvm, pathNode } = nodeFixture();
+    const pinned = path.join(nvm, 'v24.14.0', 'bin', 'node');
+    const workDir = tmp('har-node-slot-');
+    fs.writeFileSync(
+      path.join(workDir, '.env.agent.1'),
+      `NODE_BIN=${pinned}\nPATH=${path.dirname(pathNode)}:/usr/bin\n`,
+    );
+    writeJson(path.join(root, '.har', 'slots', 'agent-1.json'), {
+      version: 1,
+      agentId: 1,
+      projectName: 'fixture',
+      mode: 'worktree',
+      workDir,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    });
+
+    const report = runDoctor(root, { node: { ...discovery(home), pathNodeBin: pathNode } });
+    expect(report.nodeToolchain?.slots).toEqual([
+      expect.objectContaining({
+        agentId: 1,
+        version: 'v24.14.0',
+        pathNode: { nodeBin: pathNode, version: 'v22.22.2' },
+        satisfies: false,
+      }),
+    ]);
+    const finding = report.findings.find((f) => f.check === 'node-toolchain');
+    expect(finding?.message).toContain('its PATH resolves `node` to v22.22.2');
+    expect(finding?.remedy).toContain(`prepend ${path.join(nvm, 'v24.14.0', 'bin')}: to PATH`);
+    expect(formatDoctorReport(report)).toContain(`PATH node v22.22.2 (${pathNode})`);
+
+    // Pinned dir first on PATH: NODE_BIN and the stage node are the same binary.
+    fs.writeFileSync(
+      path.join(workDir, '.env.agent.1'),
+      `NODE_BIN=${pinned}\nPATH=${path.dirname(pinned)}:${path.dirname(pathNode)}\n`,
+    );
+    const fixed = runDoctor(root, { node: { ...discovery(home), pathNodeBin: pathNode } });
+    expect(fixed.nodeToolchain?.slots).toEqual([
+      { agentId: 1, envFile: path.join(workDir, '.env.agent.1'), nodeBin: pinned, version: 'v24.14.0', satisfies: true },
+    ]);
+  });
+
   it('skips when the harness declares no Node requirement', () => {
     const root = tmp('har-node-none-');
     fs.mkdirSync(path.join(root, '.har'));

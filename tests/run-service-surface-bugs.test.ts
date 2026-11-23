@@ -182,3 +182,44 @@ describe('teardown closes the open work attempt (#228)', () => {
     expect(workUnit?.outcome?.decision).toBe('completed');
   }, 20_000);
 });
+
+describe('run-stage runs project stages in the launched slot', () => {
+  function addStages(repoPath: string): void {
+    const file = path.join(repoPath, '.har', 'stages.json');
+    const registry = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const probe = 'printf "%s|%s|%s|%s" "$PWD" "${WORK_DIR:-}" "${SLOT_MARK:-}" "$AGENT_ID"';
+    registry.stages.push(
+      { id: 'probe-cmd', kind: 'test', command: `${probe} > probe-cmd.out`, requiresAgentId: true },
+      { id: 'probe-script', kind: 'test', script: 'stages/probe.sh', requiresAgentId: true },
+    );
+    fs.writeFileSync(file, JSON.stringify(registry, null, 2));
+    fs.writeFileSync(path.join(repoPath, '.har', 'stages', 'probe.sh'), `#!/usr/bin/env bash\n${probe} > probe-script.out\n`);
+  }
+
+  it('sources .env.agent.<id> and runs from the work dir, like verify', async () => {
+    const tempRepo = makeTempRepo();
+    addStages(tempRepo);
+    const workDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'har-run-stage-slot-')));
+    fs.writeFileSync(path.join(workDir, '.env.agent.1'), 'SLOT_MARK=from-env-file\n');
+    writeSlotRegistryEntry(tempRepo, 1, { mode: 'worktree', workDir });
+
+    for (const stageId of ['probe-cmd', 'probe-script']) {
+      const result = await runStage({ repoPath: tempRepo, stageId, agentId: 1, capture: true });
+      expect(result.status).toBe('pass');
+      expect(fs.readFileSync(path.join(workDir, `${stageId}.out`), 'utf8')).toBe(
+        `${workDir}|${workDir}|from-env-file|1`,
+      );
+      expect(fs.existsSync(path.join(tempRepo, `${stageId}.out`))).toBe(false);
+    }
+  }, 20_000);
+
+  it('keeps running from the repo when the slot has no env file', async () => {
+    const tempRepo = makeTempRepo();
+    addStages(tempRepo);
+    const result = await runStage({ repoPath: tempRepo, stageId: 'probe-cmd', agentId: 1, capture: true });
+    expect(result.status).toBe('pass');
+    const [cwd, , mark] = fs.readFileSync(path.join(tempRepo, 'probe-cmd.out'), 'utf8').split('|');
+    expect(fs.realpathSync(cwd)).toBe(fs.realpathSync(tempRepo));
+    expect(mark).toBe('');
+  }, 20_000);
+});

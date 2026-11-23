@@ -23,7 +23,7 @@ import {
   PlanNodeToolchainOptions,
   unmetNodeRequirements,
 } from './node-toolchain';
-import { probeNodeVersion } from '../utils/node-installs';
+import { findPathNode, probeNodeVersion } from '../utils/node-installs';
 
 /**
  * `har env doctor` — harness contract validation (#232).
@@ -82,7 +82,18 @@ export interface DoctorNodeToolchain {
   choice: NodeToolchainChoice;
   /** The Node the next launch would pin. */
   nextLaunch: { version: string | null; nodeBin: string; source: string } | null;
-  slots: { agentId: number; envFile: string; nodeBin: string; version: string | null; satisfies: boolean }[];
+  slots: {
+    agentId: number;
+    envFile: string;
+    nodeBin: string;
+    version: string | null;
+    /**
+     * The `node` stage commands actually resolve from the env file's PATH,
+     * when it is a different binary than NODE_BIN.
+     */
+    pathNode?: { nodeBin: string; version: string | null };
+    satisfies: boolean;
+  }[];
 }
 
 export interface DoctorReport {
@@ -636,6 +647,14 @@ function readEnvFileValue(envFile: string, key: string): string | null {
   return value;
 }
 
+function sameFile(a: string, b: string): boolean {
+  try {
+    return fs.realpathSync(a) === fs.realpathSync(b);
+  } catch {
+    return a === b;
+  }
+}
+
 function checkNodeToolchain(
   repoPath: string,
   findings: DoctorFinding[],
@@ -664,8 +683,26 @@ function checkNodeToolchain(
     if (!nodeBin || !path.isAbsolute(nodeBin)) continue;
     const version = probeNodeVersion(nodeBin);
     const unmet = version ? unmetNodeRequirements(version, reqs) : reqs;
-    slots.push({ agentId: entry.agentId, envFile, nodeBin, version, satisfies: unmet.length === 0 });
-    if (unmet.length === 0) continue;
+    // Stage commands run a bare `node` off the env file's PATH, not NODE_BIN:
+    // a hand-edited env file can pin one and still run the other.
+    const envPath = readEnvFileValue(envFile, 'PATH');
+    const pathBin = envPath ? findPathNode({ PATH: envPath }) : null;
+    const stageNode =
+      pathBin && !sameFile(pathBin, nodeBin) ? { nodeBin: pathBin, version: probeNodeVersion(pathBin) } : null;
+    const stageUnmet = stageNode
+      ? stageNode.version
+        ? unmetNodeRequirements(stageNode.version, reqs)
+        : reqs
+      : [];
+    slots.push({
+      agentId: entry.agentId,
+      envFile,
+      nodeBin,
+      version,
+      ...(stageNode ? { pathNode: stageNode } : {}),
+      satisfies: unmet.length === 0 && stageUnmet.length === 0,
+    });
+    if (unmet.length === 0 && stageUnmet.length === 0) continue;
     const envRel = path.relative(repoPath, envFile) || envFile;
     const edit =
       pinned && pinned.source !== 'path'
@@ -673,11 +710,15 @@ function checkNodeToolchain(
         : pinned
           ? `, or edit ${envFile}: set NODE_BIN=${pinned.nodeBin}`
           : '';
+    const message =
+      unmet.length > 0
+        ? `Slot ${entry.agentId} pins node ${version ?? `of unknown version (${nodeBin})`}, which does not satisfy ${describeRequirements(unmet)}`
+        : `Slot ${entry.agentId} pins NODE_BIN ${version ?? nodeBin}, but its PATH resolves \`node\` to ${stageNode?.version ?? 'an unknown version'} (${stageNode?.nodeBin}), which does not satisfy ${describeRequirements(stageUnmet)} — stage commands run that one`;
     findings.push({
       check: 'node-toolchain',
       severity: 'warning',
       file: envRel.startsWith('..') ? envFile : envRel,
-      message: `Slot ${entry.agentId} pins node ${version ?? `of unknown version (${nodeBin})`}, which does not satisfy ${describeRequirements(unmet)}`,
+      message,
       remedy: pinned
         ? `Relaunch the slot (\`har env complete ${entry.agentId}\` / \`teardown\`, then \`har env launch ${entry.agentId}\`) so it pins ${pinned.version ?? pinned.nodeBin}${edit}`
         : nodeInstallRemedy(reqs),
@@ -713,7 +754,12 @@ function nodeToolchainDetails(node: DoctorNodeToolchain): string[] {
     lines.push('next launch pins: nothing satisfies — keeps the PATH node');
   }
   for (const slot of node.slots) {
-    lines.push(`slot ${slot.agentId}: node ${slot.version ?? 'unknown'} ${slot.satisfies ? '✓' : '✗'} (${slot.nodeBin})`);
+    const onPath = slot.pathNode
+      ? `; PATH node ${slot.pathNode.version ?? 'unknown'} (${slot.pathNode.nodeBin})`
+      : '';
+    lines.push(
+      `slot ${slot.agentId}: node ${slot.version ?? 'unknown'} ${slot.satisfies ? '✓' : '✗'} (${slot.nodeBin}${onPath})`,
+    );
   }
   return lines;
 }
