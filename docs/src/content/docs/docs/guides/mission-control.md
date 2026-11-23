@@ -385,6 +385,25 @@ Projected **spans** ride along with telemetry rather than with this opt-in: they
 carry call structure and timing, and their attributes were already redacted when
 the span was projected.
 
+### Verification runs
+
+`har env verify` posts its verification trace to Mission Control's OTLP receiver
+when Mission Control is running (see
+[How verification traces are delivered](/docs/guides/otlp-backends/#how-verification-traces-are-delivered)).
+Mission Control recognizes the run span (instrumentation scope `@osfactory/har`
+with `cicd.pipeline.run.id`) and stores it as a verification run with its stage
+spans: run id (the validation id), tree, verdict, result, attestation digest, trace
+id, work unit, attempt, branch, start and end, and each stage's result. The run is
+attributed to its repository by the Resource `factory.local.checkout_path`, or, for
+a copy the CLI queued while Mission Control was down, by `vcs.repository.url.full`
+matched against the repository's git remote. A trace delivered twice is stored once.
+
+`GET /api/repos/<id>/verification-runs` lists a repository's runs with their
+stages, paged on `since` / `sinceId` like the other repository reads. The HQ sync
+sends them as the optional `verificationRuns` collection of `/api/sync`, with its
+own watermark, whenever telemetry is on. There is no dedicated page in the
+dashboard yet.
+
 ## Local development
 
 Mission Control's source has its own harness:

@@ -28,8 +28,13 @@ har env verify 1 --full
   Datadog, …). Mission Control forwards what its receivers accept, through a durable
   spool with retry. Nothing leaves the machine until you add a destination.
 - **Verification spans.** Each `har env verify` emits a `cicd.pipeline.run` span
-  with one task span per stage to every destination subscribed to `traces`. They
-  carry ids, results and timings only.
+  with one task span per stage. They carry ids, results and timings only. When
+  Mission Control is running, the trace goes through it: Mission Control stores it
+  as a verification run, syncs it to HQ, and forwards it to every destination
+  subscribed to `traces`. Otherwise the CLI sends it to the destinations itself and
+  queues failures in `~/.har/spool/traces` for a retry at the next verify or launch,
+  or `har telemetry destination flush`. See
+  [How verification traces are delivered](/docs/guides/otlp-backends/#how-verification-traces-are-delivered).
 - **Semantic-convention attributes.** Agent sessions and verification traces carry
   `factory.*`, `vcs.*`, `cicd.*` and `gen_ai.*` attributes from the Factory Commits
   [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md),
@@ -125,10 +130,12 @@ manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
 
 - No command, flag, config key or MCP tool was renamed or removed. MCP output
   schemas only gained optional fields (for example `proof` on
-  `har_run_verification`).
+  `har_run_verification`). `har telemetry destination flush` is new.
 - HQ sync payloads and Mission Control's OTLP receivers keep their shapes. Only the
   attribute keys inside the synced event and span `attributes` maps change, as in
-  the table above.
+  the table above. `/api/sync` gains one optional top-level collection,
+  `verificationRuns` (each run with its stages), which receivers that don't know it
+  ignore. `/api/otel` bodies are unchanged.
 - Proofs and telemetry are fail-open: a missing `git-factory`, a notes error or an
   unreachable destination never blocks verify, a commit or a launch. The commit
   gate is unchanged.

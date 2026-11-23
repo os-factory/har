@@ -30,6 +30,8 @@ import {
   type TelemetryDestinationPreset,
 } from '../../harness/schema';
 import { error, header, info, success, warn } from '../../utils/logging';
+import { countSpooledPayloads } from '../../core/telemetry-spool';
+import { flushVerificationTraceSpool } from '../../core/verification-spans';
 
 export interface DestinationAddArgs {
   name: string;
@@ -173,6 +175,30 @@ async function handleTest(argv: { name: string; json: boolean }): Promise<void> 
   if (!result.ok) process.exitCode = 1;
 }
 
+async function handleFlush(argv: { json: boolean }): Promise<void> {
+  const queued = countSpooledPayloads();
+  // Everything due, with a longer budget than the flush at the start of verify / launch.
+  const result = (await flushVerificationTraceSpool({ budgetMs: 30_000, maxSends: 1_000 })) ?? {
+    sent: 0,
+    retried: 0,
+    dropped: 0,
+    pending: queued,
+  };
+  if (argv.json) {
+    process.stdout.write(`${JSON.stringify({ queued, ...result }, null, 2)}\n`);
+    return;
+  }
+  header('har telemetry destination flush');
+  if (queued === 0) {
+    info('Nothing queued: every verification trace was delivered.');
+    return;
+  }
+  info(`${queued} queued, ${result.sent} sent, ${result.retried} to retry, ${result.dropped} dropped, ${result.pending} left`);
+  if (result.retried > 0 || result.pending > 0) {
+    warn('Some traces are still queued; they are retried at the next verify or launch (kept up to 24 h).');
+  }
+}
+
 function run(fn: () => void | Promise<void>): void {
   try {
     void Promise.resolve(fn()).catch((err: unknown) => {
@@ -256,6 +282,12 @@ export const telemetryDestinationCommand = {
             .option('json', { type: 'boolean', default: false }),
         (argv) => run(() => handleTest({ name: argv.name as string, json: argv.json as boolean })),
       )
-      .demandCommand(1, 'Please specify a subcommand: add, list, remove, test'),
+      .command(
+        'flush',
+        'Retry verification traces queued while a destination or Mission Control was down',
+        (y: Argv) => y.option('json', { type: 'boolean', default: false }),
+        (argv) => run(() => handleFlush({ json: argv.json as boolean })),
+      )
+      .demandCommand(1, 'Please specify a subcommand: add, list, remove, test, flush'),
   handler: () => {},
 };

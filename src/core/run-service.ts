@@ -53,7 +53,8 @@ import {
 import { StageResult, ValidationRecord, VerificationResult } from '../harness/schema';
 import {
   collectVerificationTraceInput,
-  exportVerificationTrace,
+  deliverVerificationTrace,
+  flushVerificationTraceSpool,
   verificationTraceId,
   willExportVerificationSpans,
   type VerificationTraceInput,
@@ -213,6 +214,9 @@ export class RunService {
           : undefined,
       };
     }
+
+    // Opportunistic retry of spooled verification traces; bounded, fail-open.
+    await flushVerificationTraceSpool();
 
     // Doctor contract validation runs before every launch (#232) so a broken
     // adaptation is caught here, not mid-session. Pre-1.0 harnesses degrade
@@ -399,6 +403,8 @@ export class RunService {
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
   }): Promise<VerificationRunResult> {
+    // Opportunistic retry of traces an earlier verify could not deliver; bounded, fail-open.
+    await flushVerificationTraceSpool();
     const args = options.full ? ['--full'] : undefined;
     const result = await this.runStage({
       repoPath: options.repoPath,
@@ -496,7 +502,9 @@ export class RunService {
 
     // OTel CI/CD spans to the user's own trace destinations, after the result
     // is final. Fail-open and bounded; no destination → no work at all.
-    const spanExport = await exportVerificationTrace(() =>
+    // Through Mission Control when it is running (it stores, syncs to HQ and
+    // forwards), else straight to the destinations with a retry spool.
+    const delivered = await deliverVerificationTrace(() =>
       this.verificationTraceInput(
         options,
         verification,
@@ -505,7 +513,8 @@ export class RunService {
         proof?.status === 'attested' ? proof.digest : undefined,
       ),
     );
-    if (spanExport) runResult.spanExport = spanExport;
+    if (delivered.spanExport) runResult.spanExport = delivered.spanExport;
+    if (delivered.delivery) runResult.traceDelivery = delivered.delivery;
     return runResult;
   }
 
