@@ -281,6 +281,17 @@ describe('exportVerificationTrace', () => {
     expect(willExportVerificationSpans(env)).toBe(false);
   });
 
+  it('willExportVerificationSpans is true when Mission Control will receive the trace, even with no destination', () => {
+    expect(willExportVerificationSpans(env)).toBe(false);
+    expect(willExportVerificationSpans({ ...env, HAR_TEST_VERIFICATION_TRACE_CONTROL: 'on' })).toBe(true);
+    process.env.HAR_CONTROL_DISABLED = 'true';
+    try {
+      expect(willExportVerificationSpans({ ...env, HAR_TEST_VERIFICATION_TRACE_CONTROL: 'on' })).toBe(false);
+    } finally {
+      delete process.env.HAR_CONTROL_DISABLED;
+    }
+  });
+
   it('does nothing without destinations', async () => {
     const fetchImpl = okFetch();
     const resolve = jest.fn(() => sampleInput());

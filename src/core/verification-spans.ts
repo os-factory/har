@@ -332,13 +332,15 @@ async function postTrace(
 }
 
 /**
- * Whether a verification trace will be exported: telemetry is not off and at
- * least one enabled destination subscribes to `traces`. Cheap (reads one small
- * config file), never throws. A proof only names a trace when this is true.
+ * Whether a verification trace will be exported: telemetry is not off, and
+ * Mission Control is enabled (it receives the trace now, or later from the
+ * spool) or at least one enabled destination subscribes to `traces`. Cheap,
+ * never throws. A proof only names a trace when this is true.
  */
 export function willExportVerificationSpans(env?: NodeJS.ProcessEnv): boolean {
   try {
     if (!isTelemetryEnabled()) return false;
+    if (verificationTraceControlUrl(env ?? process.env) !== undefined) return true;
     return destinationsForSignal(readTelemetryDestinations(env), 'traces').length > 0;
   } catch {
     return false;
@@ -446,7 +448,10 @@ export function verificationTraceControlUrl(env: NodeJS.ProcessEnv = process.env
   // Unit tests never reach a developer's running Mission Control by accident
   // (a slot's env file sets HAR_CONTROL_API_URL to the live one): only a test
   // that opts in routes through it.
-  if (env.NODE_ENV === 'test' && env[VERIFICATION_TRACE_CONTROL_TEST_ENV] !== 'on') return undefined;
+  // The guard checks the real process too: a caller-supplied env without
+  // NODE_ENV must not bypass it while a test runner is running.
+  const underTest = env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test';
+  if (underTest && env[VERIFICATION_TRACE_CONTROL_TEST_ENV] !== 'on') return undefined;
   return getControlApiUrl().replace(/\/+$/, '');
 }
 
