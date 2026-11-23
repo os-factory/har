@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { defaultExec, ExecFn, LogFn, SleepFn, realSleep } from './exec';
+import { pm2Argv } from '../utils/pm2';
 
 /**
  * Package-side PM2 process runtime (#234) — the TS home of launch.sh's
@@ -72,14 +73,14 @@ export function generateEcosystemConfig(options: EcosystemConfigOptions): string
 export interface Pm2Options {
   projectName: string;
   agentId: number;
-  /** har_pkg_exec prefix, e.g. ["npx"]. */
-  pkgExecPrefix?: string[];
+  /** argv that runs pm2 (defaults to HAR's bundled pm2, see utils/pm2). */
+  pm2Argv?: string[];
   exec?: ExecFn;
 }
 
 function pm2(args: string[], options: Pm2Options, cwd?: string) {
-  const [cmd, ...prefixArgs] = options.pkgExecPrefix ?? ['npx'];
-  return (options.exec ?? defaultExec)(cmd, [...prefixArgs, 'pm2', ...args], { cwd });
+  const [cmd, ...prefixArgs] = options.pm2Argv ?? pm2Argv();
+  return (options.exec ?? defaultExec)(cmd, [...prefixArgs, ...args], { cwd });
 }
 
 /** launch.sh/teardown.sh: stop this slot's processes (project-scoped — never other harnesses). */

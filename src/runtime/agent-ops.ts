@@ -4,10 +4,10 @@ import { resolveHarnessRoot } from '../harness/manifest';
 import { loadAgentPorts, collectEnvironmentStatus, renderEnvironmentStatusText } from '../core/slot-status';
 import { loadInfraState } from '../core/slot-ports';
 import { readSlotRegistry } from '../core/slot-registry';
-import { defaultExec, ExecFn, realSystemOps, SystemOps } from './exec';
+import { defaultExec, ExecFn } from './exec';
 import { infraEnabled, runPg } from './infra';
 import { pm2SlotPrefix, tmuxSessionName } from './process';
-import { pkgExec } from './node-pm';
+import { pm2Argv } from '../utils/pm2';
 
 export const AGENT_OP_COMMANDS = [
   'status', 'logs', 'restart', 'psql', 'health', 'url',
@@ -21,7 +21,6 @@ export interface AgentOpOptions {
   args?: string[];
   out?: (message: string) => void;
   exec?: ExecFn;
-  ops?: SystemOps;
   /** Foreground spawn for interactive/streaming commands (logs, psql, attach, exec). */
   spawn?: (cmd: string, args: string[], env?: NodeJS.ProcessEnv, cwd?: string) => number;
 }
@@ -48,11 +47,10 @@ export async function runAgentOp(options: AgentOpOptions): Promise<{ code: numbe
   const args = options.args ?? [];
   const out = options.out ?? ((message: string) => process.stdout.write(`${message}\n`));
   const exec = options.exec ?? defaultExec;
-  const ops = options.ops ?? realSystemOps;
   const spawn = options.spawn ?? defaultSpawn;
   const projectName = env.HARNESS_PROJECT_NAME ?? '';
   const prefix = pm2SlotPrefix(projectName, agentId);
-  const pkgExecArgv = pkgExec(undefined, env, ops).split(' ');
+  const [pm2Cmd, ...pm2Prefix] = pm2Argv();
   const ports = loadAgentPorts(repoRoot, agentId);
   const dbPort = ports.db ?? 15432;
   const pgEnv = { ...process.env, PGPASSWORD: 'password' };
@@ -68,19 +66,19 @@ export async function runAgentOp(options: AgentOpOptions): Promise<{ code: numbe
     case 'logs': {
       const service = args[0];
       const pm2Args = service
-        ? ['pm2', 'logs', `${prefix}-${service}`, '--lines', '100']
-        : ['pm2', 'logs', '--name', prefix, '--lines', '100'];
-      return { code: spawn(pkgExecArgv[0], [...pkgExecArgv.slice(1), ...pm2Args], pgEnv) };
+        ? ['logs', `${prefix}-${service}`, '--lines', '100']
+        : ['logs', '--name', prefix, '--lines', '100'];
+      return { code: spawn(pm2Cmd, [...pm2Prefix, ...pm2Args], pgEnv) };
     }
 
     case 'restart': {
       const service = args[0];
       if (service) {
-        const result = exec(pkgExecArgv[0], [...pkgExecArgv.slice(1), 'pm2', 'restart', `${prefix}-${service}`]);
+        const result = exec(pm2Cmd, [...pm2Prefix, 'restart', `${prefix}-${service}`]);
         process.stdout.write(result.stdout);
         return { code: result.code };
       }
-      const jlist = exec(pkgExecArgv[0], [...pkgExecArgv.slice(1), 'pm2', 'jlist']);
+      const jlist = exec(pm2Cmd, [...pm2Prefix, 'jlist']);
       let names: string[] = [];
       try {
         const parsed = JSON.parse(jlist.stdout) as Array<{ name?: string }>;
@@ -95,7 +93,7 @@ export async function runAgentOp(options: AgentOpOptions): Promise<{ code: numbe
         return { code: 0 };
       }
       for (const name of names) {
-        spawn(pkgExecArgv[0], [...pkgExecArgv.slice(1), 'pm2', 'restart', name]);
+        spawn(pm2Cmd, [...pm2Prefix, 'restart', name]);
       }
       return { code: 0 };
     }
