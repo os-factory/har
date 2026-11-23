@@ -257,6 +257,10 @@ export class RunService {
         const hooks = ensureOtelHooks({ setupAgents: true });
         if (hooks.message) launchBanner += `${hooks.message}\n`;
         if (hooks.warning) launchBanner += `${hooks.warning}\n`;
+        if (hooks.route.mode === 'direct') {
+          launchBanner += `Agent traces go directly to "${hooks.route.destination.name}" (Mission Control is off).\n`;
+        }
+        if (hooks.routeHint) launchBanner += `${hooks.routeHint}\n`;
       } catch (err) {
         launchBanner += `@osfactory/otel-hook setup skipped: ${err instanceof Error ? err.message : String(err)}\n`;
       }

@@ -59,6 +59,7 @@ import {
 } from '../../core/telemetry-config';
 import { finishCommand } from '../finish-command';
 import { checkUsageOptions, handleCheckUsage } from './control-check-usage';
+import { refreshAgentRouteAndReport } from './telemetry-destination';
 
 export const controlCommand = {
   command: 'control <subcommand>',
@@ -274,6 +275,8 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
     return finishCommand(code);
   }
   success(`Mission Control running at ${apiUrl} (${imageRef})`);
+  // Agent traces that went straight to a destination now go through Mission Control.
+  refreshAgentRouteAndReport();
   if (otlpGrpc?.hint) warn(`OTLP/gRPC: ${otlpGrpc.hint}`);
   printOtlpEndpoints(apiUrl, otlpGrpc?.hostPort ?? null);
 
@@ -306,6 +309,7 @@ function printOtlpEndpoints(apiUrl: string, otlpGrpcHostPort: number | null): vo
 async function handleDown(): Promise<void> {
   header('har control down');
   const code = stopMissionControl();
+  refreshAgentRouteAndReport();
   return finishCommand(code);
 }
 

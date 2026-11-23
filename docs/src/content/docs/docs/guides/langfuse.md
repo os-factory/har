@@ -82,6 +82,45 @@ running. Run `har control up` yourself when:
 You don't need to restart Mission Control after adding, changing or removing a
 destination. It re-reads the file when it changes.
 
+## Without Mission Control
+
+If you don't run Mission Control (`HAR_CONTROL_DISABLED=true`, or no Docker),
+agent session traces can still reach Langfuse: when Langfuse is the **only** enabled
+destination subscribed to `traces`, otel-hook sends them to Langfuse itself.
+
+```bash
+export HAR_CONTROL_DISABLED=true
+har telemetry on --level outline
+har telemetry destination add langfuse --preset langfuse
+har telemetry status          # Agent traces:  direct → langfuse
+```
+
+Then start a new agent session. HAR switches modes on its own: `destination add`
+and `remove`, `har control up` and `down`, and `har telemetry on` and `off` each
+re-route agent traces. With Mission Control running, it forwards as before.
+
+What changes in direct mode:
+
+- **Only otel-hook traces go direct.** Claude Code's own metrics and logs carry your
+  account identity and nothing would strip it, so HAR leaves Claude Code's native
+  telemetry off. Without Mission Control, Claude Code token and cost metrics are not
+  recorded.
+- **Local paths stay home.** No Mission Control strips the Resource, so HAR leaves
+  every `factory.local.*` key out of the agent's `OTEL_RESOURCE_ATTRIBUTES` and the
+  hook drops any it inherits, unless the destination has `--include-local-paths`.
+- **Keys stay off command lines.** The endpoint and the `Authorization` header are
+  written to `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper
+  loads when it runs. The wrapper script and the hook's arguments contain no secret.
+- **One destination.** With two or more destinations subscribed to `traces`, HAR
+  sends agent traces to none of them directly and says so. Run Mission Control
+  (`har control up`) to fan out.
+- **otel-hook 0.7.0 or later.** Older releases cannot read the standard OTLP header
+  variables. HAR then prints the version it needs and keeps agent traces on
+  Mission Control.
+
+Verification traces need none of this: without Mission Control the CLI already sends
+them to Langfuse itself.
+
 ## Langfuse limits
 
 - **Traces only.** Langfuse ingests OTLP traces, not logs or metrics, so the preset

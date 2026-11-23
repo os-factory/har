@@ -30,7 +30,10 @@ import {
   type TelemetryDestinationPreset,
 } from '../../harness/schema';
 import { error, header, info, success, warn } from '../../utils/logging';
+import { isControlEnabled } from '../../core/control-config';
 import { countSpooledPayloads } from '../../core/telemetry-spool';
+import { refreshAgentTelemetryRoute } from '../../core/otel-hooks';
+import { describeAgentTelemetryRoute } from '../../core/telemetry-direct';
 import { flushVerificationTraceSpool } from '../../core/verification-spans';
 
 export interface DestinationAddArgs {
@@ -89,6 +92,7 @@ export function destinationFromAddArgs(
 }
 
 function controlMountHint(): void {
+  if (!isControlEnabled()) return;
   try {
     if (controlContainerExists() && controlContainerMountsDestinations() === false) {
       info(`The running ${CONTROL_CONTAINER_NAME} container predates destinations — run har control up to recreate it so Mission Control can forward.`);
@@ -96,6 +100,19 @@ function controlMountHint(): void {
   } catch {
     // docker missing or not running: nothing to hint
   }
+}
+
+/**
+ * Re-route agent hook traces after a destination or Mission Control change and
+ * say where they go now. Silent until `har telemetry on` installed the hook.
+ */
+export function refreshAgentRouteAndReport(): void {
+  const decision = refreshAgentTelemetryRoute();
+  if (!decision || decision.route.mode === 'off') return;
+  if (decision.route.mode === 'direct') {
+    info(`Agent traces: ${describeAgentTelemetryRoute(decision.route)} (Mission Control is off; start a new agent session to pick this up)`);
+  }
+  if (decision.hint) info(decision.hint);
 }
 
 function localPathsLabel(destination: TelemetryDestination): string {
@@ -118,6 +135,7 @@ function handleAdd(argv: DestinationAddArgs): void {
   info(`Config:  ${result.path} (mode 0600)`);
   info(`Check it: har telemetry destination test ${destination.name}`);
   controlMountHint();
+  refreshAgentRouteAndReport();
 }
 
 function handleList(argv: { json: boolean }): void {
@@ -153,6 +171,7 @@ function handleRemove(argv: { name: string }): void {
     return;
   }
   success(`Removed destination "${argv.name}"`);
+  refreshAgentRouteAndReport();
 }
 
 async function handleTest(argv: { name: string; json: boolean }): Promise<void> {
