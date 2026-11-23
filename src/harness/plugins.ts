@@ -62,12 +62,12 @@ export const PluginManifestSchema = z
     stageId: z.string().min(1).optional(),
     verificationStages: z.array(z.string().min(1)).min(1),
     /** @deprecated Prefer `stages` — single stage object. */
-    stage: z.record(z.unknown()).optional(),
+    stage: z.record(z.string(), z.unknown()).optional(),
     /** One or more stages registered by this plugin. */
-    stages: z.array(z.record(z.unknown())).optional(),
+    stages: z.array(z.record(z.string(), z.unknown())).optional(),
     files: z.array(PluginManifestFileSchema).min(1),
     optionalFiles: z.array(PluginManifestFileSchema).optional(),
-    merge: z.record(z.string()).optional(),
+    merge: z.record(z.string(), z.string()).optional(),
     nextSteps: z.array(z.string().min(1)).min(1),
     docsPath: z.string().min(1),
   })

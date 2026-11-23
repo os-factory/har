@@ -81,13 +81,13 @@ export const HarnessManifestSchema = z.object({
   ejected: z.boolean().optional(),
   /** @osfactory/har version whose runtime was vendored at eject time. */
   ejectedVersion: z.string().optional(),
-  fileChecksums: z.record(z.string()).optional(),
+  fileChecksums: z.record(z.string(), z.string()).optional(),
   /**
    * Checksums of the composed bundled templates at last init/finalize —
    * baseline for the upstream-updated drift signal (#237). Keyed by installed
    * file name, same key space as fileChecksums.
    */
-  templateChecksums: z.record(z.string()).optional(),
+  templateChecksums: z.record(z.string(), z.string()).optional(),
   scaffoldedAgentFiles: z.array(ScaffoldedAgentFileSchema).optional(),
 });
 
@@ -132,7 +132,7 @@ export const HarnessStageSchema = z
     script: z.string().min(1).optional(),
     command: z.string().min(1).optional(),
     cwd: z.string().optional(),
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     resultPath: z.string().optional(),
     artifacts: z.array(HarnessArtifactSchema).default([]),
     requiresAgentId: z.boolean().optional(),
@@ -181,14 +181,14 @@ export const OnboardingPreferencesSchema = z.object({
       mode: z.enum(['block', 'warn']).default('block'),
       scope: z.enum(['worktrees', 'all']).default('worktrees'),
     })
-    .default({}),
+    .prefault({}),
   /** Personal session-worktree setting: all repos, and per main-checkout path. */
   worktree: z
     .object({
       default: z.enum(['on', 'off']).optional(),
-      repos: z.record(z.enum(['on', 'off'])).default({}),
+      repos: z.record(z.string(), z.enum(['on', 'off'])).default({}),
     })
-    .default({}),
+    .prefault({}),
   updatedAt: z.string().optional(),
 });
 
@@ -319,7 +319,7 @@ export const WorkUnitIdSchema = z
     'work unit id must start with an alphanumeric character and contain only stable identifier characters',
   );
 
-export const WorkAttemptIdSchema = z.string().uuid();
+export const WorkAttemptIdSchema = z.guid();
 
 /** Secondary external link (PR, mirrored issue, alternate tracker). Append-only on the work unit. */
 export const WorkUnitRelatedLinkSchema = z.object({
@@ -346,7 +346,7 @@ export const WorkUnitOutcomeSchema = z
     decision: z.enum(['completed', 'abandoned']),
     decidedAt: z.string(),
     attemptId: WorkAttemptIdSchema.optional(),
-    validationId: z.string().uuid().optional(),
+    validationId: z.guid().optional(),
     treeHash: z.string().regex(/^[0-9a-f]{40,64}$/).optional(),
     reason: z.string().max(2000).optional(),
   })
@@ -411,7 +411,7 @@ export type WorkAttemptRecord = z.infer<typeof WorkAttemptRecordSchema>;
 
 export const RunRecordSchema = z
   .object({
-    runId: z.string().uuid(),
+    runId: z.guid(),
     repoPath: z.string(),
     stageId: z.string(),
     kind: HarnessStageKindSchema.optional(),
@@ -461,8 +461,8 @@ export const SlotRegistryEntrySchema = z
     /** Random per-session chars; a short base-commit tag in root/external mode. */
     suffix: z.string().optional(),
     createdAt: z.string(),
-    ports: z.record(z.number()).optional(),
-    previewUrls: z.record(z.string()).optional(),
+    ports: z.record(z.string(), z.number()).optional(),
+    previewUrls: z.record(z.string(), z.string()).optional(),
     workUnitId: WorkUnitIdSchema.optional(),
     attemptId: WorkAttemptIdSchema.optional(),
     status: z.enum(['starting', 'active', 'failed', 'completed']).default('active'),
@@ -488,7 +488,7 @@ export const PreflightBlockerSchema = z.object({
   code: z.string(),
   message: z.string(),
   remediation: z.string().optional(),
-  details: z.record(z.unknown()).optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type PreflightBlocker = z.infer<typeof PreflightBlockerSchema>;
@@ -499,7 +499,7 @@ export const SlotReadinessSchema = z.object({
   verdict: z.enum(['ready', 'blocked']),
   blockers: z.array(PreflightBlockerSchema),
   remediations: z.array(z.string()),
-  ports: z.record(z.number()).optional(),
+  ports: z.record(z.string(), z.number()).optional(),
   allocatedPorts: z.boolean().optional(),
   /** A warning already states why this port was chosen — suppresses the generic note. */
   portChoiceExplained: z.boolean().optional(),
@@ -515,9 +515,9 @@ export const AgentSlotStatusSchema = z.object({
   workDir: z.string().optional(),
   worktreePath: z.string().optional(),
   branch: z.string().optional(),
-  previewUrls: z.record(z.string()).optional(),
+  previewUrls: z.record(z.string(), z.string()).optional(),
   harnessUsage: AgentSlotHarnessUsageSchema,
-  lastRunId: z.string().uuid().optional(),
+  lastRunId: z.guid().optional(),
   lastRunAt: z.string().optional(),
   lastVerifyStatus: HarnessStageRunStatusSchema.optional(),
   lastBuildPass: z.boolean().optional(),
@@ -544,7 +544,7 @@ export const AgentSlotStatusSchema = z.object({
   behind: z.number().int().optional(),
   stale: z.boolean().optional(),
   /** Persisted host ports from the slot registry (when dynamically allocated). */
-  ports: z.record(z.number()).optional(),
+  ports: z.record(z.string(), z.number()).optional(),
   /** PM2 namespace mismatch — foreign or legacy processes for this slot id. */
   pm2Issue: z.enum(['foreign_pm2', 'registry_missing', 'project_mismatch']).optional(),
   /** Launch readiness slice — same core as `har env preflight`. */
@@ -711,7 +711,7 @@ export type ChangedFile = z.infer<typeof ChangedFileSchema>;
  */
 export const ValidationRecordSchema = z
   .object({
-    validationId: z.string().uuid(),
+    validationId: z.guid(),
     treeHash: z.string().regex(/^[0-9a-f]{40,64}$/),
     headSha: z.string().optional(),
     branch: z.string().optional(),
@@ -720,7 +720,7 @@ export const ValidationRecordSchema = z
     agentId: z.number().int().optional(),
     status: z.enum(['pass', 'fail']),
     full: z.boolean().default(false),
-    runId: z.string().uuid().optional(),
+    runId: z.guid().optional(),
     changedFiles: z.array(ChangedFileSchema).default([]),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -739,10 +739,10 @@ export type SyncValidationsInput = z.infer<typeof SyncValidationsInputSchema>;
 
 /** Many-to-many proof link: one exact-tree validation may prove multiple work attempts. */
 export const ValidationBindingRecordSchema = z.object({
-  bindingId: z.string().uuid(),
+  bindingId: z.guid(),
   workUnitId: WorkUnitIdSchema,
   attemptId: WorkAttemptIdSchema,
-  validationId: z.string().uuid(),
+  validationId: z.guid(),
   treeHash: z.string().regex(/^[0-9a-f]{40,64}$/),
   createdAt: z.string(),
 });
@@ -760,14 +760,14 @@ export type SyncValidationBindingsInput = z.infer<typeof SyncValidationBindingsI
  * history locations (rebase, cherry-pick, a second commit with the same tree).
  */
 export const ValidationCommitBindingSchema = z.object({
-  bindingId: z.string().uuid(),
-  validationId: z.string().uuid(),
+  bindingId: z.guid(),
+  validationId: z.guid(),
   treeHash: z.string().regex(/^[0-9a-f]{40,64}$/),
   commitSha: z.string().regex(/^[0-9a-f]{40,64}$/),
   parents: z.array(z.string().regex(/^[0-9a-f]{40,64}$/)).default([]),
   refs: z.array(z.string()).default([]),
   message: z.string().optional(),
-  runId: z.string().uuid().optional(),
+  runId: z.guid().optional(),
   createdAt: z.string(),
 });
 
@@ -832,7 +832,7 @@ export const AgentTrajectoryRecordV1Schema = z
     eventType: z.string().min(1),
     sequence: z.number().int().nonnegative(),
     timestamp: z.string(),
-    payload: z.record(z.unknown()),
+    payload: z.record(z.string(), z.unknown()),
     contentKind: z.string().min(1),
     contentDisclosure: AgentTrajectoryContentDisclosureSchema,
     contentLabel: z.string().optional(),
@@ -884,7 +884,7 @@ export const AgentSessionUsageSchema = z.object({
   tokensCacheCreation: z.number().nonnegative().default(0),
   tokensTotal: z.number().nonnegative().default(0),
   costUsd: z.number().nonnegative().nullable().optional(),
-  modelBreakdown: z.record(z.unknown()).optional(),
+  modelBreakdown: z.record(z.string(), z.unknown()).optional(),
   sources: z.array(UsageSourceSchema).default([]),
   harvestVersion: z.number().int().nonnegative().default(PRE_DEDUPE_HARVEST_VERSION),
   firstSeenAt: z.string(),
@@ -909,7 +909,7 @@ export const AgentSessionEventSchema = z.object({
   timestamp: z.string(),
   workUnitId: WorkUnitIdSchema.optional(),
   attemptId: WorkAttemptIdSchema.optional(),
-  attributes: z.record(z.unknown()).optional(),
+  attributes: z.record(z.string(), z.unknown()).optional(),
   promptText: z.string().nullable().optional(),
   responseText: z.string().nullable().optional(),
   rawTruncated: z.string().nullable().optional(),
