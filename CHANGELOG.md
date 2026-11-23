@@ -1,3 +1,9 @@
+## [1.31.0](https://github.com/os-factory/har/compare/v1.30.5...v1.31.0) (2026-11-23)
+
+### Features
+
+* **runtime:** bundle pm2 and run it directly instead of via npx ([#475](https://github.com/os-factory/har/issues/475)) ([6b68d55](https://github.com/os-factory/har/commit/6b68d55b547d133080b8dab6aa3699fa7f737410))
+
 ## [1.30.5](https://github.com/os-factory/har/compare/v1.30.4...v1.30.5) (2026-11-23)
 
 ### Bug Fixes
