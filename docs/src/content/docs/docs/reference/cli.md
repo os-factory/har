@@ -490,6 +490,7 @@ har telemetry destination add <name> --preset otlp --endpoint url [--header Name
 har telemetry destination list [--json]
 har telemetry destination remove <name>
 har telemetry destination test <name> [--json]
+har telemetry destination flush [--json]
 ```
 
 Controls how much agent activity (Cursor / Claude / Codex) is recorded in Mission Control.
@@ -537,15 +538,23 @@ and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-
 into the Mission Control container. Guides: [Langfuse](/docs/guides/langfuse/),
 [any OTLP backend](/docs/guides/otlp-backends/).
 
-**Verification spans.** Each `har env verify` (and MCP `har_run_verification`) sends
-one OTel CI/CD trace straight from the CLI to every enabled destination subscribed to
-`traces`: a run span (`cicd.pipeline.*`, `factory.run.id`, `factory.git.tree`,
+**Verification spans.** Each `har env verify` (and MCP `har_run_verification`) builds
+one OTel CI/CD trace: a run span (`cicd.pipeline.*`, `factory.run.id`, `factory.git.tree`,
 `factory.verdict` on `--full`) with one child span per stage, plus the work unit,
 attempt, repository and branch on the resource. The trace id is derived from the
 validation id, so it sits next to the agent's session traces in the same backend.
-Spans carry ids, results and timings only: no commands, logs or local paths. Delivery
-is best-effort (about 3 s per destination, in parallel) and never changes verify's
-result; a failed delivery prints one dim line. `har telemetry off` sends none.
+Spans carry ids, results and timings only: no commands or logs. When Mission Control
+is running, the trace goes only to Mission Control, which stores the run, syncs it
+to HQ and forwards it to every destination subscribed to `traces`. Otherwise the CLI
+sends it to those destinations itself (about 3 s each, in parallel) and queues
+what failed, plus a store-only copy for Mission Control, in `~/.har/spool/traces`
+(64 MB, 24 h). The resource's `factory.local.checkout_path` never reaches a
+destination or the spool. Delivery never changes verify's result; a failed delivery
+prints one dim line, and a queued one another. `har telemetry off` sends none.
+
+`flush` retries the queue now (the start of every `har env verify` and
+`har env launch` does it too, with a 2-second budget) and prints how many were sent,
+retried, dropped and left.
 
 ## `har worktree`
 

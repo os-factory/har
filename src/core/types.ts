@@ -11,7 +11,7 @@ import type {
   WorkUnitRelatedLink,
   WorktreeMode,
 } from '../harness/schema';
-import type { VerificationSpanExportResult } from './verification-spans';
+import type { VerificationSpanExportResult, VerificationTraceDelivery } from './verification-spans';
 import { z } from 'zod';
 
 export type ShellRunResult = ShellResult;
@@ -117,6 +117,8 @@ export interface VerificationRunResult extends EnvironmentRunResult {
   proof?: FactoryProofOutcome;
   /** Set only when verification spans were sent to at least one trace destination. */
   spanExport?: VerificationSpanExportResult;
+  /** How the verification trace left the CLI (Mission Control or direct), and what was spooled for retry. */
+  traceDelivery?: VerificationTraceDelivery;
 }
 
 export interface LogsOptions {

@@ -9,6 +9,7 @@ import {
   type AgentTool,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
+import { ingestVerificationSpans, isVerificationSpan } from '@/server/verification-runs';
 import {
   appendTrajectoryRecord,
   stableTrajectoryKey,
@@ -1469,8 +1470,10 @@ export async function ingestOtelLogsBody(
   };
 }
 
-interface ParsedSpan {
+export interface ParsedSpan {
   resource: AttrMap;
+  /** Instrumentation scope name (`@osfactory/har` for verification spans). */
+  scopeName?: string;
   traceId: string;
   spanId: string;
   parentSpanId: string | null;
@@ -1499,6 +1502,7 @@ export function extractSpans(payload: unknown): ParsedSpan[] {
       [];
     for (const ss of scopeSpans) {
       if (!ss || typeof ss !== 'object') continue;
+      const scopeName = (ss as { scope?: { name?: unknown } }).scope?.name;
       const spans = (ss as { spans?: unknown[] }).spans ?? [];
       if (!Array.isArray(spans)) continue;
       for (const span of spans) {
@@ -1506,6 +1510,7 @@ export function extractSpans(payload: unknown): ParsedSpan[] {
         const record = span as Record<string, unknown>;
         out.push({
           resource,
+          ...(typeof scopeName === 'string' && scopeName ? { scopeName } : {}),
           traceId: normalizeOtelId(record.traceId ?? record.trace_id, 16),
           spanId: normalizeOtelId(record.spanId ?? record.span_id, 8),
           parentSpanId: normalizeOtelId(record.parentSpanId ?? record.parent_span_id, 8) || null,
@@ -1523,10 +1528,14 @@ export function extractSpans(payload: unknown): ParsedSpan[] {
 }
 
 export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngestResult> {
-  const spans = extractSpans(payload);
-  let accepted = 0;
-  let dropped = 0;
-  const reasons: string[] = [];
+  const all = extractSpans(payload);
+  // `har env verify` traces are verification runs, not agent session spans.
+  const verification = all.filter(isVerificationSpan);
+  const spans = verification.length > 0 ? all.filter((span) => !isVerificationSpan(span)) : all;
+  const stored = verification.length > 0 ? await ingestVerificationSpans(verification) : null;
+  let accepted = stored?.accepted ?? 0;
+  let dropped = stored?.dropped ?? 0;
+  const reasons: string[] = [...(stored?.reasons ?? [])];
 
   for (const span of spans) {
     if (!span.traceId || !span.spanId) {

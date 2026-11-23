@@ -238,6 +238,33 @@ function missionControlRows(repo: string): Record<string, unknown> {
         },
       ],
     },
+    [`/api/repos/${MC_REPO_ID}/verification-runs`]: {
+      verificationRuns: [
+        {
+          id: 'vr-1',
+          runId: 'validation-1',
+          traceId: 'd3209ae49e3ad07b6bb0ba4414331613',
+          spanId: '1111111111111111',
+          pipelineName: 'har verify --full',
+          result: 'failure',
+          verdict: 'fail',
+          treeHash: 'a'.repeat(40),
+          headRevision: 'b'.repeat(40),
+          attestationDigest: `sha256:${'c'.repeat(64)}`,
+          workUnitId: WORK_UNIT_ID,
+          attemptId: ATTEMPT_ID,
+          branch: SESSION,
+          producerVersion: '2.0.0',
+          startTime: at,
+          endTime: at,
+          createdAt: at,
+          stages: [
+            { name: 'build', spanId: '2222222222222222', result: 'success', taskType: 'build', startTime: at, endTime: at },
+            { name: 'unit-tests', spanId: '3333333333333333', result: 'failure', taskType: 'test', startTime: at, endTime: at },
+          ],
+        },
+      ],
+    },
     [`/api/repos/${MC_REPO_ID}/trajectory`]: {
       records: [
         {
@@ -510,6 +537,39 @@ describe('HQ sync payload contract (#416)', () => {
       'endTime',
       'attributes',
     ]);
+  });
+
+  it('/api/sync carries verification runs as an optional top-level collection (HAR 2.0, additive)', () => {
+    const [body] = hqBodies(captured, '/api/sync') as Array<Record<string, Array<Record<string, unknown>>>>;
+    expect(body.verificationRuns).toHaveLength(1);
+    const [run] = body.verificationRuns;
+    expectKeys(run, [
+      'runId',
+      'traceId',
+      'spanId',
+      'pipelineName',
+      'result',
+      'verdict',
+      'treeHash',
+      'headRevision',
+      'attestationDigest',
+      'workUnitId',
+      'attemptId',
+      'branch',
+      'producerVersion',
+      'startTime',
+      'endTime',
+      'stages',
+    ]);
+    expect(run.runId).toBe('validation-1');
+    expect(run.traceId).toMatch(/^[0-9a-f]{32}$/);
+    // Mission Control's row id is local; it never reaches HQ.
+    expect(run).not.toHaveProperty('id');
+    const stages = run.stages as unknown as Array<Record<string, unknown>>;
+    expect(stages.map((stage) => stage.name)).toEqual(['build', 'unit-tests']);
+    expectKeys(stages[0], ['name', 'spanId', 'result', 'taskType', 'startTime', 'endTime']);
+    // Not on /api/otel: HQ validates that body strictly.
+    for (const otel of hqBodies(captured, '/api/otel')) expect(otel).not.toHaveProperty('verificationRuns');
   });
 
   it('/api/trajectory carries canonical trajectory records with their keys', () => {

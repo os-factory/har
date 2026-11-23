@@ -69,7 +69,8 @@ the same destinations.
 Verification traces follow the telemetry profile's
 [verification spans](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md#verification-spans).
 The trace id is derived from the validation id. Details are in the
-[CLI reference](/docs/reference/cli/#har-telemetry).
+[CLI reference](/docs/reference/cli/#har-telemetry). How they travel is in
+[How verification traces are delivered](#how-verification-traces-are-delivered).
 
 ## Example: OpenTelemetry Collector
 
@@ -154,10 +155,32 @@ Agent session telemetry goes through Mission Control:
   or turning `--include-local-paths` or `--include-account-identity` back off drops
   its queued copies.
 
-Verification traces don't go through Mission Control. The CLI sends them as OTLP/JSON
-straight to every enabled destination subscribed to `traces`, in parallel, with
-about 3 seconds per destination. There is no spool or retry: a destination that is
-down misses that run, and verify's result never changes.
+### How verification traces are delivered
+
+Each `har env verify` builds one verification trace and delivers it once to each
+receiver:
+
+- **Mission Control running.** The CLI posts the trace to Mission Control's OTLP
+  receiver (`/api/otel/v1/traces`) and sends nothing directly. Mission Control
+  stores it as a verification run, includes it in the next HQ sync, and forwards it
+  to your destinations with the spool, privacy filter and retries described above.
+- **Mission Control not running.** The CLI sends the trace as OTLP/JSON to every
+  enabled destination subscribed to `traces`, in parallel, about 3 seconds each. A
+  copy that fails is queued in a small spool under `~/.har/spool/traces`, with a
+  copy for Mission Control. That copy is marked "store, do not forward", so your
+  destinations don't receive the trace twice.
+
+The spool follows the same rules as Mission Control's: one file per payload (mode
+0600), no header values (they are read from the destination file at send time),
+`factory.local.*` and the other denied attributes stripped before writing, and caps
+of 64 MB and 24 hours. It is flushed at the start of the next `har env verify` or
+`har env launch`, with a 2-second budget, and on demand:
+
+```bash
+har telemetry destination flush
+```
+
+Delivery never changes verify's result. With telemetry `off`, no trace is built.
 
 For session telemetry, Mission Control must be running with `~/.har/destinations` mounted. `har telemetry
 on` and `har env launch` start it. If `destination add` says the running container
@@ -239,8 +262,11 @@ stores, not to what it forwards.
 
 What each signal carries once it reaches a destination:
 
-- **Verification traces** carry ids, results and timings only: no commands, logs or
-  local paths.
+- **Verification traces** carry ids, results and timings only: no commands or logs.
+  Their Resource `factory.local.checkout_path` is for Mission Control's attribution
+  and is stripped from every copy sent to a destination or written to a spool,
+  unless the destination opted in with `--include-local-paths` (Mission Control path
+  only; the CLI's direct path always strips it).
 - **Session traces** carry no prompt, reply or tool text at any level. They do carry
   model names, token counts, tool names, branch names and HAR's resource attributes
   (work unit, attempt, repository URL, branch, HAR version, slot number).
