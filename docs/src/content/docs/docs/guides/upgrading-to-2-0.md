@@ -124,14 +124,13 @@ session key travels only as `session.id` in `OTEL_RESOURCE_ATTRIBUTES`.
 
 ### Agent hooks (`@osfactory/otel-hook`)
 
-The otel-hook package HAR installs (`@osfactory/otel-hook@0.6.0`) still looks for
-`har.session_key` to name the session on each span. With 2.0 it does not find it,
-so span-level `session.id` is the agent's own session id; the HAR session key is on
-the span's Resource as `session.id`, which is where Mission Control reads it. A
-backend that groups by the span attribute groups by agent session instead of HAR
-session until an otel-hook release that reads the Resource `session.id`. To try an
-unreleased otel-hook build, set `HAR_OTEL_HOOKS_PACKAGE` to any spec your package
-manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
+HAR 2.0 installs `@osfactory/otel-hook@0.8.0`. It names each span's session from the
+Resource `session.id` HAR sets, so agent spans group by HAR session in any backend,
+and it reads the standard `OTEL_EXPORTER_OTLP_*` endpoint and header variables that
+direct export relies on. HAR replaces an older installed copy on the next
+`har env launch` or `har telemetry on`.
+To try an unreleased otel-hook build, set `HAR_OTEL_HOOKS_PACKAGE` to any spec your
+package manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
 
 ## Everything else is unchanged
 

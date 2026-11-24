@@ -27,11 +27,11 @@ import {
 import { LOCAL_ATTR_PREFIX, destinationIncludesLocalPaths } from '../harness/schema';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
-export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.6.0';
+export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.8.0';
 
 /**
  * Environment override for the package spec HAR installs: any spec the package
- * manager accepts (`@osfactory/otel-hook@0.7.0`, a local `.tgz`, a directory).
+ * manager accepts (`@osfactory/otel-hook@0.9.0`, a local `.tgz`, a directory).
  * For dogfooding an unreleased otel-hook build; unset, HAR installs the pin.
  */
 export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
