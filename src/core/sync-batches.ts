@@ -8,14 +8,19 @@ export function maxSyncBatchBytes(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_BATCH_BYTES;
 }
 
-export function chunkBySerializedSize<T>(items: T[], maxBytes: number): T[][] {
+/** Batches under `maxBytes` of serialized items, and at most `maxRows` items each. */
+export function chunkBySerializedSize<T>(
+  items: T[],
+  maxBytes: number,
+  maxRows: number = Number.POSITIVE_INFINITY,
+): T[][] {
   const batches: T[][] = [];
   let current: T[] = [];
   let currentBytes = 0;
 
   for (const item of items) {
     const itemBytes = Buffer.byteLength(JSON.stringify(item), 'utf8');
-    if (current.length > 0 && currentBytes + itemBytes > maxBytes) {
+    if (current.length > 0 && (currentBytes + itemBytes > maxBytes || current.length >= maxRows)) {
       batches.push(current);
       current = [];
       currentBytes = 0;

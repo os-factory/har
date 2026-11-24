@@ -1093,8 +1093,9 @@ async function syncRepoWithPortal(
   const { syncBody, held, heldUnits, units, runsBySource, events, maxSyncedAt, failures, truncated } =
     await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, loadHeldUnits);
   // Verification runs Mission Control stored from verification traces: an
-  // optional top-level collection of the first /api/sync body, own watermark.
-  // A dry run reads nothing new from Mission Control for it.
+  // optional /api/sync collection with its own watermark, packed under the
+  // same request budget as the other records (after the work units, attempts
+  // and validations they point at). A dry run reads nothing new for it.
   const verificationTarget = verificationRunsWatermarkTarget(portal);
   const verification = controlApiUrl && isTelemetryEnabled() && !dryRun
     ? await fetchPersistedVerificationRuns(
@@ -1103,7 +1104,10 @@ async function syncRepoWithPortal(
         full ? null : readPortalWatermark(repoPath, verificationTarget),
       )
     : null;
-  if (verification && verification.runs.length > 0) syncBody.verificationRuns = verification.runs;
+  const verificationUnits: SyncUnit[] = (verification?.runs ?? []).map((row) => ({
+    key: 'verificationRuns',
+    rows: [row],
+  }));
   const newRuns = selectRunsForSync(
     runsBySource,
     runsSince,
@@ -1129,7 +1133,7 @@ async function syncRepoWithPortal(
     repoPath,
     // An empty sync still says it has no runs, as it always has.
     newRuns.length > 0 ? syncBody : { ...syncBody, runs: [] },
-    [...units, ...runUnits(newRuns)],
+    [...units, ...verificationUnits, ...runUnits(newRuns)],
     dryRun,
     (landed, response) => {
       if (firstLanded && typeof response?.repositoryId === 'string') repoId = response.repositoryId;
@@ -1138,7 +1142,7 @@ async function syncRepoWithPortal(
     },
   );
 
-  // The first /api/sync body (which carries the collection) landed.
+  // Every /api/sync request carrying the collection landed.
   if (!dryRun && verification?.maxSyncedAt && verification.failures.length === 0) {
     writePortalWatermark(repoPath, verificationTarget, verification.maxSyncedAt);
   }
@@ -1154,7 +1158,7 @@ async function syncRepoWithPortal(
       advanceRunsWatermark(() => repoId),
     );
   }
-  for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes())) {
+  for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes(), maxSyncBatchRows())) {
     await postPortal(portal, '/api/otel', { path: repoPath, events: batch }, dryRun);
   }
   // Usage and events share one watermark: advancing it on one channel's rows
@@ -1227,7 +1231,7 @@ async function syncTrajectoryWithPortal(
   const failedChannel = (channel: string) =>
     failures.some((failure) => failure.channel === channel || failure.channel === 'repos');
 
-  for (const batch of chunkBySerializedSize(spans, maxSyncBatchBytes())) {
+  for (const batch of chunkBySerializedSize(spans, maxSyncBatchBytes(), maxSyncBatchRows())) {
     await postPortal(portal, '/api/otel', { path: repoPath, spans: batch }, dryRun);
   }
   if (!dryRun && spansMaxSyncedAt && !failedChannel('spans')) {
@@ -1235,7 +1239,7 @@ async function syncTrajectoryWithPortal(
   }
 
   let recordsLanded = true;
-  for (const batch of chunkBySerializedSize(records, maxSyncBatchBytes())) {
+  for (const batch of chunkBySerializedSize(records, maxSyncBatchBytes(), maxSyncBatchRows())) {
     const supported = await postPortalIfSupported(
       portal,
       '/api/trajectory',
