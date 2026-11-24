@@ -208,7 +208,7 @@ export const telemetryDestinationCommand = {
             .option('include-local-paths', {
               type: 'boolean',
               default: false,
-              describe: 'Forward attributes holding absolute local paths (har.repo_path, har.work_dir, …); stripped by default',
+              describe: 'Forward attributes holding absolute local paths (factory.local.*, process.cwd, …); stripped by default',
             })
             .option('include-account-identity', {
               type: 'boolean',

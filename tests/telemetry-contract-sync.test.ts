@@ -14,6 +14,10 @@
  * tests fails, a consumer will break — add the new shape alongside the old one
  * instead of editing the expectation.
  *
+ * HAR 2.0 renamed the OpenTelemetry attribute keys (`har.*` → `session.id`,
+ * `factory.*`); those live only inside event/span `attributes`, which these
+ * bodies carry as opaque maps. The top-level sync shape is unchanged.
+ *
  * Payloads are built from on-disk fixtures by the real writers and the real
  * sync builders; only the network (fetch) and machine-level preferences are
  * stubbed.
@@ -203,7 +207,7 @@ function missionControlRows(repo: string): Record<string, unknown> {
           eventName: 'user_prompt',
           sequence: 1,
           timestamp: at,
-          attributes: { 'har.session_key': SESSION },
+          attributes: { 'session.id': SESSION },
           promptText: 'hello',
           responseText: null,
           rawTruncated: null,

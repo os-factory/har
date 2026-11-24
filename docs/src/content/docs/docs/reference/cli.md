@@ -525,8 +525,8 @@ is configured by default, and nothing leaves the machine until you add one.
   otherwise. Logs are opt-in: name `logs` in `--signals` to forward them. At the
   `full` level they carry prompts, replies and tool input/output verbatim, and `add`
   prints a warning.
-- Mission Control strips attributes that hold absolute local paths (`har.repo_path`,
-  `har.work_dir`, `process.cwd`, `code.filepath`, …) from every forwarded copy.
+- Mission Control strips attributes that hold absolute local paths (every
+  `factory.local.*` key, `process.cwd`, `code.filepath`, …) from every forwarded copy.
   `--include-local-paths` keeps them for that destination.
 - Mission Control also strips account identity attributes (`user.email`,
   `user.account_uuid`, `user.account_id`, `user.id`, `organization.id`, `enduser.id`, …).

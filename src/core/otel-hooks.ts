@@ -19,6 +19,21 @@ import {
 export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.6.0';
 
 /**
+ * Environment override for the package spec HAR installs: any spec the package
+ * manager accepts (`@osfactory/otel-hook@0.7.0`, a local `.tgz`, a directory).
+ * For dogfooding an unreleased otel-hook build; unset, HAR installs the pin.
+ */
+export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
+
+/** The package spec HAR installs: the override when set, else the pin. */
+export function otelHooksPackageSpec(env: NodeJS.ProcessEnv = process.env): string {
+  return env[OTEL_HOOKS_PACKAGE_ENV]?.trim() || OTEL_HOOKS_PACKAGE;
+}
+
+/** Records the spec of the last install, so a changed override reinstalls. */
+const INSTALLED_SPEC_FILE = '.har-package-spec';
+
+/**
  * Budgets for the hooks HAR installs into agent settings (#328).
  *
  * A telemetry hook must never cost the user a turn. Hooks fire on session
@@ -125,6 +140,34 @@ function installedPackageVersion(hooksHome: string): string | null {
   } catch {
     return null;
   }
+}
+
+function installedSpec(hooksHome: string): string | null {
+  try {
+    return fs.readFileSync(path.join(hooksHome, INSTALLED_SPEC_FILE), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function recordInstalledSpec(hooksHome: string, spec: string): void {
+  try {
+    fs.writeFileSync(path.join(hooksHome, INSTALLED_SPEC_FILE), `${spec}\n`);
+  } catch {
+    // best-effort: a missing record only means the next run reinstalls
+  }
+}
+
+/**
+ * Whether the hooks prefix needs a (re)install. The pin is checked by the
+ * installed version; an override, whose version HAR cannot know up front, by
+ * the spec recorded at install time. Switching between them reinstalls.
+ */
+export function needsPackageInstall(hooksHome: string, spec: string): boolean {
+  const recorded = installedSpec(hooksHome);
+  if (spec !== OTEL_HOOKS_PACKAGE) return recorded !== spec;
+  if (recorded !== null && recorded !== spec) return true;
+  return installedPackageVersion(hooksHome) !== pinnedVersion();
 }
 
 function pinnedVersion(): string {
@@ -256,21 +299,22 @@ function resolveOtelHookCommand(hooksHome: string): string | null {
  */
 function resolveHooksInstaller(
   hooksHome: string,
+  spec: string,
 ): { command: string; args: string[] } | null {
   const candidates: Array<{ command: string; args: string[] }> = [
     {
       command: 'npm',
-      args: ['install', '--prefix', hooksHome, '--no-fund', '--no-audit', OTEL_HOOKS_PACKAGE],
+      args: ['install', '--prefix', hooksHome, '--no-fund', '--no-audit', spec],
     },
-    { command: 'bun', args: ['add', '--cwd', hooksHome, OTEL_HOOKS_PACKAGE] },
-    { command: 'pnpm', args: ['add', '--dir', hooksHome, OTEL_HOOKS_PACKAGE] },
+    { command: 'bun', args: ['add', '--cwd', hooksHome, spec] },
+    { command: 'pnpm', args: ['add', '--dir', hooksHome, spec] },
   ];
   return candidates.find((candidate) => commandExists(candidate.command)) ?? null;
 }
 
-function tryInstallPackage(hooksHome: string): { ok: boolean; detail: string } {
+function tryInstallPackage(hooksHome: string, spec: string): { ok: boolean; detail: string } {
   fs.mkdirSync(hooksHome, { recursive: true });
-  const installer = resolveHooksInstaller(hooksHome);
+  const installer = resolveHooksInstaller(hooksHome, spec);
   if (!installer) {
     return {
       ok: false,
@@ -283,6 +327,7 @@ function tryInstallPackage(hooksHome: string): { ok: boolean; detail: string } {
     timeout: 180_000,
   });
   if (result.status === 0 && fs.existsSync(localOtelHookBin(hooksHome))) {
+    recordInstalledSpec(hooksHome, spec);
     return { ok: true, detail: described };
   }
   return {
@@ -568,11 +613,11 @@ export function ensureOtelHooks(options?: {
   fs.mkdirSync(hooksHome, { recursive: true });
 
   let otelHookCommand = resolveOtelHookCommand(hooksHome);
-  const needsInstall =
-    !otelHookCommand || installedPackageVersion(hooksHome) !== pinnedVersion();
+  const packageSpec = otelHooksPackageSpec();
+  const needsInstall = !otelHookCommand || needsPackageInstall(hooksHome, packageSpec);
   if (needsInstall) {
     // Prefer a prefix-local install so HAR pins the version under ~/.har/otel-hooks.
-    const installed = tryInstallPackage(hooksHome);
+    const installed = tryInstallPackage(hooksHome, packageSpec);
     if (!installed.ok) {
       errors.push(installed.detail);
       const configPath = writeOtelHooksConfig(

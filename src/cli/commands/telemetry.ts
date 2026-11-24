@@ -191,9 +191,9 @@ async function handleWriteEnv(argv: {
 
   appendTelemetryEnvToFile(envFile, attrs);
 
-  // Do not write per-session har.* resource attributes into the global
+  // Do not write per-session resource attributes into the global
   // ~/.har/otel-hooks/otel_config.json — that file is shared by every Cursor /
-  // Claude / Codex hook invocation. Stale har.session_key / har.repo_path from
+  // Claude / Codex hook invocation. A stale session.id / factory.local.* from
   // the last launch made Mission Control drop or mis-attribute IDE activity.
   // Session attribution for OTEL ingest uses workspace / otelhook.workspace.id
   // matching against registered repos and active slots instead.

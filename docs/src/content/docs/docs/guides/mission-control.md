@@ -270,8 +270,9 @@ When telemetry is on:
 1. `har env launch` auto-starts Mission Control if it is not reachable (`har control up`).
 2. `har telemetry on` (and launch) install `@osfactory/otel-hook` and register Cursor / Claude / Codex hooks
    to export OTLP `http/protobuf` to `{HAR_CONTROL_API_URL}/api/otel`.
-3. Launch writes session attribution into `.env.agent.<id>` (`HAR_SESSION_KEY`, resource attrs).
-   Mission Control matches sessions by `har.session_key` or by workspace/cwd → slot work dir.
+3. Launch writes session attribution into `.env.agent.<id>` (`OTEL_RESOURCE_ATTRIBUTES`:
+   `session.id`, `factory.slot.id`, `factory.local.*`, …). Mission Control matches sessions
+   by workspace/cwd → slot work dir first, then by the Resource `session.id`.
 4. Token usage arrives per request or turn — Claude Code's native `api_request` events,
    otel-hook spans — and `har control sync` also **harvests** local Claude/Codex session
    files. Each piece is booked on the slot the agent worked in at that moment; see
@@ -300,8 +301,8 @@ none. Turning it off is the deliberate opt-out, and it is silent by design:
   agents read disagrees with it; `har control sync --full` warns when the level is the
   reason no content is leaving the machine.
 - A harvested stream longer than 1000 events keeps the most recent 1000 and marks
-  the oldest surviving event with `har.harvest.truncated`,
-  `har.harvest.dropped_events` and `har.harvest.total_events`, so a clipped
+  the oldest surviving event with `factory.usage.harvest.truncated`,
+  `factory.usage.harvest.dropped_events` and `factory.usage.harvest.total_events`, so a clipped
   session is labelled as clipped rather than looking complete.
 
 Harvested events cover every transcript the slot owns, and fall back to the main

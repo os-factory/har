@@ -31,7 +31,8 @@ import { findWorkUnit } from './work-units';
 
 /** `service.name`, the same as `factory.producer.name`. */
 const PRODUCER_NAME = FACTORY_PRODUCER_NAME;
-const SCOPE_NAME = 'har.verification';
+/** Instrumentation scope: the npm package that emits the spans. */
+const SCOPE_NAME = '@osfactory/har';
 const DEFAULT_TIMEOUT_MS = 3_000;
 
 function sha256Hex(input: string): string {

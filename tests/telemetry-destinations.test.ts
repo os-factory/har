@@ -26,6 +26,7 @@ import {
   TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES,
   TELEMETRY_FORWARD_DENIED_ATTRIBUTES,
   TELEMETRY_LOCAL_PATH_ATTRIBUTES,
+  attributeKeyDenied,
 } from '../src/harness/schema';
 
 describe('telemetry destinations', () => {
@@ -224,7 +225,7 @@ describe('privacy defaults', () => {
     expect(telemetryDestinationSchema.parse({ name: 'old', endpoint: 'https://o.example.com', signals: ['traces'] }).includeLocalPaths).toBeUndefined();
   });
 
-  it('denies every HAR resource attribute that holds a local path', () => {
+  it('denies every HAR resource attribute that holds a local path (the factory.local.* namespace)', () => {
     const attrs = buildOtelResourceAttributes({
       sessionKey: 'k',
       agentId: 1,
@@ -238,8 +239,17 @@ describe('privacy defaults', () => {
       .map((pair) => pair.split('='))
       .filter(([, value]) => value?.startsWith('/'))
       .map(([key]) => key);
-    expect(pathKeys.sort()).toEqual(['har.repo_path', 'har.work_dir']);
-    for (const key of pathKeys) expect(TELEMETRY_LOCAL_PATH_ATTRIBUTES).toContain(key);
+    expect(pathKeys.sort()).toEqual(['factory.local.checkout_path', 'factory.local.work_dir']);
+    for (const key of pathKeys) expect(attributeKeyDenied(key, TELEMETRY_LOCAL_PATH_ATTRIBUTES)).toBe(true);
+    expect(TELEMETRY_LOCAL_PATH_ATTRIBUTES).toContain('factory.local.*');
+  });
+
+  it('matches denied keys exactly, and factory.local.* as a prefix rule', () => {
+    expect(attributeKeyDenied('factory.local.anything_new', TELEMETRY_LOCAL_PATH_ATTRIBUTES)).toBe(true);
+    expect(attributeKeyDenied('process.cwd', TELEMETRY_LOCAL_PATH_ATTRIBUTES)).toBe(true);
+    expect(attributeKeyDenied('factory.localized', TELEMETRY_LOCAL_PATH_ATTRIBUTES)).toBe(false);
+    expect(attributeKeyDenied('factory.work_unit.id', TELEMETRY_LOCAL_PATH_ATTRIBUTES)).toBe(false);
+    expect(attributeKeyDenied('process.cwd.extra', TELEMETRY_LOCAL_PATH_ATTRIBUTES)).toBe(false);
   });
 
   it('strips account identity unless --include-account-identity is given', () => {

@@ -10,8 +10,8 @@ const LOGS_WITH_PATHS = JSON.stringify({
       resource: {
         attributes: [
           { key: 'service.name', value: { stringValue: 'har' } },
-          { key: 'har.repo_path', value: { stringValue: '/home/me/repo' } },
-          { key: 'har.work_dir', value: { stringValue: '/home/me/worktrees/slot-1' } },
+          { key: 'factory.local.checkout_path', value: { stringValue: '/home/me/repo' } },
+          { key: 'factory.local.work_dir', value: { stringValue: '/home/me/worktrees/slot-1' } },
         ],
       },
       scopeLogs: [{ scope: { name: 'har' }, logRecords: [{ body: { stringValue: 'ok' }, attributes: [] }] }],
@@ -66,7 +66,7 @@ describe('otlp-forward local path stripping', () => {
   it('does not queue a body whose local paths cannot be checked', () => {
     writeDestinations([{ name: 'lf', endpoint: 'https://lf.example.com' }]);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const body = Buffer.from('{"har.repo_path": not json');
+    const body = Buffer.from('{"factory.local.checkout_path": not json');
     expect(enqueueOtlpForward('logs', body, { contentType: 'application/json' }, { destinationsDir, spoolDir })).toBe(0);
     expect(enqueueOtlpForward('logs', Buffer.from(LOGS_WITH_PATHS), { contentType: 'application/json', contentEncoding: 'zstd' }, { destinationsDir, spoolDir })).toBe(0);
     warn.mockRestore();

@@ -281,7 +281,7 @@ describe('S1 — trajectory and usage are scoped to the occupancy, not the slot 
 });
 
 describe('S2 — ingest does not merge a new occupancy into the previous session', () => {
-  it('prefers the matched worktree over a stale har.session_key', async () => {
+  it('prefers the matched worktree over a stale Resource session.id', async () => {
     // The global otel-hook config still carries occupancy A's session key while
     // the agent is demonstrably working in occupancy B's worktree.
     slotFindMany.mockResolvedValue([
@@ -300,7 +300,7 @@ describe('S2 — ingest does not merge a new occupancy into the previous session
 
     const { resolveSessionContext } = await import('./otel-ingest');
     const { context } = await resolveSessionContext(
-      { 'har.session_key': 'main-aaaa-har-agent-1-oldx' },
+      { 'session.id': 'main-aaaa-har-agent-1-oldx' },
       {
         'gen_ai.client.workspace': OCCUPANCY_B.workDir,
         'gen_ai.agent.name': 'claude_code',

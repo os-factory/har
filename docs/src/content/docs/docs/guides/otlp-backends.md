@@ -184,17 +184,25 @@ are the same ones HAR writes into [Factory Commits proofs](/docs/guides/factory-
 | `factory.producer.name` | `har` |
 | `factory.producer.version` | The HAR version |
 
+Agent sessions also carry, on their Resource:
+
+| Attribute | Value |
+|---|---|
+| `session.id` | The HAR session key (the slot's branch, or `agent-<id>-…`) |
+| `factory.slot.id` | The slot number |
+| `factory.local.checkout_path` | Absolute path of the main checkout (local-only) |
+| `factory.local.work_dir` | Absolute path of the slot's work dir (local-only) |
+
 Verification run spans add `factory.run.id`, `factory.git.tree`, `factory.verdict`
 (on `--full`) and `cicd.pipeline.*`. These match the `Factory-Run` trailer and the
 proof's tree. Session spans carry the OpenTelemetry GenAI attributes (`gen_ai.request.model`,
 `gen_ai.usage.*`, `gen_ai.tool.name`, `gen_ai.conversation.id`) and `session.id`
 (the HAR session key).
 
-HAR still emits its older `har.*` attributes with the same values, for
-compatibility: `har.work_unit_id`, `har.attempt_id`, `har.branch`,
-`har.session_key`, `har.agent_id`, `har.repo_path` and `har.work_dir`. New queries
-should use the `factory.*` and `vcs.*` names. `har.repo_path` and `har.work_dir` are
-absolute local paths, so destinations receive them only with `--include-local-paths`.
+HAR 2.0 removed the 1.x `har.*` attributes; the
+[upgrade guide](/docs/guides/upgrading-to-2-0/#removed-telemetry-attributes) maps
+each one to its new name. `factory.local.*` is a local-only namespace: destinations
+receive its keys only with `--include-local-paths`.
 
 An unknown value is left out, never sent empty. A slot launched without
 `--work-id` has no work unit attributes.
@@ -211,7 +219,7 @@ prompt, reply or tool text leaves the machine:
   but removes these attributes from every forwarded copy, at resource, scope, span,
   span event, span link, log record, metric data point and exemplar level, before
   the copy is spooled:
-  `har.repo_path`, `har.work_dir`, `gen_ai.client.workspace`,
+  every `factory.local.*` key, `gen_ai.client.workspace`,
   `gen_ai.client.repository_root`, `cwd`, `process.cwd`,
   `process.executable.path`, `process.command`, `process.command_line`,
   `process.command_args`, `code.filepath` and `code.file.path`. A destination added
