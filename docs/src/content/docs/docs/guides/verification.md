@@ -110,6 +110,12 @@ Proofs never block verify or a commit. When `git-factory` fails, or is missing
 under an explicit mode, HAR prints one line and carries on. Predicates never contain absolute paths,
 prompts, or work-unit titles or URLs.
 
+HAR needs factory-proof 0.2.0 or newer (`npm install -g @osfactory/factory-proof`)
+and treats an older `git-factory` as missing; `har hooks status` shows what it found.
+Every HAR proof has `environment.trust: self-reported`, in CI too: the agent runs as
+the developer, so a proof records what this checkout reports, not an independent
+attestation. See [Trust](/docs/guides/factory-commits/#trust-proofs-are-self-reported).
+
 Inspect and verify proofs with `har proof show [rev]` and
 `har proof verify [rev|A..B] [--min-level L0|L1|L2|L3] [--allowed-signers <file>] [--json]`.
 MCP agents use `har_proof_show` and `har_proof_verify`. Both pass `git factory`

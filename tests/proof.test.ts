@@ -14,11 +14,13 @@ import {
   resolveFactoryProofMode,
   DEFAULT_FACTORY_PROOF_MODE,
   resolveFactoryProofBin,
+  describeFactoryProofBin,
+  isSupportedFactoryProofVersion,
 } from '../src/core/proof';
 import { findValidation, recordValidation } from '../src/core/validations';
 import { HarnessStageRegistrySchema, ValidationRecordSchema, VerificationResult } from '../src/harness/schema';
 
-// Vendored from the Factory Commits repository (v0.1 draft):
+// Vendored from the Factory Commits repository (v0.1, factory-proof >= 0.2.0):
 // https://github.com/os-factory/factory-commits/blob/main/schemas/factory-run.predicate.schema.json
 const PREDICATE_SCHEMA = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures', 'factory-commits', 'factory-run.predicate.schema.json'), 'utf8'),
@@ -80,7 +82,7 @@ describe('buildFactoryRunPredicate', () => {
       ],
       verdict: 'pass',
       producer: { name: 'har', version: '1.30.0' },
-      environment: { trust: 'local', executor: 'local' },
+      environment: { trust: 'self-reported', executor: 'local' },
     });
   });
 
@@ -100,7 +102,8 @@ describe('buildFactoryRunPredicate', () => {
     expectValidPredicate(predicate);
     expect(predicate.verdict).toBe('fail');
     expect(predicate.stages.map((s) => s.status)).toEqual(['passed', 'failed', 'error']);
-    expect(predicate.environment).toEqual({ trust: 'ci', executor: 'github-actions' });
+    // HAR runs as the developer, so CI proofs are self-reported too (SPEC §11).
+    expect(predicate.environment).toEqual({ trust: 'self-reported', executor: 'github-actions' });
     expect(predicate.workUnit).toBeUndefined();
     // Privacy: stage output (and the paths in it) never reaches the predicate.
     expect(JSON.stringify(predicate)).not.toContain('/home/');
@@ -147,7 +150,7 @@ describe('buildFactoryRunPredicate', () => {
     });
     expectValidPredicate(predicate);
     expect(predicate.workUnit).toEqual({ id: 'FE-1' });
-    expect(predicate.environment.trust).toBe('local');
+    expect(predicate.environment.trust).toBe('self-reported');
   });
 });
 
@@ -201,6 +204,42 @@ describe('readFactoryProofMode / resolveFactoryProofBin', () => {
     expect(resolveFactoryProofBin({ PATH: `/nonexistent${path.delimiter}${binDir}` })).toBe(onPath);
     expect(resolveFactoryProofBin({ PATH: '/nonexistent' })).toBeUndefined();
     expect(resolveFactoryProofBin({ HAR_FACTORY_PROOF_BIN: '/nonexistent/git-factory', PATH: binDir })).toBeUndefined();
+  });
+
+  it('treats a git-factory older than 0.2.0, or one without a version, as unavailable', () => {
+    const binDir = tmp('har-proof-oldbin-');
+    const old = path.join(binDir, 'git-factory-0.1');
+    fs.writeFileSync(old, '#!/bin/sh\necho "factory-proof 0.1.0 (factory-commits v0.1)"\n');
+    fs.chmodSync(old, 0o755);
+    const silent = path.join(binDir, 'git-factory-silent');
+    fs.writeFileSync(silent, '#!/bin/sh\nexit 2\n');
+    fs.chmodSync(silent, 0o755);
+
+    expect(resolveFactoryProofBin({ HAR_FACTORY_PROOF_BIN: old })).toBeUndefined();
+    expect(describeFactoryProofBin({ HAR_FACTORY_PROOF_BIN: old })).toEqual({
+      status: 'unsupported',
+      bin: old,
+      version: '0.1.0',
+    });
+    expect(describeFactoryProofBin({ HAR_FACTORY_PROOF_BIN: silent })).toEqual({
+      status: 'unsupported',
+      bin: silent,
+      version: null,
+    });
+    expect(describeFactoryProofBin({ HAR_FACTORY_PROOF_BIN: FAKE_BIN })).toEqual({
+      status: 'ok',
+      bin: FAKE_BIN,
+      version: '0.2.0',
+    });
+    expect(describeFactoryProofBin({ PATH: '/nonexistent' })).toEqual({ status: 'missing' });
+  });
+
+  it('compares versions numerically against the 0.2.0 floor', () => {
+    expect(isSupportedFactoryProofVersion('0.2.0')).toBe(true);
+    expect(isSupportedFactoryProofVersion('0.10.0')).toBe(true);
+    expect(isSupportedFactoryProofVersion('1.0.0')).toBe(true);
+    expect(isSupportedFactoryProofVersion('0.1.9')).toBe(false);
+    expect(isSupportedFactoryProofVersion(null)).toBe(false);
   });
 });
 
@@ -288,7 +327,7 @@ describe('produceValidationProof', () => {
       env: { PATH: '/nonexistent' },
     });
     expect(result.outcome?.status).toBe('skipped');
-    expect(result.outcome?.message).toContain('git-factory not found');
+    expect(result.outcome?.message).toContain('or newer not found');
     expect(result.outcome?.message).not.toContain('\n');
     expect(result.validation).toBe(record);
     expect(findValidation(dir, record.treeHash)?.attestationDigest).toBeUndefined();
@@ -368,7 +407,7 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
       env: { PATH: '/nonexistent' },
     });
     expect(result.outcome?.status).toBe('skipped');
-    expect(result.outcome?.message).toContain('git-factory not found');
+    expect(result.outcome?.message).toContain('or newer not found');
   });
 
   it('attests locally when git-factory is installed', () => {

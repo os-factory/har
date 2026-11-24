@@ -90,11 +90,46 @@ function isExecutable(file: string): boolean {
 }
 
 /**
- * `HAR_FACTORY_PROOF_BIN` → `git-factory` on PATH → undefined (unavailable).
- * An explicit HAR_FACTORY_PROOF_BIN that is not executable is unavailable too:
- * silently falling back to another binary would hide a misconfiguration.
+ * Oldest factory-proof that writes and verifies Factory Commits v0.1 as HAR produces it: 0.2.0
+ * renamed `environment.trust` to `self-reported | independent`, and each side rejects the other's
+ * statements, so an older executable is treated as unavailable.
  */
-export function resolveFactoryProofBin(env: NodeJS.ProcessEnv = process.env): string | undefined {
+export const FACTORY_PROOF_MIN_VERSION = '0.2.0';
+
+const VERSION_TIMEOUT_MS = 10_000;
+const versionCache = new Map<string, string | null>();
+
+/** The version a `git-factory --version` reports (`factory-proof X.Y.Z (…)`), or null. Cached per path. */
+export function readFactoryProofVersion(bin: string): string | null {
+  const cached = versionCache.get(bin);
+  if (cached !== undefined) return cached;
+  let version: string | null = null;
+  try {
+    // The process environment, not a resolution env: a script executable needs the real PATH.
+    const child = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: VERSION_TIMEOUT_MS });
+    const match = /factory-proof\s+v?(\d+\.\d+\.\d+)/.exec(child.stdout ?? '');
+    version = child.status === 0 && match ? match[1] : null;
+  } catch {
+    version = null;
+  }
+  versionCache.set(bin, version);
+  return version;
+}
+
+/** True when `version` (X.Y.Z) is at least {@link FACTORY_PROOF_MIN_VERSION}. */
+export function isSupportedFactoryProofVersion(version: string | null | undefined): boolean {
+  if (!version) return false;
+  const parse = (v: string) => v.split('.').map((part) => Number.parseInt(part, 10));
+  const have = parse(version);
+  const need = parse(FACTORY_PROOF_MIN_VERSION);
+  for (let i = 0; i < need.length; i++) {
+    const a = have[i] ?? 0;
+    if (a !== need[i]) return a > need[i];
+  }
+  return true;
+}
+
+function findFactoryProofExecutable(env: NodeJS.ProcessEnv): string | undefined {
   const explicit = env[FACTORY_PROOF_BIN_ENV]?.trim();
   if (explicit) return isExecutable(explicit) ? path.resolve(explicit) : undefined;
 
@@ -106,8 +141,35 @@ export function resolveFactoryProofBin(env: NodeJS.ProcessEnv = process.env): st
   return undefined;
 }
 
+export type FactoryProofBinStatus =
+  | { status: 'ok'; bin: string; version: string }
+  | { status: 'unsupported'; bin: string; version: string | null }
+  | { status: 'missing' };
+
+/** Where git-factory is and whether HAR can use it (for status output). */
+export function describeFactoryProofBin(env: NodeJS.ProcessEnv = process.env): FactoryProofBinStatus {
+  const bin = findFactoryProofExecutable(env);
+  if (!bin) return { status: 'missing' };
+  const version = readFactoryProofVersion(bin);
+  return isSupportedFactoryProofVersion(version) && version
+    ? { status: 'ok', bin, version }
+    : { status: 'unsupported', bin, version };
+}
+
+/**
+ * `HAR_FACTORY_PROOF_BIN` → `git-factory` on PATH → undefined (unavailable).
+ * An explicit HAR_FACTORY_PROOF_BIN that is not executable is unavailable too:
+ * silently falling back to another binary would hide a misconfiguration.
+ * An executable older than {@link FACTORY_PROOF_MIN_VERSION} is unavailable as well.
+ */
+export function resolveFactoryProofBin(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const found = describeFactoryProofBin(env);
+  return found.status === 'ok' ? found.bin : undefined;
+}
+
 export const FACTORY_PROOF_UNAVAILABLE_HINT =
-  `git-factory not found — install factory-proof or set ${FACTORY_PROOF_BIN_ENV}`;
+  `git-factory ${FACTORY_PROOF_MIN_VERSION} or newer not found — ` +
+  `install @osfactory/factory-proof (npm i -g @osfactory/factory-proof) or set ${FACTORY_PROOF_BIN_ENV}`;
 
 export interface FactoryProofCall {
   code: number;
@@ -163,7 +225,12 @@ export interface FactoryRunPredicate {
   }>;
   verdict: 'pass' | 'fail';
   producer: { name: string; version: string };
-  environment: { trust: 'local' | 'ci'; executor?: string };
+  /**
+   * Factory Commits v0.1 (factory-proof >= 0.2.0): `independent` only when neither the run nor a
+   * signing key is within the agent's reach. HAR runs as the developer, so it always writes
+   * `self-reported`, in CI too (SPEC §11).
+   */
+  environment: { trust: 'self-reported' | 'independent'; executor?: string };
   /** OTel trace of the verification run (telemetry profile); only when that trace is exported. */
   telemetry?: { traceId: string };
 }
@@ -276,7 +343,7 @@ export function buildFactoryRunPredicate(input: BuildFactoryRunPredicateInput): 
     stages,
     verdict: computeFactoryVerdict(required, stages),
     producer: { name: 'har', version: input.producerVersion },
-    environment: { trust: ci ? 'ci' : 'local', ...(executor ? { executor } : {}) },
+    environment: { trust: 'self-reported', ...(executor ? { executor } : {}) },
     ...(input.telemetry && TRACE_ID_RE.test(input.telemetry.traceId)
       ? { telemetry: { traceId: input.telemetry.traceId } }
       : {}),

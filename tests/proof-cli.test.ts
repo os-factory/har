@@ -49,7 +49,7 @@ describe('runFactoryProofQuery', () => {
     const dir = initRepo();
     const missing = runFactoryProofQuery({ repoPath: dir, command: 'verify', env: { PATH: '/nonexistent' } });
     expect(missing).toMatchObject({ available: false, code: 2 });
-    expect(missing.stderr).toContain('git-factory not found');
+    expect(missing.stderr).toContain('or newer not found');
 
     const injected = runFactoryProofQuery({ repoPath: dir, command: 'show', rev: '--output=x', bin: FAKE_BIN });
     expect(injected.code).toBe(2);
@@ -118,7 +118,7 @@ describe('har proof (built CLI)', () => {
     const dir = initRepo();
     const result = har(dir, ['proof', 'show', '--repo', dir], { HAR_FACTORY_PROOF_BIN: '/nonexistent/git-factory' });
     expect(result.status).toBe(2);
-    expect(result.stdout + result.stderr).toContain('git-factory not found');
+    expect(result.stdout + result.stderr).toContain('or newer not found');
   });
 });
 

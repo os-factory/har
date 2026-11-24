@@ -30,18 +30,36 @@ HAR writes unsigned statements, so HAR-produced commits reach **L1**. L2 and L3 
 a signer and a merge gate, defined in the
 [spec](https://github.com/os-factory/factory-commits/blob/main/SPEC.md).
 
+A signature means accountability: it proves the statement was not changed and who
+vouches for it, not that the stages ran.
+
+## Trust: proofs are self-reported
+
+Every statement says how far to trust the environment that produced it, in
+`environment.trust`:
+
+- **`self-reported`**: the agent could have altered the run or the statement.
+- **`independent`**: neither the run nor its signing key was within the agent's reach.
+
+HAR runs verification as the developer, with the agent on the same machine and no
+sandbox, so it always writes `self-reported`, in CI too. Read a HAR proof as "this
+checkout says these stages passed on this exact tree", not as an independent attestation.
+The spec lists these limits, and optional mitigations, in
+[§11 Limitations](https://github.com/os-factory/factory-commits/blob/main/SPEC.md#11-limitations).
+
 ## Install `git factory`
 
 HAR builds the predicate. The `git-factory` executable does everything else: the
-statement, the envelope, notes, trailers and verification. It is not published to
-npm yet, so build it from the factory-commits repository:
+statement, the envelope, notes, trailers and verification. Install it from npm:
 
 ```bash
-git clone https://github.com/os-factory/factory-commits.git
-cd factory-commits/packages/factory-proof
-npm ci && npm run build && npm install -g .
-git factory --version
+npm install -g @osfactory/factory-proof
+git factory --version    # factory-proof 0.2.0 or newer
 ```
+
+HAR needs **factory-proof 0.2.0 or newer**. 0.2.0 renamed the trust values, and older
+and newer versions reject each other's statements, so HAR treats an older
+`git-factory` as missing. `har hooks status` shows the version HAR found.
 
 HAR looks for `git-factory` on `PATH`. To use a copy that is not on `PATH`, export
 `HAR_FACTORY_PROOF_BIN` with the path to the executable. If that path is not

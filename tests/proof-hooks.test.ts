@@ -366,7 +366,7 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
       expect(result.attached).toBe(true);
       if (expectHint) {
         expect(result.proof?.status).toBe('skipped');
-        expect(result.proof?.message).toContain('git-factory not found');
+        expect(result.proof?.message).toContain('or newer not found');
       } else {
         expect(result.proof).toBeUndefined();
       }

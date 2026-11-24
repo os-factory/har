@@ -82,7 +82,7 @@
       "type": "object",
       "required": ["trust"],
       "properties": {
-        "trust": { "enum": ["local", "ci"] },
+        "trust": { "enum": ["self-reported", "independent"] },
         "executor": { "type": "string", "minLength": 1, "maxLength": 128 }
       }
     },
