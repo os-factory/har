@@ -1,3 +1,15 @@
+## [1.31.0](https://github.com/os-factory/har/compare/v1.30.5...v1.31.0) (2026-11-23)
+
+### Features
+
+* **runtime:** bundle pm2 and run it directly instead of via npx ([#475](https://github.com/os-factory/har/issues/475)) ([6b68d55](https://github.com/os-factory/har/commit/6b68d55b547d133080b8dab6aa3699fa7f737410))
+
+## [1.30.5](https://github.com/os-factory/har/compare/v1.30.4...v1.30.5) (2026-11-23)
+
+### Bug Fixes
+
+* **status:** make har env status cheap enough to poll ([#474](https://github.com/os-factory/har/issues/474)) ([46c1805](https://github.com/os-factory/har/commit/46c1805d9806d2bb59275ea82fc8c9fb2f805f6d))
+
 ## [1.30.4](https://github.com/os-factory/har/compare/v1.30.3...v1.30.4) (2026-11-23)
 
 ### Bug Fixes

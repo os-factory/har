@@ -31,11 +31,11 @@
     "@xyflow/react": "^12.11.1",
     "astro": "^7.4.13",
     "lucide-react": "^0.511.0",
-    "mermaid": "^11.16.1",
+    "mermaid": "^12.3.0",
     "posthog-js": "^1.410.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
