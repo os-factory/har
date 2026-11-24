@@ -8,6 +8,8 @@ import {
   SLOT_ID_ATTR,
 } from '../harness/schema';
 import { getControlApiUrl } from './control-config';
+import { getOtelHooksHome } from './otel-hooks';
+import { readAppliedDirectRoute } from './telemetry-direct';
 import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { getHarPackageVersion } from './package-version';
 import { findWorkUnit } from './work-units';
@@ -43,12 +45,19 @@ function escapeAttrValue(value: string): string {
  * `factory.slot.id` names the slot, and the local-only `factory.local.*` keys
  * hold the absolute paths Mission Control needs for attribution.
  */
-export function buildOtelResourceAttributes(attrs: TelemetrySessionAttrs): string {
+export function buildOtelResourceAttributes(
+  attrs: TelemetrySessionAttrs,
+  options: { omitLocalPaths?: boolean } = {},
+): string {
   const parts = [
     `${SESSION_ID_ATTR}=${escapeAttrValue(attrs.sessionKey)}`,
     `${SLOT_ID_ATTR}=${attrs.agentId}`,
-    `${LOCAL_CHECKOUT_PATH_ATTR}=${escapeAttrValue(attrs.repoPath)}`,
-    `${LOCAL_WORK_DIR_ATTR}=${escapeAttrValue(attrs.workDir)}`,
+    ...(options.omitLocalPaths
+      ? []
+      : [
+          `${LOCAL_CHECKOUT_PATH_ATTR}=${escapeAttrValue(attrs.repoPath)}`,
+          `${LOCAL_WORK_DIR_ATTR}=${escapeAttrValue(attrs.workDir)}`,
+        ]),
   ];
   parts.push(...factoryCorrelationAttributes(attrs));
   return parts.join(',');
@@ -138,6 +147,23 @@ export function buildSessionKey(input: {
 }
 
 /**
+ * Whether agent traces go straight to a destination that does not take local
+ * paths (`direct.env` written by `har telemetry`): then `factory.local.*` stays
+ * out of the agent's `OTEL_RESOURCE_ATTRIBUTES`, since no Mission Control
+ * strips it. Under a test runner only an explicit `HAR_OTEL_HOOKS_HOME` counts,
+ * so unit tests never read a developer's real hooks home.
+ */
+export function directExportOmitsLocalPaths(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.NODE_ENV === 'test' && !env.HAR_OTEL_HOOKS_HOME) return false;
+  try {
+    const applied = readAppliedDirectRoute(getOtelHooksHome());
+    return applied !== null && !applied.includeLocalPaths;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Session attribution for .env.agent.<id>.
  * Agent OTEL export is owned by @osfactory/otel-hook (har telemetry on) — not Claude/Codex native exporters.
  */
@@ -156,7 +182,9 @@ export function buildTelemetryEnvBlock(input: TelemetrySessionAttrs): string {
     ...(attrs.workUnitId ? [`HAR_WORK_UNIT_ID=${quoteShellArg(attrs.workUnitId)}`] : []),
     ...(attrs.attemptId ? [`HAR_ATTEMPT_ID=${quoteShellArg(attrs.attemptId)}`] : []),
     `HAR_CONTROL_API_URL=${quoteShellArg(apiUrl)}`,
-    `OTEL_RESOURCE_ATTRIBUTES=${quoteShellArg(buildOtelResourceAttributes(attrs))}`,
+    `OTEL_RESOURCE_ATTRIBUTES=${quoteShellArg(
+      buildOtelResourceAttributes(attrs, { omitLocalPaths: directExportOmitsLocalPaths() }),
+    )}`,
     '# Agent telemetry: @osfactory/otel-hook → Mission Control (har telemetry on|off)',
   ];
   return lines.join('\n') + '\n';

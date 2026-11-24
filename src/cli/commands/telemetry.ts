@@ -31,6 +31,11 @@ import {
   buildTelemetryEnvBlock,
 } from '../../core/telemetry-env';
 import { ensureTelemetryInfrastructure } from '../../core/telemetry-ensure';
+import {
+  describeAgentTelemetryRoute,
+  readAppliedDirectRoute,
+  resolveAgentTelemetryRoute,
+} from '../../core/telemetry-direct';
 import { error, header, info, success, warn } from '../../utils/logging';
 import { telemetryDestinationCommand } from './telemetry-destination';
 
@@ -52,6 +57,17 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   const drift = inspectTelemetryDrift();
   const apiUrl = getControlApiUrl();
   const reachable = enabled ? await isControlApiReachable(apiUrl) : false;
+  const routeDecision = resolveAgentTelemetryRoute(getOtelHooksHome());
+  const route = routeDecision.route;
+  const applied = readAppliedDirectRoute(getOtelHooksHome());
+  // Names only: a destination's endpoint headers never reach this output.
+  const agentTraces = {
+    mode: route.mode,
+    label: describeAgentTelemetryRoute(route),
+    ...(route.mode === 'direct' ? { destination: route.destination.name } : {}),
+    appliedDirectDestination: applied?.destination ?? null,
+    ...(routeDecision.hint ? { hint: routeDecision.hint } : {}),
+  };
   const payload = {
     enabled,
     level,
@@ -64,6 +80,7 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
     envOverride: process.env.HAR_TELEMETRY ?? null,
     controlApiUrl: apiUrl,
     controlReachable: reachable,
+    agentTraces,
     otelEndpoint: `${apiUrl.replace(/\/$/, '')}/api/otel`,
     otelHooksHome: getOtelHooksHome(),
     otelHooksConfig: getOtelHooksConfigPath(),
@@ -82,12 +99,21 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   );
   info(`Preference:    ${getTelemetryPreferencePath()}${preference.updatedAt ? ` (updated ${preference.updatedAt})` : ` (default ${DEFAULT_TELEMETRY_LEVEL})`}`);
   info(`Mission Control: ${apiUrl} (${reachable ? 'reachable' : 'not reachable'})`);
+  info(`Agent traces:  ${agentTraces.label}`);
+  if (routeDecision.hint) info(routeDecision.hint);
+  const appliedName = applied?.destination ?? null;
+  const wantedName = route.mode === 'direct' ? route.destination.name : null;
+  if (appliedName !== wantedName) {
+    warn(
+      `Agents currently send traces ${appliedName ? `directly to "${appliedName}"` : 'to Mission Control'} — run har telemetry on to apply the route above.`,
+    );
+  }
   info(`OTLP endpoint: ${payload.otelEndpoint}`);
   info(`Hooks home:    ${payload.otelHooksHome}`);
 
   // Hooks installed + collector down is the failure state worth naming (#328):
   // every agent turn pays the export budget for telemetry nobody receives.
-  if (enabled && !reachable) {
+  if (enabled && !reachable && route.mode === 'control') {
     warn(
       'Agent hooks are installed but Mission Control is not reachable — each turn pays the export timeout for telemetry nobody receives.',
     );
@@ -116,11 +142,16 @@ async function handleOn(argv: { level: TelemetryLevel }): Promise<void> {
 
   const result = await ensureTelemetryInfrastructure({ startIfNeeded: true });
   if (result.message) success(result.message);
-  if (result.warning) warn(result.warning);
 
   const hooks = ensureOtelHooks({ setupAgents: true });
+  // Without Mission Control, one destination takes agent traces directly.
+  if (result.warning && hooks.route.mode !== 'direct') warn(result.warning);
   if (hooks.message) success(hooks.message);
   if (hooks.warning) warn(hooks.warning);
+  if (hooks.route.mode === 'direct') {
+    success(`Agent traces: ${describeAgentTelemetryRoute(hooks.route)} (Mission Control is off; only otel-hook traces go direct)`);
+  }
+  if (hooks.routeHint) info(hooks.routeHint);
   if (result.otelReady) {
     await ensureRepoRegisteredWithControl(process.cwd(), result.apiUrl);
     info(`OTLP ingest: ${result.apiUrl.replace(/\/$/, '')}/api/otel`);

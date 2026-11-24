@@ -39,6 +39,10 @@ har env verify 1 --full
   `factory.*`, `vcs.*`, `cicd.*` and `gen_ai.*` attributes from the Factory Commits
   [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md),
   in place of the `har.*` ones (see [Removed telemetry attributes](#removed-telemetry-attributes)).
+- **Agent traces without Mission Control.** With Mission Control disabled or not
+  set up and a single `traces` destination, otel-hook sends agent session traces
+  to it directly, without local paths and with the keys in a `0600` file. See
+  [Langfuse without Mission Control](/docs/guides/langfuse/#without-mission-control).
 - **Factory Commits proofs.** A full verify becomes an in-toto `factory-run`
   statement for the exact verified tree. The commit of that tree gets it as a note
   in `refs/notes/factory`, and optionally as trailers. `har proof show|verify`

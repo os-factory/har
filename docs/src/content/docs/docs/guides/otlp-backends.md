@@ -193,6 +193,29 @@ predates destinations, run `har control up` to recreate it. Mission Control re-r
 the destination file when it changes, so adding or removing a destination needs no
 restart.
 
+### Without Mission Control
+
+When Mission Control is disabled (`HAR_CONTROL_DISABLED=true`) or not set up, and
+**exactly one** enabled destination subscribes to `traces`, otel-hook exports agent
+session traces to it directly. `har telemetry status` shows the mode:
+`via Mission Control`, `direct → <name>` or `off`.
+
+- HAR writes the destination's endpoint and headers to
+  `~/.har/otel-hooks/direct.env` (mode `0600`) as the standard
+  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_TRACES_HEADERS`
+  (values URL-encoded). The hook wrapper loads the file at run time. No secret is
+  on a command line or in the wrapper.
+- Logs go direct only when the destination subscribes to `logs` (the same warning
+  applies). Metrics are not sent: Claude Code's native telemetry stays off in direct
+  mode because it carries account identity.
+- `factory.local.*` stays out of the agent's Resource unless the destination has
+  `--include-local-paths`. otel-hook itself sends hashed workspace ids, not paths.
+- With two or more `traces` destinations, nothing goes direct: run Mission Control
+  to fan out. Direct mode needs `@osfactory/otel-hook` 0.7.0 or later.
+
+`destination add|remove`, `har control up|down` and `har telemetry on|off`
+re-route agent traces. Start a new agent session to pick up a change.
+
 ## Correlation attributes
 
 HAR follows the Factory Commits
