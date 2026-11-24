@@ -30,7 +30,7 @@
     "@har/schemas": "file:../packages/schemas",
     "@headless-tree/core": "^1.7.0",
     "@headless-tree/react": "^1.7.0",
-    "@opentelemetry/otlp-transformer": "^0.57.2",
+    "@opentelemetry/otlp-transformer": "^0.301.2",
     "@osfactory/otel-hook": "0.6.0",
     "@prisma/client": "^6.0.0",
     "@radix-ui/react-avatar": "^1.2.1",
