@@ -1,3 +1,17 @@
+## [2.0.0-next.1](https://github.com/os-factory/har/compare/v1.30.2...v2.0.0-next.1) (2026-11-24)
+
+### ⚠ BREAKING CHANGES
+
+* HAR 2.0.0, standard OpenTelemetry and Factory Commits proofs (#460)
+
+### Features
+
+* HAR 2.0.0, standard OpenTelemetry and Factory Commits proofs ([#460](https://github.com/os-factory/har/issues/460)) ([c6fae67](https://github.com/os-factory/har/commit/c6fae679a3f8680d00f97437a9ef08639e761ca6)), closes [#416](https://github.com/os-factory/har/issues/416) [#415](https://github.com/os-factory/har/issues/415) [#417](https://github.com/os-factory/har/issues/417) [#419](https://github.com/os-factory/har/issues/419) [#418](https://github.com/os-factory/har/issues/418) [#422](https://github.com/os-factory/har/issues/422) [#424](https://github.com/os-factory/har/issues/424) [#420](https://github.com/os-factory/har/issues/420) [#421](https://github.com/os-factory/har/issues/421) [#423](https://github.com/os-factory/har/issues/423) [#425](https://github.com/os-factory/har/issues/425) [#426](https://github.com/os-factory/har/issues/426) [#427](https://github.com/os-factory/har/issues/427) [#428](https://github.com/os-factory/har/issues/428) [#429](https://github.com/os-factory/har/issues/429) [#430](https://github.com/os-factory/har/issues/430) [#464](https://github.com/os-factory/har/issues/464) [#469](https://github.com/os-factory/har/issues/469) [#470](https://github.com/os-factory/har/issues/470) [#471](https://github.com/os-factory/har/issues/471) [#481](https://github.com/os-factory/har/issues/481) [factory-commits#13](https://github.com/os-factory/factory-commits/issues/13) [#482](https://github.com/os-factory/har/issues/482) [#483](https://github.com/os-factory/har/issues/483) [#459](https://github.com/os-factory/har/issues/459)
+
+### Bug Fixes
+
+* **control:** read slot status once per sync and skip the usage check when nothing is sent ([#452](https://github.com/os-factory/har/issues/452)) ([fd0784d](https://github.com/os-factory/har/commit/fd0784d32266c6fd2f30f0ab2bd41d66e1b6b8ca))
+
 ## [1.31.0](https://github.com/os-factory/har/compare/v1.30.5...v1.31.0) (2026-11-23)
 
 ### Features
