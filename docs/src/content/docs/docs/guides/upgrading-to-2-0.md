@@ -132,6 +132,17 @@ direct export relies on. HAR replaces an older installed copy on the next
 To try an unreleased otel-hook build, set `HAR_OTEL_HOOKS_PACKAGE` to any spec your
 package manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
 
+**Claude Code hooks don't inherit `OTEL_*`.** Since Claude Code 2.1.128, Claude Code
+removes every `OTEL_*` variable from the hooks it runs, so otel-hook would see no
+`OTEL_RESOURCE_ATTRIBUTES` and export sessions without `session.id`, `factory.*` or
+`vcs.*`. HAR therefore also writes the same profile to `.env.agent.<id>` as
+`HAR_RESOURCE_ATTRIBUTES`, and the hook wrapper restores `OTEL_RESOURCE_ATTRIBUTES`
+from it when the variable arrives empty, before it drops `factory.local.*` on the
+direct path. This applies both through Mission Control and with direct export. An
+agent started outside a HAR slot has no `HAR_RESOURCE_ATTRIBUTES`, and its hooks
+behave as before. Slots launched before this change keep their old agent env file:
+relaunch the slot to get the new variable.
+
 ## Everything else is unchanged
 
 - No command, flag, config key or MCP tool was renamed or removed. MCP output

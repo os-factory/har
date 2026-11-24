@@ -50,6 +50,14 @@ export const DIRECT_ENV_FILE = 'direct.env';
 /** Set in `direct.env` when the wrapper must drop `factory.local.*` from `OTEL_RESOURCE_ATTRIBUTES`. */
 export const DIRECT_STRIP_LOCAL_ENV = 'HAR_OTEL_DIRECT_STRIP_LOCAL';
 
+/**
+ * Copy of the agent's `OTEL_RESOURCE_ATTRIBUTES` under a name agents do not
+ * filter (#484). Claude Code (>= 2.1.128) removes every `OTEL_*` variable from
+ * the hooks it runs, so the hook wrapper restores the session profile from
+ * this one when `OTEL_RESOURCE_ATTRIBUTES` arrives empty.
+ */
+export const HAR_RESOURCE_ATTRIBUTES_ENV = 'HAR_RESOURCE_ATTRIBUTES';
+
 const METADATA_PREFIX = '# har-direct:';
 
 export interface AgentTelemetryRouteInput {
