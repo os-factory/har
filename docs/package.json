@@ -35,7 +35,7 @@
     "posthog-js": "^1.410.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
