@@ -5,6 +5,7 @@ import { execSync } from 'child_process';
 import { runVerification } from '../src/core/run-service';
 import { computeWorktreeSnapshot } from '../src/core/change-batch';
 import { listValidations } from '../src/core/validations';
+import { buildVerifyPlan } from '../src/runtime';
 
 const FIXTURE = path.join(__dirname, 'fixtures/minimal-harness');
 
@@ -63,6 +64,58 @@ describe('verify records validations', () => {
     const dir = initHarnessRepo();
     await runVerification({ repoPath: dir, agentId: 1, capture: true });
     expect(listValidations(dir)[0]).toMatchObject({ status: 'pass', full: false });
+  });
+
+  describe('after-stages hook (opt-in line gates, BE-3795)', () => {
+    it('keeps a pass when every extra check passes', async () => {
+      const dir = initHarnessRepo();
+      const afterStages = jest.fn(async () => [{ name: 'line:a', pass: true }]);
+
+      const result = await runVerification({ repoPath: dir, agentId: 1, full: true, capture: true, afterStages });
+
+      expect(afterStages).toHaveBeenCalledTimes(1);
+      expect(result.code).toBe(0);
+      expect(result.verification?.status).toBe('pass');
+      expect(result.extraChecks).toEqual([{ name: 'line:a', pass: true }]);
+      expect(listValidations(dir)[0]).toMatchObject({ status: 'pass', full: true });
+    });
+
+    it('fails verify and records a failed validation when an extra check fails', async () => {
+      const dir = initHarnessRepo();
+      const afterStages = jest.fn(async () => [
+        { name: 'line:a', pass: true },
+        { name: 'line:b', pass: false, detail: 'b-gate (from S2): fail' },
+      ]);
+
+      const result = await runVerification({ repoPath: dir, agentId: 1, full: true, capture: true, afterStages });
+
+      expect(result.code).toBe(1);
+      expect(result.verification?.status).toBe('fail');
+      // Stage results stay as the stages reported them.
+      expect(result.verification?.stages).toEqual([{ name: 'smoke', pass: true }]);
+      expect(result.extraChecks?.find((c) => !c.pass)?.name).toBe('line:b');
+      // `complete` must not reuse this validation.
+      expect(listValidations(dir)[0]).toMatchObject({ status: 'fail', full: true });
+    });
+
+    it('does not run the hook when the stages fail', async () => {
+      const dir = initHarnessRepo();
+      (buildVerifyPlan as jest.Mock).mockImplementationOnce((_repo: string, agentId: number) => ({
+        shellCommand:
+          "echo '" +
+          JSON.stringify({ status: 'fail', agent_id: agentId, stages: [{ name: 'smoke', pass: false }] }) +
+          "'; exit 1",
+        cwd: process.cwd(),
+        env: process.env,
+      }));
+      const afterStages = jest.fn(async () => [{ name: 'line:a', pass: true }]);
+
+      const result = await runVerification({ repoPath: dir, agentId: 1, capture: true, afterStages });
+
+      expect(afterStages).not.toHaveBeenCalled();
+      expect(result.code).not.toBe(0);
+      expect(result.extraChecks).toBeUndefined();
+    });
   });
 
   it('does not fail verify when the repo is not a git checkout', async () => {

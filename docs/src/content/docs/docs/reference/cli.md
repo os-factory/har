@@ -209,6 +209,15 @@ duplicates step logs already shown. Use `--json` when a script needs the
 structured result. Passing steps omit `output`; failed steps keep a truncated
 excerpt. MCP `har_run_verification` returns the same slim shape.
 
+**Factory lines after verify.** When [lines](#har-line) are installed and the
+verify stages pass, `har env verify` in a terminal asks which lines to check
+too (none are selected by default). Each chosen line runs the gate of its last
+station, which covers every station, in the same slot. If any chosen line
+fails, verify fails, names the line and stage, and records a failed validation
+that `complete` will not reuse. Without a terminal (CI, agents, `--json`, MCP)
+nothing is asked: verify runs as before and prints a one-line hint (MCP:
+`linesHint`). `complete --verify` never asks.
+
 ### Doctor
 
 ```bash
@@ -308,6 +317,10 @@ long as it did before. Line gate stages run on demand:
 ```bash
 har line gate S2 --line my-line
 ```
+
+You can also opt in from an interactive `har env verify`: once the verify
+stages pass it offers the installed lines (see
+[Verify and finish](#verify-and-finish)).
 
 `gate.stages[].fromStation` is the ratchet: a stage tagged at a station is
 required at that station **and every later one**, so growing a line can never

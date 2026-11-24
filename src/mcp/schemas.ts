@@ -206,6 +206,8 @@ export const RunVerificationInputSchema = z.object({
 
 export const RunVerificationOutputSchema = ShellRunOutputSchema.extend({
   verification: VerificationResultSchema.nullable(),
+  /** Installed factory lines are not run by verify; this says how to run them. */
+  linesHint: z.string().optional(),
 });
 
 export const GetLogsInputSchema = z.object({

@@ -31,6 +31,7 @@ import {
   runLineGate,
 } from '../core/lines';
 import { addWorkUnitLinks } from '../core/work-units';
+import { installedLinesHint } from '../core/verify-lines';
 import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
@@ -290,7 +291,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_run_verification',
     description:
-      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump).',
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump). Factory line gates are never run here; when lines are installed, linesHint says how to run them (har_run_line_gate).',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -691,6 +692,7 @@ export async function handleMcpToolCall(
           stdout: '',
           stderr: result.stderr,
           verification: slimVerificationResult(result.verification),
+          linesHint: installedLinesHint(repo),
         }),
       );
     }
