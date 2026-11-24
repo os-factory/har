@@ -218,7 +218,7 @@ describe('otel-hook exporter contract (#416)', () => {
   });
 
   it('pins the otel-hook package, overridable for an unreleased build', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.6.0');
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.8.0');
     expect(OTEL_HOOKS_PACKAGE_ENV).toBe('HAR_OTEL_HOOKS_PACKAGE');
     expect(otelHooksPackageSpec({})).toBe(OTEL_HOOKS_PACKAGE);
     expect(otelHooksPackageSpec({ HAR_OTEL_HOOKS_PACKAGE: ' /tmp/otel-hook.tgz ' })).toBe('/tmp/otel-hook.tgz');
