@@ -279,6 +279,89 @@ describe('direct export without Mission Control', () => {
       expect(after.env.OTEL_RESOURCE_ATTRIBUTES).toBe('factory.local.work_dir=/x');
     });
 
+    describe('when the agent strips OTEL_* from its hooks (Claude Code >= 2.1.128, #484)', () => {
+      const sessionAttrs = {
+        sessionKey: 'feat-x',
+        agentId: 4,
+        repoPath: '/home/dev/repo',
+        workDir: '/home/dev/wt',
+        workUnitId: 'W-484',
+        repositoryUrl: 'https://github.com/o/r',
+      };
+
+      /**
+       * Source a real `.env.agent` block, then run the generated wrapper the
+       * way Claude Code runs a hook: every OTEL_* variable removed, everything
+       * else inherited.
+       */
+      const runHookLikeClaudeCode = (block: string) => {
+        const dump = path.join(tmp, 'dump.json');
+        const fakeHook = path.join(tmp, 'fake-otel-hook');
+        fs.writeFileSync(
+          fakeHook,
+          `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(dump)}, JSON.stringify({ env: process.env }));\n`,
+          { mode: 0o755 },
+        );
+        const wrapper = writeOtelHooksWrapper(fakeHook, hooksHome);
+        const envFile = path.join(tmp, '.env.agent.4');
+        fs.writeFileSync(envFile, block);
+        const script = [
+          'set -a',
+          `. ${JSON.stringify(envFile)}`,
+          'set +a',
+          'for _v in $(compgen -e | grep "^OTEL_"); do unset "$_v"; done',
+          `[ -z "\${OTEL_RESOURCE_ATTRIBUTES:-}" ] || exit 7`,
+          `exec bash ${JSON.stringify(wrapper)} --provider claude-code`,
+        ].join('\n');
+        const result = spawnSync('bash', ['-c', script], {
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH },
+        });
+        expect(result.status).toBe(0);
+        const seen = JSON.parse(fs.readFileSync(dump, 'utf8')) as { env: Record<string, string> };
+        return Object.fromEntries(
+          (seen.env.OTEL_RESOURCE_ATTRIBUTES ?? '')
+            .split(',')
+            .filter(Boolean)
+            .map((pair) => pair.split('=') as [string, string]),
+        );
+      };
+
+      it('writes the profile twice in .env.agent: OTEL_RESOURCE_ATTRIBUTES and HAR_RESOURCE_ATTRIBUTES', () => {
+        const block = buildTelemetryEnvBlock(sessionAttrs);
+        const value = (name: string) =>
+          block.split('\n').find((line) => line.startsWith(`${name}=`))?.slice(name.length + 1);
+        expect(value('OTEL_RESOURCE_ATTRIBUTES')).toBeDefined();
+        expect(value('HAR_RESOURCE_ATTRIBUTES')).toBe(value('OTEL_RESOURCE_ATTRIBUTES'));
+      });
+
+      it('restores session.id and factory.* from HAR_RESOURCE_ATTRIBUTES on the Mission Control path', () => {
+        const attrs = runHookLikeClaudeCode(buildTelemetryEnvBlock(sessionAttrs));
+        expect(attrs['session.id']).toBe('feat-x');
+        expect(attrs['factory.slot.id']).toBe('4');
+        expect(attrs['factory.work_unit.id']).toBe('W-484');
+        expect(attrs['vcs.repository.url.full']).toBe('https://github.com/o/r');
+        // Mission Control strips local paths itself.
+        expect(attrs['factory.local.work_dir']).toBe('/home/dev/wt');
+      });
+
+      it('still strips factory.local.* on the direct path', () => {
+        // A block written before direct mode was on still carries local paths.
+        const block = buildTelemetryEnvBlock(sessionAttrs);
+        expect(block).toContain('factory.local.');
+        writeDirectExportEnv({ mode: 'direct', destination: langfuse() }, hooksHome);
+        const attrs = runHookLikeClaudeCode(block);
+        expect(attrs['session.id']).toBe('feat-x');
+        expect(attrs['factory.work_unit.id']).toBe('W-484');
+        expect(Object.keys(attrs).filter((key) => key.startsWith('factory.local.'))).toEqual([]);
+      });
+
+      it('leaves the hook unchanged without HAR_RESOURCE_ATTRIBUTES (an agent outside a slot)', () => {
+        const attrs = runHookLikeClaudeCode('PROBE_CONTROL=yes\n');
+        expect(attrs).toEqual({});
+      });
+    });
+
     it('keeps OTLP/HTTP protobuf, the only protocol otel-hook exports, for an http/json destination', () => {
       const json = { ...collector('otel'), protocol: 'http/json' as const };
       expect(buildOtelHooksConfig({ route: { mode: 'direct', destination: json } }).exporter.protocol).toBe('http/protobuf');

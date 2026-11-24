@@ -163,6 +163,8 @@ describe('OTEL_RESOURCE_ATTRIBUTES contract (#416)', () => {
     for (const name of ['HAR_WORK_UNIT_ID', 'HAR_ATTEMPT_ID', 'HAR_CONTROL_API_URL']) {
       expect(block).toMatch(new RegExp(`^${name}=`, 'm'));
     }
+    // Claude Code strips OTEL_* from hooks (#484): the wrapper restores this copy.
+    expect(block).toContain(`\nHAR_RESOURCE_ATTRIBUTES=${(line as string).slice('OTEL_RESOURCE_ATTRIBUTES='.length)}\n`);
     // otel-hook <= 0.6 turns HAR_SESSION_KEY into a `har.session_key` attribute.
     expect(block).not.toMatch(/^HAR_SESSION_KEY=/m);
     expect(block).not.toMatch(/\bhar\.[a-z_]/);

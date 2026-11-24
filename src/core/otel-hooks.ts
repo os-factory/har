@@ -16,6 +16,7 @@ import {
 } from './telemetry-config';
 import {
   DIRECT_STRIP_LOCAL_ENV,
+  HAR_RESOURCE_ATTRIBUTES_ENV,
   directRouteSendsLogs,
   getDirectExportEnvPath,
   readAppliedDirectRoute,
@@ -293,6 +294,12 @@ export function writeOtelHooksWrapper(
 #      agent turn, so the exit status is always 0 — a non-zero hook exit can
 #      block a tool call.
 set -uo pipefail
+# Claude Code (>= 2.1.128) removes every OTEL_* variable from the hooks it runs
+# (#484): restore the session profile from the copy HAR writes next to it in
+# .env.agent.<id>. Before the strip below, so the privacy filter still applies.
+if [ -z "\${OTEL_RESOURCE_ATTRIBUTES:-}" ] && [ -n "\${${HAR_RESOURCE_ATTRIBUTES_ENV}:-}" ]; then
+  export OTEL_RESOURCE_ATTRIBUTES="$${HAR_RESOURCE_ATTRIBUTES_ENV}"
+fi
 # Direct export (Mission Control off, one destination): endpoint and headers
 # live in a mode-0600 file, never in this script or on a command line.
 if [ -f "${directEnvPath}" ]; then

@@ -9,7 +9,7 @@ import {
 } from '../harness/schema';
 import { getControlApiUrl } from './control-config';
 import { getOtelHooksHome } from './otel-hooks';
-import { readAppliedDirectRoute } from './telemetry-direct';
+import { HAR_RESOURCE_ATTRIBUTES_ENV, readAppliedDirectRoute } from './telemetry-direct';
 import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { getHarPackageVersion } from './package-version';
 import { findWorkUnit } from './work-units';
@@ -176,15 +176,19 @@ export function buildTelemetryEnvBlock(input: TelemetrySessionAttrs): string {
   // The session key travels only as `session.id` in OTEL_RESOURCE_ATTRIBUTES:
   // no HAR_SESSION_KEY, which otel-hook <= 0.6 turns into a `har.session_key`
   // resource attribute.
+  const resourceAttributes = quoteShellArg(
+    buildOtelResourceAttributes(attrs, { omitLocalPaths: directExportOmitsLocalPaths() }),
+  );
   const lines: string[] = [
     '',
     '# HAR session attribution (generated)',
     ...(attrs.workUnitId ? [`HAR_WORK_UNIT_ID=${quoteShellArg(attrs.workUnitId)}`] : []),
     ...(attrs.attemptId ? [`HAR_ATTEMPT_ID=${quoteShellArg(attrs.attemptId)}`] : []),
     `HAR_CONTROL_API_URL=${quoteShellArg(apiUrl)}`,
-    `OTEL_RESOURCE_ATTRIBUTES=${quoteShellArg(
-      buildOtelResourceAttributes(attrs, { omitLocalPaths: directExportOmitsLocalPaths() }),
-    )}`,
+    `OTEL_RESOURCE_ATTRIBUTES=${resourceAttributes}`,
+    // Claude Code strips every OTEL_* variable from its hooks (#484); the hook
+    // wrapper restores the profile from this copy.
+    `${HAR_RESOURCE_ATTRIBUTES_ENV}=${resourceAttributes}`,
     '# Agent telemetry: @osfactory/otel-hook → Mission Control (har telemetry on|off)',
   ];
   return lines.join('\n') + '\n';

@@ -29,6 +29,12 @@ Session traces come from `@osfactory/otel-hook`, which HAR installs at the `outl
 and `full` telemetry levels. At `usage` there are no session traces. Verification
 traces are sent at every level except `off`.
 
+Claude Code (2.1.128 and later) removes every `OTEL_*` variable from the hooks it
+runs, so the session profile cannot reach otel-hook as `OTEL_RESOURCE_ATTRIBUTES`.
+HAR also writes it to `.env.agent.<id>` as `HAR_RESOURCE_ATTRIBUTES`, and the hook
+wrapper restores it. Start the agent from a shell that loaded the slot's env file,
+or session spans in Langfuse lack `session.id` and the `factory.*` attributes.
+
 ## Set it up
 
 1. Turn telemetry on. This starts Mission Control and installs the agent hooks:
