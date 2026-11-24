@@ -282,8 +282,9 @@ describe('syncRepoWithControl — portal push', () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_secret';
     const fetchMock = jest.fn(async (url: string): Promise<Partial<Response>> => {
-      const toHq = String(url).includes('portal.example.com');
-      // Mission Control rejects every request (e.g. a schema error on one endpoint).
+      // Mission Control is up (its health check answers) but rejects every
+      // sync request (e.g. a schema error on one endpoint).
+      const toHq = String(url).includes('portal.example.com') || String(url).endsWith('/api/health');
       return {
         ok: toHq,
         status: toHq ? 200 : 400,

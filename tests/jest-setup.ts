@@ -14,6 +14,8 @@ process.env.HAR_CONTROL_SYNC_SELECTION_PATH = path.join(harHome, 'sync-selection
 process.env.HAR_OBSERVATION_LEDGER_PATH = path.join(harHome, 'observation-ledger.json');
 // Nor read (or write) the developer's real HAR HQ connection.
 process.env.HAR_PORTAL_TARGETS_PATH = path.join(harHome, 'portal-targets.json');
+// ...nor migrate the developer's legacy ~/.har/credentials.json into it.
+process.env.HAR_CREDENTIALS_PATH = path.join(harHome, 'credentials.json');
 // Nor send verification spans to the developer's real OTLP destinations.
 process.env.HAR_DESTINATIONS_DIR = path.join(harHome, 'destinations');
 
@@ -23,6 +25,7 @@ afterAll(() => {
   delete process.env.HAR_CONTROL_SYNC_SELECTION_PATH;
   delete process.env.HAR_OBSERVATION_LEDGER_PATH;
   delete process.env.HAR_PORTAL_TARGETS_PATH;
+  delete process.env.HAR_CREDENTIALS_PATH;
   delete process.env.HAR_DESTINATIONS_DIR;
 });
 

@@ -1,7 +1,7 @@
 import * as path from 'path';
 
 const syncRepoWithControlAsync = jest.fn().mockResolvedValue(undefined);
-const syncAllKnownReposWithControl = jest.fn().mockResolvedValue({ synced: 0, failed: 0 });
+const syncAllKnownReposWithControl = jest.fn().mockResolvedValue({ synced: 0, failed: 0, repoPaths: [] });
 
 jest.mock('../src/core/control-sync', () => ({
   syncRepoWithControlAsync,
@@ -59,6 +59,22 @@ describe('sync context dirty-set', () => {
     await syncDirtyRepos();
 
     expect(syncAllKnownReposWithControl).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not sync a repo again that the all-repos pass already synced', async () => {
+    syncAllKnownReposWithControl.mockResolvedValueOnce({
+      synced: 1,
+      failed: 0,
+      repoPaths: [path.resolve('/repos/a')],
+    });
+    markAllRegisteredDirty();
+    markDirty('/repos/a');
+    markDirty('/repos/b');
+
+    await syncDirtyRepos();
+
+    expect(syncRepoWithControlAsync).toHaveBeenCalledTimes(1);
+    expect(syncRepoWithControlAsync).toHaveBeenCalledWith(path.resolve('/repos/b'));
   });
 
   it('never throws when a sync fails, and still clears state', async () => {
