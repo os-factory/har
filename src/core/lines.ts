@@ -218,6 +218,67 @@ export interface RunLineGateResult {
   skipReason?: string;
 }
 
+/** One installed line offered when a command cannot pick a line on its own. */
+export interface LineCandidate {
+  lineId: string;
+  title: string;
+  /** First station that is not green yet; undefined when every station is green. */
+  nextStationId?: string;
+  allGreen: boolean;
+}
+
+/** One-line summary of a candidate, shared by the error message and the CLI picker. */
+export function describeLineCandidate(candidate: LineCandidate): string {
+  const progress = candidate.allGreen
+    ? 'all stations green'
+    : candidate.nextStationId
+      ? `next: ${candidate.nextStationId}`
+      : 'status unavailable';
+  return `${candidate.lineId} — ${candidate.title}  (${progress})`;
+}
+
+/**
+ * Thrown when several lines are installed and the caller did not name one.
+ * Carries the candidates so an interactive adapter can offer a picker;
+ * non-interactive callers get the same details in the message.
+ */
+export class AmbiguousLineError extends Error {
+  readonly candidates: LineCandidate[];
+
+  constructor(candidates: LineCandidate[]) {
+    super(
+      [
+        'Multiple lines installed. Pass --line <id>:',
+        ...candidates.map((candidate) => `  ${describeLineCandidate(candidate)}`),
+      ].join('\n'),
+    );
+    this.name = 'AmbiguousLineError';
+    this.candidates = candidates;
+  }
+}
+
+/**
+ * Candidates for every installed line, from the same data as `har line status`.
+ * A line whose status cannot be read (e.g. a ledger entry whose
+ * `.har/lines/<id>/` was deleted) stays listed as a degraded candidate, so one
+ * broken line never hides the others; `har line status <id>` shows the cause.
+ */
+export function listLineCandidates(repoPath: string): LineCandidate[] {
+  return listInstalledLineIds(repoPath).map((lineId) => {
+    try {
+      const status = getLineStatus(repoPath, lineId);
+      return {
+        lineId,
+        title: status.title,
+        nextStationId: status.nextStationId,
+        allGreen: status.nextStationId === undefined,
+      };
+    } catch {
+      return { lineId, title: `(unreadable — see "har line status ${lineId}")`, allGreen: false };
+    }
+  });
+}
+
 function resolveLineId(repoPath: string, lineId?: string): string {
   if (lineId) return lineId;
   const ids = listInstalledLineIds(repoPath);
@@ -225,7 +286,7 @@ function resolveLineId(repoPath: string, lineId?: string): string {
     throw new Error('No factory line installed. Run "har line create <id>" or "har line add <spec>".');
   }
   if (ids.length > 1) {
-    throw new Error(`Multiple lines installed (${ids.join(', ')}). Pass --line <id>.`);
+    throw new AmbiguousLineError(listLineCandidates(repoPath));
   }
   return ids[0];
 }
