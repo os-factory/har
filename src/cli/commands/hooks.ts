@@ -15,6 +15,7 @@ import {
   uninstallClaudeGuard,
 } from '../../core/claude-hooks';
 import { error, info, success, warn } from '../../utils/logging';
+import { describeFactoryProofBin, FACTORY_PROOF_MIN_VERSION, FACTORY_PROOF_UNAVAILABLE_HINT } from '../../core/proof';
 
 interface RepoArgs {
   repo: string;
@@ -99,6 +100,19 @@ function handleStatus(argv: RepoArgs & { json: boolean }): void {
       info(`Factory proof: ${status.factoryProofMode} (HAR_FACTORY_PROOF in .har/harness.env)`);
     } else if (status.factoryProofModeSource === 'default') {
       info(`Factory proof: ${status.factoryProofMode} (default: local notes when git factory is installed)`);
+    }
+    if (status.factoryProofMode !== 'off') {
+      const factoryBin = describeFactoryProofBin();
+      if (factoryBin.status === 'ok') {
+        info(`git factory:   ${factoryBin.version} (${factoryBin.bin})`);
+      } else if (factoryBin.status === 'unsupported') {
+        warn(
+          `git factory:   ${factoryBin.version ?? 'unknown version'} at ${factoryBin.bin} is too old — ` +
+            `no proofs are written until it is ${FACTORY_PROOF_MIN_VERSION} or newer`,
+        );
+      } else {
+        warn(`git factory:   ${FACTORY_PROOF_UNAVAILABLE_HINT}; no proofs are written`);
+      }
     }
     info(
       `Gate:          enabled=${status.gate.enabled} mode=${status.gate.mode} scope=${status.gate.scope}`,

@@ -10,6 +10,11 @@ const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 
 const argv = process.argv.slice(2);
+// HAR probes the version before using the executable: answer it before logging or forced failures.
+if (argv[0] === '--version') {
+  process.stdout.write('factory-proof 0.2.0-fake (factory-commits v0.1)\n');
+  process.exit(0);
+}
 if (process.env.FAKE_GIT_FACTORY_LOG) {
   fs.appendFileSync(process.env.FAKE_GIT_FACTORY_LOG, JSON.stringify({ argv, cwd: process.cwd() }) + '\n');
 }
@@ -24,10 +29,6 @@ function opt(name) {
 }
 
 const command = argv[0];
-if (command === '--version') {
-  process.stdout.write('factory-proof 0.0.0-fake (factory-commits v0.1)\n');
-  process.exit(0);
-}
 
 if (command === 'attest') {
   const source = opt('--predicate');
