@@ -19,8 +19,12 @@ import { allocateAppPorts } from './slot-ports';
 import { inspectSlotReadiness, scanUntrackedWorktreePaths } from './slot-preflight';
 import { describeWorktreeMode, resolveWorktreeMode } from './worktree-mode';
 import { listUntrackedAbsentFromWorktree } from './worktree-untracked';
-import { packageRunner } from '../utils/package-runner';
+import { sameGitCheckout } from '../utils/git-checkout';
+import { listPm2Processes } from '../utils/pm2';
+import { harnessUsesPm2 } from '../harness/capabilities';
 import { readGitRemote } from './git-remote';
+import { listDockerContainers, type DockerRow } from './control-port';
+import { snapshotMemo } from './status-snapshot';
 
 const BYPASS_WARNING_MS = 15 * 60 * 1000;
 
@@ -40,20 +44,8 @@ function readWorktreeBranch(worktreePath: string): string | undefined {
   return runGit(worktreePath, 'rev-parse --abbrev-ref HEAD');
 }
 
-function gitCommonDir(cwd: string): string | undefined {
-  const out = runGit(cwd, 'rev-parse --git-common-dir');
-  return out ? path.resolve(cwd, out) : undefined;
-}
-
-function sameGitCheckout(a: string, b: string): boolean {
-  const left = gitCommonDir(a);
-  const right = gitCommonDir(b);
-  return left !== undefined && right !== undefined && left === right;
-}
-
 function gitPrefix(cwd: string): string {
-  const out = runGit(cwd, 'rev-parse --show-prefix');
-  return out ?? '';
+  return snapshotMemo(`git-prefix\0${path.resolve(cwd)}`, () => runGit(cwd, 'rev-parse --show-prefix') ?? '');
 }
 
 function discoverSessionWorktreePath(harnessRoot: string, agentId: number): string | undefined {
@@ -68,8 +60,8 @@ function discoverSessionWorktreePath(harnessRoot: string, agentId: number): stri
     .map((entry) => path.join(worktreesRoot, entry.name))
     .filter(
       (candidate) =>
-        sameGitCheckout(harnessRoot, candidate) &&
-        fs.existsSync(path.join(candidate, relPrefix, `.env.agent.${agentId}`)),
+        fs.existsSync(path.join(candidate, relPrefix, `.env.agent.${agentId}`)) &&
+        sameGitCheckout(harnessRoot, candidate),
     );
 
   return matches.sort()[0];
@@ -253,20 +245,6 @@ function lastBuildPass(run: RunRecord | undefined): boolean | undefined {
   return build?.pass;
 }
 
-function listPm2Processes(): Array<{ name?: string }> | undefined {
-  try {
-    const raw = execSync(`${packageRunner()} pm2 jlist`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 3000,
-    });
-    const procs = JSON.parse(raw) as Array<{ name?: string }>;
-    return Array.isArray(procs) ? procs : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function detectPm2Issue(
   projectName: string,
   agentId: number,
@@ -297,7 +275,11 @@ function collectSlotStatus(
   harnessRoot: string,
   agentId: number,
   runs: RunRecord[],
-  pm2Procs: Array<{ name?: string }> | undefined,
+  shared: {
+    usesPm2: boolean;
+    pm2Procs: Array<{ name?: string }> | undefined;
+    listDocker: () => DockerRow[];
+  },
   untrackedPaths?: string[],
   worktree?: boolean,
 ): AgentSlotStatus {
@@ -346,9 +328,12 @@ function collectSlotStatus(
     ? collectWorktreeDrift(harnessRoot, worktreePath, session?.baseCommit)
     : {};
 
-  const pm2Issue = detectPm2Issue(projectName, agentId, session, pm2Procs);
+  const pm2Issue = detectPm2Issue(projectName, agentId, session, shared.pm2Procs);
   const readiness = inspectSlotReadiness(harnessRoot, agentId, {
     allocatePorts: true,
+    usesPm2: shared.usesPm2,
+    pm2Processes: shared.pm2Procs ?? [],
+    listDockerContainers: shared.listDocker,
     occupied: { active, dirty: drift.dirty },
     untrackedPaths: untrackedPaths ?? scanUntrackedWorktreePaths(harnessRoot),
     worktree,
@@ -448,7 +433,14 @@ export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
   const runs = listRuns(harnessRoot, { limit: 200 });
   const manifest = readManifest(harnessRoot);
   const slotIds = getAgentSlotIds(harnessRoot);
-  const pm2Procs = listPm2Processes();
+  // One PM2 query per status, shared by every slot (and skipped for harnesses
+  // that never start PM2 processes) — readiness must not re-query per slot.
+  const usesPm2 = harnessUsesPm2(harnessRoot);
+  // snapshotMemo: one machine-wide read per Mission Control sync (#452).
+  const pm2Procs = usesPm2 ? snapshotMemo('pm2-jlist', listPm2Processes) : undefined;
+  let dockerRows: DockerRow[] | undefined;
+  const sharedDocker = (): DockerRow[] =>
+    (dockerRows ??= snapshotMemo('docker-ps', listDockerContainers));
   // Repo-wide and identical for every slot — scanned once, like pm2Procs above.
   const worktreeMode = resolveWorktreeMode(harnessRoot);
   const untrackedPaths = worktreeMode.enabled ? listUntrackedAbsentFromWorktree(harnessRoot) : [];
@@ -459,7 +451,9 @@ export function collectEnvironmentStatus(repoPath: string): EnvironmentStatus {
     gitRemote: readGitRemote(harnessRoot),
     profile: manifest?.profile,
     worktreeMode,
-    slots: slotIds.map((id) => collectSlotStatus(harnessRoot, id, runs, pm2Procs, untrackedPaths, worktreeMode.enabled)),
+    slots: slotIds.map((id) =>
+      collectSlotStatus(harnessRoot, id, runs, { usesPm2, pm2Procs, listDocker: sharedDocker }, untrackedPaths, worktreeMode.enabled),
+    ),
     generatedAt: new Date().toISOString(),
   };
 }

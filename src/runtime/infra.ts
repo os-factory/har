@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { isPortInUse } from '../core/slot-ports';
 import { defaultExec, ExecFn, LogFn, SleepFn, realSleep, stderrLog } from './exec';
+import { pm2Argv } from '../utils/pm2';
 
 /**
  * Package-side shared-infra runtime (#234) — the TS home of setup-infra.sh,
@@ -264,8 +265,8 @@ export interface SetupInfraOptions {
    * profile passes false — per-slot databases are the pm2 profiles' concern.
    */
   templateDbFlow?: boolean;
-  /** Prefix for pm2 invocations (har_pkg_exec); e.g. ["npx"]. */
-  pkgExecPrefix?: string[];
+  /** argv that runs pm2 (defaults to HAR's bundled pm2, see utils/pm2). */
+  pm2Argv?: string[];
   exec?: ExecFn;
   log?: LogFn;
   sleep?: SleepFn;
@@ -284,7 +285,6 @@ export async function setupInfra(options: SetupInfraOptions): Promise<InfraPorts
     repoRoot,
     env,
     templateDbFlow = true,
-    pkgExecPrefix = ['npx'],
     exec = defaultExec,
     log = stderrLog,
     sleep = realSleep,
@@ -387,8 +387,8 @@ export async function setupInfra(options: SetupInfraOptions): Promise<InfraPorts
   const sharedEcosystem = path.join(harnessDir, 'ecosystem.shared.config.cjs');
   if (fs.existsSync(sharedEcosystem)) {
     log('Starting shared app services from ecosystem.shared.config.cjs...');
-    const [pkgCmd, ...pkgArgs] = pkgExecPrefix;
-    exec(pkgCmd, [...pkgArgs, 'pm2', 'startOrReload', sharedEcosystem], { cwd: repoRoot });
+    const [pm2Cmd, ...pm2Args] = options.pm2Argv ?? pm2Argv();
+    exec(pm2Cmd, [...pm2Args, 'startOrReload', sharedEcosystem], { cwd: repoRoot });
     log(`Shared app services running (pm2 ls | grep har-${env.HARNESS_PROJECT_NAME}-shared-).`);
   }
 

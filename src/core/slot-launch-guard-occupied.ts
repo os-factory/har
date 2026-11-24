@@ -6,6 +6,7 @@ import { readHarnessEnv } from '../harness/env';
 import { resolveHarnessRoot } from '../harness/manifest';
 import type { AgentSlotStatus } from '../harness/schema';
 import { readSlotRegistry, isSlotResumable } from './slot-registry';
+import { sameGitCheckout } from '../utils/git-checkout';
 
 export interface LaunchGuardOptions {
   resume?: boolean;
@@ -35,17 +36,6 @@ function worktreeDirty(worktreePath: string): boolean {
   return porcelain !== undefined && porcelain.length > 0;
 }
 
-function gitCommonDir(cwd: string): string | undefined {
-  const out = runGit(cwd, 'rev-parse --git-common-dir');
-  return out ? path.resolve(cwd, out) : undefined;
-}
-
-function sameGitCheckout(a: string, b: string): boolean {
-  const left = gitCommonDir(a);
-  const right = gitCommonDir(b);
-  return left !== undefined && right !== undefined && left === right;
-}
-
 function discoverWorktree(harnessRoot: string, agentId: number, projectName: string): string | undefined {
   const session = readSlotRegistry(harnessRoot, agentId);
   if (session?.worktreePath && fs.existsSync(session.worktreePath)) {
@@ -60,8 +50,8 @@ function discoverWorktree(harnessRoot: string, agentId: number, projectName: str
   for (const name of fs.readdirSync(worktreesRoot)) {
     if (!name.includes(suffix)) continue;
     const candidate = path.join(worktreesRoot, name);
-    if (!sameGitCheckout(harnessRoot, candidate)) continue;
     if (!fs.existsSync(path.join(candidate, relPrefix, `.env.agent.${agentId}`))) continue;
+    if (!sameGitCheckout(harnessRoot, candidate)) continue;
     return candidate;
   }
   return undefined;

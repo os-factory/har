@@ -35,9 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -50,7 +50,7 @@ jobs:
           npm run build --prefix docs
       - name: Cache lychee
         id: lychee-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/lychee-bin
           key: lychee-v0.24.2-x86_64-unknown-linux-gnu
@@ -69,7 +69,7 @@ jobs:
       # re-installing deps and rebuilding the site a second time).
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs/dist
 

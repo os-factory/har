@@ -73,7 +73,7 @@ describe('release contract (#311)', () => {
   it('the analyzer and the notes generator agree on the preset', () => {
     // Versioning correctly while rendering notes with a different preset is the
     // half-fixed state that drops breaking changes from the changelog.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cfg = require(path.join(REPO_ROOT, 'release.config.cjs'));
     const pluginOpts = (name: string) => {
       const entry = cfg.plugins.find((p: unknown) => Array.isArray(p) && p[0] === name);

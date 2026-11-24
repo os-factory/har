@@ -103,7 +103,7 @@ describe('PM2 lifecycle', () => {
     startAgentProcesses({
       projectName: 'proj',
       agentId: 1,
-      pkgExecPrefix: ['npx'],
+      pm2Argv: ['npx', 'pm2'],
       exec,
       workDir: '/work',
       ecosystemFile: '/work/ecosystem.agent.1.config.cjs',
@@ -131,8 +131,17 @@ describe('PM2 lifecycle', () => {
 
   it('deleteAgentProcesses is project-scoped', () => {
     const { exec, calls } = mockExec([{ match: () => true, code: 1 }]);
-    expect(() => deleteAgentProcesses({ projectName: 'other', agentId: 9, exec })).not.toThrow();
+    expect(() =>
+      deleteAgentProcesses({ projectName: 'other', agentId: 9, pm2Argv: ['npx', 'pm2'], exec }),
+    ).not.toThrow();
     expect(calls[0].line).toBe('npx pm2 delete /^har-other-agent-9-/');
+  });
+
+  it('defaults to the pm2 bundled with HAR, run by the current runtime', () => {
+    const { exec, calls } = mockExec();
+    deleteAgentProcesses({ projectName: 'proj', agentId: 1, exec });
+    expect(calls[0].line.startsWith(`${process.execPath} `)).toBe(true);
+    expect(calls[0].line).toMatch(/pm2[\\/]bin[\\/]pm2 delete \/\^har-proj-agent-1-\/$/);
   });
 });
 

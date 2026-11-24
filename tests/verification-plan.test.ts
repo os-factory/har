@@ -201,6 +201,30 @@ describe('verify-runner.mjs', () => {
     expect(out.stages.map((s: { name: string }) => s.name)).toEqual(['second', 'first']);
   });
 
+  it('keeps the tail of failing output, where the failing tests and summary are (#368)', () => {
+    const registry = {
+      verificationStages: ['noisy'],
+      stages: [
+        {
+          id: 'noisy',
+          kind: 'test',
+          tier: 'quick',
+          command: 'for i in $(seq 1 200); do echo "compile $i"; done; echo "** TEST FAILED **"; exit 1',
+        },
+      ],
+    };
+    const res = runRunner(registry, ['--agent', '1']);
+    expect(res.status).toBe(1);
+    const out = JSON.parse(res.stdout);
+    const recorded: string = out.stages[0].output;
+    expect(recorded).toContain('** TEST FAILED **');
+    expect(recorded).toContain('compile 200');
+    expect(recorded).not.toContain('compile 1\n');
+    expect(recorded.split('\n')[0]).toBe('… (151 earlier lines omitted)');
+    expect(res.stderr).toContain('** TEST FAILED **');
+    expect(res.stderr).not.toContain('compile 150\n');
+  });
+
   it('warns about phantom ids and keeps running', () => {
     const registry = {
       verificationStages: ['ghost', 'real'],

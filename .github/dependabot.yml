@@ -1,0 +1,53 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /control
+      - /packages/schemas
+      - /docs
+    schedule:
+      interval: weekly
+    # chore(deps): … — no release on its own (see AGENTS.md); retitle to
+    # fix(deps): when a runtime dependency fix should ship.
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      # chalk 6 needs Node >=22 (HAR supports >=20) — closed in #435.
+      - dependency-name: chalk
+        update-types: [version-update:semver-major]
+      # yargs 18 is ESM-only and crashes the CJS bundle — closed in #436.
+      - dependency-name: yargs
+        update-types: [version-update:semver-major]
+    # A dependency joins the FIRST group it matches, so the risky families
+    # come before minor-and-patch: one breaking package must not hold the
+    # routine bumps hostage (#432).
+    groups:
+      # 0.x releases: Dependabot calls 0.57 → 0.301 "minor", but it is a
+      # breaking jump that must move together with @osfactory/otel-hook.
+      opentelemetry:
+        patterns: ['@opentelemetry/*']
+      astro:
+        patterns: [astro, '@astrojs/*']
+      minor-and-patch:
+        update-types: [minor, patch]
+        # The "first matching group" order above did not hold in practice:
+        # #447 still pulled otlp-transformer 0.57 → 0.301 in here. Exclude the
+        # risky families explicitly so they only ever land in their own group.
+        exclude-patterns: ['@opentelemetry/*', astro, '@astrojs/*']
+      # Majors land as one PR per dependency across every directory, so a
+      # shared package (zod in / + /control + /packages/schemas) moves in step.
+      majors:
+        update-types: [major]
+        group-by: dependency-name
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']

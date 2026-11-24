@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
+import { socialLinks } from './src/components/docs/social-links.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -75,9 +76,7 @@ export default defineConfig({
 				SocialIcons: './src/components/docs/SocialIcons.astro',
 			},
 			disable404Route: true,
-			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/os-factory/har' },
-			],
+			social: socialLinks,
 			editLink: {
 				baseUrl: 'https://github.com/os-factory/har/edit/main/docs/',
 			},
@@ -102,6 +101,7 @@ export default defineConfig({
 						{ label: 'Plugins', slug: 'docs/guides/plugins' },
 						{ label: 'Local plugins', slug: 'docs/guides/local-plugins' },
 						{ label: 'Agent integrations', slug: 'docs/guides/agent-integrations' },
+						{ label: 'Docker Sandboxes', slug: 'docs/guides/docker-sandboxes' },
 						{ label: 'Skill-pack compatibility', slug: 'docs/guides/skill-pack-compatibility' },
 						{ label: 'Factory lines', slug: 'docs/guides/factory-lines' },
 						{ label: 'Verification & commit gate', slug: 'docs/guides/verification' },

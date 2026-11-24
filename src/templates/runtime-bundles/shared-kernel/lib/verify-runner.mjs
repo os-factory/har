@@ -75,6 +75,17 @@ function stepCommand(stage) {
   return null;
 }
 
+// Failing output is cut to its LAST lines: compilers and test runners print the
+// failing tests and the run summary at the end, after the build noise (#368).
+const STDERR_TAIL_LINES = 30;
+const RECORD_TAIL_LINES = 50;
+
+function tailLines(text, max) {
+  const lines = text.split('\n');
+  if (lines.length <= max) return lines;
+  return [`… (${lines.length - max} earlier lines omitted)`, ...lines.slice(-max)];
+}
+
 const results = [];
 let overallPass = true;
 const startTotal = Date.now();
@@ -105,14 +116,14 @@ for (const stage of plan) {
     results.push({ name: stage.id, pass: true, ms });
   } else {
     process.stderr.write(`✗ (${ms}ms)\n`);
-    for (const line of output.split('\n').slice(0, 30)) {
+    for (const line of tailLines(output, STDERR_TAIL_LINES)) {
       process.stderr.write(`    ${line}\n`);
     }
     results.push({
       name: stage.id,
       pass: false,
       ms,
-      output: output.split('\n').slice(0, 50).join('\n'),
+      output: tailLines(output, RECORD_TAIL_LINES).join('\n'),
     });
     overallPass = false;
     if (!full) break;
