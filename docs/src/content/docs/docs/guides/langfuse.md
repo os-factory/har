@@ -119,15 +119,15 @@ What changes in direct mode:
   `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper loads when it
   runs. The wrapper script, the hook config and the hook's arguments contain no
   secret.
+- **The hook config names Langfuse, not its keys.** HAR writes Langfuse to the hook
+  config as an `exporter.destinations[]` entry whose `Authorization` value is an
+  `env:` reference to `direct.env`.
 - **Several destinations, no Mission Control.** Add a second destination (a team
   Collector, say) and otel-hook sends each batch to Langfuse and to it, in parallel.
-  HAR writes both to the hook config as `exporter.destinations[]`, with each header
-  value as an `env:` reference to `direct.env`, so the Langfuse keys still never
-  appear in the config file. `har telemetry status` shows
-  `direct → langfuse, collector`.
-- **otel-hook version.** One destination needs otel-hook 0.7.0 or later, and two or
-  more need 0.9.0 (which HAR installs). With an older copy, HAR prints the version
-  it needs and keeps agent traces on Mission Control.
+  `har telemetry status` shows `direct → langfuse, collector`.
+- **otel-hook 0.9.0 or later.** HAR installs it on `har env launch` and
+  `har telemetry on`. With an older copy, HAR prints the version it needs and keeps
+  agent traces on Mission Control.
 - **Retries.** otel-hook keeps what a destination could not take in that
   destination's own spool and sends it with a later hook event. Since 0.9.0, a full
   spool drops its oldest batches, and a batch Langfuse rejects with a

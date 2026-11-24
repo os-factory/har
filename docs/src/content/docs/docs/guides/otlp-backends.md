@@ -202,20 +202,18 @@ or `logs`. `har telemetry status` shows the mode: `via Mission Control`,
 `direct → <name>[, <name>…]` or `off`. `har telemetry destination list` marks each
 destination that agents send to directly.
 
-- **One destination.** HAR writes its endpoint and headers to
-  `~/.har/otel-hooks/direct.env` (mode `0600`) as the standard
-  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_TRACES_HEADERS`
-  (values URL-encoded). This needs `@osfactory/otel-hook` 0.7.0 or later.
-- **Two or more destinations.** HAR writes them to the hook config
-  (`~/.har/otel-hooks/otel_config.json`) as otel-hook's `exporter.destinations[]`.
-  Every header value there is an `env:` reference, such as
-  `"Authorization": "env:HAR_OTEL_DIRECT_HEADER_1_1"`. The values themselves are
-  only in `direct.env` (mode `0600`). otel-hook sends each batch to every
-  destination in parallel, and keeps a separate retry spool for each one. This
-  needs `@osfactory/otel-hook` 0.9.0 or later. HAR installs it, and with an older
-  copy HAR keeps agent traces on Mission Control and says which version it needs.
-- In both cases the hook wrapper loads `direct.env` at run time. No secret is on a
-  command line, in the wrapper or in the hook config.
+- HAR writes the destinations to the hook config
+  (`~/.har/otel-hooks/otel_config.json`) as otel-hook's `exporter.destinations[]`,
+  one entry per destination with its traces and logs URLs. Every header value there
+  is an `env:` reference, such as `"Authorization": "env:HAR_OTEL_DIRECT_HEADER_1_1"`.
+  The values themselves are only in `~/.har/otel-hooks/direct.env` (mode `0600`),
+  which the hook wrapper loads at run time. No secret is on a command line, in the
+  wrapper or in the hook config.
+- otel-hook sends each batch to every destination in parallel, and keeps a separate
+  retry spool for each one.
+- Direct export needs `@osfactory/otel-hook` 0.9.0 or later, which HAR installs on
+  `har env launch` and `har telemetry on`. With an older copy, HAR keeps agent
+  traces on Mission Control and says which version it needs.
 - Logs go only to destinations that subscribe to `logs` (the same warning applies).
   Metrics are not sent: Claude Code's native telemetry stays off in direct mode
   because it carries account identity.

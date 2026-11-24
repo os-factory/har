@@ -104,7 +104,7 @@ export interface OtelHooksConfig {
     protocol: 'http/protobuf';
     serviceName: string;
     resourceAttributes?: Record<string, string | number | boolean>;
-    /** Direct export to two or more destinations; absent otherwise. */
+    /** Direct export (Mission Control off); absent otherwise. */
     destinations?: OtelHooksDestinationConfig[];
     logs: {
       enabled: boolean;
@@ -255,9 +255,8 @@ export function buildOtelHooksConfig(options?: {
   }
   const logsEnabled = enabled && signals.logs && (!direct || directRouteSendsLogs(direct));
   const capturePrompts = logsEnabled && signals.prompts;
-  // One destination rides the standard OTLP variables in direct.env; the list is for two or more.
   const destinations =
-    enabled && direct && direct.length > 1
+    enabled && direct
       ? planDirectDestinations(direct).map(
           (plan): OtelHooksDestinationConfig => ({
             name: plan.name,

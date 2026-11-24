@@ -11,12 +11,9 @@ import {
 } from '../src/core/telemetry-destinations';
 import {
   DIRECT_STRIP_LOCAL_ENV,
-  OTEL_HOOK_DESTINATIONS_MIN_VERSION,
   OTEL_HOOK_DIRECT_MIN_VERSION,
   buildDirectExportEnv,
-  encodeOtlpHeaders,
   getDirectExportEnvPath,
-  otelHookSupportsDestinations,
   otelHookSupportsDirectExport,
   readAppliedDirectRoute,
   resolveAgentTelemetryRoute,
@@ -120,11 +117,10 @@ describe('direct export without Mission Control', () => {
       expect(decision.route.mode).toBe('direct');
     });
 
-    it('goes direct to every traces or logs destination with otel-hook 0.9.0, in file order', () => {
+    it('goes direct to every traces or logs destination, in file order', () => {
       const logsOnly = collector('logs-only', ['logs']);
       const decision = selectAgentTelemetryRoute({
         ...base,
-        otelHookSupportsDestinations: true,
         destinations: [langfuse(), collector('m', ['metrics']), collector('otel'), logsOnly, { ...collector('off'), enabled: false }],
       });
       expect(decision.route.mode).toBe('direct');
@@ -136,32 +132,31 @@ describe('direct export without Mission Control', () => {
       expect(decision.hint).toBeUndefined();
     });
 
-    it('keeps two destinations on Mission Control before otel-hook 0.9.0 and names the version', () => {
-      const decision = selectAgentTelemetryRoute({ ...base, destinations: [langfuse(), collector('otel')] });
+    it('keeps destinations on Mission Control before otel-hook 0.9.0 and names them and the version', () => {
+      const decision = selectAgentTelemetryRoute({
+        ...base,
+        otelHookSupportsDirect: false,
+        destinations: [langfuse(), collector('otel')],
+      });
       expect(decision.route).toEqual({ mode: 'control' });
       expect(decision.hint).toContain('"langfuse" and "otel"');
-      expect(decision.hint).toContain(`@osfactory/otel-hook ${OTEL_HOOK_DESTINATIONS_MIN_VERSION}`);
+      expect(decision.hint).toContain(`@osfactory/otel-hook ${OTEL_HOOK_DIRECT_MIN_VERSION}`);
       expect(decision.hint).toMatch(/har control up/);
     });
 
     it('needs a traces destination: logs-only destinations stay on Mission Control', () => {
       const decision = selectAgentTelemetryRoute({
         ...base,
-        otelHookSupportsDestinations: true,
         destinations: [collector('a', ['logs']), collector('b', ['logs'])],
       });
       expect(decision).toEqual({ route: { mode: 'control' } });
-    });
-
-    it('keeps one destination on otel-hook 0.7.0 (no destinations list needed)', () => {
-      const decision = selectAgentTelemetryRoute({ ...base, otelHookSupportsDestinations: false, destinations: [langfuse()] });
-      expect(decision.route.mode).toBe('direct');
     });
 
     it('names the otel-hook version an older install lacks', () => {
       const decision = selectAgentTelemetryRoute({ ...base, otelHookSupportsDirect: false, destinations: [langfuse()] });
       expect(decision.route).toEqual({ mode: 'control' });
       expect(decision.hint).toContain(`@osfactory/otel-hook ${OTEL_HOOK_DIRECT_MIN_VERSION}`);
+      expect(OTEL_HOOK_DIRECT_MIN_VERSION).toBe('0.9.0');
     });
 
     it('resolves from the preference, HAR_CONTROL_DISABLED and the destinations file', () => {
@@ -178,49 +173,39 @@ describe('direct export without Mission Control', () => {
   });
 
   describe('otel-hook version gate', () => {
-    it('accepts the first release with the standard OTLP variables', () => {
+    it('accepts the first release with exporter.destinations[] and env: header values', () => {
       installOtelHook(OTEL_HOOK_DIRECT_MIN_VERSION);
       expect(otelHookSupportsDirectExport(hooksHome)).toBe(true);
     });
 
     it('rejects an older release', () => {
-      installOtelHook('0.6.0');
+      installOtelHook('0.8.0');
       expect(otelHookSupportsDirectExport(hooksHome)).toBe(false);
     });
 
-    it('accepts an unreleased build (HAR_OTEL_HOOKS_PACKAGE) that reads the header variables', () => {
-      installOtelHook('0.6.0', 'const v = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";\n');
+    it('accepts an unreleased build (HAR_OTEL_HOOKS_PACKAGE) with env: header values', () => {
+      installOtelHook('0.8.0', 'const HEADER_ENV_REFERENCE_PREFIX = "env:";\n');
       expect(otelHookSupportsDirectExport(hooksHome)).toBe(true);
     });
 
     it('rejects a missing install', () => {
       expect(otelHookSupportsDirectExport(hooksHome)).toBe(false);
-      expect(otelHookSupportsDestinations(hooksHome)).toBe(false);
     });
 
-    it('takes a destinations list from 0.9.0 on, or from an unreleased build with env: header values', () => {
-      installOtelHook('0.8.0');
-      expect(otelHookSupportsDestinations(hooksHome)).toBe(false);
-      installOtelHook(OTEL_HOOK_DESTINATIONS_MIN_VERSION);
-      expect(otelHookSupportsDestinations(hooksHome)).toBe(true);
-      installOtelHook('0.8.0', 'const HEADER_ENV_REFERENCE_PREFIX = "env:";\n');
-      expect(otelHookSupportsDestinations(hooksHome)).toBe(true);
-    });
-
-    it('resolves two destinations to direct only with otel-hook 0.9.0 installed', () => {
+    it('resolves to direct only with otel-hook 0.9.0 installed', () => {
       addTelemetryDestination(langfuse());
       addTelemetryDestination(collector('otel'));
       installOtelHook('0.8.0');
       const before = resolveAgentTelemetryRoute(hooksHome);
       expect(before.route.mode).toBe('control');
-      expect(before.hint).toContain(OTEL_HOOK_DESTINATIONS_MIN_VERSION);
-      installOtelHook(OTEL_HOOK_DESTINATIONS_MIN_VERSION);
+      expect(before.hint).toContain(OTEL_HOOK_DIRECT_MIN_VERSION);
+      installOtelHook(OTEL_HOOK_DIRECT_MIN_VERSION);
       const after = resolveAgentTelemetryRoute(hooksHome);
       expect(after.route.mode === 'direct' && after.route.destinations.map((d) => d.name)).toEqual(['langfuse', 'otel']);
     });
   });
 
-  describe('two or more destinations (otel-hook >= 0.9.0)', () => {
+  describe('hook config destinations list', () => {
     const OTEL_SECRET = 'collector-secret-value';
     const team = () =>
       buildOtlpDestination({
@@ -256,8 +241,15 @@ describe('direct export without Mission Control', () => {
       for (const secret of [SECRET_KEY, TOKEN, OTEL_SECRET, 'acme']) expect(json).not.toContain(secret);
     });
 
-    it('writes no list for one destination (it rides the standard variables)', () => {
-      expect(buildOtelHooksConfig({ route: route(langfuse()) }).exporter.destinations).toBeUndefined();
+    it('writes the list for a single destination too', () => {
+      expect(buildOtelHooksConfig({ route: route(langfuse()) }).exporter.destinations).toEqual([
+        {
+          name: 'langfuse',
+          tracesEndpoint: 'https://langfuse.example/api/public/otel/v1/traces',
+          headers: { Authorization: 'env:HAR_OTEL_DIRECT_HEADER_1_1' },
+          signals: ['traces'],
+        },
+      ]);
     });
 
     it('gives otel-hook valid, unique destination names, never "default"', () => {
@@ -309,7 +301,7 @@ describe('direct export without Mission Control', () => {
         `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(dump)}, JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\n`,
         { mode: 0o755 },
       );
-      installOtelHook(OTEL_HOOK_DESTINATIONS_MIN_VERSION);
+      installOtelHook(OTEL_HOOK_DIRECT_MIN_VERSION);
       addTelemetryDestination(langfuse());
       addTelemetryDestination(team());
       const { decision, configPath } = applyAgentTelemetryRoute(hooksHome);
@@ -338,27 +330,21 @@ describe('direct export without Mission Control', () => {
   });
 
   describe('direct.env', () => {
-    it('URL-encodes the header value (the space is %20)', () => {
-      expect(encodeOtlpHeaders({ Authorization: `Basic ${TOKEN}` })).toBe(
-        `Authorization=Basic%20${encodeURIComponent(TOKEN)}`,
-      );
-    });
-
-    it('holds the traces endpoint and headers, logs off, local paths stripped', () => {
+    it('holds only the raw header value for one destination, logs off, local paths stripped', () => {
       const content = buildDirectExportEnv([langfuse()]);
-      expect(content).toContain("export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT='https://langfuse.example/api/public/otel/v1/traces'");
-      expect(content).toContain(`export OTEL_EXPORTER_OTLP_TRACES_HEADERS='Authorization=Basic%20${encodeURIComponent(TOKEN)}'`);
+      expect(content).toContain(`export HAR_OTEL_DIRECT_HEADER_1_1='Basic ${TOKEN}'`);
+      expect(content).not.toMatch(/^export OTEL_EXPORTER_OTLP_/m);
+      expect(content).not.toContain('langfuse.example');
+      expect(content).toMatch(/^unset OTEL_HOOK_EXPORTER_ENDPOINT OTEL_HOOK_LOGS_ENDPOINT .*OTEL_EXPORTER_OTLP_LOGS_HEADERS$/m);
       expect(content).toContain('export OTEL_HOOK_LOGS_ENABLED=false');
-      expect(content).toContain('unset OTEL_HOOK_EXPORTER_ENDPOINT OTEL_HOOK_LOGS_ENDPOINT');
       expect(content).toContain(`export ${DIRECT_STRIP_LOCAL_ENV}=1`);
-      expect(content).not.toContain('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
     });
 
     it('sends logs only to a destination that subscribes to them', () => {
-      const content = buildDirectExportEnv([collector('otel', ['traces', 'logs'])]);
-      expect(content).toContain('export OTEL_HOOK_LOGS_ENABLED=true');
-      expect(content).toContain("export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT='http://collector.example:4318/v1/logs'");
-      expect(content).toContain("export OTEL_EXPORTER_OTLP_LOGS_HEADERS='x-api-key=abc%20def'");
+      const destination = collector('otel', ['traces', 'logs']);
+      expect(buildDirectExportEnv([destination])).toContain('export OTEL_HOOK_LOGS_ENABLED=true');
+      const [entry] = buildOtelHooksConfig({ route: { mode: 'direct', destinations: [destination] } }).exporter.destinations ?? [];
+      expect(entry).toMatchObject({ logsEndpoint: 'http://collector.example:4318/v1/logs', signals: ['traces', 'logs'] });
     });
 
     it('keeps local paths for a destination that opted in', () => {
@@ -377,7 +363,7 @@ describe('direct export without Mission Control', () => {
   });
 
   describe('hook config and wrapper', () => {
-    it('writes no endpoint (it would outrank the standard variables) and no factory.local.*', () => {
+    it('writes no endpoint of its own (it would add a default destination) and no factory.local.*', () => {
       const config = buildOtelHooksConfig({
         route: { mode: 'direct', destinations: [langfuse()] },
         resourceAttributes: 'factory.local.checkout.path=/home/dev/repo,factory.slot.id=1',
@@ -397,7 +383,9 @@ describe('direct export without Mission Control', () => {
       addTelemetryDestination(langfuse());
       const { decision, configPath } = applyAgentTelemetryRoute(hooksHome);
       expect(decision.route.mode).toBe('direct');
-      expect(fs.readFileSync(configPath, 'utf8')).not.toContain('endpoint');
+      const written = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { exporter: Record<string, unknown> };
+      expect(written.exporter.endpoint).toBeUndefined();
+      expect(written.exporter.destinations).toHaveLength(1);
       expect(fs.statSync(getDirectExportEnvPath(hooksHome)).mode & 0o777).toBe(0o600);
       expect(inspectTelemetryDrift(hooksHome).mismatches).toEqual([]);
 
@@ -434,8 +422,8 @@ describe('direct export without Mission Control', () => {
       expect(result.status).toBe(0);
       const seen = JSON.parse(fs.readFileSync(dump, 'utf8')) as { argv: string[]; env: Record<string, string> };
       expect(seen.argv.join(' ')).not.toContain(TOKEN);
-      expect(seen.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe('https://langfuse.example/api/public/otel/v1/traces');
-      expect(seen.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS).toBe(`Authorization=Basic%20${encodeURIComponent(TOKEN)}`);
+      expect(seen.env.HAR_OTEL_DIRECT_HEADER_1_1).toBe(`Basic ${TOKEN}`);
+      expect(seen.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBeUndefined();
       expect(seen.env.OTEL_HOOK_LOGS_ENABLED).toBe('false');
       expect(seen.env.OTEL_HOOK_EXPORTER_ENDPOINT).toBeUndefined();
       expect(seen.env.OTEL_RESOURCE_ATTRIBUTES).toBe('session.id=s1,factory.slot.id=1');
@@ -447,7 +435,7 @@ describe('direct export without Mission Control', () => {
         env: { PATH: process.env.PATH, OTEL_RESOURCE_ATTRIBUTES: 'factory.local.work_dir=/x' },
       });
       const after = JSON.parse(fs.readFileSync(dump, 'utf8')) as { env: Record<string, string> };
-      expect(after.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS).toBeUndefined();
+      expect(after.env.HAR_OTEL_DIRECT_HEADER_1_1).toBeUndefined();
       expect(after.env.OTEL_RESOURCE_ATTRIBUTES).toBe('factory.local.work_dir=/x');
     });
 
@@ -603,7 +591,7 @@ describe('direct export without Mission Control', () => {
     });
 
     it('lists every direct destination', async () => {
-      installOtelHook(OTEL_HOOK_DESTINATIONS_MIN_VERSION);
+      installOtelHook(OTEL_HOOK_DIRECT_MIN_VERSION);
       addTelemetryDestination(langfuse());
       addTelemetryDestination(collector('otel'));
       applyAgentTelemetryRoute(hooksHome);
@@ -625,7 +613,7 @@ describe('direct export without Mission Control', () => {
     });
 
     it('marks every direct destination in har telemetry destination list', async () => {
-      installOtelHook(OTEL_HOOK_DESTINATIONS_MIN_VERSION);
+      installOtelHook(OTEL_HOOK_DIRECT_MIN_VERSION);
       addTelemetryDestination(langfuse());
       addTelemetryDestination(collector('otel'));
       addTelemetryDestination(collector('metrics-only', ['metrics']));
