@@ -309,11 +309,6 @@ long as it did before. Line gate stages run on demand:
 har line gate S2 --line my-line
 ```
 
-With more than one line installed, `--line` is optional in a terminal: `har line
-gate <station>` opens a picker showing each line's title and next station. In CI,
-agents, piped output or with `--json`, it exits non-zero and lists the same
-details so the next command is obvious.
-
 `gate.stages[].fromStation` is the ratchet: a stage tagged at a station is
 required at that station **and every later one**, so growing a line can never
 drop an earlier station's checks.

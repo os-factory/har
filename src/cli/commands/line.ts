@@ -1,20 +1,14 @@
 import * as path from 'path';
-import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import { finishCommand } from '../finish-command';
 import {
   addLine,
-  AmbiguousLineError,
   createLineBundle,
-  describeLineCandidate,
   getAllLineStatuses,
   getLineStatus,
   listInstalledLineIds,
   runLineGate,
-  type LineCandidate,
   type LineStatus,
-  type RunLineGateOptions,
-  type RunLineGateResult,
 } from '../../core/lines';
 import { listBundledLineIds, listLocalLineIds } from '../../harness/line-resolve';
 import { divider, error, header, info, success, warn } from '../../utils/logging';
@@ -179,41 +173,6 @@ function handleLineStatus(argv: { id?: string; repo: string; json: boolean }): P
   }
 }
 
-export type LinePicker = (candidates: LineCandidate[]) => Promise<string>;
-
-async function promptForLine(candidates: LineCandidate[]): Promise<string> {
-  const { lineId } = await inquirer.prompt<{ lineId: string }>([
-    {
-      type: 'list',
-      name: 'lineId',
-      message: 'Several lines are installed — which one?',
-      choices: candidates.map((candidate) => ({
-        name: describeLineCandidate(candidate),
-        value: candidate.lineId,
-      })),
-    },
-  ]);
-  return lineId;
-}
-
-/**
- * Run the gate; when several lines are installed and none was named, ask
- * `pick` for one (interactive terminals only). Without a picker the core
- * AmbiguousLineError — which already lists every line — propagates.
- */
-export async function runLineGateWithPicker(
-  options: RunLineGateOptions,
-  pick?: LinePicker,
-): Promise<RunLineGateResult> {
-  try {
-    return await runLineGate(options);
-  } catch (err: unknown) {
-    if (!(err instanceof AmbiguousLineError) || options.lineId || !pick) throw err;
-    const lineId = await pick(err.candidates);
-    return runLineGate({ ...options, lineId });
-  }
-}
-
 async function handleLineGate(argv: {
   station?: string;
   repo: string;
@@ -229,17 +188,13 @@ async function handleLineGate(argv: {
 
   const repoPath = path.resolve(argv.repo);
   try {
-    const interactive = !argv.json && Boolean(process.stdin.isTTY && process.stdout.isTTY);
-    const result = await runLineGateWithPicker(
-      {
-        repoPath,
-        lineId: argv.line,
-        station: argv.station,
-        agentId: argv.agent,
-        force: argv.force,
-      },
-      interactive ? promptForLine : undefined,
-    );
+    const result = await runLineGate({
+      repoPath,
+      lineId: argv.line,
+      station: argv.station,
+      agentId: argv.agent,
+      force: argv.force,
+    });
 
     if (argv.json) {
       console.log(JSON.stringify(result, null, 2));
