@@ -47,7 +47,7 @@
     {
       "id": "S2",
       "title": "Ingest mints a new session",
-      "description": "complete then launch writes a new session key; ingest never prefers a stale har.session_key once the worktree changed.",
+      "description": "complete then launch writes a new session key; ingest never prefers a stale Resource session.id once the worktree changed.",
       "work": {
         "source": "github",
         "ids": [

@@ -10,8 +10,9 @@ source .env.agent.<id>
 # Build
 xcodebuild build -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" CODE_SIGNING_ALLOWED=NO
 
-# Run unit tests — signed, or an app with entitlements traps at launch
-xcodebuild test -scheme MyApp -destination "$HARNESS_IOS_DESTINATION"
+# Run unit tests — signed, or an app with entitlements traps at launch.
+# Skipping simulator diagnostics avoids a 600 s simctl diagnose stall on failure.
+xcodebuild test -scheme MyApp -destination "$HARNESS_IOS_DESTINATION" -collect-test-diagnostics never
 
 # Install and launch on this slot's device
 har env agent <id> install path/to/MyApp.app

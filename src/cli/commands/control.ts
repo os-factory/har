@@ -27,6 +27,9 @@ import {
   getSyncSelectionPath,
 } from '../../core/control-sync-selection';
 import {
+  CONTROL_OTLP_GRPC_PORT_ENV,
+  controlContainerOtlpGrpcHostPort,
+  controlOtlpEndpoints,
   startMissionControl,
   stopMissionControl,
   syncReposAfterControlStart,
@@ -56,6 +59,7 @@ import {
 } from '../../core/telemetry-config';
 import { finishCommand } from '../finish-command';
 import { checkUsageOptions, handleCheckUsage } from './control-check-usage';
+import { refreshAgentRouteAndReport } from './telemetry-destination';
 
 export const controlCommand = {
   command: 'control <subcommand>',
@@ -240,6 +244,7 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
   }
   if (readiness.controlAlreadyRunning) {
     success(`Mission Control is already running at ${getControlApiUrl()}`);
+    printOtlpEndpoints(getControlApiUrl(), controlContainerOtlpGrpcHostPort());
     if (!isControlEnabled()) return;
     info('Syncing repositories with Mission Control...');
     const { synced, failed, apiReady } = await syncReposAfterControlStart(process.cwd());
@@ -255,7 +260,7 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
     }
     return;
   }
-  const { code, apiUrl, imageRef, reason } = await startMissionControl({
+  const { code, apiUrl, imageRef, reason, otlpGrpc } = await startMissionControl({
     detach: argv.detach,
     build: argv.build,
   });
@@ -270,6 +275,10 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
     return finishCommand(code);
   }
   success(`Mission Control running at ${apiUrl} (${imageRef})`);
+  // Agent traces that went straight to a destination now go through Mission Control.
+  refreshAgentRouteAndReport();
+  if (otlpGrpc?.hint) warn(`OTLP/gRPC: ${otlpGrpc.hint}`);
+  printOtlpEndpoints(apiUrl, otlpGrpc?.hostPort ?? null);
 
   if (!isControlEnabled()) return;
 
@@ -287,9 +296,20 @@ async function handleUp(argv: { detach: boolean; build: boolean }): Promise<void
   }
 }
 
+function printOtlpEndpoints(apiUrl: string, otlpGrpcHostPort: number | null): void {
+  const endpoints = controlOtlpEndpoints(apiUrl, otlpGrpcHostPort);
+  info(`OTLP/HTTP: ${endpoints.http}`);
+  info(
+    endpoints.grpc
+      ? `OTLP/gRPC: ${endpoints.grpc}`
+      : `OTLP/gRPC: not published (${CONTROL_OTLP_GRPC_PORT_ENV} picks the host port; har control down, then up, to apply)`,
+  );
+}
+
 async function handleDown(): Promise<void> {
   header('har control down');
   const code = stopMissionControl();
+  refreshAgentRouteAndReport();
   return finishCommand(code);
 }
 

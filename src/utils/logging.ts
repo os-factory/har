@@ -27,3 +27,8 @@ export function header(msg: string): void {
 export function divider(): void {
   console.error(chalk.dim('─'.repeat(60)));
 }
+
+/** One dim, low-priority line (e.g. a fail-open side effect that did not land). */
+export function dim(msg: string): void {
+  console.error(chalk.dim(msg));
+}

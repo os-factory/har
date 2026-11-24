@@ -1,4 +1,5 @@
 import type { ShellResult } from '../utils/shell';
+import type { FactoryProofOutcome } from './proof';
 import type {
   EnvironmentStatus,
   RunRecordTriggerSchema,
@@ -10,6 +11,7 @@ import type {
   WorkUnitRelatedLink,
   WorktreeMode,
 } from '../harness/schema';
+import type { VerificationSpanExportResult, VerificationTraceDelivery } from './verification-spans';
 import { z } from 'zod';
 
 export type ShellRunResult = ShellResult;
@@ -111,6 +113,12 @@ export interface EnvironmentStatusRunResult extends EnvironmentRunResult {
 export interface VerificationRunResult extends EnvironmentRunResult {
   verification: VerificationResult | null;
   validation?: ValidationRecord;
+  /** Factory Commits proof outcome; absent when HAR_FACTORY_PROOF=off, or under the default (notes) when git-factory is not installed. */
+  proof?: FactoryProofOutcome;
+  /** Set only when verification spans were sent to at least one trace destination. */
+  spanExport?: VerificationSpanExportResult;
+  /** How the verification trace left the CLI (Mission Control or direct), and what was spooled for retry. */
+  traceDelivery?: VerificationTraceDelivery;
 }
 
 export interface LogsOptions {

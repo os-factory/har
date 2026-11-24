@@ -78,6 +78,49 @@ Stage everything that was verified. A partially staged tree is a different batch
 and should not pass the gate. Never bypass hooks to force an agent commit; run the
 required validation against the intended state.
 
+## Factory Commits proofs
+
+Setup, levels, pushing notes and squash merges are covered in
+[Record Factory Commits proofs](/docs/guides/factory-commits/). In short:
+
+HAR can record its validations as [Factory Commits](https://github.com/os-factory/factory-commits)
+proofs in git. HAR builds a `factory-run` predicate from each full validation.
+The `git-factory` executable (`HAR_FACTORY_PROOF_BIN`, else `PATH`) builds the
+statement and writes notes, trailers and verification. The mode is set per
+repository in `.har/harness.env`:
+
+```bash
+HAR_FACTORY_PROOF=notes            # off | notes | notes+trailers (unset: notes, local only)
+```
+
+- Unset (the 2.0 default): local notes when `git-factory` is installed, silent
+  when it is not. `har hooks install` leaves git config alone.
+- `off` changes nothing.
+- `notes`, set explicitly:
+  - every `har env verify --full` attests the validated tree, stored next to
+    the validation record;
+  - post-commit adds that attestation to `refs/notes/factory` on the new commit;
+  - `har hooks install` runs `git factory setup` (fetch refspec,
+    `notes.rewriteRef`), and `har hooks uninstall` undoes it.
+- `notes+trailers`: everything in `notes`, plus a managed commit-msg hook that
+  adds `Work-Unit`, `Factory-Run` and `Factory-Attestation` trailers for a
+  verified tree. Re-run `har hooks install` after changing the mode.
+
+Proofs never block verify or a commit. When `git-factory` fails, or is missing
+under an explicit mode, HAR prints one line and carries on. Predicates never contain absolute paths,
+prompts, or work-unit titles or URLs.
+
+HAR needs factory-proof 0.2.0 or newer (`npm install -g @osfactory/factory-proof`)
+and treats an older `git-factory` as missing; `har hooks status` shows what it found.
+Every HAR proof has `environment.trust: self-reported`, in CI too: the agent runs as
+the developer, so a proof records what this checkout reports, not an independent
+attestation. See [Trust](/docs/guides/factory-commits/#trust-proofs-are-self-reported).
+
+Inspect and verify proofs with `har proof show [rev]` and
+`har proof verify [rev|A..B] [--min-level L0|L1|L2|L3] [--allowed-signers <file>] [--json]`.
+MCP agents use `har_proof_show` and `har_proof_verify`. Both pass `git factory`
+output and exit codes through.
+
 ## Completion
 
 `har env complete 1` reuses the last passing **full** validation whose tree hash

@@ -1,7 +1,8 @@
 import { parseVerificationResult } from './results';
 import * as crypto from 'crypto';
 import { localScriptExecutor } from './local-executor';
-import { createRun, finishRun, resolveAgentWorkDir } from './runs';
+import { createRun, finishRun, getRun, resolveAgentWorkDir } from './runs';
+import { produceValidationProof } from './proof';
 import {
   listSlotRegistryEntries,
   readSlotRegistry,
@@ -49,7 +50,15 @@ import {
   StageRunOptions,
   VerificationRunResult,
 } from './types';
-import { StageResult, VerificationResult } from '../harness/schema';
+import { StageResult, ValidationRecord, VerificationResult } from '../harness/schema';
+import {
+  collectVerificationTraceInput,
+  deliverVerificationTrace,
+  flushVerificationTraceSpool,
+  verificationTraceId,
+  willExportVerificationSpans,
+  type VerificationTraceInput,
+} from './verification-spans';
 
 function extractShellOutput(result: StageResult): { stdout: string; stderr: string; code: number } {
   const stdout =
@@ -206,6 +215,9 @@ export class RunService {
       };
     }
 
+    // Opportunistic retry of spooled verification traces; bounded, fail-open.
+    await flushVerificationTraceSpool();
+
     // Doctor contract validation runs before every launch (#232) so a broken
     // adaptation is caught here, not mid-session. Pre-1.0 harnesses degrade
     // contract findings to warnings inside runDoctor, so only real breakage
@@ -245,6 +257,10 @@ export class RunService {
         const hooks = ensureOtelHooks({ setupAgents: true });
         if (hooks.message) launchBanner += `${hooks.message}\n`;
         if (hooks.warning) launchBanner += `${hooks.warning}\n`;
+        if (hooks.route.mode === 'direct') {
+          launchBanner += `Agent traces go directly to "${hooks.route.destination.name}" (Mission Control is off).\n`;
+        }
+        if (hooks.routeHint) launchBanner += `${hooks.routeHint}\n`;
       } catch (err) {
         launchBanner += `@osfactory/otel-hook setup skipped: ${err instanceof Error ? err.message : String(err)}\n`;
       }
@@ -391,6 +407,8 @@ export class RunService {
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
   }): Promise<VerificationRunResult> {
+    // Opportunistic retry of traces an earlier verify could not deliver; bounded, fail-open.
+    await flushVerificationTraceSpool();
     const args = options.full ? ['--full'] : undefined;
     const result = await this.runStage({
       repoPath: options.repoPath,
@@ -413,6 +431,12 @@ export class RunService {
       }
     }
 
+    const runId =
+      typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
+        ? (result.data as { runId?: string }).runId
+        : undefined;
+    let validation: ValidationRecord | undefined;
+    let proof: VerificationRunResult['proof'];
     if (verification) {
       try {
         const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
@@ -423,11 +447,7 @@ export class RunService {
           workDir: resolveAgentWorkDir(harnessRoot, options.agentId),
           harnessRoot,
         });
-        const runId =
-          typeof result.data === 'object' && result.data !== null && !Array.isArray(result.data)
-            ? (result.data as { runId?: string }).runId
-            : undefined;
-        const validation = recordValidation({
+        const recorded = recordValidation({
           checkoutDir,
           harnessRoot,
           status: verification.status,
@@ -439,27 +459,92 @@ export class RunService {
           bindValidationToAttempt(harnessRoot, {
             workUnitId: session.workUnitId,
             attemptId: session.attemptId,
-            validation,
+            validation: recorded,
           });
         }
-        return {
-          code: shell.code,
-          stdout: shell.stdout,
-          stderr: shell.stderr,
-          verification,
-          validation,
-        };
+        validation = recorded;
+        if (options.full) {
+          // Factory Commits proof (HAR_FACTORY_PROOF, default notes); a no-op when off, never throws.
+          const runRecord = runId ? getRun(harnessRoot, runId) : null;
+          const workUnitId = session?.workUnitId;
+          const produced = produceValidationProof({
+            harnessRoot,
+            checkoutDir,
+            validation: recorded,
+            verification,
+            run: runRecord
+              ? { startedAt: runRecord.startedAt, finishedAt: runRecord.finishedAt }
+              : undefined,
+            workUnit: workUnitId
+              ? {
+                  id: workUnitId,
+                  source: findWorkUnit(harnessRoot, workUnitId)?.source,
+                  attemptId: session?.attemptId,
+                }
+              : undefined,
+            // Link the proof to the verification trace only when that trace is sent.
+            ...(willExportVerificationSpans()
+              ? { telemetry: { traceId: verificationTraceId(recorded.validationId) } }
+              : {}),
+          });
+          validation = produced.validation;
+          proof = produced.outcome;
+        }
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
       }
     }
 
-    return {
+    const runResult: VerificationRunResult = {
       code: shell.code,
       stdout: shell.stdout,
       stderr: shell.stderr,
       verification,
+      ...(validation ? { validation } : {}),
+      ...(proof ? { proof } : {}),
     };
+
+    // OTel CI/CD spans to the user's own trace destinations, after the result
+    // is final. Fail-open and bounded; no destination → no work at all.
+    // Through Mission Control when it is running (it stores, syncs to HQ and
+    // forwards), else straight to the destinations with a retry spool.
+    const delivered = await deliverVerificationTrace(() =>
+      this.verificationTraceInput(
+        options,
+        verification,
+        runId,
+        validation,
+        proof?.status === 'attested' ? proof.digest : undefined,
+      ),
+    );
+    if (delivered.spanExport) runResult.spanExport = delivered.spanExport;
+    if (delivered.delivery) runResult.traceDelivery = delivered.delivery;
+    return runResult;
+  }
+
+  private verificationTraceInput(
+    options: { repoPath: string; agentId: number; full?: boolean },
+    verification: VerificationResult | null,
+    runId: string | undefined,
+    validation: ValidationRecord | undefined,
+    attestationDigest?: string,
+  ): VerificationTraceInput {
+    const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
+    const harnessRoot = registry?.harnessRoot ?? resolveHarnessRoot(options.repoPath);
+    const session = registry?.session;
+    return collectVerificationTraceInput({
+      repoPath: options.repoPath,
+      harnessRoot,
+      checkoutDir: validation?.workDir ?? session?.worktreePath,
+      full: options.full ?? false,
+      verification,
+      runId,
+      validation,
+      attestationDigest,
+      workUnitId: session?.workUnitId,
+      attemptId: session?.attemptId,
+      branch: session?.branch,
+    });
   }
 
   async teardownEnvironment(options: {

@@ -21,7 +21,6 @@ function attrsFromOtel(list: unknown): Record<string, string | number | boolean>
 
 function detectAgentTool(resource: Record<string, string | number | boolean>): string | null {
   const candidates = [
-    String(resource['har.agent_tool'] ?? ''),
     String(resource['gen_ai.client.name'] ?? ''),
     String(resource['service.name'] ?? ''),
   ]
@@ -101,7 +100,7 @@ function extractClaudeTotals(payload: unknown): {
     | undefined;
   if (!rm) return null;
   const resource = attrsFromOtel(rm.resource?.attributes);
-  const sessionKey = String(resource['har.session_key'] ?? '');
+  const sessionKey = String(resource['session.id'] ?? '');
   let tokensInput = 0;
   let tokensOutput = 0;
   let costUsd = 0;
@@ -148,9 +147,9 @@ describe('otel metric mapping', () => {
         {
           resource: {
             attributes: [
-              { key: 'har.session_key', value: { stringValue: 'main-abcd-har-agent-1-xy12' } },
-              { key: 'har.repo_path', value: { stringValue: '/repo' } },
-              { key: 'har.agent_id', value: { intValue: 1 } },
+              { key: 'session.id', value: { stringValue: 'main-abcd-har-agent-1-xy12' } },
+              { key: 'factory.local.checkout_path', value: { stringValue: '/repo' } },
+              { key: 'factory.slot.id', value: { intValue: 1 } },
               { key: 'service.name', value: { stringValue: 'claude-code' } },
             ],
           },

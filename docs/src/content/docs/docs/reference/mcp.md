@@ -48,7 +48,7 @@ active session.
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `har_run_stage` | `stageId` or `kind`, optional `agentId`, `args` | Normalized generic stage result |
-| `har_run_verification` | `agentId`, `full` | Status, timing, and failed-step output (passing steps omit logs) |
+| `har_run_verification` | `agentId`, `full` | Status, timing, and failed-step output (passing steps omit logs); `proof` outcome after a full verify when Factory Commits proofs are on |
 | `har_doctor` | `repo` | Harness contract validation (same report as `har env doctor --json`): pass/fail checks plus findings with remedies; `isError` when the contract is broken |
 
 Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
@@ -61,6 +61,8 @@ Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
 | `har_list_artifacts` | optional `stageId` | Files, reports, screenshots, traces, videos, and URLs |
 | `har_list_runs` | optional `stageId`, `limit` | Persisted run records |
 | `har_get_run` | `runId` | One normalized run record |
+| `har_proof_show` | optional `rev` | Read-only: `git factory show --json` output (note and trailers) with its exit `code`; `isError` when `git-factory` is unavailable |
+| `har_proof_verify` | optional `rev` (or `A..B`), `minLevel`, `allowedSigners` | Read-only: `git factory verify --json` output (level and problems for each commit) with its exit `code` |
 
 ## Factory lines
 

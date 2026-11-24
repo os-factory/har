@@ -7,7 +7,7 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { addPlugin, describeProject, initHarness, maintainHarness } from '../core/harness';
-import { startControlAndSync } from '../core/control-lifecycle';
+import { controlOtlpEndpoints, startControlAndSync } from '../core/control-lifecycle';
 import { getHarPackageVersion } from '../core/package-version';
 import { detectDockerStatus, formatDockerRequirementWarning } from '../core/docker-status';
 import { ensureDefaultTelemetryPreference } from '../core/telemetry-config';
@@ -31,6 +31,7 @@ import {
   runLineGate,
 } from '../core/lines';
 import { addWorkUnitLinks } from '../core/work-units';
+import { FACTORY_PROOF_LEVELS, runFactoryProofQuery } from '../core/proof';
 import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
@@ -62,6 +63,9 @@ import {
   ListRunsOutputSchema,
   GetRunInputSchema,
   GetRunOutputSchema,
+  ProofQueryOutputSchema,
+  ProofShowInputSchema,
+  ProofVerifyInputSchema,
   ControlUpInputSchema,
   ControlUpOutputSchema,
   GetStatusOutputSchema,
@@ -290,7 +294,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_run_verification',
     description:
-      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump).',
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump), plus `proof` (Factory Commits outcome) after a full verify when a proof was attempted (HAR_FACTORY_PROOF not off; under the default only when git-factory is installed).',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -388,6 +392,26 @@ export const HAR_MCP_TOOLS: Tool[] = [
       },
       ['runId'],
     ),
+  },
+  {
+    name: 'har_proof_show',
+    description:
+      'Read-only. Show the Factory Commits note and trailers on a commit (passes through `git factory show --json`). Needs the git-factory executable (HAR_FACTORY_PROOF_BIN or PATH).',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      rev: { type: 'string', description: 'Commit (default HEAD)' },
+    }),
+  },
+  {
+    name: 'har_proof_verify',
+    description:
+      'Read-only. Verify Factory Commits proofs on a commit or range A..B (passes through `git factory verify --json`: per-commit level none|L0..L3 and problem codes). code 1 = below minLevel or problems found.',
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      rev: { type: 'string', description: 'Commit or range A..B (default HEAD)' },
+      minLevel: { type: 'string', enum: [...FACTORY_PROOF_LEVELS] },
+      allowedSigners: { type: 'string', description: 'ssh allowed_signers file (relative to repo) for L2' },
+    }),
   },
   {
     name: 'har_control_up',
@@ -691,6 +715,7 @@ export async function handleMcpToolCall(
           stdout: '',
           stderr: result.stderr,
           verification: slimVerificationResult(result.verification),
+          ...(result.proof ? { proof: result.proof } : {}),
         }),
       );
     }
@@ -783,6 +808,26 @@ export async function handleMcpToolCall(
       return jsonContent(GetRunOutputSchema.parse({ run }));
     }
 
+    case 'har_proof_show':
+    case 'har_proof_verify': {
+      const query =
+        toolName === 'har_proof_show'
+          ? { command: 'show' as const, ...ProofShowInputSchema.parse({ ...args, repo }) }
+          : { command: 'verify' as const, ...ProofVerifyInputSchema.parse({ ...args, repo }) };
+      const result = runFactoryProofQuery({ ...query, repoPath: path.resolve(query.repo) });
+      return {
+        ...jsonContent(
+          ProofQueryOutputSchema.parse({
+            code: result.code,
+            available: result.available,
+            result: result.result,
+            stderr: result.stderr,
+          }),
+        ),
+        ...(result.code === 2 ? { isError: true } : {}),
+      };
+    }
+
     case 'har_control_up': {
       const input = ControlUpInputSchema.parse({ ...args, repo });
       const result = await startControlAndSync({
@@ -800,12 +845,15 @@ export async function handleMcpToolCall(
           isError: true,
         };
       }
+      const otlp = controlOtlpEndpoints(result.apiUrl, result.otlpGrpc?.hostPort ?? null);
       return jsonContent(
         ControlUpOutputSchema.parse({
           apiUrl: result.apiUrl,
           synced: result.synced,
           failed: result.failed,
           apiReady: result.apiReady,
+          otlpHttpUrl: otlp.http,
+          ...(otlp.grpc ? { otlpGrpcUrl: otlp.grpc } : {}),
         }),
       );
     }

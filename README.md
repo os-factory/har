@@ -124,6 +124,7 @@ Everything beyond install and first commands lives at [harproject.dev](https://h
 - **[CLI reference](https://harproject.dev/docs/reference/cli/).** Every command and option the `har` executable exposes.
 - **[MCP tools](https://harproject.dev/docs/reference/mcp/).** The structured tools an MCP-connected agent calls directly, for discovery, session control, verification, and evidence.
 - **[Mission Control](https://harproject.dev/docs/guides/mission-control/).** How to run the local dashboard that tracks repositories, worktrees, runs, validations, and artifacts.
+- **[Docker Sandboxes](https://harproject.dev/docs/guides/docker-sandboxes/).** How to run a coding agent with HAR inside an isolated Docker Sandbox microVM.
 - **[Architecture](https://harproject.dev/docs/project/architecture/).** HAR's internal layers, contracts, and extension points, for anyone building a plugin or contributing to the core.
 
 ## Contributing

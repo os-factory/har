@@ -64,7 +64,7 @@
       "kind": "test",
       "tier": "quick",
       "description": "Xcode build smoke (compile-only, unsigned)",
-      "command": "${XCODEBUILD_BIN:-xcodebuild} build ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" CODE_SIGNING_ALLOWED=NO | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} build ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" CODE_SIGNING_ALLOWED=NO",
+      "command": "set -o pipefail; ${XCODEBUILD_BIN:-xcodebuild} build ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" CODE_SIGNING_ALLOWED=NO 2>&1 | if command -v xcbeautify >/dev/null 2>&1; then xcbeautify --preserve-unbeautified; else cat; fi",
       "requiresAgentId": true
     },
     {
@@ -72,7 +72,7 @@
       "kind": "test",
       "tier": "full",
       "description": "Xcode unit tests (signed: simulator installs the host app)",
-      "command": "${XCODEBUILD_BIN:-xcodebuild} test ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" | xcbeautify 2>/dev/null || ${XCODEBUILD_BIN:-xcodebuild} test ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\"",
+      "command": "set -o pipefail; ${XCODEBUILD_BIN:-xcodebuild} test ${XC_FLAGS} -scheme \"${XC_SCHEME}\" -destination \"${XC_DESTINATION}\" -derivedDataPath \"${XC_DERIVED}\" -collect-test-diagnostics never 2>&1 | if command -v xcbeautify >/dev/null 2>&1; then xcbeautify --preserve-unbeautified; else cat; fi",
       "requiresAgentId": true
     },
     {

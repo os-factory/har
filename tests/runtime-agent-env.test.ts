@@ -274,9 +274,10 @@ describe('appendSessionTelemetry', () => {
     const contents = fs.readFileSync(envFile, 'utf8');
     expect(contents).toContain('AGENT_ID=1');
     expect(contents).toContain('# HAR session attribution (generated)');
-    expect(contents).toContain('HAR_SESSION_KEY=main-ab12-har-agent-1-xy9z');
+    expect(contents).toContain('session.id=main-ab12-har-agent-1-xy9z');
+    expect(contents).not.toContain('HAR_SESSION_KEY');
     expect(contents).toContain('HAR_WORK_UNIT_ID=234');
-    expect(contents).toContain('har.branch=main-ab12-har-agent-1-xy9z');
+    expect(contents).toContain('vcs.ref.head.name=main-ab12-har-agent-1-xy9z');
     expect(contents).toContain('# end HAR telemetry');
   });
 
@@ -295,7 +296,7 @@ describe('appendSessionTelemetry', () => {
 
     const contents = fs.readFileSync(envFile, 'utf8');
     expect(contents.match(/# HAR session attribution \(generated\)/g)).toHaveLength(1);
-    expect(contents).toContain('HAR_SESSION_KEY=b2');
-    expect(contents).not.toContain('HAR_SESSION_KEY=b1');
+    expect(contents).toContain('session.id=b2');
+    expect(contents).not.toContain('session.id=b1');
   });
 });

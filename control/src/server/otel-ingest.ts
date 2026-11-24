@@ -1,12 +1,15 @@
 import { createRequire } from 'node:module';
 import {
   AgentTrajectoryRecordSchema,
+  LOCAL_CHECKOUT_PATH_ATTR,
+  LOCAL_WORK_DIR_ATTR,
   MAIN_CHECKOUT_AGENT_ID,
   MAIN_CHECKOUT_OCCUPANCY_KEY,
   type AgentSessionRef,
   type AgentTool,
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
+import { ingestVerificationSpans, isVerificationSpan } from '@/server/verification-runs';
 import {
   appendTrajectoryRecord,
   stableTrajectoryKey,
@@ -14,9 +17,11 @@ import {
 import {
   claudeApiRequestObservation,
   codexSseObservation,
+  harnessSessionKey,
   isUsageOnlyLogRecord,
   latestBindingRepositoryAt,
   otelHookGenerationObservation,
+  providerResource,
   providerSessionRef,
   repositoryForProviderSession,
   repositoryOfPlaceAt,
@@ -242,7 +247,6 @@ function extractPointsFromResourceMetrics(payload: unknown): Array<{
 
 export function detectAgentTool(resource: AttrMap, serviceName?: string): AgentTool | null {
   const candidates = [
-    String(resource['har.agent_tool'] ?? ''),
     String(resource['otelhook.provider.id'] ?? ''),
     String(resource['otelhook.agent.name'] ?? ''),
     String(resource['otelhook.provider'] ?? ''),
@@ -276,8 +280,8 @@ function workspaceFromAttrs(...maps: AttrMap[]): string {
     for (const key of [
       'gen_ai.client.workspace',
       'gen_ai.client.repository_root',
-      'har.work_dir',
-      'har.repo_path',
+      LOCAL_WORK_DIR_ATTR,
+      LOCAL_CHECKOUT_PATH_ATTR,
       'code.filepath',
       'cwd',
       'process.cwd',
@@ -526,13 +530,13 @@ export async function resolveSessionContext(
 ): Promise<{ context: ResolvedSessionContext | null; reason?: string; evidence?: SlotBindingEvidence[] }> {
   const tool =
     detectAgentTool(attributes) ?? detectAgentTool(resource) ?? null;
-  const harSessionKey = String(
-    resource['har.session_key'] ?? attributes['har.session_key'] ?? '',
-  );
-  const repoPath = String(resource['har.repo_path'] ?? attributes['har.repo_path'] ?? '');
+  // The launch's session key is the Resource `session.id` (telemetry
+  // profile); a record's own `session.id` is the provider's session.
+  const harSessionKey = harnessSessionKey(resource);
+  const repoPath = String(resource[LOCAL_CHECKOUT_PATH_ATTR] ?? attributes[LOCAL_CHECKOUT_PATH_ATTR] ?? '');
   const workspace = workspaceFromAttrs(attributes, resource);
   const workspaceId = workspaceIdFromAttrs(attributes, resource);
-  const providerSessionId = sessionIdFromAttrs(attributes, resource);
+  const providerSessionId = sessionIdFromAttrs(attributes, providerResource(resource));
   const at = options.at ?? new Date();
 
   let repository: { repositoryId: string; workDir?: string; sessionKey: string } | null = null;
@@ -542,12 +546,12 @@ export async function resolveSessionContext(
   // The record's own cwd is a repository's main checkout itself (FE-2058).
   let mainCheckoutPath: string | null = null;
 
-  // Prefer live workspace/slot matching over stale global har.session_key
-  // resource attributes left behind by the last `har env launch`.
+  // Prefer live workspace/slot matching over a stale Resource `session.id`
+  // left behind by the last `har env launch`.
   if (workspace) {
     workspaceSlot = await resolveSlotByWorkspace(workspace);
     if (workspaceSlot) {
-      // #316: the matched slot's own key wins over `har.session_key`. That
+      // #316: the matched slot's own key wins over the Resource `session.id`. That
       // resource attribute is written once per launch and survives the
       // occupancy that wrote it (Claude Code also reuses `session.id` across
       // a resume), so preferring it merged a new worktree's events into the
@@ -589,7 +593,7 @@ export async function resolveSessionContext(
 
   // The session's own cwd names no repository (a linked worktree Mission
   // Control cannot list): where its timeline or earlier records put it.
-  const knownRef = !repository && tool ? providerSessionRef(tool, attributes, resource) : null;
+  const knownRef = !repository && tool ? providerSessionRef(tool, attributes, providerResource(resource)) : null;
   const knownRepositoryId = knownRef
     ? ((await repositoryOfPlaceAt(knownRef, at)) ?? (await repositoryForProviderSession(knownRef)))
     : null;
@@ -640,7 +644,7 @@ export async function resolveSessionContext(
     }
     repository = {
       repositoryId,
-      workDir: resource['har.work_dir'] ? String(resource['har.work_dir']) : workspace || undefined,
+      workDir: resource[LOCAL_WORK_DIR_ATTR] ? String(resource[LOCAL_WORK_DIR_ATTR]) : workspace || undefined,
       sessionKey: harSessionKey,
     };
   }
@@ -653,7 +657,7 @@ export async function resolveSessionContext(
   }
 
   const agentTool = tool ?? 'cursor';
-  const sessionRef = providerSessionRef(agentTool, attributes, resource) ?? undefined;
+  const sessionRef = providerSessionRef(agentTool, attributes, providerResource(resource)) ?? undefined;
   const base = {
     repositoryId: repository.repositoryId,
     sessionKey: repository.sessionKey,
@@ -709,7 +713,7 @@ export async function resolveSessionContext(
         ...base,
         agentId: MAIN_CHECKOUT_AGENT_ID,
         workDir: repository.workDir,
-        branch: resource['har.branch'] ? String(resource['har.branch']) : undefined,
+        branch: resource['vcs.ref.head.name'] ? String(resource['vcs.ref.head.name']) : undefined,
         suffix: undefined,
         workUnitId: undefined,
         attemptId: undefined,
@@ -1187,7 +1191,6 @@ export function extractLogRecords(payload: unknown): ParsedLogRecord[] {
           bodyText: bodyToText(record.body),
           sequence: Number(
             attributes['otelhook.event.sequence'] ??
-              attributes['har.sequence'] ??
               attributes.sequence ??
               seq,
           ),
@@ -1313,7 +1316,6 @@ export function canonicalizeOtelLogRecord(record: ParsedLogRecord) {
 export function canonicalSpanSequence(attributes: AttrMap): number {
   const raw =
     attributes['otelhook.event.sequence'] ??
-    attributes['har.sequence'] ??
     attributes.sequence;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
@@ -1468,8 +1470,10 @@ export async function ingestOtelLogsBody(
   };
 }
 
-interface ParsedSpan {
+export interface ParsedSpan {
   resource: AttrMap;
+  /** Instrumentation scope name (`@osfactory/har` for verification spans). */
+  scopeName?: string;
   traceId: string;
   spanId: string;
   parentSpanId: string | null;
@@ -1498,6 +1502,7 @@ export function extractSpans(payload: unknown): ParsedSpan[] {
       [];
     for (const ss of scopeSpans) {
       if (!ss || typeof ss !== 'object') continue;
+      const scopeName = (ss as { scope?: { name?: unknown } }).scope?.name;
       const spans = (ss as { spans?: unknown[] }).spans ?? [];
       if (!Array.isArray(spans)) continue;
       for (const span of spans) {
@@ -1505,6 +1510,7 @@ export function extractSpans(payload: unknown): ParsedSpan[] {
         const record = span as Record<string, unknown>;
         out.push({
           resource,
+          ...(typeof scopeName === 'string' && scopeName ? { scopeName } : {}),
           traceId: normalizeOtelId(record.traceId ?? record.trace_id, 16),
           spanId: normalizeOtelId(record.spanId ?? record.span_id, 8),
           parentSpanId: normalizeOtelId(record.parentSpanId ?? record.parent_span_id, 8) || null,
@@ -1522,10 +1528,14 @@ export function extractSpans(payload: unknown): ParsedSpan[] {
 }
 
 export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngestResult> {
-  const spans = extractSpans(payload);
-  let accepted = 0;
-  let dropped = 0;
-  const reasons: string[] = [];
+  const all = extractSpans(payload);
+  // `har env verify` traces are verification runs, not agent session spans.
+  const verification = all.filter(isVerificationSpan);
+  const spans = verification.length > 0 ? all.filter((span) => !isVerificationSpan(span)) : all;
+  const stored = verification.length > 0 ? await ingestVerificationSpans(verification) : null;
+  let accepted = stored?.accepted ?? 0;
+  let dropped = stored?.dropped ?? 0;
+  const reasons: string[] = [...(stored?.reasons ?? [])];
 
   for (const span of spans) {
     if (!span.traceId || !span.spanId) {

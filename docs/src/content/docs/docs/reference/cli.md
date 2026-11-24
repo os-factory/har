@@ -363,7 +363,23 @@ har hooks uninstall --claude
 
 The default installs the Git commit gate. `--claude` selects the Claude Code
 main-checkout edit guard instead. `har hooks check` and `har hooks record-commit`
-are internal hook workers invoked by Git, not day-to-day commands.
+are internal hook workers invoked by Git, not day-to-day commands. So is
+`har hooks commit-msg <file>`, which is installed only when `.har/harness.env`
+sets `HAR_FACTORY_PROOF=notes+trailers`.
+
+## `har proof`
+
+```bash
+har proof show [rev] [--repo .] [--json]
+har proof verify [rev|A..B] [--min-level L0|L1|L2|L3] [--allowed-signers <file>] [--repo .] [--json]
+```
+
+Read-only wrappers around the `git-factory` executable (`HAR_FACTORY_PROOF_BIN`,
+else `PATH`) for [Factory Commits](https://github.com/os-factory/factory-commits)
+proofs. `--json` passes `git factory`'s JSON through. Otherwise HAR prints the
+level and problems for each commit. Exit codes come from `git factory`: `0` ok,
+`1` verification failed, `2` usage or environment error (including a missing
+`git-factory`). See [Record Factory Commits proofs](/docs/guides/factory-commits/).
 
 ## `har hq`
 
@@ -466,6 +482,15 @@ har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
                        [--work-dir path] [--branch name] [--suffix id] [--session-key key]
 har telemetry print-env --agent-id <n> [--repo .]
                        [--work-dir path] [--branch name] [--suffix id]
+har telemetry destination add <name> --preset langfuse [--host url] [--public-key pk] [--secret-key sk]
+                       [--include-local-paths] [--include-account-identity]
+har telemetry destination add <name> --preset otlp --endpoint url [--header Name=value]…
+                       [--signals traces,metrics,logs] [--protocol http/protobuf|http/json]
+                       [--include-local-paths] [--include-account-identity] [--disabled] [--overwrite]
+har telemetry destination list [--json]
+har telemetry destination remove <name>
+har telemetry destination test <name> [--json]
+har telemetry destination flush [--json]
 ```
 
 Controls how much agent activity (Cursor / Claude / Codex) is recorded in Mission Control.
@@ -484,6 +509,52 @@ running and rewrites the hook config; start a new agent session to pick it up. `
 warns when `~/.har/otel-hooks/otel_config.json` records something else (for example a
 preference edited by hand). Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
 HAR HQ receives the text only with `har control trajectory on`.
+
+### Destinations (any OTLP backend)
+
+`har telemetry destination` stores OTLP/HTTP backends that receive a copy of the
+telemetry — an OpenTelemetry Collector, Langfuse, Datadog, … — in
+`~/.har/destinations/telemetry.json` (mode `0600`: header values are secrets). Nothing
+is configured by default, and nothing leaves the machine until you add one.
+
+- `--preset langfuse` sends traces to `<host>/api/public/otel` with
+  `Authorization: Basic base64(public:secret)`. Langfuse ingests OTLP traces only.
+  The keys default to `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`, the host to
+  `LANGFUSE_BASE_URL`, `LANGFUSE_HOST` or `https://cloud.langfuse.com`.
+- `--preset otlp` takes a base `--endpoint` (signals go to `<endpoint>/v1/<signal>`),
+  any `--header Name=value`, and `traces` and `metrics` unless `--signals` says
+  otherwise. Logs are opt-in: name `logs` in `--signals` to forward them. At the
+  `full` level they carry prompts, replies and tool input/output verbatim, and `add`
+  prints a warning.
+- Mission Control strips attributes that hold absolute local paths (every
+  `factory.local.*` key, `process.cwd`, `code.filepath`, …) from every forwarded copy.
+  `--include-local-paths` keeps them for that destination.
+- Mission Control also strips account identity attributes (`user.email`,
+  `user.account_uuid`, `user.account_id`, `user.id`, `organization.id`, `enduser.id`, …).
+  `--include-account-identity` keeps them for that destination.
+
+`list` masks header values and shows whether local paths and account identity are stripped. `test` sends one small OTLP/JSON record to the destination
+and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-only
+into the Mission Control container. Guides: [Langfuse](/docs/guides/langfuse/),
+[any OTLP backend](/docs/guides/otlp-backends/).
+
+**Verification spans.** Each `har env verify` (and MCP `har_run_verification`) builds
+one OTel CI/CD trace: a run span (`cicd.pipeline.*`, `factory.run.id`, `factory.git.tree`,
+`factory.verdict` on `--full`) with one child span per stage, plus the work unit,
+attempt, repository and branch on the resource. The trace id is derived from the
+validation id, so it sits next to the agent's session traces in the same backend.
+Spans carry ids, results and timings only: no commands or logs. When Mission Control
+is running, the trace goes only to Mission Control, which stores the run, syncs it
+to HQ and forwards it to every destination subscribed to `traces`. Otherwise the CLI
+sends it to those destinations itself (about 3 s each, in parallel) and queues
+what failed, plus a store-only copy for Mission Control, in `~/.har/spool/traces`
+(64 MB, 24 h). The resource's `factory.local.checkout_path` never reaches a
+destination or the spool. Delivery never changes verify's result; a failed delivery
+prints one dim line, and a queued one another. `har telemetry off` sends none.
+
+`flush` retries the queue now (the start of every `har env verify` and
+`har env launch` does it too, with a 2-second budget) and prints how many were sent,
+retried, dropped and left.
 
 ## `har worktree`
 

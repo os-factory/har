@@ -25,6 +25,8 @@ describe('HAR MCP tool schemas', () => {
       'har_list_artifacts',
       'har_list_runs',
       'har_get_run',
+      'har_proof_show',
+      'har_proof_verify',
       'har_control_up',
       'har_line_create',
       'har_add_line',
