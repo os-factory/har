@@ -37,7 +37,7 @@ import {
 
 describe('otel-hook package pin', () => {
   it('installs the release that reads the Resource session.id and the standard OTLP variables', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.8.0');
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.9.0');
   });
 
   it('is the version Mission Control derives otel-hook ids with', () => {
@@ -60,18 +60,18 @@ describe('otel-hook package pin', () => {
     afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
     it('keeps an install of the pinned version', () => {
-      installVersion('0.8.0');
+      installVersion('0.9.0');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(false);
       installVersion('0.5.0');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
     });
 
     it('installs an override once, then again only when it changes or is removed', () => {
-      installVersion('0.8.0');
+      installVersion('0.9.0');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(true);
       recordInstalledSpec(home, '/tmp/otel-hook.tgz');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(false);
-      expect(needsPackageInstall(home, '@osfactory/otel-hook@0.9.0')).toBe(true);
+      expect(needsPackageInstall(home, '@osfactory/otel-hook@0.10.0')).toBe(true);
       // Back to the pin: the override's build is replaced even at the same version.
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
       recordInstalledSpec(home, OTEL_HOOKS_PACKAGE);

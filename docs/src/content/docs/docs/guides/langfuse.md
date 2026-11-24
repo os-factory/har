@@ -91,8 +91,8 @@ destination. It re-reads the file when it changes.
 ## Without Mission Control
 
 If you don't run Mission Control (`HAR_CONTROL_DISABLED=true`, or no Docker),
-agent session traces can still reach Langfuse: when Langfuse is the **only** enabled
-destination subscribed to `traces`, otel-hook sends them to Langfuse itself.
+agent session traces can still reach Langfuse: otel-hook sends them itself to every
+enabled destination subscribed to `traces` or `logs`, Langfuse included.
 
 ```bash
 export HAR_CONTROL_DISABLED=true
@@ -113,16 +113,27 @@ What changes in direct mode:
   recorded.
 - **Local paths stay home.** No Mission Control strips the Resource, so HAR leaves
   every `factory.local.*` key out of the agent's `OTEL_RESOURCE_ATTRIBUTES` and the
-  hook drops any it inherits, unless the destination has `--include-local-paths`.
-- **Keys stay off command lines.** The endpoint and the `Authorization` header are
-  written to `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper
-  loads when it runs. The wrapper script and the hook's arguments contain no secret.
-- **One destination.** With two or more destinations subscribed to `traces`, HAR
-  sends agent traces to none of them directly and says so. Run Mission Control
-  (`har control up`) to fan out.
-- **otel-hook 0.7.0 or later.** Older releases cannot read the standard OTLP header
-  variables. HAR then prints the version it needs and keeps agent traces on
-  Mission Control.
+  hook drops any it inherits, unless every direct destination has
+  `--include-local-paths`.
+- **Keys stay off command lines.** The `Authorization` header is written to
+  `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper loads when it
+  runs. The wrapper script, the hook config and the hook's arguments contain no
+  secret.
+- **Several destinations, no Mission Control.** Add a second destination (a team
+  Collector, say) and otel-hook sends each batch to Langfuse and to it, in parallel.
+  HAR writes both to the hook config as `exporter.destinations[]`, with each header
+  value as an `env:` reference to `direct.env`, so the Langfuse keys still never
+  appear in the config file. `har telemetry status` shows
+  `direct → langfuse, collector`.
+- **otel-hook version.** One destination needs otel-hook 0.7.0 or later, and two or
+  more need 0.9.0 (which HAR installs). With an older copy, HAR prints the version
+  it needs and keeps agent traces on Mission Control.
+- **Retries.** otel-hook keeps what a destination could not take in that
+  destination's own spool and sends it with a later hook event. Since 0.9.0, a full
+  spool drops its oldest batches, and a batch Langfuse rejects with a
+  non-retryable status (such as `401` for a wrong key) is dropped rather than
+  retried. See
+  [Without Mission Control](/docs/guides/otlp-backends/#without-mission-control).
 
 Verification traces need none of this: without Mission Control the CLI already sends
 them to Langfuse itself.

@@ -40,8 +40,9 @@ har env verify 1 --full
   [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md),
   in place of the `har.*` ones (see [Removed telemetry attributes](#removed-telemetry-attributes)).
 - **Agent traces without Mission Control.** With Mission Control disabled or not
-  set up and a single `traces` destination, otel-hook sends agent session traces
-  to it directly, without local paths and with the keys in a `0600` file. See
+  set up, otel-hook sends agent session traces itself to every `traces` or `logs`
+  destination, without local paths and with the keys in a `0600` file. Two or more
+  destinations need otel-hook 0.9.0. See
   [Langfuse without Mission Control](/docs/guides/langfuse/#without-mission-control).
 - **Factory Commits proofs.** A full verify becomes an in-toto `factory-run`
   statement for the exact verified tree. The commit of that tree gets it as a note
@@ -124,11 +125,18 @@ session key travels only as `session.id` in `OTEL_RESOURCE_ATTRIBUTES`.
 
 ### Agent hooks (`@osfactory/otel-hook`)
 
-HAR 2.0 installs `@osfactory/otel-hook@0.8.0`. It names each span's session from the
-Resource `session.id` HAR sets, so agent spans group by HAR session in any backend,
-and it reads the standard `OTEL_EXPORTER_OTLP_*` endpoint and header variables that
-direct export relies on. HAR replaces an older installed copy on the next
-`har env launch` or `har telemetry on`.
+HAR 2.0 installs `@osfactory/otel-hook@0.9.0`. It names each span's session from the
+Resource `session.id` HAR sets, so agent spans group by HAR session in any backend.
+It reads the standard `OTEL_EXPORTER_OTLP_*` endpoint and header variables that
+direct export to one destination relies on, and the `exporter.destinations[]` list
+that direct export to several relies on. HAR replaces an older installed copy on the
+next `har env launch` or `har telemetry on`.
+
+otel-hook 0.9.0 changes how failed exports are retried, on both routes. A full spool
+now drops its oldest batches instead of refusing new ones. A batch rejected with a
+non-retryable status (anything but `408`, `429`, `500`, `502`, `503` and `504`) is
+dropped instead of spooled. Hook events that close no span no longer send an empty
+request. See [Without Mission Control](/docs/guides/otlp-backends/#without-mission-control).
 To try an unreleased otel-hook build, set `HAR_OTEL_HOOKS_PACKAGE` to any spec your
 package manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
 

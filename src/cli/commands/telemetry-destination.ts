@@ -32,8 +32,8 @@ import {
 import { error, header, info, success, warn } from '../../utils/logging';
 import { isControlEnabled } from '../../core/control-config';
 import { countSpooledPayloads } from '../../core/telemetry-spool';
-import { refreshAgentTelemetryRoute } from '../../core/otel-hooks';
-import { describeAgentTelemetryRoute } from '../../core/telemetry-direct';
+import { getOtelHooksHome, refreshAgentTelemetryRoute } from '../../core/otel-hooks';
+import { describeAgentTelemetryRoute, readAppliedDirectRoute } from '../../core/telemetry-direct';
 import { flushVerificationTraceSpool } from '../../core/verification-spans';
 
 export interface DestinationAddArgs {
@@ -141,8 +141,12 @@ function handleAdd(argv: DestinationAddArgs): void {
 function handleList(argv: { json: boolean }): void {
   const file = readTelemetryDestinations();
   const masked = file.destinations.map(maskTelemetryDestination);
+  // Destinations agents export to themselves now (Mission Control off), by name.
+  const direct = readAppliedDirectRoute(getOtelHooksHome())?.destinations ?? [];
   if (argv.json) {
-    process.stdout.write(`${JSON.stringify({ path: getTelemetryDestinationsPath(), destinations: masked }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ path: getTelemetryDestinationsPath(), destinations: masked, agentTracesDirect: direct }, null, 2)}\n`,
+    );
     return;
   }
   header('har telemetry destination list');
@@ -157,6 +161,7 @@ function handleList(argv: { json: boolean }): void {
     info(`  signals:  ${destination.signals.join(', ')}`);
     info(`  local paths: ${localPathsLabel(destination)}`);
     info(`  account identity: ${accountIdentityLabel(destination)}`);
+    if (direct.includes(destination.name)) info('  agent traces: direct (otel-hook sends to it itself; Mission Control is off)');
     const headers = Object.entries(destination.headers);
     if (headers.length > 0) info(`  headers:  ${headers.map(([key, value]) => `${key}: ${value}`).join(', ')}`);
   }
