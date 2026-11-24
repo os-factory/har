@@ -258,7 +258,8 @@ export class RunService {
         if (hooks.message) launchBanner += `${hooks.message}\n`;
         if (hooks.warning) launchBanner += `${hooks.warning}\n`;
         if (hooks.route.mode === 'direct') {
-          launchBanner += `Agent traces go directly to "${hooks.route.destination.name}" (Mission Control is off).\n`;
+          const names = hooks.route.destinations.map((destination) => `"${destination.name}"`).join(', ');
+          launchBanner += `Agent traces go directly to ${names} (Mission Control is off).\n`;
         }
         if (hooks.routeHint) launchBanner += `${hooks.routeHint}\n`;
       } catch (err) {

@@ -64,8 +64,15 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   const agentTraces = {
     mode: route.mode,
     label: describeAgentTelemetryRoute(route),
-    ...(route.mode === 'direct' ? { destination: route.destination.name } : {}),
-    appliedDirectDestination: applied?.destination ?? null,
+    ...(route.mode === 'direct'
+      ? {
+          // `destination` (the first) is kept for scripts written for one destination.
+          destination: route.destinations[0].name,
+          destinations: route.destinations.map((destination) => destination.name),
+        }
+      : {}),
+    appliedDirectDestination: applied?.destinations.join(',') ?? null,
+    appliedDirectDestinations: applied?.destinations ?? [],
     ...(routeDecision.hint ? { hint: routeDecision.hint } : {}),
   };
   const payload = {
@@ -101,11 +108,12 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   info(`Mission Control: ${apiUrl} (${reachable ? 'reachable' : 'not reachable'})`);
   info(`Agent traces:  ${agentTraces.label}`);
   if (routeDecision.hint) info(routeDecision.hint);
-  const appliedName = applied?.destination ?? null;
-  const wantedName = route.mode === 'direct' ? route.destination.name : null;
-  if (appliedName !== wantedName) {
+  const appliedNames = applied?.destinations.join(',') ?? null;
+  const wantedNames = route.mode === 'direct' ? route.destinations.map((destination) => destination.name).join(',') : null;
+  if (appliedNames !== wantedNames) {
+    const quoted = applied?.destinations.map((name) => `"${name}"`).join(', ');
     warn(
-      `Agents currently send traces ${appliedName ? `directly to "${appliedName}"` : 'to Mission Control'} — run har telemetry on to apply the route above.`,
+      `Agents currently send traces ${quoted ? `directly to ${quoted}` : 'to Mission Control'} — run har telemetry on to apply the route above.`,
     );
   }
   info(`OTLP endpoint: ${payload.otelEndpoint}`);
@@ -144,7 +152,7 @@ async function handleOn(argv: { level: TelemetryLevel }): Promise<void> {
   if (result.message) success(result.message);
 
   const hooks = ensureOtelHooks({ setupAgents: true });
-  // Without Mission Control, one destination takes agent traces directly.
+  // Without Mission Control, the destinations take agent traces directly.
   if (result.warning && hooks.route.mode !== 'direct') warn(result.warning);
   if (hooks.message) success(hooks.message);
   if (hooks.warning) warn(hooks.warning);

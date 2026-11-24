@@ -196,22 +196,42 @@ restart.
 ### Without Mission Control
 
 When Mission Control is disabled (`HAR_CONTROL_DISABLED=true`) or not set up, and
-**exactly one** enabled destination subscribes to `traces`, otel-hook exports agent
-session traces to it directly. `har telemetry status` shows the mode:
-`via Mission Control`, `direct → <name>` or `off`.
+at least one enabled destination subscribes to `traces`, otel-hook exports agent
+session traces itself to **every** enabled destination that subscribes to `traces`
+or `logs`. `har telemetry status` shows the mode: `via Mission Control`,
+`direct → <name>[, <name>…]` or `off`. `har telemetry destination list` marks each
+destination that agents send to directly.
 
-- HAR writes the destination's endpoint and headers to
-  `~/.har/otel-hooks/direct.env` (mode `0600`) as the standard
-  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_TRACES_HEADERS`
-  (values URL-encoded). The hook wrapper loads the file at run time. No secret is
-  on a command line or in the wrapper.
-- Logs go direct only when the destination subscribes to `logs` (the same warning
-  applies). Metrics are not sent: Claude Code's native telemetry stays off in direct
-  mode because it carries account identity.
-- `factory.local.*` stays out of the agent's Resource unless the destination has
-  `--include-local-paths`. otel-hook itself sends hashed workspace ids, not paths.
-- With two or more `traces` destinations, nothing goes direct: run Mission Control
-  to fan out. Direct mode needs `@osfactory/otel-hook` 0.7.0 or later.
+- HAR writes the destinations to the hook config
+  (`~/.har/otel-hooks/otel_config.json`) as otel-hook's `exporter.destinations[]`,
+  one entry per destination with its traces and logs URLs. Every header value there
+  is an `env:` reference, such as `"Authorization": "env:HAR_OTEL_DIRECT_HEADER_1_1"`.
+  The values themselves are only in `~/.har/otel-hooks/direct.env` (mode `0600`),
+  which the hook wrapper loads at run time. No secret is on a command line, in the
+  wrapper or in the hook config.
+- otel-hook sends each batch to every destination in parallel, and keeps a separate
+  retry spool for each one.
+- Direct export needs `@osfactory/otel-hook` 0.9.0 or later, which HAR installs on
+  `har env launch` and `har telemetry on`. With an older copy, HAR keeps agent
+  traces on Mission Control and says which version it needs.
+- Logs go only to destinations that subscribe to `logs` (the same warning applies).
+  Metrics are not sent: Claude Code's native telemetry stays off in direct mode
+  because it carries account identity.
+- `factory.local.*` stays out of the agent's Resource unless **every** direct
+  destination has `--include-local-paths`: one hook process sends the same Resource
+  to all of them. otel-hook itself sends hashed workspace ids, not paths.
+- Mission Control still fans out on its own when it runs. Nothing changes on that
+  route.
+
+Since otel-hook 0.9.0, the retry spool behaves differently on both routes:
+
+- A full spool drops its **oldest** batches first (default bounds: 16 MiB, 72 hours
+  and 500 batches per destination). Before, it refused new batches.
+- A batch rejected with a non-retryable status (for example `400` or `401`) is
+  dropped, not spooled. Only `408`, `429`, `500`, `502`, `503` and `504` are retried,
+  so a bad request no longer blocks the queue behind it.
+- Hook events that close no span (such as Claude Code `SessionStart`) no longer
+  send an empty request.
 
 `destination add|remove`, `har control up|down` and `har telemetry on|off`
 re-route agent traces. Start a new agent session to pick up a change.

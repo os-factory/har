@@ -18,6 +18,8 @@ import {
   DIRECT_STRIP_LOCAL_ENV,
   HAR_RESOURCE_ATTRIBUTES_ENV,
   directRouteSendsLogs,
+  directRouteStripsLocalPaths,
+  planDirectDestinations,
   getDirectExportEnvPath,
   readAppliedDirectRoute,
   resolveAgentTelemetryRoute,
@@ -25,10 +27,10 @@ import {
   type AgentTelemetryRoute,
   type AgentTelemetryRouteDecision,
 } from './telemetry-direct';
-import { LOCAL_ATTR_PREFIX, destinationIncludesLocalPaths } from '../harness/schema';
+import { LOCAL_ATTR_PREFIX } from '../harness/schema';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
-export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.8.0';
+export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.9.0';
 
 /**
  * Environment override for the package spec HAR installs: any spec the package
@@ -83,6 +85,18 @@ export type OtelHooksAgent = (typeof OTEL_HOOKS_AGENTS)[number];
  * HAR-managed `@osfactory/otel-hook` config file (`--config-file`).
  * Shape matches the package's `OtelHookConfigPatch` (not the old Python IDE_OTEL_* keys).
  */
+/**
+ * One `exporter.destinations[]` entry (otel-hook >= 0.9.0). Header values are
+ * always `env:<VAR>` references to `direct.env`, never the secret itself.
+ */
+export interface OtelHooksDestinationConfig {
+  name: string;
+  tracesEndpoint?: string;
+  logsEndpoint?: string;
+  headers?: Record<string, string>;
+  signals: Array<'traces' | 'logs'>;
+}
+
 export interface OtelHooksConfig {
   exporter: {
     enabled: boolean;
@@ -90,6 +104,8 @@ export interface OtelHooksConfig {
     protocol: 'http/protobuf';
     serviceName: string;
     resourceAttributes?: Record<string, string | number | boolean>;
+    /** Direct export (Mission Control off); absent otherwise. */
+    destinations?: OtelHooksDestinationConfig[];
     logs: {
       enabled: boolean;
       endpoint?: string;
@@ -229,16 +245,30 @@ export function buildOtelHooksConfig(options?: {
   const signals = options?.enabled === false ? signalsForLevel('off') : getTelemetrySignals();
   const enabled = signals.traces;
   const apiUrl = (options?.apiUrl ?? getControlApiUrl()).replace(/\/$/, '');
-  const direct = options?.route?.mode === 'direct' ? options.route.destination : undefined;
+  const direct = options?.route?.mode === 'direct' ? options.route.destinations : undefined;
   const resourceAttributes = parseResourceAttributesString(options?.resourceAttributes);
-  if (direct && !destinationIncludesLocalPaths(direct)) {
-    // Nothing strips the Resource on the direct path.
+  if (direct && directRouteStripsLocalPaths(direct)) {
+    // Nothing strips the Resource on the direct path, and every destination gets the same one.
     for (const key of Object.keys(resourceAttributes)) {
       if (key.startsWith(LOCAL_ATTR_PREFIX)) delete resourceAttributes[key];
     }
   }
   const logsEnabled = enabled && signals.logs && (!direct || directRouteSendsLogs(direct));
   const capturePrompts = logsEnabled && signals.prompts;
+  const destinations =
+    enabled && direct
+      ? planDirectDestinations(direct).map(
+          (plan): OtelHooksDestinationConfig => ({
+            name: plan.name,
+            ...(plan.tracesEndpoint ? { tracesEndpoint: plan.tracesEndpoint } : {}),
+            ...(plan.logsEndpoint ? { logsEndpoint: plan.logsEndpoint } : {}),
+            ...(plan.headers.length > 0
+              ? { headers: Object.fromEntries(plan.headers.map((binding) => [binding.header, `env:${binding.envVar}`])) }
+              : {}),
+            signals: plan.signals,
+          }),
+        )
+      : undefined;
 
   return {
     exporter: {
@@ -248,6 +278,7 @@ export function buildOtelHooksConfig(options?: {
       protocol: 'http/protobuf',
       serviceName: 'har-ide-agent',
       ...(Object.keys(resourceAttributes).length > 0 ? { resourceAttributes } : {}),
+      ...(destinations ? { destinations } : {}),
       logs: {
         enabled: logsEnabled,
         ...(logsEnabled && !direct ? { endpoint: `${apiUrl}/api/otel/v1/logs` } : {}),
@@ -300,8 +331,8 @@ set -uo pipefail
 if [ -z "\${OTEL_RESOURCE_ATTRIBUTES:-}" ] && [ -n "\${${HAR_RESOURCE_ATTRIBUTES_ENV}:-}" ]; then
   export OTEL_RESOURCE_ATTRIBUTES="$${HAR_RESOURCE_ATTRIBUTES_ENV}"
 fi
-# Direct export (Mission Control off, one destination): endpoint and headers
-# live in a mode-0600 file, never in this script or on a command line.
+# Direct export (Mission Control off): endpoints and header values live in a
+# mode-0600 file, never in this script, the hook config or on a command line.
 if [ -f "${directEnvPath}" ]; then
   . "${directEnvPath}" || true
 fi

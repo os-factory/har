@@ -40,8 +40,9 @@ har env verify 1 --full
   [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md),
   in place of the `har.*` ones (see [Removed telemetry attributes](#removed-telemetry-attributes)).
 - **Agent traces without Mission Control.** With Mission Control disabled or not
-  set up and a single `traces` destination, otel-hook sends agent session traces
-  to it directly, without local paths and with the keys in a `0600` file. See
+  set up, otel-hook sends agent session traces itself to every `traces` or `logs`
+  destination, one or several, without local paths and with the keys in a `0600`
+  file. See [Direct export needs otel-hook 0.9.0](#direct-export-needs-otel-hook-090) and
   [Langfuse without Mission Control](/docs/guides/langfuse/#without-mission-control).
 - **Factory Commits proofs.** A full verify becomes an in-toto `factory-run`
   statement for the exact verified tree. The commit of that tree gets it as a note
@@ -124,11 +125,38 @@ session key travels only as `session.id` in `OTEL_RESOURCE_ATTRIBUTES`.
 
 ### Agent hooks (`@osfactory/otel-hook`)
 
-HAR 2.0 installs `@osfactory/otel-hook@0.8.0`. It names each span's session from the
-Resource `session.id` HAR sets, so agent spans group by HAR session in any backend,
-and it reads the standard `OTEL_EXPORTER_OTLP_*` endpoint and header variables that
-direct export relies on. HAR replaces an older installed copy on the next
-`har env launch` or `har telemetry on`.
+HAR 2.0 installs `@osfactory/otel-hook@0.9.0`. It names each span's session from the
+Resource `session.id` HAR sets, so agent spans group by HAR session in any backend.
+HAR replaces an older installed copy on the next `har env launch` or
+`har telemetry on`.
+
+#### Direct export needs otel-hook 0.9.0
+
+- **Direct export (agent traces without Mission Control) now requires
+  `@osfactory/otel-hook` 0.9.0.** HAR installs or upgrades it automatically on
+  `har env launch` and `har telemetry on`. Until the installed copy is 0.9.0 or
+  newer, HAR keeps agent traces on Mission Control and `har telemetry status` names
+  the version it needs.
+- **Destinations go into the hook config.** HAR writes every direct destination,
+  one or several, to `~/.har/otel-hooks/otel_config.json` as otel-hook's
+  `exporter.destinations[]`. Each header value there is an `env:` reference (for
+  example `"Authorization": "env:HAR_OTEL_DIRECT_HEADER_1_1"`). The secret values are
+  kept only in `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper
+  loads. HAR no longer passes a direct destination through the
+  `OTEL_EXPORTER_OTLP_*` variables, and now unsets them for the hook, because any of
+  them would add a second, unintended destination.
+- **Several destinations without Mission Control.** Every enabled destination
+  subscribed to `traces` or `logs` receives agent traces directly. Before, two
+  `traces` destinations sent everything back through Mission Control.
+- **Spool behaviour changes in otel-hook 0.9.0** (both routes). A full spool now
+  drops its oldest batches instead of refusing new ones (default bounds: 16 MiB,
+  72 hours and 500 batches per destination). A batch rejected with a non-retryable
+  status (anything but `408`, `429`, `500`, `502`, `503` and `504`) is dropped instead
+  of spooled, so it no longer blocks the queue. Hook events that close no span no
+  longer send an empty request.
+
+See [Without Mission Control](/docs/guides/otlp-backends/#without-mission-control).
+
 To try an unreleased otel-hook build, set `HAR_OTEL_HOOKS_PACKAGE` to any spec your
 package manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
 
