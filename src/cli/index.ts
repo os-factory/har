@@ -12,6 +12,7 @@ import { mcpCommand } from './commands/mcp';
 import { onboardCommand } from './commands/onboard';
 import { lineCommand } from './commands/line';
 import { pluginCommand } from './commands/plugin';
+import { proofCommand } from './commands/proof';
 import { preferencesCommand } from './commands/preferences';
 import { telemetryCommand } from './commands/telemetry';
 import { worktreeCommand } from './commands/worktree';
@@ -31,6 +32,7 @@ export async function runCli(): Promise<void> {
     .command(mcpCommand)
     .command(pluginCommand)
     .command(lineCommand)
+    .command(proofCommand)
     .command(preferencesCommand)
     .command(telemetryCommand)
     .command(worktreeCommand)

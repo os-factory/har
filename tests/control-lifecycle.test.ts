@@ -2,6 +2,9 @@ import {
   CONTROL_CONTAINER_NAME,
   CONTROL_DATA_VOLUME,
   buildDockerRunArgs,
+  controlOtlpEndpoints,
+  planControlOtlpGrpcPort,
+  resolveControlOtlpGrpcHostPort,
   shouldUpgradeControlImage,
   resolveControlBuildContext,
   resolveControlDir,
@@ -80,11 +83,14 @@ describe('control lifecycle docker run', () => {
     expect(resolveControlDir()).toBe(`${context}/control`);
   });
 
+  // HAR 2.0: on Linux the run args gain --add-host=host.docker.internal:host-gateway
+  // (forwarding to a Collector on the host), so this exact-args expectation pins the platform.
   it('builds detached run args with the named volume and port mapping', () => {
     const args = buildDockerRunArgs({
       imageRef: 'theosfactory/har-control:1.2.3',
       hostPort: 3847,
       detach: true,
+      platform: 'linux',
     });
     expect(args).toEqual([
       'run',
@@ -95,6 +101,7 @@ describe('control lifecycle docker run', () => {
       'unless-stopped',
       '-p',
       '3847:3847',
+      '--add-host=host.docker.internal:host-gateway',
       '-v',
       `${CONTROL_DATA_VOLUME}:/data`,
       '-e',
@@ -112,6 +119,52 @@ describe('control lifecycle docker run', () => {
     expect(args).toContain('--rm');
     expect(args).not.toContain('-d');
     expect(args).toContain('4000:3847');
+  });
+
+  it('publishes the OTLP/gRPC port when given', () => {
+    const args = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, otlpGrpcHostPort: 14317, platform: 'linux' });
+    expect(args.slice(6, 11)).toEqual([
+      '-p',
+      '3847:3847',
+      '-p',
+      '14317:4317',
+      '--add-host=host.docker.internal:host-gateway',
+    ]);
+    const without = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, otlpGrpcHostPort: null });
+    expect(without.join(' ')).not.toContain(':4317');
+  });
+
+  it('adds the host-gateway entry on Linux only (Docker Desktop already resolves host.docker.internal)', () => {
+    for (const platform of ['darwin', 'win32'] as const) {
+      const args = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, platform });
+      expect(args.join(' ')).not.toContain('host.docker.internal');
+    }
+  });
+});
+
+describe('Mission Control OTLP/gRPC port', () => {
+  it('defaults to 4317, honors HAR_CONTROL_OTLP_GRPC_PORT, and 0/off disables it', () => {
+    expect(resolveControlOtlpGrpcHostPort({})).toBe(4317);
+    expect(resolveControlOtlpGrpcHostPort({ HAR_CONTROL_OTLP_GRPC_PORT: '14317' })).toBe(14317);
+    expect(resolveControlOtlpGrpcHostPort({ HAR_CONTROL_OTLP_GRPC_PORT: 'off' })).toBeNull();
+    expect(resolveControlOtlpGrpcHostPort({ HAR_CONTROL_OTLP_GRPC_PORT: '0' })).toBeNull();
+  });
+
+  it('skips publishing a busy host port with a hint instead of failing', () => {
+    const plan = planControlOtlpGrpcPort({}, (port) => port === 4317);
+    expect(plan.hostPort).toBeNull();
+    expect(plan.hint).toContain('port 4317 is in use');
+    expect(plan.hint).toContain('HAR_CONTROL_OTLP_GRPC_PORT');
+    expect(planControlOtlpGrpcPort({}, () => false)).toEqual({ hostPort: 4317 });
+    expect(planControlOtlpGrpcPort({ HAR_CONTROL_OTLP_GRPC_PORT: 'off' }, () => true)).toEqual({ hostPort: null });
+  });
+
+  it('names both endpoints for status output', () => {
+    expect(controlOtlpEndpoints('http://localhost:3847/', 4317)).toEqual({
+      http: 'http://localhost:3847/api/otel',
+      grpc: 'grpc://localhost:4317',
+    });
+    expect(controlOtlpEndpoints('http://localhost:3847', null)).toEqual({ http: 'http://localhost:3847/api/otel' });
   });
 });
 

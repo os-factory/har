@@ -7,8 +7,6 @@ import { readSlotRegistry, removeSlotRegistry } from '../core/slot-registry';
 import { defaultExec, ExecFn, LogFn } from './exec';
 import { dropAgentDatabase, infraEnabled, infraPortDefault, removeMinioBucket, HttpRequestFn } from './infra';
 import { deleteAgentProcesses } from './process';
-import { pkgExec } from './node-pm';
-import { realSystemOps, SystemOps } from './exec';
 import { GitRunner, removeSessionWorktree } from './worktree';
 import { detectProcessManager } from './launch';
 import { releaseSimulator } from './xcode-sim';
@@ -22,7 +20,6 @@ export interface TeardownSessionOptions {
   /** Sink for the script-parity stdout lines (`==> …`, `✓ …`). */
   out?: LogFn;
   exec?: ExecFn;
-  ops?: SystemOps;
   git?: GitRunner;
   homeDir?: string;
   httpRequest?: HttpRequestFn;
@@ -41,7 +38,6 @@ export async function teardownSession(options: TeardownSessionOptions): Promise<
   const agentId = options.agentId;
   const pm = detectProcessManager(repoRoot);
   const exec = options.exec ?? defaultExec;
-  const ops = options.ops ?? realSystemOps;
   const out = options.out ?? ((message: string) => process.stdout.write(`${message}\n`));
   const projectName = env.HARNESS_PROJECT_NAME ?? '';
 
@@ -72,7 +68,6 @@ export async function teardownSession(options: TeardownSessionOptions): Promise<
     deleteAgentProcesses({
       projectName,
       agentId,
-      pkgExecPrefix: pkgExec(undefined, env, ops).split(' '),
       exec,
     });
     out('✓ Stopped PM2 processes');

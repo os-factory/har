@@ -334,9 +334,9 @@ function capHarvestedEvents(events: AgentSessionEvent[]): AgentSessionEvent[] {
     ...kept[0],
     attributes: {
       ...(kept[0].attributes ?? {}),
-      'har.harvest.truncated': true,
-      'har.harvest.dropped_events': events.length - kept.length,
-      'har.harvest.total_events': events.length,
+      'factory.usage.harvest.truncated': true,
+      'factory.usage.harvest.dropped_events': events.length - kept.length,
+      'factory.usage.harvest.total_events': events.length,
     },
   };
   return kept;

@@ -161,6 +161,12 @@ These are non-negotiable. Do not introduce imports that violate them.
 | Line status + cumulative gate orchestration | `src/core/lines.ts` |
 | Bundle install channels shared by plugins and lines | `src/harness/bundle-resolve.ts` |
 | Bundled example line (seed for `os-factory/har-line`) | `src/templates/lines/example-line/` |
+| Telemetry destinations (schema, forward denylists: local paths, account identity) | `packages/schemas/src/telemetry-destinations.ts` |
+| Destination add/list/remove/test (presets, opt-in flags) | `src/core/telemetry-destinations.ts`, `src/cli/commands/telemetry-destination.ts` |
+| Session OTel resource attributes (`session.id`, `factory.*`, `vcs.*`; no `har.*`) | `src/core/telemetry-env.ts` |
+| Verification spans (`cicd.pipeline.run`, per-stage task spans) | `src/core/verification-spans.ts` |
+| Factory Commits proof adapter (mode, predicate, attest, notes, trailers) | `src/core/proof.ts`; hooks wiring in `src/core/hooks.ts` |
+| Mission Control OTLP forward (spool, retry) and privacy filter | `control/src/server/otlp-forward.ts`, `control/src/server/otlp-privacy.ts` |
 | Generic shell/path/logging helper | `src/utils/` |
 
 When unsure: put domain logic in `harness/` or `core/`, never in an adapter.
@@ -208,6 +214,7 @@ First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
 | doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
 | complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
 | runs / work links / work binding | `har env runs list\|get`, `work-link`, `work-bind` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link`, `har_bind_work_unit` |
+| Factory Commits proofs (read-only) | `har proof show\|verify` | `har_proof_show`, `har_proof_verify` |
 | factory lines | `har line create\|add\|status\|gate\|list` | `har_line_create`, `har_add_line`, `har_line_status`, `har_run_line_gate` |
 | Mission Control | `har control up` | `har_control_up` |
 
@@ -224,6 +231,9 @@ Intentional holes (human-only, no MCP tool):
 - Onboarding/preferences, telemetry toggles, the personal worktree setting, and portal
   login (`har onboard`, `har preferences`, `har telemetry`, `har worktree`, `har hq`) —
   account- and machine-level state.
+- OTLP destinations (`har telemetry destination add|list|remove|test`) — machine-level
+  config that holds backend credentials and decides where telemetry leaves the machine;
+  a human choice, never an agent tool call.
 
 ## Anti-patterns
 

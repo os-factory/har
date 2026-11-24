@@ -26,16 +26,18 @@ import {
   buildOtelHooksConfig,
   HOOK_TIMEOUT_SECONDS,
   inspectTelemetryDrift,
+  needsPackageInstall,
   OTEL_HOOKS_PACKAGE,
   pruneLegacyCursorHookEvents,
+  recordInstalledSpec,
   rewriteHookCommandsToWrapper,
   writeOtelHooksConfig,
   writeOtelHooksWrapper,
 } from '../src/core/otel-hooks';
 
 describe('otel-hook package pin', () => {
-  it('installs the release with Claude response content support', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.6.0');
+  it('installs the release that reads the Resource session.id and the standard OTLP variables', () => {
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.8.0');
   });
 
   it('is the version Mission Control derives otel-hook ids with', () => {
@@ -43,6 +45,38 @@ describe('otel-hook package pin', () => {
       dependencies: Record<string, string>;
     };
     expect(`@osfactory/otel-hook@${control.dependencies['@osfactory/otel-hook']}`).toBe(OTEL_HOOKS_PACKAGE);
+  });
+
+  describe('HAR_OTEL_HOOKS_PACKAGE override', () => {
+    let home: string;
+    const installVersion = (version: string) => {
+      const pkgDir = path.join(home, 'node_modules', '@osfactory', 'otel-hook');
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ version }));
+    };
+    beforeEach(() => {
+      home = fs.mkdtempSync(path.join(os.tmpdir(), 'har-otel-pkg-'));
+    });
+    afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
+
+    it('keeps an install of the pinned version', () => {
+      installVersion('0.8.0');
+      expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(false);
+      installVersion('0.5.0');
+      expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
+    });
+
+    it('installs an override once, then again only when it changes or is removed', () => {
+      installVersion('0.8.0');
+      expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(true);
+      recordInstalledSpec(home, '/tmp/otel-hook.tgz');
+      expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(false);
+      expect(needsPackageInstall(home, '@osfactory/otel-hook@0.9.0')).toBe(true);
+      // Back to the pin: the override's build is replaced even at the same version.
+      expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
+      recordInstalledSpec(home, OTEL_HOOKS_PACKAGE);
+      expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(false);
+    });
   });
 });
 
@@ -243,7 +277,7 @@ describe('telemetry env', () => {
     );
   });
 
-  it('includes har.* resource attributes without purpose', () => {
+  it('includes the 2.0 session resource attributes and no har.* key', () => {
     const attrs = buildOtelResourceAttributes({
       sessionKey: 'main-abcd-har-agent-1-xy12',
       agentId: 1,
@@ -254,12 +288,13 @@ describe('telemetry env', () => {
       workUnitId: 'ISSUE-123',
       attemptId: '11111111-1111-4111-8111-111111111111',
     });
-    expect(attrs).toContain('har.session_key=main-abcd-har-agent-1-xy12');
-    expect(attrs).toContain('har.agent_id=1');
-    expect(attrs).toContain('har.repo_path=/repo');
-    expect(attrs).toContain('har.work_unit_id=ISSUE-123');
-    expect(attrs).toContain('har.attempt_id=11111111-1111-4111-8111-111111111111');
-    expect(attrs).not.toContain('har.purpose');
+    expect(attrs).toContain('session.id=main-abcd-har-agent-1-xy12');
+    expect(attrs).toContain('factory.slot.id=1');
+    expect(attrs).toContain('factory.local.checkout_path=/repo');
+    expect(attrs).toContain('factory.local.work_dir=/repo/wt');
+    expect(attrs).toContain('factory.work_unit.id=ISSUE-123');
+    expect(attrs).toContain('factory.attempt.id=11111111-1111-4111-8111-111111111111');
+    expect(attrs).not.toContain('har.');
   });
 
   it('writes session attribution without Claude native OTEL exporters', () => {
@@ -270,7 +305,8 @@ describe('telemetry env', () => {
       repoPath: '/repo',
       workDir: '/repo',
     });
-    expect(block).toContain('HAR_SESSION_KEY=s1');
+    expect(block).not.toContain('HAR_SESSION_KEY');
+    expect(block).toContain('session.id=s1');
     expect(block).toContain('OTEL_RESOURCE_ATTRIBUTES=');
     expect(block).toContain('@osfactory/otel-hook');
     expect(block).not.toContain('CLAUDE_CODE_ENABLE_TELEMETRY');
@@ -296,8 +332,8 @@ describe('telemetry env', () => {
       workDir: '/r',
     });
     const text = fs.readFileSync(envFile, 'utf8');
-    expect(text).toContain('HAR_SESSION_KEY=s2');
-    expect(text.match(/HAR_SESSION_KEY=/g)?.length).toBe(1);
+    expect(text).toContain('session.id=s2');
+    expect(text.match(/OTEL_RESOURCE_ATTRIBUTES=/g)?.length).toBe(1);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -314,7 +350,7 @@ describe('telemetry env', () => {
     expect(line).toBeDefined();
     // Value is single-quoted so the space survives, and the real path is preserved.
     expect(line).toMatch(/^OTEL_RESOURCE_ATTRIBUTES='.*'$/);
-    expect(line).toContain('har.repo_path=/Users/dev/My Projects/service');
+    expect(line).toContain('factory.local.checkout_path=/Users/dev/My Projects/service');
   });
 
   it('stays safe to source when a value contains a space (issue #172)', () => {
@@ -335,7 +371,7 @@ describe('telemetry env', () => {
       `set -a; . ${JSON.stringify(envFile)}; set +a; printf '%s' "$OTEL_RESOURCE_ATTRIBUTES"`,
       { shell: '/bin/bash', encoding: 'utf8' },
     );
-    expect(out).toContain(`har.repo_path=${repoPath}`);
+    expect(out).toContain(`factory.local.checkout_path=${repoPath}`);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

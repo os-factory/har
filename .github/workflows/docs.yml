@@ -2,7 +2,7 @@ name: Documentation
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, next, 'release/**', 'v2/**']
     paths:
       - 'docs/**'
       - 'src/**'

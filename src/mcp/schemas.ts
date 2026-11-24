@@ -12,6 +12,7 @@ import {
   VerificationResultSchema,
   WorktreeModeSchema,
 } from '../harness/schema';
+import { FACTORY_PROOF_LEVELS } from '../core/proof';
 
 export const RepoPathInputSchema = z.object({
   repo: z.string().default('.').describe('Path to the repository'),
@@ -204,8 +205,17 @@ export const RunVerificationInputSchema = z.object({
   full: z.boolean().default(false),
 });
 
+/** Factory Commits proof outcome of a full verify (present only when a proof was attempted). */
+export const FactoryProofOutcomeSchema = z.object({
+  status: z.enum(['attested', 'skipped', 'failed']),
+  message: z.string(),
+  digest: z.string().optional(),
+  attestationFile: z.string().optional(),
+});
+
 export const RunVerificationOutputSchema = ShellRunOutputSchema.extend({
   verification: VerificationResultSchema.nullable(),
+  proof: FactoryProofOutcomeSchema.optional(),
 });
 
 export const GetLogsInputSchema = z.object({
@@ -281,6 +291,31 @@ export const GetRunOutputSchema = z.object({
   run: RunRecordSchema,
 });
 
+const FactoryProofRevSchema = z
+  .string()
+  .min(1)
+  .refine((rev) => !rev.startsWith('-'), 'revision must not start with "-"');
+
+export const ProofShowInputSchema = z.object({
+  repo: z.string().default('.'),
+  rev: FactoryProofRevSchema.optional().describe('Commit to show (default HEAD)'),
+});
+
+export const ProofVerifyInputSchema = z.object({
+  repo: z.string().default('.'),
+  rev: FactoryProofRevSchema.optional().describe('Commit or range A..B (default HEAD)'),
+  minLevel: z.enum(FACTORY_PROOF_LEVELS).optional(),
+  allowedSigners: z.string().optional().describe('ssh allowed_signers file (relative to repo) for L2'),
+});
+
+/** git-factory's exit code and its parsed `--json` output, passed through. */
+export const ProofQueryOutputSchema = z.object({
+  code: z.number().int(),
+  available: z.boolean(),
+  result: z.unknown(),
+  stderr: z.string(),
+});
+
 export const ControlUpInputSchema = z.object({
   repo: z.string().default('.').describe('Working directory for repo discovery during sync'),
   detach: z.boolean().default(true).describe('Run Docker Compose in detached mode'),
@@ -291,6 +326,10 @@ export const ControlUpOutputSchema = z.object({
   synced: z.number().int(),
   failed: z.number().int(),
   apiReady: z.boolean(),
+  /** OTLP/HTTP base URL (`<apiUrl>/api/otel`). */
+  otlpHttpUrl: z.string().optional(),
+  /** OTLP/gRPC endpoint, absent when the port is not published. */
+  otlpGrpcUrl: z.string().optional(),
 });
 
 export { StageResultSchema };

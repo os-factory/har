@@ -726,6 +726,13 @@ export const ValidationRecordSchema = z
     updatedAt: z.string(),
     commitSha: z.string().optional(),
     committedAt: z.string().optional(),
+    /**
+     * Statement digest (`sha256:<hex>`) of the Factory Commits attestation
+     * `git factory attest` produced for this validation, when the repo opted in
+     * (HAR_FACTORY_PROOF). The entry itself sits next to the record as
+     * `<treeHash>.attestation.json`.
+     */
+    attestationDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/).optional(),
   })
   .passthrough();
 

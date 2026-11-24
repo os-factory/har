@@ -14,6 +14,8 @@ process.env.HAR_CONTROL_SYNC_SELECTION_PATH = path.join(harHome, 'sync-selection
 process.env.HAR_OBSERVATION_LEDGER_PATH = path.join(harHome, 'observation-ledger.json');
 // Nor read (or write) the developer's real HAR HQ connection.
 process.env.HAR_PORTAL_TARGETS_PATH = path.join(harHome, 'portal-targets.json');
+// Nor send verification spans to the developer's real OTLP destinations.
+process.env.HAR_DESTINATIONS_DIR = path.join(harHome, 'destinations');
 
 afterAll(() => {
   fs.rmSync(harHome, { recursive: true, force: true });
@@ -21,6 +23,7 @@ afterAll(() => {
   delete process.env.HAR_CONTROL_SYNC_SELECTION_PATH;
   delete process.env.HAR_OBSERVATION_LEDGER_PATH;
   delete process.env.HAR_PORTAL_TARGETS_PATH;
+  delete process.env.HAR_DESTINATIONS_DIR;
 });
 
 // Tests run inside coding agents: never let the developer's own agent session

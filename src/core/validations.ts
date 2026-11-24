@@ -107,6 +107,30 @@ export function recordValidation(input: RecordValidationInput): ValidationRecord
   return record;
 }
 
+/**
+ * Record the Factory Commits attestation digest on an existing validation
+ * (checkout copy and harness-root mirror). Returns the updated record.
+ */
+export function setValidationAttestationDigest(
+  checkoutDir: string,
+  harnessRoot: string,
+  treeHash: string,
+  attestationDigest: string,
+): ValidationRecord | undefined {
+  const record = findValidation(checkoutDir, treeHash);
+  if (!record) return undefined;
+  const updated: ValidationRecord = ValidationRecordSchema.parse({
+    ...record,
+    attestationDigest,
+    updatedAt: new Date().toISOString(),
+  });
+  writeRecord(checkoutDir, updated);
+  if (path.resolve(harnessRoot) !== path.resolve(checkoutDir)) {
+    writeRecord(harnessRoot, updated);
+  }
+  return updated;
+}
+
 export function findValidation(
   checkoutDir: string,
   treeHash: string,

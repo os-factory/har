@@ -10,6 +10,8 @@ not rewrite `.har/`.
 :::note
 Upgrading a **pre-1.0** harness to HAR 1.0? That is a one-time shape change
 with its own guided flow — see [Migrating to 1.0](/docs/guides/migrating-to-1-0/).
+Upgrading to HAR 2.0? It changes one default and removes nothing — see
+[Upgrading to 2.0](/docs/guides/upgrading-to-2-0/).
 This page covers routine upgrades within the same major version.
 :::
 

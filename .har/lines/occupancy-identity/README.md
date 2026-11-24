@@ -24,7 +24,7 @@ freed.
 |---|---|---|
 | `S0` | After idle sync, `purpose` is null; relaunch does not keep occupancy A's summary | mocked prisma |
 | `S1` | Trajectory/usage for occupancy B are not listed under occupancy A of the same slot | mocked prisma |
-| `S2` | `complete` → `launch` writes a new session key; ingest does not prefer a stale `har.session_key` once the worktree changed | mocked prisma |
+| `S2` | `complete` → `launch` writes a new session key; ingest does not prefer a stale Resource `session.id` once the worktree changed | mocked prisma |
 | `S3` | Two real occupancies of slot 1, real CLI, real database, isolated `HOME` | Docker |
 | `S3` | The same boundary with a **real Claude Code CLI** against a scripted mock | sandbox `HOME` |
 

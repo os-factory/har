@@ -350,6 +350,21 @@
       ],
       "requiresAgentId": true,
       "tier": "full"
+    },
+    {
+      "id": "pm2-e2e",
+      "kind": "test",
+      "description": "Bundled pm2 runtime end to end: the built CLI launches a real PM2 slot with no package runner on PATH (temp HOME + PM2_HOME, no Docker)",
+      "script": "stages/pm2-e2e.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/pm2-e2e",
+          "kind": "directory",
+          "description": "End-to-end report"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
     }
   ],
   "commitGate": {

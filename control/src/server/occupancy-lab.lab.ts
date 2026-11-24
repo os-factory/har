@@ -179,10 +179,10 @@ describe('S3 — occupancy identity survives a real complete → launch cycle', 
     expect(aUsage.length).toBeGreaterThan(0);
   });
 
-  it('refuses a stale har.session_key once the worktree changed', async () => {
+  it('refuses a stale Resource session.id once the worktree changed', async () => {
     const b = await slotRow(repositoryId);
     const { context } = await resolveSessionContext(
-      { 'har.session_key': occupancyA.sessionKey },
+      { 'session.id': occupancyA.sessionKey },
       {
         'gen_ai.client.workspace': b?.workDir ?? '',
         'gen_ai.agent.name': 'claude_code',

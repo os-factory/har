@@ -22,6 +22,35 @@ har control up --build
 
 Stop it with `har control down`.
 
+## Receive OpenTelemetry (OTLP)
+
+Mission Control is a standard OTLP receiver. Point any OpenTelemetry SDK, agent or
+Collector at it, with JSON or protobuf:
+
+| Transport | Endpoint |
+|---|---|
+| OTLP/gRPC | `grpc://localhost:4317` (the OTLP default) |
+| OTLP/HTTP | `http://localhost:3847/api/otel` (`/v1/traces`, `/v1/metrics`, `/v1/logs`) |
+
+```bash
+# gRPC
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+# or HTTP
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3847/api/otel
+```
+
+`har control up` prints both endpoints. It publishes the gRPC port on `4317`; set
+`HAR_CONTROL_OTLP_GRPC_PORT` to use another host port, or `off` to not publish it.
+If the port is already taken, `up` prints a hint and starts without it: OTLP/HTTP
+keeps working.
+
+Responses follow the OTLP spec: every export is answered `200` with an
+`Export*ServiceResponse` in the request's encoding. Records Mission Control cannot
+attribute to a registered repository are not stored. They are counted in
+`partial_success` (`rejected_spans`, `rejected_data_points`, `rejected_log_records`)
+with a short `error_message`, and are still forwarded to your
+[destinations](/docs/guides/otlp-backends/).
+
 ## Register and sync
 
 Onboarding a repository remembers it for synchronization. You can also register
@@ -270,8 +299,9 @@ When telemetry is on:
 1. `har env launch` auto-starts Mission Control if it is not reachable (`har control up`).
 2. `har telemetry on` (and launch) install `@osfactory/otel-hook` and register Cursor / Claude / Codex hooks
    to export OTLP `http/protobuf` to `{HAR_CONTROL_API_URL}/api/otel`.
-3. Launch writes session attribution into `.env.agent.<id>` (`HAR_SESSION_KEY`, resource attrs).
-   Mission Control matches sessions by `har.session_key` or by workspace/cwd → slot work dir.
+3. Launch writes session attribution into `.env.agent.<id>` (`OTEL_RESOURCE_ATTRIBUTES`:
+   `session.id`, `factory.slot.id`, `factory.local.*`, …). Mission Control matches sessions
+   by workspace/cwd → slot work dir first, then by the Resource `session.id`.
 4. Token usage arrives per request or turn — Claude Code's native `api_request` events,
    otel-hook spans — and `har control sync` also **harvests** local Claude/Codex session
    files. Each piece is booked on the slot the agent worked in at that moment; see
@@ -280,6 +310,9 @@ When telemetry is on:
 **Privacy:** prompt text is included by default and stays in local Mission Control (SQLite).
 Record less with `har telemetry on --level outline` / `--level usage`, or nothing with
 `har telemetry off`.
+
+To send a copy to another backend, see [Send telemetry to Langfuse](/docs/guides/langfuse/)
+and [Send telemetry to any OTLP backend](/docs/guides/otlp-backends/) (HAR 2.0).
 
 ### No agent content? Check the level
 
@@ -297,8 +330,8 @@ none. Turning it off is the deliberate opt-out, and it is silent by design:
   agents read disagrees with it; `har control sync --full` warns when the level is the
   reason no content is leaving the machine.
 - A harvested stream longer than 1000 events keeps the most recent 1000 and marks
-  the oldest surviving event with `har.harvest.truncated`,
-  `har.harvest.dropped_events` and `har.harvest.total_events`, so a clipped
+  the oldest surviving event with `factory.usage.harvest.truncated`,
+  `factory.usage.harvest.dropped_events` and `factory.usage.harvest.total_events`, so a clipped
   session is labelled as clipped rather than looking complete.
 
 Harvested events cover every transcript the slot owns, and fall back to the main
@@ -351,6 +384,25 @@ backlog rather than starting from that moment.
 Projected **spans** ride along with telemetry rather than with this opt-in: they
 carry call structure and timing, and their attributes were already redacted when
 the span was projected.
+
+### Verification runs
+
+`har env verify` posts its verification trace to Mission Control's OTLP receiver
+when Mission Control is running (see
+[How verification traces are delivered](/docs/guides/otlp-backends/#how-verification-traces-are-delivered)).
+Mission Control recognizes the run span (instrumentation scope `@osfactory/har`
+with `cicd.pipeline.run.id`) and stores it as a verification run with its stage
+spans: run id (the validation id), tree, verdict, result, attestation digest, trace
+id, work unit, attempt, branch, start and end, and each stage's result. The run is
+attributed to its repository by the Resource `factory.local.checkout_path`, or, for
+a copy the CLI queued while Mission Control was down, by `vcs.repository.url.full`
+matched against the repository's git remote. A trace delivered twice is stored once.
+
+`GET /api/repos/<id>/verification-runs` lists a repository's runs with their
+stages, paged on `since` / `sinceId` like the other repository reads. The HQ sync
+sends them as the optional `verificationRuns` collection of `/api/sync`, with its
+own watermark, whenever telemetry is on. There is no dedicated page in the
+dashboard yet.
 
 ## Local development
 

@@ -13,6 +13,15 @@ import {
 } from './change-batch';
 import { attachCommit, ensureValidationsIgnored, findValidation } from './validations';
 import { markDirty } from './sync-context';
+import {
+  addFactoryNoteForCommit,
+  addFactoryTrailers,
+  FactoryProofMode,
+  FactoryProofOutcome,
+  proofModeIncludesNotes,
+  resolveFactoryProofMode,
+  runFactoryProofSetup,
+} from './proof';
 
 const MARKER_START = '# >>> har commit gate (managed by `har hooks`) >>>';
 const MARKER_END = '# <<< har commit gate <<<';
@@ -28,6 +37,13 @@ const PRE_COMMIT_BLOCK = [
 const POST_COMMIT_BLOCK = [
   MARKER_START,
   '"$(git rev-parse --git-path hooks)/har-post-commit" || true',
+  MARKER_END,
+].join('\n');
+
+// Installed only when the repo opted in to HAR_FACTORY_PROOF=notes+trailers.
+const COMMIT_MSG_BLOCK = [
+  MARKER_START,
+  '"$(git rev-parse --git-path hooks)/har-commit-msg" "$1" || true',
   MARKER_END,
 ].join('\n');
 
@@ -132,6 +148,9 @@ export interface InstallHooksResult {
   hooksDir: string;
   preCommit: 'created' | 'appended' | 'updated';
   postCommit: 'created' | 'appended' | 'updated';
+  /** Present only when the repo explicitly opted in to Factory Commits proofs (HAR_FACTORY_PROOF ≥ notes). */
+  commitMsg?: 'created' | 'appended' | 'updated';
+  factoryProof?: { mode: FactoryProofMode; setup?: FactoryProofOutcome };
 }
 
 export function installHooks(options: InstallHooksOptions): InstallHooksResult {
@@ -168,10 +187,43 @@ export function installHooks(options: InstallHooksOptions): InstallHooksResult {
 
   ensureValidationsIgnored(checkout);
 
-  return { hooksDir, preCommit, postCommit };
+  const result: InstallHooksResult = { hooksDir, preCommit, postCommit };
+  const { mode, explicit } = resolveFactoryProofMode(checkout);
+  if (mode === 'notes+trailers') {
+    fs.writeFileSync(
+      path.join(hooksDir, 'har-commit-msg'),
+      buildHookScript(invocation, 'commit-msg "$1"', 'har: binary not found; skipping factory trailers'),
+      { mode: 0o755 },
+    );
+    result.commitMsg = upsertMarkedBlock(path.join(hooksDir, 'commit-msg'), COMMIT_MSG_BLOCK);
+  } else {
+    removeCommitMsgHook(hooksDir);
+  }
+  // Fetch refspecs and notes rewrite config only on an explicit opt-in: the
+  // 2.0 default (local notes) leaves git config untouched.
+  if (explicit && proofModeIncludesNotes(mode)) {
+    result.factoryProof = { mode, setup: runFactoryProofSetup(checkout) };
+  }
+
+  return result;
 }
 
-export function uninstallHooks(repoPath: string): { hooksDir: string; removed: boolean } {
+/** Remove the managed commit-msg block and worker; false when neither was there. */
+function removeCommitMsgHook(hooksDir: string): boolean {
+  let removed = removeMarkedBlock(path.join(hooksDir, 'commit-msg'));
+  const worker = path.join(hooksDir, 'har-commit-msg');
+  if (fs.existsSync(worker)) {
+    fs.rmSync(worker);
+    removed = true;
+  }
+  return removed;
+}
+
+export function uninstallHooks(repoPath: string): {
+  hooksDir: string;
+  removed: boolean;
+  factoryProof?: { mode: FactoryProofMode; setup?: FactoryProofOutcome };
+} {
   const checkout = resolveCheckoutRoot(repoPath);
   if (!checkout) throw new Error(`Not a git repository: ${repoPath}`);
 
@@ -186,6 +238,11 @@ export function uninstallHooks(repoPath: string): { hooksDir: string; removed: b
       removed = true;
     }
   }
+  removed = removeCommitMsgHook(hooksDir) || removed;
+  const { mode, explicit } = resolveFactoryProofMode(checkout);
+  if (explicit && proofModeIncludesNotes(mode)) {
+    return { hooksDir, removed, factoryProof: { mode, setup: runFactoryProofSetup(checkout, { undo: true }) } };
+  }
   return { hooksDir, removed };
 }
 
@@ -195,6 +252,11 @@ export interface HooksStatus {
   configuredHooksPath?: string;
   preCommitInstalled: boolean;
   postCommitInstalled: boolean;
+  /** Factory trailers commit-msg hook (only installed for HAR_FACTORY_PROOF=notes+trailers). */
+  commitMsgInstalled: boolean;
+  factoryProofMode: FactoryProofMode;
+  /** Where the mode comes from: `HAR_FACTORY_PROOF` in harness.env, or the 2.0 default. */
+  factoryProofModeSource: 'harness.env' | 'default';
   gate: CommitGateConfig;
   effectiveMode: 'block' | 'warn' | 'off';
 }
@@ -236,6 +298,7 @@ export function getHooksStatus(repoPath: string): HooksStatus {
 
   const hooksDir = resolveHooksDir(checkout);
   const gate = getCommitGateConfig(checkout);
+  const proofMode = resolveFactoryProofMode(checkout);
   const hasBlock = (name: string) => {
     const file = path.join(hooksDir, name);
     return fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes(MARKER_START);
@@ -247,6 +310,9 @@ export function getHooksStatus(repoPath: string): HooksStatus {
     configuredHooksPath: getConfiguredHooksPath(checkout),
     preCommitInstalled: hasBlock('pre-commit') && fs.existsSync(path.join(hooksDir, 'har-pre-commit')),
     postCommitInstalled: hasBlock('post-commit') && fs.existsSync(path.join(hooksDir, 'har-post-commit')),
+    commitMsgInstalled: hasBlock('commit-msg') && fs.existsSync(path.join(hooksDir, 'har-commit-msg')),
+    factoryProofMode: proofMode.mode,
+    factoryProofModeSource: proofMode.explicit ? 'harness.env' : 'default',
     gate,
     effectiveMode: resolveEffectiveMode(checkout, gate),
   };
@@ -329,7 +395,7 @@ export function checkCommitGate(cwd: string): GateCheckResult {
 /** Post-commit: associate the new commit with the validation for its tree. */
 export async function recordCommitAssociation(
   cwd: string,
-): Promise<{ attached: boolean; commitSha?: string }> {
+): Promise<{ attached: boolean; commitSha?: string; proof?: FactoryProofOutcome }> {
   try {
     const checkout = resolveCheckoutRoot(cwd);
     if (!checkout) return { attached: false };
@@ -346,12 +412,29 @@ export async function recordCommitAssociation(
       refs: refList ? refList.split('\n').filter(Boolean) : [],
       message,
     });
+    // Factory Commits note (HAR_FACTORY_PROOF ≥ notes, default notes); fail-open.
+    const proof = addFactoryNoteForCommit(checkout, tree);
     if (updated) {
       markDirty(updated.harnessRoot);
-      return { attached: true, commitSha };
+      return { attached: true, commitSha, ...(proof ? { proof } : {}) };
     }
-    return { attached: false, commitSha };
+    return { attached: false, commitSha, ...(proof ? { proof } : {}) };
   } catch {
     return { attached: false };
+  }
+}
+
+/**
+ * commit-msg worker: add Factory trailers for the tree being committed
+ * (HAR_FACTORY_PROOF=notes+trailers only). Never fails the commit.
+ */
+export function recordCommitTrailers(cwd: string, messageFile: string): FactoryProofOutcome | undefined {
+  try {
+    const checkout = resolveCheckoutRoot(cwd);
+    if (!checkout) return undefined;
+    const tree = computeStagedTree(checkout);
+    return addFactoryTrailers(checkout, path.resolve(cwd, messageFile), tree);
+  } catch {
+    return undefined;
   }
 }

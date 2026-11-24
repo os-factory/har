@@ -7,13 +7,22 @@ import {
 } from './control-image';
 import { DEFAULT_CONTROL_API_URL, getControlApiUrl, isControlEnabled } from './control-config';
 import { parseControlHostPort } from './control-port';
+import { isPortInUse } from './slot-ports';
 import { syncAllKnownReposWithControl, waitForControlApi } from './control-sync';
+import { ensureDestinationsDir } from './telemetry-destinations';
+import { HAR_DESTINATIONS_DIR_ENV } from '../harness/schema';
 
 /** Mission Control runs as a single self-contained container (SQLite on a volume). */
 export const CONTROL_CONTAINER_NAME = 'har-control';
 export const CONTROL_DATA_VOLUME = 'har_control_data';
 const CONTROL_CONTAINER_PORT = 3847;
+/** OTLP/gRPC receiver inside the container (the OTLP default port). */
+export const CONTROL_OTLP_GRPC_CONTAINER_PORT = 4317;
+/** Host port for Mission Control's OTLP/gRPC receiver; `0`/`off` skips publishing it. */
+export const CONTROL_OTLP_GRPC_PORT_ENV = 'HAR_CONTROL_OTLP_GRPC_PORT';
 const CONTROL_DATA_DB_URL = 'file:/data/har_control.db';
+/** Where the host's `~/.har/destinations` appears inside the container (read-only). */
+export const CONTROL_DESTINATIONS_MOUNT = '/har/destinations';
 
 export function resolveControlDir(): string {
   // dist/index.js → package root/control (npm install or source checkout)
@@ -32,6 +41,12 @@ export function buildDockerRunArgs(options: {
   detach: boolean;
   containerName?: string;
   volume?: string;
+  /** Host directory holding OTLP destination config, mounted read-only when given. */
+  destinationsDir?: string;
+  /** Host port published for the OTLP/gRPC receiver; omitted → not published. */
+  otlpGrpcHostPort?: number | null;
+  /** Defaults to the current platform; Linux gets a `host.docker.internal` entry. */
+  platform?: NodeJS.Platform;
 }): string[] {
   const name = options.containerName ?? CONTROL_CONTAINER_NAME;
   const volume = options.volume ?? CONTROL_DATA_VOLUME;
@@ -41,16 +56,73 @@ export function buildDockerRunArgs(options: {
   } else {
     args.push('--rm');
   }
+  args.push('-p', `${options.hostPort}:${CONTROL_CONTAINER_PORT}`);
+  if (options.otlpGrpcHostPort) {
+    args.push('-p', `${options.otlpGrpcHostPort}:${CONTROL_OTLP_GRPC_CONTAINER_PORT}`);
+  }
+  // Docker Desktop resolves host.docker.internal; on Linux it must be added, so
+  // forwarding can reach a Collector listening on the host.
+  if ((options.platform ?? process.platform) === 'linux') {
+    args.push('--add-host=host.docker.internal:host-gateway');
+  }
   args.push(
-    '-p',
-    `${options.hostPort}:${CONTROL_CONTAINER_PORT}`,
     '-v',
     `${volume}:/data`,
     '-e',
     `DATABASE_URL=${CONTROL_DATA_DB_URL}`,
-    options.imageRef,
   );
+  if (options.destinationsDir) {
+    args.push(
+      '-v',
+      `${options.destinationsDir}:${CONTROL_DESTINATIONS_MOUNT}:ro`,
+      '-e',
+      `${HAR_DESTINATIONS_DIR_ENV}=${CONTROL_DESTINATIONS_MOUNT}`,
+    );
+  }
+  args.push(options.imageRef);
   return args;
+}
+
+/** Host port for the OTLP/gRPC receiver: 4317 by default, null when `HAR_CONTROL_OTLP_GRPC_PORT` is 0/off/false. */
+export function resolveControlOtlpGrpcHostPort(env: Record<string, string | undefined> = process.env): number | null {
+  const raw = env[CONTROL_OTLP_GRPC_PORT_ENV]?.trim().toLowerCase();
+  if (!raw) return CONTROL_OTLP_GRPC_CONTAINER_PORT;
+  if (raw === '0' || raw === 'off' || raw === 'false') return null;
+  const port = Number(raw);
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : CONTROL_OTLP_GRPC_CONTAINER_PORT;
+}
+
+export interface ControlOtlpGrpcPlan {
+  /** Host port to publish, or null when it is not published. */
+  hostPort: number | null;
+  /** Why it is not published (busy port), for a one-line hint. */
+  hint?: string;
+}
+
+/** Publish the OTLP/gRPC port unless disabled or already taken on the host (never fails `up`). */
+export function planControlOtlpGrpcPort(
+  env: Record<string, string | undefined> = process.env,
+  portInUse: (port: number) => boolean = isPortInUse,
+): ControlOtlpGrpcPlan {
+  const hostPort = resolveControlOtlpGrpcHostPort(env);
+  if (hostPort === null) return { hostPort: null };
+  if (portInUse(hostPort)) {
+    return {
+      hostPort: null,
+      hint:
+        `port ${hostPort} is in use, so OTLP/gRPC is not published (OTLP/HTTP still works). ` +
+        `Free it, or set ${CONTROL_OTLP_GRPC_PORT_ENV} to another port and run har control up again.`,
+    };
+  }
+  return { hostPort };
+}
+
+/** OTLP endpoints a client on this host points at. */
+export function controlOtlpEndpoints(apiUrl: string, otlpGrpcHostPort: number | null): { http: string; grpc?: string } {
+  return {
+    http: `${apiUrl.replace(/\/+$/, '')}/api/otel`,
+    ...(otlpGrpcHostPort ? { grpc: `grpc://localhost:${otlpGrpcHostPort}` } : {}),
+  };
 }
 
 function runDocker(args: string[], quiet = false): number {
@@ -85,7 +157,14 @@ export async function startMissionControl(options: {
   detach?: boolean;
   build?: boolean;
   quiet?: boolean;
-}): Promise<{ code: number; apiUrl: string; imageRef: string; reason?: string }> {
+}): Promise<{
+  code: number;
+  apiUrl: string;
+  imageRef: string;
+  reason?: string;
+  /** Published OTLP/gRPC host port (null when not published) and why not. */
+  otlpGrpc?: ControlOtlpGrpcPlan;
+}> {
   const quiet = options.quiet ?? false;
   const build = options.build ?? shouldBuildControlLocally();
   const imageRef = getControlImageRef();
@@ -134,8 +213,47 @@ export async function startMissionControl(options: {
   }
 
   const detach = options.detach !== false;
-  const code = runDocker(buildDockerRunArgs({ imageRef, hostPort, detach }), quiet);
-  return { code, apiUrl, imageRef };
+  // Mission Control forwards received OTLP to the destinations configured with
+  // `har telemetry destination add`. The directory is created up front so
+  // Docker does not create it as root; with no destinations it stays empty.
+  let destinationsDir: string | undefined;
+  try {
+    destinationsDir = ensureDestinationsDir();
+  } catch {
+    destinationsDir = undefined;
+  }
+  // After the old container is gone, so its own 4317 does not count as taken.
+  const otlpGrpc = planControlOtlpGrpcPort();
+  const code = runDocker(
+    buildDockerRunArgs({ imageRef, hostPort, detach, destinationsDir, otlpGrpcHostPort: otlpGrpc.hostPort }),
+    quiet,
+  );
+  return { code, apiUrl, imageRef, otlpGrpc };
+}
+
+/** Host port the container publishes for OTLP/gRPC (null when not published or unknown). */
+export function controlContainerOtlpGrpcHostPort(name = CONTROL_CONTAINER_NAME): number | null {
+  const result = spawnSync('docker', ['port', name, `${CONTROL_OTLP_GRPC_CONTAINER_PORT}/tcp`], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  const match = /:(\d+)\s*$/m.exec(result.stdout ?? '');
+  return match ? Number(match[1]) : null;
+}
+
+/** Whether the running container mounts the destinations directory (false when absent or unknown). */
+export function controlContainerMountsDestinations(name = CONTROL_CONTAINER_NAME): boolean | null {
+  const result = spawnSync('docker', ['inspect', '-f', '{{json .Mounts}}', name], {
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  if (result.error || result.status !== 0) return null;
+  try {
+    const mounts = JSON.parse((result.stdout ?? '').trim() || '[]') as Array<{ Destination?: string }>;
+    return mounts.some((mount) => mount.Destination === CONTROL_DESTINATIONS_MOUNT);
+  } catch {
+    return null;
+  }
 }
 
 export function controlContainerImage(name = CONTROL_CONTAINER_NAME): string | null {
@@ -223,15 +341,16 @@ export async function startControlAndSync(options?: {
   synced: number;
   failed: number;
   apiReady: boolean;
+  otlpGrpc?: ControlOtlpGrpcPlan;
 }> {
-  const { code, apiUrl, imageRef } = await startMissionControl({
+  const { code, apiUrl, imageRef, otlpGrpc } = await startMissionControl({
     detach: options?.detach,
     build: options?.build,
   });
   if (code !== 0) {
-    return { code, apiUrl, imageRef, synced: 0, failed: 0, apiReady: false };
+    return { code, apiUrl, imageRef, synced: 0, failed: 0, apiReady: false, otlpGrpc };
   }
 
   const { synced, failed, apiReady } = await syncReposAfterControlStart(options?.cwd ?? process.cwd());
-  return { code, apiUrl, imageRef, synced, failed, apiReady };
+  return { code, apiUrl, imageRef, synced, failed, apiReady, otlpGrpc };
 }

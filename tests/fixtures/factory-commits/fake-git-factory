@@ -1,0 +1,110 @@
+#!/usr/bin/env node
+// Minimal stand-in for the `git-factory` executable, following the CLI
+// contract in https://github.com/os-factory/factory-commits/blob/main/packages/factory-proof/CLI.md
+// Test controls:
+//   FAKE_GIT_FACTORY_LOG   append one JSON line per call ({ argv, cwd })
+//   FAKE_GIT_FACTORY_EXIT  exit with this code (after logging) instead of working
+'use strict';
+const fs = require('fs');
+const crypto = require('crypto');
+const { execFileSync, spawnSync } = require('child_process');
+
+const argv = process.argv.slice(2);
+// HAR probes the version before using the executable: answer it before logging or forced failures.
+if (argv[0] === '--version') {
+  process.stdout.write('factory-proof 0.2.0-fake (factory-commits v0.1)\n');
+  process.exit(0);
+}
+if (process.env.FAKE_GIT_FACTORY_LOG) {
+  fs.appendFileSync(process.env.FAKE_GIT_FACTORY_LOG, JSON.stringify({ argv, cwd: process.cwd() }) + '\n');
+}
+if (process.env.FAKE_GIT_FACTORY_EXIT) {
+  process.stderr.write('fake git-factory: forced failure\n');
+  process.exit(Number(process.env.FAKE_GIT_FACTORY_EXIT));
+}
+
+function opt(name) {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : undefined;
+}
+
+const command = argv[0];
+
+if (command === 'attest') {
+  const source = opt('--predicate');
+  const predicate = JSON.parse(fs.readFileSync(source === '-' ? 0 : source, 'utf8'));
+  const tree = opt('--tree');
+  if (!tree) {
+    process.stderr.write('fake git-factory: --tree required\n');
+    process.exit(2);
+  }
+  const statement = {
+    _type: 'https://in-toto.io/Statement/v1',
+    subject: [{ name: 'git+local', digest: { gitTree: tree } }],
+    predicateType: 'https://os-factory.dev/factory-commits/factory-run/v0.1',
+    predicate,
+  };
+  const bytes = Buffer.from(JSON.stringify(statement), 'utf8');
+  const digest = 'sha256:' + crypto.createHash('sha256').update(bytes).digest('hex');
+  const attestation = {
+    predicateType: statement.predicateType,
+    digest,
+    envelope: { payloadType: 'application/vnd.in-toto+json', payload: bytes.toString('base64'), signatures: [] },
+  };
+  const out = opt('--out');
+  if (out) fs.writeFileSync(out, JSON.stringify(attestation, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ digest, tree, attestation, noteWritten: null }) + '\n');
+  process.exit(0);
+}
+
+if (command === 'note' && argv[1] === 'add') {
+  const entry = JSON.parse(fs.readFileSync(opt('--attestation'), 'utf8'));
+  const commit = execFileSync('git', ['rev-parse', argv[2]], { encoding: 'utf8' }).trim();
+  const existing = spawnSync('git', ['notes', '--ref', 'refs/notes/factory', 'show', commit], { encoding: 'utf8' });
+  const note = existing.status === 0
+    ? JSON.parse(existing.stdout)
+    : { type: 'https://os-factory.dev/factory-commits/note/v0.1', attestations: [] };
+  const added = !note.attestations.some((a) => a.digest === entry.digest);
+  if (added) note.attestations.push(entry);
+  execFileSync('git', ['notes', '--ref', 'refs/notes/factory', 'add', '-f', '-m', JSON.stringify(note), commit]);
+  process.stdout.write(JSON.stringify({ commit, added }) + '\n');
+  process.exit(0);
+}
+
+if (command === 'trailers') {
+  const file = argv[1];
+  const trailers = [];
+  for (let i = 2; i < argv.length; i += 2) {
+    const name = { '--work-unit': 'Work-Unit', '--run': 'Factory-Run', '--attestation': 'Factory-Attestation' }[argv[i]];
+    if (!name) process.exit(2);
+    trailers.push(`${name}: ${argv[i + 1]}`);
+  }
+  const body = fs.readFileSync(file, 'utf8').replace(/\s*$/, '');
+  fs.writeFileSync(file, `${body}\n\n${trailers.join('\n')}\n`);
+  process.exit(0);
+}
+
+if (command === 'setup') {
+  const refspec = '+refs/notes/factory:refs/notes/factory';
+  if (argv.includes('--undo')) {
+    spawnSync('git', ['config', '--unset-all', 'remote.origin.fetch', refspec.replace(/[+*]/g, '\\$&')]);
+    spawnSync('git', ['config', '--unset', 'notes.rewriteRef']);
+  } else {
+    const fetch = spawnSync('git', ['config', '--get-all', 'remote.origin.fetch'], { encoding: 'utf8' }).stdout;
+    if (!fetch.split('\n').includes(refspec)) execFileSync('git', ['config', '--add', 'remote.origin.fetch', refspec]);
+    execFileSync('git', ['config', 'notes.rewriteRef', 'refs/notes/factory']);
+  }
+  process.exit(0);
+}
+
+if (command === 'show' || command === 'verify') {
+  const out = command === 'show'
+    ? { commit: 'c'.repeat(40), tree: 't'.repeat(40), trailers: {}, note: null }
+    : { commits: [{ commit: 'c'.repeat(40), level: process.env.FAKE_GIT_FACTORY_LEVEL || 'L1', problems: [] }] };
+  if (argv.includes('--json')) process.stdout.write(JSON.stringify(out) + '\n');
+  else process.stdout.write(`${command} (human)\n`);
+  process.exit(Number(process.env.FAKE_GIT_FACTORY_VERIFY_EXIT || 0));
+}
+
+process.stderr.write(`fake git-factory: unsupported command ${command}\n`);
+process.exit(2);

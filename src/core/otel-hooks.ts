@@ -14,9 +14,35 @@ import {
   signalsForLevel,
   type TelemetryLevel,
 } from './telemetry-config';
+import {
+  DIRECT_STRIP_LOCAL_ENV,
+  directRouteSendsLogs,
+  getDirectExportEnvPath,
+  readAppliedDirectRoute,
+  resolveAgentTelemetryRoute,
+  writeDirectExportEnv,
+  type AgentTelemetryRoute,
+  type AgentTelemetryRouteDecision,
+} from './telemetry-direct';
+import { LOCAL_ATTR_PREFIX, destinationIncludesLocalPaths } from '../harness/schema';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
-export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.6.0';
+export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.8.0';
+
+/**
+ * Environment override for the package spec HAR installs: any spec the package
+ * manager accepts (`@osfactory/otel-hook@0.9.0`, a local `.tgz`, a directory).
+ * For dogfooding an unreleased otel-hook build; unset, HAR installs the pin.
+ */
+export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
+
+/** The package spec HAR installs: the override when set, else the pin. */
+export function otelHooksPackageSpec(env: NodeJS.ProcessEnv = process.env): string {
+  return env[OTEL_HOOKS_PACKAGE_ENV]?.trim() || OTEL_HOOKS_PACKAGE;
+}
+
+/** Records the spec of the last install, so a changed override reinstalls. */
+const INSTALLED_SPEC_FILE = '.har-package-spec';
 
 /**
  * Budgets for the hooks HAR installs into agent settings (#328).
@@ -86,6 +112,10 @@ export interface EnsureOtelHooksResult {
   agentsSetup: OtelHooksAgent[];
   providersSetup: OtelHooksProviderId[];
   errors: string[];
+  /** Where agent hook traces go now (see `telemetry-direct.ts`). */
+  route: AgentTelemetryRoute;
+  /** Why direct export was not used, when it might have been expected. */
+  routeHint?: string;
 }
 
 export function getOtelHooksHome(): string {
@@ -127,6 +157,34 @@ function installedPackageVersion(hooksHome: string): string | null {
   }
 }
 
+function installedSpec(hooksHome: string): string | null {
+  try {
+    return fs.readFileSync(path.join(hooksHome, INSTALLED_SPEC_FILE), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function recordInstalledSpec(hooksHome: string, spec: string): void {
+  try {
+    fs.writeFileSync(path.join(hooksHome, INSTALLED_SPEC_FILE), `${spec}\n`);
+  } catch {
+    // best-effort: a missing record only means the next run reinstalls
+  }
+}
+
+/**
+ * Whether the hooks prefix needs a (re)install. The pin is checked by the
+ * installed version; an override, whose version HAR cannot know up front, by
+ * the spec recorded at install time. Switching between them reinstalls.
+ */
+export function needsPackageInstall(hooksHome: string, spec: string): boolean {
+  const recorded = installedSpec(hooksHome);
+  if (spec !== OTEL_HOOKS_PACKAGE) return recorded !== spec;
+  if (recorded !== null && recorded !== spec) return true;
+  return installedPackageVersion(hooksHome) !== pinnedVersion();
+}
+
 function pinnedVersion(): string {
   const at = OTEL_HOOKS_PACKAGE.lastIndexOf('@');
   // package name is @osfactory/otel-hook@version — split on the last @
@@ -157,6 +215,12 @@ export function buildOtelHooksConfig(options?: {
   enabled?: boolean;
   apiUrl?: string;
   resourceAttributes?: string;
+  /**
+   * Where traces go (default: Mission Control). A direct route writes no
+   * endpoint here — `exporter.endpoint` would outrank the standard
+   * `OTEL_EXPORTER_OTLP_*` variables the wrapper loads from `direct.env`.
+   */
+  route?: AgentTelemetryRoute;
 }): OtelHooksConfig {
   // Every switch comes from the level: the hook exports spans from Outline up,
   // its event records (the only channel that carries text) alongside them,
@@ -164,19 +228,28 @@ export function buildOtelHooksConfig(options?: {
   const signals = options?.enabled === false ? signalsForLevel('off') : getTelemetrySignals();
   const enabled = signals.traces;
   const apiUrl = (options?.apiUrl ?? getControlApiUrl()).replace(/\/$/, '');
+  const direct = options?.route?.mode === 'direct' ? options.route.destination : undefined;
   const resourceAttributes = parseResourceAttributesString(options?.resourceAttributes);
-  const capturePrompts = enabled && signals.logs && signals.prompts;
+  if (direct && !destinationIncludesLocalPaths(direct)) {
+    // Nothing strips the Resource on the direct path.
+    for (const key of Object.keys(resourceAttributes)) {
+      if (key.startsWith(LOCAL_ATTR_PREFIX)) delete resourceAttributes[key];
+    }
+  }
+  const logsEnabled = enabled && signals.logs && (!direct || directRouteSendsLogs(direct));
+  const capturePrompts = logsEnabled && signals.prompts;
 
   return {
     exporter: {
       enabled,
-      ...(enabled ? { endpoint: `${apiUrl}/api/otel/v1/traces` } : {}),
+      ...(enabled && !direct ? { endpoint: `${apiUrl}/api/otel/v1/traces` } : {}),
+      // otel-hook exports OTLP/HTTP protobuf only; every OTLP/HTTP receiver takes it.
       protocol: 'http/protobuf',
       serviceName: 'har-ide-agent',
       ...(Object.keys(resourceAttributes).length > 0 ? { resourceAttributes } : {}),
       logs: {
-        enabled: enabled && signals.logs,
-        ...(enabled && signals.logs ? { endpoint: `${apiUrl}/api/otel/v1/logs` } : {}),
+        enabled: logsEnabled,
+        ...(logsEnabled && !direct ? { endpoint: `${apiUrl}/api/otel/v1/logs` } : {}),
         includeContent: capturePrompts,
       },
     },
@@ -208,6 +281,7 @@ export function writeOtelHooksWrapper(
   const wrapperPath = getOtelHooksWrapperPath(hooksHome);
   const configPath = getOtelHooksConfigPath(hooksHome);
   const stateDir = getOtelHooksStateDir(hooksHome);
+  const directEnvPath = getDirectExportEnvPath(hooksHome);
   const script = `#!/usr/bin/env bash
 # Managed by har telemetry — invokes @osfactory/otel-hook with HAR config.
 #
@@ -219,6 +293,23 @@ export function writeOtelHooksWrapper(
 #      agent turn, so the exit status is always 0 — a non-zero hook exit can
 #      block a tool call.
 set -uo pipefail
+# Direct export (Mission Control off, one destination): endpoint and headers
+# live in a mode-0600 file, never in this script or on a command line.
+if [ -f "${directEnvPath}" ]; then
+  . "${directEnvPath}" || true
+fi
+# Nothing strips the Resource on the direct path: drop local-only paths.
+if [ -n "\${${DIRECT_STRIP_LOCAL_ENV}:-}" ] && [ -n "\${OTEL_RESOURCE_ATTRIBUTES:-}" ]; then
+  _har_kept=""
+  IFS=',' read -ra _har_parts <<< "$OTEL_RESOURCE_ATTRIBUTES"
+  for _har_part in "\${_har_parts[@]}"; do
+    case "\${_har_part#"\${_har_part%%[![:space:]]*}"}" in
+      ${LOCAL_ATTR_PREFIX}*) ;;
+      *) _har_kept="\${_har_kept:+$_har_kept,}$_har_part" ;;
+    esac
+  done
+  export OTEL_RESOURCE_ATTRIBUTES="$_har_kept"
+fi
 "${otelHookCommand}" run \\
   --config-file "${configPath}" \\
   --state-dir "${stateDir}" \\
@@ -256,21 +347,22 @@ function resolveOtelHookCommand(hooksHome: string): string | null {
  */
 function resolveHooksInstaller(
   hooksHome: string,
+  spec: string,
 ): { command: string; args: string[] } | null {
   const candidates: Array<{ command: string; args: string[] }> = [
     {
       command: 'npm',
-      args: ['install', '--prefix', hooksHome, '--no-fund', '--no-audit', OTEL_HOOKS_PACKAGE],
+      args: ['install', '--prefix', hooksHome, '--no-fund', '--no-audit', spec],
     },
-    { command: 'bun', args: ['add', '--cwd', hooksHome, OTEL_HOOKS_PACKAGE] },
-    { command: 'pnpm', args: ['add', '--dir', hooksHome, OTEL_HOOKS_PACKAGE] },
+    { command: 'bun', args: ['add', '--cwd', hooksHome, spec] },
+    { command: 'pnpm', args: ['add', '--dir', hooksHome, spec] },
   ];
   return candidates.find((candidate) => commandExists(candidate.command)) ?? null;
 }
 
-function tryInstallPackage(hooksHome: string): { ok: boolean; detail: string } {
+function tryInstallPackage(hooksHome: string, spec: string): { ok: boolean; detail: string } {
   fs.mkdirSync(hooksHome, { recursive: true });
-  const installer = resolveHooksInstaller(hooksHome);
+  const installer = resolveHooksInstaller(hooksHome, spec);
   if (!installer) {
     return {
       ok: false,
@@ -283,6 +375,7 @@ function tryInstallPackage(hooksHome: string): { ok: boolean; detail: string } {
     timeout: 180_000,
   });
   if (result.status === 0 && fs.existsSync(localOtelHookBin(hooksHome))) {
+    recordInstalledSpec(hooksHome, spec);
     return { ok: true, detail: described };
   }
   return {
@@ -568,17 +661,14 @@ export function ensureOtelHooks(options?: {
   fs.mkdirSync(hooksHome, { recursive: true });
 
   let otelHookCommand = resolveOtelHookCommand(hooksHome);
-  const needsInstall =
-    !otelHookCommand || installedPackageVersion(hooksHome) !== pinnedVersion();
+  const packageSpec = otelHooksPackageSpec();
+  const needsInstall = !otelHookCommand || needsPackageInstall(hooksHome, packageSpec);
   if (needsInstall) {
     // Prefer a prefix-local install so HAR pins the version under ~/.har/otel-hooks.
-    const installed = tryInstallPackage(hooksHome);
+    const installed = tryInstallPackage(hooksHome, packageSpec);
     if (!installed.ok) {
       errors.push(installed.detail);
-      const configPath = writeOtelHooksConfig(
-        buildOtelHooksConfig({ resourceAttributes: options?.resourceAttributes }),
-        hooksHome,
-      );
+      const { configPath, decision } = applyAgentTelemetryRoute(hooksHome, options?.resourceAttributes);
       return {
         ok: false,
         hooksHome,
@@ -589,15 +679,14 @@ export function ensureOtelHooks(options?: {
         agentsSetup: [],
         providersSetup,
         errors,
+        route: decision.route,
+        routeHint: decision.hint,
       };
     }
     otelHookCommand = resolveOtelHookCommand(hooksHome);
     if (!otelHookCommand) {
       errors.push('@osfactory/otel-hook installed but otel-hook binary is missing');
-      const configPath = writeOtelHooksConfig(
-        buildOtelHooksConfig({ resourceAttributes: options?.resourceAttributes }),
-        hooksHome,
-      );
+      const { configPath, decision } = applyAgentTelemetryRoute(hooksHome, options?.resourceAttributes);
       return {
         ok: false,
         hooksHome,
@@ -608,6 +697,8 @@ export function ensureOtelHooks(options?: {
         agentsSetup: [],
         providersSetup,
         errors,
+        route: decision.route,
+        routeHint: decision.hint,
       };
     }
   }
@@ -615,10 +706,7 @@ export function ensureOtelHooks(options?: {
   const resolvedCommand = otelHookCommand;
   if (!resolvedCommand) {
     errors.push('@osfactory/otel-hook binary is missing');
-    const configPath = writeOtelHooksConfig(
-      buildOtelHooksConfig({ resourceAttributes: options?.resourceAttributes }),
-      hooksHome,
-    );
+    const { configPath, decision } = applyAgentTelemetryRoute(hooksHome, options?.resourceAttributes);
     return {
       ok: false,
       hooksHome,
@@ -629,13 +717,12 @@ export function ensureOtelHooks(options?: {
       agentsSetup: [],
       providersSetup,
       errors,
+      route: decision.route,
+      routeHint: decision.hint,
     };
   }
 
-  const configPath = writeOtelHooksConfig(
-    buildOtelHooksConfig({ resourceAttributes: options?.resourceAttributes }),
-    hooksHome,
-  );
+  const { configPath, decision } = applyAgentTelemetryRoute(hooksHome, options?.resourceAttributes);
   const wrapperPath = writeOtelHooksWrapper(resolvedCommand, hooksHome);
   // Remove the old Python tool only after the npm replacement and wrapper are
   // ready. If npm installation fails, an existing HAR hook remains usable.
@@ -658,7 +745,9 @@ export function ensureOtelHooks(options?: {
     // Claude reports tokens/cost to no hook — its native metrics and
     // per-request `api_request` log events carry them (ADR 0003).
     try {
-      if (signals.metrics) {
+      // Direct mode: Claude's native metrics and logs carry account identity
+      // and nothing would strip it on the way to a third-party backend.
+      if (signals.metrics && decision.route.mode !== 'direct') {
         const claude = enableClaudeNativeTelemetry({ hooksHome });
         if (claude.skipped.length > 0) {
           errors.push(
@@ -688,11 +777,73 @@ export function ensureOtelHooks(options?: {
     agentsSetup,
     providersSetup,
     errors,
+    route: decision.route,
+    routeHint: decision.hint,
   };
+}
+
+/**
+ * Resolve where agent traces go and write what the hook reads for it: the
+ * config file, and `direct.env` (0600) for a direct route or its removal.
+ */
+export function applyAgentTelemetryRoute(
+  hooksHome = getOtelHooksHome(),
+  resourceAttributes?: string,
+): { configPath: string; decision: AgentTelemetryRouteDecision } {
+  const decision = resolveAgentTelemetryRoute(hooksHome);
+  const configPath = writeOtelHooksConfig(
+    buildOtelHooksConfig({ resourceAttributes, route: decision.route }),
+    hooksHome,
+  );
+  writeDirectExportEnv(decision.route, hooksHome);
+  return { configPath, decision };
+}
+
+/**
+ * Re-route agent traces after something they depend on changed (a destination
+ * added or removed, Mission Control started or stopped), without installing or
+ * registering anything. A no-op until `har telemetry on` installed the hook.
+ * Fail-open: returns undefined on any error.
+ */
+export function refreshAgentTelemetryRoute(): AgentTelemetryRouteDecision | undefined {
+  try {
+    const hooksHome = getOtelHooksHome();
+    const command = resolveOtelHookCommand(hooksHome);
+    if (!command) {
+      writeDirectExportEnv({ mode: 'off' }, hooksHome);
+      return undefined;
+    }
+    if (!isTelemetryEnabled()) {
+      writeDirectExportEnv({ mode: 'off' }, hooksHome);
+      return { route: { mode: 'off' } };
+    }
+    const wasDirect = readAppliedDirectRoute(hooksHome) !== null;
+    const { decision } = applyAgentTelemetryRoute(hooksHome);
+    // Wrappers written before direct mode do not source direct.env.
+    writeOtelHooksWrapper(command, hooksHome);
+    // Claude's native telemetry follows the mode only when the mode changed.
+    try {
+      if (decision.route.mode === 'direct') {
+        disableClaudeNativeTelemetry({ hooksHome });
+      } else if (wasDirect && getTelemetrySignals().metrics) {
+        enableClaudeNativeTelemetry({ hooksHome });
+      }
+    } catch {
+      // best-effort: a malformed settings file must not block the refresh
+    }
+    return decision;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Refresh config for telemetry off (exporter disabled) without uninstalling hooks. */
 export function disableOtelHooksExport(): string {
+  try {
+    writeDirectExportEnv({ mode: 'off' }, getOtelHooksHome());
+  } catch {
+    // best-effort
+  }
   try {
     disableClaudeNativeTelemetry({ hooksHome: getOtelHooksHome() });
   } catch {
@@ -717,7 +868,14 @@ export interface TelemetryDrift {
 export function inspectTelemetryDrift(hooksHome = getOtelHooksHome()): TelemetryDrift {
   const level = getTelemetryLevel();
   const configPath = getOtelHooksConfigPath(hooksHome);
+  const applied = readAppliedDirectRoute(hooksHome);
   const expected = buildOtelHooksConfig();
+  // A direct route sends event records only when its destination subscribes to logs.
+  if (applied && !applied.logs) {
+    expected.exporter.logs.enabled = false;
+    expected.exporter.logs.includeContent = false;
+    expected.privacy.contentMode = 'omit';
+  }
   const mismatches: string[] = [];
   let actual: Partial<OtelHooksConfig> | null = null;
   try {
