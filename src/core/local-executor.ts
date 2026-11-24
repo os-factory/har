@@ -24,6 +24,7 @@ import {
   StageRunOptions,
 } from './types';
 import { readSlotRegistry } from './slot-registry';
+import { resolveAgentEnvFile } from './slot-status';
 import {
   launchSession,
   runAgentOp,
@@ -151,6 +152,39 @@ function resolveStageScriptPath(repoPath: string, stage: HarnessStage): string {
   );
 }
 
+interface SlotStageSurface {
+  envFile: string;
+  workDir: string;
+  harnessDir: string;
+  agentId: number;
+}
+
+/**
+ * The 1.0 stage surface for a launched slot — the same one `har env verify`
+ * gives its stages: the slot env file sourced, and WORK_DIR, ENV_FILE,
+ * AGENT_ID and HAR_HARNESS_DIR exported. Undefined when no slot is given or
+ * it has no env file (the stage then runs as before).
+ */
+function slotStageSurface(repoPath: string, agentId?: number): SlotStageSurface | undefined {
+  if (agentId === undefined) return undefined;
+  const harnessRoot = resolveHarnessRoot(repoPath);
+  const envFile = resolveAgentEnvFile(harnessRoot, agentId);
+  if (!envFile) return undefined;
+  const session = readSlotRegistry(harnessRoot, agentId);
+  const workDir = session?.workDir ? session.workDir : path.dirname(envFile);
+  return { envFile, workDir, harnessDir: getHarnessDir(harnessRoot), agentId };
+}
+
+/** Prefix that sources the slot env file and exports the stage surface. */
+function slotSurfacePrefix(surface: SlotStageSurface): string {
+  const q = quoteShellArg;
+  return [
+    `set -a; . ${q(surface.envFile)}; set +a`,
+    `export WORK_DIR=${q(surface.workDir)} ENV_FILE=${q(surface.envFile)}` +
+      ` AGENT_ID=${surface.agentId} HAR_AGENT_ID=${surface.agentId} HAR_HARNESS_DIR=${q(surface.harnessDir)}`,
+  ].join('\n');
+}
+
 function buildExecutionPlan(
   repoPath: string,
   stage: HarnessStage,
@@ -165,6 +199,7 @@ function buildExecutionPlan(
   };
   const cwd = stage.cwd ? path.resolve(resolvedRepo, stage.cwd) : resolvedRepo;
   const extraArgs = options.args ?? [];
+  const surface = slotStageSurface(resolvedRepo, options.agentId);
 
   const launchFlagArgs =
     stage.kind === 'launch' && options.launchFlags
@@ -176,6 +211,7 @@ function buildExecutionPlan(
     for (const extra of [...extraArgs, ...launchFlagArgs]) {
       shellCommand = `${shellCommand} ${quoteShellArg(extra)}`;
     }
+    if (surface) shellCommand = `${slotSurfacePrefix(surface)}\n${shellCommand}`;
     return { mode: 'shell', shellCommand, args: [], cwd, env: mergedEnv };
   }
 
@@ -184,10 +220,22 @@ function buildExecutionPlan(
     args.push(String(options.agentId));
   }
   args.push(...extraArgs, ...launchFlagArgs);
+  const scriptPath = resolveStageScriptPath(resolvedRepo, stage);
+
+  if (surface) {
+    const invocation = ['bash', scriptPath, ...args].map(quoteShellArg).join(' ');
+    return {
+      mode: 'shell',
+      shellCommand: `${slotSurfacePrefix(surface)}\nexec ${invocation}`,
+      args: [],
+      cwd,
+      env: mergedEnv,
+    };
+  }
 
   return {
     mode: 'script',
-    scriptPath: resolveStageScriptPath(resolvedRepo, stage),
+    scriptPath,
     args,
     cwd,
     env: mergedEnv,

@@ -71,16 +71,23 @@ export function describeVerifyLineChoice(choice: VerifyLineChoice): string {
   return `${choice.lineId} — ${choice.title}  (${progress})`;
 }
 
-/** Hint for non-interactive verify runs; undefined when no line is installed. */
-export function installedLinesHint(repoPath: string): string | undefined {
+/**
+ * Hint for non-interactive verify runs, naming the commands of the surface the
+ * caller is on; undefined when no line is installed.
+ */
+export function installedLinesHint(
+  repoPath: string,
+  surface: 'cli' | 'mcp' = 'cli',
+): string | undefined {
   const ids = installedLineIdsOrNone(repoPath);
   if (ids.length === 0) return undefined;
   const noun = ids.length === 1 ? 'line' : 'lines';
-  return (
-    `${ids.length} factory ${noun} installed (${ids.join(', ')}) — not checked by verify. ` +
-    'See what each checks with: har line list / har line describe <id>; ' +
-    'run one with: har line gate <station> --line <id>'
-  );
+  const how =
+    surface === 'mcp'
+      ? 'See what each checks with har_line_list / har_line_describe; run one with har_run_line_gate.'
+      : 'See what each checks with: har line list / har line describe <id>; ' +
+        'run one with: har line gate <station> --line <id>';
+  return `${ids.length} factory ${noun} installed (${ids.join(', ')}) — not checked by verify. ${how}`;
 }
 
 async function runChosenLine(

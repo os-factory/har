@@ -218,6 +218,26 @@ export interface RunLineGateResult {
   skipReason?: string;
 }
 
+const REASON_TAIL_LINES = 5;
+
+/**
+ * Why a gate stage failed, so a caller need not open the run record: the
+ * `output` field of the stage's JSON result (the stage script contract), else
+ * the end of its stderr, where scripts print errors.
+ */
+function failureReason(result: StageResult): string | undefined {
+  const reported = (result as { output?: unknown }).output;
+  const pick = (stream: string) =>
+    result.logs.filter((log) => log.stream === stream && log.content?.trim()).pop()?.content;
+  const text =
+    (typeof reported === 'string' && reported.trim() ? reported : undefined) ??
+    pick('stderr') ??
+    pick('stdout') ??
+    pick('combined');
+  if (!text) return result.code !== undefined ? `exit code ${result.code}` : undefined;
+  return text.trim().split('\n').slice(-REASON_TAIL_LINES).join('\n');
+}
+
 function resolveLineId(repoPath: string, lineId?: string): string {
   if (lineId) return lineId;
   const ids = listInstalledLineIds(repoPath);
@@ -306,6 +326,7 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
       fromStation: stage.fromStation,
       status: result.status,
       durationMs: result.durationMs,
+      ...(result.status !== 'pass' ? { reason: failureReason(result) } : {}),
     });
     if (result.status !== 'pass') {
       pass = false;

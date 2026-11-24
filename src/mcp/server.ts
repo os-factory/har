@@ -714,7 +714,7 @@ export async function handleMcpToolCall(
           stdout: '',
           stderr: result.stderr,
           verification: slimVerificationResult(result.verification),
-          linesHint: installedLinesHint(repo),
+          linesHint: installedLinesHint(repo, 'mcp'),
         }),
       );
     }

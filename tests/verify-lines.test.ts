@@ -176,5 +176,9 @@ describe('opt-in line gates after verify', () => {
         'See what each checks with: har line list / har line describe <id>; ' +
         'run one with: har line gate <station> --line <id>',
     );
+    expect(installedLinesHint(makeRepo('har-vl-hint-mcp', 'two'), 'mcp')).toBe(
+      '2 factory lines installed (alpha-line, example-line) — not checked by verify. ' +
+        'See what each checks with har_line_list / har_line_describe; run one with har_run_line_gate.',
+    );
   });
 });
