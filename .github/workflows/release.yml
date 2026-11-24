@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -107,6 +107,7 @@ jobs:
       released: ${{ steps.detect.outputs.released }}
       tag: ${{ steps.detect.outputs.tag }}
       version: ${{ steps.detect.outputs.version }}
+      dist_tag: ${{ steps.detect.outputs.dist_tag }}
 
     steps:
       - name: Create release GitHub App token
@@ -141,11 +142,11 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Record latest tag before release
-        id: before
-        run: |
-          TAG="$(git tag -l 'v*' --sort=-v:refname | head -1)"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      # Record every release tag, not just the highest: once prereleases exist
+      # (v2.0.0-next.N), the highest tag no longer tells whether *this* run cut
+      # a release (e.g. a 1.x patch on main sorts below v2.0.0-next.1).
+      - name: Record release tags before release
+        run: git tag -l 'v*' | sort > "$RUNNER_TEMP/tags-before.txt"
 
       - run: npm ci
 
@@ -169,13 +170,17 @@ jobs:
           fi
 
           git fetch --tags --force
-          TAG="$(git tag -l 'v*' --sort=-v:refname | head -1)"
-          BEFORE="${{ steps.before.outputs.tag }}"
+          git tag -l 'v*' | sort > "$RUNNER_TEMP/tags-after.txt"
+          TAG="$(comm -13 "$RUNNER_TEMP/tags-before.txt" "$RUNNER_TEMP/tags-after.txt" | head -1)"
 
-          if [ -n "$TAG" ] && [ "$TAG" != "$BEFORE" ]; then
+          if [ -n "$TAG" ]; then
             echo "released=true" >> "$GITHUB_OUTPUT"
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+            case "$TAG" in
+              *-*) echo "dist_tag=next" >> "$GITHUB_OUTPUT" ;;
+              *) echo "dist_tag=latest" >> "$GITHUB_OUTPUT" ;;
+            esac
             echo "Published $TAG (version cut + GitHub Release; Docker then npm follow)"
           else
             echo "released=false" >> "$GITHUB_OUTPUT"
@@ -225,5 +230,7 @@ jobs:
             exit 1
           fi
           npm ci
-          npm publish --access public
-          echo "Published @osfactory/har@${EXPECTED} to npm after Docker Hub push"
+          # Prereleases from `next` go to the `next` dist-tag so `npm i -g @osfactory/har`
+          # keeps installing the latest stable release.
+          npm publish --access public --tag "${{ needs.release.outputs.dist_tag }}"
+          echo "Published @osfactory/har@${EXPECTED} (dist-tag ${{ needs.release.outputs.dist_tag }}) to npm after Docker Hub push"

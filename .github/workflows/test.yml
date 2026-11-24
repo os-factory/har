@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - next
       # HAR 2.0.0 integration branch and the stacked PRs built on it.
       - 'release/**'
       - 'v2/**'
