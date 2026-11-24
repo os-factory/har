@@ -1,3 +1,9 @@
+## [2.0.0-next.2](https://github.com/os-factory/har/compare/v2.0.0-next.1...v2.0.0-next.2) (2026-11-24)
+
+### Bug Fixes
+
+* **telemetry:** restore the session profile in Claude Code hooks ([#485](https://github.com/os-factory/har/issues/485)) ([77da2f4](https://github.com/os-factory/har/commit/77da2f48dac0db77cf7b58dc09ba7b78ef5a5b87)), closes [#484](https://github.com/os-factory/har/issues/484) [os-factory/otel-hook#62](https://github.com/os-factory/otel-hook/issues/62)
+
 ## [2.0.0-next.1](https://github.com/os-factory/har/compare/v1.30.2...v2.0.0-next.1) (2026-11-24)
 
 ### ⚠ BREAKING CHANGES
