@@ -21,6 +21,12 @@ export interface OtlpExportRequest {
   body: Buffer;
   contentType: string | null;
   contentEncoding?: string | null;
+  /**
+   * Store without forwarding: the sender already delivered this payload to the
+   * destinations itself (a verification trace spooled while Mission Control was
+   * down). Set from the `x-har-otlp-forward: skip` request header.
+   */
+  skipForward?: boolean;
 }
 
 /** OTLP partial_success field name of the rejected count, per signal. */
@@ -60,7 +66,7 @@ export async function receiveOtlpExport(signal: OtlpSignal, request: OtlpExportR
     const result = await ingestDecoded(signal, request);
     // Copy to configured OTLP destinations after the response; never affects it.
     // Sent even when Mission Control could not read it, as the routes always did.
-    scheduleOtlpForwardBody(signal, request.body, {
+    if (!request.skipForward) scheduleOtlpForwardBody(signal, request.body, {
       contentType: request.contentType,
       contentEncoding: request.contentEncoding ?? null,
     });
@@ -173,6 +179,7 @@ export async function handleOtlpHttpExport(signal: OtlpSignal, request: Request)
       body: Buffer.from(await request.arrayBuffer()),
       contentType: request.headers.get('content-type'),
       contentEncoding: request.headers.get('content-encoding'),
+      skipForward: request.headers.get('x-har-otlp-forward')?.trim().toLowerCase() === 'skip',
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

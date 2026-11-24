@@ -70,6 +70,7 @@ import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
 import { chunkBySerializedSize, maxSyncBatchBytes } from './sync-batches';
 import type { ChannelReadFailure } from './control-api-read';
 import { fetchPersistedTrajectory } from './control-persisted-trajectory';
+import { fetchPersistedVerificationRuns } from './control-persisted-verification';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
 import { enrichUsageWithPricing } from '../harness/schema';
 import {
@@ -184,6 +185,10 @@ function trajectoryWatermarkTarget(target: PortalTarget): string {
 
 function spansWatermarkTarget(target: PortalTarget): string {
   return `spans:${watermarkKeyForTarget(target)}`;
+}
+
+function verificationRunsWatermarkTarget(target: PortalTarget): string {
+  return `verification-runs:${watermarkKeyForTarget(target)}`;
 }
 
 function runsWatermarkTarget(target: string): string {
@@ -727,11 +732,11 @@ async function buildPortalPayload(
   };
 }
 
-export async function isControlApiReachable(apiUrl = getControlApiUrl()): Promise<boolean> {
+export async function isControlApiReachable(apiUrl = getControlApiUrl(), timeoutMs = 2000): Promise<boolean> {
   try {
     const response = await fetch(`${apiUrl}/api/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return response.ok;
   } catch {
@@ -965,6 +970,18 @@ async function syncRepoWithPortal(
   const heldUnits: HeldUsageUnits = dryRun ? new Map() : await heldUsageUnits(controlApiUrl, repoPath);
   const { syncBody, held, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
     await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, heldUnits);
+  // Verification runs Mission Control stored from verification traces: an
+  // optional top-level collection of the first /api/sync body, own watermark.
+  // A dry run reads nothing new from Mission Control for it.
+  const verificationTarget = verificationRunsWatermarkTarget(portal);
+  const verification = isTelemetryEnabled() && !dryRun
+    ? await fetchPersistedVerificationRuns(
+        repoPath,
+        controlApiUrl,
+        full ? null : readPortalWatermark(repoPath, verificationTarget),
+      )
+    : null;
+  if (verification && verification.runs.length > 0) syncBody.verificationRuns = verification.runs;
   const newRuns = selectRunsForSync(
     runsBySource,
     runsSince,
@@ -987,6 +1004,11 @@ async function syncRepoWithPortal(
     },
     sourcePaths,
   );
+
+  // The first /api/sync body (which carries the collection) landed.
+  if (!dryRun && verification?.maxSyncedAt && verification.failures.length === 0) {
+    writePortalWatermark(repoPath, verificationTarget, verification.maxSyncedAt);
+  }
 
   if (!full && !dryRun && stored?.repoId && repoId && stored.repoId !== repoId) {
     await syncRunBatches(
@@ -1020,6 +1042,12 @@ async function syncRepoWithPortal(
   if (held.length > 0) warnings.push(describeHeldUsage(repoPath, held, heldUnits));
   if (failures.length > 0) warnings.push(describeReadFailures(repoPath, failures));
   if (truncated.length > 0) warnings.push(describeTruncatedReads(repoPath, truncated));
+  if (verification && verification.failures.length > 0) {
+    warnings.push(describeReadFailures(repoPath, verification.failures));
+  }
+  if (verification && verification.truncated.length > 0) {
+    warnings.push(describeTruncatedReads(repoPath, verification.truncated));
+  }
 
   warnings.push(
     ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),

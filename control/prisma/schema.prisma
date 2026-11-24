@@ -30,6 +30,7 @@ model Repository {
   workAttempts    WorkAttempt[]
   validationBindings ValidationBinding[]
   commitBindings     ValidationCommitBinding[]
+  verificationRuns   VerificationRun[]
 }
 
 model AgentSlot {
@@ -417,4 +418,58 @@ model UnregisteredRepository {
   path             String   @id
   unregisteredAt   DateTime @default(now())
   deleteWorktrees  Boolean  @default(false)
+}
+
+/// One `har env verify` as received over OTLP: the run span of a verification
+/// trace (instrumentation scope `@osfactory/har`, `cicd.pipeline.run.id`).
+/// Every verify of one tree shares the trace and run id; the span id is per verify.
+model VerificationRun {
+  id                String     @id @default(uuid())
+  repositoryId      String
+  repository        Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  /// `cicd.pipeline.run.id`: the validation id (or the run id when none was recorded).
+  runId             String
+  traceId           String
+  spanId            String
+  pipelineName      String
+  /// `cicd.pipeline.result`: success | failure | error | timeout | cancellation | skip.
+  result            String
+  /// `factory.verdict` (full verify only): pass | fail.
+  verdict           String?
+  treeHash          String?
+  headRevision      String?
+  attestationDigest String?
+  workUnitId        String?
+  attemptId         String?
+  branch            String?
+  producerVersion   String?
+  startTime         DateTime
+  endTime           DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  stages            VerificationStage[]
+
+  @@unique([traceId, spanId])
+  @@index([repositoryId, createdAt, id])
+  @@index([repositoryId, runId])
+}
+
+/// One stage span of a verification run (`cicd.pipeline.task.*`).
+model VerificationStage {
+  id                String          @id @default(uuid())
+  verificationRunId String
+  verificationRun   VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
+  traceId           String
+  spanId            String
+  name              String
+  /// `cicd.pipeline.task.run.result`.
+  result            String
+  /// `cicd.pipeline.task.type` when the stage id names one (build | test).
+  taskType          String?
+  startTime         DateTime
+  endTime           DateTime?
+  createdAt         DateTime        @default(now())
+
+  @@unique([traceId, spanId])
+  @@index([verificationRunId, startTime])
 }

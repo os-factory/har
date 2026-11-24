@@ -65,9 +65,14 @@ traces are sent at every level except `off`.
 ## When to run `har control up`
 
 Mission Control forwards the agent session traces, so it must be running and able
-to read `~/.har/destinations`. Verification traces go straight from the CLI to
-Langfuse and don't need Mission Control. `har telemetry on` and `har env launch` start it when it is
-not running. Run `har control up` yourself when:
+to read `~/.har/destinations`. Verification traces go through Mission Control too
+when it is running. When it isn't, the CLI sends them straight to Langfuse, queues
+any that fail, and retries them at the next verify or launch (or
+`har telemetry destination flush`). Either way, Langfuse receives each verification
+trace once. See
+[How verification traces are delivered](/docs/guides/otlp-backends/#how-verification-traces-are-delivered).
+`har telemetry on` and `har env launch` start Mission Control when it is not
+running. Run `har control up` yourself when:
 
 - `destination add` prints that the running container predates destinations. A
   Mission Control container started by an older HAR does not mount the directory, and
@@ -88,8 +93,10 @@ destination. It re-reads the file when it changes.
 
 Langfuse receives two kinds of spans. Agent session spans come from otel-hook
 through Mission Control, and otel-hook puts **no prompt, reply or tool text on spans
-at any level**. Verification spans come from the CLI and carry ids, results and
-timings only: no commands, logs or local paths. The text that `full` records travels in OTLP log records,
+at any level**. Verification spans come from the CLI, through Mission Control when it
+is running, and carry ids, results and timings only: no commands or logs. Their one
+local path, `factory.local.checkout_path`, lets Mission Control attribute the run and
+is stripped before any copy reaches Langfuse. The text that `full` records travels in OTLP log records,
 which the Langfuse preset never forwards.
 
 A session span can contain:
@@ -106,8 +113,9 @@ A session span never reaches Langfuse with absolute local paths or your account
 identity. Mission Control keeps them for its own attribution, but it removes every
 attribute that holds a local path (every `factory.local.*` key, `process.cwd`,
 `code.filepath`, …) or identifies your account (`user.email`, `user.account_uuid`,
-`user.id`, `organization.id`, …) before it spools or sends a copy. Verification
-spans never carry them.
+`user.id`, `organization.id`, …) before it spools or sends a copy. A verification
+span's `factory.local.checkout_path` is removed the same way, by Mission Control or,
+when the CLI sends directly, by the CLI.
 
 The telemetry level changes what Langfuse receives only at the edges: `outline` and
 `full` send the same spans, `usage` sends verification spans only, and `off` sends

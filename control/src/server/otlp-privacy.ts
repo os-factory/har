@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import * as zlib from 'node:zlib';
-import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, attributeKeyDenied, type OtlpSignal } from '@har/schemas';
+import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, removeDeniedOtlpAttributes, type OtlpSignal } from '@har/schemas';
 
 /**
  * Remove denied attributes from an OTLP/HTTP body before Mission Control
@@ -23,8 +23,6 @@ import { TELEMETRY_LOCAL_PATH_ATTRIBUTES, attributeKeyDenied, type OtlpSignal } 
 
 export type OtlpBodyHeaders = { contentType: string; contentEncoding?: string };
 export type StrippedOtlpBody = OtlpBodyHeaders & { body: Buffer; removed: number };
-
-const ATTRIBUTE_FIELDS = new Set(['attributes', 'filteredAttributes']);
 
 type ProtobufType = {
   decode: (data: Uint8Array) => unknown;
@@ -76,24 +74,7 @@ export function removeDeniedAttributes(
   node: unknown,
   denied: readonly string[] = TELEMETRY_LOCAL_PATH_ATTRIBUTES,
 ): number {
-  if (node === null || typeof node !== 'object' || ArrayBuffer.isView(node)) return 0;
-  if (Array.isArray(node)) return node.reduce((sum: number, item) => sum + removeDeniedAttributes(item, denied), 0);
-  const record = node as Record<string, unknown>;
-  let removed = 0;
-  for (const field of Object.keys(record)) {
-    const value = record[field];
-    if (ATTRIBUTE_FIELDS.has(field) && Array.isArray(value)) {
-      const kept = value.filter((kv) => {
-        const key = kv && typeof kv === 'object' ? (kv as { key?: unknown }).key : undefined;
-        return !(typeof key === 'string' && attributeKeyDenied(key, denied));
-      });
-      removed += value.length - kept.length;
-      if (kept.length !== value.length) record[field] = kept;
-      continue;
-    }
-    removed += removeDeniedAttributes(value, denied);
-  }
-  return removed;
+  return removeDeniedOtlpAttributes(node, denied);
 }
 
 function isJson(contentType: string, body: Buffer): boolean {

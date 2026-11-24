@@ -100,6 +100,38 @@ export function attributeKeyDenied(key: string, denied: readonly string[]): bool
   return false;
 }
 
+const OTLP_ATTRIBUTE_FIELDS = new Set(['attributes', 'filteredAttributes']);
+
+/**
+ * Remove denied keys from every `attributes` / `filteredAttributes` list of a
+ * decoded OTLP payload, in place: resource, scope, span, span event and link,
+ * log record, metric data point and exemplar. Returns how many entries were
+ * removed. Mission Control's forwarder and the CLI's verification trace spool
+ * both strip with this one walk.
+ */
+export function removeDeniedOtlpAttributes(node: unknown, denied: readonly string[]): number {
+  if (node === null || typeof node !== 'object' || ArrayBuffer.isView(node)) return 0;
+  if (Array.isArray(node)) {
+    return node.reduce((sum: number, item) => sum + removeDeniedOtlpAttributes(item, denied), 0);
+  }
+  const record = node as Record<string, unknown>;
+  let removed = 0;
+  for (const field of Object.keys(record)) {
+    const value = record[field];
+    if (OTLP_ATTRIBUTE_FIELDS.has(field) && Array.isArray(value)) {
+      const kept = value.filter((kv) => {
+        const key = kv && typeof kv === 'object' ? (kv as { key?: unknown }).key : undefined;
+        return !(typeof key === 'string' && attributeKeyDenied(key, denied));
+      });
+      removed += value.length - kept.length;
+      if (kept.length !== value.length) record[field] = kept;
+      continue;
+    }
+    removed += removeDeniedOtlpAttributes(value, denied);
+  }
+  return removed;
+}
+
 /** Whether a destination receives local path attributes (opt-in, default false). */
 export function destinationIncludesLocalPaths(destination: Pick<TelemetryDestination, 'includeLocalPaths'>): boolean {
   return destination.includeLocalPaths === true;

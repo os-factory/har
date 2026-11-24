@@ -1249,6 +1249,9 @@ export async function handleVerify(argv: {
   if (result.spanExport && result.spanExport.failed.length > 0) {
     dim(`  verification trace not delivered to: ${result.spanExport.failed.join(', ')}`);
   }
+  if (result.traceDelivery && result.traceDelivery.spooled > 0) {
+    dim('  verification trace queued for retry (next verify or `har telemetry destination flush`)');
+  }
 
   return finishCommand(result.code);
 }

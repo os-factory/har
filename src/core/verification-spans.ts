@@ -1,6 +1,7 @@
 import { execFileSync } from 'child_process';
 import * as crypto from 'crypto';
 import {
+  LOCAL_CHECKOUT_PATH_ATTR,
   destinationsForSignal,
   otlpSignalUrl,
   type TelemetryDestination,
@@ -12,21 +13,42 @@ import {
   OTLP_STATUS_CODE,
   type OtlpSpanInput,
 } from '../utils/otlp-json';
+import { getControlApiUrl, isControlEnabled } from './control-config';
+import { isControlApiReachable } from './control-sync';
 import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { getHarPackageVersion } from './package-version';
 import { getRun } from './runs';
 import { isTelemetryEnabled } from './telemetry-config';
 import { readTelemetryDestinations } from './telemetry-destinations';
 import { FACTORY_PRODUCER_NAME, factoryCorrelationResource } from './telemetry-env';
+import {
+  CONTROL_SPOOL_DENIED,
+  CONTROL_TRACES_PATH,
+  countSpooledPayloads,
+  deniedForDestination,
+  flushTelemetrySpool,
+  spoolOtlpPayload,
+  strippedOtlpPayload,
+  type SpoolFlushResult,
+} from './telemetry-spool';
 import { findWorkUnit } from './work-units';
 
 /**
  * OTel CI/CD spans for verification runs (telemetry profile, "Verification
- * spans"): one run span per `har env verify`, one child span per stage, sent
- * as OTLP/JSON straight to the configured `traces` destinations.
+ * spans"): one run span per `har env verify`, one child span per stage, as
+ * OTLP/JSON.
  *
- * No destination → nothing is built and nothing is sent. Spans carry ids,
- * results and timings only: no command lines, log text or local paths.
+ * Delivery (`deliverVerificationTrace`): when Mission Control is running, the
+ * trace goes to its OTLP/HTTP receiver only. Mission Control stores it as a
+ * verification run (and syncs it to HQ) and forwards it to the configured
+ * destinations with its own spool, privacy filter and retry. When it is not
+ * running, the CLI sends to the destinations itself and queues what failed,
+ * and a copy for Mission Control, in its own spool (`telemetry-spool.ts`).
+ *
+ * Spans carry ids, results and timings only: no command lines or log text. The
+ * one local path, the Resource `factory.local.checkout_path` that lets Mission
+ * Control attribute the run to its repository, is removed from every copy that
+ * leaves for a destination and from every spooled copy.
  */
 
 /** `service.name`, the same as `factory.producer.name`. */
@@ -108,6 +130,8 @@ export interface VerificationTraceInput {
   repositoryUrl?: string;
   branch?: string;
   producerVersion?: string;
+  /** Main checkout path; local-only (`factory.local.checkout_path`), for Mission Control attribution. */
+  checkoutPath?: string;
 }
 
 function runResult(input: VerificationTraceInput): CicdResult {
@@ -189,6 +213,7 @@ export function buildVerificationTrace(input: VerificationTraceInput): Record<st
         branch: input.branch,
         producerVersion: input.producerVersion,
       }),
+      ...(input.checkoutPath ? { [LOCAL_CHECKOUT_PATH_ATTR]: input.checkoutPath } : {}),
     },
     scope: { name: SCOPE_NAME, version: input.producerVersion },
     spans: [runSpan, ...stageSpans],
@@ -267,6 +292,7 @@ export function collectVerificationTraceInput(context: VerificationTraceContext)
     repositoryUrl: sanitizeGitRemoteUrl(safely(() => readGitRemote(context.checkoutDir ?? context.repoPath))),
     branch: validation?.branch ?? context.branch,
     producerVersion: safely(getHarPackageVersion),
+    checkoutPath: context.harnessRoot ?? context.repoPath,
   };
 }
 
@@ -306,22 +332,67 @@ async function postTrace(
 }
 
 /**
- * Whether a verification trace will be exported: telemetry is not off and at
- * least one enabled destination subscribes to `traces`. Cheap (reads one small
- * config file), never throws. A proof only names a trace when this is true.
+ * Whether a verification trace will be exported: telemetry is not off, and
+ * Mission Control is enabled (it receives the trace now, or later from the
+ * spool) or at least one enabled destination subscribes to `traces`. Cheap,
+ * never throws. A proof only names a trace when this is true.
  */
 export function willExportVerificationSpans(env?: NodeJS.ProcessEnv): boolean {
   try {
     if (!isTelemetryEnabled()) return false;
+    if (verificationTraceControlUrl(env ?? process.env) !== undefined) return true;
     return destinationsForSignal(readTelemetryDestinations(env), 'traces').length > 0;
   } catch {
     return false;
   }
 }
 
+function enabledTraceDestinations(env?: NodeJS.ProcessEnv): TelemetryDestination[] {
+  try {
+    return destinationsForSignal(readTelemetryDestinations(env), 'traces');
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Send one built trace to each destination, stripped per destination, in
+ * parallel. Failed copies are spooled when `spool` is set.
+ */
+async function sendToDestinations(
+  payload: Record<string, unknown>,
+  destinations: TelemetryDestination[],
+  options: ExportVerificationTraceOptions & { spool: boolean },
+): Promise<{ result: VerificationSpanExportResult; spooled: number }> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const copies = destinations.map((destination) => strippedOtlpPayload(payload, deniedForDestination(destination)));
+  const outcomes = await Promise.all(
+    destinations.map((destination, index) =>
+      postTrace(destination, JSON.stringify(copies[index]), fetchImpl, timeoutMs),
+    ),
+  );
+  let spooled = 0;
+  const failed: string[] = [];
+  destinations.forEach((destination, index) => {
+    if (outcomes[index]) return;
+    failed.push(destination.name);
+    if (
+      options.spool &&
+      spoolOtlpPayload({ kind: 'destination', name: destination.name }, copies[index], deniedForDestination(destination), {
+        env: options.env,
+      })
+    ) {
+      spooled += 1;
+    }
+  });
+  return { result: { destinations: destinations.length, failed }, spooled };
+}
+
 /**
  * Send one verification trace to every enabled `traces` destination, in
- * parallel, each bounded by a short timeout. Fail-open: never throws.
+ * parallel, each bounded by a short timeout; a failed copy is queued in the
+ * spool for a later flush. Fail-open: never throws.
  * Returns undefined when nothing was attempted (telemetry off, no
  * destinations, unreadable config); `resolve` is only called after that check.
  */
@@ -333,17 +404,171 @@ export async function exportVerificationTrace(
     if (!isTelemetryEnabled()) return undefined;
     const destinations = destinationsForSignal(readTelemetryDestinations(options.env), 'traces');
     if (destinations.length === 0) return undefined;
+    const sent = await sendToDestinations(buildVerificationTrace(resolve()), destinations, {
+      ...options,
+      spool: true,
+    });
+    return sent.result;
+  } catch {
+    return undefined;
+  }
+}
 
-    const body = JSON.stringify(buildVerificationTrace(resolve()));
+/** How a verification trace left the CLI. */
+export interface VerificationTraceDelivery {
+  /** `control`: Mission Control accepted it and forwards it. `direct`: the CLI sent it to the destinations. */
+  via: 'control' | 'direct';
+  /** Copies queued in the CLI spool for a later attempt (destinations that failed, and Mission Control). */
+  spooled: number;
+}
+
+export interface DeliverVerificationTraceOptions extends ExportVerificationTraceOptions {
+  /**
+   * Mission Control base URL, or false to never route through it. Default:
+   * `HAR_CONTROL_API_URL` / the local default, unless `HAR_CONTROL_DISABLED=true`
+   * (or under a test runner without `HAR_TEST_VERIFICATION_TRACE_CONTROL=on`).
+   */
+  controlApiUrl?: string | false;
+  /** Health check override (tests). */
+  controlReachable?: (apiUrl: string) => Promise<boolean>;
+}
+
+export interface VerificationTraceDeliveryResult {
+  /** Set when the CLI sent to destinations itself. */
+  spanExport?: VerificationSpanExportResult;
+  delivery?: VerificationTraceDelivery;
+}
+
+/** Test-runner opt-in for routing through Mission Control (`on`). */
+export const VERIFICATION_TRACE_CONTROL_TEST_ENV = 'HAR_TEST_VERIFICATION_TRACE_CONTROL';
+
+/** Mission Control base URL to route through, or undefined. */
+export function verificationTraceControlUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (!isControlEnabled()) return undefined;
+  // Unit tests never reach a developer's running Mission Control by accident
+  // (a slot's env file sets HAR_CONTROL_API_URL to the live one): only a test
+  // that opts in routes through it.
+  // The guard checks the real process too: a caller-supplied env without
+  // NODE_ENV must not bypass it while a test runner is running.
+  const underTest = env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test';
+  if (underTest && env[VERIFICATION_TRACE_CONTROL_TEST_ENV] !== 'on') return undefined;
+  return getControlApiUrl().replace(/\/+$/, '');
+}
+
+const CONTROL_HEALTH_TIMEOUT_MS = 1_000;
+
+async function postToControl(
+  apiUrl: string,
+  payload: Record<string, unknown>,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+): Promise<boolean> {
+  try {
+    const response = await fetchImpl(`${apiUrl}${CONTROL_TRACES_PATH}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    await response.text().catch(() => '');
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deliver one verification trace exactly once per receiver. Fail-open.
+ *
+ * - Mission Control reachable: one POST to its OTLP/HTTP receiver, nothing
+ *   sent directly. It stores the run, syncs it to HQ and forwards it to the
+ *   destinations (spool, privacy filter, retry).
+ * - Otherwise: send to the destinations directly, spool the failures, and
+ *   spool a copy for Mission Control marked "store, do not forward" so it
+ *   still records the run once it is running, without a second destination copy.
+ */
+export async function deliverVerificationTrace(
+  resolve: () => VerificationTraceInput,
+  options: DeliverVerificationTraceOptions = {},
+): Promise<VerificationTraceDeliveryResult> {
+  try {
+    if (!isTelemetryEnabled()) return {};
+    const destinations = enabledTraceDestinations(options.env);
+    const controlUrl =
+      options.controlApiUrl === false
+        ? undefined
+        : (options.controlApiUrl?.replace(/\/+$/, '') ?? verificationTraceControlUrl(options.env ?? process.env));
+    if (destinations.length === 0 && !controlUrl) return {};
+
+    const payload = buildVerificationTrace(resolve());
     const fetchImpl = options.fetchImpl ?? fetch;
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const outcomes = await Promise.all(
-      destinations.map((destination) => postTrace(destination, body, fetchImpl, timeoutMs)),
-    );
-    return {
-      destinations: destinations.length,
-      failed: destinations.filter((_, index) => !outcomes[index]).map((destination) => destination.name),
-    };
+
+    if (controlUrl) {
+      const reachable = options.controlReachable
+        ? await options.controlReachable(controlUrl)
+        : await isControlApiReachable(controlUrl, CONTROL_HEALTH_TIMEOUT_MS);
+      if (reachable && (await postToControl(controlUrl, payload, fetchImpl, timeoutMs))) {
+        return { delivery: { via: 'control', spooled: 0 } };
+      }
+    }
+
+    let spooled = 0;
+    let spanExport: VerificationSpanExportResult | undefined;
+    if (destinations.length > 0) {
+      const sent = await sendToDestinations(payload, destinations, { ...options, spool: true });
+      spanExport = sent.result;
+      spooled += sent.spooled;
+    }
+    if (controlUrl && spoolOtlpPayload({ kind: 'control' }, payload, CONTROL_SPOOL_DENIED, { env: options.env })) {
+      spooled += 1;
+    }
+    return { ...(spanExport ? { spanExport } : {}), delivery: { via: 'direct', spooled } };
+  } catch {
+    return {};
+  }
+}
+
+export interface FlushVerificationTraceSpoolOptions {
+  env?: NodeJS.ProcessEnv;
+  fetchImpl?: typeof fetch;
+  budgetMs?: number;
+  maxSends?: number;
+  controlApiUrl?: string | false;
+  controlReachable?: (apiUrl: string) => Promise<boolean>;
+}
+
+/** Budget of the opportunistic flush at the start of `har env verify` / `launch`. */
+export const SPOOL_FLUSH_AT_START = { budgetMs: 2_000, maxSends: 16 } as const;
+
+/**
+ * Retry what the CLI spooled: destination copies, and Mission Control copies
+ * when it is running. Cheap when the spool is empty (one directory read, no
+ * network). Fail-open; telemetry off → nothing.
+ */
+export async function flushVerificationTraceSpool(
+  options: FlushVerificationTraceSpoolOptions = {},
+): Promise<SpoolFlushResult | undefined> {
+  try {
+    if (!isTelemetryEnabled()) return undefined;
+    if (countSpooledPayloads(options.env) === 0) return { sent: 0, retried: 0, dropped: 0, pending: 0 };
+    const controlApiUrl =
+      options.controlApiUrl === false
+        ? undefined
+        : (options.controlApiUrl ?? verificationTraceControlUrl(options.env ?? process.env));
+    return await flushTelemetrySpool({
+      env: options.env,
+      fetchImpl: options.fetchImpl,
+      budgetMs: options.budgetMs ?? SPOOL_FLUSH_AT_START.budgetMs,
+      maxSends: options.maxSends ?? SPOOL_FLUSH_AT_START.maxSends,
+      controlApiUrl,
+      controlReachable: controlApiUrl
+        ? () =>
+            options.controlReachable
+              ? options.controlReachable(controlApiUrl)
+              : isControlApiReachable(controlApiUrl, CONTROL_HEALTH_TIMEOUT_MS)
+        : undefined,
+    });
   } catch {
     return undefined;
   }
