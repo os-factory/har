@@ -15,6 +15,15 @@ import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
 import { AGENT_ENV_TEMPLATE_VARS, findUnsubstitutedTemplateVars } from '../runtime/agent-env';
 import { LEGACY_MACHINERY_FILES } from './migrations';
+import {
+  describeRequirements,
+  nodeInstallRemedy,
+  NodeToolchainChoice,
+  planNodeToolchain,
+  PlanNodeToolchainOptions,
+  unmetNodeRequirements,
+} from './node-toolchain';
+import { findPathNode, probeNodeVersion } from '../utils/node-installs';
 
 /**
  * `har env doctor` — harness contract validation (#232).
@@ -37,7 +46,8 @@ export type DoctorCheckId =
   | 'hooks'
   | 'retired-machinery'
   | 'ejected-runtime'
-  | 'factory-lines';
+  | 'factory-lines'
+  | 'node-toolchain';
 
 export type DoctorContract = '1.0' | 'pre-1.0' | 'none';
 
@@ -57,6 +67,33 @@ export interface DoctorCheck {
   id: DoctorCheckId;
   label: string;
   status: 'pass' | 'warn' | 'fail' | 'skip';
+  /** Informational lines (not findings), e.g. the resolved Node constraint. */
+  details?: string[];
+}
+
+/** What the node-toolchain check resolved (same data on CLI --json and MCP). */
+export interface DoctorNodeToolchain {
+  /** Combined constraint, e.g. `>=20 (package.json engines.node) and >=22.23.4 (docs/package.json engines.node)`. */
+  constraint: string;
+  requirements: { source: string; field: string; range: string }[];
+  ignored: { source: string; value: string; reason: string }[];
+  pathNode: { nodeBin: string; version: string | null } | null;
+  /** How the next launch resolves Node. */
+  choice: NodeToolchainChoice;
+  /** The Node the next launch would pin. */
+  nextLaunch: { version: string | null; nodeBin: string; source: string } | null;
+  slots: {
+    agentId: number;
+    envFile: string;
+    nodeBin: string;
+    version: string | null;
+    /**
+     * The `node` stage commands actually resolve from the env file's PATH,
+     * when it is a different binary than NODE_BIN.
+     */
+    pathNode?: { nodeBin: string; version: string | null };
+    satisfies: boolean;
+  }[];
 }
 
 export interface DoctorReport {
@@ -71,6 +108,13 @@ export interface DoctorReport {
   contract: DoctorContract;
   checks: DoctorCheck[];
   findings: DoctorFinding[];
+  /** Present when the harness declares a Node requirement (engines/.nvmrc/…). */
+  nodeToolchain?: DoctorNodeToolchain;
+}
+
+export interface DoctorOptions {
+  /** Node discovery seam (env/HOME/PATH node) for the node-toolchain check — tests. */
+  node?: PlanNodeToolchainOptions;
 }
 
 /**
@@ -109,6 +153,7 @@ const CHECK_LABELS: Record<DoctorCheckId, string> = {
   'retired-machinery': 'no references to retired runtime machinery',
   'ejected-runtime': 'ejected runtime (user-owned)',
   'factory-lines': 'factory lines stay off verify',
+  'node-toolchain': 'Node toolchain satisfies engines',
 };
 
 /** Legacy helper functions whose presence marks a pre-1.0 harness.env. */
@@ -156,7 +201,7 @@ function checkStatus(findings: DoctorFinding[], id: DoctorCheckId): DoctorCheck 
   return { id, label: CHECK_LABELS[id], status: 'pass' };
 }
 
-export function runDoctor(repoPath: string): DoctorReport {
+export function runDoctor(repoPath: string, options: DoctorOptions = {}): DoctorReport {
   const harnessDir = getHarnessDir(repoPath);
   const findings: DoctorFinding[] = [];
   const skipped = new Set<DoctorCheckId>();
@@ -558,16 +603,165 @@ export function runDoctor(repoPath: string): DoctorReport {
     }
   }
 
-  const checks = (Object.keys(CHECK_LABELS) as DoctorCheckId[]).map((id) =>
+  // 13. Node toolchain vs the harness's declared Node requirements.
+  const nodeToolchain = checkNodeToolchain(repoPath, findings, options.node ?? {});
+  if (!nodeToolchain) skipped.add('node-toolchain');
+
+  const checks: DoctorCheck[] = (Object.keys(CHECK_LABELS) as DoctorCheckId[]).map((id) =>
     skipped.has(id) ? { id, label: CHECK_LABELS[id], status: 'skip' as const } : checkStatus(findings, id),
   );
+  if (nodeToolchain) {
+    const check = checks.find((c) => c.id === 'node-toolchain');
+    if (check) check.details = nodeToolchainDetails(nodeToolchain);
+  }
 
   return {
     ok: !findings.some((f) => f.severity === 'error'),
     contract,
     checks,
     findings,
+    ...(nodeToolchain ? { nodeToolchain } : {}),
   };
+}
+
+/** Unquote a `KEY=value` line written by quoteEnvValue (single-quote style). */
+function readEnvFileValue(envFile: string, key: string): string | null {
+  let content: string;
+  try {
+    content = fs.readFileSync(envFile, 'utf8');
+  } catch {
+    return null;
+  }
+  let value: string | null = null;
+  for (const line of content.split('\n')) {
+    const m = line.match(new RegExp(`^(?:export\\s+)?${key}=(.*)$`));
+    if (!m) continue;
+    let raw = m[1].trim();
+    if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) {
+      raw = raw.slice(1, -1).replace(/'\\''/g, "'");
+    } else if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+      raw = raw.slice(1, -1);
+    }
+    value = raw; // last assignment wins, as when sourced
+  }
+  return value;
+}
+
+function sameFile(a: string, b: string): boolean {
+  try {
+    return fs.realpathSync(a) === fs.realpathSync(b);
+  } catch {
+    return a === b;
+  }
+}
+
+function checkNodeToolchain(
+  repoPath: string,
+  findings: DoctorFinding[],
+  options: PlanNodeToolchainOptions,
+): DoctorNodeToolchain | null {
+  const plan = planNodeToolchain(repoPath, options);
+  const reqs = plan.requirements.requirements;
+  if (reqs.length === 0) return null;
+  const constraint = describeRequirements(reqs);
+
+  if (plan.choice === 'unsatisfied') {
+    findings.push({
+      check: 'node-toolchain',
+      severity: 'warning',
+      message: plan.summary,
+      remedy: plan.remedy,
+    });
+  }
+
+  const pinned = plan.choice === 'pinned' || plan.choice === 'path' ? plan.node : null;
+  const slots: DoctorNodeToolchain['slots'] = [];
+  for (const entry of listSlotRegistryEntries(repoPath)) {
+    if (entry.status === 'completed' || !entry.workDir) continue;
+    const envFile = path.join(entry.workDir, `.env.agent.${entry.agentId}`);
+    const nodeBin = readEnvFileValue(envFile, 'NODE_BIN');
+    if (!nodeBin || !path.isAbsolute(nodeBin)) continue;
+    const version = probeNodeVersion(nodeBin);
+    const unmet = version ? unmetNodeRequirements(version, reqs) : reqs;
+    // Stage commands run a bare `node` off the env file's PATH, not NODE_BIN:
+    // a hand-edited env file can pin one and still run the other.
+    const envPath = readEnvFileValue(envFile, 'PATH');
+    const pathBin = envPath ? findPathNode({ PATH: envPath }) : null;
+    const stageNode =
+      pathBin && !sameFile(pathBin, nodeBin) ? { nodeBin: pathBin, version: probeNodeVersion(pathBin) } : null;
+    const stageUnmet = stageNode
+      ? stageNode.version
+        ? unmetNodeRequirements(stageNode.version, reqs)
+        : reqs
+      : [];
+    slots.push({
+      agentId: entry.agentId,
+      envFile,
+      nodeBin,
+      version,
+      ...(stageNode ? { pathNode: stageNode } : {}),
+      satisfies: unmet.length === 0 && stageUnmet.length === 0,
+    });
+    if (unmet.length === 0 && stageUnmet.length === 0) continue;
+    const envRel = path.relative(repoPath, envFile) || envFile;
+    const edit =
+      pinned && pinned.source !== 'path'
+        ? `, or edit ${envFile}: set NODE_BIN=${pinned.nodeBin}, NPM_BIN=${path.join(pinned.binDir, 'npm')} and prepend ${pinned.binDir}: to PATH`
+        : pinned
+          ? `, or edit ${envFile}: set NODE_BIN=${pinned.nodeBin}`
+          : '';
+    const message =
+      unmet.length > 0
+        ? `Slot ${entry.agentId} pins node ${version ?? `of unknown version (${nodeBin})`}, which does not satisfy ${describeRequirements(unmet)}`
+        : `Slot ${entry.agentId} pins NODE_BIN ${version ?? nodeBin}, but its PATH resolves \`node\` to ${stageNode?.version ?? 'an unknown version'} (${stageNode?.nodeBin}), which does not satisfy ${describeRequirements(stageUnmet)} — stage commands run that one`;
+    findings.push({
+      check: 'node-toolchain',
+      severity: 'warning',
+      file: envRel.startsWith('..') ? envFile : envRel,
+      message,
+      remedy: pinned
+        ? `Relaunch the slot (\`har env complete ${entry.agentId}\` / \`teardown\`, then \`har env launch ${entry.agentId}\`) so it pins ${pinned.version ?? pinned.nodeBin}${edit}`
+        : nodeInstallRemedy(reqs),
+    });
+  }
+
+  return {
+    constraint,
+    requirements: reqs.map((r) => ({ source: r.source, field: r.field, range: r.range })),
+    ignored: plan.requirements.ignored,
+    pathNode: plan.pathNode,
+    choice: plan.choice,
+    nextLaunch: plan.node ? { version: plan.node.version, nodeBin: plan.node.nodeBin, source: plan.node.source } : null,
+    slots,
+  };
+}
+
+function nodeToolchainDetails(node: DoctorNodeToolchain): string[] {
+  const lines = [`constraint: ${node.constraint}`];
+  for (const ignored of node.ignored) {
+    lines.push(`ignored: ${ignored.source} "${ignored.value}" (${ignored.reason})`);
+  }
+  lines.push(
+    node.pathNode
+      ? `PATH node: ${node.pathNode.version ?? 'unknown version'} (${node.pathNode.nodeBin})`
+      : 'PATH node: none',
+  );
+  if (node.nextLaunch && node.choice !== 'unsatisfied') {
+    lines.push(
+      `next launch pins: ${node.nextLaunch.version ?? 'unknown version'} (${node.nextLaunch.source}, ${node.nextLaunch.nodeBin})`,
+    );
+  } else {
+    lines.push('next launch pins: nothing satisfies — keeps the PATH node');
+  }
+  for (const slot of node.slots) {
+    const onPath = slot.pathNode
+      ? `; PATH node ${slot.pathNode.version ?? 'unknown'} (${slot.pathNode.nodeBin})`
+      : '';
+    lines.push(
+      `slot ${slot.agentId}: node ${slot.version ?? 'unknown'} ${slot.satisfies ? '✓' : '✗'} (${slot.nodeBin}${onPath})`,
+    );
+  }
+  return lines;
 }
 
 const STATUS_SYMBOL: Record<DoctorCheck['status'], string> = {
@@ -582,6 +776,7 @@ export function formatDoctorReport(report: DoctorReport): string {
   const lines: string[] = [];
   for (const check of report.checks) {
     lines.push(`${STATUS_SYMBOL[check.status]} ${check.label}`);
+    for (const detail of check.details ?? []) lines.push(`    · ${detail}`);
     for (const finding of report.findings.filter((f) => f.check === check.id)) {
       const where = finding.file
         ? ` [${finding.file}${finding.line !== undefined ? `:${finding.line}` : ''}]`

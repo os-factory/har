@@ -275,7 +275,10 @@ har env runs get <uuid> [--json]
 behind `--json` is the source, the text view is rendered on top, and MCP
 `har_get_status` returns the same object. Status is a pure read — it writes no
 run records. `run-stage` executes any stage registered in `.har/stages.json`
-(the CLI twin of MCP `har_run_stage`); `artifacts` is the twin of
+(the CLI twin of MCP `har_run_stage`). On a launched slot it runs a project
+stage the way verify does: from the slot's work dir with `.env.agent.<id>`
+sourced (pinned Node, ports) and `WORK_DIR` / `AGENT_ID` / `ENV_FILE` exported.
+`artifacts` is the twin of
 `har_list_artifacts`.
 
 `cleanup` scans every repo in `~/.har/repos.json` (plus `--repo` when set),

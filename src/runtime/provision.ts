@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { planNodeToolchain } from '../harness/node-toolchain';
+import { NodeDiscoveryOptions } from '../utils/node-installs';
 import { realSystemOps, SystemOps } from './exec';
 import {
   declaredNodePackageManager,
@@ -45,6 +47,11 @@ export interface ProvisionOptions {
   /** Parsed harness.env values (HARNESS_ECOSYSTEM, HARNESS_INSTALL_CMD, …). */
   harnessEnv?: HarnessEnv;
   ops?: SystemOps;
+  /**
+   * Where to look for installed Node runtimes when the PATH node does not
+   * satisfy the harness's Node requirements (defaults to process.env / HOME).
+   */
+  nodeDiscovery?: NodeDiscoveryOptions;
   /** Log sink; defaults to stderr with the agent prefix the script used. */
   log?: (message: string) => void;
 }
@@ -232,8 +239,10 @@ class Provisioner {
   private readonly env: HarnessEnv;
   private readonly ops: SystemOps;
   private readonly logFn: (message: string) => void;
+  private readonly nodeDiscovery: NodeDiscoveryOptions;
 
   constructor(options: ProvisionOptions) {
+    this.nodeDiscovery = options.nodeDiscovery ?? {};
     this.workDir = options.workDir;
     this.envFile = options.envFile;
     this.worktreeDir = options.worktreeDir ?? '';
@@ -260,9 +269,10 @@ class Provisioner {
     fs.appendFileSync(this.envFile, `${key}=${quoteEnvValue(value)}\n`);
   }
 
-  private appendPathPrefix(prefix: string): void {
-    if (!prefix || !fs.existsSync(prefix)) return;
-    this.appendEnv('PATH', `${prefix}:${process.env.PATH ?? ''}`);
+  private appendPathPrefix(...prefixes: string[]): void {
+    const existing = prefixes.filter((p) => p && fs.existsSync(p));
+    if (existing.length === 0) return;
+    this.appendEnv('PATH', `${existing.join(':')}:${process.env.PATH ?? ''}`);
   }
 
   /** Extra process env for subprocesses (venv activation is PATH + VIRTUAL_ENV). */
@@ -298,31 +308,56 @@ class Provisioner {
       );
     }
 
-    if (!(await this.runInstallCmd(dir))) {
+    // Pin a Node that satisfies the harness's engines/.nvmrc when the PATH one
+    // does not — different projects on one machine need different Nodes.
+    const pathNode = this.ops.which('node');
+    const plan = planNodeToolchain(dir, { ...this.nodeDiscovery, pathNodeBin: pathNode });
+    let pinnedBinDir = '';
+    if (plan.choice === 'pinned' && plan.node) {
+      pinnedBinDir = plan.node.source === 'path' ? '' : plan.node.binDir;
+      this.log(plan.summary);
+    } else if (plan.choice === 'unsatisfied') {
+      this.log(`WARNING: ${plan.summary}`);
+      if (plan.remedy) this.log(`  → ${plan.remedy}`);
+    }
+    const installEnv: NodeJS.ProcessEnv = pinnedBinDir
+      ? { PATH: `${pinnedBinDir}:${process.env.PATH ?? ''}` }
+      : {};
+
+    if (!(await this.runInstallCmd(dir, installEnv))) {
       this.log(`Installing Node dependencies with ${manager}...`);
-      const code = await nodeInstall(dir, manager, declared, this.ops);
+      const code = await nodeInstall(
+        dir,
+        manager,
+        declared,
+        this.ops,
+        pinnedBinDir ? this.subEnv(installEnv) : undefined,
+      );
       if (code !== 0) {
         throw new ProvisionError(`${manager} install exited with code ${code}`);
       }
     }
 
     let nodeBin = 'node';
-    const nodePath = this.ops.which('node');
-    if (nodePath) {
-      nodeBin = nodePath;
+    if (pinnedBinDir && plan.node) {
+      nodeBin = plan.node.nodeBin;
+    } else if (pathNode) {
+      nodeBin = pathNode;
     } else if (manager === 'bun') {
       // bun-only machine: bun runs the `node -e` snippets verify relies on.
       nodeBin = this.ops.which('bun') ?? 'bun';
     }
 
-    const npmBin = this.ops.which(manager) ?? manager;
+    const pinnedManager = pinnedBinDir ? path.join(pinnedBinDir, manager) : '';
+    const npmBin =
+      pinnedManager && fs.existsSync(pinnedManager) ? pinnedManager : (this.ops.which(manager) ?? manager);
 
     this.appendEnv('HARNESS_ECOSYSTEM', 'node');
     this.appendEnv('NODE_BIN', nodeBin);
     this.appendEnv('NPM_BIN', npmBin);
     this.appendEnv('HARNESS_NODE_PACKAGE_MANAGER', manager);
     this.appendEnv('HARNESS_PKG_EXEC', pkgExec(manager, this.env, this.ops));
-    this.appendPathPrefix(path.join(dir, 'node_modules', '.bin'));
+    this.appendPathPrefix(path.join(dir, 'node_modules', '.bin'), pinnedBinDir);
   }
 
   // ── python ──
