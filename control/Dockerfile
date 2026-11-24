@@ -88,6 +88,7 @@ RUN set -eux; \
   test -f node_modules/.prisma/client/index.js
 RUN mkdir -p /data
 VOLUME ["/data"]
-EXPOSE 3847
+# 3847: UI, API and OTLP/HTTP (/api/otel). 4317: OTLP/gRPC.
+EXPOSE 3847 4317
 # `prisma db push` creates the SQLite schema on first boot (idempotent after).
 CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]

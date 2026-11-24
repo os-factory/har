@@ -128,6 +128,7 @@ fallback.)
 | `HAR_CONTROL_IMAGE` | Override Mission Control image |
 | `HAR_CONTROL_IMAGE_TAG` | Override image version |
 | `HAR_CONTROL_BUILD` | Build Mission Control from source |
+| `HAR_CONTROL_OTLP_GRPC_PORT` | Host port for Mission Control's OTLP/gRPC receiver (default `4317`; `0` or `off` to not publish it) |
 | `HAR_CLOUD_API_KEY` | Hosted synchronization credential |
 
 Treat credentials as shell or secret-manager values, never as committed

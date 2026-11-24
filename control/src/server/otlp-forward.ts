@@ -403,11 +403,24 @@ function drainSoon(): void {
  * contained here.
  */
 export function scheduleOtlpForward(signal: OtlpSignal, body: Buffer, request: Request): void {
-  const contentType = request.headers.get('content-type');
-  const contentEncoding = request.headers.get('content-encoding');
+  scheduleOtlpForwardBody(signal, body, {
+    contentType: request.headers.get('content-type'),
+    contentEncoding: request.headers.get('content-encoding'),
+  });
+}
+
+/**
+ * `scheduleOtlpForward` for a body that did not arrive as an HTTP request (the
+ * OTLP/gRPC receiver passes the decoded Export request as OTLP/HTTP protobuf).
+ */
+export function scheduleOtlpForwardBody(
+  signal: OtlpSignal,
+  body: Buffer,
+  headers: { contentType: string | null; contentEncoding?: string | null },
+): void {
   setImmediate(() => {
     try {
-      if (enqueueOtlpForward(signal, body, { contentType, contentEncoding }) > 0) drainSoon();
+      if (enqueueOtlpForward(signal, body, headers) > 0) drainSoon();
     } catch (err) {
       console.warn(`[otlp-forward] ${err instanceof Error ? err.message : String(err)}`);
     }

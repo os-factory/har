@@ -326,6 +326,10 @@ export const ControlUpOutputSchema = z.object({
   synced: z.number().int(),
   failed: z.number().int(),
   apiReady: z.boolean(),
+  /** OTLP/HTTP base URL (`<apiUrl>/api/otel`). */
+  otlpHttpUrl: z.string().optional(),
+  /** OTLP/gRPC endpoint, absent when the port is not published. */
+  otlpGrpcUrl: z.string().optional(),
 });
 
 export { StageResultSchema };
