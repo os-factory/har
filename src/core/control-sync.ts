@@ -112,6 +112,14 @@ export interface ControlSyncOptions {
   force?: boolean;
   /** Ignore the portal watermark and resend the complete persisted payload. */
   full?: boolean;
+  /**
+   * False when Mission Control is known to be disabled or unreachable: the
+   * Mission Control leg is skipped and the HQ leg sends what it reads locally
+   * (runs, validations, work records, bindings, slots), leaving out what only
+   * Mission Control stores. Unset: the Mission Control leg runs, and a failure
+   * there is checked against its health endpoint.
+   */
+  controlReachable?: boolean;
 }
 
 export interface SyncRepoResult {
@@ -634,7 +642,8 @@ function readEnvironmentStatusForSync(
 async function buildPortalPayload(
   repoPath: string,
   sourcePaths: string[],
-  controlApiUrl: string,
+  /** Null when Mission Control is not reachable: no usage or events are read. */
+  controlApiUrl: string | null,
   since: string | null,
   full = false,
   portal?: PortalTarget,
@@ -667,13 +676,9 @@ async function buildPortalPayload(
   // Attribute runs/validations to the syncing member so the portal can resolve
   // a real user FK instead of the lossy (repo, agentId) derivation.
   const userEmail = resolvePortalUserEmail(portal);
-  const { usage: collected, events, maxSyncedAt, failures, truncated } = await collectPortalTelemetry(
-    repoPath,
-    status.slots,
-    controlApiUrl,
-    since,
-    portal,
-  );
+  const { usage: collected, events, maxSyncedAt, failures, truncated } = controlApiUrl
+    ? await collectPortalTelemetry(repoPath, status.slots, controlApiUrl, since, portal)
+    : { usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] };
   // A session breaking I1/I2 is left out whole: the portal replaces only the
   // sessions a sync carries, so its stored rows stay as they are.
   // The check reads every repository's usage in Mission Control: ask for it
@@ -688,6 +693,7 @@ async function buildPortalPayload(
 
   if (
     full &&
+    controlApiUrl &&
     isTelemetryEnabled() &&
     failures.length === 0 &&
     usage.length === 0 &&
@@ -806,6 +812,8 @@ export async function syncReposWithControl(options: {
   dryRun?: boolean;
   cloud?: boolean;
   full?: boolean;
+  /** See `ControlSyncOptions.controlReachable`. */
+  controlReachable?: boolean;
 }): Promise<{
   synced: number;
   failed: number;
@@ -828,6 +836,7 @@ export async function syncReposWithControl(options: {
             dryRun: options.dryRun,
             cloud: options.cloud,
             full: options.full,
+            controlReachable: options.controlReachable,
           }),
         EXPLICIT_SYNC_TIMEOUT_MS,
         'control sync',
@@ -862,20 +871,46 @@ function selectedRepos(discovered: string[]): string[] {
   }).toSync;
 }
 
+/**
+ * Sync every selected repo. With Mission Control disabled or unreachable, the
+ * repos connected to HAR HQ are still synced with HQ (from local data), with
+ * one stderr line saying so; the others are left alone, as before.
+ * `repoPaths` lists the repos this call synced, so a caller can skip them.
+ */
 export async function syncAllKnownReposWithControl(options?: {
   apiUrl?: string;
   cwd?: string;
-}): Promise<{ synced: number; failed: number }> {
-  if (!isControlEnabled()) return { synced: 0, failed: 0 };
-
+}): Promise<{ synced: number; failed: number; repoPaths: string[] }> {
   const apiUrl = options?.apiUrl ?? getControlApiUrl();
-  if (!(await isControlApiReachable(apiUrl))) {
-    return { synced: 0, failed: 0 };
+  const controlReachable = isControlEnabled() && (await isControlApiReachable(apiUrl));
+  const selected = selectedRepos(await discoverHarRepos({ apiUrl, cwd: options?.cwd }));
+
+  if (controlReachable) {
+    const { synced, failed } = await syncReposWithControl({ repoPaths: selected, apiUrl });
+    return { synced, failed, repoPaths: selected };
   }
 
-  const repoPaths = selectedRepos(await discoverHarRepos({ apiUrl, cwd: options?.cwd }));
-  const { synced, failed } = await syncReposWithControl({ repoPaths, apiUrl });
-  return { synced, failed };
+  const connected = selected.filter((repoPath) => portalTargetForSync(repoPath) !== null);
+  if (connected.length === 0) return { synced: 0, failed: 0, repoPaths: [] };
+  const subject =
+    connected.length === 1 ? path.basename(connected[0]) : `${connected.length} repositories`;
+  process.stderr.write(
+    `${describeHqOnlySync(subject, apiUrl, portalTargetForSync(connected[0]))}\n`,
+  );
+  const { synced, failed, results } = await syncReposWithControl({
+    repoPaths: connected,
+    apiUrl,
+    controlReachable: false,
+  });
+  for (const result of results) {
+    if (!result.ok) {
+      process.stderr.write(
+        `[har control] HQ sync of ${path.basename(result.repoPath)} failed: ${result.error} — ` +
+          'run `har control sync` to retry\n',
+      );
+    }
+  }
+  return { synced, failed, repoPaths: connected };
 }
 
 export async function registerRepoWithControl(
@@ -966,7 +1001,8 @@ async function syncRepoWithLocalControl(
 
 async function syncRepoWithPortal(
   options: ControlSyncOptions & { repoPath: string; workspacePath?: string },
-  controlApiUrl: string,
+  /** Null when Mission Control is not reachable: what only it stores is left out. */
+  controlApiUrl: string | null,
   portal: PortalTarget,
 ): Promise<string[]> {
   if (!isRepoPortalSyncEnabled(options.repoPath)) return [];
@@ -986,14 +1022,14 @@ async function syncRepoWithPortal(
   }
   const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
   const loadHeldUnits = async (): Promise<HeldUsageUnits> =>
-    dryRun ? new Map() : heldUsageUnits(controlApiUrl, repoPath);
+    dryRun || !controlApiUrl ? new Map() : heldUsageUnits(controlApiUrl, repoPath);
   const { syncBody, held, heldUnits, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
     await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, loadHeldUnits);
   // Verification runs Mission Control stored from verification traces: an
   // optional top-level collection of the first /api/sync body, own watermark.
   // A dry run reads nothing new from Mission Control for it.
   const verificationTarget = verificationRunsWatermarkTarget(portal);
-  const verification = isTelemetryEnabled() && !dryRun
+  const verification = controlApiUrl && isTelemetryEnabled() && !dryRun
     ? await fetchPersistedVerificationRuns(
         repoPath,
         controlApiUrl,
@@ -1068,9 +1104,11 @@ async function syncRepoWithPortal(
     warnings.push(describeTruncatedReads(repoPath, verification.truncated));
   }
 
-  warnings.push(
-    ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),
-  );
+  if (controlApiUrl) {
+    warnings.push(
+      ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),
+    );
+  }
   for (const message of warnings) warn(message);
   return warnings;
 }
@@ -1151,6 +1189,42 @@ async function syncTrajectoryWithPortal(
   ];
 }
 
+/**
+ * What the HQ leg reads from Mission Control and so leaves out while it is
+ * down, as a phrase (null when this sync would not send any of it).
+ */
+function controlOnlyChannelsNote(portal: PortalTarget): string | null {
+  const channels: string[] = [];
+  if (isTelemetryEnabled()) channels.push('agent usage', 'verification runs');
+  if (isPortalTrajectoryEnabledForTarget(portal) || (isTelemetryEnabled() && getTelemetrySignals().traces)) {
+    channels.push('trajectory');
+  }
+  if (channels.length === 0) return null;
+  const list =
+    channels.length === 1
+      ? channels[0]
+      : `${channels.slice(0, -1).join(', ')} and ${channels[channels.length - 1]}`;
+  return `${list}, which ${channels.length === 1 ? 'is' : 'are'} read from Mission Control`;
+}
+
+/** The repo has an HQ connection it sends to (not attached-but-local-only). */
+function portalTargetForSync(repoPath: string): PortalTarget | null {
+  return isRepoPortalSyncEnabled(repoPath) ? resolvePortalTarget(repoPath) : null;
+}
+
+/** One line for an HQ-only sync: why Mission Control is skipped, and what HQ misses. */
+function describeHqOnlySync(subject: string, apiUrl: string, portal: PortalTarget | null): string {
+  const why = isControlEnabled()
+    ? `Mission Control is not reachable at ${apiUrl}`
+    : 'Mission Control is disabled (HAR_CONTROL_DISABLED)';
+  const missing = portal ? controlOnlyChannelsNote(portal) : null;
+  const later = isControlEnabled() ? ' — run `har control up` to send them' : '';
+  return (
+    `[har control] ${why}: syncing ${subject} with HAR HQ only` +
+    (missing ? `, without ${missing}${later}` : '')
+  );
+}
+
 export async function syncRepoWithControl(
   options: ControlSyncOptions,
 ): Promise<{ warnings: string[] }> {
@@ -1203,11 +1277,13 @@ async function syncRepoWithControlOnce(
   // bindings) must not also cost the repo its HQ sync: HQ still gets its runs
   // and slots, and the error is reported once both legs ran.
   let localError: unknown;
-  try {
-    await syncRepoWithLocalControl({ ...options, repoPath, workspacePath, apiUrl });
-  } catch (err) {
-    if (err instanceof SyncDeadlineError) throw err;
-    localError = err;
+  if (options.controlReachable !== false) {
+    try {
+      await syncRepoWithLocalControl({ ...options, repoPath, workspacePath, apiUrl });
+    } catch (err) {
+      if (err instanceof SyncDeadlineError) throw err;
+      localError = err;
+    }
   }
 
   const portalSyncEnabled = isRepoPortalSyncEnabled(repoPath);
@@ -1221,9 +1297,19 @@ async function syncRepoWithControlOnce(
     );
   }
   let portalError: unknown;
+  // HQ reads usage, verification runs and trajectory from Mission Control.
+  // When it is down, the HQ leg still sends everything read locally, instead
+  // of a read failure per channel.
+  const controlReachable =
+    options.controlReachable ??
+    (localError === undefined || !portal || (await isControlApiReachable(apiUrl)));
   if (portal) {
     try {
-      warnings = await syncRepoWithPortal({ ...options, repoPath, workspacePath }, apiUrl, portal);
+      warnings = await syncRepoWithPortal(
+        { ...options, repoPath, workspacePath },
+        controlReachable ? apiUrl : null,
+        portal,
+      );
     } catch (err) {
       if (err instanceof SyncDeadlineError) throw err;
       portalError = err;
@@ -1235,9 +1321,12 @@ async function syncRepoWithControlOnce(
     ...(portalError !== undefined ? [`HQ: ${errorMessage(portalError)}`] : []),
   ];
   if (failures.length > 0) {
+    const missing = portal && !controlReachable ? controlOnlyChannelsNote(portal) : null;
     const landed =
       portal && portalError === undefined
-        ? ' (HQ sync completed)'
+        ? missing
+          ? ` (HQ sync completed without ${missing})`
+          : ' (HQ sync completed)'
         : localError === undefined && portal
           ? ' (Mission Control sync completed)'
           : '';
@@ -1514,7 +1603,7 @@ const EXPLICIT_SYNC_TIMEOUT_MS = 120_000;
  * fetch — a fire-and-forget sync is silently dropped.
  */
 export async function syncRepoWithControlAsync(repoPath: string): Promise<void> {
-  if (process.env.HAR_CONTROL_DISABLED === 'true' || process.env.NODE_ENV === 'test') return;
+  if (process.env.NODE_ENV === 'test') return;
 
   const verbose = process.env.HAR_CONTROL_VERBOSE === 'true';
   const canonical = canonicalizeControlRepoPath(repoPath);
@@ -1531,10 +1620,22 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
     }
 
     const apiUrl = getControlApiUrl();
-    if (!(await isControlApiReachable(apiUrl))) {
-      if (verbose) {
-        process.stderr.write(`[har control] sync skipped: not reachable at ${apiUrl}\n`);
+    const controlEnabled = isControlEnabled();
+    if (!controlEnabled || !(await isControlApiReachable(apiUrl))) {
+      // HQ does not need Mission Control: a connected repo still syncs with it.
+      const portal = portalTargetForSync(canonical);
+      if (!portal) {
+        if (verbose && controlEnabled) {
+          process.stderr.write(`[har control] sync skipped: not reachable at ${apiUrl}\n`);
+        }
+        return;
       }
+      process.stderr.write(`${describeHqOnlySync(path.basename(canonical), apiUrl, portal)}\n`);
+      await runWithDeadline(
+        () => syncRepoWithControl({ repoPath: canonical, controlReachable: false }),
+        SYNC_TIMEOUT_MS,
+        'control sync',
+      );
       return;
     }
     await runWithDeadline(

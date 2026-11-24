@@ -136,7 +136,7 @@ describe('unattended all-repos sync', () => {
       .filter(([url, init]) => String(url).endsWith('/api/repos') && init?.method === 'POST')
       .map(([, init]) => JSON.parse(String(init.body)).path);
     expect(registered).toEqual(['/repo/selected']);
-    expect(result).toEqual({ synced: 1, failed: 0 });
+    expect(result).toEqual({ synced: 1, failed: 0, repoPaths: ['/repo/selected'] });
   });
 });
 

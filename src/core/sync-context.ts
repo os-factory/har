@@ -27,10 +27,15 @@ export async function syncDirtyRepos(): Promise<void> {
   try {
     const { syncRepoWithControlAsync, syncAllKnownReposWithControl } =
       await import('./control-sync');
+    const { canonicalizeControlRepoPath } = await import('./control-repo-path');
+    // A repo the all-repos pass already synced is not sent again.
+    const done = new Set<string>();
     if (all) {
-      await syncAllKnownReposWithControl();
+      const result = await syncAllKnownReposWithControl();
+      for (const repo of result.repoPaths ?? []) done.add(repo);
     }
     for (const repo of repos) {
+      if (done.has(repo) || done.has(canonicalizeControlRepoPath(repo))) continue;
       await syncRepoWithControlAsync(repo);
     }
   } catch {

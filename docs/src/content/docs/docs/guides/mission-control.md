@@ -84,6 +84,15 @@ instead of continuing in the background. When Mission Control rejects part of a
 sync, HAR HQ still receives that repository, and the error is reported once both
 have run.
 
+HAR HQ does not need Mission Control. When Mission Control is disabled
+(`HAR_CONTROL_DISABLED=true`) or not running, a repository connected to HAR HQ
+still syncs with it, and the automatic sync says so on one `[har control]` line.
+That sync carries what HAR reads from the repository: runs, validations, work
+units, bindings and slots. Agent usage, verification runs and trajectory are read
+from Mission Control, so that sync leaves them out; what Mission Control has
+stored reaches HAR HQ with the first sync after `har control up`. A repository without a HAR HQ connection syncs nothing while Mission
+Control is down, as before.
+
 Sync reads local Claude Code and Codex transcripts. It remembers which workspace
 each transcript belongs to in `~/.har/cache/transcript-index.json`, so only new
 or changed transcripts are read again, and it re-sends a usage observation to
