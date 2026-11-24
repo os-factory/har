@@ -4,13 +4,14 @@ import { finishCommand } from '../finish-command';
 import {
   addLine,
   createLineBundle,
+  describeLine,
   getAllLineStatuses,
   getLineStatus,
-  listInstalledLineIds,
+  listLines,
   runLineGate,
+  type LineDescription,
   type LineStatus,
 } from '../../core/lines';
-import { listBundledLineIds, listLocalLineIds } from '../../harness/line-resolve';
 import { divider, error, header, info, success, warn } from '../../utils/logging';
 
 function handleLineCreate(argv: {
@@ -229,14 +230,106 @@ async function handleLineGate(argv: {
   }
 }
 
-function handleLineList(argv: { repo: string }): void {
-  const repoPath = path.resolve(argv.repo);
-  const installed = new Set(listInstalledLineIds(repoPath));
-  for (const id of listBundledLineIds()) {
-    console.log(`${id}\t(bundled)`);
+/** First sentence of a description, for one-line listings. */
+function firstSentence(text: string): string {
+  const match = /^(.+?[.!?])(\s|$)/s.exec(text.trim());
+  return (match ? match[1] : text.trim()).replace(/\s+/g, ' ');
+}
+
+function handleLineList(argv: { repo: string; json: boolean }): void {
+  const list = listLines(path.resolve(argv.repo));
+  if (argv.json) {
+    console.log(JSON.stringify(list, null, 2));
+    return;
   }
-  for (const id of listLocalLineIds(repoPath)) {
-    console.log(`${id}\t(local: .har/lines/${id})${installed.has(id) ? ' [installed]' : ''}`);
+
+  if (list.installed.length === 0) {
+    console.log('No factory line installed.');
+  } else {
+    console.log('Installed lines (never run by "har env verify" unless picked):');
+    for (const line of list.installed) {
+      if (line.unreadable) {
+        console.log(`  ✗ ${line.lineId}  unreadable — ${line.unreadable}`);
+        continue;
+      }
+      const progress = line.allGreen ? 'all stations green' : `next: ${line.nextStationId}`;
+      console.log(`  ${line.lineId}  ${line.title}  (${line.stationIds.join(' → ')}; ${progress})`);
+      if (line.description) console.log(`      ${firstSentence(line.description)}`);
+      if (line.runAll) console.log(`      run every station: ${line.runAll.command}`);
+    }
+  }
+
+  if (list.available.length > 0) {
+    console.log('');
+    console.log('Available to install (har line add <id>):');
+    for (const line of list.available) {
+      const where = line.source === 'local' ? `local: .har/lines/${line.lineId}` : 'bundled';
+      console.log(`  ${line.lineId}  (${where})`);
+    }
+  }
+
+  console.log('');
+  console.log(
+    list.installed.length > 0
+      ? 'What a line checks: har line describe <id>'
+      : 'Scaffold one: har line create <id>   •   Install one: har line add <spec>',
+  );
+}
+
+function renderDescription(line: LineDescription): void {
+  console.log(`${line.lineId} — ${line.title}`);
+  console.log(`Program: ${line.programPath}${line.source ? ` (source: ${line.source})` : ''}`);
+  if (line.description) {
+    console.log('');
+    console.log(line.description);
+  }
+
+  console.log('');
+  console.log('Stations (each one\'s gate includes every earlier station\'s stages):');
+  for (const station of line.stations) {
+    const marker = station.green ? '✓' : station.id === line.nextStationId ? '▶' : '·';
+    const gate = station.gateStageIds.length > 0 ? station.gateStageIds.join(', ') : 'no gate stages';
+    console.log(`  ${marker} ${station.id}  ${station.title}  — gate: ${gate}`);
+    if (station.description) console.log(`      ${station.description}`);
+  }
+
+  console.log('');
+  console.log('Gate stages:');
+  if (line.gateStages.length === 0) console.log('  none');
+  for (const stage of line.gateStages) {
+    const state = !stage.registered
+      ? 'not registered in .har/stages.json'
+      : `last run: ${stage.lastRunStatus ?? 'never'}`;
+    console.log(`  ${stage.id}  from ${stage.fromStation}  (${state})`);
+    if (stage.description) console.log(`      ${stage.description}`);
+  }
+
+  console.log('');
+  if (line.optInEnv) {
+    console.log(`Opt-in: the gate only runs when ${line.optInEnv}=1, or with --force (used below).`);
+  }
+  if (line.runAll) console.log(`Run every station: ${line.runAll.command}`);
+  console.log(`Run one station:   ${line.runStationCommand}`);
+  for (const warning of line.warnings) {
+    warn(`⚠ ${warning}`);
+  }
+}
+
+function handleLineDescribe(argv: { id?: string; repo: string; json: boolean }): Promise<void> | void {
+  if (!argv.id) {
+    error('Missing line id. Usage: har line describe <id>   (see: har line list)');
+    return finishCommand(1);
+  }
+  try {
+    const line = describeLine(path.resolve(argv.repo), argv.id);
+    if (argv.json) {
+      console.log(JSON.stringify(line, null, 2));
+      return;
+    }
+    renderDescription(line);
+  } catch (err: unknown) {
+    error((err as Error).message);
+    return finishCommand(1);
   }
 }
 
@@ -353,10 +446,28 @@ export const lineCommand = {
       )
       .command(
         'list',
-        'List lines available to this repository (bundled and local)',
-        (y: Argv) => y.option('repo', { type: 'string', default: '.', describe: 'Path to the repository' }),
-        (argv) => handleLineList({ repo: argv.repo as string }),
+        'List installed lines (what each covers, progress, how to run it) and lines available to install',
+        (y: Argv) =>
+          y
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' }),
+        (argv) => handleLineList({ repo: argv.repo as string, json: argv.json as boolean }),
       )
-      .demandCommand(1, 'Please specify a subcommand: create, add, status, gate, list'),
+      .command(
+        'describe [id]',
+        'Show what an installed line checks: description, stations, gate stages, and how to run it',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'string', describe: 'Line id (see har line list)' })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' }),
+        (argv) =>
+          handleLineDescribe({
+            id: argv.id as string | undefined,
+            repo: argv.repo as string,
+            json: argv.json as boolean,
+          }),
+      )
+      .demandCommand(1, 'Please specify a subcommand: create, add, status, gate, list, describe'),
   handler: () => {},
 };

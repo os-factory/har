@@ -78,7 +78,8 @@ export function installedLinesHint(repoPath: string): string | undefined {
   const noun = ids.length === 1 ? 'line' : 'lines';
   return (
     `${ids.length} factory ${noun} installed (${ids.join(', ')}) — not checked by verify. ` +
-    'Run one with: har line gate <station> --line <id>'
+    'See what each checks with: har line list / har line describe <id>; ' +
+    'run one with: har line gate <station> --line <id>'
   );
 }
 

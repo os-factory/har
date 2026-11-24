@@ -216,7 +216,9 @@ station, which covers every station, in the same slot. If any chosen line
 fails, verify fails, names the line and stage, and records a failed validation
 that `complete` will not reuse. Without a terminal (CI, agents, `--json`, MCP)
 nothing is asked: verify runs as before and prints a one-line hint (MCP:
-`linesHint`). `complete --verify` never asks.
+`linesHint`). An agent can then use `har line list` / `har line describe <id>`
+(MCP: `har_line_list`, `har_line_describe`) to decide whether a line covers its
+change, and run it with `har line gate`. `complete --verify` never asks.
 
 ### Doctor
 
@@ -301,7 +303,8 @@ har line create <id> [--stations S1,S2,S3] [--title <text>]
 har line add <id|./path|@org/pkg|github:org/repo> [--force]
 har line status [id] [--json]
 har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
-har line list
+har line list [--json]
+har line describe <id> [--json]
 ```
 
 A **factory line** is a program: an ordered set of stations plus a cumulative
@@ -317,6 +320,13 @@ long as it did before. Line gate stages run on demand:
 ```bash
 har line gate S2 --line my-line
 ```
+
+`har line list` shows each installed line's title, first sentence of its
+description, stations, progress and the command that runs every station, plus
+the lines available to install. `har line describe <id>` shows the whole
+program — description, stations, each gate stage with its description and
+last run — so you (or an agent) can decide whether a line covers your change
+before running it.
 
 You can also opt in from an interactive `har env verify`: once the verify
 stages pass it offers the installed lines (see

@@ -330,6 +330,15 @@ export const LineStatusInputSchema = z.object({
   line: z.string().min(1).optional().describe('Line id (default: every installed line)'),
 });
 
+export const LineListInputSchema = z.object({
+  repo: z.string().default('.'),
+});
+
+export const LineDescribeInputSchema = z.object({
+  repo: z.string().default('.'),
+  line: z.string().min(1).describe('Installed line id (see har_line_list)'),
+});
+
 export const RunLineGateInputSchema = z.object({
   repo: z.string().default('.'),
   station: z.string().min(1).describe('Station id whose cumulative gate should run'),

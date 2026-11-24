@@ -2,7 +2,7 @@ import * as path from 'path';
 import { applyLine, readInstalledLineProgram, type ApplyLineOptions, type ApplyLineResult } from '../harness/lines';
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
 import { readLineLedger } from '../harness/line-ledger';
-import { listLocalLineIds } from '../harness/line-resolve';
+import { listBundledLineIds, listLocalLineIds } from '../harness/line-resolve';
 import { readStageRegistry } from '../harness/stages';
 import type { LineGateStage, LineProgram, LineStation } from '../harness/schema';
 import { listSlotRegistryEntries } from './slot-registry';
@@ -330,4 +330,200 @@ export function addLine(
   options: ApplyLineOptions = {},
 ): ApplyLineResult {
   return applyLine(repoPath, spec, options);
+}
+
+/** How to run every station of a line at once: its last station's cumulative gate. */
+export interface LineRunAll {
+  station: string;
+  /** True when the program declares an opt-in env var; running it on purpose bypasses that. */
+  force: boolean;
+  command: string;
+}
+
+function lineRunAll(lineId: string, program: LineProgram): LineRunAll | undefined {
+  const last = program.stations[program.stations.length - 1];
+  if (!last) return undefined;
+  const force = program.gate.optInEnv !== null;
+  return {
+    station: last.id,
+    force,
+    command: `har line gate ${last.id} --line ${lineId}${force ? ' --force' : ''}`,
+  };
+}
+
+/** One installed line in `har line list` / `har_line_list`. */
+export interface LineListEntry {
+  lineId: string;
+  title: string;
+  description?: string;
+  stationIds: string[];
+  /** First station that is not green; undefined when every station is green. */
+  nextStationId?: string;
+  allGreen: boolean;
+  optInEnv: string | null;
+  runAll?: LineRunAll;
+  /** Set when the line's program cannot be read; nothing else about it is known. */
+  unreadable?: string;
+}
+
+/** A line this repo could install but has not. */
+export interface AvailableLine {
+  lineId: string;
+  source: 'bundled' | 'local';
+}
+
+export interface LineList {
+  installed: LineListEntry[];
+  available: AvailableLine[];
+}
+
+function safeLedgerIds(repoPath: string): string[] {
+  return readLineLedger(repoPath)?.lines.map((l) => l.id) ?? [];
+}
+
+/**
+ * Installed lines with what an agent needs to decide whether to run one, plus
+ * lines available to install. Never throws on a broken line: it is listed as
+ * `unreadable` so one bad file cannot hide the others.
+ */
+export function listLines(repoPath: string): LineList {
+  const resolved = path.resolve(repoPath);
+  const ledgerIds = new Set(safeLedgerIds(resolved));
+  const localIds = listLocalLineIds(resolved);
+  const installed: LineListEntry[] = [];
+  const available: AvailableLine[] = [];
+
+  for (const lineId of [...new Set([...ledgerIds, ...localIds])].sort()) {
+    let program: LineProgram | null;
+    try {
+      program = readInstalledLineProgram(resolved, lineId);
+    } catch (err: unknown) {
+      installed.push(unreadableEntry(lineId, `cannot read line.json: ${(err as Error).message}`));
+      continue;
+    }
+    if (!program) {
+      if (ledgerIds.has(lineId)) {
+        installed.push(unreadableEntry(lineId, 'line.json is missing or invalid'));
+      } else {
+        available.push({ lineId, source: 'local' });
+      }
+      continue;
+    }
+    let nextStationId: string | undefined;
+    try {
+      nextStationId = getLineStatus(resolved, lineId).nextStationId;
+    } catch (err: unknown) {
+      installed.push(unreadableEntry(lineId, (err as Error).message));
+      continue;
+    }
+    installed.push({
+      lineId,
+      title: program.title,
+      description: program.description,
+      stationIds: program.stations.map((s) => s.id),
+      nextStationId,
+      allGreen: nextStationId === undefined,
+      optInEnv: program.gate.optInEnv,
+      runAll: lineRunAll(lineId, program),
+    });
+  }
+
+  const known = new Set([...installed, ...available].map((l) => l.lineId));
+  for (const lineId of listBundledLineIds()) {
+    if (!known.has(lineId)) available.push({ lineId, source: 'bundled' });
+  }
+  return { installed, available };
+}
+
+function unreadableEntry(lineId: string, reason: string): LineListEntry {
+  return {
+    lineId,
+    title: lineId,
+    stationIds: [],
+    allGreen: false,
+    optInEnv: null,
+    unreadable: reason,
+  };
+}
+
+export interface LineDescriptionStation {
+  id: string;
+  title: string;
+  description?: string;
+  /** Cumulative gate stages required at this station. */
+  gateStageIds: string[];
+  green: boolean;
+  work?: LineStation['work'];
+}
+
+export interface LineDescriptionGateStage {
+  id: string;
+  fromStation: string;
+  description?: string;
+  registered: boolean;
+  /** Status of the latest run record, if the stage ever ran. */
+  lastRunStatus?: string;
+}
+
+/** `har line describe` / `har_line_describe`: what a line checks and how to run it. */
+export interface LineDescription {
+  lineId: string;
+  title: string;
+  description?: string;
+  programPath: string;
+  source?: string;
+  optInEnv: string | null;
+  stations: LineDescriptionStation[];
+  gateStages: LineDescriptionGateStage[];
+  nextStationId?: string;
+  allGreen: boolean;
+  runAll?: LineRunAll;
+  /** Per-station command template; replace <station> with a station id. */
+  runStationCommand: string;
+  warnings: string[];
+}
+
+export function describeLine(repoPath: string, lineId: string): LineDescription {
+  const resolved = path.resolve(repoPath);
+  const status = getLineStatus(resolved, lineId);
+  // getLineStatus has already proven the program exists and parses.
+  const program = readInstalledLineProgram(resolved, lineId) as LineProgram;
+  const registry = readStageRegistry(resolved);
+  const registered = new Map(registry.stages.map((s) => [s.id, s]));
+  const extraDescriptions = new Map(
+    program.extraStages.map((s) => [s.id, s.description] as const),
+  );
+  const gateStageIds = [...new Set(program.gate.stages.map((s) => s.id))];
+  const runStatuses = latestRunStatusByStage(resolved, gateStageIds);
+  const stationStatus = new Map(status.stations.map((s) => [s.id, s]));
+
+  const force = program.gate.optInEnv !== null;
+  return {
+    lineId,
+    title: program.title,
+    description: program.description,
+    programPath: status.programPath,
+    source: status.source,
+    optInEnv: program.gate.optInEnv,
+    stations: program.stations.map((station) => ({
+      id: station.id,
+      title: station.title,
+      description: station.description,
+      gateStageIds: stationStatus.get(station.id)?.requiredStageIds ?? [],
+      green: stationStatus.get(station.id)?.green ?? false,
+      work: station.work,
+    })),
+    gateStages: program.gate.stages.map((stage) => ({
+      id: stage.id,
+      fromStation: stage.fromStation,
+      description: registered.get(stage.id)?.description ?? extraDescriptions.get(stage.id),
+      registered: registered.has(stage.id),
+      lastRunStatus: runStatuses.get(stage.id),
+    })),
+    nextStationId: status.nextStationId,
+    allGreen: status.nextStationId === undefined,
+    runAll: lineRunAll(lineId, program),
+    runStationCommand: `har line gate <station> --line ${lineId}${force ? ' --force' : ''}`,
+    warnings: status.warnings,
+  };
 }

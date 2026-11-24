@@ -173,7 +173,8 @@ describe('opt-in line gates after verify', () => {
     expect(installedLinesHint(makeRepo('har-vl-hint-none', 'none'))).toBeUndefined();
     expect(installedLinesHint(makeRepo('har-vl-hint-two', 'two'))).toBe(
       '2 factory lines installed (alpha-line, example-line) — not checked by verify. ' +
-        'Run one with: har line gate <station> --line <id>',
+        'See what each checks with: har line list / har line describe <id>; ' +
+        'run one with: har line gate <station> --line <id>',
     );
   });
 });

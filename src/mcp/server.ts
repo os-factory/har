@@ -26,8 +26,10 @@ import { getRun, listRuns } from '../core/runs';
 import {
   addLine,
   createLineBundle,
+  describeLine,
   getAllLineStatuses,
   getLineStatus,
+  listLines,
   runLineGate,
 } from '../core/lines';
 import { addWorkUnitLinks } from '../core/work-units';
@@ -70,6 +72,8 @@ import {
   AddPluginInputSchema,
   AddLineInputSchema,
   CreateLineInputSchema,
+  LineDescribeInputSchema,
+  LineListInputSchema,
   LineStatusInputSchema,
   RunLineGateInputSchema,
   RunStageInputSchema,
@@ -291,7 +295,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_run_verification',
     description:
-      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump). Factory line gates are never run here; when lines are installed, linesHint says how to run them (har_run_line_gate).',
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump). Factory line gates are never run here; when lines are installed, linesHint names them — inspect them with har_line_list / har_line_describe and run one with har_run_line_gate if it covers your change.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -451,6 +455,24 @@ export const HAR_MCP_TOOLS: Tool[] = [
       repo: repoJsonProperty,
       line: { type: 'string', description: 'Line id (default: every installed line)' },
     }),
+  },
+  {
+    name: 'har_line_list',
+    description:
+      'Installed factory lines with what each covers (title, description), stations, progress, and how to run every station (runAll), plus lines available to install. Use it to decide whether a line is relevant to your change. A line that cannot be read is listed with `unreadable`. Pure read.',
+    inputSchema: objectJsonSchema({ repo: repoJsonProperty }),
+  },
+  {
+    name: 'har_line_describe',
+    description:
+      'What one installed factory line checks: description, stations, each gate stage (description, registered, last run status), and how to run it (runAll for every station, runStationCommand for one). Pass runAll.station and runAll.force to har_run_line_gate. Pure read.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        line: { type: 'string', description: 'Installed line id (see har_line_list)' },
+      },
+      ['line'],
+    ),
   },
   {
     name: 'har_run_line_gate',
@@ -854,6 +876,16 @@ export async function handleMcpToolCall(
       const input = LineStatusInputSchema.parse({ ...args, repo });
       const statuses = input.line ? [getLineStatus(repo, input.line)] : getAllLineStatuses(repo);
       return jsonContent(input.line ? statuses[0] : { lines: statuses });
+    }
+
+    case 'har_line_list': {
+      LineListInputSchema.parse({ ...args, repo });
+      return jsonContent(listLines(repo));
+    }
+
+    case 'har_line_describe': {
+      const input = LineDescribeInputSchema.parse({ ...args, repo });
+      return jsonContent(describeLine(repo, input.line));
     }
 
     case 'har_run_line_gate': {
