@@ -99,6 +99,7 @@ import {
   type HeldUsageUnits,
 } from './usage-invariants-check';
 import { recordSentObservations, unsentObservations } from './observation-ledger';
+import { snapshotMemo, withStatusSnapshot } from './status-snapshot';
 
 export { chunkBySerializedSize };
 
@@ -592,6 +593,17 @@ function collectEnvironmentStatusForSync(
   canonicalPath: string,
   sourcePaths: string[],
 ): EnvironmentStatus {
+  // Both legs of one sync (Mission Control, then HQ) report the same status.
+  return snapshotMemo(
+    ['sync-status', path.resolve(canonicalPath), ...sourcePaths.map((p) => path.resolve(p))].join('\0'),
+    () => readEnvironmentStatusForSync(canonicalPath, sourcePaths),
+  );
+}
+
+function readEnvironmentStatusForSync(
+  canonicalPath: string,
+  sourcePaths: string[],
+): EnvironmentStatus {
   const collected = new Map<string, EnvironmentStatus>();
   const groups: AgentSlotStatus[][] = [];
   const canonicalKey = path.resolve(canonicalPath);
@@ -626,11 +638,13 @@ async function buildPortalPayload(
   since: string | null,
   full = false,
   portal?: PortalTarget,
-  heldUnits: HeldUsageUnits = new Map(),
+  loadHeldUnits: () => Promise<HeldUsageUnits> = async () => new Map(),
 ): Promise<{
   syncBody: Record<string, unknown>;
   /** Usage left out of this sync: sessions breaking a blocking invariant. */
   held: Array<Array<Record<string, unknown>>>;
+  /** The blocking units the held usage breaks (empty when no usage was checked). */
+  heldUnits: HeldUsageUnits;
   /** Usage beyond the first request's share, one request per batch. */
   usageBatches: Array<Array<Record<string, unknown>>>;
   runs: RunRecord[];
@@ -662,6 +676,9 @@ async function buildPortalPayload(
   );
   // A session breaking I1/I2 is left out whole: the portal replaces only the
   // sessions a sync carries, so its stored rows stay as they are.
+  // The check reads every repository's usage in Mission Control: ask for it
+  // only when this sync has usage to send.
+  const heldUnits: HeldUsageUnits = collected.length > 0 ? await loadHeldUnits() : new Map();
   const { sent: usage, held } = partitionHeldUsage(collected, heldUnits);
   // A provider session's rows stay in one request: the portal replaces a
   // session's rows with what one request carries.
@@ -722,6 +739,7 @@ async function buildPortalPayload(
   return {
     syncBody,
     held,
+    heldUnits,
     usageBatches,
     runs: mergeRunsBySource(runsBySource),
     runsBySource,
@@ -967,9 +985,10 @@ async function syncRepoWithPortal(
     }
   }
   const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
-  const heldUnits: HeldUsageUnits = dryRun ? new Map() : await heldUsageUnits(controlApiUrl, repoPath);
-  const { syncBody, held, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
-    await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, heldUnits);
+  const loadHeldUnits = async (): Promise<HeldUsageUnits> =>
+    dryRun ? new Map() : heldUsageUnits(controlApiUrl, repoPath);
+  const { syncBody, held, heldUnits, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
+    await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, loadHeldUnits);
   // Verification runs Mission Control stored from verification traces: an
   // optional top-level collection of the first /api/sync body, own watermark.
   // A dry run reads nothing new from Mission Control for it.
@@ -1133,6 +1152,13 @@ async function syncTrajectoryWithPortal(
 }
 
 export async function syncRepoWithControl(
+  options: ControlSyncOptions,
+): Promise<{ warnings: string[] }> {
+  // One read of slots, pm2 and git for the whole sync (both legs).
+  return withStatusSnapshot(() => syncRepoWithControlOnce(options));
+}
+
+async function syncRepoWithControlOnce(
   options: ControlSyncOptions,
 ): Promise<{ warnings: string[] }> {
   // Identity is canonical; evidence may live in the workspace this ran in (#255).

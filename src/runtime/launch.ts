@@ -33,7 +33,6 @@ import {
   waitForHealthCheck,
   HttpStatusFn,
 } from './process';
-import { pkgExec } from './node-pm';
 import { postHookFailureMode, runLifecycleHook } from './hooks';
 import { acquireSimulator, perSlotEnabled, releaseSimulator } from './xcode-sim';
 import { runSetupInfra } from './setup';
@@ -391,7 +390,6 @@ export async function launchSession(options: LaunchSessionOptions): Promise<Laun
       startAgentProcesses({
         projectName,
         agentId,
-        pkgExecPrefix: pkgExec(undefined, env, ops).split(' '),
         exec,
         workDir: session.workDir,
         ecosystemFile,

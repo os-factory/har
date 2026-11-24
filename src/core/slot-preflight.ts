@@ -29,8 +29,7 @@ import {
   listUntrackedAbsentFromWorktree,
 } from './worktree-untracked';
 import { resolveWorktreeMode } from './worktree-mode';
-import { execSync } from 'child_process';
-import { packageRunner } from '../utils/package-runner';
+import { listPm2Processes, pm2Command, type Pm2Process } from '../utils/pm2';
 
 export interface PreflightOptions extends LaunchGuardOptions {
   allocatePorts?: boolean;
@@ -47,6 +46,11 @@ export interface PreflightOptions extends LaunchGuardOptions {
   occupied?: { active: boolean; dirty?: boolean };
   /** Test hook: override docker ps results. */
   dockerContainers?: DockerRow[];
+  /**
+   * Shared lazy docker ps — `har env status` passes one memoized lookup to every
+   * slot so a poll runs `docker ps` at most once, and only when a check needs it.
+   */
+  listDockerContainers?: () => DockerRow[];
   /** Test hook: override PM2 process list (pass [] to skip live pm2 jlist). */
   pm2Processes?: Pm2Process[];
   /** Test hook: override the untracked-path scan (pass [] to skip the git call). */
@@ -55,24 +59,6 @@ export interface PreflightOptions extends LaunchGuardOptions {
   worktree?: boolean;
 }
 
-interface Pm2Process {
-  name?: string;
-  pm2_env?: { pm_cwd?: string; cwd?: string; status?: string };
-}
-
-function listPm2Processes(): Pm2Process[] | undefined {
-  try {
-    const raw = execSync(`${packageRunner()} pm2 jlist`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 3000,
-    });
-    const procs = JSON.parse(raw) as Pm2Process[];
-    return Array.isArray(procs) ? procs : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function detectForeignPm2(
   _projectName: string,
@@ -222,6 +208,10 @@ export function inspectSlotReadiness(
   const warnings: string[] = [];
   const ports: Record<string, number> = {};
   const session = readSlotRegistry(harnessRoot, agentId);
+  let dockerRows: DockerRow[] | undefined;
+  const containers = (): DockerRow[] =>
+    (dockerRows ??=
+      options.dockerContainers ?? (options.listDockerContainers ?? listDockerContainers)());
 
   const guard =
     options.occupied !== undefined
@@ -270,7 +260,7 @@ export function inspectSlotReadiness(
     if (advice.suggested !== undefined) {
       remediations.push(`har env launch ${advice.suggested}`);
     }
-    remediations.push(`Inspect with: ${packageRunner()} pm2 jlist | grep agent-${agentId}`);
+    remediations.push(`Inspect with: ${pm2Command()} jlist | grep agent-${agentId}`);
   }
 
   if (usesPm2 && pm2Procs) {
@@ -309,18 +299,17 @@ export function inspectSlotReadiness(
       ports.debug = alloc.debug;
       allocatedPorts = alloc.allocated;
 
-      const containers = options.dockerContainers ?? listDockerContainers();
       const feDefault = defaultAppPort(
         Number(env.HARNESS_FE_BASE_PORT ?? 3000),
         agentId,
         portStep(env),
       );
-      const portWarnings = controlDefaultPortWarnings(containers, feDefault, alloc.frontend);
+      const portWarnings = controlDefaultPortWarnings(containers(), feDefault, alloc.frontend);
       portChoiceExplained = portWarnings.length > 0;
       warnings.push(...portWarnings);
 
       for (const [label, port] of Object.entries({ frontend: alloc.frontend, api: alloc.api })) {
-        const control = controlContainerOnPort(containers, port);
+        const control = controlContainerOnPort(containers(), port);
         if (control) {
           blockers.push({
             code: 'control_port_conflict',
@@ -330,7 +319,7 @@ export function inspectSlotReadiness(
           });
           remediations.push('har control down');
         } else {
-          const occupant = dockerOnPort(containers, port);
+          const occupant = dockerOnPort(containers(), port);
           if (occupant && !occupant.name.startsWith(`har-${projectName}-`)) {
             blockers.push({
               code: 'docker_port_conflict',
@@ -357,10 +346,7 @@ export function inspectSlotReadiness(
       });
     } else if (dbCheck.port !== undefined) {
       ports.db = dbCheck.port;
-      const occupant = dockerOnPort(
-        options.dockerContainers ?? listDockerContainers(),
-        dbCheck.port,
-      );
+      const occupant = dockerOnPort(containers(), dbCheck.port);
       if (
         occupant &&
         !occupant.name.startsWith(`har-${projectName}-`) &&

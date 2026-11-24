@@ -1,3 +1,39 @@
+## [1.31.0](https://github.com/os-factory/har/compare/v1.30.5...v1.31.0) (2026-11-23)
+
+### Features
+
+* **runtime:** bundle pm2 and run it directly instead of via npx ([#475](https://github.com/os-factory/har/issues/475)) ([6b68d55](https://github.com/os-factory/har/commit/6b68d55b547d133080b8dab6aa3699fa7f737410))
+
+## [1.30.5](https://github.com/os-factory/har/compare/v1.30.4...v1.30.5) (2026-11-23)
+
+### Bug Fixes
+
+* **status:** make har env status cheap enough to poll ([#474](https://github.com/os-factory/har/issues/474)) ([46c1805](https://github.com/os-factory/har/commit/46c1805d9806d2bb59275ea82fc8c9fb2f805f6d))
+
+## [1.30.4](https://github.com/os-factory/har/compare/v1.30.3...v1.30.4) (2026-11-23)
+
+### Bug Fixes
+
+* **ios:** report xcodebuild status, keep failure tail, skip test diagnostics ([#472](https://github.com/os-factory/har/issues/472)) ([f322c8b](https://github.com/os-factory/har/commit/f322c8b272c38d24465ae97a210619f03bf25e21)), closes [#368](https://github.com/os-factory/har/issues/368) [#359](https://github.com/os-factory/har/issues/359)
+
+## [1.30.3](https://github.com/os-factory/har/compare/v1.30.2...v1.30.3) (2026-11-23)
+
+### Bug Fixes
+
+* **control:** read slot status once per sync and skip the usage check when nothing is sent ([#452](https://github.com/os-factory/har/issues/452)) ([fd0784d](https://github.com/os-factory/har/commit/fd0784d32266c6fd2f30f0ab2bd41d66e1b6b8ca))
+
+## [1.30.2](https://github.com/os-factory/har/compare/v1.30.1...v1.30.2) (2026-11-23)
+
+### Bug Fixes
+
+* **deps:** migrate to zod 4.6.7 for GHSA-mrhx-c7xc-m3w5 ([#442](https://github.com/os-factory/har/issues/442)) ([e64f036](https://github.com/os-factory/har/commit/e64f0366a7d51a53b58b81e0062c40443816e379))
+
+## [1.30.1](https://github.com/os-factory/har/compare/v1.30.0...v1.30.1) (2026-11-23)
+
+### Bug Fixes
+
+* **deps:** patch vulnerable runtime dependencies; enforce coverage and wider lint ([#413](https://github.com/os-factory/har/issues/413)) ([1f64da3](https://github.com/os-factory/har/commit/1f64da305fbe7258036094c82fdd08a317d19996))
+
 ## [1.30.0](https://github.com/os-factory/har/compare/v1.29.0...v1.30.0) (2026-11-20)
 
 ### Features
