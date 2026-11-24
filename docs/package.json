@@ -32,17 +32,17 @@
     "astro": "^7.4.13",
     "lucide-react": "^0.511.0",
     "mermaid": "^12.3.0",
-    "posthog-js": "^1.410.6",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "posthog-js": "^1.453.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
-    "@playwright/test": "^1.64.1",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
-    "axe-core": "^4.7.0",
+    "@playwright/test": "^1.65.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "axe-core": "^4.14.1",
     "typescript": "^6.0.3"
   }
 }
