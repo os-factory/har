@@ -45,21 +45,6 @@ export function otelHooksPackageSpec(env: NodeJS.ProcessEnv = process.env): stri
 const INSTALLED_SPEC_FILE = '.har-package-spec';
 
 /**
- * Environment override for the package spec HAR installs: any spec the package
- * manager accepts (`@osfactory/otel-hook@0.7.0`, a local `.tgz`, a directory).
- * For dogfooding an unreleased otel-hook build; unset, HAR installs the pin.
- */
-export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
-
-/** The package spec HAR installs: the override when set, else the pin. */
-export function otelHooksPackageSpec(env: NodeJS.ProcessEnv = process.env): string {
-  return env[OTEL_HOOKS_PACKAGE_ENV]?.trim() || OTEL_HOOKS_PACKAGE;
-}
-
-/** Records the spec of the last install, so a changed override reinstalls. */
-const INSTALLED_SPEC_FILE = '.har-package-spec';
-
-/**
  * Budgets for the hooks HAR installs into agent settings (#328).
  *
  * A telemetry hook must never cost the user a turn. Hooks fire on session
