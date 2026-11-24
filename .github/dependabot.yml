@@ -1,4 +1,13 @@
 version: 2
+# Every Dependabot PR runs the full Verify workflow, and every merge to main
+# rebases (and re-runs) every other open Dependabot PR. So: few, grouped PRs.
+#
+#   - Security fixes are grouped too (`applies-to: security-updates`). Without
+#     it Dependabot opens one PR per vulnerable package, whatever the
+#     version-update groups say.
+#   - Directories that do not ship to users (benchmarks/, examples/) are
+#     listed only to ignore them. Dependabot still scans directories that are
+#     missing from this file for security fixes, one PR per package.
 updates:
   - package-ecosystem: npm
     directories:
@@ -8,6 +17,14 @@ updates:
       - /docs
     schedule:
       interval: weekly
+      day: monday
+    # Let fresh releases settle before proposing them, so one PR can collect
+    # a week of patches instead of chasing each one. Security updates skip
+    # the cooldown.
+    cooldown:
+      default-days: 3
+      semver-minor-days: 7
+      semver-major-days: 14
     # chore(deps): … — no release on its own (see AGENTS.md); retitle to
     # fix(deps): when a runtime dependency fix should ship.
     commit-message:
@@ -24,6 +41,13 @@ updates:
     # come before minor-and-patch: one breaking package must not hold the
     # routine bumps hostage (#432).
     groups:
+      # All non-breaking security fixes in one PR. A fix that needs a major
+      # bump of a parent (e.g. postcss → next 16) stays a PR of its own, so it
+      # cannot block the rest.
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+        update-types: [minor, patch]
       # 0.x releases: Dependabot calls 0.57 → 0.301 "minor", but it is a
       # breaking jump that must move together with @osfactory/otel-hook.
       opentelemetry:
@@ -32,22 +56,45 @@ updates:
         patterns: [astro, '@astrojs/*']
       minor-and-patch:
         update-types: [minor, patch]
-        # The "first matching group" order above did not hold in practice:
-        # #447 still pulled otlp-transformer 0.57 → 0.301 in here. Exclude the
-        # risky families explicitly so they only ever land in their own group.
-        exclude-patterns: ['@opentelemetry/*', astro, '@astrojs/*']
       # Majors land as one PR per dependency across every directory, so a
       # shared package (zod in / + /control + /packages/schemas) moves in step.
       majors:
         update-types: [major]
         group-by: dependency-name
 
+  # Internal benchmark tooling and examples: not part of the published
+  # package or the Mission Control image. Ignore everything (version and
+  # security updates).
+  - package-ecosystem: uv
+    directories:
+      - /benchmarks/saas-har
+      - /benchmarks/swebench-har
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: '*'
+
+  - package-ecosystem: npm
+    directory: /examples/factory-showcase
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: '*'
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: ci
     groups:
       actions:
+        patterns: ['*']
+      actions-security:
+        applies-to: security-updates
         patterns: ['*']
