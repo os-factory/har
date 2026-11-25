@@ -12,6 +12,14 @@ export function slotCommands(repoPath: string, slotId: number, active: boolean):
   ];
 }
 
+/**
+ * Checks the Factory Commits proof on a commit. Mission Control only shows the
+ * proof it received; the commit's notes and trailers are checked by har.
+ */
+export function proofVerifyCommand(repoPath: string | null, commitSha: string): string {
+  return `har proof verify ${commitSha}${repoPath ? ` --repo ${shellQuote(repoPath)}` : ''}`;
+}
+
 export function shellQuote(value: string): string {
   return /^[A-Za-z0-9_./-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 }

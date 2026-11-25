@@ -159,6 +159,46 @@ async function loadSeed(prisma) {
     });
   }
 
+  // Factory Commits proofs (HAR 2.0): verification runs received over OTLP, with their stages.
+  for (const run of seed.verificationRuns ?? []) {
+    await prisma.verificationRun.create({
+      data: compactRow({
+        id: run.id,
+        repositoryId: run.repositoryId,
+        runId: run.runId,
+        traceId: run.traceId,
+        spanId: run.spanId,
+        pipelineName: run.pipelineName,
+        result: run.result,
+        verdict: run.verdict,
+        treeHash: run.treeHash,
+        headRevision: run.headRevision,
+        attestationDigest: run.attestationDigest,
+        policyId: run.policyId,
+        policyDigest: run.policyDigest,
+        workUnitId: run.workUnitId,
+        attemptId: run.attemptId,
+        branch: run.branch,
+        producerVersion: run.producerVersion,
+        startTime: toDate(run.startTime),
+        endTime: toDate(run.endTime),
+        stages: {
+          create: (run.stages ?? []).map((stage) =>
+            compactRow({
+              traceId: run.traceId,
+              spanId: stage.spanId,
+              name: stage.name,
+              result: stage.result,
+              taskType: stage.taskType,
+              addedBy: stage.addedBy,
+              startTime: toDate(stage.startTime),
+              endTime: toDate(stage.endTime),
+            }),
+          ),
+        },
+      }),
+    });
+  }
   if (seed.agentSlots?.length) {
     await prisma.agentSlot.createMany({
       data: seed.agentSlots.map((row) => ({

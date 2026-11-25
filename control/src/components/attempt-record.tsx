@@ -3,9 +3,13 @@
 import Link from 'next/link';
 import { ExternalLinkIcon } from 'lucide-react';
 import { AttemptHandoff } from '@/components/attempt-handoff';
+import { CopyCommand } from '@/components/copy-command';
+import { FactoryProofFacts } from '@/components/factory-proof';
 import { SlotTimeline } from '@/components/slot-timeline';
 import { Badge } from '@/components/ui/badge';
 import { ValidationFlow } from '@/components/validation-flow';
+import { headlineProof, isAttestedProof } from '@/lib/factory-proof';
+import { proofVerifyCommand } from '@/lib/slot-commands';
 import { shortSha } from '@/lib/slot-timeline';
 import { timeAgo } from '@/lib/time';
 import type { AttemptRecord } from '@/server/attempt-record';
@@ -40,6 +44,12 @@ export function AttemptRecordView({
 }) {
   const { attempt, workUnit, verification } = record;
   const latest = verification?.latestRun ?? null;
+  const proof = headlineProof(record.proofs ?? []);
+  // The commit that carries the proof: a timeline commit whose tree the attestation names.
+  const provenCommit =
+    proof && isAttestedProof(proof)
+      ? record.timeline.find((row) => row.kind === 'commit' && row.commit?.treeHash === proof.treeHash)?.commit ?? null
+      : null;
   const stages = (verification?.stages ?? []).map((stage) => ({
     ...stage,
     lastRunAt: stage.lastRunAt ? new Date(stage.lastRunAt) : null,
@@ -130,6 +140,31 @@ export function AttemptRecordView({
         ) : (
           <p className="text-sm text-muted-foreground">No verify run recorded for this attempt.</p>
         )}
+        {proof ? (
+          <div className="space-y-3 rounded-lg border p-3" data-testid="attempt-proof">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm font-medium">Factory Commits proof</p>
+              <p className="text-xs text-muted-foreground">
+                {provenCommit ? (
+                  <>
+                    carried by commit <code className="font-mono">{shortSha(provenCommit.sha)}</code>
+                  </>
+                ) : isAttestedProof(proof) ? (
+                  'no commit of this tree synced yet'
+                ) : (
+                  'no attestation for this tree'
+                )}
+              </p>
+            </div>
+            <FactoryProofFacts proof={proof} />
+            {provenCommit ? (
+              <div className="space-y-1">
+                <CopyCommand label="Check the proof" command={proofVerifyCommand(record.repositoryPath, provenCommit.sha)} />
+                <p className="text-xs text-muted-foreground">Copy it into your terminal. Mission Control cannot run har itself.</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {stages.length > 0 ? (
           <div data-testid="attempt-validation-flow">
             <ValidationFlow stages={stages} verifyRunCount={verification?.verifyRunCount ?? 0} />
@@ -144,6 +179,7 @@ export function AttemptRecordView({
           rows={record.timeline}
           gitRemote={record.gitRemote}
           liveSlotId={attempt.live ? attempt.agentId : null}
+          repositoryPath={record.repositoryPath}
           defaultExpandedId={defaultExpandedId}
           emptyMessage="Nothing recorded for this attempt yet."
         />

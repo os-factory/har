@@ -1,7 +1,8 @@
 import type { WorkAttempt } from '@prisma/client';
 import type { WorkUnitRelatedLink } from '@har/schemas';
 import { prisma } from '@/lib/db';
-import { buildTimelineRows, type TimelineRow } from '@/lib/slot-timeline';
+import { toFactoryProof, type FactoryProof } from '@/lib/factory-proof';
+import { attachProofs, buildTimelineRows, type TimelineRow } from '@/lib/slot-timeline';
 import { attemptIdFromOccupancyKey } from '@/server/occupancy';
 import {
   commitBindingsFor,
@@ -50,6 +51,8 @@ export interface AttemptRecord {
   } | null;
   timeline: TimelineRow[];
   verification: SerializedValidationStages | null;
+  /** Factory Commits proofs received for this attempt's verifications, newest first. */
+  proofs: FactoryProof[];
 }
 
 /** `ValidationStagesSummary` with ISO strings, so it survives the JSON API. */
@@ -113,6 +116,35 @@ export function inWindow(window: LegacyWindow | null, row: { agentId: number | n
   if (row.at < window.from) return false;
   if (window.to && row.at >= window.to) return false;
   return true;
+}
+
+/**
+ * The verification traces of one attempt: those stamped with its attempt id, and
+ * those naming a validation its snapshots recorded (a trace spooled before the
+ * attempt was bound still joins by validation id).
+ */
+export async function proofsForAttempt(
+  repositoryId: string,
+  attemptId: string | null,
+  snapshots: Array<{ validationId: string; runId: string | null }>,
+  verifyRunIds: string[],
+): Promise<FactoryProof[]> {
+  const validationIds = [...new Set(snapshots.map((snapshot) => snapshot.validationId))];
+  const or = [
+    ...(attemptId ? [{ attemptId }] : []),
+    ...(validationIds.length ? [{ runId: { in: validationIds } }] : []),
+    ...(verifyRunIds.length ? [{ runId: { in: verifyRunIds } }] : []),
+  ];
+  if (or.length === 0) return [];
+  const runs = await prisma.verificationRun.findMany({
+    where: { repositoryId, OR: or },
+    orderBy: [{ startTime: 'desc' }, { id: 'asc' }],
+    take: 50,
+    include: { stages: { orderBy: [{ startTime: 'asc' }, { name: 'asc' }] } },
+  });
+  const byValidation = new Map(snapshots.map((snapshot) => [snapshot.validationId, snapshot.runId]));
+  const runIds = new Set(verifyRunIds);
+  return runs.map((run) => toFactoryProof(run, byValidation, runIds));
 }
 
 export async function getAttemptRecord(repositoryId: string, occupancyKey: string): Promise<AttemptRecord | null> {
@@ -181,12 +213,18 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
   );
   const streamOnly = agentId != null ? streamOnlySessions(usage, streams, agentId) : [];
 
-  const [prompts, commits, verification] = await Promise.all([
+  const [prompts, commits, verification, proofs] = await Promise.all([
     firstPrompts(repositoryId, [...usage, ...streamOnly]),
     commitBindingsFor(repositoryId, keptSnapshots),
     keptRuns.length
       ? getValidationStages(repositoryId, { runIds: keptRuns.map((run) => run.runId) })
       : Promise.resolve(null),
+    proofsForAttempt(
+      repositoryId,
+      attemptId,
+      keptSnapshots,
+      keptRuns.filter((run) => run.stageId === 'verify').map((run) => run.runId),
+    ),
   ]);
 
   const startedAt = attempt?.sourceCreatedAt ?? slot?.sessionCreatedAt ?? null;
@@ -231,7 +269,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
           decision: outcome?.decision ?? null,
         }
       : null,
-    timeline: buildTimelineRows({
+    timeline: attachProofs(buildTimelineRows({
       occupancies: occupancy,
       sessions: [
         ...sessionInputs(usage, prompts),
@@ -243,7 +281,8 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
       runs: keptRuns.map(runInput),
       snapshots: keptSnapshots.map(snapshotInput),
       commits,
-    }),
+    }), proofs),
     verification: serializeValidationStages(verification),
+    proofs,
   };
 }

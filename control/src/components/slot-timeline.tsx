@@ -6,6 +6,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight, FileDiff, PanelRightOpen } from 'lucide-react';
 import { DataTable } from '@/components/data-table/data-table';
 import { ChangeBatchDiff, type ChangeBatchRow } from '@/components/change-batch-diff';
+import { CommitProof, FactoryProofFacts } from '@/components/factory-proof';
 import type { SessionEventRow } from '@/components/columns/session-event-columns';
 import { SessionEventsTable } from '@/components/session-events-table';
 import { TrajectoryDrawer, useOpenTrajectory } from '@/components/trajectory-drawer';
@@ -169,7 +170,7 @@ function RunDetail({
         <Field label="Result" value={<Badge variant={toneVariant(row.tone)}>{row.status}</Badge>} />
         <Field label="Duration" value={run.durationMs != null ? formatDurationShort(run.durationMs) : '—'} />
         <Field label="Trigger" value={run.trigger} />
-        <Field label="Run id" value={run.runId} mono />
+        <Field label="Verify run" value={run.runId} mono />
       </dl>
       {slotLink}
       {run.stages.length > 0 ? (
@@ -186,6 +187,12 @@ function RunDetail({
       ) : (
         <p className="text-xs text-muted-foreground">This run did not record per-stage results.</p>
       )}
+      {row.proof ? (
+        <div className="space-y-2 rounded-md border bg-background/60 p-3">
+          <p className="text-xs font-medium">Factory Commits proof of this verify run</p>
+          <FactoryProofFacts proof={row.proof} compact />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -241,7 +248,7 @@ function SnapshotDetail({
         </Button>
         {snapshot.runId ? (
           <span className="text-xs text-muted-foreground">
-            verified by run <code className="font-mono">{snapshot.runId}</code>
+            verify run <code className="font-mono">{snapshot.runId}</code>
           </span>
         ) : null}
         <Link href={`/repos/${repositoryId}?tab=history`} className="text-xs text-primary underline-offset-2 hover:underline">
@@ -260,11 +267,25 @@ function SnapshotDetail({
       ) : (
         <p className="text-xs text-muted-foreground">No changed files were recorded for this snapshot.</p>
       )}
+      {row.proof ? (
+        <div className="space-y-2 rounded-md border bg-background/60 p-3">
+          <p className="text-xs font-medium">Factory Commits proof of this tree</p>
+          <FactoryProofFacts proof={row.proof} compact />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function CommitDetail({ row, gitRemote }: { row: TimelineRow; gitRemote: string | null }) {
+function CommitDetail({
+  row,
+  gitRemote,
+  repositoryPath,
+}: {
+  row: TimelineRow;
+  gitRemote: string | null;
+  repositoryPath: string | null;
+}) {
   const commit = row.commit!;
   const commitUrl = gitRemoteCommitUrl(gitRemote, commit.sha);
   return (
@@ -297,6 +318,9 @@ function CommitDetail({ row, gitRemote }: { row: TimelineRow; gitRemote: string 
       ) : (
         <p className="text-xs text-muted-foreground">The commit message was not synced. The commit is bound to a verified tree snapshot.</p>
       )}
+      {row.proof ? (
+        <CommitProof proof={row.proof} commitSha={commit.sha} commitTree={commit.treeHash} repositoryPath={repositoryPath} />
+      ) : null}
     </div>
   );
 }
@@ -379,6 +403,8 @@ export interface SlotTimelineProps {
   gitRemote?: string | null;
   /** Only a live occupancy may link a run back to its slot (#340 / #348). */
   liveSlotId?: number | null;
+  /** Registered repository path, for the `--repo` of copy-able commands (#340). */
+  repositoryPath?: string | null;
 }
 
 export function SlotTimeline({
@@ -391,6 +417,7 @@ export function SlotTimeline({
   defaultExpandedId = null,
   gitRemote = null,
   liveSlotId = null,
+  repositoryPath = null,
 }: SlotTimelineProps) {
   const [expandedId, setExpandedId] = useState<string | null>(defaultExpandedId);
   const [kinds, setKinds] = useState<Set<TimelineKind>>(() => new Set(KIND_ORDER));
@@ -409,7 +436,7 @@ export function SlotTimeline({
       case 'snapshot':
         return <SnapshotDetail row={row} repositoryId={repositoryId} gitRemote={gitRemote} onOpenDiff={setDiffRow} />;
       case 'commit':
-        return <CommitDetail row={row} gitRemote={gitRemote} />;
+        return <CommitDetail row={row} gitRemote={gitRemote} repositoryPath={repositoryPath} />;
       case 'occupancy':
         return <OccupancyDetail row={row} />;
       case 'session':

@@ -8240,5 +8240,111 @@
       "lastSeenAt": "2026-08-31T21:19:02.041Z",
       "occupancyKey": "attempt::b118f490-92b0-467d-8847-31a587e4909a"
     }
+  ],
+  "verificationRuns": [
+    {
+      "id": "5f0c1a2e-9b7d-4c1e-8f3a-191000000001",
+      "repositoryId": "38f59847-e09f-4521-aed8-0c5b1d95cc2b",
+      "runId": "bbb082a5-2719-4593-a5c6-9a6f57f07ac4",
+      "traceId": "ead197cfb5527172ea823583b2b89e1f",
+      "spanId": "0d6fff516f941587",
+      "pipelineName": "har verify --full",
+      "result": "success",
+      "verdict": "pass",
+      "treeHash": "7d18e3cd7fd83e03f2338577cf6a88d38a493a26",
+      "headRevision": "98fa07b9ace8542cc9e6fa2eabb05d4fed03a39b",
+      "attestationDigest": "sha256:70cc57db90f80478242493580bb41ccaeb8ec30f705bc2b53b281319772af7d0",
+      "policyId": "har-verify-full",
+      "policyDigest": "sha256:a91a35148a1b5fb2692a94d40a5294eff27b67be39f231ffce4c014b9de94012",
+      "workUnitId": "191",
+      "attemptId": "79f23717-4c09-4187-b1e0-863844871fa1",
+      "branch": "main-98fa-har-agent-4-er98",
+      "producerVersion": "2.0.0",
+      "startTime": "2026-08-31T17:19:55.425Z",
+      "endTime": "2026-08-31T17:20:44.533Z",
+      "stages": [
+        {
+          "name": "typecheck",
+          "spanId": "df950adda543c194",
+          "result": "success",
+          "taskType": null,
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:19:55.425Z",
+          "endTime": "2026-08-31T17:19:59.116Z"
+        },
+        {
+          "name": "build",
+          "spanId": "e0b057ebfe9c498e",
+          "result": "success",
+          "taskType": "build",
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:19:59.116Z",
+          "endTime": "2026-08-31T17:19:59.327Z"
+        },
+        {
+          "name": "docs-check",
+          "spanId": "16afe8763dc62186",
+          "result": "success",
+          "taskType": null,
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:19:59.327Z",
+          "endTime": "2026-08-31T17:20:08.101Z"
+        },
+        {
+          "name": "docs-build",
+          "spanId": "18ce362017f89c4c",
+          "result": "success",
+          "taskType": null,
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:20:08.101Z",
+          "endTime": "2026-08-31T17:20:12.061Z"
+        },
+        {
+          "name": "unit-tests",
+          "spanId": "db9424280bdc561b",
+          "result": "success",
+          "taskType": "test",
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:20:12.061Z",
+          "endTime": "2026-08-31T17:20:40.796Z"
+        },
+        {
+          "name": "lint",
+          "spanId": "2d088c0fc283a547",
+          "result": "success",
+          "taskType": null,
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:20:40.796Z",
+          "endTime": "2026-08-31T17:20:44.411Z"
+        },
+        {
+          "name": "readiness",
+          "spanId": "36d0fe1f09608b0b",
+          "result": "success",
+          "taskType": null,
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:20:44.411Z",
+          "endTime": "2026-08-31T17:20:44.424Z"
+        },
+        {
+          "name": "docs-drift",
+          "spanId": "95d8cd7471d4460d",
+          "result": "success",
+          "taskType": null,
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:20:44.424Z",
+          "endTime": "2026-08-31T17:20:44.529Z"
+        },
+        {
+          "name": "fixture-e2e",
+          "spanId": "ab9fb030d4ab853d",
+          "result": "success",
+          "taskType": "test",
+          "addedBy": "policy",
+          "startTime": "2026-08-31T17:20:44.529Z",
+          "endTime": "2026-08-31T17:20:44.533Z"
+        }
+      ]
+    }
   ]
 }

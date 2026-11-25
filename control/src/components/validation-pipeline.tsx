@@ -73,7 +73,7 @@ export function ValidationPipelineDetails({ stages }: { stages: ValidationStageS
   return (
     <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
       {stages.map((stage) => {
-        const meta = stageMeta(stage.name);
+        const meta = stageMeta(stage);
         return (
           <div key={stage.name} className="rounded-lg border bg-muted/30 px-4 py-3">
             <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">

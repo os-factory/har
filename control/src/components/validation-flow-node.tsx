@@ -9,6 +9,8 @@ export interface StageNodeData extends Record<string, unknown> {
   index: number;
   title: string;
   subtitle: string;
+  /** Description and command from stages.json, shown on hover. */
+  detail: string | null;
   icon: LucideIcon;
   status: 'pass' | 'fail' | null;
   duration: string;
@@ -29,6 +31,7 @@ function StageNodeComponent({ data }: NodeProps) {
     index,
     title,
     subtitle,
+    detail,
     icon: Icon,
     status,
     duration,
@@ -69,7 +72,9 @@ function StageNodeComponent({ data }: NodeProps) {
         </span>
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
-          <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>
+          <p className="truncate text-[11px] text-muted-foreground" title={detail ?? subtitle}>
+            {subtitle}
+          </p>
         </div>
       </div>
 
