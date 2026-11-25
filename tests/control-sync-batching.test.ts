@@ -97,6 +97,11 @@ describe('chunkBySerializedSize', () => {
     const bigBatch = batches.find((b) => b.some((x) => 'big' in x));
     expect(bigBatch).toHaveLength(1);
   });
+
+  it('caps the items per batch when given a row limit', () => {
+    const items = Array.from({ length: 7 }, (_, i) => ({ i }));
+    expect(chunkBySerializedSize(items, 1_000_000, 3).map((b) => b.length)).toEqual([3, 3, 1]);
+  });
 });
 
 describe('sync payload batching', () => {
