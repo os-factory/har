@@ -83,14 +83,11 @@ describe('control lifecycle docker run', () => {
     expect(resolveControlDir()).toBe(`${context}/control`);
   });
 
-  // HAR 2.0: on Linux the run args gain --add-host=host.docker.internal:host-gateway
-  // (forwarding to a Collector on the host), so this exact-args expectation pins the platform.
   it('builds detached run args with the named volume and port mapping', () => {
     const args = buildDockerRunArgs({
       imageRef: 'theosfactory/har-control:1.2.3',
       hostPort: 3847,
       detach: true,
-      platform: 'linux',
     });
     expect(args).toEqual([
       'run',
@@ -101,7 +98,6 @@ describe('control lifecycle docker run', () => {
       'unless-stopped',
       '-p',
       '3847:3847',
-      '--add-host=host.docker.internal:host-gateway',
       '-v',
       `${CONTROL_DATA_VOLUME}:/data`,
       '-e',
@@ -122,23 +118,17 @@ describe('control lifecycle docker run', () => {
   });
 
   it('publishes the OTLP/gRPC port when given', () => {
-    const args = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, otlpGrpcHostPort: 14317, platform: 'linux' });
-    expect(args.slice(6, 11)).toEqual([
-      '-p',
-      '3847:3847',
-      '-p',
-      '14317:4317',
-      '--add-host=host.docker.internal:host-gateway',
-    ]);
+    const args = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, otlpGrpcHostPort: 14317 });
+    expect(args.slice(6, 10)).toEqual(['-p', '3847:3847', '-p', '14317:4317']);
     const without = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, otlpGrpcHostPort: null });
     expect(without.join(' ')).not.toContain(':4317');
   });
 
-  it('adds the host-gateway entry on Linux only (Docker Desktop already resolves host.docker.internal)', () => {
-    for (const platform of ['darwin', 'win32'] as const) {
-      const args = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, platform });
-      expect(args.join(' ')).not.toContain('host.docker.internal');
-    }
+  it('mounts no destinations and adds no host-gateway entry: Mission Control no longer forwards', () => {
+    const args = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true }).join(' ');
+    expect(args).not.toContain('host.docker.internal');
+    expect(args).not.toContain('destinations');
+    expect(args).not.toContain('HAR_DESTINATIONS_DIR');
   });
 });
 

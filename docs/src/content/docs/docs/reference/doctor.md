@@ -28,6 +28,7 @@ Exit code is non-zero when any check fails, so doctor slots directly into CI.
 | Slot registry worktrees | Registered active sessions point at worktrees that still exist |
 | Lifecycle hooks | Files in `.har/hooks/` use known hook names and are executable (content is user-owned, never inspected) |
 | Ejected runtime | On an [ejected](/docs/guides/eject/) harness: the vendored runtime exists |
+| Telemetry destinations | What each [telemetry destination](/docs/guides/otlp-backends/#destination-health) has queued, dropped in the last 24 h, or failed on in the last hour (`langfuse: 7 batches queued, last failure 2 min ago (ECONNREFUSED)`), from `otel-hook doctor --json` and the CLI's verification spool. Warns only, never fails; skipped with a note when telemetry is off or otel-hook is not installed. Header values are never printed |
 
 Doctor detects the harness contract generation: on a pre-1.0 harness (legacy
 shell functions or port triplets in `harness.env`) it reports the old shape and

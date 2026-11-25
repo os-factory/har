@@ -35,6 +35,7 @@ import { FACTORY_PROOF_LEVELS, runFactoryProofQuery } from '../core/proof';
 import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
+import { collectTelemetryHealth, withTelemetryHealth } from '../core/telemetry-health';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -722,7 +723,8 @@ export async function handleMcpToolCall(
     }
 
     case 'har_doctor': {
-      const report = runDoctor(repo);
+      // Destination health is advisory: it never turns the contract verdict.
+      const report = withTelemetryHealth(runDoctor(repo), collectTelemetryHealth());
       return {
         ...jsonContent(report),
         ...(report.ok ? {} : { isError: true }),

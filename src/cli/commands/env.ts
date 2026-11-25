@@ -39,6 +39,7 @@ import { bindWorkUnit } from '../../core/work-bind';
 import { resolveHarnessRoot } from '../../harness/manifest';
 import { adoptHarness, ejectHarness } from '../../harness/eject';
 import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
+import { collectTelemetryHealth, withTelemetryHealth } from '../../core/telemetry-health';
 import { describeWorktreeMode, resolveWorktreeMode } from '../../core/worktree-mode';
 import {
   confirmCleanupSelection,
@@ -1334,7 +1335,8 @@ export async function handleAgent(argv: {
 
 export async function handleDoctor(argv: { repo: string; json?: boolean }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
-  const report = runDoctor(repoPath);
+  // Destination health is advisory: it never turns the contract verdict.
+  const report = withTelemetryHealth(runDoctor(repoPath), collectTelemetryHealth());
 
   if (argv.json) {
     console.log(JSON.stringify(report, null, 2));

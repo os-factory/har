@@ -15,17 +15,22 @@ import { readTelemetryDestinations } from './telemetry-destinations';
 
 /**
  * A small durable spool for the OTLP payloads the CLI sends itself (today:
- * verification traces, when Mission Control is not running).
+ * verification traces, to Mission Control and to each destination).
+ *
+ * One entry per payload and receiver: a copy for `mission-control` and a copy
+ * per destination never share an entry, so a retry reaches only the receiver
+ * that missed it, and an entry is deleted once accepted — each receiver gets
+ * each trace once.
  *
  * One JSON file per payload and target under `~/.har/spool/traces`, mode 0600.
  * A file holds the target's name, never its URL or header values: those are
  * read from `~/.har/destinations/telemetry.json` when the entry is sent, so a
  * destination removed, disabled or re-keyed in the meantime is honoured.
- * Payloads are stripped before they are written, with the same denylist and
- * the same walk Mission Control's forwarder uses (`forwardDeniedAttributes`,
- * `removeDeniedOtlpAttributes`), and `factory.local.*` is always removed.
+ * Payloads are stripped before they are written, with the destination's
+ * denylist (`forwardDeniedAttributes`, `removeDeniedOtlpAttributes`), and
+ * `factory.local.*` is always removed.
  *
- * The spool is bounded like Mission Control's: 64 MB, 24 h, 8 attempts.
+ * The spool is bounded: 64 MB, 24 h, 8 attempts.
  * Flushing is opportunistic (start of `har env verify` / `launch`, and
  * `har telemetry destination flush`), single-file-claimed so two processes never
  * send the same entry, and bounded by a time budget. Every failure is contained.
@@ -40,12 +45,20 @@ const CLAIM_STALE_MS = 10 * 60_000;
 const DEFAULT_SEND_TIMEOUT_MS = 3_000;
 /** Mission Control route path for OTLP/HTTP traces. */
 export const CONTROL_TRACES_PATH = '/api/otel/v1/traces';
+/** Receiver name of Mission Control in delivery results and health reports. */
+export const MISSION_CONTROL_RECEIVER = 'mission-control';
 /**
- * Request header telling Mission Control to store a payload without forwarding
- * it: the CLI already delivered (or spooled) the destination copies itself.
+ * Request header asking Mission Control to store a payload without forwarding
+ * it. Mission Control no longer forwards anything; one from 2.0.0-next.3 or
+ * earlier still does, and would otherwise hand each destination a second copy
+ * of a trace the CLI already sent it. Current Mission Control ignores it.
  */
 export const CONTROL_SKIP_FORWARD_HEADER = 'x-har-otlp-forward';
 export const CONTROL_SKIP_FORWARD_VALUE = 'skip';
+/** Headers of every CLI request to Mission Control's OTLP receiver. */
+export const CONTROL_POST_HEADERS: Readonly<Record<string, string>> = {
+  [CONTROL_SKIP_FORWARD_HEADER]: CONTROL_SKIP_FORWARD_VALUE,
+};
 
 const ENTRY_SUFFIX = '.json';
 const CLAIM_MARK = '.claim-';
@@ -59,6 +72,9 @@ interface SpoolEntry {
   createdAt: number;
   attempts: number;
   nextAttemptAt: number;
+  /** When the last attempt failed (ms), and how: `HTTP 503`, `ECONNREFUSED`, … (never a URL or header value). */
+  lastFailureAt?: number;
+  lastError?: string;
   /** OTLP/JSON request body, already stripped. */
   payload: unknown;
 }
@@ -138,6 +154,8 @@ export interface SpoolOptions {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   maxBytes?: number;
+  /** Why the live attempt failed, kept for health reports. */
+  lastError?: string;
 }
 
 /**
@@ -162,6 +180,8 @@ export function spoolOtlpPayload(
       createdAt: now,
       attempts: 0,
       nextAttemptAt: now,
+      lastFailureAt: now,
+      ...(options.lastError ? { lastError: options.lastError } : {}),
       payload: strippedOtlpPayload(payload, [...denied, `${LOCAL_ATTR_PREFIX}*`]),
     };
     // Sortable by time, unique per copy.
@@ -225,13 +245,34 @@ function releaseStaleClaims(dir: string, now: number): void {
   }
 }
 
-async function post(
+/** The error code of a failed fetch (`ECONNREFUSED`, …), `timeout`, or the error name. */
+function fetchErrorCode(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') return 'timeout';
+    const cause = (err as Error & { cause?: { code?: unknown; errors?: Array<{ code?: unknown }> } }).cause;
+    if (cause && typeof cause.code === 'string') return cause.code;
+    // Happy-eyeballs connects fail with an AggregateError holding one error per address.
+    const nested = cause?.errors?.find((inner) => typeof inner?.code === 'string')?.code;
+    if (typeof nested === 'string') return nested;
+    const code = (err as Error & { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+    const named = /\bE[A-Z]{3,}\b/.exec(err.message);
+    return named ? named[0] : err.name;
+  }
+  return 'error';
+}
+
+/**
+ * POST one OTLP/JSON body. Never throws; the error it reports names a status
+ * or an error code only — no URL, header or response body.
+ */
+export async function postOtlpJson(
   fetchImpl: typeof fetch,
   url: string,
-  headers: Record<string, string>,
+  headers: Readonly<Record<string, string>>,
   body: string,
   timeoutMs: number,
-): Promise<number | null> {
+): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
     const response = await fetchImpl(url, {
       method: 'POST',
@@ -239,10 +280,11 @@ async function post(
       body,
       signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
     });
+    // Drain so the socket is released; the body is never surfaced.
     await response.text().catch(() => '');
-    return response.status;
-  } catch {
-    return null;
+    return response.ok ? { ok: true, status: response.status } : { ok: false, status: response.status, error: `HTTP ${response.status}` };
+  } catch (err) {
+    return { ok: false, error: fetchErrorCode(err) };
   }
 }
 
@@ -352,7 +394,7 @@ export async function flushTelemetrySpool(options: SpoolFlushOptions = {}): Prom
           continue;
         }
         url = `${options.controlApiUrl.replace(/\/+$/, '')}${CONTROL_TRACES_PATH}`;
-        headers = { [CONTROL_SKIP_FORWARD_HEADER]: CONTROL_SKIP_FORWARD_VALUE };
+        headers = { ...CONTROL_POST_HEADERS };
       }
 
       if (entry.nextAttemptAt > now()) {
@@ -363,12 +405,13 @@ export async function flushTelemetrySpool(options: SpoolFlushOptions = {}): Prom
 
       sends += 1;
       const timeoutMs = Math.min(DEFAULT_SEND_TIMEOUT_MS, Math.max(1, deadline - now()));
-      const status = await post(fetchImpl, url, headers, JSON.stringify(entry.payload), timeoutMs);
-      if (status !== null && status >= 200 && status < 300) {
+      const outcome = await postOtlpJson(fetchImpl, url, headers, JSON.stringify(entry.payload), timeoutMs);
+      if (outcome.ok) {
         removeQuietly(claim);
         result.sent += 1;
         continue;
       }
+      const status = outcome.status ?? null;
       const attempts = entry.attempts + 1;
       if ((status !== null && !isRetryableStatus(status)) || attempts >= maxAttempts) {
         removeQuietly(claim);
@@ -376,7 +419,13 @@ export async function flushTelemetrySpool(options: SpoolFlushOptions = {}): Prom
         continue;
       }
       try {
-        requeue({ ...entry, attempts, nextAttemptAt: now() + spoolBackoffMs(attempts) });
+        requeue({
+          ...entry,
+          attempts,
+          nextAttemptAt: now() + spoolBackoffMs(attempts),
+          lastFailureAt: now(),
+          ...(outcome.error ? { lastError: outcome.error } : {}),
+        });
         result.retried += 1;
       } catch {
         result.dropped += 1;
@@ -392,4 +441,55 @@ export async function flushTelemetrySpool(options: SpoolFlushOptions = {}): Prom
 export function countSpooledPayloads(env: NodeJS.ProcessEnv = process.env): number {
   const dir = getTelemetrySpoolDir(env);
   return dir ? listEntries(dir).length : 0;
+}
+
+/** What the spool holds for one receiver (`mission-control` or a destination name). */
+export interface SpoolReceiverSummary {
+  receiver: string;
+  /** Entries queued, claimed ones included. */
+  batches: number;
+  bytes: number;
+  oldestCreatedAt?: number;
+  lastFailureAt?: number;
+  lastError?: string;
+}
+
+/**
+ * Per-receiver summary of the spool, for `har env doctor` / `har telemetry
+ * status`. Reads entry metadata only; never sends. Fail-open: an unreadable
+ * entry is counted without its details.
+ */
+export function summarizeTelemetrySpool(env: NodeJS.ProcessEnv = process.env): SpoolReceiverSummary[] {
+  const dir = getTelemetrySpoolDir(env);
+  if (!dir) return [];
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir).filter((name) => name.endsWith(ENTRY_SUFFIX) || name.includes(`${ENTRY_SUFFIX}${CLAIM_MARK}`));
+  } catch {
+    return [];
+  }
+  const byReceiver = new Map<string, SpoolReceiverSummary>();
+  for (const name of names.sort()) {
+    const filePath = path.join(dir, name);
+    let entry: Partial<SpoolEntry> | null = null;
+    try {
+      entry = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<SpoolEntry>;
+    } catch {
+      entry = null;
+    }
+    const target = entry?.target;
+    const receiver = !target ? 'unknown' : target.kind === 'control' ? MISSION_CONTROL_RECEIVER : target.name;
+    const summary = byReceiver.get(receiver) ?? { receiver, batches: 0, bytes: 0 };
+    summary.batches += 1;
+    summary.bytes += fileSize(filePath);
+    if (typeof entry?.createdAt === 'number') {
+      summary.oldestCreatedAt = Math.min(summary.oldestCreatedAt ?? entry.createdAt, entry.createdAt);
+    }
+    if (typeof entry?.lastFailureAt === 'number' && entry.lastFailureAt >= (summary.lastFailureAt ?? 0)) {
+      summary.lastFailureAt = entry.lastFailureAt;
+      if (typeof entry.lastError === 'string') summary.lastError = entry.lastError;
+    }
+    byReceiver.set(receiver, summary);
+  }
+  return [...byReceiver.values()];
 }

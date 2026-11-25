@@ -12,8 +12,8 @@ import { encodeOtlpExportResponse, receiveOtlpExport, type OtlpExportRequest } f
  * Messages stay raw protobuf bytes (grpc-js has already removed any gRPC
  * message compression): each Export request is exactly the body of an OTLP/HTTP
  * protobuf request, so it goes through the same `receiveOtlpExport` as the HTTP
- * routes, and is forwarded to destinations as OTLP/HTTP protobuf. The response
- * is the protobuf `Export*ServiceResponse` with `partial_success`.
+ * routes. The response is the protobuf `Export*ServiceResponse` with
+ * `partial_success`.
  */
 
 export const OTLP_GRPC_DEFAULT_PORT = 4317;

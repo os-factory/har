@@ -4,6 +4,7 @@ import { getControlApiUrl } from '../../core/control-config';
 import { ensureRepoRegisteredWithControl, isControlApiReachable } from '../../core/control-sync';
 import { resolveHarnessRoot } from '../../harness/manifest';
 import {
+  buildOtelHooksConfig,
   disableOtelHooksExport,
   ensureOtelHooks,
   getOtelHooksConfigPath,
@@ -32,10 +33,20 @@ import {
 } from '../../core/telemetry-env';
 import { ensureTelemetryInfrastructure } from '../../core/telemetry-ensure';
 import {
+  MISSION_CONTROL_DESTINATION,
+  appliedRouteNames,
   describeAgentTelemetryRoute,
-  readAppliedDirectRoute,
+  planRouteDestinations,
+  readAppliedAgentRoute,
   resolveAgentTelemetryRoute,
-} from '../../core/telemetry-direct';
+  routeDestinationNames,
+  routeStripsLocalPaths,
+  type AgentTelemetryRoute,
+} from '../../core/telemetry-route';
+import { collectTelemetryHealth } from '../../core/telemetry-health';
+import { readTelemetryDestinations } from '../../core/telemetry-destinations';
+import { verificationTraceControlUrl } from '../../core/verification-spans';
+import { destinationsForSignal } from '../../harness/schema';
 import { error, header, info, success, warn } from '../../utils/logging';
 import { telemetryDestinationCommand } from './telemetry-destination';
 
@@ -49,6 +60,36 @@ function printLevels(current: TelemetryLevel): void {
   info('HAR HQ gets the text only with har control trajectory on.');
 }
 
+/** One entry of the agent route as the hook config has it: endpoints only, never a header. */
+export interface AgentRouteTarget {
+  name: string;
+  tracesEndpoint?: string;
+  /** Set when this entry receives event records at the current level. */
+  logsEndpoint?: string;
+}
+
+/** The route's entries with the endpoints otel-hook sends to at the current level. */
+export function agentRouteTargets(route: AgentTelemetryRoute): AgentRouteTarget[] {
+  if (route.mode === 'off') return [];
+  const byHookName = new Map(planRouteDestinations(route).map((plan) => [plan.name, plan.destination]));
+  return (buildOtelHooksConfig({ route }).exporter.destinations ?? []).map((entry) => ({
+    name: byHookName.get(entry.name) ?? entry.name,
+    ...(entry.tracesEndpoint ? { tracesEndpoint: entry.tracesEndpoint } : {}),
+    ...(entry.logsEndpoint ? { logsEndpoint: entry.logsEndpoint } : {}),
+  }));
+}
+
+/** Where verification traces go: Mission Control (sent now, or queued until it runs) and each traces destination. */
+export function verificationTraceTargets(): string[] {
+  let destinations: string[] = [];
+  try {
+    destinations = destinationsForSignal(readTelemetryDestinations(), 'traces').map((destination) => destination.name);
+  } catch {
+    destinations = [];
+  }
+  return [...(verificationTraceControlUrl() !== undefined ? [MISSION_CONTROL_DESTINATION] : []), ...destinations];
+}
+
 async function handleStatus(argv: { json: boolean }): Promise<void> {
   const preference = readTelemetryPreference();
   const enabled = isTelemetryEnabled();
@@ -59,20 +100,21 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   const reachable = enabled ? await isControlApiReachable(apiUrl) : false;
   const routeDecision = resolveAgentTelemetryRoute(getOtelHooksHome());
   const route = routeDecision.route;
-  const applied = readAppliedDirectRoute(getOtelHooksHome());
-  // Names only: a destination's endpoint headers never reach this output.
+  const applied = readAppliedAgentRoute(getOtelHooksHome());
+  const targets = agentRouteTargets(route);
+  const wantedNames = routeDestinationNames(route);
+  const appliedNames = appliedRouteNames(applied);
+  const verification = enabled ? verificationTraceTargets() : [];
+  const health = collectTelemetryHealth();
+  const localPaths = route.mode === 'off' ? null : routeStripsLocalPaths(route) ? 'stripped' : 'kept';
+  // Names and endpoints only: a destination's header values never reach this output.
   const agentTraces = {
     mode: route.mode,
     label: describeAgentTelemetryRoute(route),
-    ...(route.mode === 'direct'
-      ? {
-          // `destination` (the first) is kept for scripts written for one destination.
-          destination: route.destinations[0].name,
-          destinations: route.destinations.map((destination) => destination.name),
-        }
-      : {}),
-    appliedDirectDestination: applied?.destinations.join(',') ?? null,
-    appliedDirectDestinations: applied?.destinations ?? [],
+    destinations: wantedNames,
+    targets,
+    /** The route agents use now (from the hooks home), when it differs from the one above until `har telemetry on`. */
+    applied: applied ? appliedNames : null,
     ...(routeDecision.hint ? { hint: routeDecision.hint } : {}),
   };
   const payload = {
@@ -88,6 +130,9 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
     controlApiUrl: apiUrl,
     controlReachable: reachable,
     agentTraces,
+    verificationTraces: { destinations: verification },
+    localPaths,
+    destinationHealth: health,
     otelEndpoint: `${apiUrl.replace(/\/$/, '')}/api/otel`,
     otelHooksHome: getOtelHooksHome(),
     otelHooksConfig: getOtelHooksConfigPath(),
@@ -107,21 +152,41 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   info(`Preference:    ${getTelemetryPreferencePath()}${preference.updatedAt ? ` (updated ${preference.updatedAt})` : ` (default ${DEFAULT_TELEMETRY_LEVEL})`}`);
   info(`Mission Control: ${apiUrl} (${reachable ? 'reachable' : 'not reachable'})`);
   info(`Agent traces:  ${agentTraces.label}`);
+  const width = Math.max(0, ...targets.map((target) => target.name.length));
+  for (const target of targets) {
+    const endpoints = [
+      ...(target.tracesEndpoint ? [`traces ${target.tracesEndpoint}`] : []),
+      ...(target.logsEndpoint ? [`logs ${target.logsEndpoint}`] : []),
+    ];
+    info(`  ${target.name.padEnd(width)}  ${endpoints.join(', ')}`);
+  }
   if (routeDecision.hint) info(routeDecision.hint);
-  const appliedNames = applied?.destinations.join(',') ?? null;
-  const wantedNames = route.mode === 'direct' ? route.destinations.map((destination) => destination.name).join(',') : null;
-  if (appliedNames !== wantedNames) {
-    const quoted = applied?.destinations.map((name) => `"${name}"`).join(', ');
+  if (applied && appliedNames.join(',') !== wantedNames.join(',')) {
     warn(
-      `Agents currently send traces ${quoted ? `directly to ${quoted}` : 'to Mission Control'} — run har telemetry on to apply the route above.`,
+      `Agents currently send to ${appliedNames.length > 0 ? appliedNames.join(', ') : 'nowhere'} — run har telemetry on to apply the route above.`,
     );
   }
-  info(`OTLP endpoint: ${payload.otelEndpoint}`);
+  if (enabled) {
+    info(`Verification traces: ${verification.length > 0 ? `→ ${verification.join(', ')}` : 'nowhere'}`);
+  }
+  if (localPaths === 'kept' && route.mode === 'fanout' && route.missionControl && route.destinations.length > 0) {
+    info('Local paths:   kept in agent traces (Mission Control needs them), so your destinations receive them too (#519)');
+  } else if (localPaths === 'stripped') {
+    info('Local paths:   stripped from agent traces');
+  }
+  if (health.status !== 'skip' || health.notes.length > 0) {
+    info(`Destination health:${health.destinations.length === 0 && health.notes.length === 0 ? ' nothing queued' : ''}`);
+    for (const destination of health.destinations) {
+      if (destination.status === 'warn') warn(`  ${destination.summary}`);
+      else info(`  ${destination.summary}`);
+    }
+    for (const note of health.notes) info(`  ${note}`);
+  }
   info(`Hooks home:    ${payload.otelHooksHome}`);
 
   // Hooks installed + collector down is the failure state worth naming (#328):
   // every agent turn pays the export budget for telemetry nobody receives.
-  if (enabled && !reachable && route.mode === 'control') {
+  if (enabled && !reachable && route.mode === 'fanout' && route.missionControl !== undefined) {
     warn(
       'Agent hooks are installed but Mission Control is not reachable — each turn pays the export timeout for telemetry nobody receives.',
     );
@@ -152,13 +217,10 @@ async function handleOn(argv: { level: TelemetryLevel }): Promise<void> {
   if (result.message) success(result.message);
 
   const hooks = ensureOtelHooks({ setupAgents: true });
-  // Without Mission Control, the destinations take agent traces directly.
-  if (result.warning && hooks.route.mode !== 'direct') warn(result.warning);
+  if (result.warning) warn(result.warning);
   if (hooks.message) success(hooks.message);
   if (hooks.warning) warn(hooks.warning);
-  if (hooks.route.mode === 'direct') {
-    success(`Agent traces: ${describeAgentTelemetryRoute(hooks.route)} (Mission Control is off; only otel-hook traces go direct)`);
-  }
+  if (hooks.route.mode === 'fanout') success(`Agent traces: ${describeAgentTelemetryRoute(hooks.route)}`);
   if (hooks.routeHint) info(hooks.routeHint);
   if (result.otelReady) {
     await ensureRepoRegisteredWithControl(process.cwd(), result.apiUrl);
@@ -295,7 +357,7 @@ async function handleInstallHooks(): Promise<void> {
 
 export const telemetryCommand = {
   command: 'telemetry <subcommand>',
-  describe: 'Agent usage telemetry (Cursor / Claude / Codex via @osfactory/otel-hook → Mission Control)',
+  describe: 'Agent usage telemetry (Cursor / Claude / Codex via @osfactory/otel-hook → Mission Control and your destinations)',
   builder: (yargs: Argv) =>
     yargs
       .command(

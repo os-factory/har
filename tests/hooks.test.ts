@@ -4,6 +4,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import {
   checkCommitGate,
+  formatVerifiedTreeMessage,
   getHooksStatus,
   installHooks,
   isAgentWorktree,
@@ -83,12 +84,31 @@ describe('checkCommitGate', () => {
     const dir = initRepo();
     const worktree = addAgentWorktree(dir);
     fs.writeFileSync(path.join(worktree, 'a.txt'), 'verified change\n');
-    recordValidation({ checkoutDir: worktree, harnessRoot: dir, status: 'pass', full: true });
+    const record = recordValidation({
+      checkoutDir: worktree,
+      harnessRoot: dir,
+      status: 'pass',
+      full: true,
+      runId: '93892f28-0000-4000-8000-000000000000',
+    });
     sh(worktree, 'git add -A');
 
     const result = checkCommitGate(worktree);
     expect(result.exitCode).toBe(0);
-    expect(result.messages.join('\n')).toContain('verified');
+    // Both ids, labelled: the validation id is the Factory run id the proof and traces carry.
+    expect(result.messages).toEqual([
+      `har: tree ${record.treeHash.slice(0, 8)} verified — Factory run ${record.validationId.slice(0, 8)} (proof), verify run 93892f28 ✓`,
+    ]);
+  });
+
+  it('formats the pass line with whichever ids the validation has', () => {
+    expect(formatVerifiedTreeMessage('810a0e26ffff', { validationId: '8ec3a247aaaa', runId: '93892f28bbbb' })).toBe(
+      'har: tree 810a0e26 verified — Factory run 8ec3a247 (proof), verify run 93892f28 ✓',
+    );
+    expect(formatVerifiedTreeMessage('810a0e26ffff', { validationId: '8ec3a247aaaa' })).toBe(
+      'har: tree 810a0e26 verified — Factory run 8ec3a247 (proof) ✓',
+    );
+    expect(formatVerifiedTreeMessage('810a0e26ffff', {})).toBe('har: tree 810a0e26 verified ✓');
   });
 
   it('rejects fail and partial validations with specific messages', () => {

@@ -7,26 +7,23 @@ import {
   ingestOtelTracesBody,
   type OtelIngestResult,
 } from '@/server/otel-ingest';
-import { scheduleOtlpForwardBody } from '@/server/otlp-forward';
 
 /**
  * The one OTLP receive path shared by the OTLP/HTTP routes
  * (`/api/otel/v1/{traces,metrics,logs}`) and the OTLP/gRPC receiver
  * (`otlp-grpc.ts`): decode the content encoding, ingest what Mission Control
- * can attribute, schedule the forward copy, and build the spec's
- * `Export*ServiceResponse` (`partial_success`).
+ * can attribute, and build the spec's `Export*ServiceResponse`
+ * (`partial_success`).
+ *
+ * Mission Control stores what it receives and forwards nothing: producers send
+ * to every destination themselves (fan-out at the producer), Mission Control
+ * being one of them.
  */
 
 export interface OtlpExportRequest {
   body: Buffer;
   contentType: string | null;
   contentEncoding?: string | null;
-  /**
-   * Store without forwarding: the sender already delivered this payload to the
-   * destinations itself (a verification trace spooled while Mission Control was
-   * down). Set from the `x-har-otlp-forward: skip` request header.
-   */
-  skipForward?: boolean;
 }
 
 /** OTLP partial_success field name of the rejected count, per signal. */
@@ -57,20 +54,12 @@ const LOG_PREFIX: Record<OtlpSignal, string> = {
 };
 
 /**
- * Ingest one Export request and schedule its forward copy (original bytes and
- * encoding). Never throws: an ingest failure is logged and reported as a result
- * with no rejected records, as the HTTP routes always did.
+ * Ingest one Export request. Never throws: an ingest failure is logged and
+ * reported as a result with no rejected records, as the HTTP routes always did.
  */
 export async function receiveOtlpExport(signal: OtlpSignal, request: OtlpExportRequest): Promise<OtelIngestResult> {
   try {
-    const result = await ingestDecoded(signal, request);
-    // Copy to configured OTLP destinations after the response; never affects it.
-    // Sent even when Mission Control could not read it, as the routes always did.
-    if (!request.skipForward) scheduleOtlpForwardBody(signal, request.body, {
-      contentType: request.contentType,
-      contentEncoding: request.contentEncoding ?? null,
-    });
-    return result;
+    return await ingestDecoded(signal, request);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(LOG_PREFIX[signal], message);
@@ -179,7 +168,6 @@ export async function handleOtlpHttpExport(signal: OtlpSignal, request: Request)
       body: Buffer.from(await request.arrayBuffer()),
       contentType: request.headers.get('content-type'),
       contentEncoding: request.headers.get('content-encoding'),
-      skipForward: request.headers.get('x-har-otlp-forward')?.trim().toLowerCase() === 'skip',
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

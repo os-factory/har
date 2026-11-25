@@ -48,8 +48,21 @@ Responses follow the OTLP spec: every export is answered `200` with an
 `Export*ServiceResponse` in the request's encoding. Records Mission Control cannot
 attribute to a registered repository are not stored. They are counted in
 `partial_success` (`rejected_spans`, `rejected_data_points`, `rejected_log_records`)
-with a short `error_message`, and are still forwarded to your
-[destinations](/docs/guides/otlp-backends/).
+with a short `error_message`.
+
+Mission Control stores what it receives and **forwards nothing**. HAR's own
+producers fan out themselves: the agent hook and the CLI send each trace to
+Mission Control and to every [destination](/docs/guides/otlp-backends/), Langfuse
+or a Collector, with a retry spool per destination. Mission Control is one
+destination among them, so your backends keep receiving whether it runs or not. An
+SDK you point at Mission Control yourself reaches only Mission Control: point it at
+your backend too, or at a Collector that fans out.
+
+**Local paths ([#519](https://github.com/os-factory/har/issues/519)).** Mission
+Control attributes agent sessions with the Resource's `factory.local.*` keys
+(checkout and worktree paths). One hook process sends the same Resource to every
+destination, so while Mission Control is one of them, your other destinations
+receive those keys too.
 
 ## Register and sync
 
@@ -284,8 +297,9 @@ is bounded on both sides:
 
 The practical consequence: if Mission Control is not running, a turn costs a
 fraction of a second per hook rather than stalling. `har telemetry status` warns
-when hooks are installed and the collector is unreachable, since that
-combination is pure cost.
+when hooks are installed and Mission Control is unreachable, and it and
+`har env doctor` report what each destination has queued, for example
+`mission-control: 12 batches queued, last failure 3 min ago (ECONNREFUSED)`.
 
 Hooks config lives at `~/.har/otel-hooks/otel_config.json` (`HAR_OTEL_HOOKS_HOME` to override).
 The package itself is installed under `~/.har/otel-hooks/node_modules` (pinned
@@ -307,7 +321,9 @@ When telemetry is on:
 
 1. `har env launch` auto-starts Mission Control if it is not reachable (`har control up`).
 2. `har telemetry on` (and launch) install `@osfactory/otel-hook` and register Cursor / Claude / Codex hooks
-   to export OTLP `http/protobuf` to `{HAR_CONTROL_API_URL}/api/otel`.
+   to export OTLP `http/protobuf` to `{HAR_CONTROL_API_URL}/api/otel` and to each of your
+   [destinations](/docs/guides/otlp-backends/#agent-session-traces), as one destination list
+   (`har telemetry status` prints it: `Agent traces: → mission-control, langfuse`).
 3. Launch writes session attribution into `.env.agent.<id>` (`OTEL_RESOURCE_ATTRIBUTES`:
    `session.id`, `factory.slot.id`, `factory.local.*`, …). Mission Control matches sessions
    by workspace/cwd → slot work dir first, then by the Resource `session.id`.
@@ -396,13 +412,16 @@ the span was projected.
 
 ### Verification runs
 
-`har env verify` posts its verification trace to Mission Control's OTLP receiver
-when Mission Control is running (see
+`har env verify` posts its verification trace to Mission Control's OTLP receiver,
+next to one copy per trace destination; a copy Mission Control could not take is
+queued and sent once it runs (see
 [How verification traces are delivered](/docs/guides/otlp-backends/#how-verification-traces-are-delivered)).
 Mission Control recognizes the run span (instrumentation scope `@osfactory/har`
 with `cicd.pipeline.run.id`) and stores it as a verification run with its stage
 spans: run id (the validation id), tree, verdict, result, attestation digest, trace
-id, work unit, attempt, branch, start and end, and each stage's result. The run is
+id, work unit, attempt, branch, start and end, and each stage's result. The run span
+also carries the verify policy, `factory.policy.id` and `factory.policy.digest`, as
+the proof's predicate names it. The run is
 attributed to its repository by the Resource `factory.local.checkout_path`, or, for
 a copy the CLI queued while Mission Control was down, by `vcs.repository.url.full`
 matched against the repository's git remote. A trace delivered twice is stored once.

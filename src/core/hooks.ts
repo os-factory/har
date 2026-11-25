@@ -323,6 +323,23 @@ export interface GateCheckResult {
   messages: string[];
 }
 
+/**
+ * The gate's pass line. Two ids, labelled so they are not confused: the
+ * validation id is the Factory run id that the proof (`predicate.run.id`) and
+ * the traces (`factory.run.id`) carry; the run id is HAR's record of the one
+ * `har env verify` invocation that produced it.
+ */
+export function formatVerifiedTreeMessage(
+  tree: string,
+  record: { validationId?: string; runId?: string },
+): string {
+  const ids = [
+    ...(record.validationId ? [`Factory run ${record.validationId.slice(0, 8)} (proof)`] : []),
+    ...(record.runId ? [`verify run ${record.runId.slice(0, 8)}`] : []),
+  ];
+  return `har: tree ${tree.slice(0, 8)} verified${ids.length > 0 ? ` — ${ids.join(', ')}` : ''} ✓`;
+}
+
 /** Pre-commit gate: is the staged tree covered by a passing full verification? */
 export function checkCommitGate(cwd: string): GateCheckResult {
   if (process.env.HAR_SKIP_GATE === '1') {
@@ -360,12 +377,7 @@ export function checkCommitGate(cwd: string): GateCheckResult {
 
   const record = findValidation(checkout, stagedTree);
   if (record && record.status === 'pass' && record.full) {
-    return {
-      exitCode: 0,
-      messages: [
-        `har: batch ${stagedTree.slice(0, 8)} verified${record.runId ? ` by run ${record.runId.slice(0, 8)}` : ''} ✓`,
-      ],
-    };
+    return { exitCode: 0, messages: [formatVerifiedTreeMessage(stagedTree, record)] };
   }
 
   const messages: string[] = [];

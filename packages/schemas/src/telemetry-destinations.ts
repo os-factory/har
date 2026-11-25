@@ -7,14 +7,16 @@ import { LOCAL_ATTR_PREFIX } from './session-attribution';
  *
  * Written by `har telemetry destination add` to
  * `~/.har/destinations/telemetry.json` (mode 0600 — header values are secrets)
- * and read by Mission Control, which forwards what its OTLP receivers accept.
+ * and read by the producers, which send to each destination themselves: the
+ * agent hook (otel-hook's `exporter.destinations[]`) and the CLI (verification
+ * traces). Mission Control is one more receiver and forwards nothing.
  * No file, or no enabled destination, means nothing leaves the machine.
  */
 
 export const OTLP_SIGNALS = ['traces', 'logs', 'metrics'] as const;
 export type OtlpSignal = (typeof OTLP_SIGNALS)[number];
 
-/** OTLP over HTTP only — Mission Control forwards the raw HTTP body it received. */
+/** OTLP over HTTP only. */
 export const OTLP_DESTINATION_PROTOCOLS = ['http/protobuf', 'http/json'] as const;
 export type OtlpDestinationProtocol = (typeof OTLP_DESTINATION_PROTOCOLS)[number];
 
@@ -24,16 +26,18 @@ export type TelemetryDestinationPreset = (typeof TELEMETRY_DESTINATION_PRESETS)[
 /** File name inside the destinations directory. */
 export const TELEMETRY_DESTINATIONS_FILE = 'telemetry.json';
 
-/** Environment variable naming the destinations directory (set inside the Mission Control container). */
+/** Environment variable overriding the destinations directory (default `~/.har/destinations`). */
 export const HAR_DESTINATIONS_DIR_ENV = 'HAR_DESTINATIONS_DIR';
 
 /**
  * Attribute keys whose values are absolute paths on the user's machine (repo
  * checkout, slot worktree, agent workspace, process cwd, source file). Mission
- * Control keeps them locally for attribution and strips them — at resource,
+ * Control keeps them for attribution; the CLI strips them — at resource,
  * scope, span, span event/link, log record and metric data point (and exemplar)
- * level — from every copy forwarded to a destination unless that destination
- * sets `includeLocalPaths: true`.
+ * level — from every copy it sends a destination unless that destination sets
+ * `includeLocalPaths: true`. Agent hook traces are one Resource for every
+ * receiver: they keep `factory.local.*` while Mission Control is one of them
+ * (os-factory/har#519).
  *
  * An entry ending in `*` is a prefix rule: `factory.local.*` strips every key in
  * the local-only namespace (`attributeKeyDenied`).
@@ -60,9 +64,9 @@ export const TELEMETRY_LOCAL_PATH_ATTRIBUTES = [
  * Claude Code attaches `user.email`, `user.account_uuid`, `user.account_id`,
  * `user.id` and `organization.id` to its own metrics and events (and
  * `user.groups` through a sign-in gateway); `enduser.*` and the other `user.*`
- * keys are their OpenTelemetry semantic-convention counterparts. Mission Control
- * keeps them locally and strips them, at every level, from every copy forwarded
- * to a destination unless that destination sets `includeAccountIdentity: true`.
+ * keys are their OpenTelemetry semantic-convention counterparts. Claude Code's
+ * own telemetry goes to Mission Control only; any copy the CLI sends a
+ * destination has them stripped unless it sets `includeAccountIdentity: true`.
  */
 export const TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES = [
   // Claude Code standard attributes (metrics and events).
@@ -106,8 +110,7 @@ const OTLP_ATTRIBUTE_FIELDS = new Set(['attributes', 'filteredAttributes']);
  * Remove denied keys from every `attributes` / `filteredAttributes` list of a
  * decoded OTLP payload, in place: resource, scope, span, span event and link,
  * log record, metric data point and exemplar. Returns how many entries were
- * removed. Mission Control's forwarder and the CLI's verification trace spool
- * both strip with this one walk.
+ * removed. The CLI's verification trace delivery and spool strip with it.
  */
 export function removeDeniedOtlpAttributes(node: unknown, denied: readonly string[]): number {
   if (node === null || typeof node !== 'object' || ArrayBuffer.isView(node)) return 0;
@@ -144,7 +147,7 @@ export function destinationIncludesAccountIdentity(
   return destination.includeAccountIdentity === true;
 }
 
-/** Attribute keys stripped from every copy forwarded to this destination (empty: forward as received). */
+/** Attribute keys stripped from every copy sent to this destination (empty: send as produced). */
 export function forwardDeniedAttributes(
   destination: Pick<TelemetryDestination, 'includeLocalPaths' | 'includeAccountIdentity'>,
 ): readonly string[] {
@@ -192,15 +195,16 @@ export const telemetryDestinationSchema = z.object({
   signals: z.array(z.enum(OTLP_SIGNALS)).min(1),
   enabled: z.boolean().default(true),
   /**
-   * Forward attributes that hold absolute local paths
-   * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`). Absent or false (the default): Mission
-   * Control strips them before the copy is spooled or sent.
+   * Send attributes that hold absolute local paths
+   * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`). Absent or false (the default): they are
+   * stripped before the copy is spooled or sent, except `factory.local.*` in
+   * agent hook traces while Mission Control is a destination (#519).
    */
   includeLocalPaths: z.boolean().optional(),
   /**
-   * Forward attributes that identify the account (`TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES`:
+   * Send attributes that identify the account (`TELEMETRY_ACCOUNT_IDENTITY_ATTRIBUTES`:
    * email, account and user ids, organization id). Absent or false (the default):
-   * Mission Control strips them before the copy is spooled or sent.
+   * they are stripped before the copy is spooled or sent.
    */
   includeAccountIdentity: z.boolean().optional(),
   createdAt: z.string().optional(),

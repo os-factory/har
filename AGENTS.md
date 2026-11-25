@@ -161,12 +161,14 @@ These are non-negotiable. Do not introduce imports that violate them.
 | Line status + cumulative gate orchestration | `src/core/lines.ts` |
 | Bundle install channels shared by plugins and lines | `src/harness/bundle-resolve.ts` |
 | Bundled example line (seed for `os-factory/har-line`) | `src/templates/lines/example-line/` |
-| Telemetry destinations (schema, forward denylists: local paths, account identity) | `packages/schemas/src/telemetry-destinations.ts` |
+| Telemetry destinations (schema, denylists: local paths, account identity) | `packages/schemas/src/telemetry-destinations.ts` |
 | Destination add/list/remove/test (presets, opt-in flags) | `src/core/telemetry-destinations.ts`, `src/cli/commands/telemetry-destination.ts` |
 | Session OTel resource attributes (`session.id`, `factory.*`, `vcs.*`; no `har.*`) | `src/core/telemetry-env.ts` |
 | Verification spans (`cicd.pipeline.run`, per-stage task spans) | `src/core/verification-spans.ts` |
 | Factory Commits proof adapter (mode, predicate, attest, notes, trailers) | `src/core/proof.ts`; hooks wiring in `src/core/hooks.ts` |
-| Mission Control OTLP forward (spool, retry) and privacy filter | `control/src/server/otlp-forward.ts`, `control/src/server/otlp-privacy.ts` |
+| Agent telemetry route: fan-out at the producer (otel-hook `exporter.destinations[]`, Mission Control one entry) | `src/core/telemetry-route.ts`, `src/core/otel-hooks.ts` |
+| Verification trace fan-out and CLI retry spool | `src/core/verification-spans.ts`, `src/core/telemetry-spool.ts` |
+| Destination health (doctor, telemetry status) | `src/core/telemetry-health.ts` |
 | Generic shell/path/logging helper | `src/utils/` |
 
 When unsure: put domain logic in `harness/` or `core/`, never in an adapter.
