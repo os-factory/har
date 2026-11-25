@@ -25,7 +25,7 @@ stage runner.
 
 ```bash
 har line add github:your-org/onboarding-line
-har line status onboarding-line
+har line describe onboarding-line
 har line gate S2 --line onboarding-line
 ```
 

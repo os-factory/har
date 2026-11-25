@@ -3,7 +3,7 @@ import { applyLine, readInstalledLineProgram, type ApplyLineOptions, type ApplyL
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
 import { readLineLedger } from '../harness/line-ledger';
 import { listBundledLineIds, listLocalLineIds } from '../harness/line-resolve';
-import { readStageRegistry } from '../harness/stages';
+import { readStageRegistry, stageRequiresAgentId } from '../harness/stages';
 import type { LineGateStage, LineProgram, LineStation } from '../harness/schema';
 import { listSlotRegistryEntries } from './slot-registry';
 import { listRuns } from './runs';
@@ -186,11 +186,6 @@ export function getLineStatus(repoPath: string, lineId: string): LineStatus {
   };
 }
 
-/** Status for every installed line. */
-export function getAllLineStatuses(repoPath: string): LineStatus[] {
-  return listInstalledLineIds(repoPath).map((id) => getLineStatus(repoPath, id));
-}
-
 export interface RunLineGateOptions {
   repoPath: string;
   lineId?: string;
@@ -361,15 +356,35 @@ export interface LineRunAll {
   command: string;
 }
 
-function lineRunAll(lineId: string, program: LineProgram): LineRunAll | undefined {
+/**
+ * Slot to name in a gate command: the slot that was just verified, a
+ * `<slot>` placeholder when a gate stage runs in a slot, or none.
+ */
+type GateSlot = number | '<slot>' | undefined;
+
+function gateSlot(
+  registry: ReturnType<typeof readStageRegistry>,
+  program: LineProgram,
+  agentId?: number,
+): GateSlot {
+  if (agentId !== undefined) return agentId;
+  const needsSlot = program.gate.stages.some((gateStage) => {
+    const stage = registry.stages.find((s) => s.id === gateStage.id);
+    return stage !== undefined && stageRequiresAgentId(stage);
+  });
+  return needsSlot ? '<slot>' : undefined;
+}
+
+function gateCommand(lineId: string, station: string, slot: GateSlot, force: boolean): string {
+  const agent = slot === undefined ? '' : ` --agent ${slot}`;
+  return `har line gate ${station} --line ${lineId}${agent}${force ? ' --force' : ''}`;
+}
+
+function lineRunAll(lineId: string, program: LineProgram, slot: GateSlot): LineRunAll | undefined {
   const last = program.stations[program.stations.length - 1];
   if (!last) return undefined;
   const force = program.gate.optInEnv !== null;
-  return {
-    station: last.id,
-    force,
-    command: `har line gate ${last.id} --line ${lineId}${force ? ' --force' : ''}`,
-  };
+  return { station: last.id, force, command: gateCommand(lineId, last.id, slot, force) };
 }
 
 /** One installed line in `har line list` / `har_line_list`. */
@@ -405,10 +420,12 @@ function safeLedgerIds(repoPath: string): string[] {
 /**
  * Installed lines with what an agent needs to decide whether to run one, plus
  * lines available to install. Never throws on a broken line: it is listed as
- * `unreadable` so one bad file cannot hide the others.
+ * `unreadable` so one bad file cannot hide the others. With `agentId`, run
+ * commands target that slot.
  */
-export function listLines(repoPath: string): LineList {
+export function listLines(repoPath: string, options: { agentId?: number } = {}): LineList {
   const resolved = path.resolve(repoPath);
+  const registry = readStageRegistry(resolved);
   const ledgerIds = new Set(safeLedgerIds(resolved));
   const localIds = listLocalLineIds(resolved);
   const installed: LineListEntry[] = [];
@@ -445,7 +462,7 @@ export function listLines(repoPath: string): LineList {
       nextStationId,
       allGreen: nextStationId === undefined,
       optInEnv: program.gate.optInEnv,
-      runAll: lineRunAll(lineId, program),
+      runAll: lineRunAll(lineId, program, gateSlot(registry, program, options.agentId)),
     });
   }
 
@@ -501,7 +518,18 @@ export interface LineDescription {
   runAll?: LineRunAll;
   /** Per-station command template; replace <station> with a station id. */
   runStationCommand: string;
+  /** Line stages registered in .har/stages.json (and kept off the verify plan). */
+  registeredStageIds: string[];
+  /** Line stages that leaked onto verificationStages — doctor fails on these. */
+  verifyLeaks: string[];
+  slotsInFlight: LineSlotInFlight[];
   warnings: string[];
+}
+
+/** An installed line whose program cannot be read. */
+export interface UnreadableLine {
+  lineId: string;
+  unreadable: string;
 }
 
 export function describeLine(repoPath: string, lineId: string): LineDescription {
@@ -519,6 +547,7 @@ export function describeLine(repoPath: string, lineId: string): LineDescription 
   const stationStatus = new Map(status.stations.map((s) => [s.id, s]));
 
   const force = program.gate.optInEnv !== null;
+  const slot = gateSlot(registry, program);
   return {
     lineId,
     title: program.title,
@@ -543,8 +572,26 @@ export function describeLine(repoPath: string, lineId: string): LineDescription 
     })),
     nextStationId: status.nextStationId,
     allGreen: status.nextStationId === undefined,
-    runAll: lineRunAll(lineId, program),
-    runStationCommand: `har line gate <station> --line ${lineId}${force ? ' --force' : ''}`,
+    runAll: lineRunAll(lineId, program, slot),
+    runStationCommand: gateCommand(lineId, '<station>', slot, force),
+    registeredStageIds: status.registeredStageIds,
+    verifyLeaks: status.verifyLeaks,
+    slotsInFlight: status.slotsInFlight,
     warnings: status.warnings,
   };
+}
+
+/**
+ * Every installed line, described. A line that cannot be read is returned as
+ * `unreadable` instead of failing the others.
+ */
+export function describeLines(repoPath: string): Array<LineDescription | UnreadableLine> {
+  return listLines(repoPath).installed.map((entry) => {
+    if (entry.unreadable) return { lineId: entry.lineId, unreadable: entry.unreadable };
+    try {
+      return describeLine(repoPath, entry.lineId);
+    } catch (err: unknown) {
+      return { lineId: entry.lineId, unreadable: (err as Error).message };
+    }
+  });
 }

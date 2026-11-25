@@ -21,7 +21,7 @@ belongs to the tree, not to a single SHA.
 ## Run it
 
 ```bash
-har line status session-history
+har line describe session-history
 har line gate S0 --line session-history
 har line gate S1 --line session-history
 ```

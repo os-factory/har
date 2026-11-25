@@ -159,7 +159,7 @@ green, the workstations currently in use, and the skills, MCP servers and
 plugins each line declares.
 
 The board reads the repository's own `.har/lines.json` and program — the same
-source `har line status` reads — so the dashboard and the CLI always agree. It
+source `har line describe` reads — so the dashboard and the CLI always agree. It
 is read-only: installing or adapting a line is `har line add` plus the
 adaptation prompt that install writes, and running a gate is
 `har line gate <station>`.

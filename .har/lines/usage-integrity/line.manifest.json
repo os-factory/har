@@ -52,7 +52,7 @@
     }
   ],
   "nextSteps": [
-    "har line status usage-integrity",
+    "har line describe usage-integrity",
     "har line gate S0 --line usage-integrity",
     "har line gate S1 --line usage-integrity"
   ],

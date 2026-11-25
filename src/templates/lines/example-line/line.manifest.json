@@ -30,7 +30,7 @@
   "nextSteps": [
     "Edit .har/lines/example-line/line.json — rename the line and describe your stations",
     "Edit .har/stages/example-gate.sh — replace the TODO with the real gate",
-    "har line status example-line",
+    "har line describe example-line",
     "har line gate S2 --line example-line"
   ],
   "docsPath": ".har/lines/example-line/README.md"

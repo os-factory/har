@@ -1,6 +1,6 @@
 ---
 name: factory-line
-description: Factory line for executing one station of a declared multi-station program — read the installed line bundle (har line status), plan parallel work into isolated HAR slots, run the cumulative gate with har line gate, and hand off for human review. Use when asked to "run a factory line", "run the next station", "execute a milestone program", or when a repo has an installed line and you need to advance it. Not limited to the HAR v1.0.0 migration.
+description: Factory line for executing one station of a declared multi-station program — read the installed line bundle (har line describe), plan parallel work into isolated HAR slots, run the cumulative gate with har line gate, and hand off for human review. Use when asked to "run a factory line", "run the next station", "execute a milestone program", or when a repo has an installed line and you need to advance it. Not limited to the HAR v1.0.0 migration.
 ---
 
 # Factory line
@@ -10,7 +10,7 @@ Execute **one station** of a declared program end-to-end:
 sync → wave plan → parallel slots → cumulative gate → human handoff.
 
 The program lives in an **installed line bundle**, not in this skill. Find it
-with `har line status`: installed lines live at `.har/lines/<id>/line.json` and
+with `har line describe`: installed lines live at `.har/lines/<id>/line.json` and
 are recorded in `.har/lines.json`. This skill is the orchestrator;
 station-specific how-to lives in other skills the program lists.
 
@@ -31,7 +31,7 @@ Instances: [examples/](./examples/).
 
 Resolve these before doing anything (ask only if not inferable):
 
-1. **Line** — run `har line status` (or MCP `har_line_status`). One installed
+1. **Line** — run `har line describe` (or MCP `har_line_describe`). One installed
    line: use it. Several: ask which. **None installed**: stop and offer
    `har line create <id>` (scaffold) or `har line add <spec>` (install a
    published bundle, e.g. `github:os-factory/har-line`). Authoring templates
@@ -61,7 +61,7 @@ template does not declare them, do not do them:
 
 ## Phase 0 — Load and preflight
 
-1. `har line status [id]` and read the program it names
+1. `har line describe [id]` and read the program it names
    (`.har/lines/<id>/line.json`). Confirm `contractVersion`,
    `gate.cumulative === true`, `handoff.autonomousShip === false`. The status
    output already reports which stations are green and which is next.

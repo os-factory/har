@@ -206,8 +206,22 @@ export const RunVerificationInputSchema = z.object({
 
 export const RunVerificationOutputSchema = ShellRunOutputSchema.extend({
   verification: VerificationResultSchema.nullable(),
-  /** Installed factory lines are not run by verify; this says how to run them. */
-  linesHint: z.string().optional(),
+  /**
+   * After a pass: installed factory lines (never run by verify) with how to run
+   * each one against this slot — an optional next step.
+   */
+  lines: z
+    .array(
+      z.object({
+        lineId: z.string(),
+        title: z.string(),
+        stationIds: z.array(z.string()),
+        nextStationId: z.string().optional(),
+        allGreen: z.boolean(),
+        runAll: z.object({ station: z.string(), force: z.boolean(), command: z.string() }),
+      }),
+    )
+    .optional(),
 });
 
 export const GetLogsInputSchema = z.object({
@@ -325,18 +339,13 @@ export const AddLineInputSchema = z.object({
   force: z.boolean().default(false).describe('Overwrite existing line files and stage entries'),
 });
 
-export const LineStatusInputSchema = z.object({
-  repo: z.string().default('.'),
-  line: z.string().min(1).optional().describe('Line id (default: every installed line)'),
-});
-
 export const LineListInputSchema = z.object({
   repo: z.string().default('.'),
 });
 
 export const LineDescribeInputSchema = z.object({
   repo: z.string().default('.'),
-  line: z.string().min(1).describe('Installed line id (see har_line_list)'),
+  line: z.string().min(1).optional().describe('Installed line id (default: every installed line)'),
 });
 
 export const RunLineGateInputSchema = z.object({

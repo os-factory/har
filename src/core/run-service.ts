@@ -47,8 +47,6 @@ import {
   PreflightResult,
   StageExecutor,
   StageRunOptions,
-  VerificationAfterStagesHook,
-  VerificationExtraCheck,
   VerificationRunResult,
 } from './types';
 import { StageResult, VerificationResult } from '../harness/schema';
@@ -392,8 +390,6 @@ export class RunService {
     full?: boolean;
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
-    /** Extra checks to run once the stages pass; a failing one fails verification. */
-    afterStages?: VerificationAfterStagesHook;
   }): Promise<VerificationRunResult> {
     const args = options.full ? ['--full'] : undefined;
     const result = await this.runStage({
@@ -414,16 +410,6 @@ export class RunService {
       const data = result.data as { verification?: VerificationResult | null };
       if (data.verification !== undefined) {
         verification = data.verification;
-      }
-    }
-
-    let code = shell.code;
-    let extraChecks: VerificationExtraCheck[] | undefined;
-    if (options.afterStages && code === 0 && verification?.status === 'pass') {
-      extraChecks = await options.afterStages();
-      if (extraChecks.some((check) => !check.pass)) {
-        code = 1;
-        verification = { ...verification, status: 'fail' };
       }
     }
 
@@ -457,12 +443,11 @@ export class RunService {
           });
         }
         return {
-          code,
+          code: shell.code,
           stdout: shell.stdout,
           stderr: shell.stderr,
           verification,
           validation,
-          extraChecks,
         };
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
@@ -470,11 +455,10 @@ export class RunService {
     }
 
     return {
-      code,
+      code: shell.code,
       stdout: shell.stdout,
       stderr: shell.stderr,
       verification,
-      extraChecks,
     };
   }
 
@@ -725,7 +709,5 @@ export type {
   PreflightOptions,
   PreflightResult,
   StageRunOptions,
-  VerificationAfterStagesHook,
-  VerificationExtraCheck,
   VerificationRunResult,
 } from './types';

@@ -31,7 +31,7 @@ freed.
 ## Run it
 
 ```bash
-har line status occupancy-identity
+har line describe occupancy-identity
 har line gate S2 --line occupancy-identity   # S0 + S1 + S2 — fast, no Docker
 har line gate S3 --line occupancy-identity   # + the sandbox lab
 ```

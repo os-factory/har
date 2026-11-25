@@ -108,25 +108,9 @@ export interface EnvironmentStatusRunResult extends EnvironmentRunResult {
   status: EnvironmentStatus;
 }
 
-/**
- * An extra check run after the verification stages pass (e.g. a factory line
- * gate the user opted into). Any failing check fails the verification.
- */
-export interface VerificationExtraCheck {
-  name: string;
-  pass: boolean;
-  /** Human-readable reason, set when the check failed. */
-  detail?: string;
-}
-
-/** Runs after the verification stages pass and before the validation is recorded. */
-export type VerificationAfterStagesHook = () => Promise<VerificationExtraCheck[]>;
-
 export interface VerificationRunResult extends EnvironmentRunResult {
   verification: VerificationResult | null;
   validation?: ValidationRecord;
-  /** Results of the after-stages hook; absent when no hook ran. */
-  extraChecks?: VerificationExtraCheck[];
 }
 
 export interface LogsOptions {

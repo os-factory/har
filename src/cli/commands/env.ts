@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import { finishCommand } from '../finish-command';
 import { initHarness, maintainHarness, addPlugin } from '../../core/harness';
@@ -56,12 +55,7 @@ import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/sche
 import { validateAgentId } from '../../utils/validation';
 import { slimVerificationResult } from '../../core/results';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
-import {
-  createVerifyLinesHook,
-  describeVerifyLineChoice,
-  installedLinesHint,
-  type VerifyLineChoice,
-} from '../../core/verify-lines';
+import { verifyLinesNextStep, type VerifyNextStepLine } from '../../core/verify-lines';
 import {
   HAR_ENV_EPILOG,
   LAUNCH_COMMAND_DESCRIBE,
@@ -1215,34 +1209,24 @@ export async function handleRecover(argv: { id?: number; repo: string }): Promis
 }
 
 /**
- * Interactive chooser for factory lines to gate after verify; none selected by
- * default. Ctrl+C here skips the line gates — the stages already passed, so
- * verify still records their result instead of dying with a stack trace.
+ * Installed factory lines as an optional next step after a passing verify.
+ * Verify never runs them and never asks; these are the commands to run each
+ * one against the slot that was just verified.
  */
-export async function chooseLinesToVerify(choices: VerifyLineChoice[]): Promise<string[]> {
-  try {
-    return await promptLinesToVerify(choices);
-  } catch (err: unknown) {
-    if ((err as Error)?.name !== 'ExitPromptError') throw err;
-    warn('Line gates skipped.');
-    return [];
-  }
-}
-
-async function promptLinesToVerify(choices: VerifyLineChoice[]): Promise<string[]> {
-  const { lineIds } = await inquirer.prompt<{ lineIds: string[] }>([
-    {
-      type: 'checkbox',
-      name: 'lineIds',
-      message: 'Verification passed. Also run factory line gates? (every station; space to select)',
-      choices: choices.map((choice) => ({
-        name: describeVerifyLineChoice(choice),
-        value: choice.lineId,
-        disabled: choice.unreadable ? 'unreadable' : false,
-      })),
-    },
-  ]);
-  return lineIds;
+export function renderLinesNextStep(lines: VerifyNextStepLine[]): string[] {
+  if (lines.length === 0) return [];
+  const width = Math.max(...lines.map((line) => line.lineId.length));
+  return [
+    'Optional next step — factory lines installed (not run by verify):',
+    ...lines.flatMap((line) => {
+      const progress = line.allGreen ? 'all stations green' : `next: ${line.nextStationId}`;
+      return [
+        `  ${line.lineId.padEnd(width)}  ${line.title} (${line.stationIds.join(' → ')}, ${progress})`,
+        `    ${line.runAll.command}`,
+      ];
+    }),
+    'What a line checks: har line describe <id>',
+  ];
 }
 
 export async function handleVerify(argv: {
@@ -1253,21 +1237,14 @@ export async function handleVerify(argv: {
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
-  const interactive = !argv.json && Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const result = await runVerification({
     repoPath: repo,
     agentId,
     full: argv.full,
     capture: Boolean(argv.json),
-    afterStages: interactive
-      ? createVerifyLinesHook({ repoPath: repo, agentId, choose: chooseLinesToVerify })
-      : undefined,
   });
-
-  if (!interactive) {
-    const hint = installedLinesHint(repo);
-    if (hint) console.error(hint);
-  }
+  const passed = result.code === 0 && result.verification?.status !== 'fail';
+  const lines = passed ? verifyLinesNextStep(repo, agentId) : [];
 
   if (argv.json) {
     const payload = slimVerificationResult(result.verification) ?? {
@@ -1275,23 +1252,13 @@ export async function handleVerify(argv: {
       agent_id: agentId,
       stages: [],
     };
-    process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+    const output = lines.length > 0 ? { ...payload, lines } : payload;
+    process.stdout.write(JSON.stringify(output, null, 2) + '\n');
     return finishCommand(result.code);
   }
 
-  for (const check of result.extraChecks ?? []) {
-    if (check.pass) {
-      success(`Line gate passed: ${check.name.replace(/^line:/, '')}`);
-    } else {
-      error(`Line gate failed: ${check.name.replace(/^line:/, '')} — ${check.detail ?? 'failed'}`);
-    }
-  }
-
   if (result.verification) {
-    const failed = [
-      ...result.verification.stages.filter((stage) => !stage.pass).map((stage) => stage.name),
-      ...(result.extraChecks ?? []).filter((check) => !check.pass).map((check) => check.name),
-    ];
+    const failed = result.verification.stages.filter((stage) => !stage.pass).map((stage) => stage.name);
     const elapsed =
       result.verification.total_ms != null ? ` (${result.verification.total_ms}ms)` : '';
     if (failed.length > 0) {
@@ -1299,6 +1266,12 @@ export async function handleVerify(argv: {
     } else {
       success(`Verification ${result.verification.status}${elapsed}`);
     }
+  }
+
+  const nextStep = renderLinesNextStep(lines);
+  if (nextStep.length > 0) {
+    console.error('');
+    for (const line of nextStep) console.error(line);
   }
 
   return finishCommand(result.code);
