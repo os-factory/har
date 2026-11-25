@@ -67,7 +67,13 @@ import {
 } from './session-attribution-sync';
 import { buildSessionKey } from './telemetry-env';
 import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
-import { chunkBySerializedSize, maxSyncBatchBytes } from './sync-batches';
+import {
+  chunkBySerializedSize,
+  maxSyncBatchBytes,
+  maxSyncBatchRows,
+  packSyncBodies,
+  type SyncUnit,
+} from './sync-batches';
 import type { ChannelReadFailure } from './control-api-read';
 import { fetchPersistedTrajectory } from './control-persisted-trajectory';
 import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
@@ -386,6 +392,9 @@ async function postPortalWithRefresh(
   return response;
 }
 
+/** har-portal refused a request as too large (HTTP 413). */
+class PortalPayloadTooLargeError extends Error {}
+
 async function throwPortalFailure(response: Response): Promise<never> {
   if (response.status === 401 || response.status === 403) {
     throw new Error(
@@ -393,7 +402,9 @@ async function throwPortalFailure(response: Response): Promise<never> {
     );
   }
   const text = await response.text().catch(() => '');
-  throw new Error(`har-portal sync failed: HTTP ${response.status}${text ? ` — ${text}` : ''}`);
+  const message = `har-portal sync failed: HTTP ${response.status}${text ? ` — ${text}` : ''}`;
+  if (response.status === 413) throw new PortalPayloadTooLargeError(message);
+  throw new Error(message);
 }
 
 async function postPortal(
@@ -423,6 +434,64 @@ async function postPortalIfSupported(
   if (!response.ok) await throwPortalFailure(response);
 
   return true;
+}
+
+function maxRowsInBody(body: Record<string, unknown>): number {
+  return Math.max(0, ...Object.values(body).map((value) => (Array.isArray(value) ? value.length : 0)));
+}
+
+/**
+ * POST `units` to the portal in as many requests as the per-request budget
+ * needs; the first carries `head` (when given), the rest `{ path }`. A request the portal
+ * still refuses as too large (its limit is below ours) is packed again at half
+ * its size and sent in parts. `onLanded` runs after each request lands, in order.
+ */
+async function postPortalPacked(
+  portal: PortalTarget,
+  endpoint: string,
+  path: string,
+  head: Record<string, unknown> | null,
+  units: SyncUnit[],
+  dryRun: boolean | undefined,
+  onLanded: (landed: SyncUnit[], response: Record<string, unknown> | null) => void,
+  maxBytes = maxSyncBatchBytes(),
+  maxRows = maxSyncBatchRows(),
+): Promise<void> {
+  const continuation = { path };
+  const bodies = packSyncBodies(head, continuation, units, maxBytes, maxRows);
+  for (let i = 0; i < bodies.length; i++) {
+    const { body, units: bodyUnits } = bodies[i];
+    let response: Record<string, unknown> | null;
+    try {
+      response = await postPortal(portal, endpoint, body, dryRun);
+    } catch (err) {
+      if (!(err instanceof PortalPayloadTooLargeError)) throw err;
+      const bodyHead = i === 0 ? head : null;
+      const halfBytes = Math.floor(Buffer.byteLength(JSON.stringify(body), 'utf8') / 2);
+      const halfRows = Math.max(1, Math.floor(maxRowsInBody(body) / 2));
+      if (packSyncBodies(bodyHead, continuation, bodyUnits, halfBytes, halfRows).length < 2) {
+        throw new PortalPayloadTooLargeError(
+          `${err.message} (a single record is larger than the portal accepts; it cannot be split further)`,
+        );
+      }
+      await postPortalPacked(portal, endpoint, path, bodyHead, bodyUnits, dryRun, onLanded, halfBytes, halfRows);
+      continue;
+    }
+    onLanded(bodyUnits, response);
+  }
+}
+
+function runUnits(runs: RunRecord[]): SyncUnit[] {
+  return [...runs]
+    .sort((a, b) => runTimestamp(a).localeCompare(runTimestamp(b)))
+    .map((run) => ({ key: 'runs', rows: [run] }));
+}
+
+function lastRunIn(units: SyncUnit[]): RunRecord | undefined {
+  for (let i = units.length - 1; i >= 0; i--) {
+    if (units[i].key === 'runs') return units[i].rows[units[i].rows.length - 1] as RunRecord;
+  }
+  return undefined;
 }
 
 function resolvePortalUserEmail(target?: PortalTarget): string | undefined {
@@ -640,8 +709,8 @@ async function buildPortalPayload(
   held: Array<Array<Record<string, unknown>>>;
   /** The blocking units the held usage breaks (empty when no usage was checked). */
   heldUnits: HeldUsageUnits;
-  /** Usage beyond the first request's share, one request per batch. */
-  usageBatches: Array<Array<Record<string, unknown>>>;
+  /** Records and usage after the head, in the order the portal needs them. */
+  units: SyncUnit[];
   runs: RunRecord[];
   runsBySource: RunsBySource[];
   events: Record<string, unknown>[];
@@ -675,11 +744,6 @@ async function buildPortalPayload(
   // only when this sync has usage to send.
   const heldUnits: HeldUsageUnits = collected.length > 0 ? await loadHeldUnits() : new Map();
   const { sent: usage, held } = partitionHeldUsage(collected, heldUnits);
-  // A provider session's rows stay in one request: the portal replaces a
-  // session's rows with what one request carries.
-  const [firstUsage = [], ...usageBatches] = chunkBySerializedSize(usage, maxSyncBatchBytes()).map(
-    (sessions) => sessions.flat(),
-  );
 
   if (
     full &&
@@ -710,19 +774,22 @@ async function buildPortalPayload(
     ...(stagesRegistry ? { stagesRegistry } : {}),
     slots: status.slots,
     generatedAt: status.generatedAt,
-    ...(validations.length > 0
-      ? {
-          validations: userEmail
-            ? validations.map((v) => ({ ...v, userEmail }))
-            : validations,
-        }
-      : {}),
-    ...(workUnits.length > 0 ? { workUnits } : {}),
-    ...(attempts.length > 0 ? { attempts } : {}),
-    ...(validationBindings.length > 0 ? { validationBindings } : {}),
-    ...(commitBindings.length > 0 ? { commitBindings } : {}),
-    ...(firstUsage.length > 0 ? { usage: firstUsage } : {}),
   };
+
+  // The portal upserts each record by id, so they may span requests, but it
+  // resolves an attempt's work unit (and a binding's attempt) from rows already
+  // stored: work units go first, then attempts, then bindings. A provider
+  // session's usage rows stay in one request: the portal replaces a session's
+  // rows with what one request carries.
+  const each = (key: string, rows: unknown[]): SyncUnit[] => rows.map((row) => ({ key, rows: [row] }));
+  const units: SyncUnit[] = [
+    ...each('workUnits', workUnits),
+    ...each('attempts', attempts),
+    ...each('validations', userEmail ? validations.map((v) => ({ ...v, userEmail })) : validations),
+    ...each('validationBindings', validationBindings),
+    ...each('commitBindings', commitBindings),
+    ...usage.map((session) => ({ key: 'usage', rows: session })),
+  ];
 
   const runsBySource = userEmail
     ? rawRunsBySource.map(({ source, runs: sourceRuns }) => ({
@@ -735,7 +802,7 @@ async function buildPortalPayload(
     syncBody,
     held,
     heldUnits,
-    usageBatches,
+    units,
     runs: mergeRunsBySource(runsBySource),
     runsBySource,
     events,
@@ -982,7 +1049,7 @@ async function syncRepoWithPortal(
   const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
   const loadHeldUnits = async (): Promise<HeldUsageUnits> =>
     dryRun ? new Map() : heldUsageUnits(controlApiUrl, repoPath);
-  const { syncBody, held, heldUnits, usageBatches, runsBySource, events, maxSyncedAt, failures, truncated } =
+  const { syncBody, held, heldUnits, units, runsBySource, events, maxSyncedAt, failures, truncated } =
     await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, loadHeldUnits);
   const newRuns = selectRunsForSync(
     runsBySource,
@@ -992,37 +1059,42 @@ async function syncRepoWithPortal(
   );
 
   let repoId: string | undefined;
-  const deltaRepoId = () => stored?.repoId ?? repoId;
-  await syncRunBatches(
-    newRuns,
+  let firstLanded = true;
+  // Runs go last, oldest first; the runs watermark advances (with the portal's
+  // repo id) after each request lands, so a sync cut short resumes.
+  const advanceRunsWatermark = (getRepoId: () => string | undefined) =>
+    (landed: SyncUnit[]): void => {
+      const last = lastRunIn(landed);
+      if (!dryRun && last) {
+        writeRunsWatermark(repoPath, runsTarget, getRepoId(), runTimestamp(last), sourcePaths);
+      }
+    };
+  const advanceDelta = advanceRunsWatermark(() => stored?.repoId ?? repoId);
+  await postPortalPacked(
+    portal,
+    '/api/sync',
     repoPath,
-    runsTarget,
-    deltaRepoId,
+    // An empty sync still says it has no runs, as it always has.
+    newRuns.length > 0 ? syncBody : { ...syncBody, runs: [] },
+    [...units, ...runUnits(newRuns)],
     dryRun,
-    async (batch, i) => {
-      const body = i === 0 ? { ...syncBody, runs: batch } : { path: repoPath, runs: batch };
-      const res = await postPortal(portal, '/api/sync', body, dryRun);
-      if (i === 0 && typeof res?.repositoryId === 'string') repoId = res.repositoryId;
+    (landed, response) => {
+      if (firstLanded && typeof response?.repositoryId === 'string') repoId = response.repositoryId;
+      firstLanded = false;
+      advanceDelta(landed);
     },
-    sourcePaths,
   );
 
   if (!full && !dryRun && stored?.repoId && repoId && stored.repoId !== repoId) {
-    await syncRunBatches(
-      mergeRunsBySource(runsBySource),
+    await postPortalPacked(
+      portal,
+      '/api/sync',
       repoPath,
-      runsTarget,
-      () => repoId,
+      null,
+      runUnits(mergeRunsBySource(runsBySource)),
       dryRun,
-      async (batch) => {
-        await postPortal(portal, '/api/sync', { path: repoPath, runs: batch }, dryRun);
-      },
-      sourcePaths,
+      advanceRunsWatermark(() => repoId),
     );
-  }
-
-  for (const usage of usageBatches) {
-    await postPortal(portal, '/api/sync', { path: repoPath, usage }, dryRun);
   }
   for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes())) {
     await postPortal(portal, '/api/otel', { path: repoPath, events: batch }, dryRun);
