@@ -49,6 +49,9 @@ import {
   mergeSlotStatuses,
   resolveSyncSourcePaths,
   selectRunsForSync,
+  collectLineGateRunsForSync,
+  collectLinesForSync,
+  hasLineLedger,
 } from './sync-sources';
 import { collectEnvironmentStatus } from './slot-status';
 import { listValidations } from './validations';
@@ -1112,11 +1115,41 @@ async function syncRepoWithPortal(
   if (failures.length > 0) warnings.push(describeReadFailures(repoPath, failures));
   if (truncated.length > 0) warnings.push(describeTruncatedReads(repoPath, truncated));
 
+  await syncLinesWithPortal(portal, repoPath, sourcePaths, dryRun);
   warnings.push(
     ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),
   );
   for (const message of warnings) warn(message);
   return warnings;
+}
+
+/**
+ * Factory lines → `/api/lines` (Kerno: `/api/har/ingest/lines`).
+ *
+ * Sent like validations: the full set every sync, upserted by id on the
+ * backend. The first request carries the complete installed-line list so a line
+ * missing from it can be marked removed. A backend without the endpoint (404)
+ * is skipped quietly; any other failure fails the sync, like trajectory.
+ */
+async function syncLinesWithPortal(
+  portal: PortalTarget,
+  repoPath: string,
+  sourcePaths: string[],
+  dryRun?: boolean,
+): Promise<void> {
+  const lines = collectLinesForSync(repoPath);
+  const gates = collectLineGateRunsForSync(sourcePaths);
+  if (lines.length === 0 && gates.length === 0 && !hasLineLedger(repoPath)) return;
+
+  const userEmail = resolvePortalUserEmail(portal);
+  const stamped = userEmail ? gates.map((gate) => ({ ...gate, userEmail })) : gates;
+  const [first = [], ...rest] = chunkBySerializedSize(stamped, maxSyncBatchBytes());
+
+  const body = { path: repoPath, lines, gates: first };
+  if (!(await postPortalIfSupported(portal, '/api/lines', body, dryRun))) return;
+  for (const batch of rest) {
+    await postPortalIfSupported(portal, '/api/lines', { path: repoPath, gates: batch }, dryRun);
+  }
 }
 
 async function syncTrajectoryWithPortal(

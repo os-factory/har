@@ -30,3 +30,17 @@ export function ensureRootGitignorePatterns(checkoutDir: string): void {
 
   fs.writeFileSync(gitignorePath, `${content}${suffix}${block}`);
 }
+
+/**
+ * Append `<subdir>/` to the checkout's `.har/.gitignore` when missing, so
+ * record directories added after a repo was scaffolded stay out of git.
+ */
+export function ensureHarnessSubdirIgnored(checkoutDir: string, subdir: string): void {
+  const harDir = path.join(checkoutDir, '.har');
+  if (!fs.existsSync(harDir)) return;
+  const gitignorePath = path.join(harDir, '.gitignore');
+  const content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
+  if (content.split('\n').some((line) => line.trim() === `${subdir}/`)) return;
+  const suffix = content.length === 0 || content.endsWith('\n') ? '' : '\n';
+  fs.writeFileSync(gitignorePath, `${content}${suffix}${subdir}/\n`);
+}
