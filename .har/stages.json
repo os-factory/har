@@ -365,6 +365,21 @@
       ],
       "requiresAgentId": true,
       "tier": "full"
+    },
+    {
+      "id": "node-toolchain-e2e",
+      "kind": "test",
+      "description": "Node toolchain pinning end to end — built CLI launches real slots against fake nvm installs; stage, install and doctor see the pinned Node (no Docker)",
+      "script": "stages/node-toolchain-e2e.sh",
+      "artifacts": [
+        {
+          "path": ".har/artifacts/node-toolchain-e2e",
+          "kind": "directory",
+          "description": "End-to-end report"
+        }
+      ],
+      "requiresAgentId": true,
+      "tier": "full"
     }
   ],
   "commitGate": {

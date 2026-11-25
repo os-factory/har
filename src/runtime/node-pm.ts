@@ -90,12 +90,13 @@ export async function nodeInstall(
   manager: string,
   declared: string = '',
   ops: SystemOps = realSystemOps,
+  env?: NodeJS.ProcessEnv,
 ): Promise<number> {
   const substituting = declared !== '' && declared !== manager;
   const lockfile = substituting ? nodeLockfile(manager) : '';
   const hadLockfile = lockfile !== '' && fs.existsSync(path.join(dir, lockfile));
 
-  const result = await ops.run(manager, ['install', '--silent'], { cwd: dir, stream: true });
+  const result = await ops.run(manager, ['install', '--silent'], { cwd: dir, stream: true, ...(env ? { env } : {}) });
 
   if (substituting && !hadLockfile && lockfile !== '') {
     fs.rmSync(path.join(dir, lockfile), { force: true });

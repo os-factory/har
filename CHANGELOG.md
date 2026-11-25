@@ -1,3 +1,15 @@
+## [1.32.1](https://github.com/os-factory/har/compare/v1.32.0...v1.32.1) (2026-11-25)
+
+### Bug Fixes
+
+* **control:** keep every HQ sync request under the portal's size limit ([#480](https://github.com/os-factory/har/issues/480)) ([1a39dd3](https://github.com/os-factory/har/commit/1a39dd3079326c898aac54227bf12b41764eeba0)), closes [#1](https://github.com/os-factory/har/issues/1)
+
+## [1.32.0](https://github.com/os-factory/har/compare/v1.31.0...v1.32.0) (2026-11-24)
+
+### Features
+
+* **launch:** pin a Node that satisfies the harness engines; doctor reports mismatches ([#476](https://github.com/os-factory/har/issues/476)) ([b7d63af](https://github.com/os-factory/har/commit/b7d63af23f821ff6f95a5a5121258fb65f83e3d8))
+
 ## [1.31.0](https://github.com/os-factory/har/compare/v1.30.5...v1.31.0) (2026-11-23)
 
 ### Features

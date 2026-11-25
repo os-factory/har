@@ -28,6 +28,7 @@ Exit code is non-zero when any check fails, so doctor slots directly into CI.
 | Slot registry worktrees | Registered active sessions point at worktrees that still exist |
 | Lifecycle hooks | Files in `.har/hooks/` use known hook names and are executable (content is user-owned, never inspected) |
 | Ejected runtime | On an [ejected](/docs/guides/eject/) harness: the vendored runtime exists |
+| Node toolchain | The harness's Node requirements (`engines.node`, `.nvmrc`, …) with their sources, the Node the next launch pins, and running slots whose pinned `NODE_BIN` does not satisfy them (warning only — see [Node version](/docs/reference/environment/#node-version)) |
 
 Doctor detects the harness contract generation: on a pre-1.0 harness (legacy
 shell functions or port triplets in `harness.env`) it reports the old shape and

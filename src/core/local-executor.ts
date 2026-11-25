@@ -24,7 +24,6 @@ import {
   StageRunOptions,
 } from './types';
 import { readSlotRegistry } from './slot-registry';
-import { resolveAgentEnvFile } from './slot-status';
 import {
   launchSession,
   runAgentOp,
@@ -152,37 +151,46 @@ function resolveStageScriptPath(repoPath: string, stage: HarnessStage): string {
   );
 }
 
-interface SlotStageSurface {
-  envFile: string;
-  workDir: string;
-  harnessDir: string;
+interface LaunchedSlot {
   agentId: number;
+  workDir: string;
+  envFile: string;
+}
+
+/** The slot's work dir and env file, once launched (registry work dir holds .env.agent.<id>). */
+function launchedSlot(repoPath: string, agentId: number | undefined): LaunchedSlot | undefined {
+  if (agentId === undefined) return undefined;
+  const session = readSlotRegistry(resolveHarnessRoot(repoPath), agentId);
+  if (!session?.workDir || session.status === 'completed') return undefined;
+  const envFile = path.join(session.workDir, `.env.agent.${agentId}`);
+  return fs.existsSync(envFile) ? { agentId, workDir: session.workDir, envFile } : undefined;
 }
 
 /**
- * The 1.0 stage surface for a launched slot — the same one `har env verify`
- * gives its stages: the slot env file sourced, and WORK_DIR, ENV_FILE,
- * AGENT_ID and HAR_HARNESS_DIR exported. Undefined when no slot is given or
- * it has no env file (the stage then runs as before).
+ * Run a project stage the way verify runs it: from the slot's work dir with
+ * .env.agent.<id> sourced (pinned NODE_BIN / PATH, ports) and the WORK_DIR /
+ * AGENT_ID / ENV_FILE contract — not from the main checkout's environment.
  */
-function slotStageSurface(repoPath: string, agentId?: number): SlotStageSurface | undefined {
-  if (agentId === undefined) return undefined;
-  const harnessRoot = resolveHarnessRoot(repoPath);
-  const envFile = resolveAgentEnvFile(harnessRoot, agentId);
-  if (!envFile) return undefined;
-  const session = readSlotRegistry(harnessRoot, agentId);
-  const workDir = session?.workDir ? session.workDir : path.dirname(envFile);
-  return { envFile, workDir, harnessDir: getHarnessDir(harnessRoot), agentId };
-}
-
-/** Prefix that sources the slot env file and exports the stage surface. */
-function slotSurfacePrefix(surface: SlotStageSurface): string {
-  const q = quoteShellArg;
-  return [
-    `set -a; . ${q(surface.envFile)}; set +a`,
-    `export WORK_DIR=${q(surface.workDir)} ENV_FILE=${q(surface.envFile)}` +
-      ` AGENT_ID=${surface.agentId} HAR_AGENT_ID=${surface.agentId} HAR_HARNESS_DIR=${q(surface.harnessDir)}`,
-  ].join('\n');
+function inSlot(
+  slot: LaunchedSlot,
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  repoPath: string,
+): StageExecutionPlan {
+  return {
+    mode: 'shell',
+    shellCommand: `set -a; . ${quoteShellArg(slot.envFile)}; set +a; ${command}`,
+    args: [],
+    cwd,
+    env: {
+      ...env,
+      WORK_DIR: slot.workDir,
+      AGENT_ID: String(slot.agentId),
+      ENV_FILE: slot.envFile,
+      HAR_HARNESS_DIR: getHarnessDir(resolveHarnessRoot(repoPath)),
+    },
+  };
 }
 
 function buildExecutionPlan(
@@ -197,9 +205,10 @@ function buildExecutionPlan(
     ...harnessEnv,
     ...(stage.env ?? {}),
   };
-  const cwd = stage.cwd ? path.resolve(resolvedRepo, stage.cwd) : resolvedRepo;
+  const slot = stageRequiresAgentId(stage) ? launchedSlot(resolvedRepo, options.agentId) : undefined;
+  const baseDir = slot?.workDir ?? resolvedRepo;
+  const cwd = stage.cwd ? path.resolve(baseDir, stage.cwd) : baseDir;
   const extraArgs = options.args ?? [];
-  const surface = slotStageSurface(resolvedRepo, options.agentId);
 
   const launchFlagArgs =
     stage.kind === 'launch' && options.launchFlags
@@ -211,7 +220,7 @@ function buildExecutionPlan(
     for (const extra of [...extraArgs, ...launchFlagArgs]) {
       shellCommand = `${shellCommand} ${quoteShellArg(extra)}`;
     }
-    if (surface) shellCommand = `${slotSurfacePrefix(surface)}\n${shellCommand}`;
+    if (slot) return inSlot(slot, shellCommand, cwd, mergedEnv, resolvedRepo);
     return { mode: 'shell', shellCommand, args: [], cwd, env: mergedEnv };
   }
 
@@ -220,22 +229,16 @@ function buildExecutionPlan(
     args.push(String(options.agentId));
   }
   args.push(...extraArgs, ...launchFlagArgs);
-  const scriptPath = resolveStageScriptPath(resolvedRepo, stage);
 
-  if (surface) {
-    const invocation = ['bash', scriptPath, ...args].map(quoteShellArg).join(' ');
-    return {
-      mode: 'shell',
-      shellCommand: `${slotSurfacePrefix(surface)}\nexec ${invocation}`,
-      args: [],
-      cwd,
-      env: mergedEnv,
-    };
+  if (slot) {
+    const scriptPath = resolveStageScriptPath(resolvedRepo, stage);
+    const command = ['exec', 'bash', scriptPath, ...args].map(quoteShellArg).join(' ');
+    return inSlot(slot, command, cwd, mergedEnv, resolvedRepo);
   }
 
   return {
     mode: 'script',
-    scriptPath,
+    scriptPath: resolveStageScriptPath(resolvedRepo, stage),
     args,
     cwd,
     env: mergedEnv,
