@@ -1,6 +1,8 @@
 /**
- * Verification trace delivery: through Mission Control when it is running,
- * else direct to the destinations with a durable retry spool.
+ * Verification trace delivery: fan-out at the producer. The CLI sends one copy
+ * to Mission Control and one to each destination, each queued in its own
+ * durable retry spool entry when it is not taken, so every receiver gets each
+ * trace exactly once.
  */
 import * as fs from 'fs';
 import * as os from 'os';
@@ -18,6 +20,7 @@ import {
   CONTROL_SKIP_FORWARD_HEADER,
   flushTelemetrySpool,
   spoolOtlpPayload,
+  summarizeTelemetrySpool,
   TELEMETRY_SPOOL_DIR_ENV,
 } from '../src/core/telemetry-spool';
 import { runVerification } from '../src/core/run-service';
@@ -120,7 +123,20 @@ describe('deliverVerificationTrace', () => {
     else process.env.HAR_TELEMETRY = saved.telemetry;
   });
 
-  it('Mission Control reachable: one POST to it, zero direct sends', async () => {
+  /** Spans each receiver was sent, by trace and span id. */
+  function spansByReceiver(calls: Call[]): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const call of calls.filter((c) => c.method === 'POST')) {
+      const receiver = call.url.startsWith(CONTROL) ? 'mission-control' : new URL(call.url).host;
+      const body = JSON.parse(call.body!) as Json;
+      for (const span of body.resourceSpans[0].scopeSpans[0].spans as Json[]) {
+        (out[receiver] ??= []).push(`${span.traceId}/${span.spanId}`);
+      }
+    }
+    return out;
+  }
+
+  it('everything up: one copy to Mission Control and one to each destination, nothing spooled', async () => {
     const net = scriptedFetch(() => 200);
     const result = await deliverVerificationTrace(() => sampleInput(), {
       env,
@@ -128,16 +144,22 @@ describe('deliverVerificationTrace', () => {
       controlApiUrl: CONTROL,
       controlReachable: async () => true,
     });
-    expect(result).toEqual({ delivery: { via: 'control', spooled: 0 } });
-    expect(net.calls.map((call) => call.url)).toEqual([`${CONTROL}/api/otel/v1/traces`]);
-    const body = JSON.parse(net.calls[0].body!) as Json;
-    // Mission Control needs the checkout path to attribute the run; it strips it before forwarding.
-    expect(resourceKeys(body)).toContain('factory.local.checkout_path');
-    expect(net.calls[0].headers).not.toHaveProperty(CONTROL_SKIP_FORWARD_HEADER);
+    expect(result).toEqual({
+      spanExport: { destinations: 2, failed: [] },
+      delivery: { via: 'fanout', delivered: ['mission-control', 'langfuse', 'collector'], spooled: 0 },
+    });
+    expect(net.calls.map((call) => call.url).sort()).toEqual(
+      [`${CONTROL}/api/otel/v1/traces`, 'http://collector.test:4318/v1/traces', 'https://lf.test/api/public/otel/v1/traces'].sort(),
+    );
+    const toControl = net.calls.find((call) => call.url.startsWith(CONTROL))!;
+    // Mission Control needs the checkout path to attribute the run; destinations never get it.
+    expect(resourceKeys(JSON.parse(toControl.body!) as Json)).toContain('factory.local.checkout_path');
+    // Asks a Mission Control from 2.0.0-next.3 or earlier, which still forwards, not to.
+    expect(toControl.headers[CONTROL_SKIP_FORWARD_HEADER]).toBe('skip');
     expect(spoolFiles(spoolDir)).toHaveLength(0);
   });
 
-  it('Mission Control answering an error: falls back to direct, never both', async () => {
+  it('Mission Control answering an error: only its copy is spooled, the destinations still get theirs', async () => {
     const net = scriptedFetch((url) => (url.startsWith(CONTROL) ? 503 : 200));
     const result = await deliverVerificationTrace(() => sampleInput(), {
       env,
@@ -145,11 +167,11 @@ describe('deliverVerificationTrace', () => {
       controlApiUrl: CONTROL,
       controlReachable: async () => true,
     });
-    expect(result.delivery).toEqual({ via: 'direct', spooled: 1 });
+    expect(result.delivery).toEqual({ via: 'fanout', delivered: ['langfuse', 'collector'], spooled: 1 });
     expect(result.spanExport).toEqual({ destinations: 2, failed: [] });
-    // The only spooled copy is Mission Control's, marked store-only when flushed.
     const [entry] = spoolFiles(spoolDir).map((name) => JSON.parse(fs.readFileSync(path.join(spoolDir, name), 'utf8')) as Json);
     expect(entry.target).toEqual({ kind: 'control' });
+    expect(entry.lastError).toBe('HTTP 503');
   });
 
   it('direct sends strip factory.local.* for every destination', async () => {
@@ -165,7 +187,7 @@ describe('deliverVerificationTrace', () => {
     }
   });
 
-  it('Mission Control down: direct, failures spooled, then flushed', async () => {
+  it('Mission Control down and one destination failing: one spool entry per missed receiver, each delivered exactly once', async () => {
     const down = scriptedFetch((url) => (url.startsWith('https://lf.test') ? 'refuse' : 200));
     const result = await deliverVerificationTrace(() => sampleInput(), {
       env,
@@ -174,10 +196,14 @@ describe('deliverVerificationTrace', () => {
       controlReachable: async () => false,
     });
     expect(result.spanExport).toEqual({ destinations: 2, failed: ['langfuse'] });
-    // Langfuse's copy, and one for Mission Control.
-    expect(result.delivery).toEqual({ via: 'direct', spooled: 2 });
+    // Langfuse's copy, and Mission Control's.
+    expect(result.delivery).toEqual({ via: 'fanout', delivered: ['collector'], spooled: 2 });
     expect(down.calls.some((call) => call.url.startsWith(CONTROL))).toBe(false);
     expect(spoolFiles(spoolDir)).toHaveLength(2);
+    expect(summarizeTelemetrySpool(env).map((entry) => [entry.receiver, entry.batches, entry.lastError]).sort()).toEqual([
+      ['langfuse', 1, 'ECONNREFUSED'],
+      ['mission-control', 1, 'not reachable'],
+    ]);
 
     // The spool never holds header values or local paths.
     for (const name of spoolFiles(spoolDir)) {
@@ -202,12 +228,8 @@ describe('deliverVerificationTrace', () => {
     expect(back.calls).toHaveLength(1);
     expect(back.calls[0].url).toBe('https://lf.test/api/public/otel/v1/traces');
     expect(back.calls[0].headers.Authorization).toMatch(/^Basic /);
-    const sent = JSON.parse(back.calls[0].body!) as Json;
-    expect(sent.resourceSpans[0].scopeSpans[0].spans).toEqual(
-      (buildVerificationTrace(sampleInput()) as Json).resourceSpans[0].scopeSpans[0].spans,
-    );
 
-    // Mission Control is up: its copy is stored there without a second forward.
+    // Mission Control is up: its own copy, and nothing for anyone else.
     const up = scriptedFetch(() => 200);
     const second = await flushVerificationTraceSpool({
       env,
@@ -216,9 +238,21 @@ describe('deliverVerificationTrace', () => {
       controlReachable: async () => true,
     });
     expect(second).toEqual({ sent: 1, retried: 0, dropped: 0, pending: 0 });
-    expect(up.calls[0].url).toBe(`${CONTROL}/api/otel/v1/traces`);
+    expect(up.calls.map((call) => call.url)).toEqual([`${CONTROL}/api/otel/v1/traces`]);
     expect(up.calls[0].headers[CONTROL_SKIP_FORWARD_HEADER]).toBe('skip');
     expect(spoolFiles(spoolDir)).toHaveLength(0);
+
+    // A further flush sends nothing: every receiver has the trace exactly once.
+    const again = scriptedFetch(() => 200);
+    await flushVerificationTraceSpool({ env, fetchImpl: again.impl, controlApiUrl: CONTROL, controlReachable: async () => true });
+    expect(again.calls).toHaveLength(0);
+    const expected = (buildVerificationTrace(sampleInput()) as Json).resourceSpans[0].scopeSpans[0].spans.map(
+      (span: Json) => `${span.traceId}/${span.spanId}`,
+    );
+    // Accepted copies only: Langfuse refused the first attempt.
+    const accepted = down.calls.filter((call) => !call.url.startsWith('https://lf.test'));
+    const received = spansByReceiver([...accepted, ...back.calls, ...up.calls]);
+    expect(received).toEqual({ 'collector.test:4318': expected, 'lf.test': expected, 'mission-control': expected });
   });
 
   it('nothing configured and no Mission Control: nothing built, nothing spooled', async () => {
@@ -351,38 +385,57 @@ describe('runVerification routes the trace', () => {
     return fetchSpy.mock.calls.map((call) => String(call[0]));
   }
 
-  it('Mission Control up: one POST to it, nothing sent to the destination', async () => {
+  it('Mission Control up: one POST to it and one to the destination', async () => {
     fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
     const result = await runVerification({ repoPath: initHarnessRepo(), agentId: 1, full: true, capture: true });
-    expect(result.traceDelivery).toEqual({ via: 'control', spooled: 0 });
-    expect(result.spanExport).toBeUndefined();
-    expect(urls()).toEqual([`${CONTROL}/api/health`, `${CONTROL}/api/otel/v1/traces`]);
+    expect(result.traceDelivery).toEqual({ via: 'fanout', delivered: ['mission-control', 'col'], spooled: 0 });
+    expect(result.spanExport).toEqual({ destinations: 1, failed: [] });
+    expect(urls().sort()).toEqual(
+      [`${CONTROL}/api/health`, `${CONTROL}/api/otel/v1/traces`, 'http://col.test:4318/v1/traces'].sort(),
+    );
   });
 
-  it('everything down: spooled, then delivered by the next verify', async () => {
+  it('carries the verify policy on the run span, as the proof predicate names it', async () => {
+    fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
+    const repo = initHarnessRepo();
+    await runVerification({ repoPath: repo, agentId: 1, full: true, capture: true });
+    const post = fetchSpy.mock.calls.find((call) => String(call[0]) === 'http://col.test:4318/v1/traces')!;
+    const runSpan = (JSON.parse(String((post[1] as RequestInit).body)) as Json).resourceSpans[0].scopeSpans[0].spans[0];
+    const attr = (key: string) => runSpan.attributes.find((kv: Json) => kv.key === key)?.value.stringValue;
+    const digest = require('crypto').createHash('sha256').update(fs.readFileSync(path.join(repo, '.har', 'stages.json'))).digest('hex'); // eslint-disable-line @typescript-eslint/no-require-imports
+    expect(attr('factory.policy.id')).toBe('har-verify-full');
+    expect(attr('factory.policy.digest')).toBe(digest);
+  });
+
+  it('everything down: spooled per receiver, then delivered by the next verify, exactly once each', async () => {
     fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('connect ECONNREFUSED'));
     const repo = initHarnessRepo();
     const first = await runVerification({ repoPath: repo, agentId: 1, full: true, capture: true });
     expect(first.spanExport).toEqual({ destinations: 1, failed: ['col'] });
-    expect(first.traceDelivery).toEqual({ via: 'direct', spooled: 2 });
+    expect(first.traceDelivery).toEqual({ via: 'fanout', delivered: [], spooled: 2 });
     expect(spoolFiles(spoolDir)).toHaveLength(2);
     const firstTrace = (JSON.parse(String((fetchSpy.mock.calls.find((call) => String(call[0]).startsWith('http://col.test'))![1] as RequestInit).body)) as Json)
       .resourceSpans[0].scopeSpans[0].spans[0].spanId;
     fetchSpy.mockRestore();
 
-    // Everything is back: the next verify flushes both queued copies first, then routes its own trace via Mission Control.
+    // Everything is back: the next verify flushes both queued copies first, then fans its own trace out.
     fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
     const second = await runVerification({ repoPath: repo, agentId: 1, full: true, capture: true });
-    expect(second.traceDelivery).toEqual({ via: 'control', spooled: 0 });
+    expect(second.traceDelivery).toEqual({ via: 'fanout', delivered: ['mission-control', 'col'], spooled: 0 });
     expect(spoolFiles(spoolDir)).toHaveLength(0);
     const posts = fetchSpy.mock.calls.filter((call) => (call[1] as RequestInit | undefined)?.method === 'POST');
-    const flushedToDestination = posts.filter((call) => String(call[0]) === 'http://col.test:4318/v1/traces');
-    expect(flushedToDestination).toHaveLength(1);
-    expect((JSON.parse(String((flushedToDestination[0][1] as RequestInit).body)) as Json).resourceSpans[0].scopeSpans[0].spans[0].spanId).toBe(firstTrace);
+    const runSpanIds = (calls: typeof posts) =>
+      calls.map((call) => (JSON.parse(String((call[1] as RequestInit).body)) as Json).resourceSpans[0].scopeSpans[0].spans[0].spanId as string);
+    const toDestination = posts.filter((call) => String(call[0]) === 'http://col.test:4318/v1/traces');
     const toControl = posts.filter((call) => String(call[0]) === `${CONTROL}/api/otel/v1/traces`);
-    // The earlier run (store only) and this run (stored and forwarded by Mission Control).
-    expect(toControl).toHaveLength(2);
-    expect((toControl[0][1] as RequestInit).headers).toMatchObject({ [CONTROL_SKIP_FORWARD_HEADER]: 'skip' });
-    expect((toControl[1][1] as RequestInit).headers).not.toHaveProperty(CONTROL_SKIP_FORWARD_HEADER);
+    // Each receiver: the earlier run once (from the spool) and this run once.
+    expect(runSpanIds(toDestination)).toHaveLength(2);
+    expect(runSpanIds(toControl)).toHaveLength(2);
+    expect(runSpanIds(toDestination)[0]).toBe(firstTrace);
+    expect(new Set(runSpanIds(toDestination)).size).toBe(2);
+    expect(runSpanIds(toControl).sort()).toEqual(runSpanIds(toDestination).sort());
+    for (const call of toControl) {
+      expect((call[1] as RequestInit).headers).toMatchObject({ [CONTROL_SKIP_FORWARD_HEADER]: 'skip' });
+    }
   });
 });

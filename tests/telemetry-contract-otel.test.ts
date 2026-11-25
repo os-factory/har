@@ -230,8 +230,14 @@ describe('otel-hook exporter contract (#416)', () => {
   it('exports traces and logs to the Mission Control OTLP routes over http/protobuf', () => {
     writeTelemetryLevel('full');
     const config = buildOtelHooksConfig({ apiUrl: 'http://localhost:3847/' });
-    expect(config.exporter.endpoint).toBe('http://localhost:3847/api/otel/v1/traces');
-    expect(config.exporter.logs.endpoint).toBe('http://localhost:3847/api/otel/v1/logs');
+    // Mission Control is one entry of the destination list (fan-out at the producer).
+    expect(config.exporter.destinations).toEqual([
+      expect.objectContaining({
+        name: 'mission-control',
+        tracesEndpoint: 'http://localhost:3847/api/otel/v1/traces',
+        logsEndpoint: 'http://localhost:3847/api/otel/v1/logs',
+      }),
+    ]);
     expect(config.exporter.protocol).toBe('http/protobuf');
     expect(config.exporter.serviceName).toBe('har-ide-agent');
   });

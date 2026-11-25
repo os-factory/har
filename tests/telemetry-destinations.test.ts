@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { buildDockerRunArgs, CONTROL_DESTINATIONS_MOUNT } from '../src/core/control-lifecycle';
 import {
   addTelemetryDestination,
   buildLangfuseDestination,
@@ -182,18 +181,6 @@ describe('telemetry destinations', () => {
   it('builds a payload for every signal', () => {
     expect(buildTestPayload('logs')).toHaveProperty('resourceLogs');
     expect(buildTestPayload('metrics')).toHaveProperty('resourceMetrics');
-  });
-});
-
-describe('Mission Control container: destinations mount', () => {
-  it('mounts the destinations directory read-only only when given', () => {
-    const without = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true });
-    expect(without.join(' ')).not.toContain(CONTROL_DESTINATIONS_MOUNT);
-
-    const args = buildDockerRunArgs({ imageRef: 'img:1', hostPort: 3847, detach: true, destinationsDir: '/home/u/.har/destinations' });
-    expect(args.join(' ')).toContain(`-v /home/u/.har/destinations:${CONTROL_DESTINATIONS_MOUNT}:ro`);
-    expect(args.join(' ')).toContain(`-e HAR_DESTINATIONS_DIR=${CONTROL_DESTINATIONS_MOUNT}`);
-    expect(args[args.length - 1]).toBe('img:1');
   });
 });
 

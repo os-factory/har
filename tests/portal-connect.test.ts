@@ -21,8 +21,11 @@ const ENV_KEYS = [
 ] as const;
 
 let tmpDir: string;
+// A level in the environment (HAR_TELEMETRY=false, as harness runs set it) outranks the preference file the tests write.
+const savedTelemetry = process.env.HAR_TELEMETRY;
 
 beforeEach(() => {
+  delete process.env.HAR_TELEMETRY;
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-connect-'));
   process.env.HAR_CREDENTIALS_PATH = path.join(tmpDir, 'credentials.json');
   process.env.HAR_PORTAL_TARGETS_PATH = path.join(tmpDir, 'portal-targets.json');
@@ -36,6 +39,8 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];
+  if (savedTelemetry === undefined) delete process.env.HAR_TELEMETRY;
+  else process.env.HAR_TELEMETRY = savedTelemetry;
 });
 
 function makeRepo(name: string): string {

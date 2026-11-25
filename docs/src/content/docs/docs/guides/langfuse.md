@@ -1,11 +1,13 @@
 ---
 title: Send telemetry to Langfuse
-description: Forward HAR agent session traces to Langfuse Cloud or a self-hosted Langfuse.
+description: Send HAR agent session traces to Langfuse Cloud or a self-hosted Langfuse.
 ---
 
 HAR can send a copy of its agent telemetry to [Langfuse](https://langfuse.com).
-Mission Control receives the telemetry locally, as it does today, and forwards the
-traces to Langfuse. Nothing leaves the machine until you add a destination.
+The producers send it themselves: the agent hook sends each session's traces to
+Mission Control and to Langfuse, and the CLI does the same for each verification
+trace. Mission Control is one destination among them and forwards nothing. Nothing
+leaves the machine until you add a destination.
 
 ## What you get
 
@@ -68,75 +70,70 @@ or session spans in Langfuse lack `session.id` and the `factory.*` attributes.
 
 4. Start a new agent session. Running sessions keep the hook config they started with.
 
-## When to run `har control up`
+## How the traces get there
 
-Mission Control forwards the agent session traces, so it must be running and able
-to read `~/.har/destinations`. Verification traces go through Mission Control too
-when it is running. When it isn't, the CLI sends them straight to Langfuse, queues
-any that fail, and retries them at the next verify or launch (or
-`har telemetry destination flush`). Either way, Langfuse receives each verification
-trace once. See
-[How verification traces are delivered](/docs/guides/otlp-backends/#how-verification-traces-are-delivered).
-`har telemetry on` and `har env launch` start Mission Control when it is not
-running. Run `har control up` yourself when:
+HAR fans out at the producer. `har telemetry status` shows the route:
 
-- `destination add` prints that the running container predates destinations. A
-  Mission Control container started by an older HAR does not mount the directory, and
-  `har control up` recreates it.
-- Mission Control is stopped and you want forwarding to resume.
+```text
+Agent traces:  → mission-control, langfuse
+  mission-control  traces http://localhost:3847/api/otel/v1/traces, logs http://localhost:3847/api/otel/v1/logs
+  langfuse         traces https://cloud.langfuse.com/api/public/otel/v1/traces
+Verification traces: → mission-control, langfuse
+```
 
-You don't need to restart Mission Control after adding, changing or removing a
-destination. It re-reads the file when it changes.
+- **Agent session traces.** HAR gives otel-hook one destination list
+  (`exporter.destinations[]`): `mission-control` when Mission Control is enabled
+  and set up, plus every enabled destination subscribed to `traces` or `logs`.
+  otel-hook sends each batch to every entry in parallel, and whatever one entry
+  could not take waits in that entry's own spool for the next hook event. Langfuse
+  gets its copy whether or not Mission Control is running.
+- **Verification traces.** The CLI sends one copy to Mission Control and one to
+  Langfuse. A copy that was not taken is queued for that receiver alone and retried
+  at the next verify or launch (or `har telemetry destination flush`), so Langfuse
+  receives each verification trace exactly once. See
+  [How verification traces are delivered](/docs/guides/otlp-backends/#how-verification-traces-are-delivered).
+- **Mission Control** stores what it receives. It does not forward, and it does not
+  need to be running for Langfuse to receive anything.
 
-## Without Mission Control
+`destination add` and `remove`, `har control up` and `down`, and `har telemetry on`
+and `off` each rewrite the route. Hooks pick it up on their next event.
 
-If you don't run Mission Control (`HAR_CONTROL_DISABLED=true`, or no Docker),
-agent session traces can still reach Langfuse: otel-hook sends them itself to every
-enabled destination subscribed to `traces` or `logs`, Langfuse included.
+What to know about the route:
+
+- **Keys stay off command lines.** The `Authorization` header is written to
+  `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper loads when it
+  runs. The hook config names Langfuse with an `env:` reference to that file; the
+  wrapper script, the hook config and the hook's arguments contain no secret.
+- **Local paths go with Mission Control.** One hook process sends the same Resource
+  to every entry. Mission Control needs the `factory.local.*` keys to attribute a
+  session, so while it is in the list, Langfuse receives them too
+  ([#519](https://github.com/os-factory/har/issues/519)). Without Mission Control,
+  HAR leaves them out unless every destination has `--include-local-paths`. See
+  [Privacy](#privacy-what-leaves-the-machine).
+- **Claude Code's own telemetry stays local.** Claude Code's native metrics and logs
+  carry your account identity, so they go to Mission Control only, and stay off
+  without it. Without Mission Control, Claude Code token and cost metrics are not
+  recorded.
+- **otel-hook 0.9.0 or later.** HAR installs it on `har env launch` and
+  `har telemetry on`. With an older copy, HAR prints the version it needs and sends
+  agent traces to Mission Control only.
+- **Retries and health.** A full spool drops its oldest batches, and a batch Langfuse
+  rejects with a non-retryable status (such as `401` for a wrong key) is dropped
+  rather than retried. `har env doctor` and `har telemetry status` report what is
+  queued per destination, for example
+  `langfuse: 7 batches queued, last failure 2 min ago (ECONNREFUSED)`.
+
+### Without Mission Control
+
+If you don't run Mission Control (`HAR_CONTROL_DISABLED=true`, or no Docker), the
+list simply has no `mission-control` entry:
 
 ```bash
 export HAR_CONTROL_DISABLED=true
 har telemetry on --level outline
 har telemetry destination add langfuse --preset langfuse
-har telemetry status          # Agent traces:  direct → langfuse
+har telemetry status          # Agent traces:  → langfuse
 ```
-
-Then start a new agent session. HAR switches modes on its own: `destination add`
-and `remove`, `har control up` and `down`, and `har telemetry on` and `off` each
-re-route agent traces. With Mission Control running, it forwards as before.
-
-What changes in direct mode:
-
-- **Only otel-hook traces go direct.** Claude Code's own metrics and logs carry your
-  account identity and nothing would strip it, so HAR leaves Claude Code's native
-  telemetry off. Without Mission Control, Claude Code token and cost metrics are not
-  recorded.
-- **Local paths stay home.** No Mission Control strips the Resource, so HAR leaves
-  every `factory.local.*` key out of the agent's `OTEL_RESOURCE_ATTRIBUTES` and the
-  hook drops any it inherits, unless every direct destination has
-  `--include-local-paths`.
-- **Keys stay off command lines.** The `Authorization` header is written to
-  `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper loads when it
-  runs. The wrapper script, the hook config and the hook's arguments contain no
-  secret.
-- **The hook config names Langfuse, not its keys.** HAR writes Langfuse to the hook
-  config as an `exporter.destinations[]` entry whose `Authorization` value is an
-  `env:` reference to `direct.env`.
-- **Several destinations, no Mission Control.** Add a second destination (a team
-  Collector, say) and otel-hook sends each batch to Langfuse and to it, in parallel.
-  `har telemetry status` shows `direct → langfuse, collector`.
-- **otel-hook 0.9.0 or later.** HAR installs it on `har env launch` and
-  `har telemetry on`. With an older copy, HAR prints the version it needs and keeps
-  agent traces on Mission Control.
-- **Retries.** otel-hook keeps what a destination could not take in that
-  destination's own spool and sends it with a later hook event. Since 0.9.0, a full
-  spool drops its oldest batches, and a batch Langfuse rejects with a
-  non-retryable status (such as `401` for a wrong key) is dropped rather than
-  retried. See
-  [Without Mission Control](/docs/guides/otlp-backends/#without-mission-control).
-
-Verification traces need none of this: without Mission Control the CLI already sends
-them to Langfuse itself.
 
 ## Langfuse limits
 
@@ -147,13 +144,13 @@ them to Langfuse itself.
 
 ## Privacy: what leaves the machine
 
-Langfuse receives two kinds of spans. Agent session spans come from otel-hook
-through Mission Control, and otel-hook puts **no prompt, reply or tool text on spans
-at any level**. Verification spans come from the CLI, through Mission Control when it
-is running, and carry ids, results and timings only: no commands or logs. Their one
-local path, `factory.local.checkout_path`, lets Mission Control attribute the run and
-is stripped before any copy reaches Langfuse. The text that `full` records travels in OTLP log records,
-which the Langfuse preset never forwards.
+Langfuse receives two kinds of spans. Agent session spans come straight from
+otel-hook, and otel-hook puts **no prompt, reply or tool text on spans at any
+level**. Verification spans come straight from the CLI and carry ids, results and
+timings only: no commands or logs. Their one local path,
+`factory.local.checkout_path`, lets Mission Control attribute the run and is
+stripped from Langfuse's copy. The text that `full` records travels in OTLP log
+records, which the Langfuse preset never subscribes to.
 
 A session span can contain:
 
@@ -163,30 +160,38 @@ A session span can contain:
 - the branch name of the worktree a tool touched, and opaque, hashed workspace and
   repository ids;
 - HAR's resource attributes: work unit id and source, attempt id, repository URL
-  (credentials stripped), branch, HAR version and slot number.
+  (credentials stripped), branch, HAR version and slot number;
+- while Mission Control is a destination, the `factory.local.*` keys: the absolute
+  paths of the repository checkout and the slot worktree.
 
-A session span never reaches Langfuse with absolute local paths or your account
-identity. Mission Control keeps them for its own attribution, but it removes every
-attribute that holds a local path (every `factory.local.*` key, `process.cwd`,
-`code.filepath`, …) or identifies your account (`user.email`, `user.account_uuid`,
-`user.id`, `organization.id`, …) before it spools or sends a copy. A verification
-span's `factory.local.checkout_path` is removed the same way, by Mission Control or,
-when the CLI sends directly, by the CLI.
+**Local paths and Mission Control
+([#519](https://github.com/os-factory/har/issues/519)).** Mission Control needs
+`factory.local.*` to attribute each session to its repository and slot, and one
+hook process sends the same Resource to every destination. So while Mission Control
+is in the list, Langfuse receives those paths too. Without Mission Control, HAR
+leaves every `factory.local.*` key out of the agent's `OTEL_RESOURCE_ATTRIBUTES` and
+the hook drops any it inherits, unless every destination has `--include-local-paths`.
+A verification span's `factory.local.checkout_path` is always removed from
+Langfuse's copy unless Langfuse has `--include-local-paths`.
+
+Your account identity (`user.email`, `user.account_uuid`, `user.id`,
+`organization.id`, …) is carried by Claude Code's native telemetry, which goes to
+Mission Control only.
 
 The telemetry level changes what Langfuse receives only at the edges: `outline` and
 `full` send the same spans, `usage` sends verification spans only, and `off` sends
 none. To send less:
 
 - `har telemetry destination add langfuse --preset langfuse --disabled --overwrite`
-  keeps the destination but stops forwarding;
+  keeps the destination but stops sending to it;
 - `har telemetry destination remove langfuse` deletes it;
 - `har telemetry on --level usage` stops session spans for every destination and for
   Mission Control; `har telemetry off` stops verification spans too.
 
-To send the local paths anyway, for example to a self-hosted Langfuse on your own
-network, add the destination with `--include-local-paths`. To send account identity,
-for example to see sessions per person, add `--include-account-identity`. The two
-opt-ins are independent:
+To send the local paths in every case, for example to a self-hosted Langfuse on your
+own network, add the destination with `--include-local-paths`. To send account
+identity attributes that a span or a verification copy carries, add
+`--include-account-identity`. The two opt-ins are independent:
 
 ```bash
 har telemetry destination add langfuse --preset langfuse --include-local-paths --overwrite

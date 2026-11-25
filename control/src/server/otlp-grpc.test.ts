@@ -7,7 +7,6 @@ const ingest = vi.hoisted(() => ({
   traces: vi.fn(),
   metrics: vi.fn(),
   logs: vi.fn(),
-  forward: vi.fn(),
 }));
 
 vi.mock('@/server/otel-ingest', () => ({
@@ -15,7 +14,6 @@ vi.mock('@/server/otel-ingest', () => ({
   ingestOtelMetricsBody: ingest.metrics,
   ingestOtelLogsBody: ingest.logs,
 }));
-vi.mock('@/server/otlp-forward', () => ({ scheduleOtlpForwardBody: ingest.forward }));
 
 import {
   createOtlpGrpcServer,
@@ -94,7 +92,7 @@ describe('OTLP/gRPC receiver', () => {
   });
 
   for (const { signal, pkg, name, field, request } of SIGNALS) {
-    it(`${name}Service/Export ingests, schedules the forward and answers with partial_success`, async () => {
+    it(`${name}Service/Export ingests and answers with partial_success`, async () => {
       ingest[signal].mockResolvedValue({ accepted: 0, dropped: 1, reasons: ['no repository known for session s1'] });
       const Request = collector[pkg].v1[`Export${name}ServiceRequest`];
       const body = Buffer.from(Request.encode(request).finish());
@@ -105,12 +103,6 @@ describe('OTLP/gRPC receiver', () => {
       expect(ingest[signal]).toHaveBeenCalledTimes(1);
       expect(Buffer.compare(ingest[signal].mock.calls[0][0], body)).toBe(0);
       expect(ingest[signal].mock.calls[0][1]).toBe('application/x-protobuf');
-      // Forwarded as OTLP/HTTP protobuf.
-      expect(ingest.forward).toHaveBeenCalledTimes(1);
-      const [fwdSignal, fwdBody, fwdHeaders] = ingest.forward.mock.calls[0];
-      expect(fwdSignal).toBe(signal);
-      expect(Buffer.compare(fwdBody, body)).toBe(0);
-      expect(fwdHeaders).toEqual({ contentType: 'application/x-protobuf', contentEncoding: null });
 
       const Response = collector[pkg].v1[`Export${name}ServiceResponse`];
       expect(Response.toObject(Response.decode(response), { longs: Number })).toEqual({

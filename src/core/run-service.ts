@@ -24,6 +24,7 @@ import {
 } from './work-units';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor, summarizeDoctorReport } from '../harness/doctor';
+import { describeAgentTelemetryRoute } from './telemetry-route';
 import { resolveStage } from '../harness/stages';
 import { collectEnvironmentStatus, renderEnvironmentStatusText } from './slot-status';
 import { HarnessStage } from '../harness/schema';
@@ -257,9 +258,8 @@ export class RunService {
         const hooks = ensureOtelHooks({ setupAgents: true });
         if (hooks.message) launchBanner += `${hooks.message}\n`;
         if (hooks.warning) launchBanner += `${hooks.warning}\n`;
-        if (hooks.route.mode === 'direct') {
-          const names = hooks.route.destinations.map((destination) => `"${destination.name}"`).join(', ');
-          launchBanner += `Agent traces go directly to ${names} (Mission Control is off).\n`;
+        if (hooks.route.mode === 'fanout') {
+          launchBanner += `Agent traces: ${describeAgentTelemetryRoute(hooks.route)}\n`;
         }
         if (hooks.routeHint) launchBanner += `${hooks.routeHint}\n`;
       } catch (err) {
@@ -505,10 +505,10 @@ export class RunService {
       ...(proof ? { proof } : {}),
     };
 
-    // OTel CI/CD spans to the user's own trace destinations, after the result
-    // is final. Fail-open and bounded; no destination → no work at all.
-    // Through Mission Control when it is running (it stores, syncs to HQ and
-    // forwards), else straight to the destinations with a retry spool.
+    // OTel CI/CD spans, after the result is final: fan-out at the producer,
+    // one copy to Mission Control and one to each trace destination, each
+    // queued in its own retry spool entry when it is not taken. Fail-open and
+    // bounded; no receiver → no work at all.
     const delivered = await deliverVerificationTrace(() =>
       this.verificationTraceInput(
         options,

@@ -9,7 +9,7 @@ import {
 } from '../harness/schema';
 import { getControlApiUrl } from './control-config';
 import { getOtelHooksHome } from './otel-hooks';
-import { HAR_RESOURCE_ATTRIBUTES_ENV, readAppliedDirectRoute } from './telemetry-direct';
+import { HAR_RESOURCE_ATTRIBUTES_ENV, readAppliedAgentRoute } from './telemetry-route';
 import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { getHarPackageVersion } from './package-version';
 import { findWorkUnit } from './work-units';
@@ -147,16 +147,17 @@ export function buildSessionKey(input: {
 }
 
 /**
- * Whether agent traces go straight to a destination that does not take local
- * paths (`direct.env` written by `har telemetry`): then `factory.local.*` stays
- * out of the agent's `OTEL_RESOURCE_ATTRIBUTES`, since no Mission Control
- * strips it. Under a test runner only an explicit `HAR_OTEL_HOOKS_HOME` counts,
- * so unit tests never read a developer's real hooks home.
+ * Whether the agent route leaves `factory.local.*` out (`direct.env` written by
+ * `har telemetry`): no Mission Control in the destination list, and a
+ * destination that does not take local paths. Then those attributes stay out
+ * of the agent's `OTEL_RESOURCE_ATTRIBUTES` too. Under a test runner only an
+ * explicit `HAR_OTEL_HOOKS_HOME` counts, so unit tests never read a
+ * developer's real hooks home.
  */
-export function directExportOmitsLocalPaths(env: NodeJS.ProcessEnv = process.env): boolean {
+export function agentRouteOmitsLocalPaths(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.NODE_ENV === 'test' && !env.HAR_OTEL_HOOKS_HOME) return false;
   try {
-    const applied = readAppliedDirectRoute(getOtelHooksHome());
+    const applied = readAppliedAgentRoute(getOtelHooksHome());
     return applied !== null && !applied.includeLocalPaths;
   } catch {
     return false;
@@ -177,7 +178,7 @@ export function buildTelemetryEnvBlock(input: TelemetrySessionAttrs): string {
   // no HAR_SESSION_KEY, which otel-hook <= 0.6 turns into a `har.session_key`
   // resource attribute.
   const resourceAttributes = quoteShellArg(
-    buildOtelResourceAttributes(attrs, { omitLocalPaths: directExportOmitsLocalPaths() }),
+    buildOtelResourceAttributes(attrs, { omitLocalPaths: agentRouteOmitsLocalPaths() }),
   );
   const lines: string[] = [
     '',
@@ -189,7 +190,7 @@ export function buildTelemetryEnvBlock(input: TelemetrySessionAttrs): string {
     // Claude Code strips every OTEL_* variable from its hooks (#484); the hook
     // wrapper restores the profile from this copy.
     `${HAR_RESOURCE_ATTRIBUTES_ENV}=${resourceAttributes}`,
-    '# Agent telemetry: @osfactory/otel-hook → Mission Control (har telemetry on|off)',
+    '# Agent telemetry: @osfactory/otel-hook → Mission Control and your destinations (har telemetry on|off)',
   ];
   return lines.join('\n') + '\n';
 }

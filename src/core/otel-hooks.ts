@@ -15,18 +15,20 @@ import {
   type TelemetryLevel,
 } from './telemetry-config';
 import {
-  DIRECT_STRIP_LOCAL_ENV,
   HAR_RESOURCE_ATTRIBUTES_ENV,
-  directRouteSendsLogs,
-  directRouteStripsLocalPaths,
-  planDirectDestinations,
-  getDirectExportEnvPath,
-  readAppliedDirectRoute,
+  ROUTE_STRIP_LOCAL_ENV,
+  appliedRouteNames,
+  getRouteEnvPath,
+  otelHookSupportsDestinations,
+  planRouteDestinations,
+  readAppliedAgentRoute,
   resolveAgentTelemetryRoute,
-  writeDirectExportEnv,
+  routeSendsLogs,
+  routeStripsLocalPaths,
+  writeRouteEnv,
   type AgentTelemetryRoute,
   type AgentTelemetryRouteDecision,
-} from './telemetry-direct';
+} from './telemetry-route';
 import { LOCAL_ATTR_PREFIX } from '../harness/schema';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
@@ -87,7 +89,8 @@ export type OtelHooksAgent = (typeof OTEL_HOOKS_AGENTS)[number];
  */
 /**
  * One `exporter.destinations[]` entry (otel-hook >= 0.9.0). Header values are
- * always `env:<VAR>` references to `direct.env`, never the secret itself.
+ * always `env:<VAR>` references to `direct.env`, never the secret itself;
+ * Mission Control's entry has none.
  */
 export interface OtelHooksDestinationConfig {
   name: string;
@@ -104,7 +107,7 @@ export interface OtelHooksConfig {
     protocol: 'http/protobuf';
     serviceName: string;
     resourceAttributes?: Record<string, string | number | boolean>;
-    /** Direct export (Mission Control off); absent otherwise. */
+    /** Every place the hook sends to, Mission Control first (see `telemetry-route.ts`). */
     destinations?: OtelHooksDestinationConfig[];
     logs: {
       enabled: boolean;
@@ -129,9 +132,9 @@ export interface EnsureOtelHooksResult {
   agentsSetup: OtelHooksAgent[];
   providersSetup: OtelHooksProviderId[];
   errors: string[];
-  /** Where agent hook traces go now (see `telemetry-direct.ts`). */
+  /** Where agent hook traces go now (see `telemetry-route.ts`). */
   route: AgentTelemetryRoute;
-  /** Why direct export was not used, when it might have been expected. */
+  /** Why the route is narrower than might be expected. */
   routeHint?: string;
 }
 
@@ -233,55 +236,69 @@ export function buildOtelHooksConfig(options?: {
   apiUrl?: string;
   resourceAttributes?: string;
   /**
-   * Where traces go (default: Mission Control). A direct route writes no
-   * endpoint here — `exporter.endpoint` would outrank the standard
-   * `OTEL_EXPORTER_OTLP_*` variables the wrapper loads from `direct.env`.
+   * Where traces go. Default: Mission Control alone, at `apiUrl`. Every entry
+   * goes into `exporter.destinations[]`; no `exporter.endpoint` is written,
+   * since otel-hook would add it as a `default` destination next to the list.
    */
   route?: AgentTelemetryRoute;
+  /**
+   * The installed otel-hook predates `exporter.destinations[]` (< 0.9.0):
+   * write Mission Control as the single `exporter.endpoint` instead.
+   */
+  legacySingleEndpoint?: boolean;
 }): OtelHooksConfig {
   // Every switch comes from the level: the hook exports spans from Outline up,
   // its event records (the only channel that carries text) alongside them,
   // and the text itself only at Full.
   const signals = options?.enabled === false ? signalsForLevel('off') : getTelemetrySignals();
-  const enabled = signals.traces;
   const apiUrl = (options?.apiUrl ?? getControlApiUrl()).replace(/\/$/, '');
-  const direct = options?.route?.mode === 'direct' ? options.route.destinations : undefined;
+  const route: AgentTelemetryRoute = options?.route ?? { mode: 'fanout', missionControl: apiUrl, destinations: [] };
   const resourceAttributes = parseResourceAttributesString(options?.resourceAttributes);
-  if (direct && directRouteStripsLocalPaths(direct)) {
-    // Nothing strips the Resource on the direct path, and every destination gets the same one.
+  if (routeStripsLocalPaths(route)) {
+    // No Mission Control in the list, and a destination that does not take
+    // local paths: every destination gets the same Resource.
     for (const key of Object.keys(resourceAttributes)) {
       if (key.startsWith(LOCAL_ATTR_PREFIX)) delete resourceAttributes[key];
     }
   }
-  const logsEnabled = enabled && signals.logs && (!direct || directRouteSendsLogs(direct));
+  const legacy = options?.legacySingleEndpoint === true && route.mode === 'fanout' && route.missionControl !== undefined;
+  const plans = planRouteDestinations(route);
+  // Nothing to send to (no Mission Control, no destination): export nothing.
+  const enabled = signals.traces && (legacy || plans.length > 0);
+  const logsEnabled = enabled && signals.logs && routeSendsLogs(route);
   const capturePrompts = logsEnabled && signals.prompts;
   const destinations =
-    enabled && direct
-      ? planDirectDestinations(direct).map(
-          (plan): OtelHooksDestinationConfig => ({
+    enabled && !legacy
+      ? plans.map((plan): OtelHooksDestinationConfig => {
+          const logs = logsEnabled && plan.signals.includes('logs');
+          const planSignals = plan.signals.filter((signal) => signal === 'traces' || logs);
+          return {
             name: plan.name,
             ...(plan.tracesEndpoint ? { tracesEndpoint: plan.tracesEndpoint } : {}),
-            ...(plan.logsEndpoint ? { logsEndpoint: plan.logsEndpoint } : {}),
+            ...(logs && plan.logsEndpoint ? { logsEndpoint: plan.logsEndpoint } : {}),
             ...(plan.headers.length > 0
               ? { headers: Object.fromEntries(plan.headers.map((binding) => [binding.header, `env:${binding.envVar}`])) }
               : {}),
-            signals: plan.signals,
-          }),
-        )
+            signals: planSignals,
+          };
+        })
       : undefined;
+  // A logs-only destination with logs off at this level has nothing left to receive.
+  const sending = destinations?.filter((destination) => destination.signals.length > 0);
+  const legacyUrl = legacy && route.mode === 'fanout' ? route.missionControl : undefined;
 
   return {
     exporter: {
       enabled,
-      ...(enabled && !direct ? { endpoint: `${apiUrl}/api/otel/v1/traces` } : {}),
+      ...(enabled && legacyUrl ? { endpoint: `${legacyUrl}/api/otel/v1/traces` } : {}),
       // otel-hook exports OTLP/HTTP protobuf only; every OTLP/HTTP receiver takes it.
       protocol: 'http/protobuf',
       serviceName: 'har-ide-agent',
       ...(Object.keys(resourceAttributes).length > 0 ? { resourceAttributes } : {}),
-      ...(destinations ? { destinations } : {}),
+      ...(sending && sending.length > 0 ? { destinations: sending } : {}),
       logs: {
         enabled: logsEnabled,
-        ...(logsEnabled && !direct ? { endpoint: `${apiUrl}/api/otel/v1/logs` } : {}),
+        ...(logsEnabled && legacyUrl ? { endpoint: `${legacyUrl}/api/otel/v1/logs` } : {}),
         includeContent: capturePrompts,
       },
     },
@@ -313,7 +330,7 @@ export function writeOtelHooksWrapper(
   const wrapperPath = getOtelHooksWrapperPath(hooksHome);
   const configPath = getOtelHooksConfigPath(hooksHome);
   const stateDir = getOtelHooksStateDir(hooksHome);
-  const directEnvPath = getDirectExportEnvPath(hooksHome);
+  const routeEnvPath = getRouteEnvPath(hooksHome);
   const script = `#!/usr/bin/env bash
 # Managed by har telemetry — invokes @osfactory/otel-hook with HAR config.
 #
@@ -331,13 +348,14 @@ set -uo pipefail
 if [ -z "\${OTEL_RESOURCE_ATTRIBUTES:-}" ] && [ -n "\${${HAR_RESOURCE_ATTRIBUTES_ENV}:-}" ]; then
   export OTEL_RESOURCE_ATTRIBUTES="$${HAR_RESOURCE_ATTRIBUTES_ENV}"
 fi
-# Direct export (Mission Control off): endpoints and header values live in a
-# mode-0600 file, never in this script, the hook config or on a command line.
-if [ -f "${directEnvPath}" ]; then
-  . "${directEnvPath}" || true
+# Destination header values live in a mode-0600 file, never in this script,
+# the hook config or on a command line.
+if [ -f "${routeEnvPath}" ]; then
+  . "${routeEnvPath}" || true
 fi
-# Nothing strips the Resource on the direct path: drop local-only paths.
-if [ -n "\${${DIRECT_STRIP_LOCAL_ENV}:-}" ] && [ -n "\${OTEL_RESOURCE_ATTRIBUTES:-}" ]; then
+# No Mission Control in the destination list, and a destination that does not
+# take local paths: drop local-only paths from the Resource.
+if [ -n "\${${ROUTE_STRIP_LOCAL_ENV}:-}" ] && [ -n "\${OTEL_RESOURCE_ATTRIBUTES:-}" ]; then
   _har_kept=""
   IFS=',' read -ra _har_parts <<< "$OTEL_RESOURCE_ATTRIBUTES"
   for _har_part in "\${_har_parts[@]}"; do
@@ -783,9 +801,9 @@ export function ensureOtelHooks(options?: {
     // Claude reports tokens/cost to no hook — its native metrics and
     // per-request `api_request` log events carry them (ADR 0003).
     try {
-      // Direct mode: Claude's native metrics and logs carry account identity
-      // and nothing would strip it on the way to a third-party backend.
-      if (signals.metrics && decision.route.mode !== 'direct') {
+      // Claude's native metrics and logs carry account identity: Mission
+      // Control only, and off without it.
+      if (signals.metrics && routeHasMissionControl(decision.route)) {
         const claude = enableClaudeNativeTelemetry({ hooksHome });
         if (claude.skipped.length > 0) {
           errors.push(
@@ -820,9 +838,13 @@ export function ensureOtelHooks(options?: {
   };
 }
 
+function routeHasMissionControl(route: AgentTelemetryRoute): boolean {
+  return route.mode === 'fanout' && route.missionControl !== undefined;
+}
+
 /**
  * Resolve where agent traces go and write what the hook reads for it: the
- * config file, and `direct.env` (0600) for a direct route or its removal.
+ * config file, and `direct.env` (0600) with the destinations' header values.
  */
 export function applyAgentTelemetryRoute(
   hooksHome = getOtelHooksHome(),
@@ -830,10 +852,14 @@ export function applyAgentTelemetryRoute(
 ): { configPath: string; decision: AgentTelemetryRouteDecision } {
   const decision = resolveAgentTelemetryRoute(hooksHome);
   const configPath = writeOtelHooksConfig(
-    buildOtelHooksConfig({ resourceAttributes, route: decision.route }),
+    buildOtelHooksConfig({
+      resourceAttributes,
+      route: decision.route,
+      legacySingleEndpoint: installedPackageVersion(hooksHome) !== null && !otelHookSupportsDestinations(hooksHome),
+    }),
     hooksHome,
   );
-  writeDirectExportEnv(decision.route, hooksHome);
+  writeRouteEnv(decision.route, hooksHome);
   return { configPath, decision };
 }
 
@@ -848,23 +874,22 @@ export function refreshAgentTelemetryRoute(): AgentTelemetryRouteDecision | unde
     const hooksHome = getOtelHooksHome();
     const command = resolveOtelHookCommand(hooksHome);
     if (!command) {
-      writeDirectExportEnv({ mode: 'off' }, hooksHome);
+      writeRouteEnv({ mode: 'off' }, hooksHome);
       return undefined;
     }
     if (!isTelemetryEnabled()) {
-      writeDirectExportEnv({ mode: 'off' }, hooksHome);
+      writeRouteEnv({ mode: 'off' }, hooksHome);
       return { route: { mode: 'off' } };
     }
-    const wasDirect = readAppliedDirectRoute(hooksHome) !== null;
     const { decision } = applyAgentTelemetryRoute(hooksHome);
-    // Wrappers written before direct mode do not source direct.env.
+    // Wrappers written before 2.0 do not source direct.env.
     writeOtelHooksWrapper(command, hooksHome);
-    // Claude's native telemetry follows the mode only when the mode changed.
+    // Claude's native telemetry follows Mission Control in or out of the list.
     try {
-      if (decision.route.mode === 'direct') {
-        disableClaudeNativeTelemetry({ hooksHome });
-      } else if (wasDirect && getTelemetrySignals().metrics) {
+      if (routeHasMissionControl(decision.route) && getTelemetrySignals().metrics) {
         enableClaudeNativeTelemetry({ hooksHome });
+      } else {
+        disableClaudeNativeTelemetry({ hooksHome });
       }
     } catch {
       // best-effort: a malformed settings file must not block the refresh
@@ -878,7 +903,7 @@ export function refreshAgentTelemetryRoute(): AgentTelemetryRouteDecision | unde
 /** Refresh config for telemetry off (exporter disabled) without uninstalling hooks. */
 export function disableOtelHooksExport(): string {
   try {
-    writeDirectExportEnv({ mode: 'off' }, getOtelHooksHome());
+    writeRouteEnv({ mode: 'off' }, getOtelHooksHome());
   } catch {
     // best-effort
   }
@@ -906,10 +931,14 @@ export interface TelemetryDrift {
 export function inspectTelemetryDrift(hooksHome = getOtelHooksHome()): TelemetryDrift {
   const level = getTelemetryLevel();
   const configPath = getOtelHooksConfigPath(hooksHome);
-  const applied = readAppliedDirectRoute(hooksHome);
+  const applied = readAppliedAgentRoute(hooksHome);
   const expected = buildOtelHooksConfig();
-  // A direct route sends event records only when its destination subscribes to logs.
-  if (applied && !applied.logs) {
+  // A route with nowhere to send exports nothing; event records only go out
+  // when an entry of the route takes them.
+  if (applied && appliedRouteNames(applied).length === 0) {
+    expected.exporter.enabled = false;
+  }
+  if (applied && (!applied.logs || !expected.exporter.enabled)) {
     expected.exporter.logs.enabled = false;
     expected.exporter.logs.includeContent = false;
     expected.privacy.contentMode = 'omit';

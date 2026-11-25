@@ -37,7 +37,12 @@ export type DoctorCheckId =
   | 'hooks'
   | 'retired-machinery'
   | 'ejected-runtime'
-  | 'factory-lines';
+  | 'factory-lines'
+  /** Added by `core/telemetry-health.ts` for `har env doctor`; runDoctor itself never reports it. */
+  | 'telemetry-destinations';
+
+/** The checks runDoctor evaluates itself. */
+type HarnessDoctorCheckId = Exclude<DoctorCheckId, 'telemetry-destinations'>;
 
 export type DoctorContract = '1.0' | 'pre-1.0' | 'none';
 
@@ -95,7 +100,7 @@ function listHarnessShellScripts(harnessDir: string): string[] {
   return out;
 }
 
-const CHECK_LABELS: Record<DoctorCheckId, string> = {
+const CHECK_LABELS: Record<HarnessDoctorCheckId, string> = {
   'cli-version': 'CLI vs harness writer',
   'harness-env': 'harness.env schema',
   'stages-registry': 'stages.json registry',
@@ -149,7 +154,7 @@ function resolveStageFile(harnessDir: string, stage: HarnessStage): string | nul
   return path.join(harnessDir, 'stages', `${stage.id}.sh`);
 }
 
-function checkStatus(findings: DoctorFinding[], id: DoctorCheckId): DoctorCheck {
+function checkStatus(findings: DoctorFinding[], id: HarnessDoctorCheckId): DoctorCheck {
   const mine = findings.filter((f) => f.check === id);
   if (mine.some((f) => f.severity === 'error')) return { id, label: CHECK_LABELS[id], status: 'fail' };
   if (mine.length > 0) return { id, label: CHECK_LABELS[id], status: 'warn' };
@@ -159,13 +164,13 @@ function checkStatus(findings: DoctorFinding[], id: DoctorCheckId): DoctorCheck 
 export function runDoctor(repoPath: string): DoctorReport {
   const harnessDir = getHarnessDir(repoPath);
   const findings: DoctorFinding[] = [];
-  const skipped = new Set<DoctorCheckId>();
+  const skipped = new Set<HarnessDoctorCheckId>();
 
   if (!fs.existsSync(harnessDir)) {
     return {
       ok: false,
       contract: 'none',
-      checks: (Object.keys(CHECK_LABELS) as DoctorCheckId[]).map((id) => ({
+      checks: (Object.keys(CHECK_LABELS) as HarnessDoctorCheckId[]).map((id) => ({
         id,
         label: CHECK_LABELS[id],
         status: 'skip',
@@ -206,7 +211,7 @@ export function runDoctor(repoPath: string): DoctorReport {
     return {
       ok: false,
       contract,
-      checks: (Object.keys(CHECK_LABELS) as DoctorCheckId[]).map((id) =>
+      checks: (Object.keys(CHECK_LABELS) as HarnessDoctorCheckId[]).map((id) =>
         id === 'cli-version'
           ? { id, label: CHECK_LABELS[id], status: 'fail' as const }
           : { id, label: CHECK_LABELS[id], status: 'skip' as const },
@@ -558,7 +563,7 @@ export function runDoctor(repoPath: string): DoctorReport {
     }
   }
 
-  const checks = (Object.keys(CHECK_LABELS) as DoctorCheckId[]).map((id) =>
+  const checks = (Object.keys(CHECK_LABELS) as HarnessDoctorCheckId[]).map((id) =>
     skipped.has(id) ? { id, label: CHECK_LABELS[id], status: 'skip' as const } : checkStatus(findings, id),
   );
 

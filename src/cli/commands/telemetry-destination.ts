@@ -1,10 +1,5 @@
 import type { Argv } from 'yargs';
 import {
-  CONTROL_CONTAINER_NAME,
-  controlContainerExists,
-  controlContainerMountsDestinations,
-} from '../../core/control-lifecycle';
-import {
   DEFAULT_LANGFUSE_HOST,
   DESTINATION_LOGS_WARNING,
   OTLP_PRESET_DEFAULT_SIGNALS,
@@ -30,11 +25,15 @@ import {
   type TelemetryDestinationPreset,
 } from '../../harness/schema';
 import { error, header, info, success, warn } from '../../utils/logging';
-import { isControlEnabled } from '../../core/control-config';
 import { countSpooledPayloads } from '../../core/telemetry-spool';
 import { getOtelHooksHome, refreshAgentTelemetryRoute } from '../../core/otel-hooks';
-import { describeAgentTelemetryRoute, readAppliedDirectRoute } from '../../core/telemetry-direct';
-import { flushVerificationTraceSpool } from '../../core/verification-spans';
+import {
+  MISSION_CONTROL_DESTINATION,
+  appliedRouteNames,
+  describeAgentTelemetryRoute,
+  readAppliedAgentRoute,
+} from '../../core/telemetry-route';
+import { flushVerificationTraceSpool, verificationTraceControlUrl } from '../../core/verification-spans';
 
 export interface DestinationAddArgs {
   name: string;
@@ -91,17 +90,6 @@ export function destinationFromAddArgs(
   });
 }
 
-function controlMountHint(): void {
-  if (!isControlEnabled()) return;
-  try {
-    if (controlContainerExists() && controlContainerMountsDestinations() === false) {
-      info(`The running ${CONTROL_CONTAINER_NAME} container predates destinations — run har control up to recreate it so Mission Control can forward.`);
-    }
-  } catch {
-    // docker missing or not running: nothing to hint
-  }
-}
-
 /**
  * Re-route agent hook traces after a destination or Mission Control change and
  * say where they go now. Silent until `har telemetry on` installed the hook.
@@ -109,14 +97,20 @@ function controlMountHint(): void {
 export function refreshAgentRouteAndReport(): void {
   const decision = refreshAgentTelemetryRoute();
   if (!decision || decision.route.mode === 'off') return;
-  if (decision.route.mode === 'direct') {
-    info(`Agent traces: ${describeAgentTelemetryRoute(decision.route)} (Mission Control is off; start a new agent session to pick this up)`);
-  }
+  info(`Agent traces: ${describeAgentTelemetryRoute(decision.route)} (hooks pick this up on their next event)`);
   if (decision.hint) info(decision.hint);
 }
 
-function localPathsLabel(destination: TelemetryDestination): string {
-  return destination.includeLocalPaths ? 'included (--include-local-paths)' : 'stripped';
+function localPathsLabel(destination: TelemetryDestination, missionControlInRoute: boolean): string {
+  if (destination.includeLocalPaths) return 'included (--include-local-paths)';
+  // One hook process has one Resource, and Mission Control needs factory.local.* (#519).
+  return missionControlInRoute
+    ? 'stripped, except factory.local.* in agent traces while Mission Control is a destination (#519)'
+    : 'stripped';
+}
+
+function missionControlInAgentRoute(): boolean {
+  return readAppliedAgentRoute(getOtelHooksHome())?.missionControl === true;
 }
 
 function accountIdentityLabel(destination: TelemetryDestination): string {
@@ -130,26 +124,42 @@ function handleAdd(argv: DestinationAddArgs): void {
   success(`${result.replaced ? 'Replaced' : 'Added'} destination "${destination.name}" (${destination.preset ?? 'otlp'}) → ${destination.endpoint}`);
   info(`Signals: ${destination.signals.join(', ')}${destination.enabled ? '' : ' (disabled)'}`);
   if (destination.signals.includes('logs')) warn(DESTINATION_LOGS_WARNING);
-  info(`Local paths: ${localPathsLabel(destination)}`);
+  info(`Local paths: ${localPathsLabel(destination, missionControlInAgentRoute())}`);
   info(`Account identity: ${accountIdentityLabel(destination)}`);
   info(`Config:  ${result.path} (mode 0600)`);
   info(`Check it: har telemetry destination test ${destination.name}`);
-  controlMountHint();
   refreshAgentRouteAndReport();
 }
 
 function handleList(argv: { json: boolean }): void {
   const file = readTelemetryDestinations();
   const masked = file.destinations.map(maskTelemetryDestination);
-  // Destinations agents export to themselves now (Mission Control off), by name.
-  const direct = readAppliedDirectRoute(getOtelHooksHome())?.destinations ?? [];
+  // Where agents send now (from the hooks home), by name; Mission Control is one of them.
+  const agentTraces = appliedRouteNames(readAppliedAgentRoute(getOtelHooksHome()));
+  const verificationToControl = verificationTraceControlUrl() !== undefined;
   if (argv.json) {
     process.stdout.write(
-      `${JSON.stringify({ path: getTelemetryDestinationsPath(), destinations: masked, agentTracesDirect: direct }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          path: getTelemetryDestinationsPath(),
+          destinations: masked,
+          agentTraces,
+          missionControl: {
+            agentTraces: agentTraces.includes(MISSION_CONTROL_DESTINATION),
+            verificationTraces: verificationToControl,
+          },
+        },
+        null,
+        2,
+      )}\n`,
     );
     return;
   }
   header('har telemetry destination list');
+  if (agentTraces.length > 0) info(`Agent traces: → ${agentTraces.join(', ')}`);
+  if (agentTraces.includes(MISSION_CONTROL_DESTINATION) || verificationToControl) {
+    info('mission-control — built in (stores what it receives, forwards nothing)');
+  }
   if (masked.length === 0) {
     info('No destinations — telemetry stays on this machine.');
     info('Add one: har telemetry destination add <name> --preset langfuse|otlp …');
@@ -159,9 +169,11 @@ function handleList(argv: { json: boolean }): void {
     info(`${destination.name}${destination.enabled ? '' : ' (disabled)'} — ${destination.preset ?? 'otlp'}`);
     info(`  endpoint: ${destination.endpoint} (${destination.protocol})`);
     info(`  signals:  ${destination.signals.join(', ')}`);
-    info(`  local paths: ${localPathsLabel(destination)}`);
+    info(`  local paths: ${localPathsLabel(destination, agentTraces.includes(MISSION_CONTROL_DESTINATION))}`);
     info(`  account identity: ${accountIdentityLabel(destination)}`);
-    if (direct.includes(destination.name)) info('  agent traces: direct (otel-hook sends to it itself; Mission Control is off)');
+    const agentSignals = destination.signals.filter((signal) => signal === 'traces' || signal === 'logs');
+    if (agentTraces.includes(destination.name)) info(`  agent ${agentSignals.join(' + ')}: sent by otel-hook itself`);
+    if (destination.enabled && destination.signals.includes('traces')) info('  verification traces: sent by the CLI itself');
     const headers = Object.entries(destination.headers);
     if (headers.length > 0) info(`  headers:  ${headers.map(([key, value]) => `${key}: ${value}`).join(', ')}`);
   }
@@ -194,7 +206,7 @@ async function handleTest(argv: { name: string; json: boolean }): Promise<void> 
     info(`POST ${otlpSignalUrl(destination.endpoint, result.signal)} (one OTLP/JSON test ${result.signal} record)`);
     if (result.ok) success(`HTTP ${result.status} — ${destination.name} accepted the test record`);
     else error(`${result.status === null ? 'No response' : `HTTP ${result.status}`}${result.detail ? ` — ${result.detail}` : ''}`);
-    if (!destination.enabled) warn(`"${destination.name}" is disabled — nothing is forwarded to it.`);
+    if (!destination.enabled) warn(`"${destination.name}" is disabled — nothing is sent to it.`);
   }
   if (!result.ok) process.exitCode = 1;
 }
@@ -254,16 +266,17 @@ export const telemetryDestinationCommand = {
             .option('host', { type: 'string', describe: `langfuse: host (default $LANGFUSE_BASE_URL, $LANGFUSE_HOST or ${DEFAULT_LANGFUSE_HOST})` })
             .option('public-key', { type: 'string', describe: 'langfuse: public key (default $LANGFUSE_PUBLIC_KEY)' })
             .option('secret-key', { type: 'string', describe: 'langfuse: secret key (default $LANGFUSE_SECRET_KEY)' })
-            .option('disabled', { type: 'boolean', default: false, describe: 'Store it without forwarding to it' })
+            .option('disabled', { type: 'boolean', default: false, describe: 'Store it without sending to it' })
             .option('include-local-paths', {
               type: 'boolean',
               default: false,
-              describe: 'Forward attributes holding absolute local paths (factory.local.*, process.cwd, …); stripped by default',
+              describe:
+                'Send attributes holding absolute local paths (factory.local.*, process.cwd, …); stripped by default, except that agent traces keep factory.local.* while Mission Control is a destination (#519)',
             })
             .option('include-account-identity', {
               type: 'boolean',
               default: false,
-              describe: 'Forward account identity attributes (user.email, user.account_uuid, user.id, organization.id, …); stripped by default',
+              describe: 'Send account identity attributes (user.email, user.account_uuid, user.id, organization.id, …); stripped by default',
             })
             .option('overwrite', { type: 'boolean', default: false, describe: 'Replace a destination with the same name' }),
         (argv) =>

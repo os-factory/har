@@ -6,7 +6,6 @@ const ingest = vi.hoisted(() => ({
   traces: vi.fn(),
   metrics: vi.fn(),
   logs: vi.fn(),
-  forward: vi.fn(),
 }));
 
 vi.mock('@/server/otel-ingest', () => ({
@@ -14,7 +13,6 @@ vi.mock('@/server/otel-ingest', () => ({
   ingestOtelMetricsBody: ingest.metrics,
   ingestOtelLogsBody: ingest.logs,
 }));
-vi.mock('@/server/otlp-forward', () => ({ scheduleOtlpForwardBody: ingest.forward }));
 
 import { handleOtlpHttpExport, partialSuccessErrorMessage, receiveOtlpExport } from './otlp-receiver';
 
@@ -55,10 +53,6 @@ describe('OTLP/HTTP export responses', () => {
       expect(json.partialSuccess).not.toHaveProperty(field === 'rejectedDataPoints' ? 'rejectedSpans' : 'rejectedDataPoints');
       // Mission Control's own diagnostic stays in JSON responses.
       expect(json.har).toEqual({ accepted: 1, dropped: 2, reasons: ['no repository known for session s1'] });
-      expect(ingest.forward).toHaveBeenCalledWith(signal, Buffer.from('{}'), {
-        contentType: 'application/json',
-        contentEncoding: null,
-      });
     });
 
     it(`${signal}: protobuf request → protobuf ${type}`, async () => {
@@ -93,27 +87,24 @@ describe('OTLP/HTTP export responses', () => {
     });
   });
 
-  it('ingests a gzip body decoded and forwards the original bytes with their encoding', async () => {
+  it('ingests a gzip body decoded', async () => {
     const plain = Buffer.from('{"resourceSpans":[]}');
     const gz = zlib.gzipSync(plain);
     ingest.traces.mockResolvedValue({ accepted: 0, dropped: 0, reasons: [] });
     await receiveOtlpExport('traces', { body: gz, contentType: 'application/json', contentEncoding: 'gzip' });
     expect(ingest.traces).toHaveBeenCalledWith(plain, 'application/json');
-    expect(ingest.forward).toHaveBeenCalledWith('traces', gz, { contentType: 'application/json', contentEncoding: 'gzip' });
   });
 
-  it('rejects an unknown content encoding and still hands it to the forwarder (which decides)', async () => {
+  it('rejects an unknown content encoding', async () => {
     const result = await receiveOtlpExport('logs', { body: Buffer.from('x'), contentType: 'application/json', contentEncoding: 'zstd' });
     expect(result).toEqual({ accepted: 0, dropped: 1, reasons: ['unsupported content-encoding zstd'] });
     expect(ingest.logs).not.toHaveBeenCalled();
-    expect(ingest.forward).toHaveBeenCalledTimes(1);
   });
 
-  it('does not forward when ingest throws (as before)', async () => {
+  it('reports an ingest failure as a result, never a throw', async () => {
     ingest.metrics.mockRejectedValue(new Error('database is locked'));
     const result = await receiveOtlpExport('metrics', { body: Buffer.from('{}'), contentType: 'application/json' });
     expect(result).toEqual({ accepted: 0, dropped: 0, reasons: ['database is locked'] });
-    expect(ingest.forward).not.toHaveBeenCalled();
   });
 
   it('keeps the error message short with many distinct reasons', () => {
@@ -121,5 +112,13 @@ describe('OTLP/HTTP export responses', () => {
     const message = partialSuccessErrorMessage({ accepted: 0, dropped: 8, reasons });
     expect(message?.length).toBeLessThanOrEqual(300);
     expect(message).toMatch(/^8 not stored by Mission Control: reason 0/);
+  });
+
+  it('forwards nothing: Mission Control no longer has a forwarder (fan-out happens at the producer)', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    expect(fs.existsSync(path.join(__dirname, 'otlp-forward.ts'))).toBe(false);
+    const source = fs.readFileSync(path.join(__dirname, 'otlp-receiver.ts'), 'utf8');
+    expect(source).not.toMatch(/otlp-forward|scheduleOtlpForward|x-har-otlp-forward/);
   });
 });

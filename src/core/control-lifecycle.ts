@@ -9,8 +9,6 @@ import { DEFAULT_CONTROL_API_URL, getControlApiUrl, isControlEnabled } from './c
 import { parseControlHostPort } from './control-port';
 import { isPortInUse } from './slot-ports';
 import { syncAllKnownReposWithControl, waitForControlApi } from './control-sync';
-import { ensureDestinationsDir } from './telemetry-destinations';
-import { HAR_DESTINATIONS_DIR_ENV } from '../harness/schema';
 
 /** Mission Control runs as a single self-contained container (SQLite on a volume). */
 export const CONTROL_CONTAINER_NAME = 'har-control';
@@ -21,8 +19,6 @@ export const CONTROL_OTLP_GRPC_CONTAINER_PORT = 4317;
 /** Host port for Mission Control's OTLP/gRPC receiver; `0`/`off` skips publishing it. */
 export const CONTROL_OTLP_GRPC_PORT_ENV = 'HAR_CONTROL_OTLP_GRPC_PORT';
 const CONTROL_DATA_DB_URL = 'file:/data/har_control.db';
-/** Where the host's `~/.har/destinations` appears inside the container (read-only). */
-export const CONTROL_DESTINATIONS_MOUNT = '/har/destinations';
 
 export function resolveControlDir(): string {
   // dist/index.js → package root/control (npm install or source checkout)
@@ -41,12 +37,8 @@ export function buildDockerRunArgs(options: {
   detach: boolean;
   containerName?: string;
   volume?: string;
-  /** Host directory holding OTLP destination config, mounted read-only when given. */
-  destinationsDir?: string;
   /** Host port published for the OTLP/gRPC receiver; omitted → not published. */
   otlpGrpcHostPort?: number | null;
-  /** Defaults to the current platform; Linux gets a `host.docker.internal` entry. */
-  platform?: NodeJS.Platform;
 }): string[] {
   const name = options.containerName ?? CONTROL_CONTAINER_NAME;
   const volume = options.volume ?? CONTROL_DATA_VOLUME;
@@ -60,25 +52,12 @@ export function buildDockerRunArgs(options: {
   if (options.otlpGrpcHostPort) {
     args.push('-p', `${options.otlpGrpcHostPort}:${CONTROL_OTLP_GRPC_CONTAINER_PORT}`);
   }
-  // Docker Desktop resolves host.docker.internal; on Linux it must be added, so
-  // forwarding can reach a Collector listening on the host.
-  if ((options.platform ?? process.platform) === 'linux') {
-    args.push('--add-host=host.docker.internal:host-gateway');
-  }
   args.push(
     '-v',
     `${volume}:/data`,
     '-e',
     `DATABASE_URL=${CONTROL_DATA_DB_URL}`,
   );
-  if (options.destinationsDir) {
-    args.push(
-      '-v',
-      `${options.destinationsDir}:${CONTROL_DESTINATIONS_MOUNT}:ro`,
-      '-e',
-      `${HAR_DESTINATIONS_DIR_ENV}=${CONTROL_DESTINATIONS_MOUNT}`,
-    );
-  }
   args.push(options.imageRef);
   return args;
 }
@@ -213,19 +192,10 @@ export async function startMissionControl(options: {
   }
 
   const detach = options.detach !== false;
-  // Mission Control forwards received OTLP to the destinations configured with
-  // `har telemetry destination add`. The directory is created up front so
-  // Docker does not create it as root; with no destinations it stays empty.
-  let destinationsDir: string | undefined;
-  try {
-    destinationsDir = ensureDestinationsDir();
-  } catch {
-    destinationsDir = undefined;
-  }
   // After the old container is gone, so its own 4317 does not count as taken.
   const otlpGrpc = planControlOtlpGrpcPort();
   const code = runDocker(
-    buildDockerRunArgs({ imageRef, hostPort, detach, destinationsDir, otlpGrpcHostPort: otlpGrpc.hostPort }),
+    buildDockerRunArgs({ imageRef, hostPort, detach, otlpGrpcHostPort: otlpGrpc.hostPort }),
     quiet,
   );
   return { code, apiUrl, imageRef, otlpGrpc };
@@ -239,21 +209,6 @@ export function controlContainerOtlpGrpcHostPort(name = CONTROL_CONTAINER_NAME):
   });
   const match = /:(\d+)\s*$/m.exec(result.stdout ?? '');
   return match ? Number(match[1]) : null;
-}
-
-/** Whether the running container mounts the destinations directory (false when absent or unknown). */
-export function controlContainerMountsDestinations(name = CONTROL_CONTAINER_NAME): boolean | null {
-  const result = spawnSync('docker', ['inspect', '-f', '{{json .Mounts}}', name], {
-    encoding: 'utf8',
-    stdio: ['pipe', 'pipe', 'ignore'],
-  });
-  if (result.error || result.status !== 0) return null;
-  try {
-    const mounts = JSON.parse((result.stdout ?? '').trim() || '[]') as Array<{ Destination?: string }>;
-    return mounts.some((mount) => mount.Destination === CONTROL_DESTINATIONS_MOUNT);
-  } catch {
-    return null;
-  }
 }
 
 export function controlContainerImage(name = CONTROL_CONTAINER_NAME): string | null {

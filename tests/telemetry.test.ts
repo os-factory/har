@@ -399,10 +399,18 @@ describe('otel hooks config', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('maps the full level to @osfactory/otel-hook config with protobuf endpoint', () => {
+  it('maps the full level to @osfactory/otel-hook config with Mission Control as a protobuf destination', () => {
     writeTelemetryLevel('full');
     const config = buildOtelHooksConfig({ enabled: true, apiUrl: 'http://localhost:3847' });
-    expect(config.exporter.endpoint).toBe('http://localhost:3847/api/otel/v1/traces');
+    expect(config.exporter.endpoint).toBeUndefined();
+    expect(config.exporter.destinations).toEqual([
+      {
+        name: 'mission-control',
+        tracesEndpoint: 'http://localhost:3847/api/otel/v1/traces',
+        logsEndpoint: 'http://localhost:3847/api/otel/v1/logs',
+        signals: ['traces', 'logs'],
+      },
+    ]);
     expect(config.exporter.protocol).toBe('http/protobuf');
     expect(config.exporter.enabled).toBe(true);
     expect(config.exporter.logs.enabled).toBe(true);
@@ -458,12 +466,12 @@ describe('otel hooks config', () => {
     const configPath = writeOtelHooksConfig(config, hooksHome);
     expect(configPath).toBe(path.join(hooksHome, 'otel_config.json'));
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-      exporter: { protocol: string; endpoint?: string };
+      exporter: { protocol: string; endpoint?: string; destinations?: Array<{ tracesEndpoint?: string }> };
       privacy: { contentMode: string };
       _comment?: string;
     };
     expect(parsed.exporter.protocol).toBe('http/protobuf');
-    expect(parsed.exporter.endpoint).toBe('http://localhost:3847/api/otel/v1/traces');
+    expect(parsed.exporter.destinations?.[0].tracesEndpoint).toBe('http://localhost:3847/api/otel/v1/traces');
     // otel-hook rejects unknown keys and disables OTLP; keep the file schema-clean.
     expect(parsed).not.toHaveProperty('_comment');
     expect(Object.keys(parsed).sort()).toEqual(['exporter', 'privacy']);

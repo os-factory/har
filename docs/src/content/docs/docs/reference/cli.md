@@ -505,9 +505,14 @@ One **level** is stored; each includes the ones below it:
 
 `on` stores the level (replacing the previous one outright), ensures Mission Control is
 running and rewrites the hook config; start a new agent session to pick it up. `--prompts`
-/ `--no-prompts` remain as spellings of `full` / `outline`. `status` prints the level and
-warns when `~/.har/otel-hooks/otel_config.json` records something else (for example a
-preference edited by hand). Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
+/ `--no-prompts` remain as spellings of `full` / `outline`. `status` prints the level, the
+agent route (`Agent traces: → mission-control, langfuse`, then one line per destination
+with its endpoints), where verification traces go, and each destination's health
+(queued batches, recent drops, last failure), and warns when
+`~/.har/otel-hooks/otel_config.json` records something else (for example a preference
+edited by hand). `--json` keeps `otelEndpoint` and adds `agentTraces.destinations`,
+`agentTraces.targets`, `verificationTraces` and `destinationHealth`. Header values are
+never printed. Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
 HAR HQ receives the text only with `har control trajectory on`.
 
 ### Destinations (any OTLP backend)
@@ -515,7 +520,10 @@ HAR HQ receives the text only with `har control trajectory on`.
 `har telemetry destination` stores OTLP/HTTP backends that receive a copy of the
 telemetry — an OpenTelemetry Collector, Langfuse, Datadog, … — in
 `~/.har/destinations/telemetry.json` (mode `0600`: header values are secrets). Nothing
-is configured by default, and nothing leaves the machine until you add one.
+is configured by default, and nothing leaves the machine until you add one. The
+producers send to each destination themselves: the agent hook through otel-hook's
+`exporter.destinations[]` (Mission Control first, when it is set up), the CLI for
+verification traces. Mission Control forwards nothing.
 
 - `--preset langfuse` sends traces to `<host>/api/public/otel` with
   `Authorization: Basic base64(public:secret)`. Langfuse ingests OTLP traces only.
@@ -523,19 +531,23 @@ is configured by default, and nothing leaves the machine until you add one.
   `LANGFUSE_BASE_URL`, `LANGFUSE_HOST` or `https://cloud.langfuse.com`.
 - `--preset otlp` takes a base `--endpoint` (signals go to `<endpoint>/v1/<signal>`),
   any `--header Name=value`, and `traces` and `metrics` unless `--signals` says
-  otherwise. Logs are opt-in: name `logs` in `--signals` to forward them. At the
+  otherwise. Logs are opt-in: name `logs` in `--signals` to receive them. At the
   `full` level they carry prompts, replies and tool input/output verbatim, and `add`
   prints a warning.
-- Mission Control strips attributes that hold absolute local paths (every
-  `factory.local.*` key, `process.cwd`, `code.filepath`, …) from every forwarded copy.
-  `--include-local-paths` keeps them for that destination.
-- Mission Control also strips account identity attributes (`user.email`,
-  `user.account_uuid`, `user.account_id`, `user.id`, `organization.id`, `enduser.id`, …).
+- Attributes that hold absolute local paths (every `factory.local.*` key,
+  `process.cwd`, `code.filepath`, …) are stripped from what the CLI sends, and
+  `factory.local.*` from agent traces when Mission Control is not a destination.
+  While Mission Control is one, agent traces keep `factory.local.*` for every
+  destination ([#519](https://github.com/os-factory/har/issues/519)).
+  `--include-local-paths` keeps them for that destination in every case.
+- Account identity attributes (`user.email`, `user.account_uuid`, `user.account_id`,
+  `user.id`, `organization.id`, `enduser.id`, …) are stripped from what the CLI sends;
+  Claude Code's native telemetry, which carries them, goes to Mission Control only.
   `--include-account-identity` keeps them for that destination.
 
-`list` masks header values and shows whether local paths and account identity are stripped. `test` sends one small OTLP/JSON record to the destination
-and reports the HTTP status. `har control up` mounts `~/.har/destinations` read-only
-into the Mission Control container. Guides: [Langfuse](/docs/guides/langfuse/),
+`list` prints the agent route, masks header values and shows whether local paths and
+account identity are stripped. `test` sends one small OTLP/JSON record to the
+destination and reports the HTTP status. Guides: [Langfuse](/docs/guides/langfuse/),
 [any OTLP backend](/docs/guides/otlp-backends/).
 
 **Verification spans.** Each `har env verify` (and MCP `har_run_verification`) builds
@@ -543,13 +555,14 @@ one OTel CI/CD trace: a run span (`cicd.pipeline.*`, `factory.run.id`, `factory.
 `factory.verdict` on `--full`) with one child span per stage, plus the work unit,
 attempt, repository and branch on the resource. The trace id is derived from the
 validation id, so it sits next to the agent's session traces in the same backend.
-Spans carry ids, results and timings only: no commands or logs. When Mission Control
-is running, the trace goes only to Mission Control, which stores the run, syncs it
-to HQ and forwards it to every destination subscribed to `traces`. Otherwise the CLI
-sends it to those destinations itself (about 3 s each, in parallel) and queues
-what failed, plus a store-only copy for Mission Control, in `~/.har/spool/traces`
-(64 MB, 24 h). The resource's `factory.local.checkout_path` never reaches a
-destination or the spool. Delivery never changes verify's result; a failed delivery
+Spans carry ids, results, timings and the verify policy (`factory.policy.id`,
+`factory.policy.digest` on `--full`): no commands or logs. The CLI sends one copy to
+Mission Control, which stores the run and syncs it to HQ, and one to every
+destination subscribed to `traces` (about 3 s each, in parallel), and queues each copy
+that was not taken, for that receiver alone, in `~/.har/spool/traces` (64 MB, 24 h),
+so every receiver gets each trace exactly once. The resource's
+`factory.local.checkout_path` goes to Mission Control only, never to a destination
+or the spool. Delivery never changes verify's result; a failed delivery
 prints one dim line, and a queued one another. `har telemetry off` sends none.
 
 `flush` retries the queue now (the start of every `har env verify` and
