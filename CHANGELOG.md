@@ -1,3 +1,14 @@
+## [2.0.0-next.3](https://github.com/os-factory/har/compare/v2.0.0-next.2...v2.0.0-next.3) (2026-11-25)
+
+### Features
+
+* **telemetry:** direct export to every destination with otel-hook 0.9.0 ([#504](https://github.com/os-factory/har/issues/504)) ([476fdd7](https://github.com/os-factory/har/commit/476fdd7b4630b5f491cf42d43a80bea2066b410d)), closes [os-factory/otel-hook#54](https://github.com/os-factory/otel-hook/issues/54) [#416](https://github.com/os-factory/har/issues/416) [#485](https://github.com/os-factory/har/issues/485) [#485](https://github.com/os-factory/har/issues/485)
+
+### Bug Fixes
+
+* **sync:** keep every HQ sync request under the portal's limits on 2.0 ([#502](https://github.com/os-factory/har/issues/502)) ([867cee4](https://github.com/os-factory/har/commit/867cee423abf1e1da1ae918ef93b7bd0544cb224)), closes [#480](https://github.com/os-factory/har/issues/480) [#501](https://github.com/os-factory/har/issues/501) [#480](https://github.com/os-factory/har/issues/480) [#1](https://github.com/os-factory/har/issues/1) [#480](https://github.com/os-factory/har/issues/480)
+* **sync:** sync HAR HQ when Mission Control is down ([#501](https://github.com/os-factory/har/issues/501)) ([acf9c78](https://github.com/os-factory/har/commit/acf9c787b346d15c2c60d4c2eee8655da915603a)), closes [#369](https://github.com/os-factory/har/issues/369) [#416](https://github.com/os-factory/har/issues/416)
+
 ## [2.0.0-next.2](https://github.com/os-factory/har/compare/v2.0.0-next.1...v2.0.0-next.2) (2026-11-24)
 
 ### Bug Fixes
