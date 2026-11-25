@@ -1,4 +1,4 @@
-import { kernoApiUrlFor } from '../src/core/portal-hosts';
+import { isPortalApiKey, kernoApiUrlFor } from '../src/core/portal-hosts';
 
 describe('kernoApiUrlFor', () => {
   afterEach(() => {
@@ -12,6 +12,11 @@ describe('kernoApiUrlFor', () => {
     expect(kernoApiUrlFor('https://app.dev.harhq.com')).toBe('https://api.dev.kerno.io');
   });
 
+  it('maps a portal-api address to itself, so HAR_PORTAL_URL may be the API', () => {
+    expect(kernoApiUrlFor('https://api.kerno.io')).toBe('https://api.kerno.io');
+    expect(kernoApiUrlFor('https://api.dev.kerno.io/')).toBe('https://api.dev.kerno.io');
+  });
+
   it('has no portal-api for other portals', () => {
     expect(kernoApiUrlFor('https://har.example.com')).toBeUndefined();
     expect(kernoApiUrlFor('http://localhost:3020/har')).toBeUndefined();
@@ -20,5 +25,12 @@ describe('kernoApiUrlFor', () => {
   it('uses HAR_API_URL for any portal when it is set', () => {
     process.env.HAR_API_URL = 'http://localhost:4020/';
     expect(kernoApiUrlFor('http://localhost:3020/har')).toBe('http://localhost:4020');
+  });
+});
+
+describe('isPortalApiKey', () => {
+  it('tells a portal API key from an ingest token', () => {
+    expect(isPortalApiKey('sk-bf-abc')).toBe(true);
+    expect(isPortalApiKey('har_ingest_abc')).toBe(false);
   });
 });

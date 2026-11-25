@@ -433,6 +433,28 @@ Credentials stay in `~/.har/` and are never committed into `.har/`. A
 reduced to its default (else most recently used) connection the first time it is
 read; the other connections and their tokens are deleted.
 
+There are two ways to connect:
+
+- **Browser login** (the default) is for a person at their own machine. It
+  stores an ingest token that the CLI refreshes by itself.
+- **A portal API key** is for CI, a server, or any machine without a browser.
+  Create the key on the portal's API key page; the key decides the org.
+  `har hq connect --api-key <key>` checks the key with Kerno, prints the org it
+  writes to, and saves nothing when the key is rejected. An API key is never
+  refreshed: when it is revoked or expires, sync fails with "rejected the API
+  key" and you create a new one.
+
+In CI nothing needs to be saved at all. Set the portal address and the key, and
+the run syncs to the key's org with no `~/.har/portal-targets.json`:
+
+```yaml
+- name: Send telemetry to HAR HQ
+  env:
+    HAR_PORTAL_URL: https://portal.kerno.io
+    HAR_PORTAL_TOKEN: ${{ secrets.KERNO_API_KEY }}
+  run: har control sync --full
+```
+
 `har control login` remains a deprecated alias for `har hq connect`.
 
 ## `har control`

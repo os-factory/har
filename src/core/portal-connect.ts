@@ -3,6 +3,7 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { isRepoPortalSyncEnabled, listRegisteredRepos, recordRepoForControlSync } from './control-registry';
+import { isPortalApiKey, KERNO_INGEST_PREFIX, kernoApiUrlFor } from './portal-hosts';
 import { loginViaBrowser } from './portal-login';
 import {
   attachRepoToPortal,
@@ -41,17 +42,68 @@ function workspaceIdForApiKey(token: string): string {
   return `key:${createHash('sha256').update(token).digest('hex').slice(0, 12)}`;
 }
 
+const KEY_CHECK_TIMEOUT_MS = 15_000;
+
+/**
+ * Ask Kerno which org `apiKey` writes to, so a wrong key fails here and not at
+ * the first sync. Null when the portal cannot say (not a Kerno portal, or one
+ * that predates the check): the key is then stored unchecked, as before.
+ */
+async function orgForApiKey(
+  portalUrl: string,
+  apiKey: string,
+): Promise<{ organizationId: string; organizationName?: string } | null> {
+  const apiUrl = kernoApiUrlFor(portalUrl);
+  if (!apiUrl) return null;
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}${KERNO_INGEST_PREFIX}/whoami`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(KEY_CHECK_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`Could not check the key with ${apiUrl}: ${reason}`);
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      isPortalApiKey(apiKey)
+        ? 'The API key was rejected — it was revoked, has expired, or belongs to another environment. Nothing was saved.'
+        : 'The ingest token was rejected — run `har hq connect` without --api-key to log in again. Nothing was saved.',
+    );
+  }
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Could not check the key with ${apiUrl}: HTTP ${response.status}`);
+
+  const body = (await response.json().catch(() => null)) as {
+    organizationId?: unknown;
+    organizationName?: unknown;
+  } | null;
+  if (typeof body?.organizationId !== 'string' || !body.organizationId) return null;
+  return {
+    organizationId: body.organizationId,
+    organizationName: typeof body.organizationName === 'string' ? body.organizationName : undefined,
+  };
+}
+
+async function connectViaApiKey(portalUrl: string, apiKey: string): Promise<ConnectPortalResult> {
+  const org = await orgForApiKey(portalUrl, apiKey);
+  return connectPortal({
+    portalUrl,
+    workspaceId: org?.organizationId ?? workspaceIdForApiKey(apiKey),
+    workspaceName: org?.organizationName,
+    token: apiKey,
+  });
+}
+
 /**
  * Connect the CLI to one org. This replaces any existing connection to a
  * different org — the CLI never holds keys for several orgs.
  */
 export async function runPortalConnect(input: PortalConnectInput): Promise<PortalConnectResult> {
   const connected = input.apiKey
-    ? connectPortal({
-        portalUrl: input.portalUrl,
-        workspaceId: workspaceIdForApiKey(input.apiKey),
-        token: input.apiKey,
-      })
+    ? await connectViaApiKey(input.portalUrl, input.apiKey)
     : await connectViaBrowser(input);
 
   return {

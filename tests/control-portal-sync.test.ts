@@ -416,6 +416,16 @@ describe('syncRepoWithControl — portal push', () => {
     );
   });
 
+  it('says the API key was rejected on 401, without pointing at har hq connect', async () => {
+    process.env.HAR_PORTAL_URL = 'https://portal.example.com';
+    process.env.HAR_PORTAL_TOKEN = 'sk-bf-revoked';
+    mockFetch({ status: 401 });
+    const error = await syncRepoWithControl({ repoPath: '/repo/x' }).catch((err: Error) => err);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/rejected the API key/);
+    expect((error as Error).message).not.toMatch(/har hq connect/);
+  });
+
   it('raises a generic error on other non-2xx responses', async () => {
     process.env.HAR_PORTAL_URL = 'https://portal.example.com';
     process.env.HAR_PORTAL_TOKEN = 'har_ingest_x';
