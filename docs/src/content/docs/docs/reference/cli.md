@@ -378,7 +378,7 @@ har hq disconnect [--json]
 
 The CLI holds **one HAR HQ org connection at a time**, and every sync, OTel and
 trajectory upload goes to that org only. On a TTY, `connect` asks Production
-(`https://portal.kerno.io/har`), Development (`https://portal.dev.kerno.io/har`), or a custom
+(`https://portal.kerno.io`), Development (`https://portal.dev.kerno.io`), or a custom
 URL, then opens browser SSO. The org chosen on the consent screen becomes the
 connection, and HAR attaches **this repository** to it. When other repositories
 are registered locally, a TTY prompt lists them so you can attach more to the
