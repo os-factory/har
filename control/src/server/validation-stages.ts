@@ -10,6 +10,11 @@ import { prisma } from '@/lib/db';
 export interface ValidationStageStatus {
   name: string;
   declared: boolean;
+  /** From the repository's `.har/stages.json` as last synced: the stage kind, its command
+   *  (or script) and description. Null when the registry does not describe the stage. */
+  kind: string | null;
+  command: string | null;
+  description: string | null;
   lastStatus: 'pass' | 'fail' | null;
   lastMs: number | null;
   lastOutput: string | null;
@@ -77,10 +82,15 @@ export function extractVerification(result: unknown): VerificationSteps | null {
   return normalizeVerification(result) ?? verificationFromLogs(result as { logs?: unknown });
 }
 
-function emptyStage(name: string, declared: boolean): ValidationStageStatus {
+type StageDescriptor = Pick<ValidationStageStatus, 'kind' | 'command' | 'description'>;
+
+function emptyStage(name: string, declared: boolean, descriptor?: StageDescriptor): ValidationStageStatus {
   return {
     name,
     declared,
+    kind: descriptor?.kind ?? null,
+    command: descriptor?.command ?? null,
+    description: descriptor?.description ?? null,
     lastStatus: null,
     lastMs: null,
     lastOutput: null,
@@ -117,6 +127,15 @@ export async function getValidationStages(
         .map((s: HarnessStage) => s.id))
     : [];
 
+  const descriptors = new Map<string, StageDescriptor>(
+    registry.success
+      ? registry.data.stages.map((s: HarnessStage) => [
+          s.id,
+          { kind: s.kind ?? null, command: s.command ?? s.script ?? null, description: s.description ?? null },
+        ])
+      : [],
+  );
+
   const verifyRuns = await prisma.run.findMany({
     where: {
       repositoryId,
@@ -131,14 +150,14 @@ export async function getValidationStages(
   });
 
   const byName = new Map<string, ValidationStageStatus>();
-  for (const name of declared) byName.set(name, emptyStage(name, true));
+  for (const name of declared) byName.set(name, emptyStage(name, true, descriptors.get(name)));
 
   for (const run of verifyRuns) {
     const verification = extractVerification(run.result);
     if (!verification) continue;
 
     for (const step of verification.stages) {
-      const entry = byName.get(step.name) ?? emptyStage(step.name, false);
+      const entry = byName.get(step.name) ?? emptyStage(step.name, false, descriptors.get(step.name));
       entry.runCount += 1;
       if (step.pass) entry.passCount += 1;
       // Runs are ordered newest-first, so the first sighting is the latest result.

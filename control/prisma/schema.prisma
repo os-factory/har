@@ -439,6 +439,10 @@ model VerificationRun {
   treeHash          String?
   headRevision      String?
   attestationDigest String?
+  /// `factory.policy.id`: the policy the verdict was computed against, when the producer sends it.
+  policyId          String?
+  /// `factory.policy.digest`: digest of the policy source (e.g. stages.json), when sent.
+  policyDigest      String?
   workUnitId        String?
   attemptId         String?
   branch            String?
@@ -466,6 +470,8 @@ model VerificationStage {
   result            String
   /// `cicd.pipeline.task.type` when the stage id names one (build | test).
   taskType          String?
+  /// `factory.stage.added_by`: `policy` (required by the policy) or `agent`.
+  addedBy           String?
   startTime         DateTime
   endTime           DateTime?
   createdAt         DateTime        @default(now())

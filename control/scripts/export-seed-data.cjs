@@ -248,6 +248,46 @@ function exportValidationBindings(db, repositoryId, newRepoId, idMap) {
   }).filter((row) => row.workUnitDbId && row.attemptDbId);
 }
 
+function exportVerificationRuns(db, repositoryId, newRepoId) {
+  const runs = rows(
+    db,
+    `SELECT * FROM VerificationRun WHERE repositoryId = ? ORDER BY createdAt DESC LIMIT ${CHANGE_BATCHES_PER_REPO}`,
+    [repositoryId],
+  );
+  return runs.map((row) => ({
+    id: crypto.randomUUID(),
+    repositoryId: newRepoId,
+    runId: row.runId,
+    traceId: row.traceId,
+    spanId: row.spanId,
+    pipelineName: row.pipelineName,
+    result: row.result,
+    verdict: row.verdict,
+    treeHash: row.treeHash,
+    headRevision: row.headRevision,
+    attestationDigest: row.attestationDigest,
+    policyId: row.policyId,
+    policyDigest: row.policyDigest,
+    workUnitId: row.workUnitId,
+    attemptId: row.attemptId,
+    branch: row.branch,
+    producerVersion: row.producerVersion,
+    startTime: toIso(row.startTime),
+    endTime: toIso(row.endTime),
+    stages: rows(db, 'SELECT * FROM VerificationStage WHERE verificationRunId = ? ORDER BY startTime ASC', [row.id]).map(
+      (stage) => ({
+        name: stage.name,
+        spanId: stage.spanId,
+        result: stage.result,
+        taskType: stage.taskType,
+        addedBy: stage.addedBy,
+        startTime: toIso(stage.startTime),
+        endTime: toIso(stage.endTime),
+      }),
+    ),
+  }));
+}
+
 function exportChangeBatches(db, repositoryId, newRepoId) {
   const batches = rows(
     db,
@@ -372,6 +412,7 @@ function main() {
     changeBatches: [],
     agentSlots: [],
     sessionUsage: [],
+    verificationRuns: [],
   };
 
   for (const repoPath of REPO_PATHS) {
@@ -393,6 +434,7 @@ function main() {
     seed.changeBatches.push(...exportChangeBatches(db, repoRow.id, newRepoId));
     seed.agentSlots.push(...exportSlots(db, repoRow.id, newRepoId));
     seed.sessionUsage.push(...exportSessionUsage(db, repoRow.id, newRepoId));
+    seed.verificationRuns.push(...exportVerificationRuns(db, repoRow.id, newRepoId));
   }
 
   db.close();

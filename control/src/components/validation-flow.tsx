@@ -57,11 +57,12 @@ function buildFlow(
     const sourcePosition = wrapsToNextRow ? Position.Bottom : leftToRight ? Position.Right : Position.Left;
     const targetPosition = wrapsFromPrevRow ? Position.Top : leftToRight ? Position.Left : Position.Right;
 
-    const meta = stageMeta(stage.name);
+    const meta = stageMeta(stage);
     const data: StageNodeData = {
       index: index + 1,
       title: meta.title,
       subtitle: meta.subtitle,
+      detail: meta.detail,
       icon: meta.icon,
       status: stage.lastStatus,
       duration: formatDuration(stage.lastMs),

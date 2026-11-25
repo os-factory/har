@@ -72,3 +72,34 @@ export function CopyCommandButtons({ commands }: { commands: Array<{ label: stri
     </div>
   );
 }
+
+/**
+ * A short identifier (digest, trace id) with a copy button for the full value.
+ * The full value is in the title and the accessible name.
+ */
+export function CopyValue({ value, display, label }: { value: string; display?: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1" data-testid="copy-value">
+      <code className="truncate font-mono text-xs" title={value}>
+        {display ?? value}
+      </code>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-5 shrink-0 px-1"
+        aria-label={`Copy ${label}: ${value}`}
+        onClick={() => {
+          void writeClipboard(value).then((ok) => {
+            if (!ok) return;
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+      >
+        {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+      </Button>
+    </span>
+  );
+}

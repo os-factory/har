@@ -6,6 +6,8 @@
  * flat shape so a single DataTable can render, search and expand them.
  */
 
+import { isAttestedProof, proofForTree, proofForVerifyRun, type FactoryProof } from '@/lib/factory-proof';
+
 export type TimelineKind = 'occupancy' | 'session' | 'run' | 'snapshot' | 'commit';
 
 export type TimelineTone = 'pass' | 'fail' | 'warn' | 'neutral';
@@ -87,6 +89,8 @@ export interface TimelineRow {
   snapshot?: TimelineSnapshotDetail;
   commit?: TimelineCommitDetail;
   occupancy?: TimelineOccupancyDetail;
+  /** The Factory Commits proof of this verify run, snapshot tree or commit tree, when one was received. */
+  proof?: FactoryProof;
 }
 
 export interface TimelineRunInput {
@@ -363,6 +367,29 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
   }
 
   return rows.sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
+}
+
+/**
+ * Attach received proofs to the rows they prove: a verify run by its run id, a
+ * snapshot and a commit by their tree. A commit whose tree has an attested proof
+ * carries that proof, which is what `har proof verify <commit>` checks.
+ */
+export function attachProofs(rows: TimelineRow[], proofs: FactoryProof[]): TimelineRow[] {
+  if (proofs.length === 0) return rows;
+  return rows.map((row) => {
+    let proof: FactoryProof | null = null;
+    if (row.kind === 'run' && row.run) proof = proofForVerifyRun(proofs, row.run.runId);
+    else if (row.kind === 'snapshot' && row.snapshot) proof = proofForTree(proofs, row.snapshot.treeHash);
+    else if (row.kind === 'commit' && row.commit) proof = proofForTree(proofs, row.commit.treeHash);
+    if (!proof) return row;
+    const attested = isAttestedProof(proof);
+    const note = attested ? 'proof attested' : null;
+    return {
+      ...row,
+      proof,
+      detail: note && (row.kind === 'commit' || row.kind === 'run') ? [row.detail, note].filter(Boolean).join(' · ') : row.detail,
+    };
+  });
 }
 
 export interface TimelineTotals {

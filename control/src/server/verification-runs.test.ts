@@ -81,7 +81,10 @@ function nanos(iso: string): string {
 }
 
 /** The shape `buildVerificationTrace` (src/core/verification-spans.ts) produces. */
-function verificationPayload(resource: Array<ReturnType<typeof str>>, options: { stagesOnly?: boolean } = {}) {
+function verificationPayload(
+  resource: Array<ReturnType<typeof str>>,
+  options: { stagesOnly?: boolean; policy?: { id: string; digest: string } } = {},
+) {
   const run = {
     traceId: TRACE,
     spanId: RUN_SPAN,
@@ -98,6 +101,9 @@ function verificationPayload(resource: Array<ReturnType<typeof str>>, options: {
       str('factory.verdict', 'fail'),
       str('vcs.ref.head.revision', 'b'.repeat(40)),
       str('factory.attestation.digest', 'sha256:' + 'c'.repeat(64)),
+      ...(options.policy
+        ? [str('factory.policy.id', options.policy.id), str('factory.policy.digest', options.policy.digest)]
+        : []),
     ],
   };
   const stage = (name: string, spanId: string, result: string, start: string, end: string, type?: string) => ({
@@ -183,6 +189,18 @@ describe('verification trace ingest', () => {
       ['build', 'success', 'build', 'vr-1'],
       ['unit-tests', 'failure', 'test', 'vr-1'],
     ]);
+    // No policy attributes on the run span: nothing is inferred from the pipeline name.
+    expect(state.runs[0]).toMatchObject({ policyId: null, policyDigest: null });
+    expect(state.stages.map((stage) => stage.addedBy)).toEqual(['policy', 'policy']);
+  });
+
+  it('keeps the policy id and digest when the run span carries them', async () => {
+    await ingestOtelTracesJson(
+      verificationPayload([...correlation, str('factory.local.checkout_path', MAIN)], {
+        policy: { id: 'har-verify-full', digest: 'sha256:' + 'd'.repeat(64) },
+      }),
+    );
+    expect(state.runs[0]).toMatchObject({ policyId: 'har-verify-full', policyDigest: 'sha256:' + 'd'.repeat(64) });
   });
 
   it('attributes a copy without a local path by its repository URL', async () => {
@@ -247,6 +265,8 @@ describe('verificationRunJson', () => {
       treeHash: 'a'.repeat(40),
       headRevision: null,
       attestationDigest: null,
+      policyId: 'har-verify-full',
+      policyDigest: null,
       workUnitId: 'FE-42',
       attemptId: 'attempt-1',
       branch: 'main',
@@ -264,6 +284,7 @@ describe('verificationRunJson', () => {
           name: 'build',
           result: 'success',
           taskType: 'build',
+          addedBy: 'policy',
           startTime: at,
           endTime: null,
           createdAt: at,
@@ -274,8 +295,10 @@ describe('verificationRunJson', () => {
       runId: 'validation-1',
       traceId: TRACE,
       verdict: 'pass',
+      policyId: 'har-verify-full',
+      policyDigest: null,
       createdAt: at.toISOString(),
-      stages: [{ name: 'build', result: 'success', taskType: 'build', startTime: at.toISOString(), endTime: null }],
+      stages: [{ name: 'build', result: 'success', taskType: 'build', addedBy: 'policy', startTime: at.toISOString(), endTime: null }],
     });
     expect(JSON.stringify(json)).not.toContain('repositoryId');
   });
