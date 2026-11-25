@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { writeFileSafe } from '../utils/file-ops';
 import { getHarnessDir } from './manifest';
+import { HAR_LOCAL_DIR, type LineScope } from './line-scope';
 import type { LineProgram } from './schema';
 import type { ApplyLineResult } from './lines';
 
@@ -125,13 +126,18 @@ ${warnings}
 `;
 }
 
-/** Write the prompt to .har/ADAPT-PROMPT-line-<id>.md; returns the absolute path. */
+/**
+ * Write the prompt to .har/ADAPT-PROMPT-line-<id>.md (personal lines:
+ * .har/local/ADAPT-PROMPT-line-<id>.md, gitignored); returns the absolute path.
+ */
 export function writeLineAdaptationPrompt(
   repoPath: string,
   lineId: string,
   content: string,
+  scope: LineScope = 'team',
 ): string {
-  const filePath = path.join(getHarnessDir(repoPath), lineAdaptationPromptFile(lineId));
+  const dir = scope === 'personal' ? path.join(getHarnessDir(repoPath), HAR_LOCAL_DIR) : getHarnessDir(repoPath);
+  const filePath = path.join(dir, lineAdaptationPromptFile(lineId));
   writeFileSafe(filePath, content);
   return filePath;
 }

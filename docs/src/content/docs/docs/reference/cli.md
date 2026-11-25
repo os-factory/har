@@ -291,8 +291,8 @@ pin live sessions with `--keep har-portal:4` or a worktree path.
 ```bash
 har line create <id> [--stations S1,S2,S3] [--title <text>]
                      [--description <text>] [--opt-in-env <VAR>]
-                     [--no-gate-stage] [--force]
-har line add <id|./path|@org/pkg|github:org/repo> [--force]
+                     [--no-gate-stage] [--personal] [--force]
+har line add <id|./path|@org/pkg|github:org/repo> [--personal] [--force]
 har line status [id] [--json]
 har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
 har line list
@@ -320,6 +320,16 @@ drop an earlier station's checks.
 (`line.manifest.json`, `line.json`, an off-verify gate stage, README);
 `har line add <id>` installs it. Publishing to git or npm later needs no format
 change.
+
+Lines have a **scope**. A team line (the default) lives in `.har/lines/<id>/`
+and `.har/lines.json`, both committed. Pass `--personal` to `create` or `add`
+to keep a line for your own workflow instead: it lives in `.har/local/lines/<id>/`
+and `.har/local/lines.json`, its stage scripts are copied to
+`.har/local/stages/`, and `.har/local/` is gitignored (`har env maintain` adds
+the rule to older harnesses). `status`, `list` and `gate` read both scopes and
+show each line's scope. An id may exist in only one scope; installing the same
+id in both is refused, and `har env doctor` reports one made by hand. The stage
+registry (`.har/stages.json`) is still shared for now.
 
 Poka-yoke runs both ways: `har env add-plugin` refuses a line bundle, and
 `har line add` refuses a verification-plugin manifest. If a check should gate

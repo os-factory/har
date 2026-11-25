@@ -2,11 +2,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { info, success, warn } from '../utils/logging';
 import { harnessExists } from './parser';
-import { upsertLineLedgerEntry } from './line-ledger';
+import { readLineLedger, upsertLineLedgerEntry } from './line-ledger';
+import {
+  ensureHarLocalIgnored,
+  isUnderHarDir,
+  LINE_SCOPES,
+  linesDirRel,
+  personalFileDest,
+  type LineScope,
+} from './line-scope';
 import { buildLineAdaptationPrompt, writeLineAdaptationPrompt } from './line-prompt';
 import {
   cleanupResolvedLine,
-  LOCAL_LINES_DIR,
   resolveLineSource,
   type LineSourceKind,
 } from './line-resolve';
@@ -17,16 +24,20 @@ import { LineManifestSchema, LineProgramSchema } from './schema';
 import { stampManifestWriter } from './manifest';
 import { readStageRegistry, writeStageRegistry } from './stages';
 import { LINE_BUNDLE_CONFIG } from './line-resolve';
+import { DEFAULT_HAR_DIR } from './manifest';
 
 export interface ApplyLineOptions {
   force?: boolean;
   /** Install spec when different from the resolved line id. */
   spec?: string;
+  /** `personal` installs under the gitignored `.har/local/` (default: `team`). */
+  scope?: LineScope;
 }
 
 export interface ApplyLineResult {
   lineId: string;
   title: string;
+  scope: LineScope;
   /** Stages registered in .har/stages.json — registered only, never on verify. */
   stageIds: string[];
   filesWritten: string[];
@@ -44,12 +55,39 @@ export interface ApplyLineResult {
 }
 
 /** Repo-relative home of an installed line. */
-export function lineDirRel(lineId: string): string {
-  return `${LOCAL_LINES_DIR}/${lineId}`;
+export function lineDirRel(lineId: string, scope: LineScope = 'team'): string {
+  return `${linesDirRel(scope)}/${lineId}`;
 }
 
-export function lineProgramPathRel(lineId: string): string {
-  return `${lineDirRel(lineId)}/line.json`;
+export function lineProgramPathRel(lineId: string, scope: LineScope = 'team'): string {
+  return `${lineDirRel(lineId, scope)}/line.json`;
+}
+
+/**
+ * Scopes a line id is installed in: a ledger entry in that scope, or a program
+ * on disk at that scope's home. More than one is a clash the caller reports.
+ */
+export function installedLineScopes(repoPath: string, lineId: string): LineScope[] {
+  const resolved = path.resolve(repoPath);
+  return LINE_SCOPES.filter(
+    (scope) =>
+      (readLineLedger(resolved, scope)?.lines.some((l) => l.id === lineId) ?? false) ||
+      fs.existsSync(path.join(resolved, lineProgramPathRel(lineId, scope))),
+  );
+}
+
+export function lineScopeClashMessage(lineId: string): string {
+  return (
+    `Line "${lineId}" is installed as both team (${lineDirRel(lineId, 'team')}) and personal ` +
+    `(${lineDirRel(lineId, 'personal')}). Remove one of them — an id must be unique across scopes.`
+  );
+}
+
+/** Which scope holds a line, or null when it is not installed. Throws on a clash. */
+export function locateInstalledLine(repoPath: string, lineId: string): LineScope | null {
+  const scopes = installedLineScopes(repoPath, lineId);
+  if (scopes.length > 1) throw new Error(lineScopeClashMessage(lineId));
+  return scopes[0] ?? null;
 }
 
 /**
@@ -101,9 +139,18 @@ export function readLineProgramFromDir(bundleDir: string, manifest: LineManifest
   return parsed.data;
 }
 
-/** Read the installed program for a line id, or null when not installed. */
-export function readInstalledLineProgram(repoPath: string, lineId: string): LineProgram | null {
-  const programPath = path.join(path.resolve(repoPath), lineProgramPathRel(lineId));
+/**
+ * Read the installed program for a line id, or null when not installed.
+ * Without `scope` the line is located across both scopes (throws on a clash).
+ */
+export function readInstalledLineProgram(
+  repoPath: string,
+  lineId: string,
+  scope?: LineScope,
+): LineProgram | null {
+  const where = scope ?? locateInstalledLine(repoPath, lineId);
+  if (!where) return null;
+  const programPath = path.join(path.resolve(repoPath), lineProgramPathRel(lineId, where));
   if (!fs.existsSync(programPath)) return null;
   const parsed = LineProgramSchema.safeParse(JSON.parse(fs.readFileSync(programPath, 'utf8')));
   return parsed.success ? parsed.data : null;
@@ -111,6 +158,43 @@ export function readInstalledLineProgram(repoPath: string, lineId: string): Line
 
 function ensureParentDir(filePath: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+/**
+ * Personal lines keep everything they write inside the gitignored `.har/local/`:
+ * bundle files under `.har/` move to `.har/local/…`, and a stage whose script
+ * is one of those files points at the moved copy. The bundle itself is not
+ * changed, so the same bundle installs as team or personal.
+ */
+function scopeBundle(
+  manifest: LineManifest,
+  scope: LineScope,
+): { files: LineManifest['files']; stages: HarnessStage[]; warnings: string[] } {
+  if (scope === 'team') {
+    return { files: manifest.files, stages: manifest.stages, warnings: [] };
+  }
+  const warnings: string[] = [];
+  const movedScripts = new Map<string, string>();
+  const files = manifest.files.map((file) => {
+    if (!isUnderHarDir(file.dest)) {
+      warnings.push(
+        `${file.dest} is outside .har/, so it is not gitignored — this personal line still writes it to the shared tree.`,
+      );
+      return file;
+    }
+    const dest = personalFileDest(file.dest);
+    const harPrefix = `${DEFAULT_HAR_DIR}/`;
+    movedScripts.set(
+      file.dest.replace(/^\.\//, '').slice(harPrefix.length),
+      dest.slice(harPrefix.length),
+    );
+    return { ...file, dest };
+  });
+  const stages = manifest.stages.map((stage) => {
+    const moved = stage.script ? movedScripts.get(stage.script.replace(/^\.\//, '')) : undefined;
+    return moved ? { ...stage, script: moved } : stage;
+  });
+  return { files, stages, warnings };
 }
 
 function copyBundleFile(
@@ -205,6 +289,7 @@ function applyLineFromDir(
 ): ApplyLineResult {
   const resolved = path.resolve(repoPath);
   const force = options.force ?? false;
+  const scope: LineScope = options.scope ?? 'team';
   const warnings: string[] = [];
   const filesWritten: string[] = [];
 
@@ -214,38 +299,51 @@ function applyLineFromDir(
 
   const manifest = readLineManifestFromDir(bundleDir);
   const program = readLineProgramFromDir(bundleDir, manifest);
-  const stages = manifest.stages;
+
+  const otherScope = installedLineScopes(resolved, manifest.id).find((s) => s !== scope);
+  if (otherScope) {
+    throw new Error(
+      `Line "${manifest.id}" is already installed as ${otherScope} (${lineDirRel(manifest.id, otherScope)}). ` +
+        'An id must be unique across team and personal lines — remove that one first, or install under a different id.',
+    );
+  }
+  if (scope === 'personal') {
+    ensureHarLocalIgnored(resolved);
+  }
+
+  const scoped = scopeBundle(manifest, scope);
+  warnings.push(...scoped.warnings);
+  const stages = scoped.stages;
   const stageIds = stages.map((s) => s.id);
 
   // Snapshot the verify plan across the whole apply, not just the registry write.
   const verificationBefore = JSON.stringify(readStageRegistry(resolved).verificationStages ?? null);
 
-  for (const file of manifest.files) {
+  for (const file of scoped.files) {
     filesWritten.push(copyBundleFile(bundleDir, file, resolved, force));
   }
 
-  // The program always lands at .har/lines/<id>/line.json, whatever the bundle
-  // called it, so `har line status` has one place to look.
-  const programDest = path.join(resolved, lineProgramPathRel(manifest.id));
+  // The program always lands at <scope home>/<id>/line.json, whatever the
+  // bundle called it, so `har line status` has one place to look.
+  const programPathRel = lineProgramPathRel(manifest.id, scope);
+  const programDest = path.join(resolved, programPathRel);
   const programSrc = path.join(bundleDir, manifest.program);
   if (path.resolve(programSrc) !== path.resolve(programDest)) {
     if (fs.existsSync(programDest) && !force) {
-      throw new Error(
-        `Line already installed: ${lineProgramPathRel(manifest.id)}. Use --force to replace.`,
-      );
+      throw new Error(`Line already installed: ${programPathRel}. Use --force to replace.`);
     }
     ensureParentDir(programDest);
     fs.copyFileSync(programSrc, programDest);
   }
-  filesWritten.push(lineProgramPathRel(manifest.id));
+  filesWritten.push(programPathRel);
 
   // Keep the manifest next to the program so a bare id re-resolves locally.
-  const manifestDest = path.join(resolved, lineDirRel(manifest.id), 'line.manifest.json');
+  const manifestDest = path.join(resolved, lineDirRel(manifest.id, scope), 'line.manifest.json');
   const manifestSrc = findManifestPath(bundleDir, LINE_BUNDLE_CONFIG) as string;
   if (path.resolve(manifestSrc) !== path.resolve(manifestDest)) {
     ensureParentDir(manifestDest);
     fs.copyFileSync(manifestSrc, manifestDest);
-    filesWritten.push(`${lineDirRel(manifest.id)}/line.manifest.json`);
+    filesWritten.push(`${lineDirRel(manifest.id, scope)}/line.manifest.json`);
   }
 
   registerStagesOnly(resolved, stages, force);
@@ -260,15 +358,19 @@ function applyLineFromDir(
 
   warnings.push(...assertGateStagesResolvable(program, stageIds, resolved));
 
-  upsertLineLedgerEntry(resolved, {
-    id: manifest.id,
-    source: meta.source,
-    spec: meta.spec,
-    version: meta.version,
-    stageIds,
-    programPath: lineProgramPathRel(manifest.id),
-    installedAt: new Date().toISOString(),
-  });
+  upsertLineLedgerEntry(
+    resolved,
+    {
+      id: manifest.id,
+      source: meta.source,
+      spec: meta.spec,
+      version: meta.version,
+      stageIds,
+      programPath: programPathRel,
+      installedAt: new Date().toISOString(),
+    },
+    scope,
+  );
 
   // Point at the first station that actually has gate stages — suggesting the
   // first station runs an empty gate and reads like the install did nothing.
@@ -283,17 +385,18 @@ function applyLineFromDir(
       : [
           `har line status ${manifest.id}`,
           `har line gate ${firstGatedStation} --line ${manifest.id}`,
-          `Adapt the program: ${lineProgramPathRel(manifest.id)}`,
+          `Adapt the program: ${programPathRel}`,
         ];
 
   const partial = {
     lineId: manifest.id,
     title: manifest.title ?? program.title,
+    scope,
     stageIds,
     filesWritten,
     warnings,
     nextSteps,
-    programPath: lineProgramPathRel(manifest.id),
+    programPath: programPathRel,
     docsPath: manifest.docsPath,
     source: meta.source,
     stationIds: program.stations.map((s) => s.id),
@@ -304,11 +407,15 @@ function applyLineFromDir(
     resolved,
     manifest.id,
     buildLineAdaptationPrompt(resolved, program, { ...partial, adaptPromptPath: '' }),
+    scope,
   );
   const adaptPromptPath = path.relative(resolved, promptAbsPath);
-  stampManifestWriter(resolved);
+  // A personal install must not touch committed files beyond the stage registry.
+  if (scope === 'team') {
+    stampManifestWriter(resolved);
+  }
 
-  success(`Applied line: ${manifest.id}`);
+  success(`Applied line: ${manifest.id}${scope === 'personal' ? ' (personal — gitignored)' : ''}`);
   info(`Stations: ${partial.stationIds.join(' → ')}`);
   info(
     stageIds.length > 0
@@ -333,7 +440,7 @@ export function applyLine(
   options: ApplyLineOptions = {},
 ): ApplyLineResult {
   const spec = options.spec ?? lineSpec;
-  const source = resolveLineSource(spec, repoPath);
+  const source = resolveLineSource(spec, repoPath, options.scope ?? 'team');
   try {
     return applyLineFromDir(repoPath, source.dir, options, {
       source: source.kind,

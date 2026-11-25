@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveTemplatesDir } from '../utils/paths';
 import { harnessExists } from './parser';
-import { LOCAL_LINES_DIR } from './line-resolve';
+import { ensureHarLocalIgnored, linesDirRel, type LineScope } from './line-scope';
+import { installedLineScopes } from './lines';
 import {
   LINE_BUNDLE_KIND,
   LINE_CONTRACT_VERSION,
@@ -23,11 +24,16 @@ export interface CreateLineOptions {
   /** Env var that must be "1" for the gate to run (default: none). */
   optInEnv?: string;
   force?: boolean;
+  /** `personal` scaffolds under the gitignored `.har/local/lines/` (default: `team`). */
+  scope?: LineScope;
 }
 
 export interface CreateLineResult {
   lineId: string;
+  scope: LineScope;
   lineDir: string;
+  /** Repo-relative line home, e.g. `.har/lines/<id>` or `.har/local/lines/<id>`. */
+  lineDirRel: string;
   filesWritten: string[];
   nextSteps: string[];
 }
@@ -43,7 +49,8 @@ function renderSkeleton(templatePath: string, tokens: Record<string, string>): s
 }
 
 /**
- * Scaffold a project-owned factory line at `.har/lines/<id>/`.
+ * Scaffold a project-owned factory line at `.har/lines/<id>/` (team) or
+ * `.har/local/lines/<id>/` (personal, gitignored).
  *
  * The output is a complete, publishable bundle — the same shape
  * `os-factory/har-line` ships (#322) — so `har line add <id>` installs it
@@ -62,11 +69,27 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
     );
   }
 
-  const lineDir = path.join(resolved, LOCAL_LINES_DIR, id);
-  const lineDirRel = `${LOCAL_LINES_DIR}/${id}`;
+  const scope: LineScope = options.scope ?? 'team';
+  const otherScope: LineScope = scope === 'personal' ? 'team' : 'personal';
+  const lineDirRel = `${linesDirRel(scope)}/${id}`;
+  const lineDir = path.join(resolved, lineDirRel);
+  const otherDirRel = `${linesDirRel(otherScope)}/${id}`;
+  if (
+    fs.existsSync(path.join(resolved, otherDirRel)) ||
+    installedLineScopes(resolved, id).includes(otherScope)
+  ) {
+    throw new Error(
+      `Line "${id}" already exists as ${otherScope} (${otherDirRel}/). ` +
+        'An id must be unique across team and personal lines.',
+    );
+  }
   if (fs.existsSync(lineDir) && !options.force) {
     throw new Error(`Line already exists: ${lineDirRel}/. Use --force to overwrite.`);
   }
+  if (scope === 'personal') {
+    ensureHarLocalIgnored(resolved);
+  }
+  const personalFlag = scope === 'personal' ? ' --personal' : '';
 
   const stationIds = options.stations?.length ? options.stations : ['S1', 'S2'];
   const title = options.title ?? `${id} factory line`;
@@ -175,18 +198,20 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
     write(`stages/${gateStageId}.sh`, stageScript, true);
   }
 
-  write('README.md', renderLineReadme(id, title, stationIds, gateStageId, withGateStage));
+  write('README.md', renderLineReadme(id, title, stationIds, gateStageId, withGateStage, scope));
 
   return {
     lineId: id,
+    scope,
     lineDir,
+    lineDirRel,
     filesWritten,
     nextSteps: [
       `Edit ${lineDirRel}/line.json — stations, work binding, gate tags`,
       ...(withGateStage
         ? [`Edit ${lineDirRel}/stages/${gateStageId}.sh — replace the TODO with the real gate`]
         : []),
-      `Install it: har line add ${id}   (re-run with --force after changes)`,
+      `Install it: har line add ${id}${personalFlag}   (re-run with --force after changes)`,
       `Installing writes .har/ADAPT-PROMPT-line-${id}.md — a ready adaptation prompt for your coding agent`,
       'Publishing later (npm/git) needs zero format changes — see the README',
     ],
@@ -199,8 +224,17 @@ function renderLineReadme(
   stationIds: string[],
   gateStageId: string,
   withGateStage: boolean,
+  scope: LineScope,
 ): string {
+  const home = `${linesDirRel(scope)}/${id}`;
+  const personalFlag = scope === 'personal' ? ' --personal' : '';
+  const scopeNote =
+    scope === 'personal'
+      ? `\nThis is a **personal** line: it lives in the gitignored \`.har/local/\` and is
+not shared with the team or CI.\n`
+      : '';
   return `# ${title}
+${scopeNote}
 
 A HAR **factory line**: an ordered program of stations plus a cumulative gate.
 
@@ -237,7 +271,7 @@ stages — that is what \`gate.cumulative: true\` means, and it is contract.
 ## Install channels
 
 \`\`\`bash
-har line add ${id}                        # this repo (.har/lines/${id})
+har line add ${id}${personalFlag}${' '.repeat(Math.max(1, 24 - personalFlag.length))}# this repo (${home})
 har line add ./${id}                      # local path
 har line add github:acme/${id}            # git
 har line add @acme/${id}                  # npm

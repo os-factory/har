@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { scaffoldHarnessBoilerplate, finalizeHarness, ScaffoldOptions } from '../harness/generator';
 import { retireLifecycleShims } from '../harness/lifecycle-shims';
+import { ensureHarLocalIgnored } from '../harness/line-scope';
 import { finalizeAgentsMdInstructionFiles } from '../harness/agent-md';
 import { validateHarness, smokeTestHarness, ValidationResult } from '../harness/validator';
 import { compareHarnessToTemplate, HarnessDriftResult } from '../harness/drift';
@@ -203,6 +204,8 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   retireLifecycleShims(repoPath);
 
   ensureEcosystemVerificationStages(repoPath);
+  // Personal lines (.har/local/) must never be committed — older harnesses lack the rule.
+  ensureHarLocalIgnored(repoPath);
   stampManifestWriter(repoPath);
   const drift = compareHarnessToTemplate(repoPath);
   const validation = validateHarness(repoPath);

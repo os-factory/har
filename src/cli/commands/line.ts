@@ -22,6 +22,7 @@ function handleLineCreate(argv: {
   gateStage: boolean;
   optInEnv?: string;
   force: boolean;
+  personal: boolean;
 }): Promise<void> | void {
   if (!argv.id) {
     error('Missing line id. Usage: har line create <id> [--stations S1,S2] [--title "..."]');
@@ -42,10 +43,14 @@ function handleLineCreate(argv: {
       gateStage: argv.gateStage,
       optInEnv: argv.optInEnv,
       force: argv.force,
+      scope: argv.personal ? 'personal' : 'team',
     });
 
     divider();
-    success(`Factory line scaffolded: .har/lines/${result.lineId}/`);
+    success(
+      `Factory line scaffolded: ${result.lineDirRel}/` +
+        (result.scope === 'personal' ? ' (personal — gitignored, not shared with the team or CI)' : ''),
+    );
     for (const file of result.filesWritten) {
       info(`  + ${file}`);
     }
@@ -55,7 +60,7 @@ function handleLineCreate(argv: {
       console.error(`    ${step}`);
     }
     console.error('');
-    console.error(`  Docs: .har/lines/${result.lineId}/README.md`);
+    console.error(`  Docs: ${result.lineDirRel}/README.md`);
     console.error('');
   } catch (err: unknown) {
     error((err as Error).message);
@@ -67,6 +72,7 @@ function handleLineAdd(argv: {
   spec?: string;
   repo: string;
   force: boolean;
+  personal: boolean;
 }): Promise<void> | void {
   if (!argv.spec) {
     error('Missing line spec. Usage: har line add <id|path|npm|git>');
@@ -79,7 +85,11 @@ function handleLineAdd(argv: {
   info(`Line: ${argv.spec}`);
 
   try {
-    const result = addLine(repoPath, argv.spec, { force: argv.force, spec: argv.spec });
+    const result = addLine(repoPath, argv.spec, {
+      force: argv.force,
+      spec: argv.spec,
+      scope: argv.personal ? 'personal' : 'team',
+    });
     divider();
     console.error('');
     console.error('  verificationStages unchanged — line gate stages are opt-in.');
@@ -100,6 +110,7 @@ function handleLineAdd(argv: {
 
 function renderStatus(status: LineStatus): void {
   header(`Line: ${status.lineId} — ${status.title}`);
+  info(`Scope: ${status.scope}${status.scope === 'personal' ? ' (gitignored — yours only)' : ''}`);
   info(`Program: ${status.programPath}${status.source ? ` (source: ${status.source})` : ''}`);
   info(
     status.optInEnv
@@ -235,8 +246,11 @@ function handleLineList(argv: { repo: string }): void {
   for (const id of listBundledLineIds()) {
     console.log(`${id}\t(bundled)`);
   }
-  for (const id of listLocalLineIds(repoPath)) {
-    console.log(`${id}\t(local: .har/lines/${id})${installed.has(id) ? ' [installed]' : ''}`);
+  for (const id of listLocalLineIds(repoPath, 'team')) {
+    console.log(`${id}\t(team: .har/lines/${id})${installed.has(id) ? ' [installed]' : ''}`);
+  }
+  for (const id of listLocalLineIds(repoPath, 'personal')) {
+    console.log(`${id}\t(personal: .har/local/lines/${id})${installed.has(id) ? ' [installed]' : ''}`);
   }
 }
 
@@ -256,7 +270,7 @@ export const lineCommand = {
     yargs
       .command(
         'create [id]',
-        'Scaffold a project-owned line at .har/lines/<id>/ (manifest, program, gate stage, README)',
+        'Scaffold a project-owned line at .har/lines/<id>/ (or .har/local/lines/<id>/ with --personal)',
         (y: Argv) =>
           y
             .positional('id', { type: 'string', describe: 'Line id (lowercase slug, e.g. onboarding-line)' })
@@ -276,7 +290,12 @@ export const lineCommand = {
               type: 'string',
               describe: 'Env var that must be "1" for the gate to run (e.g. HAR_FIXTURE_E2E)',
             })
-            .option('force', { type: 'boolean', default: false, describe: 'Overwrite an existing line' }),
+            .option('force', { type: 'boolean', default: false, describe: 'Overwrite an existing line' })
+            .option('personal', {
+              type: 'boolean',
+              default: false,
+              describe: 'Scaffold under the gitignored .har/local/lines/ (yours only, not the team or CI)',
+            }),
         (argv) =>
           handleLineCreate({
             id: argv.id as string | undefined,
@@ -287,6 +306,7 @@ export const lineCommand = {
             gateStage: argv['gate-stage'] as boolean,
             optInEnv: argv['opt-in-env'] as string | undefined,
             force: argv.force as boolean,
+            personal: argv.personal as boolean,
           }),
       )
       .command(
@@ -303,12 +323,18 @@ export const lineCommand = {
               type: 'boolean',
               default: false,
               describe: 'Overwrite existing line files and stage entries',
+            })
+            .option('personal', {
+              type: 'boolean',
+              default: false,
+              describe: 'Install under the gitignored .har/local/ (yours only, not the team or CI)',
             }),
         (argv) =>
           handleLineAdd({
             spec: argv.spec as string | undefined,
             repo: argv.repo as string,
             force: argv.force as boolean,
+            personal: argv.personal as boolean,
           }),
       )
       .command(
