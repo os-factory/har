@@ -1,3 +1,13 @@
+## [2.0.0-next.4](https://github.com/os-factory/har/compare/v2.0.0-next.3...v2.0.0-next.4) (2026-11-25)
+
+### Features
+
+* **control:** show Factory Commits proofs on the work unit page ([#520](https://github.com/os-factory/har/issues/520)) ([50a0ca9](https://github.com/os-factory/har/commit/50a0ca9a412d741da28830b811a7ae8782ccfaf6)), closes [#348](https://github.com/os-factory/har/issues/348)
+
+### Bug Fixes
+
+* **proof:** enforce L1 on ranges, note HEAD on re-verify, read the mode from the main checkout ([#521](https://github.com/os-factory/har/issues/521)) ([093a5bf](https://github.com/os-factory/har/commit/093a5bf2bbb2e652400f13b2221a5b42998728a3))
+
 ## [2.0.0-next.3](https://github.com/os-factory/har/compare/v2.0.0-next.2...v2.0.0-next.3) (2026-11-25)
 
 ### Features
