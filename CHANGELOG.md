@@ -1,3 +1,9 @@
+## [1.32.1](https://github.com/os-factory/har/compare/v1.32.0...v1.32.1) (2026-11-25)
+
+### Bug Fixes
+
+* **control:** keep every HQ sync request under the portal's size limit ([#480](https://github.com/os-factory/har/issues/480)) ([1a39dd3](https://github.com/os-factory/har/commit/1a39dd3079326c898aac54227bf12b41764eeba0)), closes [#1](https://github.com/os-factory/har/issues/1)
+
 ## [1.32.0](https://github.com/os-factory/har/compare/v1.31.0...v1.32.0) (2026-11-24)
 
 ### Features
