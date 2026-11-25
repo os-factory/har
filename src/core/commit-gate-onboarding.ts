@@ -1,6 +1,6 @@
 import * as readline from 'readline';
 import { getHooksStatus, installHooks } from './hooks';
-import { readStageRegistry, writeStageRegistry } from '../harness/stages';
+import { writeStageRegistry, readCommittedStageRegistry } from '../harness/stages';
 import { info, warn } from '../utils/logging';
 
 export interface CommitGateOnboardingOptions {
@@ -26,7 +26,7 @@ function askYesNo(question: string): Promise<boolean> {
 export async function handleCommitGateOnboarding(
   options: CommitGateOnboardingOptions,
 ): Promise<boolean> {
-  const registry = readStageRegistry(options.repoPath);
+  const registry = readCommittedStageRegistry(options.repoPath);
   const gate = registry.commitGate;
   if (
     !gate ||

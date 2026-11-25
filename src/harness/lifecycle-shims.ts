@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getHarnessDir } from './manifest';
-import { readStageRegistry, writeStageRegistry } from './stages';
+import { writeStageRegistry, readCommittedStageRegistry } from './stages';
 import { MANAGED_SHIM_FILES } from './template-tokens';
 import type { HarnessStage } from './schema';
 
@@ -83,7 +83,7 @@ export function stripLifecycleShimCommands(repoPath: string): boolean {
   const resolved = path.resolve(repoPath);
   let registry;
   try {
-    registry = readStageRegistry(resolved);
+    registry = readCommittedStageRegistry(resolved);
   } catch {
     return false;
   }

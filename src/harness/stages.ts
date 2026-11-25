@@ -5,15 +5,21 @@ import {
   HarnessAgentSlotsSchema,
   HarnessStage,
   HarnessStageKind,
+  HarnessStageOverlay,
+  HarnessStageOverlaySchema,
   HarnessStageRegistry,
   HarnessStageRegistrySchema,
   HarnessStageSchema,
 } from './schema';
 import { parseHarnessEnvInt, readHarnessEnv } from './env';
 import { getHarnessDir } from './manifest';
+import { ensureHarLocalIgnored, HAR_LOCAL_DIR } from './line-scope';
 
 export { HAR_AGENT_SLOT_MIN };
 export const STAGE_REGISTRY_FILE = 'stages.json';
+
+/** `.har/`-relative path of the gitignored personal stage overlay. */
+export const STAGE_OVERLAY_FILE = `${HAR_LOCAL_DIR}/${STAGE_REGISTRY_FILE}`;
 
 /** Upper bound offered during `har onboard` for parallel agent slots. */
 export const HAR_AGENT_SLOT_ONBOARD_MAX = 10;
@@ -112,7 +118,84 @@ function addKindDispatchedStage(stages: HarnessStage[], stage: Record<string, un
   stages.push(HarnessStageSchema.parse(stage));
 }
 
+/**
+ * The stage registry every reader sees: the committed `.har/stages.json` plus
+ * the stages of the gitignored overlay `.har/local/stages.json` (personal
+ * factory lines). `verificationStages` and every other setting come from the
+ * committed file only. A stage id in both files is an error, never an override.
+ *
+ * Writers must NOT read through this — use {@link readCommittedStageRegistry}
+ * so a committed write can never pull personal stages into the shared file.
+ */
 export function readStageRegistry(repoPath: string): HarnessStageRegistry {
+  const committed = readCommittedStageRegistry(repoPath);
+  const overlay = readStageOverlay(repoPath);
+  if (!overlay || overlay.stages.length === 0) return committed;
+
+  const clashes = findStageOverlayClashes(committed, overlay);
+  if (clashes.length > 0) {
+    throw new Error(stageOverlayClashMessage(clashes));
+  }
+  return { ...committed, stages: [...committed.stages, ...overlay.stages] };
+}
+
+/** Stage ids registered in both the committed registry and the overlay. */
+export function findStageOverlayClashes(
+  committed: HarnessStageRegistry,
+  overlay: HarnessStageOverlay,
+): string[] {
+  const committedIds = new Set(committed.stages.map((s) => s.id));
+  return [...new Set(overlay.stages.map((s) => s.id).filter((id) => committedIds.has(id)))];
+}
+
+export function stageOverlayClashMessage(ids: string[]): string {
+  return (
+    `Stage id(s) ${ids.map((id) => `"${id}"`).join(', ')} are registered in both .har/${STAGE_REGISTRY_FILE} ` +
+    `and the personal overlay .har/${STAGE_OVERLAY_FILE}. Remove one of them — an overlay stage never overrides a committed one.`
+  );
+}
+
+export function getStageOverlayPath(repoPath: string): string {
+  return path.join(getHarnessDir(repoPath), STAGE_OVERLAY_FILE);
+}
+
+/** The personal stage overlay, or null when there is none. Throws when it is invalid. */
+export function readStageOverlay(repoPath: string): HarnessStageOverlay | null {
+  const overlayPath = getStageOverlayPath(repoPath);
+  if (!fs.existsSync(overlayPath)) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(overlayPath, 'utf8'));
+  } catch (err) {
+    throw new Error(`Invalid .har/${STAGE_OVERLAY_FILE}: ${(err as Error).message}`);
+  }
+  const parsed = HarnessStageOverlaySchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid .har/${STAGE_OVERLAY_FILE} (it may hold only "version" and "stages"): ${parsed.error.message}`,
+    );
+  }
+  return parsed.data;
+}
+
+/** Write the personal overlay (gitignored). Removes the file when no stages remain. */
+export function writeStageOverlay(repoPath: string, overlay: HarnessStageOverlay): void {
+  const overlayPath = getStageOverlayPath(repoPath);
+  const parsed = HarnessStageOverlaySchema.safeParse(overlay);
+  if (!parsed.success) {
+    throw new Error(`Invalid stage overlay: ${parsed.error.message}`);
+  }
+  if (parsed.data.stages.length === 0) {
+    if (fs.existsSync(overlayPath)) fs.unlinkSync(overlayPath);
+    return;
+  }
+  ensureHarLocalIgnored(repoPath);
+  fs.mkdirSync(path.dirname(overlayPath), { recursive: true });
+  fs.writeFileSync(overlayPath, JSON.stringify(parsed.data, null, 2) + '\n');
+}
+
+/** The committed `.har/stages.json` alone — what every registry writer must start from. */
+export function readCommittedStageRegistry(repoPath: string): HarnessStageRegistry {
   const registryPath = getStageRegistryPath(repoPath);
   if (!fs.existsSync(registryPath)) {
     return synthesizeStageRegistry(repoPath);
@@ -126,13 +209,36 @@ export function readStageRegistry(repoPath: string): HarnessStageRegistry {
   return parsed.data;
 }
 
+/**
+ * Write the committed `.har/stages.json`. Refuses to write a stage that lives
+ * in the personal overlay — that would publish someone's personal line to the
+ * team. Start from {@link readCommittedStageRegistry}, never the merged read.
+ */
 export function writeStageRegistry(repoPath: string, registry: HarnessStageRegistry): void {
   const registryPath = getStageRegistryPath(repoPath);
   const parsed = HarnessStageRegistrySchema.safeParse(registry);
   if (!parsed.success) {
     throw new Error(`Invalid stage registry: ${parsed.error.message}`);
   }
+  const overlayIds = new Set(readStageOverlayIdsLenient(repoPath));
+  const leaked = parsed.data.stages.filter((s) => overlayIds.has(s.id)).map((s) => s.id);
+  if (leaked.length > 0) {
+    throw new Error(
+      `Refusing to write .har/${STAGE_REGISTRY_FILE}: stage(s) ${leaked.join(', ')} belong to the personal overlay ` +
+        `(.har/${STAGE_OVERLAY_FILE}). A committed stage cannot share an id with a personal one — ` +
+        'rename it, or remove the personal line that registered it.',
+    );
+  }
   fs.writeFileSync(registryPath, JSON.stringify(parsed.data, null, 2) + '\n');
+}
+
+/** Overlay stage ids, or [] when the overlay is missing or unreadable (doctor reports that). */
+function readStageOverlayIdsLenient(repoPath: string): string[] {
+  try {
+    return readStageOverlay(repoPath)?.stages.map((s) => s.id) ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export function listStages(repoPath: string): HarnessStage[] {
@@ -222,7 +328,7 @@ export function syncAgentSlotsToHarnessEnv(repoPath: string): boolean {
 /** Set `agentSlots.max` in stages.json and sync legacy harness.env exports. */
 export function applyAgentSlotMax(repoPath: string, max: number): void {
   const slots = HarnessAgentSlotsSchema.parse({ min: HAR_AGENT_SLOT_MIN, max });
-  const registry = readStageRegistry(repoPath);
+  const registry = readCommittedStageRegistry(repoPath);
   writeStageRegistry(repoPath, {
     ...registry,
     agentSlots: slots,
@@ -257,7 +363,8 @@ export function resolveStage(
 }
 
 export function getVerificationStageIds(repoPath: string): string[] {
-  const registry = readStageRegistry(repoPath);
+  // Committed registry only: overlay stages can never join the verify plan.
+  const registry = readCommittedStageRegistry(repoPath);
   if (Array.isArray(registry.verificationStages) && registry.verificationStages.length > 0) {
     return registry.verificationStages;
   }

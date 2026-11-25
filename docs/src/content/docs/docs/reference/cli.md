@@ -360,8 +360,17 @@ and `.har/local/lines.json`, its stage scripts are copied to
 `.har/local/stages/`, and `.har/local/` is gitignored (`har env maintain` adds
 the rule to older harnesses). `status`, `list` and `gate` read both scopes and
 show each line's scope. An id may exist in only one scope; installing the same
-id in both is refused, and `har env doctor` reports one made by hand. The stage
-registry (`.har/stages.json`) is still shared for now.
+id in both is refused, and `har env doctor` reports one made by hand.
+
+A personal line's stages go to the gitignored overlay `.har/local/stages.json`,
+never to `.har/stages.json`, so installing one leaves every committed file
+unchanged. HAR reads both files, so `har line gate` and `har env run-stage` run
+overlay stages. The overlay can hold only `stages`, and `har env verify` reads
+the committed file alone, so overlay stages never run on verify. A stage id in
+both files is an error, never an override. Reinstalling a personal line from an
+older HAR (`har line add <id> --personal --force`) moves its stage from
+`.har/stages.json` into the overlay. `har env doctor` warns about any that are
+left.
 
 Poka-yoke runs both ways: `har env add-plugin` refuses a line bundle, and
 `har line add` refuses a verification-plugin manifest. If a check should gate

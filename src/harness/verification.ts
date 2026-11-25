@@ -4,7 +4,7 @@ import { HarnessStage, HarnessStageRegistry } from './schema';
 import { readHarnessEnv, readValidatedHarnessEnv } from './env';
 import { detectEcosystem } from '../runtime/provision';
 import { getHarnessDir } from './manifest';
-import { readStageRegistry, writeStageRegistry } from './stages';
+import { writeStageRegistry, readCommittedStageRegistry } from './stages';
 
 /** Stage kinds that may appear in verificationStages. */
 export const RUNNABLE_VERIFICATION_KINDS = new Set(['test', 'custom']);
@@ -244,7 +244,7 @@ export function ensureEcosystemVerificationStages(repoPath: string): boolean {
   const defaults = deriveEcosystemDefaultStages(ecosystem, repoPath);
   const harnessDir = getHarnessDir(repoPath);
 
-  const registry = readStageRegistry(repoPath);
+  const registry = readCommittedStageRegistry(repoPath);
   const stages = [...registry.stages];
   let changed = false;
   const skipped = new Set<string>();
