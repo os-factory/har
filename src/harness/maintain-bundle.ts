@@ -43,8 +43,7 @@ export interface InstructionFileMaintainNote {
   kind:
     | 'migrate_legacy_agent_md'
     | 'create_agents_md'
-    | 'refresh_agents_md_har_section'
-    | 'claude_md_pointer';
+    | 'refresh_agents_md_har_section';
   path: string;
   message: string;
 }
@@ -214,17 +213,6 @@ export function buildInstructionFileNotes(repoPath: string): InstructionFileMain
       path: 'AGENTS.md',
       message:
         'Refresh the managed HAR / agent environment section in AGENTS.md if workflow/commands changed — do not wipe unrelated project guidance.',
-    });
-  }
-
-  // Deprecated: Claude Code reads AGENTS.md directly. Only an existing
-  // CLAUDE.md is worth a note — HAR never suggests creating one.
-  if (detection.claudeMd) {
-    notes.push({
-      kind: 'claude_md_pointer',
-      path: 'CLAUDE.md',
-      message:
-        'Keep CLAUDE.md as the `@AGENTS.md` import — no workflow content of its own. Existing project-specific notes stay; the import goes on top. It is optional now that Claude Code reads AGENTS.md directly.',
     });
   }
 
