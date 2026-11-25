@@ -14,7 +14,7 @@ ADR decides what the CLI sends, where, and what a receiver stores.
 Today the data reaches HQ in a chain:
 
 ```
-CLI ──records──▶ Mission Control ──har control sync──▶ HQ  (/api/sync, /api/otel, /api/trajectory)
+CLI ──records──▶ Mission Control ──har control sync──▶ HQ  (sync, otel and trajectory JSON endpoints)
 otel-hook ─OTLP─▶ Mission Control
 ```
 
@@ -53,25 +53,26 @@ defined once as Zod schemas in `packages/schemas` (`ingest-v2.ts`).
 
 ### 2. Endpoints
 
-All paths are relative to the receiver's base URL. MC's base URL is
-`http://localhost:3847`. A destination is configured by base URL only.
+Paths are relative to the receiver's **ingest base URL**, which is the only
+thing a destination configures. MC's is `http://localhost:3847/api`; a hosted
+receiver picks its own (for example `https://…/ingest`).
 
 | Endpoint | Body | Idempotent by |
 |---|---|---|
-| `POST /api/otel/v1/traces`, `/v1/logs`, `/v1/metrics` | Standard OTLP over HTTP, protobuf or JSON | trace id + span id; log record id; metric series |
-| `POST /api/v2/records` | A batch of typed records (section 3) | each record's natural id |
-| `POST /api/v2/proofs` | DSSE envelopes of Factory Commits statements | statement digest, recomputed by the receiver |
-| `POST /api/v2/evidence/missing` | A list of SHA-256 digests; the reply lists the ones the receiver lacks, with an upload URL each | — |
-| `PUT /api/v2/evidence/{sha256}` | The file bytes (or the returned upload URL) | SHA-256, checked by the receiver |
-| `GET /api/v2/capabilities` | Contract version and supported signals | — |
+| `POST otel/v1/traces`, `otel/v1/logs`, `otel/v1/metrics` | Standard OTLP over HTTP, protobuf or JSON | trace id + span id; log record id; metric series |
+| `POST v2/records` | A batch of typed records (section 3) | each record's natural id |
+| `POST v2/proofs` | DSSE envelopes of Factory Commits statements | statement digest, recomputed by the receiver |
+| `POST v2/evidence/missing` | A list of SHA-256 digests; the reply lists the ones the receiver lacks, with an upload URL each | — |
+| `PUT v2/evidence/{sha256}` | The file bytes (or the returned upload URL) | SHA-256, checked by the receiver |
+| `GET v2/capabilities` | Contract version and supported signals | — |
 
-- The OTLP paths are MC's existing ones, so OTLP exporters already pointed at MC
-  keep working.
-- `GET /api/v2/capabilities` lets `har env doctor` say clearly when a receiver
-  does not support v2 yet, instead of failing on the first upload.
+- For MC the OTLP paths resolve to its existing `/api/otel/v1/…` routes, so OTLP
+  exporters already pointed at MC keep working.
+- `GET v2/capabilities` lets `har env doctor` say clearly when a receiver does
+  not support v2 yet, instead of failing on the first upload.
 - Authentication is the receiver's choice. MC listens on localhost without
-  credentials. A hosted receiver uses a bearer token, sent by otel-hook through
-  `headers` with an `env:` reference (section 6).
+  credentials. A hosted receiver uses an ingest key sent as a request header,
+  which otel-hook sends through `headers` with an `env:` reference (section 6).
 
 ### 3. Data model v2
 
