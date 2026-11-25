@@ -3,8 +3,9 @@
 - Status: Proposed
 - Date: 2026-11-25
 - Builds on: [ADR 0001](0001-work-identity.md) (work identity), [ADR 0003](0003-session-slot-attribution.md) (session attribution)
-- Related: #416 (HAR 2.0.0), #522 (fan-out at the producer), #525 (proof destinations), #369 (HQ sync needs Mission Control)
-- Standard: [Factory Commits](https://github.com/os-factory/factory-commits), telemetry profile
+- Followed by: [ADR 0005](0005-ingest-contract-v2.md) (what receivers store and how)
+- Related: #416 (HAR 2.0.0), #522 (fan-out at the producer), #525 (proof destinations), #369 (HQ sync needs Mission Control), os-factory/otel-hook#67 (model and tokens on generations), os-factory/otel-hook#68 (Claude Code subagent tokens)
+- Standard: [Factory Commits](https://github.com/os-factory/factory-commits) telemetry profile, os-factory/factory-commits#15 and #16
 
 ## Context
 
@@ -16,7 +17,7 @@ server:
 - each full verification becomes a Factory Commits proof, recorded in git and
   sent to proof destinations (#525);
 - Mission Control (MC) and HQ are optional destinations, not required parts.
-  #522 moves the telemetry fan-out to the producers, so MC no longer relays.
+  #522 moved the telemetry fan-out to the producers, so MC no longer relays.
 
 One responsibility has not moved: **linking**. Deciding which work unit,
 attempt and factory run a piece of telemetry belongs to still happens inside MC.
@@ -51,6 +52,15 @@ existed, so it cannot carry the run id. Today:
 - no rule says which agent sessions belong to a factory run. MC answers it with
   its own queries, and no other consumer can.
 
+### Two kinds of "run"
+
+HAR has two ids that are both called a run. This ADR always means the second.
+
+| Id | Created | Cardinality | Used by |
+|---|---|---|---|
+| Run record (`.har/runs/…json`) | Every `har env …` invocation | One per command | Operation history |
+| **Factory run** (validation id) | `har env verify` | One per verified tree, reused when the same tree is verified again | `Factory-Run` trailer, `predicate.run.id`, MC's `verificationRun.runId` |
+
 ## Decision
 
 ### 1. The HAR CLI is the registrar
@@ -67,7 +77,7 @@ The CLI can do this because it already knows:
   tree up to the nearest `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID` or
   `CURSOR_CONVERSATION_ID`. When the tree is ambiguous, no session is recorded,
   never the wrong one (ADR 0003);
-- the work unit, attempt and run it is creating.
+- the work unit, attempt and factory run it is creating.
 
 Records are append-only, and every id is deterministic or minted once, so
 sending a record again is a no-op, never a conflict.
@@ -104,57 +114,82 @@ the agent:
 }
 ```
 
-- `har env launch` opens a segment for the calling session. `teardown` and
-  `complete` close it (`to`). A later launch from the same session closes the
-  open segment and opens a new one.
-- `har env verify` adds no segment. It records "session S ran run R" in the run
-  record (section 4).
-- `attributes` holds only Factory Commits telemetry-profile and OTel semconv
-  attributes. It never holds paths, prompts or secrets.
-- A segment is in force from `from` until `to`. At any time, at most one
-  segment of a session is open.
+The schema lives in `packages/schemas` and is versioned. It is a format other
+tools read, so it is fixed before 2.0.0 (section 8).
+
+**Opening.** `har env launch` opens a segment for the calling session. A later
+launch from the same session closes its open segment and opens a new one. At any
+time, at most one segment of a session is open.
+
+**Closing.** Teardown and complete are often run by a person from a terminal, not
+by the agent session, and a session that crashes never closes anything itself.
+So closing is keyed by the attempt, not by the caller:
+
+- `har env teardown` and `har env complete` close **every** open segment whose
+  `factory.attempt.id` is the attempt being ended, in every session file,
+  whichever process runs them.
+- A segment whose attempt has already ended is treated as closed by every
+  reader, even if its `to` is still empty (for example after a crash between
+  ending the attempt and writing the files). The CLI repairs such segments on
+  its next write.
+
+**Content.** `attributes` holds only Factory Commits telemetry-profile and OTel
+semconv attributes. It never holds paths, prompts or secrets. `har env verify`
+adds no segment. It records which sessions worked on the factory run (section 4).
 
 These segments are the `launch` and `release` bindings of ADR 0003, written
-where any producer can read them. They are also synced as records (section 6),
-so consumers can join data that was not stamped (section 3).
+where any producer can read them. They are also sent as records
+([ADR 0005](0005-ingest-contract-v2.md)), so consumers can join data that was
+not stamped.
 
 ### 3. Telemetry is stamped where it is produced
 
 otel-hook reads the session context on every hook event. It already runs as
-one short process per event, so the read is one small file per event. It merges
-the attributes of the segment in force at the event's timestamp into the
-Resource of that export.
+one short process per event, so the read is one small file per event. It adds
+the attributes of the segment in force at the event's timestamp to **every
+record it emits for that event**: spans, log records and metric points.
 
-- The feature is generic in otel-hook: a context directory
-  (`OTEL_HOOK_CONTEXT_DIR`) laid out by agent tool and session id, holding
-  attribute maps. otel-hook knows nothing about work units or attempts, so any
-  harness can use it.
-- Context attributes override the same keys from `OTEL_RESOURCE_ATTRIBUTES`. A
+- **Where it lives in otel-hook.** otel-hook keeps providers free of files and of
+  state between hook calls. The context read is therefore a core step, next to
+  the payload enrichment step added in os-factory/otel-hook#67, not provider
+  code. It is generic: a context directory laid out by agent tool and session
+  id, holding attribute maps. otel-hook knows nothing about work units or
+  attempts, so any harness can use it.
+- **How HAR turns it on.** Claude Code strips `OTEL_*` variables from hook
+  processes, so the context directory is set in the otel-hook config file HAR
+  writes (or a hook command flag), never through an environment variable.
+- **Precedence.** Context attributes override the same keys from the Resource. A
   session that moves from slot 1 to slot 2 must stop reporting slot 1's attempt,
-  even though its environment still names it.
-- With no context file, or no segment in force, nothing is added. The session is
-  working outside any attempt (for example exploring in the main checkout
-  before launch), and its telemetry shows as unassigned. Before launch is not
-  part of the attempt, by definition.
+  even though its environment still names it. This matches the precedence rule
+  in the telemetry profile (os-factory/factory-commits#16).
+- **No segment, no stamp.** With no context file, or no segment in force, nothing
+  is added. The session is working outside any attempt (for example exploring in
+  the main checkout before launch), and its telemetry shows as unassigned.
+  Sessions that never call `har` stay unassigned: HAR does not guess.
 - Subagent events use their parent session's context.
 
-As a result, every destination receives spans and logs that already carry
-`factory.work_unit.id` and `factory.attempt.id` whenever an attempt was in force.
-No destination has to link anything.
+**Usage per attempt comes from stamped generation spans.** Since
+os-factory/otel-hook#67, otel-hook generation spans carry the model and the
+turn's token counts. Stamped with the attempt, they are the main source of
+usage per attempt, for every provider and every destination, with no harvest
+and no MC needed. Two gaps remain, handled in
+[ADR 0005](0005-ingest-contract-v2.md):
 
-Two deliberate limits:
+- Claude Code subagent tokens are missing from turn totals until
+  os-factory/otel-hook#68 lands. Until then MC keeps booking Claude Code usage
+  from Claude Code's native telemetry.
+- Hooks report no cost, so receivers price tokens themselves.
 
-- **Worktree targets do not change the Resource.** otel-hook keeps reporting the
-  worktree a tool event targets (`vcs.ref.head.name`, hashed worktree id) as span
-  attributes. Touching a file in a worktree does not prove that the session works
-  on that attempt, so only the CLI-recorded segments decide the Resource. A
-  consumer may still use those span attributes, through ADR 0003's resolver, for
-  sessions that never called `har`.
-- **Provider-native telemetry is not stamped.** Claude Code's own metrics and
-  `api_request` events come from the agent process, which HAR cannot change
-  after it starts. Usage per attempt comes from the CLI's harvest, which reads
-  the session context and stamps each usage observation. Native counters stay a
-  cross-check, joinable by `session.id` and time against the synced segments.
+Provider-native telemetry and the CLI harvest become a cross-check and a
+fallback. This settles the double-counting question: a receiver books each
+provider from exactly one source, chosen by `otelhook.provider.id`.
+
+**Worktree targets do not change the attributes.** otel-hook keeps reporting the
+worktree a tool event targets (`vcs.ref.head.name`, hashed worktree id) as span
+attributes. Touching a file in a worktree does not prove that the session works
+on that attempt, so only the CLI-recorded segments decide the work identity. A
+consumer may still use those span attributes, through ADR 0003's resolver, for
+sessions that never called `har`.
 
 ### 4. Linking telemetry to a factory run
 
@@ -163,7 +198,7 @@ needed in git.
 
 | Telemetry | Key to the factory run | How |
 |---|---|---|
-| Verification trace | `trace id = derive(run.id)` | Deterministic, so known before export. Written to `predicate.telemetry.traceId` **and** to the trailer: `Factory-Run: <run-id>; trace=<trace-id>` |
+| Verification trace | `trace id = derive(run.id)` | `sha256("factory-run:" + run.id)[:32]`, the derivation proposed in os-factory/factory-commits#16. Known before export. Written to `predicate.telemetry.traceId` **and** to the trailer: `Factory-Run: <run-id>; trace=<trace-id>` |
 | Verification spans | `factory.run.id`, `cicd.pipeline.run.id`, `factory.git.tree` | Attributes on the run span, equal to `predicate.run.id` and the statement's `gitTree` |
 | Agent session telemetry | `factory.attempt.id` + time | Stamped at emission (section 3). Equal to `predicate.workUnit.attemptId` |
 
@@ -171,11 +206,11 @@ needed in git.
 `factory.attempt.id = R.attempt` and a timestamp at or before `R.finishedOn`.
 The window is cumulative from the start of the attempt, because R verifies a
 tree that all earlier work in the attempt produced. A view may also show only
-the slice since the previous run of the same attempt.
+the slice since the previous factory run of the same attempt.
 
-**Session refs in the run record.** At verify time, the CLI writes into the
-run record (and the evidence manifest, section 5) the agent sessions whose
-segments for this attempt overlap the run window:
+**Session refs on the factory run.** At verify time, the CLI adds to the
+**factory run** (keyed by the validation id, not the per-invocation run record)
+the agent sessions whose segments for this attempt overlap the run window:
 
 ```json
 "sessions": [
@@ -183,7 +218,8 @@ segments for this attempt overlap the run window:
 ]
 ```
 
-This lets a consumer that holds only provider-native telemetry, keyed by
+When the same tree is verified again, the list is merged, not replaced. This
+lets a consumer that holds only provider-native telemetry, keyed by
 `session.id`, find a run's sessions without the factory attributes.
 
 **What we do not do:**
@@ -195,37 +231,30 @@ This lets a consumer that holds only provider-native telemetry, keyed by
   each provider, and a verifier never needs them. The attempt id, already in the
   signed predicate, is the stable key.
 
-### 5. Evidence manifest per factory run
+### 5. Evidence
 
-A passing full verify produces, next to the statement, an **evidence manifest**:
-a JSON document addressed by its SHA-256 digest.
+Stage logs and artifacts are evidence of a factory run. The proof lists them by
+SHA-256 (`stages[].artifacts[]`), so a copy from any store can be checked
+against it. How they are captured, capped and stored is decided in
+[ADR 0005](0005-ingest-contract-v2.md).
 
-- It holds the run id, tree, attempt, work unit, verification trace id, session
-  refs (section 4), stage artifact digests, and the statement digest.
-- It holds no prompts, logs, paths or work unit titles (the same rules as the
-  proof, SPEC §6).
-- The statement references it by digest, so a verifier can check that a copy
-  from any store is the right one. Like `stages[].artifacts[]`, the digest is the
-  proof and a URI is only a hint.
-- The commit does not exist at verify time. Associating the run with a commit
-  is a separate, later record (today's commit binding, and the HTTP receiver's
-  second delivery with `commit`).
-
-Manifests and statements go to the **proof destinations** of #525
-(`mission-control`, `hq`, `git-notes`, and later any HTTP receiver). They are
-retried and never block verify or a commit.
+A run-level **evidence manifest** (run, tree, attempt, verification trace id,
+session refs, stage artifact digests) is deferred to a later Factory Commits RFC
+(the follow-up in os-factory/factory-commits#15). Until then the session refs
+travel as part of the factory run record.
 
 ### 6. Servers store and display, they do not link
 
 - **Telemetry:** otel-hook sends already-stamped OTLP to every destination
   (#522). MC and HQ are two of them.
-- **Records:** the CLI sends work units, attempts, runs, validations, session
-  segments, commit bindings, statements and manifests **directly** to each
-  configured store, MC and HQ alike, with idempotent upserts. HQ no longer reads
-  telemetry through MC (fixes #369).
+- **Records:** the CLI sends work units, attempts, factory runs, session
+  segments, commit bindings, proofs and evidence **directly** to each configured
+  receiver, MC and HQ alike, with idempotent upserts. HQ no longer reads
+  anything through MC (fixes #369). The contract is
+  [ADR 0005](0005-ingest-contract-v2.md).
 - **MC and HQ** aggregate and display. A work unit view is a query:
   - attempts by `workUnitId`;
-  - runs and proofs by attempt;
+  - factory runs and proofs by attempt;
   - commits by the commit bindings of those runs;
   - trajectory, spans and usage by `factory.attempt.id`;
   - the run window by `finishedOn`.
@@ -233,25 +262,46 @@ retried and never block verify or a commit.
   No timeline resolution is needed for stamped data.
 - **ADR 0003's resolver** stays in MC as a fallback for data that is not stamped
   (an older otel-hook, sessions that never called `har`). It is removed when
-  stamping is the minimum supported version.
+  stamping is the minimum supported version. HQ does not port it.
 - **`factory.local.*` is no longer needed for attribution.** The #522 trade-off
   goes away: local paths are stripped for every destination unless it opts in.
 
 ### 7. Coherence rules
 
-1. **One writer per id.** Only the CLI creates work unit, attempt, run and
-   segment ids. Emitters copy them, and stores index them.
+1. **One writer per id.** Only the CLI creates work unit, attempt, factory run
+   and segment ids. Emitters copy them, and stores index them.
 2. **Append-only with deterministic ids.** Retries and resyncs are no-ops. A
    correction is a new record (a closed segment, a new attempt), never an edit
    in place.
-3. **Same records everywhere.** Every store receives the same records and the
-   same stamped telemetry. Any store can be rebuilt from git, `.har/` and the
+3. **Same records everywhere.** Every receiver gets the same records and the
+   same stamped telemetry. Any receiver can be rebuilt from git, `.har/` and the
    session context files.
 4. **One clock per link.** Segment times and event timestamps come from the
    same machine, so the run window is computed on one clock.
 5. **Proofs never need telemetry.** Verification uses only git and the
-   statement. Telemetry and manifests help a person read a proof, they do not
+   statement. Telemetry and evidence help a person read a proof, they do not
    make it valid.
+
+### 8. What must land before 2.0.0
+
+The changes split by whether they fix a format other tools depend on.
+
+**Formats, required before 2.0.0** (changing them later is breaking):
+
+- the verification trace id switches to the `factory-run:` prefix;
+- `; trace=<id>` is written in the `Factory-Run` trailer;
+- the session context file schema (version 1);
+- #525's default switch: proofs go to MC and HQ, git notes become opt-in.
+
+**Additive, planned for 2.0.0** (each can slip to a 2.x minor without breaking
+anything, because the formats above already allow it):
+
+- writing and closing segments, and otel-hook stamping;
+- sending records, proofs and evidence directly to HQ;
+- stage log capture and evidence upload ([ADR 0005](0005-ingest-contract-v2.md)).
+
+Decoupling MC from HQ is the goal of 2.0.0, so the additive items are planned
+for it. The split only says which items are allowed to slip.
 
 ## Consequences
 
@@ -259,84 +309,73 @@ Positive:
 
 - Any OTLP destination, including HQ alone, a Collector or Langfuse, gets data
   linked to work units and attempts with no HAR server running.
+- Usage per attempt is available for every provider from stamped generation
+  spans, with no harvest and no MC.
 - MC becomes optional for every purpose. A future local HQ only needs to store
   and display, so no linking logic is duplicated across MC and HQ.
 - A factory run links to its telemetry through keys already in the signed
-  predicate, and the trailer can name the verification trace.
+  predicate, and the trailer names the verification trace.
 - The same rules work for any harness that writes session context and any
   backend that reads the telemetry profile.
 
 Negative and costs:
 
-- otel-hook needs a context-directory feature and a minimum version bump.
+- otel-hook needs the context-directory step and a minimum version bump.
 - One small file read per hook event.
 - Sessions that never call `har` stay unassigned unless a consumer runs the
-  fallback resolver. This is deliberate: HAR does not guess.
-- Provider-native telemetry stays unstamped. Usage per attempt relies on the
-  CLI harvest.
+  fallback resolver. This is deliberate.
 - The session context is machine-local. That fits how agents run today. A
-  remote agent would need its own producer to write it.
+  remote agent needs its own producer to write it; the near-term case is an
+  agent in a devcontainer, which needs the sessions directory mounted or a HAR
+  CLI inside the container.
 
 ## Implementation plan
 
-1. **HAR CLI:** pass `--trace <verificationTraceId>` to `git factory trailers`
-   when the verification trace is delivered to at least one receiver.
-2. **HAR CLI:** write and close session context segments in
-   `launch`/`teardown`/`complete`. Record session refs in the run record. Add the
-   schema to `packages/schemas`.
-3. **otel-hook:** add the context directory and merge rule (separate repo,
-   new minimum version). HAR sets `OTEL_HOOK_CONTEXT_DIR` in the hook config.
-4. **HAR CLI:** stamp harvested usage observations from the session context.
-5. **HAR CLI:** write the evidence manifest at full verify and send it through the
-   #525 proof destinations.
-6. **HAR CLI → HQ:** send records directly to HQ, not through MC (#369).
-   `/api/otel` and `/api/trajectory` stop depending on MC. HQ (fecore) ingests
-   stamped OTLP or the same records.
-7. **MC:** query attempt views by stamped attributes first. Keep ADR 0003 as the
+Formats first (section 8), then the additive work.
+
+1. **HAR CLI:** switch `verificationTraceId` to the `factory-run:` prefix and
+   pass `--trace` to `git factory trailers`.
+2. **HAR CLI:** add the session context schema to `packages/schemas`. Write
+   segments in `launch`, close them by attempt in `teardown`/`complete`. Record
+   session refs on the factory run.
+3. **otel-hook:** add the context directory as a core step next to the payload
+   enrichment of #67, configured by file or flag. New minimum version.
+4. **HAR CLI:** pin that otel-hook version and set the context directory in the
+   config it writes.
+5. **HAR CLI:** send records, proofs and evidence directly to each receiver
+   ([ADR 0005](0005-ingest-contract-v2.md)). Remove the MC → HQ path (#369).
+6. **MC:** query attempt views by stamped attributes first. Keep ADR 0003 as the
    fallback. Strip `factory.local.*` for all destinations by default again.
-8. **Factory Commits:** propose the profile and predicate changes below.
+7. **Factory Commits:** os-factory/factory-commits#16 (linking strategy, trace id
+   derivation, `trace=`), then the evidence manifest as a follow-up RFC.
 
 ## Changes proposed to Factory Commits
 
-These go through the spec's RFC process (issue first, then a PR open at least 7
-days, with test vectors).
+Tracked in os-factory/factory-commits#15.
 
-1. **Telemetry profile: new section "Linking telemetry to a factory run"**,
-   replacing the current two-line "Linking a proof to telemetry". It states the
-   table and the run window from section 4 as the normative strategy:
-   - the verification trace by trace id;
-   - verification spans by `factory.run.id` and `factory.git.tree`;
-   - agent telemetry by `factory.attempt.id` and time, up to `run.finishedOn`.
+In os-factory/factory-commits#16:
 
-   It also says why agent telemetry cannot carry the run id.
-2. **Telemetry profile: stamping guidance.** A producer that binds an
-   already-running agent session to an attempt SHOULD make the session's
-   emitter add `factory.attempt.id` (and the work unit) from that point on. It
-   SHOULD NOT add them before. A session context file is the recommended
-   mechanism, with its layout as an informative appendix.
-3. **Trace id derivation.** The run span's trace id SHOULD be derived from the
-   run id with one standard function (for example
-   `sha256("factory-run:" + run.id)[:32]`). Any tool can then find the
-   verification trace from a `Factory-Run` trailer alone, even without
-   `; trace=`. HAR would switch from its `har-verify:` prefix before 2.0.0 is
-   released.
-4. **Clarify the trailer.** `Factory-Run: …; trace=` names the verification run's
-   trace, never an agent session trace.
-5. **Predicate: run-level evidence.** Add an optional
-   `evidence[]: { name, digest: { sha256 }, uri?, mediaType? }`, like
-   `stages[].artifacts[]` but for the whole run. The evidence manifest from
-   section 5 is its first use.
-6. **Evidence manifest profile (new, optional).** Schema for the manifest:
-   - run, tree and attempt ids;
-   - verification trace id;
-   - session refs `{ agentTool, sessionId, from, to }`;
-   - stage artifact digests;
-   - privacy rules equal to SPEC §6.
+1. **Telemetry profile: "Linking telemetry to a factory run"**, replacing the
+   two-line "Linking a proof to telemetry". The verification trace by trace id,
+   verification spans by `factory.run.id` and `factory.git.tree`, agent
+   telemetry by `factory.attempt.id` and the run window. It also says why agent
+   telemetry cannot carry the run id.
+2. **Stamping guidance.** A producer that binds an already-running session to an
+   attempt SHOULD make the session's emitter add the work identity from that
+   point on, and SHOULD NOT add it before. Record attributes override the
+   Resource. A session context file is given as an informative example.
+3. **Trace id derivation**: `sha256("factory-run:" + run.id)[:32]`, SHOULD when
+   the producer starts the trace. Explicit ids take precedence.
+4. **The trailer's `trace=`** names the verification run's trace, never an agent
+   session, and equals `telemetry.traceId` when both are present.
 
-   Session ids are not content, but the profile should say they may identify a
-   provider account and are optional.
-7. **HTTP receiver profile:** allow a manifest delivery next to `attestations[]`,
-   idempotent by digest, so MC, HQ and third-party stores receive the evidence
-   the same way.
-8. **Conformance:** test vectors for a trailer with `; trace=`, a statement with
-   `evidence[]`, and the trace id derivation.
+Follow-up RFC:
+
+5. **Predicate: run-level evidence**, an optional
+   `evidence[]: { name, digest: { sha256 }, uri?, mediaType? }`.
+6. **Evidence manifest profile**: run, tree and attempt ids, verification trace
+   id, session refs `{ agentTool, sessionId, from, to }`, stage artifact
+   digests, with the privacy rules of SPEC §6. Session ids are optional because
+   they may identify a provider account.
+7. **HTTP receiver profile:** accept manifest deliveries, idempotent by digest.
+8. **Conformance:** test vectors for `evidence[]`.
