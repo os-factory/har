@@ -671,11 +671,48 @@ function gitOutput(cwd: string, args: string[]): string | undefined {
   }
 }
 
+const FACTORY_NOTES_REF = 'refs/notes/factory';
+
+/**
+ * True when `commit`'s factory note already holds a `factory-run` statement for
+ * `treeHash` with verdict `pass`, whatever its digest. Unreadable notes count as
+ * absent. Signatures are not checked: this only avoids growing the note.
+ */
+export function noteHasPassingAttestationForTree(cwd: string, commit: string, treeHash: string): boolean {
+  const raw = gitOutput(cwd, ['notes', '--ref', FACTORY_NOTES_REF, 'show', commit]);
+  if (!raw) return false;
+  try {
+    const note = JSON.parse(raw) as { attestations?: unknown };
+    if (!Array.isArray(note.attestations)) return false;
+    return note.attestations.some((entry) => {
+      try {
+        const attestation = entry as { predicateType?: unknown; envelope?: { payload?: unknown } };
+        if (attestation.predicateType !== FACTORY_RUN_PREDICATE_TYPE) return false;
+        if (typeof attestation.envelope?.payload !== 'string') return false;
+        const statement = JSON.parse(Buffer.from(attestation.envelope.payload, 'base64').toString('utf8')) as {
+          subject?: Array<{ digest?: { gitTree?: unknown } }>;
+          predicate?: { verdict?: unknown };
+        };
+        return (
+          statement.predicate?.verdict === 'pass' &&
+          Array.isArray(statement.subject) &&
+          statement.subject.some((subject) => subject.digest?.gitTree === treeHash)
+        );
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
+  }
+}
+
 /**
  * After a passing full verify: when the checkout's HEAD already has the verified
  * tree (the work was committed, then rebased or amended, then re-verified), the
  * post-commit hook will not run again, so add the attestation to HEAD's note now.
- * Undefined when HEAD has another tree, or the note already holds this digest.
+ * Undefined when HEAD has another tree, or HEAD's note already holds a passing
+ * attestation for this tree (any digest: repeated verifies do not grow the note).
  * Never throws.
  */
 export function addFactoryNoteToVerifiedHead(input: AddNoteToVerifiedHeadInput): FactoryProofOutcome | undefined {
@@ -683,6 +720,7 @@ export function addFactoryNoteToVerifiedHead(input: AddNoteToVerifiedHeadInput):
     const head = gitOutput(input.checkoutDir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
     if (!head) return undefined;
     if (gitOutput(input.checkoutDir, ['rev-parse', `${head}^{tree}`]) !== input.treeHash) return undefined;
+    if (noteHasPassingAttestationForTree(input.checkoutDir, head, input.treeHash)) return undefined;
     const bin = input.bin ?? resolveFactoryProofBin(input.env);
     if (!bin) return undefined;
     const call = callFactoryProof(bin, ['note', 'add', head, '--attestation', input.attestationFile, '--json'], {

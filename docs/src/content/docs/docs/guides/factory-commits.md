@@ -116,8 +116,9 @@ If HEAD already has the verified tree when the full verify passes, HAR adds the
 attestation to HEAD's note right away and prints
 `har: factory note sha256:… added to HEAD <sha>`. This happens when you re-verify after
 a rebase or an amend: the rewritten commits have no proof, and no commit follows to run
-the `post-commit` hook. HAR only notes HEAD, not older commits in the branch, and skips
-the note when it already holds the same attestation. A working tree that differs from
+the `post-commit` hook. HAR only notes HEAD, not older commits in the branch. If HEAD's
+note already holds a passing attestation for that tree, HAR leaves it alone, so repeated
+verifies (for example `har env complete --verify`) do not grow the note. A working tree that differs from
 HEAD gets no note until you commit it.
 
 If you [send telemetry to a backend](/docs/guides/otlp-backends/), the same verify

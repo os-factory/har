@@ -231,6 +231,14 @@ const builtCli = path.resolve(__dirname, '..', 'dist', 'index.js');
     expect(proven.code).toBe(0);
     expect(proven.result).toMatchObject({ commits: [{ level: 'L1', problems: [] }] });
 
+    // Verifying the same, already proven HEAD again does not grow its note.
+    const noteSize = () => JSON.parse(sh('git notes --ref refs/notes/factory show HEAD')).attestations.length;
+    expect(noteSize()).toBe(1);
+    const repeat = verifyTree();
+    expect(repeat.outcome?.status).toBe('attested');
+    expect(repeat.note).toBeUndefined();
+    expect(noteSize()).toBe(1);
+
     // Amend (new commit, same tree): the note stays on the old commit; re-verify fixes HEAD.
     sh('git commit -q --amend -m "feat: two (amended)"');
     expect(runFactoryProofQuery({ repoPath: dir, command: 'verify', rev: range }).code).toBe(1);

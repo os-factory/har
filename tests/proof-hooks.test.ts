@@ -416,17 +416,36 @@ describe('re-verify after a rebase or amend: note on HEAD right away', () => {
     expect(verify(dir).note?.status).toBe('attested');
   });
 
-  it('does not add a digest the note already holds', () => {
+  it('leaves the note alone when it already holds a passing attestation for the tree, whatever its digest', () => {
     const dir = unprovenHead('HAR_FACTORY_PROOF=notes\n');
-    const produced = verify(dir);
-    const again = addFactoryNoteToVerifiedHead({
+    const first = verify(dir);
+    expect(first.note?.status).toBe('attested');
+
+    // A later verify of the same tree (e.g. complete --verify) has another run time, so another digest.
+    const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
+    const second = produceValidationProof({
+      harnessRoot: dir,
       checkoutDir: dir,
-      treeHash: produced.validation.treeHash,
-      attestationFile: produced.outcome!.attestationFile!,
-      digest: produced.outcome!.digest!,
+      validation: record,
+      verification: PASSING,
+      run: { startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:01:00Z' },
     });
-    expect(again).toBeUndefined();
-    expect(noteDigests(dir)).toEqual([produced.validation.attestationDigest]);
+    expect(second.outcome?.status).toBe('attested');
+    expect(second.outcome?.digest).not.toBe(first.outcome?.digest);
+    expect(second.note).toBeUndefined();
+    expect(noteDigests(dir)).toEqual([first.outcome?.digest]);
+    expect(logLines(log).filter((l) => l.argv[0] === 'note')).toHaveLength(1);
+  });
+
+  it('still adds a passing attestation when the note only holds a failing one for the tree', () => {
+    const dir = unprovenHead('HAR_FACTORY_PROOF=notes\n');
+    const failed = verify(dir, { status: 'fail', agent_id: 1, stages: [{ name: 'unit-tests', pass: false, ms: 1 }] });
+    sh(dir, `"${FAKE_BIN}" note add HEAD --attestation "${failed.outcome!.attestationFile!}" --json`);
+    expect(noteDigests(dir)).toEqual([failed.outcome?.digest]);
+
+    const passed = verify(dir);
+    expect(passed.note?.status).toBe('attested');
+    expect(noteDigests(dir)).toEqual([failed.outcome?.digest, passed.outcome?.digest]);
   });
 
   it('leaves HEAD alone when the working tree differs from HEAD', () => {
@@ -455,6 +474,7 @@ describe('re-verify after a rebase or amend: note on HEAD right away', () => {
     const dir = unprovenHead('HAR_FACTORY_PROOF=notes\n');
     const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
     const produced = produceValidationProof({ harnessRoot: dir, checkoutDir: dir, validation: record, verification: PASSING });
+    sh(dir, 'git notes --ref refs/notes/factory remove HEAD');
     process.env.FAKE_GIT_FACTORY_EXIT = '2';
     const note = addFactoryNoteToVerifiedHead({
       checkoutDir: dir,
