@@ -1246,6 +1246,10 @@ export async function handleVerify(argv: {
     if (result.proof.status === 'attested') info(result.proof.message);
     else warn(result.proof.message);
   }
+  if (result.proofNote) {
+    if (result.proofNote.status === 'attested') info(result.proofNote.message);
+    else warn(result.proofNote.message);
+  }
   if (result.spanExport && result.spanExport.failed.length > 0) {
     dim(`  verification trace not delivered to: ${result.spanExport.failed.join(', ')}`);
   }

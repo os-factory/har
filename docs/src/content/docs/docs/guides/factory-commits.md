@@ -73,6 +73,10 @@ The mode is set per repository in `.har/harness.env`:
 HAR_FACTORY_PROOF=notes            # off | notes | notes+trailers (unset: notes, local only)
 ```
 
+HAR reads the mode from the main checkout's `.har/harness.env`, also inside slot
+worktrees. Set it there once: verify, the commit hooks and `har hooks status` in every
+slot use the same mode, even when a worktree's own copy of `harness.env` lacks the line.
+
 - **Unset (the 2.0 default)** behaves like `notes`, but only locally and only when
   `git-factory` is installed. Without `git-factory`, HAR stays silent: no hint on
   verify or commit. `har hooks install` does not run `git factory setup`, so your
@@ -108,6 +112,15 @@ default.
 3. The `post-commit` hook adds the attestation to the new commit's note in
    `refs/notes/factory`.
 
+If HEAD already has the verified tree when the full verify passes, HAR adds the
+attestation to HEAD's note right away and prints
+`har: factory note sha256:… added to HEAD <sha>`. This happens when you re-verify after
+a rebase or an amend: the rewritten commits have no proof, and no commit follows to run
+the `post-commit` hook. HAR only notes HEAD, not older commits in the branch. If HEAD's
+note already holds a passing attestation for that tree, HAR leaves it alone, so repeated
+verifies (for example `har env complete --verify`) do not grow the note. A working tree that differs from
+HEAD gets no note until you commit it.
+
 If you [send telemetry to a backend](/docs/guides/otlp-backends/), the same verify
 also emits a verification trace whose `factory.run.id` and `factory.git.tree` match
 the proof's run id and tree.
@@ -121,15 +134,17 @@ Commit a different tree, or commit after a failed verify, and nothing is added.
 har proof show                        # note and trailers on HEAD
 har proof show <rev> --json
 har proof verify                      # HEAD, must reach L1
-har proof verify main..HEAD           # every commit in a range
+har proof verify main..HEAD           # every commit in a range, each must reach L1
 har proof verify --min-level L2 --allowed-signers .github/allowed_signers
 ```
 
 Both commands pass `git factory show` and `git factory verify` through. `--json`
 prints `git factory`'s JSON as is. Exit codes come from `git factory`: `0` ok, `1`
 verification failed (a commit below `--min-level`, or problems found), `2` usage or
-environment error, including a missing `git-factory`. The default minimum level is L1
-for one commit and none for a range.
+environment error, including a missing `git-factory`. HAR always passes
+`--min-level`, L1 unless you choose another level, for one commit and for a range
+alike. A range with one unproven commit fails. (`git factory verify` on its own applies
+no minimum to a range.) The lowest level you can pass is `L0`.
 
 MCP agents use `har_proof_show` and `har_proof_verify`.
 

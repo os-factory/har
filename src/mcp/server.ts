@@ -294,7 +294,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_run_verification',
     description:
-      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump), plus `proof` (Factory Commits outcome) after a full verify when a proof was attempted (HAR_FACTORY_PROOF not off; under the default only when git-factory is installed).',
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump), plus `proof` (Factory Commits outcome) after a full verify when a proof was attempted (HAR_FACTORY_PROOF not off; under the default only when git-factory is installed), and `proofNote` when that proof was also added to the note on HEAD because HEAD already had the verified tree (re-verify after a rebase or amend).',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -405,11 +405,11 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_proof_verify',
     description:
-      'Read-only. Verify Factory Commits proofs on a commit or range A..B (passes through `git factory verify --json`: per-commit level none|L0..L3 and problem codes). code 1 = below minLevel or problems found.',
+      'Read-only. Verify Factory Commits proofs on a commit or range A..B (passes through `git factory verify --json`: per-commit level none|L0..L3 and problem codes). minLevel defaults to L1 for one commit and for a range. code 1 = below minLevel or problems found.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
       rev: { type: 'string', description: 'Commit or range A..B (default HEAD)' },
-      minLevel: { type: 'string', enum: [...FACTORY_PROOF_LEVELS] },
+      minLevel: { type: 'string', enum: [...FACTORY_PROOF_LEVELS], description: 'Minimum level for every commit (default L1)' },
       allowedSigners: { type: 'string', description: 'ssh allowed_signers file (relative to repo) for L2' },
     }),
   },
@@ -716,6 +716,7 @@ export async function handleMcpToolCall(
           stderr: result.stderr,
           verification: slimVerificationResult(result.verification),
           ...(result.proof ? { proof: result.proof } : {}),
+          ...(result.proofNote ? { proofNote: result.proofNote } : {}),
         }),
       );
     }

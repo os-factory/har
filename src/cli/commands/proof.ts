@@ -116,7 +116,7 @@ export const proofCommand = {
         (y: Argv) =>
           common(y)
             .positional('rev', { type: 'string', describe: 'Commit or range A..B (default HEAD)' })
-            .option('min-level', { type: 'string', choices: [...FACTORY_PROOF_LEVELS], describe: 'Minimum level' })
+            .option('min-level', { type: 'string', choices: [...FACTORY_PROOF_LEVELS], describe: 'Minimum level for every commit (default L1, ranges too)' })
             .option('allowed-signers', { type: 'string', describe: 'ssh allowed_signers file for L2' }),
         (argv) => handle('verify', argv),
       )

@@ -115,6 +115,8 @@ export interface VerificationRunResult extends EnvironmentRunResult {
   validation?: ValidationRecord;
   /** Factory Commits proof outcome; absent when HAR_FACTORY_PROOF=off, or under the default (notes) when git-factory is not installed. */
   proof?: FactoryProofOutcome;
+  /** Factory note added to HEAD by this verify, when HEAD already had the verified tree (e.g. after a rebase). */
+  proofNote?: FactoryProofOutcome;
   /** Set only when verification spans were sent to at least one trace destination. */
   spanExport?: VerificationSpanExportResult;
   /** How the verification trace left the CLI (Mission Control or direct), and what was spooled for retry. */
