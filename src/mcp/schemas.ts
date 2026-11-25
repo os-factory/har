@@ -216,6 +216,8 @@ export const FactoryProofOutcomeSchema = z.object({
 export const RunVerificationOutputSchema = ShellRunOutputSchema.extend({
   verification: VerificationResultSchema.nullable(),
   proof: FactoryProofOutcomeSchema.optional(),
+  /** Note added to HEAD when HEAD already had the verified tree (re-verify after a rebase). */
+  proofNote: FactoryProofOutcomeSchema.optional(),
 });
 
 export const GetLogsInputSchema = z.object({

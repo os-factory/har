@@ -365,7 +365,7 @@ The default installs the Git commit gate. `--claude` selects the Claude Code
 main-checkout edit guard instead. `har hooks check` and `har hooks record-commit`
 are internal hook workers invoked by Git, not day-to-day commands. So is
 `har hooks commit-msg <file>`, which is installed only when `.har/harness.env`
-sets `HAR_FACTORY_PROOF=notes+trailers`.
+(in the main checkout) sets `HAR_FACTORY_PROOF=notes+trailers`.
 
 ## `har proof`
 
@@ -377,8 +377,9 @@ har proof verify [rev|A..B] [--min-level L0|L1|L2|L3] [--allowed-signers <file>]
 Read-only wrappers around the `git-factory` executable (`HAR_FACTORY_PROOF_BIN`,
 else `PATH`) for [Factory Commits](https://github.com/os-factory/factory-commits)
 proofs. `--json` passes `git factory`'s JSON through. Otherwise HAR prints the
-level and problems for each commit. Exit codes come from `git factory`: `0` ok,
-`1` verification failed, `2` usage or environment error (including a missing
+level and problems for each commit. `--min-level` defaults to L1, for a range
+too. Exit codes come from `git factory`: `0` ok,
+`1` verification failed (a commit below `--min-level`, or problems), `2` usage or environment error (including a missing
 `git-factory`). See [Record Factory Commits proofs](/docs/guides/factory-commits/).
 
 ## `har hq`

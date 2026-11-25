@@ -10,7 +10,7 @@ import {
   resolveHooksDir,
   uninstallHooks,
 } from '../src/core/hooks';
-import { produceValidationProof } from '../src/core/proof';
+import { addFactoryNoteToVerifiedHead, produceValidationProof, resolveFactoryProofMode } from '../src/core/proof';
 import { recordValidation } from '../src/core/validations';
 import { bindValidationToAttempt, upsertWorkUnit } from '../src/core/work-units';
 import { VerificationResult } from '../src/harness/schema';
@@ -371,5 +371,138 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
         expect(result.proof).toBeUndefined();
       }
     }
+  });
+});
+
+describe('re-verify after a rebase or amend: note on HEAD right away', () => {
+  function noteDigests(dir: string, rev = 'HEAD'): string[] {
+    const raw = execSync(`git notes --ref refs/notes/factory show ${rev}`, {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    return JSON.parse(raw).attestations.map((a: { digest: string }) => a.digest);
+  }
+  function verify(dir: string, verification: VerificationResult = PASSING) {
+    const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: verification.status, full: true });
+    return produceValidationProof({ harnessRoot: dir, checkoutDir: dir, validation: record, verification });
+  }
+  /** A committed change with no note, as after a rebase rewrote it (no hooks ran). */
+  function unprovenHead(harnessEnv?: string): string {
+    const dir = initRepo(harnessEnv);
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'rebased\n');
+    sh(dir, 'git add -A');
+    sh(dir, 'git commit -q -m rebased');
+    return dir;
+  }
+
+  it('adds the attestation to HEAD when HEAD has the verified tree, and says so in one line', () => {
+    const dir = unprovenHead('HAR_FACTORY_PROOF=notes\n');
+    const head = sh(dir, 'git rev-parse HEAD');
+    const produced = verify(dir);
+
+    expect(produced.outcome?.status).toBe('attested');
+    expect(produced.note?.status).toBe('attested');
+    expect(produced.note?.message).toBe(
+      `har: factory note ${produced.validation.attestationDigest!.slice(0, 19)}… added to HEAD ${head.slice(0, 12)}`,
+    );
+    expect(noteDigests(dir)).toEqual([produced.validation.attestationDigest]);
+    const noteCall = logLines(log).find((l) => l.argv[0] === 'note');
+    expect(noteCall?.argv.slice(0, 3)).toEqual(['note', 'add', head]);
+  });
+
+  it('works under the 2.0 default mode (unset) too', () => {
+    const dir = unprovenHead();
+    expect(verify(dir).note?.status).toBe('attested');
+  });
+
+  it('does not add a digest the note already holds', () => {
+    const dir = unprovenHead('HAR_FACTORY_PROOF=notes\n');
+    const produced = verify(dir);
+    const again = addFactoryNoteToVerifiedHead({
+      checkoutDir: dir,
+      treeHash: produced.validation.treeHash,
+      attestationFile: produced.outcome!.attestationFile!,
+      digest: produced.outcome!.digest!,
+    });
+    expect(again).toBeUndefined();
+    expect(noteDigests(dir)).toEqual([produced.validation.attestationDigest]);
+  });
+
+  it('leaves HEAD alone when the working tree differs from HEAD', () => {
+    const dir = unprovenHead('HAR_FACTORY_PROOF=notes\n');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'uncommitted\n');
+    const produced = verify(dir);
+    expect(produced.outcome?.status).toBe('attested');
+    expect(produced.note).toBeUndefined();
+    expect(logLines(log).map((l) => l.argv[0])).toEqual(['attest']);
+  });
+
+  it('never notes a failing verify, and does nothing at all when the mode is off', () => {
+    const failing = unprovenHead('HAR_FACTORY_PROOF=notes\n');
+    const failed = verify(failing, { status: 'fail', agent_id: 1, stages: [{ name: 'unit-tests', pass: false, ms: 1 }] });
+    expect(failed.outcome?.status).toBe('attested');
+    expect(failed.note).toBeUndefined();
+
+    const off = unprovenHead('HAR_FACTORY_PROOF=off\n');
+    const result = verify(off);
+    expect(result.outcome).toBeUndefined();
+    expect(result.note).toBeUndefined();
+    expect(logLines(log).map((l) => l.argv[0])).toEqual(['attest']);
+  });
+
+  it('fails open when git factory note add fails: the attestation is still recorded', () => {
+    const dir = unprovenHead('HAR_FACTORY_PROOF=notes\n');
+    const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
+    const produced = produceValidationProof({ harnessRoot: dir, checkoutDir: dir, validation: record, verification: PASSING });
+    process.env.FAKE_GIT_FACTORY_EXIT = '2';
+    const note = addFactoryNoteToVerifiedHead({
+      checkoutDir: dir,
+      treeHash: record.treeHash,
+      attestationFile: produced.outcome!.attestationFile!,
+      digest: produced.outcome!.digest!,
+    });
+    expect(note?.status).toBe('failed');
+    expect(note?.message).toContain('exited 2');
+  });
+});
+
+describe('proof mode comes from the main checkout, also inside a slot worktree', () => {
+  /** Main checkout + linked worktree whose committed harness.env lacks the mode. */
+  function mainAndWorktree(mainEnv: string, worktreeEnv?: string): { main: string; wt: string } {
+    const main = initRepo('HARNESS_PROJECT_NAME=x\n');
+    const wt = path.join(fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'har-proof-wt-')), 'slot');
+    sh(main, `git worktree add -q -b slot "${wt}"`);
+    // Set in the main checkout only (uncommitted), as the guide says.
+    fs.writeFileSync(path.join(main, '.har', 'harness.env'), mainEnv);
+    if (worktreeEnv !== undefined) fs.writeFileSync(path.join(wt, '.har', 'harness.env'), worktreeEnv);
+    return { main, wt };
+  }
+
+  it('resolves the same mode from the worktree as from the main checkout', () => {
+    const { main, wt } = mainAndWorktree('HAR_FACTORY_PROOF=notes+trailers\n', 'HAR_FACTORY_PROOF=off\n');
+    expect(resolveFactoryProofMode(main)).toEqual({ mode: 'notes+trailers', explicit: true });
+    expect(resolveFactoryProofMode(wt)).toEqual({ mode: 'notes+trailers', explicit: true });
+    expect(getHooksStatus(wt)).toMatchObject({ factoryProofMode: 'notes+trailers', factoryProofModeSource: 'harness.env' });
+  });
+
+  it('adds trailers to a worktree commit when only the main checkout sets notes+trailers', () => {
+    const { wt } = mainAndWorktree('HAR_FACTORY_PROOF=notes+trailers\n');
+    fs.writeFileSync(path.join(wt, 'a.txt'), 'changed in slot\n');
+    const validation = attestedValidation(wt);
+    sh(wt, 'git add -A');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'har-msg-')), 'COMMIT_EDITMSG');
+    fs.writeFileSync(file, 'feat: change\n');
+
+    expect(recordCommitTrailers(wt, file)?.status).toBe('attested');
+    expect(fs.readFileSync(file, 'utf8')).toContain(`Factory-Run: ${validation.validationId}`);
+  });
+
+  it('writes no proof from a worktree when the main checkout turned proofs off', () => {
+    const { wt } = mainAndWorktree('HAR_FACTORY_PROOF=off\n', 'HAR_FACTORY_PROOF=notes\n');
+    fs.writeFileSync(path.join(wt, 'a.txt'), 'changed in slot\n');
+    const record = recordValidation({ checkoutDir: wt, harnessRoot: wt, status: 'pass', full: true });
+    expect(produceValidationProof({ harnessRoot: wt, checkoutDir: wt, validation: record, verification: PASSING }).outcome).toBeUndefined();
+    expect(logLines(log)).toEqual([]);
   });
 });

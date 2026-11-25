@@ -425,6 +425,8 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
     expect(result.outcome?.status).toBe('attested');
     expect(result.validation.attestationDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { argv: string[] });
-    expect(calls.map((c) => c.argv[0])).toEqual(['attest']);
+    // The verified tree is HEAD's (clean checkout), so the note goes on HEAD right away.
+    expect(calls.map((c) => c.argv[0])).toEqual(['attest', 'note']);
+    expect(result.note?.status).toBe('attested');
   });
 });

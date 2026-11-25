@@ -438,6 +438,7 @@ export class RunService {
         : undefined;
     let validation: ValidationRecord | undefined;
     let proof: VerificationRunResult['proof'];
+    let proofNote: VerificationRunResult['proofNote'];
     if (verification) {
       try {
         const registry = resolveSlotRegistryContext(options.repoPath, options.agentId);
@@ -490,6 +491,7 @@ export class RunService {
           });
           validation = produced.validation;
           proof = produced.outcome;
+          proofNote = produced.note;
         }
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
@@ -503,6 +505,7 @@ export class RunService {
       verification,
       ...(validation ? { validation } : {}),
       ...(proof ? { proof } : {}),
+      ...(proofNote ? { proofNote } : {}),
     };
 
     // OTel CI/CD spans to the user's own trace destinations, after the result

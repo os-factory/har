@@ -87,7 +87,7 @@ HAR can record its validations as [Factory Commits](https://github.com/os-factor
 proofs in git. HAR builds a `factory-run` predicate from each full validation.
 The `git-factory` executable (`HAR_FACTORY_PROOF_BIN`, else `PATH`) builds the
 statement and writes notes, trailers and verification. The mode is set per
-repository in `.har/harness.env`:
+repository in the main checkout's `.har/harness.env` (slot worktrees use it too):
 
 ```bash
 HAR_FACTORY_PROOF=notes            # off | notes | notes+trailers (unset: notes, local only)
@@ -100,6 +100,8 @@ HAR_FACTORY_PROOF=notes            # off | notes | notes+trailers (unset: notes,
   - every `har env verify --full` attests the validated tree, stored next to
     the validation record;
   - post-commit adds that attestation to `refs/notes/factory` on the new commit;
+    when HEAD already has the verified tree (re-verify after a rebase or amend),
+    verify adds it to HEAD's note itself;
   - `har hooks install` runs `git factory setup` (fetch refspec,
     `notes.rewriteRef`), and `har hooks uninstall` undoes it.
 - `notes+trailers`: everything in `notes`, plus a managed commit-msg hook that
@@ -119,7 +121,8 @@ attestation. See [Trust](/docs/guides/factory-commits/#trust-proofs-are-self-rep
 Inspect and verify proofs with `har proof show [rev]` and
 `har proof verify [rev|A..B] [--min-level L0|L1|L2|L3] [--allowed-signers <file>] [--json]`.
 MCP agents use `har_proof_show` and `har_proof_verify`. Both pass `git factory`
-output and exit codes through.
+output and exit codes through. The minimum level defaults to L1 for one commit and
+for a range.
 
 ## Completion
 

@@ -18,6 +18,8 @@ const ENV_KEYS = [
   'HAR_PORTAL_TARGETS_PATH',
   'HAR_CONTROL_REGISTRY_PATH',
   'HAR_TELEMETRY_CONFIG_PATH',
+  // An ambient HAR_TELEMETRY=false (opt-out) would override the levels these tests write.
+  'HAR_TELEMETRY',
 ] as const;
 
 let tmpDir: string;

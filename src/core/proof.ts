@@ -7,6 +7,7 @@ import { getHarnessDir } from '../harness/manifest';
 import { HarnessStageRegistry, ValidationRecord, VerificationResult } from '../harness/schema';
 import { readStageRegistry } from '../harness/stages';
 import { resolveVerificationPlan } from '../harness/verification';
+import { canonicalizeControlRepoPath } from './control-repo-path';
 import { getHarPackageVersion } from './package-version';
 import { findValidation, setValidationAttestationDigest } from './validations';
 import { findWorkUnit, listValidationBindings } from './work-units';
@@ -55,14 +56,31 @@ export interface FactoryProofModeResolution {
 }
 
 /**
- * Resolve the per-repo mode. Unset or empty → the default (`notes`, not
+ * The harness root whose `harness.env` sets the mode for `dir`: the same path
+ * under the main checkout when `dir` is in a linked worktree (a HAR slot), so
+ * hooks, status, verify, notes and trailers all read one setting. Falls back to
+ * `dir` when the main checkout has no `.har/` there.
+ */
+export function resolveFactoryProofModeRoot(dir: string): string {
+  try {
+    const main = canonicalizeControlRepoPath(dir);
+    if (main !== path.resolve(dir) && fs.existsSync(getHarnessDir(main))) return main;
+  } catch {
+    // not a git checkout: read dir itself
+  }
+  return path.resolve(dir);
+}
+
+/**
+ * Resolve the per-repo mode from the main checkout's harness.env (see
+ * `resolveFactoryProofModeRoot`). Unset or empty → the default (`notes`, not
  * explicit). A set value that is not a known mode means `off`, as in 1.x. An
  * unreadable harness.env means `off`.
  */
 export function resolveFactoryProofMode(harnessRoot: string): FactoryProofModeResolution {
   let raw: string | undefined;
   try {
-    raw = readHarnessEnv(harnessRoot)[FACTORY_PROOF_ENV_KEY];
+    raw = readHarnessEnv(resolveFactoryProofModeRoot(harnessRoot))[FACTORY_PROOF_ENV_KEY];
   } catch {
     return { mode: 'off', explicit: false };
   }
@@ -492,6 +510,11 @@ export interface ProduceValidationProofResult {
   outcome?: FactoryProofOutcome;
   /** The validation record, with attestationDigest when an attestation was produced. */
   validation: ValidationRecord;
+  /**
+   * The note added to HEAD right away because HEAD already has the verified tree
+   * (re-verify after a rebase or amend). Undefined when nothing was added.
+   */
+  note?: FactoryProofOutcome;
 }
 
 /**
@@ -534,7 +557,23 @@ export function produceValidationProof(input: ProduceValidationProofInput): Prod
       input.validation.treeHash,
       outcome.digest,
     );
-    return { outcome, validation: updated ?? input.validation };
+    // Only a passing full validation gets a note, as on commit (findPassingAttestation).
+    const noteable =
+      proofModeIncludesNotes(mode) &&
+      input.validation.status === 'pass' &&
+      input.validation.full &&
+      predicate.verdict === 'pass';
+    const note = noteable && outcome.attestationFile
+      ? addFactoryNoteToVerifiedHead({
+          checkoutDir: input.checkoutDir,
+          treeHash: input.validation.treeHash,
+          attestationFile: outcome.attestationFile,
+          digest: outcome.digest,
+          bin,
+          env: input.env,
+        })
+      : undefined;
+    return { outcome, validation: updated ?? input.validation, ...(note ? { note } : {}) };
   } catch (err) {
     return {
       outcome: {
@@ -611,6 +650,68 @@ export function addFactoryNoteForCommit(
     };
   } catch (err) {
     return { status: 'failed', message: `har: factory note not written (${firstLine(String(err))})` };
+  }
+}
+
+export interface AddNoteToVerifiedHeadInput {
+  checkoutDir: string;
+  treeHash: string;
+  attestationFile: string;
+  digest: string;
+  bin?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+function gitOutput(cwd: string, args: string[]): string | undefined {
+  try {
+    const child = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: CALL_TIMEOUT_MS });
+    return child.status === 0 ? child.stdout.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * After a passing full verify: when the checkout's HEAD already has the verified
+ * tree (the work was committed, then rebased or amended, then re-verified), the
+ * post-commit hook will not run again, so add the attestation to HEAD's note now.
+ * Undefined when HEAD has another tree, or the note already holds this digest.
+ * Never throws.
+ */
+export function addFactoryNoteToVerifiedHead(input: AddNoteToVerifiedHeadInput): FactoryProofOutcome | undefined {
+  try {
+    const head = gitOutput(input.checkoutDir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+    if (!head) return undefined;
+    if (gitOutput(input.checkoutDir, ['rev-parse', `${head}^{tree}`]) !== input.treeHash) return undefined;
+    const bin = input.bin ?? resolveFactoryProofBin(input.env);
+    if (!bin) return undefined;
+    const call = callFactoryProof(bin, ['note', 'add', head, '--attestation', input.attestationFile, '--json'], {
+      cwd: input.checkoutDir,
+      env: input.env,
+    });
+    if (call.code !== 0) {
+      const detail = firstLine(call.stderr);
+      return {
+        status: 'failed',
+        message: `har: factory note not written to HEAD (git factory note add exited ${call.code}${detail ? `: ${detail}` : ''})`,
+      };
+    }
+    let added = true;
+    try {
+      const parsed = JSON.parse(call.stdout) as { added?: unknown };
+      if (parsed.added === false) added = false;
+    } catch {
+      // older output without JSON: assume it was added
+    }
+    if (!added) return undefined;
+    return {
+      status: 'attested',
+      message: `har: factory note ${input.digest.slice(0, 19)}… added to HEAD ${head.slice(0, 12)}`,
+      digest: input.digest,
+      attestationFile: input.attestationFile,
+    };
+  } catch (err) {
+    return { status: 'failed', message: `har: factory note not written to HEAD (${firstLine(String(err))})` };
   }
 }
 
@@ -695,12 +796,19 @@ export function runFactoryProofSetup(
 
 export const FACTORY_PROOF_LEVELS = ['L0', 'L1', 'L2', 'L3'] as const;
 export type FactoryProofLevel = (typeof FACTORY_PROOF_LEVELS)[number];
+/**
+ * `har proof verify` always passes `--min-level`, this one unless overridden:
+ * `git factory verify` defaults to L1 for one commit but to no minimum for a
+ * range, so a range with an unproven commit would otherwise pass.
+ */
+export const DEFAULT_FACTORY_PROOF_MIN_LEVEL: FactoryProofLevel = 'L1';
 
 export interface FactoryProofQueryInput {
   repoPath: string;
   command: 'show' | 'verify';
   /** A rev for show/verify, or an `A..B` range for verify. */
   rev?: string;
+  /** verify only; default {@link DEFAULT_FACTORY_PROOF_MIN_LEVEL} for one commit and for a range. */
   minLevel?: FactoryProofLevel;
   allowedSigners?: string;
   bin?: string;
@@ -734,7 +842,7 @@ export function runFactoryProofQuery(input: FactoryProofQueryInput): FactoryProo
   const args: string[] = [input.command];
   if (input.rev) args.push(input.rev);
   if (input.command === 'verify') {
-    if (input.minLevel) args.push('--min-level', input.minLevel);
+    args.push('--min-level', input.minLevel ?? DEFAULT_FACTORY_PROOF_MIN_LEVEL);
     if (input.allowedSigners) args.push('--allowed-signers', path.resolve(input.repoPath, input.allowedSigners));
   }
   args.push('--json');

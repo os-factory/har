@@ -45,6 +45,20 @@ describe('runFactoryProofQuery', () => {
     ]);
   });
 
+  it('always passes --min-level, L1 by default, for one commit and for a range', () => {
+    const dir = initRepo();
+    const log = path.join(dir, 'calls.jsonl');
+    const env = { FAKE_GIT_FACTORY_LOG: log };
+    runFactoryProofQuery({ repoPath: dir, command: 'verify', bin: FAKE_BIN, env });
+    runFactoryProofQuery({ repoPath: dir, command: 'verify', rev: 'main~2..main', bin: FAKE_BIN, env });
+    runFactoryProofQuery({ repoPath: dir, command: 'verify', rev: 'main~2..main', minLevel: 'L0', bin: FAKE_BIN, env });
+    expect(callArgv(log)).toEqual([
+      ['verify', '--min-level', 'L1', '--json'],
+      ['verify', 'main~2..main', '--min-level', 'L1', '--json'],
+      ['verify', 'main~2..main', '--min-level', 'L0', '--json'],
+    ]);
+  });
+
   it('reports unavailable (exit 2) when git-factory is missing, and rejects option-like revs', () => {
     const dir = initRepo();
     const missing = runFactoryProofQuery({ repoPath: dir, command: 'verify', env: { PATH: '/nonexistent' } });
@@ -172,5 +186,55 @@ const builtCli = path.resolve(__dirname, '..', 'dist', 'index.js');
 
     uninstallHooks(dir);
     expect(sh('git config --local --list')).toBe(configBefore);
+  });
+
+  it('fails a range with an unproven commit by default, and notes HEAD on re-verify after an amend', () => {
+    const dir = initRepo();
+    const sh = (cmd: string) => execSync(cmd, { cwd: dir, encoding: 'utf8' }).trim();
+    sh('git config user.email har@test.local');
+    sh('git config user.name har');
+    fs.mkdirSync(path.join(dir, '.har'));
+    fs.writeFileSync(path.join(dir, '.har', '.gitignore'), 'runs/\nvalidations/\n');
+    fs.writeFileSync(path.join(dir, '.har', 'harness.env'), 'HAR_FACTORY_PROOF=notes\n');
+    fs.writeFileSync(
+      path.join(dir, '.har', 'stages.json'),
+      JSON.stringify({ version: '1', verificationStages: ['unit-tests'], stages: [{ id: 'unit-tests', kind: 'test', command: 'true' }] }),
+    );
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'one\n');
+    sh('git add -A');
+    sh('git commit -q -m init');
+    const base = sh('git rev-parse HEAD');
+    const verifyTree = () => {
+      const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
+      return produceValidationProof({
+        harnessRoot: dir,
+        checkoutDir: dir,
+        validation: record,
+        verification: { status: 'pass', agent_id: 1, stages: [{ name: 'unit-tests', pass: true, ms: 3 }] },
+      });
+    };
+
+    // A commit without any note (gate bypassed, or rewritten by a rebase).
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'two\n');
+    sh('git add -A');
+    sh('git commit -q -m "feat: two"');
+    const range = `${base}..HEAD`;
+    const unproven = runFactoryProofQuery({ repoPath: dir, command: 'verify', rev: range });
+    expect(unproven.code).toBe(1);
+    expect(unproven.result).toMatchObject({ commits: [{ level: 'none' }] });
+
+    // Re-verify the committed tree: HEAD gets the note without a new commit.
+    const produced = verifyTree();
+    expect(produced.outcome?.status).toBe('attested');
+    expect(produced.note?.status).toBe('attested');
+    const proven = runFactoryProofQuery({ repoPath: dir, command: 'verify', rev: range });
+    expect(proven.code).toBe(0);
+    expect(proven.result).toMatchObject({ commits: [{ level: 'L1', problems: [] }] });
+
+    // Amend (new commit, same tree): the note stays on the old commit; re-verify fixes HEAD.
+    sh('git commit -q --amend -m "feat: two (amended)"');
+    expect(runFactoryProofQuery({ repoPath: dir, command: 'verify', rev: range }).code).toBe(1);
+    expect(verifyTree().note?.status).toBe('attested');
+    expect(runFactoryProofQuery({ repoPath: dir, command: 'verify', rev: range }).code).toBe(0);
   });
 });
