@@ -1,3 +1,9 @@
+## [2.0.0-next.5](https://github.com/os-factory/har/compare/v2.0.0-next.4...v2.0.0-next.5) (2026-11-25)
+
+### Features
+
+* **telemetry:** fan out at the producer, Mission Control is one destination ([#522](https://github.com/os-factory/har/issues/522)) ([45649c1](https://github.com/os-factory/har/commit/45649c1d568e4bd8c2be72e7474fb8c68b9a4def)), closes [#519](https://github.com/os-factory/har/issues/519) [#470](https://github.com/os-factory/har/issues/470)
+
 ## [2.0.0-next.4](https://github.com/os-factory/har/compare/v2.0.0-next.3...v2.0.0-next.4) (2026-11-25)
 
 ### Features
