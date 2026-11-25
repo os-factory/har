@@ -34,7 +34,6 @@ export interface InstructionInstallPlan {
   agentsMd: boolean;
   migrateLegacyAgentMd: boolean;
   providers: AgentSkillTarget[];
-  claudeMd: boolean;
   cursorRule: boolean;
   skills: AgentSkillTarget[];
 }
@@ -81,7 +80,6 @@ export interface InstructionFilesResult {
   targets: AgentSkillTarget[];
   agentsMdAction: 'created' | 'updated' | 'appended' | 'skipped' | null;
   migratedLegacy: boolean;
-  claudeMdAction: 'updated' | 'appended' | 'skipped' | null;
 }
 
 function escapeRegExp(value: string): string {
@@ -214,9 +212,6 @@ export function buildInstallPlan(
     agentsMd: writeAgentsMd,
     migrateLegacyAgentMd: writeAgentsMd && detection.agentMd,
     providers: targets,
-    // Deprecated: Claude Code reads AGENTS.md directly, so HAR no longer
-    // creates a CLAUDE.md. An existing one is still kept pointing at AGENTS.md.
-    claudeMd: targets.includes('claude') && detection.claudeMd,
     cursorRule: wantsCursor,
     skills: options.skills ?? [],
   };
@@ -235,10 +230,9 @@ export function formatInstallPlan(
   if (plan.migrateLegacyAgentMd) {
     lines.push(`  ${mark(true)} Migrate ${LEGACY_AGENT_MD} → ${AGENTS_MD}, then remove legacy file`);
   }
+  // Claude Code reads AGENTS.md directly; HAR never creates or edits CLAUDE.md.
   lines.push(
-    plan.claudeMd
-      ? `  ${mark(true)} Claude — keep the existing ${CLAUDE_MD} pointing at ${AGENTS_MD}`
-      : `  ${mark(false)} Claude — reads ${AGENTS_MD} directly (no ${CLAUDE_MD} created)`,
+    `  ${mark(plan.providers.includes('claude'))} Claude — reads ${AGENTS_MD} directly (${CLAUDE_MD} left untouched)`,
   );
   lines.push(
     `  ${mark(plan.cursorRule)} Cursor — install/refresh .cursor/rules/har-workflow.mdc`,
@@ -418,64 +412,6 @@ export function migrateLegacyAgentMd(repoPath: string): boolean {
   return true;
 }
 
-/**
- * CLAUDE.md carries no content of its own (#301): `AGENTS.md` is the
- * cross-vendor instruction file, and Claude Code reaches it through an `@`
- * import. Claude Code now reads `AGENTS.md` directly, so the pointer is
- * deprecated — HAR keeps an existing one current but never creates one.
- */
-export const CLAUDE_MD_IMPORT = '@AGENTS.md';
-
-/** True when the file is HAR's own pointer (ours to replace), not the user's work. */
-function isHarOwnedClaudeMd(content: string): boolean {
-  const trimmed = content.trim();
-  if (trimmed === CLAUDE_MD_IMPORT) return true;
-  if (trimmed.length > 600) return false;
-  return (
-    /AGENTS\.md|AGENT\.md/.test(trimmed) &&
-    (trimmed.includes('.har/README.md') || trimmed.includes('har-workflow'))
-  );
-}
-
-/** An `@AGENTS.md` import on its own line, ignoring code fences and inline text. */
-function hasAgentsImport(content: string): boolean {
-  return content.split('\n').some((line) => line.trim() === CLAUDE_MD_IMPORT);
-}
-
-/**
- * Ensure an existing CLAUDE.md pulls AGENTS.md into context.
- *
- * - absent → left absent. Claude Code reads AGENTS.md itself, so HAR no longer
- *   creates the pointer file (deprecated; existing ones keep working).
- * - a HAR-authored pointer → the file becomes exactly `@AGENTS.md`
- * - hand-written by the user → content preserved verbatim, the import prepended
- *   when missing. HAR never destroys project-specific Claude instructions.
- *
- * Idempotent: a file that already imports AGENTS.md is left alone.
- */
-export function ensureClaudeMdPointer(
-  repoPath: string,
-  options: { force?: boolean } = {},
-): 'updated' | 'appended' | 'skipped' {
-  const dest = path.join(repoPath, CLAUDE_MD);
-
-  if (!fs.existsSync(dest)) return 'skipped';
-
-  const thin = `${CLAUDE_MD_IMPORT}\n`;
-  const existing = fs.readFileSync(dest, 'utf8');
-
-  if (isHarOwnedClaudeMd(existing) || options.force) {
-    if (existing.trim() === CLAUDE_MD_IMPORT) return 'skipped';
-    writeFileSafe(dest, thin);
-    return 'updated';
-  }
-
-  // The user's own CLAUDE.md: keep every line, just make sure AGENTS.md loads.
-  if (hasAgentsImport(existing)) return 'skipped';
-  writeFileSafe(dest, `${CLAUDE_MD_IMPORT}\n\n${existing.replace(/^\n+/, '')}`);
-  return 'appended';
-}
-
 async function selectAgentProviders(
   detectedTargets: AgentSkillTarget[],
 ): Promise<AgentSkillTarget[]> {
@@ -508,7 +444,7 @@ async function confirmSkillInstallation(targets: AgentSkillTarget[]): Promise<bo
 
 /**
  * Detect instruction files, let the user select providers, optionally install skills,
- * then write AGENTS.md (always), migrate AGENT.md, and refresh an existing CLAUDE.md pointer.
+ * then write AGENTS.md (always) and migrate AGENT.md. CLAUDE.md is never touched.
  *
  * Cursor rule and skill scaffolding remain in their dedicated handlers — this function
  * returns the resolved targets/plan so callers can pass them through.
@@ -564,7 +500,6 @@ export async function handleInstructionFiles(
 
   let migratedLegacy = false;
   let agentsMdAction: InstructionFilesResult['agentsMdAction'] = null;
-  let claudeMdAction: InstructionFilesResult['claudeMdAction'] = null;
 
   if (writeAgentsMd) {
     if (detection.agentMd) {
@@ -589,23 +524,11 @@ export async function handleInstructionFiles(
     agentsMdAction = 'skipped';
   }
 
-  if (plan.claudeMd) {
-    claudeMdAction = ensureClaudeMdPointer(repoPath);
-    if (claudeMdAction === 'updated' || claudeMdAction === 'appended') {
-      info(
-        `${claudeMdAction === 'updated' ? 'Updated' : 'Appended'} ${CLAUDE_MD} pointer → ${AGENTS_MD}`,
-      );
-    }
-  } else {
-    claudeMdAction = 'skipped';
-  }
-
   return {
     detection,
     plan,
     targets,
     agentsMdAction,
     migratedLegacy,
-    claudeMdAction,
   };
 }

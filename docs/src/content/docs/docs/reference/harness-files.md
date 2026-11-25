@@ -46,7 +46,7 @@ Installed during `har onboard` (and refreshed on maintain):
 | Path | Purpose |
 | --- | --- |
 | `AGENTS.md` | Canonical shared HAR workflow (Codex auto-loads this; cross-tool standard) |
-| `CLAUDE.md` | Deprecated pointer → `AGENTS.md`. Never created (Claude Code reads `AGENTS.md`); an existing one is kept current |
+| `CLAUDE.md` | Not managed by HAR — never created or edited (Claude Code reads `AGENTS.md` directly) |
 | `.cursor/rules/har-workflow.mdc` | Always-on Cursor injection (when Cursor is confirmed) |
 
 Legacy `AGENT.md` (singular) is migrated into `AGENTS.md` and removed. Do not create it.

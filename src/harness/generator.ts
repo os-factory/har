@@ -119,7 +119,7 @@ export function scaffoldHarnessBoilerplate(
   ensurePluginLedgerScaffold(repoPath, { profile, bundles: bundleIds });
 
   // AGENTS.md is installed by handleInstructionFiles during init/onboard (always;
-  // CLAUDE.md is deprecated — never created, only refreshed when one exists).
+  // CLAUDE.md is never created or edited — Claude Code reads AGENTS.md directly).
   ensureRootGitignorePatterns(repoPath);
 
   success(`Copied harness boilerplate to .har/ (profile: ${profile})`);
