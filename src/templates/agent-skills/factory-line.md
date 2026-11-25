@@ -5,7 +5,7 @@ Execute **one station** of a declared multi-station program:
 sync → wave plan → parallel HAR slots → cumulative gate → human handoff.
 
 The program lives in an **installed line bundle**, not in this workflow. Find
-it with `har line status` — installed lines live at `.har/lines/<id>/line.json`
+it with `har line describe` — installed lines live at `.har/lines/<id>/line.json`
 and are recorded in `.har/lines.json`. This workflow is the orchestrator;
 station-specific how-to lives in other skills the program lists.
 
@@ -20,7 +20,7 @@ This workflow is the same on Claude Code (`/factory-line`), Cursor
 
 Resolve these before doing anything (ask only if not inferable):
 
-1. **Line** — run `har line status` (or MCP `har_line_status`). One installed
+1. **Line** — run `har line describe` (or MCP `har_line_describe`). One installed
    line: use it. Several: ask which. **None installed**: stop and offer
    `har line create <id>` or `har line add <spec>` — do not invent GitHub
    issue numbers, a fixture repo, or a program of your own.
@@ -58,8 +58,8 @@ does not declare them, do not do them.
 
 ## 0. Load and preflight
 
-1. `har line status [id]` — read the program it names. Confirm
-   `gate.cumulative` and `handoff.autonomousShip`. `har line status` already
+1. `har line describe [id]` — read the program it names. Confirm
+   `gate.cumulative` and `handoff.autonomousShip`. `har line describe` already
    reports which stations are green and which is next.
 2. Skills and MCP: confirm required ones are present. Missing optional:
    skip those steps and say so. Do not install third-party packs yourself.

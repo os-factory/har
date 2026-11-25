@@ -26,11 +26,13 @@ import { getRun, listRuns } from '../core/runs';
 import {
   addLine,
   createLineBundle,
-  getAllLineStatuses,
-  getLineStatus,
+  describeLine,
+  describeLines,
+  listLines,
   runLineGate,
 } from '../core/lines';
 import { addWorkUnitLinks } from '../core/work-units';
+import { verifyLinesNextStep } from '../core/verify-lines';
 import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
@@ -69,7 +71,8 @@ import {
   AddPluginInputSchema,
   AddLineInputSchema,
   CreateLineInputSchema,
-  LineStatusInputSchema,
+  LineDescribeInputSchema,
+  LineListInputSchema,
   RunLineGateInputSchema,
   RunStageInputSchema,
   RunVerificationInputSchema,
@@ -290,7 +293,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_run_verification',
     description:
-      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump).',
+      'Run the project verification pipeline for an agent slot. Returns status, timing, and failed-step output (passing steps omit logs; stdout is not the raw JSON dump). Factory line gates are never run here; after a pass, `lines` lists the installed lines with runAll (station, force) for this slot — check what one covers with har_line_describe and run it with har_run_line_gate (line, runAll.station, runAll.force, agentId) if it covers your change.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -443,12 +446,18 @@ export const HAR_MCP_TOOLS: Tool[] = [
     ),
   },
   {
-    name: 'har_line_status',
+    name: 'har_line_list',
     description:
-      'Stations, cumulative gate progress derived from .har/runs/ records, and slots in flight for installed factory lines. Pure read — writes no run records.',
+      'Installed factory lines with what each covers (title, description), stations, progress, and how to run every station (runAll), plus lines available to install. Use it to decide whether a line is relevant to your change. A line that cannot be read is listed with `unreadable`. Pure read.',
+    inputSchema: objectJsonSchema({ repo: repoJsonProperty }),
+  },
+  {
+    name: 'har_line_describe',
+    description:
+      'What an installed factory line checks and where it stands: description, stations with cumulative gate progress from run records, each gate stage (description, registered, last run status), registered stages, any stage that leaked onto the verify plan, slots in flight, and how to run it (runAll for every station, runStationCommand for one). Without `line`, describes every installed line (a line that cannot be read comes back as `unreadable`). Pass runAll.station and runAll.force to har_run_line_gate. Pure read — writes no run records.',
     inputSchema: objectJsonSchema({
       repo: repoJsonProperty,
-      line: { type: 'string', description: 'Line id (default: every installed line)' },
+      line: { type: 'string', description: 'Installed line id (default: every installed line)' },
     }),
   },
   {
@@ -685,12 +694,14 @@ export async function handleMcpToolCall(
         capture: true,
         trigger: 'mcp',
       });
+      const passed = result.code === 0 && result.verification?.status !== 'fail';
       return jsonContent(
         RunVerificationOutputSchema.parse({
           code: result.code,
           stdout: '',
           stderr: result.stderr,
           verification: slimVerificationResult(result.verification),
+          lines: passed ? verifyLinesNextStep(repo, agentId) : undefined,
         }),
       );
     }
@@ -848,10 +859,14 @@ export async function handleMcpToolCall(
       });
     }
 
-    case 'har_line_status': {
-      const input = LineStatusInputSchema.parse({ ...args, repo });
-      const statuses = input.line ? [getLineStatus(repo, input.line)] : getAllLineStatuses(repo);
-      return jsonContent(input.line ? statuses[0] : { lines: statuses });
+    case 'har_line_list': {
+      LineListInputSchema.parse({ ...args, repo });
+      return jsonContent(listLines(repo));
+    }
+
+    case 'har_line_describe': {
+      const input = LineDescribeInputSchema.parse({ ...args, repo });
+      return jsonContent(input.line ? describeLine(repo, input.line) : { lines: describeLines(repo) });
     }
 
     case 'har_run_line_gate': {

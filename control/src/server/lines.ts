@@ -12,7 +12,7 @@ import { prisma } from '@/lib/db';
  * runs a stage, installs a bundle, or edits a tracker.
  *
  * The program itself is per-repo installed state (`.har/lines.json` +
- * `.har/lines/<id>/line.json`), the same source `har line status` reads. It is
+ * `.har/lines/<id>/line.json`), the same source `har line describe` reads. It is
  * deliberately not inferred from `verificationStages`: line gate stages are
  * absent from the verify plan by design, and drawing them as verify stages
  * would report a healthy pipeline as broken.
@@ -85,7 +85,7 @@ function readJson(file: string): unknown | null {
   }
 }
 
-/** `har line status`'s ratchet, as data: tagged at this station or earlier. */
+/** `har line describe`'s ratchet, as data: tagged at this station or earlier. */
 function cumulativeStageIds(program: LineProgram, stationId: string): string[] {
   const order = new Map(program.stations.map((s, i) => [s.id, i]));
   const target = order.get(stationId);
@@ -143,7 +143,7 @@ export async function listLineBoards(repositoryId: string): Promise<LineBoard[]>
 
     const gateStageIds = [...new Set(program.gate.stages.map((s) => s.id))];
 
-    // Latest run per gate stage — the same evidence `har line status` uses.
+    // Latest run per gate stage — the same evidence `har line describe` uses.
     const runs = gateStageIds.length
       ? await prisma.run.findMany({
           where: { repositoryId, stageId: { in: gateStageIds } },

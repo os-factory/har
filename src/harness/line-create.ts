@@ -145,7 +145,7 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
       ...(withGateStage
         ? [`Edit ${lineDirRel}/stages/${gateStageId}.sh — replace the TODO with the real gate`]
         : []),
-      `har line status ${id}`,
+      `har line describe ${id}`,
       `har line gate ${stationIds[0]} --line ${id}`,
     ],
     docsPath: `${lineDirRel}/README.md`,

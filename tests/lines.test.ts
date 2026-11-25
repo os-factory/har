@@ -252,16 +252,16 @@ describe('factory lines', () => {
       const after = JSON.parse(fs.readFileSync(registryPath, 'utf8')).verificationStages;
       expect(after).toEqual(before);
 
-      const status = JSON.parse(
+      const described = JSON.parse(
         execFileSync(
           process.execPath,
-          [cli, 'line', 'status', 'example-line', '--repo', repoPath, '--json'],
+          [cli, 'line', 'describe', 'example-line', '--repo', repoPath, '--json'],
           { encoding: 'utf8' },
         ),
       );
-      expect(status.lineId).toBe('example-line');
-      expect(status.verifyLeaks).toEqual([]);
-      expect(status.nextStationId).toBe('S2');
+      expect(described.lineId).toBe('example-line');
+      expect(described.verifyLeaks).toEqual([]);
+      expect(described.nextStationId).toBe('S2');
     });
 
     it('refuses the line bundle from env add-plugin', () => {

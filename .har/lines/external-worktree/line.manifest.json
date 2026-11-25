@@ -93,7 +93,7 @@
     }
   ],
   "nextSteps": [
-    "har line status external-worktree",
+    "har line describe external-worktree",
     "har line gate S3 --line external-worktree"
   ],
   "docsPath": ".har/lines/external-worktree/README.md"
