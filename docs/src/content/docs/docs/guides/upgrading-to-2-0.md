@@ -84,7 +84,7 @@ are removed.** The next time HAR
   `~/.claude/settings.json`. It removes only the keys it recorded writing, and only
   while they still hold the value it wrote: a key you set or changed yourself is
   left alone.
-- **otel-hook is upgraded.** HAR installs `@osfactory/otel-hook@0.13.2` in place of
+- **otel-hook is upgraded.** HAR installs `@osfactory/otel-hook@0.14.0` in place of
   an older copy on the next launch or `har telemetry on`, and registers the Claude
   Code hook with `--claude-transcript-usage --logs --metrics` and the Codex hook
   with `--codex-rollout-usage`.
