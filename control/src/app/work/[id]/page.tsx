@@ -5,10 +5,12 @@ import { AttemptHandoff } from '@/components/attempt-handoff';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { WorkUnitAttempts } from '@/components/work-unit-attempts';
+import { WorkUnitFactoryRuns } from '@/components/work-unit-factory-runs';
 import { gitRemoteBrowseUrl } from '@/lib/git-remote-url';
 import { getAttemptRecord, type AttemptRecord } from '@/server/attempt-record';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
 import { getFactoryWorkUnitById } from '@/server/work-units';
+import { workUnitViewOf } from '@/server/work-unit-view';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,17 +24,22 @@ export default async function WorkUnitPage({
   if (!unit) notFound();
   const outcome = unit.outcome as { decision?: string; decidedAt?: string } | null;
   const status = outcome?.decision ?? (unit.slot ? 'active' : 'open');
-  const browseUrl = gitRemoteBrowseUrl(unit.repository.gitRemote);
-  const repoName =
-    unit.repository.path.split('/').pop() ?? unit.repository.path;
+  const repository = unit.repository;
+  const browseUrl = gitRemoteBrowseUrl(repository?.gitRemote ?? unit.repositoryUrl);
+  const repoName = repository
+    ? (repository.path.split('/').pop() ?? repository.path)
+    : (unit.repositoryUrl?.split('/').pop() ?? 'Unregistered repository');
 
   // #348: attempts are records. Slot numbers are text here — a slot is live data and may
   // hold unrelated work by now; only a live attempt links to its slot.
-  const records = (
-    await Promise.all(
-      unit.attempts.map((attempt) => getAttemptRecord(unit.repository.id, occupancyKeyForAttempt(attempt.attemptId))),
-    )
-  ).filter((record): record is AttemptRecord => record != null);
+  const [records, view] = await Promise.all([
+    Promise.all(
+      unit.attempts
+        .filter((attempt) => attempt.repositoryId)
+        .map((attempt) => getAttemptRecord(attempt.repositoryId as string, occupancyKeyForAttempt(attempt.attemptId))),
+    ).then((list) => list.filter((record): record is AttemptRecord => record != null)),
+    workUnitViewOf(unit),
+  ]);
   const verified = records.filter((record) => record.verification?.latestRun?.status === 'pass').length;
 
   const relatedLinks = (unit.relatedLinks as WorkUnitRelatedLink[] | null) ?? [];
@@ -85,14 +92,18 @@ export default async function WorkUnitPage({
             <CardTitle className="text-base">Repository</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <Link
-              href={`/repos/${unit.repository.id}`}
-              className="font-medium text-primary underline-offset-2 hover:underline"
-            >
-              {repoName}
-            </Link>
+            {repository ? (
+              <Link
+                href={`/repos/${repository.id}`}
+                className="font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {repoName}
+              </Link>
+            ) : (
+              <p className="font-medium">{repoName}</p>
+            )}
             <p className="break-all font-mono text-xs text-muted-foreground">
-              {unit.repository.path}
+              {repository?.path ?? unit.repositoryUrl ?? 'No repository URL'}
             </p>
             {browseUrl ? (
               <a
@@ -103,9 +114,9 @@ export default async function WorkUnitPage({
               >
                 Open remote
               </a>
-            ) : unit.repository.gitRemote ? (
+            ) : repository?.gitRemote ? (
               <p className="break-all font-mono text-xs text-muted-foreground">
-                {unit.repository.gitRemote}
+                {repository.gitRemote}
               </p>
             ) : null}
           </CardContent>
@@ -157,7 +168,21 @@ export default async function WorkUnitPage({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <WorkUnitAttempts repositoryId={unit.repository.id} records={records} />
+          <WorkUnitAttempts repositoryId={repository?.id ?? ''} records={records} />
+        </CardContent>
+      </Card>
+
+      <Card className="min-w-0" data-testid="work-unit-v2">
+        <CardHeader>
+          <CardTitle>Factory runs</CardTitle>
+          <CardDescription>
+            What the CLI sent for this unit: each factory run with its stages, logs and artifacts (by sha256), the
+            proof, the commits, and agent usage up to the run&apos;s end. Read from{' '}
+            <code>/api/v2/work-units/{unit.workUnitId}</code>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <WorkUnitFactoryRuns attempts={view.attempts} />
         </CardContent>
       </Card>
     </div>

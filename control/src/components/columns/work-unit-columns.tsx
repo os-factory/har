@@ -14,7 +14,7 @@ export interface WorkRow {
   id: string;
   workUnitId: string;
   title: string | null;
-  repoId: string;
+  repoId: string | null;
   repoName: string;
   repoPath: string;
   state: WorkUnitState;
@@ -74,17 +74,20 @@ export const workUnitColumns: ColumnDef<WorkRow>[] = [
   {
     accessorKey: 'repoName',
     header: 'Repository',
-    cell: ({ row }) => (
-      <Link href={`/repos/${row.original.repoId}`} title={row.original.repoPath} className="underline-offset-2 hover:underline">
-        {row.original.repoName}
-      </Link>
-    ),
+    cell: ({ row }) =>
+      row.original.repoId ? (
+        <Link href={`/repos/${row.original.repoId}`} title={row.original.repoPath} className="underline-offset-2 hover:underline">
+          {row.original.repoName}
+        </Link>
+      ) : (
+        <span title={row.original.repoPath}>{row.original.repoName}</span>
+      ),
   },
   {
     accessorKey: 'activeSlotId',
     header: 'Slot',
     cell: ({ row }) =>
-      row.original.activeSlotId != null ? (
+      row.original.activeSlotId != null && row.original.repoId ? (
         <Link href={`/repos/${row.original.repoId}/slots/${row.original.activeSlotId}`} className="underline-offset-2 hover:underline">
           {row.original.activeSlotId}
         </Link>

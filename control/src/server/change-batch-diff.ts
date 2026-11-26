@@ -13,11 +13,12 @@ function diffDirectory(repoPath: string, workDir: string | null): string {
 }
 
 export async function getChangeBatchDiff(repositoryId: string, batchId: string) {
-  const batch = await prisma.changeBatch.findFirst({
+  const run = await prisma.factoryRun.findFirst({
     where: { id: batchId, repositoryId },
     include: { repository: { select: { path: true } } },
   });
-  if (!batch) return undefined;
+  if (!run?.repository) return undefined;
+  const batch = { ...run, treeHash: run.tree, repository: run.repository };
 
   if (!batch.headSha || !GIT_OBJECT_ID.test(batch.headSha) || !GIT_OBJECT_ID.test(batch.treeHash)) {
     throw new Error('This snapshot was recorded without a Git head, so there is nothing to diff it against.');

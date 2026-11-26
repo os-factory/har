@@ -19,6 +19,7 @@ import {
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { findTimelinePoints, TIMELINE_POINT_WHERE } from '@/server/timeline-points';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
 import {
   isWorkspaceUnderPath,
@@ -415,19 +416,19 @@ export async function resolveTargetSlot(
   if (branch) {
     const onBranch = slots.filter((slot) => slot.branch === branch).sort((a, b) => Number(b.active) - Number(a.active));
     if (onBranch[0]) return evidenceFromSlot(onBranch[0]);
-    const attempt = await prisma.workAttempt.findFirst({
-      where: { repositoryId, branch },
-      orderBy: { sourceCreatedAt: 'desc' },
-      select: { attemptId: true, agentId: true, workDir: true, worktreePath: true, branch: true, workUnit: { select: { workUnitId: true } } },
+    const attempt = await prisma.attempt.findFirst({
+      where: { repositoryId, branch, agentId: { not: null } },
+      orderBy: { startedAt: 'desc' },
+      select: { attemptId: true, agentId: true, workDir: true, worktreePath: true, branch: true, workUnitId: true },
     });
-    if (attempt) {
+    if (attempt && attempt.agentId != null) {
       return {
         slotId: attempt.agentId,
         occupancyKey: occupancyKeyForAttempt(attempt.attemptId),
         branch: attempt.branch,
         workDir: attempt.workDir ?? attempt.worktreePath,
         suffix: null,
-        workUnitId: attempt.workUnit.workUnitId,
+        workUnitId: attempt.workUnitId,
         attemptId: attempt.attemptId,
       };
     }
@@ -533,9 +534,7 @@ export async function timelineSlotAt(
   /** Evidence carried by the record being placed, not stored yet. */
   pending: TimelineBinding[] = [],
 ): Promise<SlotEvidence | null> {
-  const stored = await prisma.sessionSlotBinding.findMany({
-    where: { repositoryId, agentTool: ref.agentTool, sessionId: ref.sessionId, at: { lte: at } },
-  });
+  const stored = await findTimelinePoints({ repositoryId, agentTool: ref.agentTool, sessionId: ref.sessionId, from: { lte: at } });
   if (stored.length === 0 && pending.length === 0) return null;
   const bindings = [
     ...stored,
@@ -543,13 +542,11 @@ export async function timelineSlotAt(
   ];
   const slotIds = [...new Set(bindings.map((binding) => binding.slotId))];
   const [releases, slots, attempts] = await Promise.all([
-    prisma.sessionSlotBinding.findMany({
-      where: { repositoryId, kind: 'release', slotId: { in: slotIds }, at: { lte: at } },
-    }),
+    findTimelinePoints({ repositoryId, kind: 'release', slotId: { in: slotIds }, from: { lte: at } }),
     prisma.agentSlot.findMany({ where: { repositoryId, slotId: { in: slotIds } }, select: { ...SLOT_SELECT, sessionCreatedAt: true } }),
-    prisma.workAttempt.findMany({
-      where: { repositoryId, agentId: { in: slotIds }, sourceCreatedAt: { lte: at } },
-      select: { attemptId: true, agentId: true, sourceCreatedAt: true },
+    prisma.attempt.findMany({
+      where: { repositoryId, agentId: { in: slotIds }, startedAt: { lte: at } },
+      select: { attemptId: true, agentId: true, startedAt: true },
     }),
   ]);
   const toTimeline = (row: (typeof bindings)[number]): TimelineBinding => ({
@@ -568,9 +565,9 @@ export async function timelineSlotAt(
       .filter((slot) => slot.occupancyKey && slot.sessionCreatedAt)
       .map((slot) => ({ slotId: slot.slotId, occupancyKey: slot.occupancyKey, at: slot.sessionCreatedAt!, kind: 'start' as const })),
     ...attempts.map((attempt) => ({
-      slotId: attempt.agentId,
+      slotId: attempt.agentId as number,
       occupancyKey: occupancyKeyForAttempt(attempt.attemptId),
-      at: attempt.sourceCreatedAt,
+      at: attempt.startedAt,
       kind: 'start' as const,
     })),
   ];
@@ -597,9 +594,9 @@ export async function timelineSlotAt(
 
 /** Repository of a provider session's latest binding at or before `at`, in any repository. */
 export async function latestBindingRepositoryAt(ref: AgentSessionRef, at: Date): Promise<string | null> {
-  const latest = await prisma.sessionSlotBinding.findFirst({
-    where: { agentTool: ref.agentTool, sessionId: ref.sessionId, at: { lte: at } },
-    orderBy: [{ at: 'desc' }, { createdAt: 'desc' }],
+  const latest = await prisma.sessionSegment.findFirst({
+    where: { agentTool: ref.agentTool, sessionId: ref.sessionId, from: { lte: at }, ...TIMELINE_POINT_WHERE },
+    orderBy: [{ from: 'desc' }, { createdAt: 'desc' }],
     select: { repositoryId: true },
   });
   return latest?.repositoryId ?? null;
@@ -639,12 +636,12 @@ async function sessionSpanRepository(ref: AgentSessionRef, at?: Date): Promise<s
  * placed.
  */
 export async function repositoryForProviderSession(ref: AgentSessionRef): Promise<string | null> {
-  const binding = await prisma.sessionSlotBinding.findFirst({
-    where: { agentTool: ref.agentTool, sessionId: ref.sessionId },
-    orderBy: [{ at: 'asc' }],
+  const binding = await prisma.sessionSegment.findFirst({
+    where: { agentTool: ref.agentTool, sessionId: ref.sessionId, ...TIMELINE_POINT_WHERE },
+    orderBy: [{ from: 'asc' }],
     select: { repositoryId: true },
   });
-  if (binding) return binding.repositoryId;
+  if (binding?.repositoryId) return binding.repositoryId;
   const observation = await prisma.usageObservation.findFirst({
     where: { agentTool: ref.agentTool, sessionId: ref.sessionId },
     select: { repositoryId: true },

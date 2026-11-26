@@ -156,7 +156,7 @@ describe('session attribution on a real database', () => {
     expect(bySlot()).toEqual({ main: 1, 'slot-2': 2, 'slot-3': 12 });
     expect(view.rows.find((row) => row.agentId === 2)).toMatchObject({ occupancyKey: 'occ-2', sessionKey: SID });
 
-    const stored = await prisma.sessionSlotBinding.findMany({ where: { repositoryId }, orderBy: { at: 'asc' } });
+    const stored = await prisma.sessionSegment.findMany({ where: { repositoryId }, orderBy: { from: 'asc' } });
     expect(stored.map((row) => `${row.kind}:${row.slotId}:${row.occupancyKey}`)).toEqual(['launch:2:occ-2', 'observed:3:occ-3']);
   });
 

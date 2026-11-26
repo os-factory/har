@@ -3,7 +3,6 @@ import { Prisma, type AgentTrajectoryRecord } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { boundTrajectoryPayload, trajectoryPolicy } from '@/lib/trajectory-privacy';
-import { clampPageLimit, createdAtKeyset } from '@/server/pagination';
 import type {
   SerializedTrajectoryPage,
   SerializedTrajectoryRecord,
@@ -422,36 +421,6 @@ export async function listTrajectoryExport(
     where: await readScopeWhere(scope),
     orderBy: ascendingOrder,
   });
-}
-
-const REPO_TRAJECTORY_LIMIT = 1_000;
-const REPO_TRAJECTORY_MAX_LIMIT = 5_000;
-
-export async function listTrajectoryForRepo(
-  repositoryId: string,
-  options: { since?: string | null; sinceId?: string | null; limit?: number } = {},
-): Promise<AgentTrajectoryRecord[]> {
-  return prisma.agentTrajectoryRecord.findMany({
-    where: { repositoryId, ...createdAtKeyset(options) },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    take: clampPageLimit(options.limit, REPO_TRAJECTORY_LIMIT, REPO_TRAJECTORY_MAX_LIMIT),
-  });
-}
-
-export function serializeTrajectoryForEgress(
-  record: AgentTrajectoryRecord,
-): SerializedTrajectoryRecord {
-  const { maxPayloadBytes } = trajectoryPolicy();
-  const bounded = boundTrajectoryPayload(
-    (record.payload ?? {}) as Record<string, unknown>,
-    record.contentDisclosure as CanonicalTrajectoryRecord['contentDisclosure'],
-    maxPayloadBytes,
-  );
-  return {
-    ...serializeTrajectoryRecord(record),
-    payload: bounded.payload,
-    contentDisclosure: bounded.contentDisclosure,
-  };
 }
 
 export async function deleteTrajectoryScope(scope: TrajectoryScope): Promise<{ deleted: number }> {

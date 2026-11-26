@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db';
 import { shouldPersistOtelUsage } from '@/server/otel-workspace';
 import { upsertSessionEvent } from '@/server/session-events';
 import { upsertSessionUsage } from '@/server/usage';
+import type { AttrMap } from '@/server/otel-ingest';
+import { stampedIds } from '@/server/stamped-ids';
 import {
   redactSecretAttributes,
   visibleContentFromPayload,
@@ -97,6 +99,8 @@ export function eventInputFromTrajectoryRecord(record: AgentTrajectoryRecord) {
     source: record.source === 'harvest' ? 'harvest' : 'otel',
     workUnitId: record.workUnitId ?? undefined,
     attemptId: record.attemptId ?? undefined,
+    factoryRunId: stampedIds(attributes as AttrMap).factoryRunId ?? undefined,
+    sessionId: stampedIds(attributes as AttrMap).sessionId ?? undefined,
   };
 }
 
@@ -124,6 +128,8 @@ export async function projectTrajectoryRecord(record: AgentTrajectoryRecord): Pr
         agentTool: record.agentTool,
         workUnitId: record.workUnitId,
         attemptId: record.attemptId,
+        factoryRunId: stampedIds(attributes as AttrMap).factoryRunId,
+        sessionId: stampedIds(attributes as AttrMap).sessionId,
         traceId: record.traceId,
         spanId: record.spanId,
         parentSpanId: record.parentSpanId,

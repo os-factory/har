@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => {
   const tables: Record<string, Array<Record<string, unknown>>> = {
     repository: [],
-    sessionSlotBinding: [],
+    sessionSegment: [],
     usageObservation: [],
     agentSlot: [],
-    workAttempt: [],
+    attempt: [],
     agentSessionUsage: [],
     sessionReportedUsage: [],
   };

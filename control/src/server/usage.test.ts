@@ -13,11 +13,11 @@ vi.mock('@/lib/db', () => ({
       upsert: (...args: unknown[]) => upsert(...args),
     },
     // ADR 0003 read model: no observations, so legacy rows read as they are.
-    sessionSlotBinding: { findMany: async () => [] },
+    sessionSegment: { findMany: async () => [] },
     usageObservation: { findMany: async () => [] },
     sessionReportedUsage: { findMany: async () => [] },
     agentSlot: { findMany: async () => [] },
-    workAttempt: { findMany: async () => [] },
+    attempt: { findMany: async () => [] },
   },
 }));
 

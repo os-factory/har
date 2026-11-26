@@ -1,33 +1,6 @@
 import { NextResponse } from 'next/server';
 import { MAIN_CHECKOUT_AGENT_ID, SyncUsageInputSchema } from '@har/schemas';
-import { loadUsageView } from '@/server/session-attribution';
 import { syncUsage } from '@/server/usage';
-
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-  // ADR 0003: slot usage is derived from observations and the binding timeline;
-  // usage with no binding is per-session `unassigned` (the main checkout, or a
-  // non-slot worktree named by `workDir` / `branch`), never a slot's. Every row
-  // carries `changedAt`, when its session's facts last changed: `har control
-  // sync` re-sends each changed session whole to har-portal.
-  const view = await loadUsageView(id);
-  return NextResponse.json({
-    unassigned: view.unassigned,
-    crossChecks: view.crossChecks,
-    usage: view.rows.map((row) => ({
-      ...row,
-      tokensInput: Number(row.tokensInput),
-      tokensOutput: Number(row.tokensOutput),
-      tokensCacheRead: Number(row.tokensCacheRead),
-      tokensCacheCreation: Number(row.tokensCacheCreation),
-      tokensTotal: Number(row.tokensTotal),
-      costUsd: row.costUsd == null ? null : Number(row.costUsd),
-    })),
-  });
-}
 
 export async function POST(
   request: Request,

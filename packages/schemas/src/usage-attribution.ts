@@ -98,6 +98,8 @@ export interface ObservationFact {
   tokensCacheRead: number;
   tokensCacheCreation: number;
   costUsd?: number | null;
+  /** How `costUsd` was obtained when a receiver priced it at ingest; absent means reported. */
+  costSource?: 'reported' | 'estimated' | null;
 }
 
 const KIND_RANK: Record<TimelineBindingKind, number> = {
@@ -393,7 +395,9 @@ export interface PricedObservation extends ObservationFact {
 
 export function priceObservation(observation: ObservationFact): PricedObservation {
   if (observation.costUsd != null && Number.isFinite(observation.costUsd)) {
-    return { ...observation, pricedCostUsd: observation.costUsd, costSource: 'reported' };
+    // An estimate stored at ingest stays an estimate.
+    const costSource = observation.costSource === 'estimated' ? 'estimated' : 'reported';
+    return { ...observation, pricedCostUsd: observation.costUsd, costSource };
   }
   const estimate = observation.model
     ? estimateModelCostUsd(

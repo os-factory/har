@@ -1,4 +1,4 @@
-import type { AgentSessionUsage, AgentSlot, ChangeBatch, Run, ValidationCommitBinding } from '@prisma/client';
+import type { AgentSessionUsage, AgentSlot, CommitBinding, Run } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import {
   buildTimelineRows,
@@ -14,6 +14,7 @@ import { modelsFromBreakdown } from '@/lib/usage-models';
 import { listTrajectoryStreams } from '@/server/trajectory-ledger';
 import { listSessionUsageForSlot } from '@/server/usage';
 import { extractVerification } from '@/server/validation-stages';
+import { changeBatchView, VERIFIED_RUN, type ChangeBatchView } from '@/server/change-batches';
 
 /**
  * A trajectory can exist before (or without) a usage row — e.g. OTEL prompts arrive
@@ -83,7 +84,7 @@ export function runInput(run: Run): TimelineRunInput {
   };
 }
 
-export function snapshotInput(batch: ChangeBatch): TimelineSnapshotInput {
+export function snapshotInput(batch: ChangeBatchView): TimelineSnapshotInput {
   return {
     validationId: batch.validationId,
     treeHash: batch.treeHash,
@@ -99,15 +100,15 @@ export function snapshotInput(batch: ChangeBatch): TimelineSnapshotInput {
   };
 }
 
-function commitInput(binding: ValidationCommitBinding, snapshot: ChangeBatch | undefined): TimelineCommitInput {
+function commitInput(binding: CommitBinding, snapshot: ChangeBatchView | undefined): TimelineCommitInput {
   return {
     commitSha: binding.commitSha,
-    treeHash: binding.treeHash,
+    treeHash: binding.tree,
     message: binding.message,
     refs: refs(binding.refs),
     branch: snapshot?.branch ?? null,
     agentId: snapshot?.agentId ?? null,
-    at: binding.sourceCreatedAt,
+    at: binding.committedAt,
   };
 }
 
@@ -150,14 +151,14 @@ export function sessionInputs(
   }));
 }
 
-export async function commitBindingsFor(repositoryId: string, snapshots: ChangeBatch[]) {
+export async function commitBindingsFor(repositoryId: string, snapshots: ChangeBatchView[]) {
   if (snapshots.length === 0) return [] as TimelineCommitInput[];
   const byTree = new Map(snapshots.map((snapshot) => [snapshot.treeHash, snapshot]));
-  const bindings = await prisma.validationCommitBinding.findMany({
-    where: { repositoryId, treeHash: { in: [...byTree.keys()] } },
-    orderBy: { sourceCreatedAt: 'desc' },
+  const bindings = await prisma.commitBinding.findMany({
+    where: { repositoryId, tree: { in: [...byTree.keys()] } },
+    orderBy: { committedAt: 'desc' },
   });
-  return bindings.map((binding) => commitInput(binding, byTree.get(binding.treeHash)));
+  return bindings.map((binding) => commitInput(binding, byTree.get(binding.tree)));
 }
 
 /**
@@ -183,11 +184,13 @@ export async function getSlotTimeline(repositoryId: string, slot: AgentSlot): Pr
       orderBy: { startedAt: 'desc' },
       take: RUN_LIMIT,
     }),
-    prisma.changeBatch.findMany({
-      where: { repositoryId, agentId: slot.slotId },
-      orderBy: { createdAt: 'desc' },
-      take: SNAPSHOT_LIMIT,
-    }),
+    prisma.factoryRun
+      .findMany({
+        where: { repositoryId, agentId: slot.slotId, ...VERIFIED_RUN },
+        orderBy: { startedAt: 'desc' },
+        take: SNAPSHOT_LIMIT,
+      })
+      .then((runs) => runs.map(changeBatchView)),
     listSessionUsageForSlot(repositoryId, slot.slotId, slot.occupancyKey),
     listTrajectoryStreams(repositoryId, slot.slotId, slot.occupancyKey),
   ]);

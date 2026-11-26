@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { MAIN_CHECKOUT_AGENT_ID, worktreeOccupancyKey, type AgentTool } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { timelineSlotAt } from '@/server/otel-attribution';
+import { findTimelinePoints, timelinePointKey } from '@/server/timeline-points';
 
 /**
  * Late slot evidence (ADR 0003).
@@ -43,26 +44,25 @@ export async function claimLateSlotEvidence(
     worktreeOccupancyKey({ workDir: occupancy.workDir }),
     worktreeOccupancyKey({ branch: occupancy.branch }),
   ].filter((key): key is string => Boolean(key));
-  const stale = await prisma.sessionSlotBinding.findMany({
-    where: {
-      repositoryId,
-      slotId: MAIN_CHECKOUT_AGENT_ID,
-      kind: { in: ['observed', 'workspace'] },
-      at: { gte: occupancy.since },
-      OR: [
-        ...(occupancy.branch ? [{ branch: occupancy.branch }] : []),
-        { occupancyKey: { in: worktreeKeys } },
-      ],
-    },
+  const stale = await findTimelinePoints({
+    repositoryId,
+    slotId: MAIN_CHECKOUT_AGENT_ID,
+    kind: { in: ['observed', 'workspace'] },
+    from: { gte: occupancy.since },
+    OR: [
+      ...(occupancy.branch ? [{ branch: occupancy.branch }] : []),
+      { occupancyKey: { in: worktreeKeys } },
+    ],
   });
   if (stale.length === 0) return { bindings: 0, records: 0 };
 
   const sessions = new Map<string, { agentTool: AgentTool; sessionId: string; from: Date }>();
   for (const binding of stale) {
     try {
-      await prisma.sessionSlotBinding.update({
+      await prisma.sessionSegment.update({
         where: { id: binding.id },
         data: {
+          segmentKey: timelinePointKey({ ...binding, slotId: occupancy.slotId }),
           slotId: occupancy.slotId,
           occupancyKey: occupancy.occupancyKey,
           branch: occupancy.branch ?? binding.branch,
@@ -71,7 +71,7 @@ export async function claimLateSlotEvidence(
     } catch (error) {
       // The same evidence already sits on the slot: the worktree copy is redundant.
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
-      await prisma.sessionSlotBinding.delete({ where: { id: binding.id } });
+      await prisma.sessionSegment.delete({ where: { id: binding.id } });
     }
     const key = `${binding.agentTool}\0${binding.sessionId}`;
     const seen = sessions.get(key);

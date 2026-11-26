@@ -14,6 +14,7 @@ const db = vi.hoisted(() => {
     if (op === 'lte') return a <= e;
     if (op === 'gte') return a >= e;
     if (op === 'in') return (expected as unknown[]).includes(actual);
+    if (op === 'not') return a !== e;
     return a === e;
   };
   const matches = (row: Row, where: Record<string, unknown>): boolean =>
@@ -26,7 +27,7 @@ const db = vi.hoisted(() => {
     });
   /** Unique key of a binding row, as the real table enforces it. */
   const bindingKey = (row: Row) =>
-    ['repositoryId', 'agentTool', 'sessionId', 'subagentId', 'kind', 'slotId', 'at'].map((f) => String(key(row[f]))).join('|');
+    ['repositoryId', 'agentTool', 'sessionId', 'subagentId', 'kind', 'slotId', 'from'].map((f) => String(key(row[f]))).join('|');
   const table = (name: (typeof names)[number]) => ({
     findMany: async ({ where, take }: { where: Record<string, unknown>; take?: number }) =>
       tables[name].filter((row) => matches(row, where)).slice(0, take),
@@ -51,9 +52,9 @@ const db = vi.hoisted(() => {
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    sessionSlotBinding: db.table('bindings'),
+    sessionSegment: db.table('bindings'),
     agentSlot: db.table('slots'),
-    workAttempt: db.table('attempts'),
+    attempt: db.table('attempts'),
     agentSessionSpan: db.table('spans'),
     agentSessionEvent: db.table('events'),
     agentTrajectoryRecord: db.table('trajectory'),
@@ -88,7 +89,7 @@ beforeEach(() => {
   });
   // The launch reached Mission Control; the edits that followed arrived first and
   // were stored as a non-slot worktree.
-  db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'launch', slotId: 1, occupancyKey: OCC, branch: BRANCH, at: t(33) });
+  db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'launch', slotId: 1, occupancyKey: OCC, branch: BRANCH, from: t(33) });
   for (const second of [36, 37]) {
     db.insert('bindings', {
       repositoryId: REPO,
@@ -97,7 +98,7 @@ beforeEach(() => {
       slotId: 0,
       occupancyKey: `worktree-branch:${BRANCH}`,
       branch: BRANCH,
-      at: t(second),
+      from: t(second),
     });
     db.insert('spans', { repositoryId: REPO, sessionKey: 'S1', agentTool: 'claude_code', agentId: 0, startTime: t(second) });
   }
@@ -126,7 +127,7 @@ describe('claimLateSlotEvidence', () => {
   });
 
   it('drops the worktree copy when the same evidence is already on the slot', async () => {
-    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'observed', slotId: 1, occupancyKey: OCC, branch: BRANCH, at: t(36) });
+    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'observed', slotId: 1, occupancyKey: OCC, branch: BRANCH, from: t(36) });
 
     await claimLateSlotEvidence(REPO, occupancy);
 
@@ -136,9 +137,9 @@ describe('claimLateSlotEvidence', () => {
   });
 
   it('leaves evidence from before the occupancy, of another worktree, or of the main checkout alone', async () => {
-    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'observed', slotId: 0, occupancyKey: `worktree-branch:${BRANCH}`, branch: BRANCH, at: t(10) });
-    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'observed', slotId: 0, occupancyKey: 'worktree-branch:other', branch: 'other', at: t(38) });
-    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'workspace', slotId: 0, occupancyKey: 'worktree-branch:main', branch: 'main', at: t(39) });
+    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'observed', slotId: 0, occupancyKey: `worktree-branch:${BRANCH}`, branch: BRANCH, from: t(10) });
+    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'observed', slotId: 0, occupancyKey: 'worktree-branch:other', branch: 'other', from: t(38) });
+    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'workspace', slotId: 0, occupancyKey: 'worktree-branch:main', branch: 'main', from: t(39) });
 
     expect((await claimLateSlotEvidence(REPO, occupancy)).bindings).toBe(2);
     expect(db.tables.bindings.filter((row) => row.slotId === 0).map((row) => row.branch)).toEqual([BRANCH, 'other', 'main']);
@@ -146,7 +147,7 @@ describe('claimLateSlotEvidence', () => {
 
   it('matches a worktree named only by its path', async () => {
     db.tables.bindings.splice(1);
-    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'workspace', slotId: 0, occupancyKey: `worktree:${WORK_DIR}`, branch: null, at: t(36) });
+    db.insert('bindings', { repositoryId: REPO, ...SESSION, kind: 'workspace', slotId: 0, occupancyKey: `worktree:${WORK_DIR}`, branch: null, from: t(36) });
 
     expect((await claimLateSlotEvidence(REPO, occupancy)).bindings).toBe(1);
     expect(db.tables.bindings[1]).toMatchObject({ slotId: 1, occupancyKey: OCC, branch: BRANCH });

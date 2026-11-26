@@ -9,6 +9,8 @@ import {
   type UsageObservation,
   legacyRowSuperseded,
   UNPRICED_AGENT_TOOLS,
+  GENAI_PRICES_LABEL,
+  estimateModelCostUsd,
   mergeRepeatedObservation,
   producerFamily,
   runningTotalDelta,
@@ -26,6 +28,7 @@ import {
 import { prisma } from '@/lib/db';
 import { attemptIdFromOccupancyKey } from '@/server/occupancy';
 import { repositoryOfPlaceAt } from '@/server/otel-attribution';
+import { findTimelinePoints, timelinePointKey } from '@/server/timeline-points';
 
 /**
  * Storage and read model of session → slot attribution (ADR 0003).
@@ -77,22 +80,15 @@ export async function recordBindings(
   for (const raw of bindings) {
     const binding = await withOccupancy(repositoryId, raw);
     const subagentId = binding.subagentId ?? '';
-    const where = {
-      repositoryId_agentTool_sessionId_subagentId_kind_slotId_at: {
-        repositoryId,
-        agentTool: binding.agentTool,
-        sessionId: binding.sessionId,
-        subagentId,
-        kind: binding.kind,
-        slotId: binding.slotId,
-        at: binding.at,
-      },
-    };
-    const existing = await prisma.sessionSlotBinding.findUnique({ where, select: { id: true, occupancyKey: true, branch: true } });
+    const segmentKey = timelinePointKey({ repositoryId, ...binding, subagentId });
+    const existing = await prisma.sessionSegment.findUnique({
+      where: { segmentKey },
+      select: { id: true, occupancyKey: true, branch: true },
+    });
     if (existing) {
       // A repeat may only add what the first copy lacked.
       if ((!existing.occupancyKey && binding.occupancyKey) || (!existing.branch && binding.branch)) {
-        await prisma.sessionSlotBinding.update({
+        await prisma.sessionSegment.update({
           where: { id: existing.id },
           data: {
             occupancyKey: existing.occupancyKey ?? binding.occupancyKey ?? null,
@@ -103,8 +99,9 @@ export async function recordBindings(
       continue;
     }
     try {
-      await prisma.sessionSlotBinding.create({
+      await prisma.sessionSegment.create({
         data: {
+          segmentKey,
           repositoryId,
           agentTool: binding.agentTool,
           sessionId: binding.sessionId,
@@ -113,7 +110,7 @@ export async function recordBindings(
           slotId: binding.slotId,
           occupancyKey: binding.occupancyKey ?? null,
           branch: binding.branch ?? null,
-          at: binding.at,
+          from: binding.at,
           origin,
         },
       });
@@ -150,10 +147,7 @@ export interface SessionBindingFilter {
 }
 
 export async function listSessionBindings(repositoryId: string, filter: SessionBindingFilter = {}) {
-  const rows = await prisma.sessionSlotBinding.findMany({
-    where: { repositoryId, ...filter },
-    orderBy: [{ at: 'asc' }, { createdAt: 'asc' }],
-  });
+  const rows = await findTimelinePoints({ repositoryId, ...filter }, [{ from: 'asc' }, { createdAt: 'asc' }]);
   return rows.map(bindingView);
 }
 
@@ -199,6 +193,10 @@ export interface ObservationInput {
   tokensCacheRead?: number;
   tokensCacheCreation?: number;
   costUsd?: number | null;
+  /** Stamped telemetry attributes (`factory.*`, ADR 0004 section 3), lifted out for the work unit view. */
+  workUnitId?: string | null;
+  attemptId?: string | null;
+  factoryRunId?: string | null;
   /**
    * The session running total the provider reported at this unit (Codex hooks).
    * The unit's own usage is then its difference from the previous unit of the
@@ -213,7 +211,72 @@ function toBigInt(value: number | undefined): bigint {
 
 export { mergeRepeatedObservation };
 
-const STORED_OBSERVATION = { id: true, producer: true, source: true, costUsd: true } as const;
+const STORED_OBSERVATION = { id: true, producer: true, source: true, costUsd: true, costSource: true } as const;
+
+/**
+ * Price a stored observation at ingest (ADR 0005 section 5): a cost the
+ * provider reported is kept as reported; otherwise the tokens are priced with
+ * genai-prices and the row records which release priced it. Unpriced tools and
+ * unknown models keep a null cost.
+ */
+export function observationPricing(row: {
+  agentTool: string;
+  model: string | null;
+  tokensInput: bigint | number;
+  tokensOutput: bigint | number;
+  tokensCacheRead: bigint | number;
+  tokensCacheCreation: bigint | number;
+  costUsd: Prisma.Decimal | number | null;
+  costSource: string | null;
+}): { costUsd: number | null; costSource: 'reported' | 'estimated' | null; pricedWith: string | null } {
+  if (row.costSource === 'reported' && row.costUsd != null) {
+    return { costUsd: Number(row.costUsd), costSource: 'reported', pricedWith: null };
+  }
+  const estimate = row.model
+    ? estimateModelCostUsd(
+        row.model,
+        {
+          tokensInput: Number(row.tokensInput),
+          tokensOutput: Number(row.tokensOutput),
+          tokensCacheRead: Number(row.tokensCacheRead),
+          tokensCacheCreation: Number(row.tokensCacheCreation),
+        },
+        row.agentTool,
+      )
+    : null;
+  return estimate == null
+    ? { costUsd: null, costSource: null, pricedWith: null }
+    : { costUsd: estimate, costSource: 'estimated', pricedWith: GENAI_PRICES_LABEL };
+}
+
+async function priceStoredObservation(id: string): Promise<void> {
+  const row = await prisma.usageObservation.findUnique({
+    where: { id },
+    select: {
+      agentTool: true,
+      model: true,
+      tokensInput: true,
+      tokensOutput: true,
+      tokensCacheRead: true,
+      tokensCacheCreation: true,
+      costUsd: true,
+      costSource: true,
+      pricedWith: true,
+    },
+  });
+  if (!row || row.costSource === 'reported') return;
+  const priced = observationPricing(row);
+  const sameCost = (row.costUsd == null ? null : Number(row.costUsd)) === priced.costUsd;
+  if (sameCost && row.costSource === priced.costSource && row.pricedWith === priced.pricedWith) return;
+  await prisma.usageObservation.update({
+    where: { id },
+    data: {
+      costUsd: priced.costUsd == null ? null : new Prisma.Decimal(priced.costUsd),
+      costSource: priced.costSource,
+      pricedWith: priced.pricedWith,
+    },
+  });
+}
 
 /**
  * One request = one place = one repository (FE-2058): the copy another
@@ -263,6 +326,11 @@ export async function recordObservations(
       tokensCacheRead: toBigInt(observation.tokensCacheRead),
       tokensCacheCreation: toBigInt(observation.tokensCacheCreation),
       costUsd: incomingCost == null ? null : new Prisma.Decimal(incomingCost),
+      costSource: incomingCost == null ? null : 'reported',
+      pricedWith: null,
+      ...(observation.workUnitId ? { workUnitId: observation.workUnitId } : {}),
+      ...(observation.attemptId ? { attemptId: observation.attemptId } : {}),
+      ...(observation.factoryRunId ? { factoryRunId: observation.factoryRunId } : {}),
       reportedTotals: observation.runningTotal
         ? (observation.runningTotal as unknown as Prisma.InputJsonValue)
         : Prisma.JsonNull,
@@ -283,21 +351,37 @@ export async function recordObservations(
       (await prisma.usageObservation.findUnique({ where, select: STORED_OBSERVATION })) ??
       (await storedElsewhere(repositoryId, observation, placed));
     if (existing) {
+      // Only a reported cost takes part in the merge; an estimate is recomputed from the merged tokens.
+      const reported = existing.costSource === 'reported' && existing.costUsd != null ? Number(existing.costUsd) : null;
       const merge = mergeRepeatedObservation(
-        { ...existing, costUsd: existing.costUsd == null ? null : Number(existing.costUsd) },
+        { ...existing, costUsd: reported },
         { producer: observation.producer, source: observation.source, costUsd: incomingCost },
       );
       if (merge) {
-        const costUsd = merge.costUsd == null ? null : new Prisma.Decimal(merge.costUsd);
+        const cost = {
+          costUsd: merge.costUsd == null ? null : new Prisma.Decimal(merge.costUsd),
+          costSource: merge.costUsd == null ? null : 'reported',
+          pricedWith: null,
+        };
         await prisma.usageObservation.update({
           where: { id: existing.id },
-          data: merge.replace ? { ...data, costUsd } : { costUsd },
+          data: merge.replace ? { ...data, ...cost } : cost,
+        });
+        await priceStoredObservation(existing.id);
+      } else if (observation.attemptId || observation.workUnitId || observation.factoryRunId) {
+        await prisma.usageObservation.updateMany({
+          where: { id: existing.id, attemptId: null },
+          data: {
+            attemptId: observation.attemptId ?? null,
+            workUnitId: observation.workUnitId ?? null,
+            factoryRunId: observation.factoryRunId ?? null,
+          },
         });
       }
       continue;
     }
     try {
-      await prisma.usageObservation.create({
+      const createdRow = await prisma.usageObservation.create({
         data: {
           repositoryId,
           agentTool: observation.agentTool,
@@ -305,8 +389,10 @@ export async function recordObservations(
           observationKey: observation.observationKey,
           ...data,
         },
+        select: { id: true },
       });
       created += 1;
+      await priceStoredObservation(createdRow.id);
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
     }
@@ -413,6 +499,7 @@ async function refreshNextRunningTotalUnit(unit: SeriesUnit): Promise<void> {
     nextTotal,
   );
   await prisma.usageObservation.update({ where: { id: next.id }, data: tokenColumns(own) });
+  await priceStoredObservation(next.id);
 }
 
 export function observationInputFromContract(observation: UsageObservation): ObservationInput {
@@ -665,7 +752,7 @@ interface AttemptContext {
   workDir: string | null;
   worktreePath: string | null;
   branch: string | null;
-  workUnitId: string;
+  workUnitId: string | null;
   sourceCreatedAt: Date;
 }
 
@@ -733,6 +820,7 @@ function factFromRow(row: {
   tokensCacheRead: bigint;
   tokensCacheCreation: bigint;
   costUsd: Prisma.Decimal | null;
+  costSource?: string | null;
 }): ObservationFact {
   return {
     agentTool: row.agentTool,
@@ -749,6 +837,7 @@ function factFromRow(row: {
     tokensCacheRead: Number(row.tokensCacheRead),
     tokensCacheCreation: Number(row.tokensCacheCreation),
     costUsd: row.costUsd == null ? null : Number(row.costUsd),
+    costSource: row.costSource === 'estimated' ? 'estimated' : row.costUsd == null ? null : 'reported',
   };
 }
 
@@ -877,7 +966,7 @@ export function buildUsageView(inputs: UsageViewInputs): UsageView {
 /** Load a repository's facts and derive its usage. */
 export async function loadUsageView(repositoryId: string): Promise<UsageView> {
   const [bindings, observations, slots, attempts, legacy, reported] = await Promise.all([
-    prisma.sessionSlotBinding.findMany({ where: { repositoryId } }),
+    findTimelinePoints({ repositoryId }),
     prisma.usageObservation.findMany({
       where: { repositoryId },
       select: {
@@ -895,6 +984,7 @@ export async function loadUsageView(repositoryId: string): Promise<UsageView> {
         tokensCacheRead: true,
         tokensCacheCreation: true,
         costUsd: true,
+        costSource: true,
         updatedAt: true,
       },
     }),
@@ -912,16 +1002,16 @@ export async function loadUsageView(repositoryId: string): Promise<UsageView> {
         sessionCreatedAt: true,
       },
     }),
-    prisma.workAttempt.findMany({
-      where: { repositoryId },
+    prisma.attempt.findMany({
+      where: { repositoryId, agentId: { not: null } },
       select: {
         attemptId: true,
         agentId: true,
         workDir: true,
         worktreePath: true,
         branch: true,
-        sourceCreatedAt: true,
-        workUnit: { select: { workUnitId: true } },
+        startedAt: true,
+        workUnitId: true,
       },
     }),
     prisma.agentSessionUsage.findMany({ where: { repositoryId } }),
@@ -968,7 +1058,11 @@ export async function loadUsageView(repositoryId: string): Promise<UsageView> {
     })),
     observations: observations.map(factFromRow),
     slots,
-    attempts: attempts.map(({ workUnit, ...attempt }) => ({ ...attempt, workUnitId: workUnit.workUnitId })),
+    attempts: attempts.map(({ startedAt, agentId, ...attempt }) => ({
+      ...attempt,
+      agentId: agentId as number,
+      sourceCreatedAt: startedAt,
+    })),
     legacy,
     reported: reported.map((row) => ({
       agentTool: row.agentTool,

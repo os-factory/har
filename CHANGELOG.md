@@ -1,3 +1,9 @@
+## [2.0.0-next.6](https://github.com/os-factory/har/compare/v2.0.0-next.5...v2.0.0-next.6) (2026-11-26)
+
+### Features
+
+* derive the verification trace id from factory-run, add session context and ingest v2 schemas ([#527](https://github.com/os-factory/har/issues/527)) ([eb82461](https://github.com/os-factory/har/commit/eb82461716662a91367290b2dbd82776fc9496fe)), closes [#526](https://github.com/os-factory/har/issues/526) [os-factory/factory-commits#16](https://github.com/os-factory/factory-commits/issues/16)
+
 ## [2.0.0-next.5](https://github.com/os-factory/har/compare/v2.0.0-next.4...v2.0.0-next.5) (2026-11-25)
 
 ### Features

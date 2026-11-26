@@ -4,8 +4,11 @@ const upsert = vi.fn();
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    validationCommitBinding: {
+    commitBinding: {
       upsert: (...args: unknown[]) => upsert(...args),
+    },
+    factoryRun: {
+      findUnique: async () => ({ branch: 'main-har-agent-1', attestationDigest: null }),
     },
   },
 }));
@@ -24,7 +27,7 @@ describe('syncCommitBindings', () => {
     upsert.mockReset();
   });
 
-  it('keys each binding on its tree and commit, so a second worktree overwrites the first', async () => {
+  it('keys each binding on its commit (ADR 0005 section 3), so a second worktree overwrites the first', async () => {
     const fromMainCheckout = binding(
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
@@ -43,19 +46,19 @@ describe('syncCommitBindings', () => {
     expect(result).toEqual({ synced: 2 });
     expect(upsert).toHaveBeenCalledTimes(2);
     for (const [call] of upsert.mock.calls) {
-      expect(call.where).toEqual({
-        repositoryId_treeHash_commitSha: { repositoryId: 'repo-1', treeHash, commitSha },
-      });
+      expect(call.where).toEqual({ commitSha });
     }
     const second = upsert.mock.calls[1][0];
     expect(second.update).toMatchObject({
-      bindingId: fromSlotWorktree.bindingId,
-      validationId: fromSlotWorktree.validationId,
-      sourceCreatedAt: new Date(fromSlotWorktree.createdAt),
+      tree: treeHash,
+      factoryRunId: fromSlotWorktree.validationId,
+      committedAt: new Date(fromSlotWorktree.createdAt),
+      repositoryId: 'repo-1',
     });
     expect(second.create).toMatchObject({
+      commitSha,
       repositoryId: 'repo-1',
-      bindingId: fromSlotWorktree.bindingId,
+      branch: 'main-har-agent-1',
     });
   });
 });

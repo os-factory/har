@@ -15,9 +15,11 @@ export default async function WorkPage() {
       id: unit.id,
       workUnitId: unit.workUnitId,
       title: unit.title && unit.title !== unit.workUnitId ? unit.title : null,
-      repoId: unit.repository.id,
-      repoName: unit.repository.path.split('/').pop() ?? unit.repository.path,
-      repoPath: unit.repository.path,
+      repoId: unit.repository?.id ?? null,
+      repoName: unit.repository
+        ? (unit.repository.path.split('/').pop() ?? unit.repository.path)
+        : (unit.repositoryUrl?.split('/').pop() ?? 'unregistered'),
+      repoPath: unit.repository?.path ?? unit.repositoryUrl ?? '',
       state: deriveWorkUnitState({
         decision: outcome?.decision,
         hasActiveSlot: Boolean(unit.slot),

@@ -25,6 +25,18 @@ export async function resetMissionControl(input: unknown): Promise<ResetMissionC
   }
 
   const deletedRepos = await prisma.repository.deleteMany();
+  // Ingest v2 records need no registered repository (ADR 0005), so a cascade misses some.
+  await prisma.$transaction([
+    prisma.stageResult.deleteMany(),
+    prisma.factoryRun.deleteMany(),
+    prisma.commitBinding.deleteMany(),
+    prisma.attestation.deleteMany(),
+    prisma.sessionSegment.deleteMany(),
+    prisma.attempt.deleteMany(),
+    prisma.workUnit.deleteMany(),
+    prisma.evidenceBlob.deleteMany(),
+    prisma.metricSeries.deleteMany(),
+  ]);
   const clearedUnregistered = await prisma.unregisteredRepository.deleteMany();
 
   return {

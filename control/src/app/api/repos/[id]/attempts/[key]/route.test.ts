@@ -17,94 +17,93 @@ const at = (iso: string) => new Date(iso);
 
 const verificationQueries: unknown[] = [];
 
-vi.mock('@/lib/db', () => ({
-  prisma: {
-    workAttempt: {
-      findUnique: async () => ({
-        id: 'wa-1',
-        repositoryId: REPO,
-        attemptId: ATTEMPT,
-        agentId: 1,
-        workDir: null,
-        worktreePath: '/wt/demo',
-        branch: 'main-399b-har-agent-1-bnid',
-        baseCommit: null,
-        sourceCreatedAt: at('2026-11-25T13:20:00Z'),
-        workUnit: null,
-        validationBindings: [{ validationId: VALIDATION }],
-      }),
-      findFirst: async () => null,
-    },
-    agentSlot: { findFirst: async () => null },
-    repository: { findUnique: async () => ({ path: '/home/dev/demo', gitRemote: null }) },
-    run: {
-      findMany: async () => [
-        {
-          runId: VERIFY_RUN,
+vi.mock('@/lib/db', () => {
+  // One factory run: the snapshot of the verified tree, its verify trace and its binding to the attempt.
+  const factoryRun = () => ({
+    id: 'fr-1',
+    factoryRunId: VALIDATION,
+    repositoryId: REPO,
+    attemptId: ATTEMPT,
+    workUnitId: null,
+    tree: TREE,
+    headSha: null,
+    branch: 'main-399b-har-agent-1-bnid',
+    workDir: null,
+    agentId: 1,
+    status: 'pass',
+    verdict: 'pass',
+    full: true,
+    runId: VERIFY_RUN,
+    changedFiles: [],
+    commitSha: COMMIT,
+    committedAt: at('2026-11-25T13:30:00Z'),
+    occupancyKey: `attempt::${ATTEMPT}`,
+    traceId: '7eef7f60284e123e6b2edc14bb8eedfb',
+    pipelineName: 'har verify --full',
+    attestationDigest: DIGEST,
+    policyId: null,
+    policyDigest: null,
+    producerVersion: '2.0.0-next.3',
+    stageIds: ['typecheck', 'unit-tests'],
+    startedAt: at('2026-11-25T13:25:39.927Z'),
+    updatedAt: at('2026-11-25T13:25:40Z'),
+  });
+  return {
+    prisma: {
+      attempt: {
+        findUnique: async () => ({
+          id: 'wa-1',
           repositoryId: REPO,
-          stageId: 'verify',
-          kind: 'verify',
-          agentId: 1,
-          status: 'pass',
-          trigger: 'cli',
-          durationMs: 420,
-          startedAt: at('2026-11-25T13:25:39.927Z'),
-          workDir: null,
+          repositoryKey: `repo:${REPO}`,
           attemptId: ATTEMPT,
-          occupancyKey: `attempt::${ATTEMPT}`,
-          result: null,
-        },
-      ],
-    },
-    changeBatch: {
-      findMany: async () => [
-        {
-          repositoryId: REPO,
-          validationId: VALIDATION,
-          treeHash: TREE,
-          headSha: null,
-          branch: 'main-399b-har-agent-1-bnid',
-          workDir: null,
+          workUnitId: null,
           agentId: 1,
-          status: 'pass',
-          full: true,
-          runId: VERIFY_RUN,
-          changedFiles: [],
-          commitSha: COMMIT,
-          committedAt: at('2026-11-25T13:30:00Z'),
-          occupancyKey: `attempt::${ATTEMPT}`,
-          createdAt: at('2026-11-25T13:25:40Z'),
-        },
-      ],
-    },
-    validationCommitBinding: { findMany: async () => [] },
-    agentSessionEvent: { findFirst: async () => null },
-    verificationRun: {
-      findMany: async (query: unknown) => {
-        verificationQueries.push(query);
-        return [
-          {
-            runId: VALIDATION,
-            traceId: '7eef7f60284e123e6b2edc14bb8eedfb',
-            pipelineName: 'har verify --full',
-            result: 'success',
-            verdict: 'pass',
-            treeHash: TREE,
-            attestationDigest: DIGEST,
-            policyId: null,
-            policyDigest: null,
-            producerVersion: '2.0.0-next.3',
-            startTime: at('2026-11-25T13:25:39.927Z'),
-            stages: [
-              { name: 'typecheck', result: 'success', addedBy: 'policy' },
-              { name: 'unit-tests', result: 'success', addedBy: 'policy' },
-            ],
-          },
-        ];
+          workDir: null,
+          worktreePath: '/wt/demo',
+          branch: 'main-399b-har-agent-1-bnid',
+          baseCommit: null,
+          startedAt: at('2026-11-25T13:20:00Z'),
+        }),
+        findFirst: async () => null,
       },
+      agentSlot: { findFirst: async () => null },
+      repository: { findUnique: async () => ({ path: '/home/dev/demo', gitRemote: null }) },
+      run: {
+        findMany: async () => [
+          {
+            runId: VERIFY_RUN,
+            repositoryId: REPO,
+            stageId: 'verify',
+            kind: 'verify',
+            agentId: 1,
+            status: 'pass',
+            trigger: 'cli',
+            durationMs: 420,
+            startedAt: at('2026-11-25T13:25:39.927Z'),
+            workDir: null,
+            attemptId: ATTEMPT,
+            occupancyKey: `attempt::${ATTEMPT}`,
+            result: null,
+          },
+        ],
+      },
+      factoryRun: {
+        findMany: async (query: { where?: Record<string, unknown> }) => {
+          if (query.where && 'traceId' in query.where) verificationQueries.push(query);
+          return [factoryRun()];
+        },
+      },
+      stageResult: {
+        findMany: async () => [
+          { factoryRunId: VALIDATION, stageId: 'typecheck', status: 'passed', addedBy: 'policy' },
+          { factoryRunId: VALIDATION, stageId: 'unit-tests', status: 'passed', addedBy: 'policy' },
+        ],
+      },
+      commitBinding: { findMany: async () => [] },
+      agentSessionEvent: { findFirst: async () => null },
     },
-  },
-}));
+  };
+});
 
 vi.mock('@/server/usage', () => ({ listSessionUsageForRepo: async () => [], listSessionUsageForSlot: async () => [] }));
 vi.mock('@/server/trajectory-ledger', () => ({ listTrajectoryStreams: async () => [] }));

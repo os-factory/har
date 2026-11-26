@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Verification traces (`har env verify`) are stored as verification runs with
- * their stages, attributed by the Resource checkout path, else by the
- * repository URL; they never reach the agent-session path.
+ * Verification traces (`har env verify`) are stored as factory runs with their
+ * stage results (ADR 0005 section 3), attributed by the Resource checkout
+ * path, else by the repository URL; they never reach the agent-session path.
  */
 
 const MAIN = '/home/dev/acme/app';
@@ -11,66 +12,38 @@ const OTHER = '/home/dev/other';
 const TRACE = 'd3209ae49e3ad07b6bb0ba4414331613';
 const RUN_SPAN = '1111111111111111';
 
-type Row = Record<string, unknown> & { id: string };
+const state = vi.hoisted(() => ({ dir: '' }));
 
-const state = vi.hoisted(() => ({
-  repos: [] as Array<{ id: string; path: string; gitRemote: string | null }>,
-  runs: [] as Row[],
-  stages: [] as Row[],
-  attempts: [] as Array<{ attemptId: string; repositoryId: string }>,
-  sessionLookups: 0,
-}));
-
-function upsertInto(rows: Row[], prefix: string) {
-  return async ({ where, create, update }: { where: { traceId_spanId: { traceId: string; spanId: string } }; create: Record<string, unknown>; update: Record<string, unknown> }) => {
-    const key = where.traceId_spanId;
-    const existing = rows.find((row) => row.traceId === key.traceId && row.spanId === key.spanId);
-    if (existing) {
-      Object.assign(existing, update);
-      return existing;
-    }
-    const row = { id: `${prefix}-${rows.length + 1}`, createdAt: new Date('2026-11-23T10:00:05Z'), ...create } as Row;
-    rows.push(row);
-    return row;
-  };
-}
-
-vi.mock('@/lib/db', () => ({
-  prisma: {
-    repository: {
-      findMany: async () => state.repos,
-      findUnique: async () => null,
-    },
-    agentSlot: {
-      findMany: async () => {
-        state.sessionLookups += 1;
-        return [];
-      },
-    },
-    workAttempt: {
-      findFirst: async ({ where }: { where: { attemptId: string; repositoryId: { in: string[] } } }) =>
-        state.attempts.find((a) => a.attemptId === where.attemptId && where.repositoryId.in.includes(a.repositoryId)) ?? null,
-      findMany: async () => [],
-    },
-    verificationRun: {
-      upsert: (args: never) => upsertInto(state.runs, 'vr')(args),
-      findUnique: async ({ where }: { where: { traceId_spanId: { traceId: string; spanId: string } } }) =>
-        state.runs.find((row) => row.traceId === where.traceId_spanId.traceId && row.spanId === where.traceId_spanId.spanId) ??
-        null,
-    },
-    verificationStage: {
-      upsert: (args: never) => upsertInto(state.stages, 'vs')(args),
-    },
-  },
-}));
+vi.mock('@/lib/db', async () => {
+  const path = await import('path');
+  const { clientFor, pushSchema, tempDirectory } = await import('@/server/testing/sqlite-db');
+  state.dir = tempDirectory('mc-verification-');
+  const file = path.join(state.dir, 'control.db');
+  pushSchema(file);
+  return { prisma: clientFor(file) };
+});
 
 vi.mock('@/server/git-worktrees', () => ({
   WORKTREE_MISS_REFRESH_MS: 0,
   listLinkedWorktrees: () => ({ worktrees: [] }),
 }));
 
+import { prisma } from '@/lib/db';
 import { ingestOtelTracesJson } from '@/server/otel-ingest';
-import { repositoryUrlKey, verificationRunJson } from '@/server/verification-runs';
+import { repositoryUrlKey } from '@/server/verification-runs';
+
+afterAll(async () => {
+  await prisma.$disconnect();
+  fs.rmSync(state.dir, { recursive: true, force: true });
+});
+
+async function runs() {
+  return prisma.factoryRun.findMany();
+}
+
+async function stages() {
+  return prisma.stageResult.findMany({ orderBy: { startTime: 'asc' } });
+}
 
 function str(key: string, value: string) {
   return { key, value: { stringValue: value } };
@@ -149,15 +122,18 @@ const correlation = [
   str('factory.producer.version', '2.0.0'),
 ];
 
-beforeEach(() => {
-  state.repos = [
-    { id: 'repo-app', path: MAIN, gitRemote: 'git@github.com:acme/app.git' },
-    { id: 'repo-other', path: OTHER, gitRemote: 'https://github.com/acme/other' },
-  ];
-  state.runs = [];
-  state.stages = [];
-  state.attempts = [];
-  state.sessionLookups = 0;
+beforeEach(async () => {
+  await prisma.stageResult.deleteMany();
+  await prisma.factoryRun.deleteMany();
+  await prisma.agentSlot.deleteMany();
+  await prisma.attempt.deleteMany();
+  await prisma.repository.deleteMany();
+  await prisma.repository.createMany({
+    data: [
+      { id: 'repo-app', path: MAIN, gitRemote: 'git@github.com:acme/app.git' },
+      { id: 'repo-other', path: OTHER, gitRemote: 'https://github.com/acme/other' },
+    ],
+  });
 });
 
 describe('verification trace ingest', () => {
@@ -166,32 +142,36 @@ describe('verification trace ingest', () => {
       verificationPayload([...correlation, str('factory.local.checkout_path', `${MAIN}/control`)]),
     );
     expect(result).toEqual({ accepted: 3, dropped: 0, reasons: [] });
-    expect(state.sessionLookups).toBe(0);
-    expect(state.runs).toHaveLength(1);
-    expect(state.runs[0]).toMatchObject({
+    expect(await prisma.agentSessionSpan.count()).toBe(0);
+    const stored = await runs();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
       repositoryId: 'repo-app',
-      runId: 'validation-1',
+      repositoryKey: 'github.com/acme/app',
+      factoryRunId: 'validation-1',
       traceId: TRACE,
       spanId: RUN_SPAN,
       pipelineName: 'har verify --full',
-      result: 'failure',
+      status: 'failure',
       verdict: 'fail',
-      treeHash: 'a'.repeat(40),
-      headRevision: 'b'.repeat(40),
+      full: true,
+      tree: 'a'.repeat(40),
+      headSha: 'b'.repeat(40),
       attestationDigest: 'sha256:' + 'c'.repeat(64),
       workUnitId: 'FE-42',
       attemptId: 'attempt-1',
       branch: 'feat/x-har-agent-2',
-      startTime: new Date('2026-11-23T10:00:00Z'),
-      endTime: new Date('2026-11-23T10:00:03Z'),
+      startedAt: new Date('2026-11-23T10:00:00Z'),
+      finishedAt: new Date('2026-11-23T10:00:03Z'),
+      stageIds: ['build', 'unit-tests'],
     });
-    expect(state.stages.map((stage) => [stage.name, stage.result, stage.taskType, stage.verificationRunId])).toEqual([
-      ['build', 'success', 'build', 'vr-1'],
-      ['unit-tests', 'failure', 'test', 'vr-1'],
+    expect((await stages()).map((stage) => [stage.stageId, stage.status, stage.kind, stage.factoryRunId, stage.durationMs])).toEqual([
+      ['build', 'passed', 'build', 'validation-1', 1000],
+      ['unit-tests', 'failed', 'test', 'validation-1', 2000],
     ]);
     // No policy attributes on the run span: nothing is inferred from the pipeline name.
-    expect(state.runs[0]).toMatchObject({ policyId: null, policyDigest: null });
-    expect(state.stages.map((stage) => stage.addedBy)).toEqual(['policy', 'policy']);
+    expect(stored[0]).toMatchObject({ policyId: null, policyDigest: null });
+    expect((await stages()).map((stage) => stage.addedBy)).toEqual(['policy', 'policy']);
   });
 
   it('keeps the policy id and digest when the run span carries them', async () => {
@@ -200,29 +180,56 @@ describe('verification trace ingest', () => {
         policy: { id: 'har-verify-full', digest: 'sha256:' + 'd'.repeat(64) },
       }),
     );
-    expect(state.runs[0]).toMatchObject({ policyId: 'har-verify-full', policyDigest: 'sha256:' + 'd'.repeat(64) });
+    expect((await runs())[0]).toMatchObject({ policyId: 'har-verify-full', policyDigest: 'sha256:' + 'd'.repeat(64) });
   });
 
   it('attributes a copy without a local path by its repository URL', async () => {
     const result = await ingestOtelTracesJson(verificationPayload(correlation));
     expect(result.accepted).toBe(3);
-    expect(state.runs[0].repositoryId).toBe('repo-app');
+    expect((await runs())[0].repositoryId).toBe('repo-app');
   });
 
   it('is idempotent: a re-delivered trace is stored once', async () => {
     const payload = verificationPayload([...correlation, str('factory.local.checkout_path', MAIN)]);
     await ingestOtelTracesJson(payload);
     await ingestOtelTracesJson(payload);
-    expect(state.runs).toHaveLength(1);
-    expect(state.stages).toHaveLength(2);
+    expect(await runs()).toHaveLength(1);
+    expect(await stages()).toHaveLength(2);
   });
 
   it('links stages that arrive after their run', async () => {
     await ingestOtelTracesJson(verificationPayload([...correlation, str('factory.local.checkout_path', MAIN)]));
-    state.stages = [];
+    await prisma.stageResult.deleteMany();
     const later = await ingestOtelTracesJson(verificationPayload(correlation, { stagesOnly: true }));
     expect(later.accepted).toBe(2);
-    expect(state.stages.every((stage) => stage.verificationRunId === 'vr-1')).toBe(true);
+    expect((await stages()).every((stage) => stage.factoryRunId === 'validation-1')).toBe(true);
+  });
+
+  it('only fills what a v2 FactoryRun record already set', async () => {
+    await prisma.factoryRun.create({
+      data: {
+        factoryRunId: 'validation-1',
+        repositoryId: 'repo-app',
+        tree: 'a'.repeat(40),
+        verdict: 'pass',
+        status: 'pass',
+        full: true,
+        policyId: 'har-verify-full',
+        policyRequired: ['build'],
+        attemptId: 'attempt-from-record',
+        startedAt: new Date('2026-11-23T09:59:00Z'),
+        finishedAt: new Date('2026-11-23T10:00:05Z'),
+      },
+    });
+    await ingestOtelTracesJson(verificationPayload([...correlation, str('factory.local.checkout_path', MAIN)]));
+    expect((await runs())[0]).toMatchObject({
+      verdict: 'pass',
+      attemptId: 'attempt-from-record',
+      traceId: TRACE,
+      pipelineName: 'har verify --full',
+      headSha: 'b'.repeat(40),
+      finishedAt: new Date('2026-11-23T10:00:05Z'),
+    });
   });
 
   it('drops a run whose repository is unknown, and its stages', async () => {
@@ -232,14 +239,16 @@ describe('verification trace ingest', () => {
     expect(result.accepted).toBe(0);
     expect(result.dropped).toBe(3);
     expect(result.reasons[0]).toMatch(/unknown repository/);
-    expect(state.runs).toHaveLength(0);
+    expect(await runs()).toHaveLength(0);
   });
 
   it('disambiguates clones of one remote by the attempt', async () => {
-    state.repos.push({ id: 'repo-app-clone', path: '/home/dev/acme/app-v2', gitRemote: 'https://github.com/acme/app' });
-    state.attempts.push({ attemptId: 'attempt-1', repositoryId: 'repo-app-clone' });
+    await prisma.repository.create({ data: { id: 'repo-app-clone', path: '/home/dev/acme/app-v2', gitRemote: 'https://github.com/acme/app' } });
+    await prisma.attempt.create({
+      data: { attemptId: 'attempt-1', repositoryId: 'repo-app-clone', slotId: '2', startedAt: new Date('2026-11-23T09:00:00Z') },
+    });
     await ingestOtelTracesJson(verificationPayload(correlation));
-    expect(state.runs[0].repositoryId).toBe('repo-app-clone');
+    expect((await runs())[0].repositoryId).toBe('repo-app-clone');
   });
 
   it('normalizes remotes across https, ssh and credentials', () => {
@@ -247,59 +256,5 @@ describe('verification trace ingest', () => {
     expect(repositoryUrlKey('https://github.com/acme/app.git')).toBe('github.com/acme/app');
     expect(repositoryUrlKey('https://token@github.com/acme/app')).toBe('github.com/acme/app');
     expect(repositoryUrlKey(null)).toBeNull();
-  });
-});
-
-describe('verificationRunJson', () => {
-  it('serializes a run with its stages for the sync', () => {
-    const at = new Date('2026-11-23T10:00:00Z');
-    const json = verificationRunJson({
-      id: 'vr-1',
-      repositoryId: 'repo-app',
-      runId: 'validation-1',
-      traceId: TRACE,
-      spanId: RUN_SPAN,
-      pipelineName: 'har verify --full',
-      result: 'success',
-      verdict: 'pass',
-      treeHash: 'a'.repeat(40),
-      headRevision: null,
-      attestationDigest: null,
-      policyId: 'har-verify-full',
-      policyDigest: null,
-      workUnitId: 'FE-42',
-      attemptId: 'attempt-1',
-      branch: 'main',
-      producerVersion: '2.0.0',
-      startTime: at,
-      endTime: at,
-      createdAt: at,
-      updatedAt: at,
-      stages: [
-        {
-          id: 'vs-1',
-          verificationRunId: 'vr-1',
-          traceId: TRACE,
-          spanId: '2222222222222222',
-          name: 'build',
-          result: 'success',
-          taskType: 'build',
-          addedBy: 'policy',
-          startTime: at,
-          endTime: null,
-          createdAt: at,
-        },
-      ],
-    });
-    expect(json).toMatchObject({
-      runId: 'validation-1',
-      traceId: TRACE,
-      verdict: 'pass',
-      policyId: 'har-verify-full',
-      policyDigest: null,
-      createdAt: at.toISOString(),
-      stages: [{ name: 'build', result: 'success', taskType: 'build', addedBy: 'policy', startTime: at.toISOString(), endTime: null }],
-    });
-    expect(JSON.stringify(json)).not.toContain('repositoryId');
   });
 });
