@@ -1,5 +1,5 @@
 // Sync must stay bounded and scoped: requests time out and stop at the sync's
-// deadline, transient HQ errors are retried, unattended syncs only touch the
+// deadline, transient errors are retried, unattended syncs only touch the
 // saved selection, and unchanged observations are not re-posted.
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
@@ -38,8 +38,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { syncAllKnownReposWithControl } from '../src/core/control-sync';
 import { writeSyncSelection } from '../src/core/control-sync-selection';
-import { fetchPersistedPortalTelemetry } from '../src/core/control-persisted-usage';
-import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
+import { readRunsWatermarkEntry, writeRunsWatermark } from '../src/core/sync-watermark';
 import {
   recordSentObservations,
   unsentObservations,
@@ -140,63 +139,12 @@ describe('unattended all-repos sync', () => {
   });
 });
 
-describe('portal telemetry watermark', () => {
-  it('holds at the last event read when the events read hit the page cap', async () => {
-    process.env.HAR_CONTROL_READ_PAGE_SIZE = '1';
-    let page = 0;
-    setFetch(
-      jest.fn(async (url: string) => {
-        const target = String(url);
-        if (target.endsWith('/api/repos')) return ok([{ id: 'r1', path: '/repo/x' }]);
-        if (target.includes('/events')) {
-          page += 1;
-          const createdAt = new Date(Date.UTC(2026, 0, 1, 0, page)).toISOString();
-          return ok({
-            events: [
-              {
-                id: `e${page}`,
-                sessionKey: 's',
-                agentId: 1,
-                agentTool: 'claude_code',
-                eventName: 'x',
-                sequence: page,
-                timestamp: createdAt,
-                createdAt,
-              },
-            ],
-          });
-        }
-        // A live session's usage moved long after the events that were read.
-        return ok({
-          usage: [
-            {
-              sessionKey: 's',
-              agentId: 1,
-              agentTool: 'claude_code',
-              firstSeenAt: '2026-01-01T00:00:00.000Z',
-              lastSeenAt: '2026-06-01T00:00:00.000Z',
-              updatedAt: '2026-06-01T00:00:00.000Z',
-            },
-          ],
-        });
-      }),
-    );
-
-    try {
-      const result = await fetchPersistedPortalTelemetry('/repo/x', 'http://mc', { since: null });
-      expect(result.truncated).toEqual(['events']);
-      // 20 pages read: the watermark is the 20th event, not the usage's June stamp.
-      expect(result.maxSyncedAt).toBe(new Date(Date.UTC(2026, 0, 1, 0, 20)).toISOString());
-    } finally {
-      delete process.env.HAR_CONTROL_READ_PAGE_SIZE;
-    }
-  });
-
+describe('runs watermark', () => {
   it('writes the state file atomically', () => {
     process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(tmp, 'state.json');
     try {
-      writePortalWatermark('/repo/x', 'https://hq', '2026-01-01T00:00:00.000Z');
-      expect(readPortalWatermark('/repo/x', 'https://hq')).toBe('2026-01-01T00:00:00.000Z');
+      writeRunsWatermark('/repo/x', 'runs:http://mc', 'r1', '2026-01-01T00:00:00.000Z');
+      expect(readRunsWatermarkEntry('/repo/x', 'runs:http://mc')?.lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
       expect(fs.readdirSync(tmp)).toEqual(['state.json']);
     } finally {
       delete process.env.HAR_PORTAL_SYNC_STATE_PATH;

@@ -11,8 +11,9 @@ factory run, git tree, commit and trace.
 The major version marks two breaks: one changed default, and **the removal of every
 `har.*` telemetry attribute** in favor of OpenTelemetry semantic-convention and
 `factory.*` names ([removed attributes](#removed-telemetry-attributes)). Every 1.x
-command, flag, config key, HQ sync payload and Mission Control route still works
-with the same shape.
+command, flag, config key and Mission Control route still works with the same
+shape, except that `har control sync` no longer sends to HAR HQ
+([see below](#har-control-sync-no-longer-sends-to-har-hq)).
 
 ```bash
 npm install -g @osfactory/har@latest
@@ -35,7 +36,7 @@ har env verify 1 --full
 - **Verification spans.** Each `har env verify` emits a `cicd.pipeline.run` span
   with one task span per stage, carrying ids, results, timings and the verify policy
   (`factory.policy.id`, `factory.policy.digest`, as in the proof). The CLI sends one
-  copy to Mission Control, which stores it as a verification run and syncs it to HQ,
+  copy to Mission Control, which stores it as a verification run,
   and one to every destination subscribed to `traces`. A copy that was not taken is
   queued for that receiver in `~/.har/spool/traces` and retried at the next verify or
   launch, or `har telemetry destination flush`, so each receiver gets each trace
@@ -45,11 +46,18 @@ har env verify 1 --full
   `factory.*`, `vcs.*`, `cicd.*` and `gen_ai.*` attributes from the Factory Commits
   [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md),
   in place of the `har.*` ones (see [Removed telemetry attributes](#removed-telemetry-attributes)).
-- **One agent route, with or without Mission Control.** otel-hook always gets one
-  destination list: `mission-control` when Mission Control is enabled and set up,
-  plus every enabled `traces` or `logs` destination, with the keys in a `0600` file.
-  Without Mission Control the list simply has no `mission-control` entry. See
-  [Destinations need otel-hook 0.9.0](#destinations-need-otel-hook-090).
+- **One destination list.** Everything HAR sends — OTLP signals, records, proofs and
+  evidence — goes to the entries of one list, `~/.har/destinations/destinations.json`:
+  `mission-control`, `hq`, `git-notes`, `otlp` and `langfuse` presets, each saying
+  what it accepts. otel-hook gets one `exporter.destinations[]` entry per destination,
+  with the keys in a `0600` file. Without Mission Control the list simply has no
+  enabled `mission-control` entry. A prerelease `telemetry.json` is migrated on first
+  read. See [Agent hooks need otel-hook 0.12.0](#agent-hooks-need-otel-hook-0120).
+- **Records go straight to every receiver.** The CLI sends work units, attempts,
+  session segments, factory runs, stage results, commit bindings, proofs and stage
+  evidence to Mission Control and HAR HQ directly (ingest v2), each through its own
+  retry queue in `~/.har/queue/<destination>/`. Every `har` command drains what is
+  due; `har telemetry flush` sends everything now.
 - **Destination health.** `har env doctor` and `har telemetry status` report what
   each destination has queued or dropped and when it last failed, for example
   `langfuse: 7 batches queued, last failure 2 min ago (ECONNREFUSED)`. See
@@ -75,12 +83,17 @@ har env verify 1 --full
 
 ## What changed by default
 
-**Proof notes are written locally when `git factory` is installed.** When
-`HAR_FACTORY_PROOF` is not set in `.har/harness.env`, the mode is now `notes`:
+**Proofs are produced locally when `git factory` is installed; notes are opt-in.**
+When `HAR_FACTORY_PROOF` is not set in `.har/harness.env`, the mode is now `notes`:
 
 - with `git-factory` on `PATH` (or `HAR_FACTORY_PROOF_BIN`), each full verify
-  writes an attestation next to the validation record, and the `post-commit` hook
-  adds it to the new commit's note in `refs/notes/factory`. Notes stay local:
+  writes an attestation next to the validation record, and the CLI sends it to every
+  destination that takes proofs (Mission Control, HAR HQ);
+- **factory notes are opt-in.** A note is one more proof destination: the
+  `post-commit` hook adds the attestation to the new commit's note in
+  `refs/notes/factory` only with a `git-notes` destination
+  (`har telemetry destination add git-notes --preset git-notes`) or an explicit
+  `HAR_FACTORY_PROOF=notes` / `notes+trailers` in `harness.env`. Notes stay local:
   git does not push them unless you push `refs/notes/factory`;
 - without `git-factory`, nothing happens and nothing is printed;
 - `har hooks install` does **not** run `git factory setup` under the default, so
@@ -95,27 +108,44 @@ HAR_FACTORY_PROOF=off              # in .har/harness.env
 
 An explicit `off`, `notes` or `notes+trailers` behaves exactly as before.
 
+### `har control sync` no longer sends to HAR HQ
+
+In 1.x, HAR HQ received a copy of what Mission Control held: `har control sync`
+read it back from Mission Control and posted it to the connected org, so HQ got
+nothing while Mission Control was down. In 2.0 `har control sync` sends to local
+Mission Control only (or to HAR Cloud with `--cloud`). The CLI and the agent hook
+send records, proofs, evidence and telemetry to every destination directly, HAR HQ
+included; Mission Control forwards nothing. To keep sending to HQ, add it as a
+destination once:
+
+```bash
+har hq connect                       # if not connected yet
+har telemetry destination add hq
+```
+
+`har hq connect`, `har hq list`, `har hq disconnect` and repository attachment work
+as before; they decide which org and which repositories HQ receives.
+`HAR_SYNC_ALLOW_USAGE_VIOLATIONS` is gone with the HQ leg.
+
 ## Privacy defaults
 
 What a default user sends to a third party, in one sentence: nothing until a
 destination is added, and then verification spans and agent session spans, without
-account identity or prompt, reply and tool text, and without local paths except
-the `factory.local.*` keys in agent spans while Mission Control is a destination.
+account identity, prompt, reply and tool text, or local paths.
 
 | Data | Sent by default? | Opt in with |
 |---|---|---|
-| Absolute local paths (every `factory.local.*` key, `process.cwd`, `code.filepath`, …) | No, except `factory.local.*` in agent spans while Mission Control is a destination ([#519](https://github.com/os-factory/har/issues/519)) | `--include-local-paths` |
+| Absolute local paths (every `factory.local.*` key, `process.cwd`, `code.filepath`, …) | No, for every destination, Mission Control included | `--include-local-paths` (agent spans keep them only when every destination opts in) |
 | Account identity (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) | No: Claude Code's native telemetry, which carries it, goes to Mission Control only | `--include-account-identity` |
 | Logs (at the `full` level they carry prompts, replies and tool input/output) | No, no preset subscribes to logs | `--signals traces,metrics,logs` |
-| Claude Code metrics | No, Mission Control only | none |
+| Claude Code native metrics | No, Mission Control only | none |
+| otel-hook metrics (token counts per model, tool calls) | Only to destinations that subscribe to `metrics` | `--signals …,metrics` |
 
-**Local paths and Mission Control
-([#519](https://github.com/os-factory/har/issues/519)).** One agent hook process
-sends the same Resource to every destination, and Mission Control needs
-`factory.local.*` (the checkout and worktree paths) to attribute sessions. So while
-Mission Control is one of the destinations, the others receive those keys too.
-Without Mission Control, HAR leaves them out unless every destination has
-`--include-local-paths`.
+**Local paths are stripped everywhere.** Prereleases kept `factory.local.*` in agent
+spans while Mission Control was a destination (#519), because Mission Control
+attributed sessions by path. Work identity is now stamped from the session context,
+so one agent hook process sends a Resource without local paths unless every
+destination, Mission Control included, has `--include-local-paths`.
 
 The flags go on `har telemetry destination add`. Mission Control keeps everything
 locally as before. The full lists of stripped attributes are in
@@ -144,29 +174,38 @@ HAR and Mission Control together (`har control up` after installing 2.0).
 | Instrumentation scope `har.verification` (and `har.telemetry.destination-test`) | Scope `@osfactory/har` |
 
 `factory.local.*` is a **local-only** namespace: absolute paths and other
-machine-local facts Mission Control needs for attribution. The CLI strips every
-`factory.local.*` key from each verification copy it sends a destination, unless
-the destination was added with `--include-local-paths`. Agent spans keep them while
-Mission Control is a destination ([#519](https://github.com/os-factory/har/issues/519)).
+machine-local facts. The CLI strips every `factory.local.*` key from what it sends a
+destination, and agent spans leave them out, unless the destination (for agent
+spans: every destination) was added with `--include-local-paths`.
 
 The agent env file (`.env.agent.<id>`) no longer sets `HAR_SESSION_KEY`: the
-session key travels only as `session.id` in `OTEL_RESOURCE_ATTRIBUTES`.
+session key travels only as `session.id` in `OTEL_RESOURCE_ATTRIBUTES`. That
+variable no longer carries work identity (`factory.work_unit.id`,
+`factory.work_unit.source`, `factory.attempt.id`, `factory.slot.id`): otel-hook
+stamps them from the session context HAR writes in `~/.har/sessions`, so telemetry
+outside any segment (before launch, after complete) carries none.
 `HAR_WORK_UNIT_ID`, `HAR_ATTEMPT_ID` and `HAR_CONTROL_API_URL` are unchanged.
 
 ### Agent hooks (`@osfactory/otel-hook`)
 
-HAR 2.0 installs `@osfactory/otel-hook@0.9.0`. It names each span's session from the
-Resource `session.id` HAR sets, so agent spans group by HAR session in any backend.
-HAR replaces an older installed copy on the next `har env launch` or
-`har telemetry on`.
+HAR 2.0 installs `@osfactory/otel-hook@0.12.0`. HAR replaces an older installed copy
+on the next `har env launch` or `har telemetry on`.
 
-#### Destinations need otel-hook 0.9.0
+#### Agent hooks need otel-hook 0.12.0
 
-- **Agent traces reach destinations only with `@osfactory/otel-hook` 0.9.0 or
-  later.** HAR installs or upgrades it automatically on `har env launch` and
-  `har telemetry on`. Until the installed copy is 0.9.0 or newer, HAR sends agent
-  traces to Mission Control only and `har telemetry status` names the version it
-  needs.
+- **Work identity comes from the session context (0.12.0).** HAR sets
+  `sessionContext.dir` in the hook config to `~/.har/sessions` (or
+  `HAR_SESSIONS_DIR`); otel-hook stamps the segment in force on every span, log record
+  and metric point. It is set in the config file, never through `OTEL_*` variables,
+  which Claude Code strips from hooks.
+- **Metrics and Claude Code usage.** Each destination's `signals`, `metrics`
+  included (0.11.0), go into its entry; `exporter.metrics.includeSessionId` is one
+  setting for every destination (`--no-include-session-id` on any destination turns
+  it off). `providers.claudeCode.readTranscriptUsage: true` (0.10.0) gives Claude
+  Code sessions token counts read from the transcript at `Stop`.
+- **Older copies.** HAR writes only the keys the installed otel-hook understands.
+  Before 0.9.0 it sends agent traces to Mission Control only, and
+  `har telemetry status` names the version it needs.
 - **Every receiver goes into the hook config.** HAR writes Mission Control and every
   destination to `~/.har/otel-hooks/otel_config.json` as otel-hook's
   `exporter.destinations[]`, Mission Control first, with no single
@@ -197,15 +236,16 @@ each agent trace. The CLI marks the verification traces it sends Mission Control
 with `x-har-otlp-forward: skip`, so those are never doubled.
 
 To try an unreleased otel-hook build, set `HAR_OTEL_HOOKS_PACKAGE` to any spec your
-package manager accepts (a version, an absolute `.tgz` path) before `har telemetry on`.
+package manager accepts (a version, an absolute `.tgz` path, a directory) before
+`har telemetry on`.
 
 **Claude Code hooks don't inherit `OTEL_*`.** Since Claude Code 2.1.128, Claude Code
 removes every `OTEL_*` variable from the hooks it runs, so otel-hook would see no
-`OTEL_RESOURCE_ATTRIBUTES` and export sessions without `session.id`, `factory.*` or
-`vcs.*`. HAR therefore also writes the same profile to `.env.agent.<id>` as
+`OTEL_RESOURCE_ATTRIBUTES` and export sessions without `session.id` or `vcs.*`.
+HAR therefore also writes the same profile to `.env.agent.<id>` as
 `HAR_RESOURCE_ATTRIBUTES`, and the hook wrapper restores `OTEL_RESOURCE_ATTRIBUTES`
-from it when the variable arrives empty, before it drops `factory.local.*` when
-Mission Control is not a destination. This applies with and without Mission
+from it when the variable arrives empty, before it drops `factory.local.*` unless
+every destination opted in to local paths. This applies with and without Mission
 Control. An
 agent started outside a HAR slot has no `HAR_RESOURCE_ATTRIBUTES`, and its hooks
 behave as before. Slots launched before this change keep their old agent env file:
@@ -215,13 +255,11 @@ relaunch the slot to get the new variable.
 
 - No command, flag, config key or MCP tool was renamed or removed. MCP output
   schemas only gained optional fields (for example `proof` on
-  `har_run_verification`), and `har_doctor` gained a `telemetry-destinations`
-  check that only ever warns. `har telemetry destination flush` is new.
-- HQ sync payloads and Mission Control's OTLP receivers keep their shapes. Only the
-  attribute keys inside the synced event and span `attributes` maps change, as in
-  the table above. `/api/sync` gains one optional top-level collection,
-  `verificationRuns` (each run with its stages), which receivers that don't know it
-  ignore. `/api/otel` bodies are unchanged.
+  `har_run_verification`), and `har_doctor` gained `telemetry-destinations` and
+  `ingest-destinations` checks that only ever warn. `har telemetry flush` and
+  `har telemetry destination flush` are new.
+- Mission Control's OTLP receivers keep their shapes. Only the attribute keys
+  inside the event and span `attributes` maps change, as in the table above.
 - Proofs and telemetry are fail-open: a missing `git-factory`, a notes error or an
   unreachable destination never blocks verify, a commit or a launch. The commit
   gate is unchanged.

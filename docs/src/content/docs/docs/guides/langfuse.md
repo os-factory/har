@@ -63,7 +63,7 @@ or session spans in Langfuse lack `session.id` and the `factory.*` attributes.
    ```
 
    `add` reads the keys from the environment and stores the destination in
-   `~/.har/destinations/telemetry.json` (mode `0600`). You can pass
+   HAR's destination list, `~/.har/destinations/destinations.json` (mode `0600`). You can pass
    `--public-key`, `--secret-key` and `--host` instead of the environment
    variables. `test` sends one small test span from your terminal and prints
    Langfuse's HTTP status.
@@ -82,8 +82,8 @@ Verification traces: → mission-control, langfuse
 ```
 
 - **Agent session traces.** HAR gives otel-hook one destination list
-  (`exporter.destinations[]`): `mission-control` when Mission Control is enabled
-  and set up, plus every enabled destination subscribed to `traces` or `logs`.
+  (`exporter.destinations[]`): `mission-control` when its entry is enabled and
+  Mission Control is set up, plus every other enabled destination with an OTLP signal.
   otel-hook sends each batch to every entry in parallel, and whatever one entry
   could not take waits in that entry's own spool for the next hook event. Langfuse
   gets its copy whether or not Mission Control is running.
@@ -104,19 +104,16 @@ What to know about the route:
   `~/.har/otel-hooks/direct.env` (mode `0600`), which the hook wrapper loads when it
   runs. The hook config names Langfuse with an `env:` reference to that file; the
   wrapper script, the hook config and the hook's arguments contain no secret.
-- **Local paths go with Mission Control.** One hook process sends the same Resource
-  to every entry. Mission Control needs the `factory.local.*` keys to attribute a
-  session, so while it is in the list, Langfuse receives them too
-  ([#519](https://github.com/os-factory/har/issues/519)). Without Mission Control,
-  HAR leaves them out unless every destination has `--include-local-paths`. See
-  [Privacy](#privacy-what-leaves-the-machine).
+- **No local paths.** One hook process sends the same Resource to every entry, and
+  HAR leaves `factory.local.*` out of it unless every destination, Mission Control
+  included, has `--include-local-paths`. See [Privacy](#privacy-what-leaves-the-machine).
 - **Claude Code's own telemetry stays local.** Claude Code's native metrics and logs
   carry your account identity, so they go to Mission Control only, and stay off
   without it. Without Mission Control, Claude Code token and cost metrics are not
   recorded.
-- **otel-hook 0.9.0 or later.** HAR installs it on `har env launch` and
-  `har telemetry on`. With an older copy, HAR prints the version it needs and sends
-  agent traces to Mission Control only.
+- **otel-hook 0.12.0.** HAR installs it on `har env launch` and
+  `har telemetry on`. With a copy older than 0.9.0, HAR prints the version it needs
+  and sends agent traces to Mission Control only.
 - **Retries and health.** A full spool drops its oldest batches, and a batch Langfuse
   rejects with a non-retryable status (such as `401` for a wrong key) is dropped
   rather than retried. `har env doctor` and `har telemetry status` report what is
@@ -148,8 +145,7 @@ Langfuse receives two kinds of spans. Agent session spans come straight from
 otel-hook, and otel-hook puts **no prompt, reply or tool text on spans at any
 level**. Verification spans come straight from the CLI and carry ids, results and
 timings only: no commands or logs. Their one local path,
-`factory.local.checkout_path`, lets Mission Control attribute the run and is
-stripped from Langfuse's copy. The text that `full` records travels in OTLP log
+`factory.local.checkout_path`, is stripped from Langfuse's copy. The text that `full` records travels in OTLP log
 records, which the Langfuse preset never subscribes to.
 
 A session span can contain:
@@ -159,18 +155,13 @@ A session span can contain:
 - session and conversation ids;
 - the branch name of the worktree a tool touched, and opaque, hashed workspace and
   repository ids;
-- HAR's resource attributes: work unit id and source, attempt id, repository URL
-  (credentials stripped), branch, HAR version and slot number;
-- while Mission Control is a destination, the `factory.local.*` keys: the absolute
-  paths of the repository checkout and the slot worktree.
+- HAR's attributes: repository URL (credentials stripped), branch and HAR version,
+  plus, while the session works in a slot, the work unit id and source, attempt id
+  and slot number, which otel-hook stamps from the session context HAR writes.
 
-**Local paths and Mission Control
-([#519](https://github.com/os-factory/har/issues/519)).** Mission Control needs
-`factory.local.*` to attribute each session to its repository and slot, and one
-hook process sends the same Resource to every destination. So while Mission Control
-is in the list, Langfuse receives those paths too. Without Mission Control, HAR
-leaves every `factory.local.*` key out of the agent's `OTEL_RESOURCE_ATTRIBUTES` and
-the hook drops any it inherits, unless every destination has `--include-local-paths`.
+**Local paths.** HAR leaves every `factory.local.*` key out of the agent's
+`OTEL_RESOURCE_ATTRIBUTES`, and the hook drops any it inherits, unless every
+destination, Mission Control included, has `--include-local-paths`.
 A verification span's `factory.local.checkout_path` is always removed from
 Langfuse's copy unless Langfuse has `--include-local-paths`.
 

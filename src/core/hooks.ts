@@ -424,10 +424,24 @@ export async function recordCommitAssociation(
       refs: refList ? refList.split('\n').filter(Boolean) : [],
       message,
     });
-    // Factory Commits note (HAR_FACTORY_PROOF ≥ notes, default notes); fail-open.
+    // Factory Commits note (HAR_FACTORY_PROOF ≥ notes, or a git-notes destination); fail-open.
     const proof = addFactoryNoteForCommit(checkout, tree);
     if (updated) {
       markDirty(updated.harnessRoot);
+      // ADR 0005 §3: the commit binding goes straight to every receiver (queued, bounded, fail-open).
+      try {
+        const { publishCommitBinding } = await import('./ingest-publish');
+        const branch = tryGit(checkout, 'rev-parse --abbrev-ref HEAD');
+        await publishCommitBinding({
+          harnessRoot: updated.harnessRoot,
+          commitSha,
+          treeHash: tree,
+          validation: updated,
+          ...(branch && branch !== 'HEAD' ? { branch } : {}),
+        }, { budgetMs: 1_000 });
+      } catch {
+        // never fails the commit
+      }
       return { attached: true, commitSha, ...(proof ? { proof } : {}) };
     }
     return { attached: false, commitSha, ...(proof ? { proof } : {}) };

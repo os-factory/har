@@ -39,10 +39,11 @@ export type DoctorCheckId =
   | 'ejected-runtime'
   | 'factory-lines'
   /** Added by `core/telemetry-health.ts` for `har env doctor`; runDoctor itself never reports it. */
-  | 'telemetry-destinations';
+  | 'telemetry-destinations'
+  | 'ingest-destinations';
 
 /** The checks runDoctor evaluates itself. */
-type HarnessDoctorCheckId = Exclude<DoctorCheckId, 'telemetry-destinations'>;
+type HarnessDoctorCheckId = Exclude<DoctorCheckId, 'telemetry-destinations' | 'ingest-destinations'>;
 
 export type DoctorContract = '1.0' | 'pre-1.0' | 'none';
 

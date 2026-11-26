@@ -18,6 +18,8 @@ process.env.HAR_PORTAL_TARGETS_PATH = path.join(harHome, 'portal-targets.json');
 process.env.HAR_CREDENTIALS_PATH = path.join(harHome, 'credentials.json');
 // Nor send verification spans to the developer's real OTLP destinations.
 process.env.HAR_DESTINATIONS_DIR = path.join(harHome, 'destinations');
+// Nor open or close segments in the developer's real session context files (ADR 0004).
+process.env.HAR_SESSIONS_DIR = path.join(harHome, 'sessions');
 
 afterAll(() => {
   fs.rmSync(harHome, { recursive: true, force: true });
@@ -27,6 +29,7 @@ afterAll(() => {
   delete process.env.HAR_PORTAL_TARGETS_PATH;
   delete process.env.HAR_CREDENTIALS_PATH;
   delete process.env.HAR_DESTINATIONS_DIR;
+  delete process.env.HAR_SESSIONS_DIR;
 });
 
 // Tests run inside coding agents: never let the developer's own agent session

@@ -40,7 +40,7 @@ describe('factory.* / vcs.* resource attributes', () => {
     else process.env.HAR_PACKAGE_VERSION = originalVersion;
   });
 
-  it('carries the correlation values under the semconv and factory.* names only', () => {
+  it('carries the repository and producer under semconv and factory.* names, never work identity', () => {
     const attrs = decode(
       buildOtelResourceAttributes({
         ...BASE,
@@ -48,10 +48,11 @@ describe('factory.* / vcs.* resource attributes', () => {
         repositoryUrl: 'https://github.com/example/fixture.git',
       }),
     );
+    // Work identity comes from the session context only (ADR 0004 section 3).
+    for (const key of ['factory.work_unit.id', 'factory.work_unit.source', 'factory.attempt.id', 'factory.slot.id']) {
+      expect(Object.keys(attrs)).not.toContain(key);
+    }
     expect(attrs).toMatchObject({
-      'factory.work_unit.id': 'ISSUE-416',
-      'factory.work_unit.source': 'github',
-      'factory.attempt.id': BASE.attemptId,
       'vcs.repository.url.full': 'https://github.com/example/fixture.git',
       'vcs.ref.head.name': BASE.branch,
       'factory.producer.name': 'har',
@@ -79,7 +80,7 @@ describe('factory.* / vcs.* resource attributes', () => {
       'vcs.repository.url.full',
       'vcs.ref.head.name',
     ]) {
-      expect(attrs).not.toHaveProperty(key);
+      expect(Object.keys(attrs)).not.toContain(key);
     }
     expect(attrs['factory.producer.name']).toBe('har');
     expect(Object.values(attrs)).not.toContain('');
@@ -89,7 +90,7 @@ describe('factory.* / vcs.* resource attributes', () => {
     const raw = buildOtelResourceAttributes({ ...BASE, branch: 'feat/a,b=c', workUnitSource: 'a,b' });
     const attrs = decode(raw);
     expect(attrs['vcs.ref.head.name']).toBe('feat/a_b_c');
-    expect(attrs['factory.work_unit.source']).toBe('a_b');
+    expect(Object.keys(attrs)).not.toContain('factory.work_unit.source');
   });
 });
 
@@ -137,7 +138,8 @@ describe('agent env file correlation defaults', () => {
     const attrs = decode(line.slice('OTEL_RESOURCE_ATTRIBUTES='.length).replace(/^'|'$/g, ''));
 
     expect(attrs['vcs.repository.url.full']).toBe('https://github.com/example/fixture.git');
-    expect(attrs['factory.work_unit.source']).toBe('github');
+    // The tracker is work identity: stamped from the session context, not the env file.
+    expect(Object.keys(attrs)).not.toContain('factory.work_unit.source');
     expect(block).not.toContain('ghp_secret');
     expect(block).not.toContain('x-access-token');
   });
@@ -149,7 +151,7 @@ describe('agent env file correlation defaults', () => {
     expect(filled.workUnitSource).toBeUndefined();
     const attrs = decode(buildOtelResourceAttributes(filled));
     expect(attrs).not.toHaveProperty('vcs.repository.url.full');
-    expect(attrs).not.toHaveProperty('factory.work_unit.source');
+    expect(Object.keys(attrs)).not.toContain('factory.work_unit.source');
   });
 
   it('keeps values the caller passed', () => {

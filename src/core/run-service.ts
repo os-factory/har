@@ -2,7 +2,14 @@ import { parseVerificationResult } from './results';
 import * as crypto from 'crypto';
 import { localScriptExecutor } from './local-executor';
 import { createRun, finishRun, getRun, resolveAgentWorkDir } from './runs';
-import { produceValidationProof } from './proof';
+import { buildFactoryRunStageResults, produceValidationProof } from './proof';
+import {
+  discardStageLogStaging,
+  finalizeStageEvidence,
+  prepareStageLogStaging,
+  type StageEvidence,
+} from './stage-evidence';
+import { resolveVerifyLineStation } from './line-programs';
 import {
   listSlotRegistryEntries,
   readSlotRegistry,
@@ -14,6 +21,7 @@ import {
   findPassingFullValidation,
   recordValidation,
   resolveValidationCheckoutDir,
+  updateValidationFactoryRun,
 } from './validations';
 import {
   bindValidationToAttempt,
@@ -25,7 +33,7 @@ import {
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor, summarizeDoctorReport } from '../harness/doctor';
 import { describeAgentTelemetryRoute } from './telemetry-route';
-import { resolveStage } from '../harness/stages';
+import { getArtifactsDir, readStageRegistry, resolveStage } from '../harness/stages';
 import { collectEnvironmentStatus, renderEnvironmentStatusText } from './slot-status';
 import { HarnessStage } from '../harness/schema';
 import { validateAgentId } from '../utils/validation';
@@ -33,6 +41,8 @@ import { ensureTelemetryInfrastructure } from './telemetry-ensure';
 import { isTelemetryEnabled } from './telemetry-config';
 import { resolveWorktreeMode } from './worktree-mode';
 import { recordLaunchBinding, recordReleaseBindings } from './session-bindings';
+import { endSlotOccupancySegments, recordLaunchSegment, verifySessionRefs } from './session-context';
+import { publishFactoryRun, publishSlotRecords } from './ingest-publish';
 import {
   appendTelemetryEnvToFile,
   buildSessionKey,
@@ -51,7 +61,13 @@ import {
   StageRunOptions,
   VerificationRunResult,
 } from './types';
-import { StageResult, ValidationRecord, VerificationResult } from '../harness/schema';
+import {
+  FactoryRunSessionRef,
+  SlotRegistryEntry,
+  StageResult,
+  ValidationRecord,
+  VerificationResult,
+} from '../harness/schema';
 import {
   collectVerificationTraceInput,
   deliverVerificationTrace,
@@ -384,6 +400,14 @@ export class RunService {
         } catch {
           // Attribution evidence is best-effort; launch still succeeded.
         }
+        try {
+          // ADR 0004 §2: the calling agent session works under this slot's attempt from now on.
+          recordLaunchSegment({ harnessRoot, session, env: process.env });
+        } catch {
+          // Session context is best-effort; launch still succeeded.
+        }
+        // ADR 0004 §6: WorkUnit, Attempt and SessionSegments straight to every receiver (fail-open).
+        await publishSlotRecords({ harnessRoot, session });
       }
       if (launchNotices.length) {
         launchBanner += launchNotices.map((notice) => `NOTE: ${notice}\n`).join('');
@@ -407,18 +431,45 @@ export class RunService {
     full?: boolean;
     capture?: boolean;
     trigger?: ExecutionContext['trigger'];
+    /** Factory line the verify runs under; needs `station`. */
+    line?: string;
+    /** Station of the line (ADR 0005 §3: `FactoryRun` factory line and station). */
+    station?: string;
   }): Promise<VerificationRunResult> {
+    // Validate line/station before running anything: a typo must not cost a full verify.
+    const lineStation = resolveVerifyLineStation(resolveHarnessRoot(options.repoPath), {
+      line: options.line,
+      station: options.station,
+    });
     // Opportunistic retry of traces an earlier verify could not deliver; bounded, fail-open.
     await flushVerificationTraceSpool();
     const args = options.full ? ['--full'] : undefined;
-    const result = await this.runStage({
-      repoPath: options.repoPath,
-      kind: 'verify',
-      agentId: options.agentId,
-      args,
-      capture: options.capture ?? true,
-      trigger: options.trigger ?? 'cli',
-    });
+    const slotBefore = resolveSlotRegistryContext(options.repoPath, options.agentId);
+    let staging: ReturnType<typeof prepareStageLogStaging>;
+    try {
+      const root = slotBefore?.harnessRoot ?? resolveHarnessRoot(options.repoPath);
+      staging = prepareStageLogStaging({
+        workDir: slotBefore?.session.workDir ?? resolveAgentWorkDir(root, options.agentId),
+        artifactsDirName: getArtifactsDir(root),
+      });
+    } catch {
+      staging = undefined;
+    }
+    let result: StageResult;
+    try {
+      result = await this.runStage({
+        repoPath: options.repoPath,
+        kind: 'verify',
+        agentId: options.agentId,
+        args,
+        capture: options.capture ?? true,
+        trigger: options.trigger ?? 'cli',
+        stageLogDir: staging?.stagingDir,
+      });
+    } catch (err) {
+      if (staging) discardStageLogStaging(staging.stagingDir);
+      throw err;
+    }
     const shell = extractShellOutput(result);
     let verification: VerificationResult | null = parseVerificationResult(shell.stdout);
     if (
@@ -465,14 +516,26 @@ export class RunService {
           });
         }
         validation = recorded;
+        const runRecord = runId ? getRun(harnessRoot, runId) : null;
+        validation =
+          this.recordFactoryRun({
+            harnessRoot,
+            checkoutDir,
+            validation: recorded,
+            verification,
+            session,
+            staging,
+            run: runRecord ? { startedAt: runRecord.startedAt, finishedAt: runRecord.finishedAt } : undefined,
+            lineStation,
+          }) ?? validation;
         if (options.full) {
           // Factory Commits proof (HAR_FACTORY_PROOF, default notes); a no-op when off, never throws.
-          const runRecord = runId ? getRun(harnessRoot, runId) : null;
+          // The predicate lists each stage's log and artifacts from validation.stageResults.
           const workUnitId = session?.workUnitId;
           const produced = produceValidationProof({
             harnessRoot,
             checkoutDir,
-            validation: recorded,
+            validation,
             verification,
             run: runRecord
               ? { startedAt: runRecord.startedAt, finishedAt: runRecord.finishedAt }
@@ -493,10 +556,25 @@ export class RunService {
           proof = produced.outcome;
           proofNote = produced.note;
         }
+        // ADR 0005 §§2-4: FactoryRun + StageResults, the proof, then (after a passing
+        // full verify) the evidence — copied into each destination's queue now,
+        // since teardown deletes the slot's work dir. Bounded and fail-open.
+        await publishFactoryRun(
+          {
+            harnessRoot,
+            checkoutDir,
+            validation,
+            workDir: session?.workDir,
+            attemptId: session?.attemptId,
+            evidence: (options.full ?? false) && validation.status === 'pass',
+          },
+        );
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
       }
     }
+    // Logs of a verify that produced no factory run (no parsable result, not a checkout).
+    if (staging) discardStageLogStaging(staging.stagingDir);
 
     const runResult: VerificationRunResult = {
       code: shell.code,
@@ -524,6 +602,68 @@ export class RunService {
     if (delivered.spanExport) runResult.spanExport = delivered.spanExport;
     if (delivered.delivery) runResult.traceDelivery = delivered.delivery;
     return runResult;
+  }
+
+  /**
+   * What a verify adds to its factory run (the validation record): stage logs
+   * moved to `.har/<artifactsDir>/<factory-run-id>/` and hashed with the
+   * stage's artifacts (ADR 0005 §4), the stage results, the session refs
+   * (ADR 0004 §4, merged across verifies of the same tree), the run window and
+   * the factory line and station. Never throws; undefined when nothing was written.
+   */
+  private recordFactoryRun(input: {
+    harnessRoot: string;
+    checkoutDir: string;
+    validation: ValidationRecord;
+    verification: VerificationResult;
+    session: SlotRegistryEntry | undefined;
+    staging: ReturnType<typeof prepareStageLogStaging>;
+    run?: { startedAt?: string; finishedAt?: string };
+    lineStation: { factoryLine: string | null; station: string | null };
+  }): ValidationRecord | undefined {
+    let evidence: StageEvidence[] | undefined;
+    if (input.staging) {
+      try {
+        evidence = finalizeStageEvidence({
+          stagingDir: input.staging.stagingDir,
+          artifactsRoot: input.staging.artifactsRoot,
+          factoryRunId: input.validation.validationId,
+        });
+      } catch {
+        evidence = undefined;
+      }
+    }
+    try {
+      const finishedAt = input.run?.finishedAt ?? new Date().toISOString();
+      let sessions: FactoryRunSessionRef[] | undefined;
+      if (input.session) {
+        try {
+          sessions = verifySessionRefs({
+            harnessRoot: input.harnessRoot,
+            session: input.session,
+            runStartedAt: input.run?.startedAt,
+            runFinishedAt: finishedAt,
+            env: process.env,
+          });
+        } catch {
+          sessions = undefined;
+        }
+      }
+      return updateValidationFactoryRun(input.checkoutDir, input.harnessRoot, input.validation.treeHash, {
+        ...(sessions ? { sessions } : {}),
+        factoryLine: input.lineStation.factoryLine,
+        station: input.lineStation.station,
+        ...(input.run?.startedAt ? { startedAt: input.run.startedAt } : {}),
+        finishedAt,
+        stageResults: buildFactoryRunStageResults(
+          readStageRegistry(input.harnessRoot),
+          input.verification,
+          evidence,
+        ),
+      });
+    } catch {
+      return undefined;
+    }
   }
 
   private verificationTraceInput(
@@ -576,11 +716,20 @@ export class RunService {
 
     if (envResult.code === 0 && session) {
       try {
+        // ADR 0004 §2: close every open segment of this attempt, in every session
+        // file and whoever runs teardown, then mark the attempt ended.
+        endSlotOccupancySegments({ harnessRoot, session });
+      } catch {
+        // Readers treat segments of an ended attempt as closed; never fail teardown.
+      }
+      try {
         // ADR 0003: the occupancy ended, so no session works in it any more.
         recordReleaseBindings({ harnessRoot, session, env: process.env });
       } catch {
         // Attribution evidence must not fail an otherwise successful teardown.
       }
+      // ADR 0004 §6: closed segments and the attempt's end, straight to every receiver (fail-open).
+      await publishSlotRecords({ harnessRoot, session });
     }
 
     // Teardown is the only exit besides `complete`; close the open attempt so

@@ -13,7 +13,6 @@ import {
   worktreeOccupancyKey,
   type TimelineBinding,
 } from '../packages/schemas/src/usage-attribution';
-import { selectAttributedUsage } from '../src/core/portal-attributed-usage';
 
 /**
  * Usage invariants (FE-2058): the current pipeline keeps them, and each one
@@ -87,7 +86,7 @@ function bind(
   };
 }
 
-/** What the pipeline ships for one repository: Mission Control's projection, selected by `har control sync`. */
+/** What Mission Control holds for one repository: its usage projection. */
 function shipped(
   repositoryId: string,
   bindings: TimelineBinding[],
@@ -98,23 +97,16 @@ function shipped(
     firstSeenAt: b.firstSeenAt.toISOString(),
     lastSeenAt: b.lastSeenAt.toISOString(),
   });
-  const selection = selectAttributedUsage(
-    {
-      usage: slots.map((b) => ({
-        ...b,
-        ...iso(b),
-        sessionKey: b.sessionId,
-        agentId: b.slotId,
-        origin: 'observations' as const,
-      })),
-      unassigned: unassigned.map((b) => ({ ...b, ...iso(b), itemized: true })),
-    },
-    null,
-  );
-  return ledgerRowsFromPortalUsage(
-    repositoryId,
-    selection.sessions.flat() as unknown as Array<Record<string, unknown>>,
-  );
+  return ledgerRowsFromUsageView(repositoryId, {
+    usage: slots.map((b) => ({
+      ...b,
+      ...iso(b),
+      sessionKey: b.sessionId,
+      agentId: b.slotId,
+      origin: 'observations' as const,
+    })),
+    unassigned: unassigned.map((b) => ({ ...b, ...iso(b), itemized: true })),
+  });
 }
 
 function check(partial: Partial<UsageLedger>) {

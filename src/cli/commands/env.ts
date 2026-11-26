@@ -40,6 +40,7 @@ import { resolveHarnessRoot } from '../../harness/manifest';
 import { adoptHarness, ejectHarness } from '../../harness/eject';
 import { formatDoctorReport, runDoctor, summarizeDoctorReport } from '../../harness/doctor';
 import { collectTelemetryHealth, withTelemetryHealth } from '../../core/telemetry-health';
+import { collectIngestHealth, withIngestHealth } from '../../core/ingest-health';
 import { describeWorktreeMode, resolveWorktreeMode } from '../../core/worktree-mode';
 import {
   confirmCleanupSelection,
@@ -388,6 +389,14 @@ export const envCommand = {
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
             .option('repo', { type: 'string', default: '.' })
             .option('full', { type: 'boolean', default: false })
+            .option('line', {
+              type: 'string',
+              describe: 'Factory line this verify runs under (needs --station; optional when one line is installed)',
+            })
+            .option('station', {
+              type: 'string',
+              describe: 'Station of the line, recorded on the factory run',
+            })
             .option('json', {
               type: 'boolean',
               default: false,
@@ -1213,6 +1222,8 @@ export async function handleVerify(argv: {
   repo: string;
   full: boolean;
   json?: boolean;
+  line?: string;
+  station?: string;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -1221,6 +1232,8 @@ export async function handleVerify(argv: {
     agentId,
     full: argv.full,
     capture: Boolean(argv.json),
+    line: argv.line,
+    station: argv.station,
   });
 
   if (argv.json) {
@@ -1336,7 +1349,10 @@ export async function handleAgent(argv: {
 export async function handleDoctor(argv: { repo: string; json?: boolean }): Promise<void> {
   const repoPath = path.resolve(argv.repo);
   // Destination health is advisory: it never turns the contract verdict.
-  const report = withTelemetryHealth(runDoctor(repoPath), collectTelemetryHealth());
+  const report = withIngestHealth(
+    withTelemetryHealth(runDoctor(repoPath), collectTelemetryHealth()),
+    await collectIngestHealth({ checkCapabilities: true }),
+  );
 
   if (argv.json) {
     console.log(JSON.stringify(report, null, 2));

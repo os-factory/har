@@ -5,33 +5,33 @@ import {
   LOCAL_ATTR_PREFIX,
   destinationIncludesLocalPaths,
   otlpSignalUrl,
+  type HarDestination,
+  type OtlpSignal,
   type TelemetryDestination,
 } from '../harness/schema';
 import { DEFAULT_CONTROL_API_URL, getControlApiUrl, isControlEnabled } from './control-config';
 import { controlContainerExists } from './control-lifecycle';
 import { isTelemetryEnabled } from './telemetry-config';
-import { readTelemetryDestinations } from './telemetry-destinations';
+import { missionControlDestination, readTelemetryDestinations } from './telemetry-destinations';
 
 /**
- * Where agent hook traces go (`@osfactory/otel-hook`): fan-out at the producer.
+ * Where agent hook telemetry goes (`@osfactory/otel-hook`): fan-out at the producer.
  *
- * The hook gets one destination list (`exporter.destinations[]`, otel-hook >=
- * 0.9.0) and sends every batch to each entry itself, with one retry spool per
- * entry. Mission Control is one entry among them, never a relay: it stores what
- * it receives and forwards nothing.
+ * The hook gets one destination list (`exporter.destinations[]`) built from
+ * HAR's destination list (ADR 0005 section 6) and sends every batch to each
+ * entry itself, with one retry spool per entry. Mission Control is one entry
+ * among them, never a relay: it stores what it receives and forwards nothing.
  *
- * - `mission-control`, when Mission Control is enabled and set up (a container,
- *   or a custom `HAR_CONTROL_API_URL`): traces to `<MC>/api/otel/v1/traces`,
- *   logs to `<MC>/api/otel/v1/logs` when the level records them, no headers;
- * - every enabled user destination subscribed to traces or logs, each with only
- *   the signals it subscribes to. Header values are `env:` references to
- *   variables in `direct.env` (mode 0600), never in the hook config.
+ * - `mission-control`, when its entry is enabled and Mission Control is set up
+ *   (a container, or a custom `HAR_CONTROL_API_URL`): `<MC>/api/otel/v1/<signal>`
+ *   for each signal of its entry, no headers;
+ * - every other enabled destination with OTLP signals, each with only the
+ *   signals it subscribes to. Header values are `env:` references to variables
+ *   in `direct.env` (mode 0600), never in the hook config.
  *
- * One hook process has one Resource. With `mission-control` in the list the
- * Resource keeps `factory.local.*` (Mission Control attributes sessions with
- * it), so the other destinations receive those local paths too (#519). Without
- * it, `factory.local.*` is left out unless every destination sets
- * `includeLocalPaths`.
+ * One hook process has one Resource, and work identity is stamped from the
+ * session context, not the Resource (ADR 0004 section 3). `factory.local.*` is
+ * left out unless every entry, Mission Control included, sets `includeLocalPaths`.
  *
  * Claude Code's native telemetry (metrics and logs carrying account identity)
  * is not part of this list: it goes to Mission Control only, and stays off
@@ -43,6 +43,12 @@ export type AgentTelemetryRoute =
       mode: 'fanout';
       /** Mission Control base URL (no trailing slash) when it is in the list. */
       missionControl?: string;
+      /** Signals of the Mission Control entry (default traces and logs). */
+      missionControlSignals?: OtlpSignal[];
+      /** The Mission Control entry opted in to local paths. */
+      missionControlIncludesLocalPaths?: boolean;
+      /** The Mission Control entry turned `session.id` off on metric points. */
+      missionControlIncludesSessionId?: boolean;
       /** Enabled user destinations subscribed to traces or logs, in the destinations file's order. */
       destinations: TelemetryDestination[];
     };
@@ -92,17 +98,16 @@ export interface AgentTelemetryRouteInput {
   controlAvailable: boolean;
   /** Mission Control base URL, used when it is available. */
   controlApiUrl?: string;
+  /** Mission Control's entry in the destination list; absent → traces and logs, defaults. */
+  missionControlEntry?: Pick<HarDestination, 'signals' | 'includeLocalPaths' | 'includeSessionId'>;
   destinations: readonly TelemetryDestination[];
   /** The installed otel-hook takes `exporter.destinations[]` with `env:` header values. */
   otelHookSupportsDestinations: boolean;
 }
 
-/** Enabled user destinations the hook sends to: those subscribed to traces or logs. */
+/** Enabled destinations the hook sends to: those with any OTLP signal. */
 export function agentRouteDestinations(destinations: readonly TelemetryDestination[]): TelemetryDestination[] {
-  return destinations.filter(
-    (destination) =>
-      destination.enabled && (destination.signals.includes('traces') || destination.signals.includes('logs')),
-  );
+  return destinations.filter((destination) => destination.enabled && destination.signals.length > 0);
 }
 
 /** Pure route selection — see `AgentTelemetryRoute`. */
@@ -111,17 +116,26 @@ export function selectAgentTelemetryRoute(input: AgentTelemetryRouteInput): Agen
   const missionControl = input.controlAvailable
     ? (input.controlApiUrl ?? DEFAULT_CONTROL_API_URL).replace(/\/+$/, '')
     : undefined;
+  const entry = input.missionControlEntry;
+  const mc = missionControl
+    ? {
+        missionControl,
+        ...(entry ? { missionControlSignals: [...entry.signals] } : {}),
+        ...(entry?.includeLocalPaths ? { missionControlIncludesLocalPaths: true } : {}),
+        ...(entry?.includeSessionId === false ? { missionControlIncludesSessionId: false } : {}),
+      }
+    : {};
   const destinations = agentRouteDestinations(input.destinations);
   if (destinations.length > 0 && !input.otelHookSupportsDestinations) {
     return {
-      route: { mode: 'fanout', ...(missionControl ? { missionControl } : {}), destinations: [] },
+      route: { mode: 'fanout', ...mc, destinations: [] },
       hint:
         `Agent traces are not sent to ${formatDestinationNames(destinations)}: ` +
         `that needs @osfactory/otel-hook ${OTEL_HOOK_DESTINATIONS_MIN_VERSION} or later. ` +
         'Run har telemetry on after upgrading HAR.',
     };
   }
-  return { route: { mode: 'fanout', ...(missionControl ? { missionControl } : {}), destinations } };
+  return { route: { mode: 'fanout', ...mc, destinations } };
 }
 
 /** `"a"`, `"a" and "b"`, `"a", "b" and "c"`. */
@@ -187,10 +201,17 @@ export function resolveAgentTelemetryRoute(
   } catch {
     destinations = [];
   }
+  let entry: HarDestination | undefined;
+  try {
+    entry = missionControlDestination(env);
+  } catch {
+    entry = undefined;
+  }
   return selectAgentTelemetryRoute({
     telemetryEnabled: true,
-    controlAvailable: isControlAvailable(env),
+    controlAvailable: entry !== undefined && entry.signals.length > 0 && isControlAvailable(env),
     controlApiUrl: getControlApiUrl(),
+    ...(entry ? { missionControlEntry: entry } : {}),
     destinations,
     otelHookSupportsDestinations: otelHookSupportsDestinations(hooksHome),
   });
@@ -201,19 +222,51 @@ export function destinationReceivesLogs(destination: TelemetryDestination): bool
   return destination.signals.includes('logs');
 }
 
+/** Signals of the route's Mission Control entry (none when it is not in the route). */
+export function missionControlRouteSignals(route: AgentTelemetryRoute): OtlpSignal[] {
+  if (route.mode === 'off' || route.missionControl === undefined) return [];
+  return route.missionControlSignals ?? ['traces', 'logs'];
+}
+
 /** Whether any entry of the route takes otel-hook's event records (logs), before the level is applied. */
 export function routeSendsLogs(route: AgentTelemetryRoute): boolean {
   if (route.mode === 'off') return false;
-  return route.missionControl !== undefined || route.destinations.some(destinationReceivesLogs);
+  return missionControlRouteSignals(route).includes('logs') || route.destinations.some(destinationReceivesLogs);
+}
+
+/** Whether any entry of the route takes otel-hook's metrics, before the level is applied. */
+export function routeSendsMetrics(route: AgentTelemetryRoute): boolean {
+  if (route.mode === 'off') return false;
+  return (
+    missionControlRouteSignals(route).includes('metrics') ||
+    route.destinations.some((destination) => destination.signals.includes('metrics'))
+  );
 }
 
 /**
- * Whether the hook must drop `factory.local.*`. Mission Control needs them, so
- * with it in the list they stay (#519). Without it, one destination without
- * `includeLocalPaths` decides for all: one hook process has one Resource.
+ * `exporter.metrics.includeSessionId` for the hook: otel-hook has one setting
+ * for every destination, so one metrics destination that turns it off decides
+ * for all.
+ */
+export function routeMetricsIncludeSessionId(route: AgentTelemetryRoute): boolean {
+  if (route.mode === 'off') return true;
+  if (missionControlRouteSignals(route).includes('metrics') && route.missionControlIncludesSessionId === false) {
+    return false;
+  }
+  return !route.destinations.some(
+    (destination) => destination.signals.includes('metrics') && destination.includeSessionId === false,
+  );
+}
+
+/**
+ * Whether the hook must drop `factory.local.*`. Attribution no longer needs
+ * them (work identity is stamped from the session context), so they are
+ * stripped unless every entry of the route, Mission Control included, opts in
+ * with `includeLocalPaths`: one hook process has one Resource.
  */
 export function routeStripsLocalPaths(route: AgentTelemetryRoute): boolean {
-  if (route.mode === 'off' || route.missionControl !== undefined) return false;
+  if (route.mode === 'off') return false;
+  if (route.missionControl !== undefined && route.missionControlIncludesLocalPaths !== true) return true;
   return route.destinations.some((destination) => !destinationIncludesLocalPaths(destination));
 }
 
@@ -234,7 +287,8 @@ export interface RouteDestinationPlan {
   name: string;
   tracesEndpoint?: string;
   logsEndpoint?: string;
-  signals: Array<'traces' | 'logs'>;
+  metricsEndpoint?: string;
+  signals: OtlpSignal[];
   headers: RouteHeaderBinding[];
 }
 
@@ -260,19 +314,22 @@ export function planRouteDestinations(route: AgentTelemetryRoute): RouteDestinat
   const taken = new Set<string>();
   const plans: RouteDestinationPlan[] = [];
   if (route.missionControl !== undefined) {
+    const signals = OTLP_SIGNAL_ORDER.filter((signal) => missionControlRouteSignals(route).includes(signal));
     plans.push({
       destination: MISSION_CONTROL_DESTINATION,
       missionControl: true,
       name: otelHookDestinationName(MISSION_CONTROL_DESTINATION, taken),
-      tracesEndpoint: `${route.missionControl}/api/otel/v1/traces`,
-      logsEndpoint: `${route.missionControl}/api/otel/v1/logs`,
-      signals: ['traces', 'logs'],
+      ...(signals.includes('traces') ? { tracesEndpoint: `${route.missionControl}/api/otel/v1/traces` } : {}),
+      ...(signals.includes('logs') ? { logsEndpoint: `${route.missionControl}/api/otel/v1/logs` } : {}),
+      ...(signals.includes('metrics') ? { metricsEndpoint: `${route.missionControl}/api/otel/v1/metrics` } : {}),
+      signals,
       headers: [],
     });
   }
   route.destinations.forEach((destination, index) => {
     const traces = destination.signals.includes('traces');
     const logs = destinationReceivesLogs(destination);
+    const metrics = destination.signals.includes('metrics');
     const headers = Object.entries(destination.headers)
       // otel-hook refuses an empty header value; HAR sends none either.
       .filter(([, value]) => value.length > 0)
@@ -287,12 +344,19 @@ export function planRouteDestinations(route: AgentTelemetryRoute): RouteDestinat
       name: otelHookDestinationName(destination.name, taken),
       ...(traces ? { tracesEndpoint: otlpSignalUrl(destination.endpoint, 'traces') } : {}),
       ...(logs ? { logsEndpoint: otlpSignalUrl(destination.endpoint, 'logs') } : {}),
-      signals: [...(traces ? (['traces'] as const) : []), ...(logs ? (['logs'] as const) : [])],
+      ...(metrics ? { metricsEndpoint: otlpSignalUrl(destination.endpoint, 'metrics') } : {}),
+      signals: [
+        ...(traces ? (['traces'] as const) : []),
+        ...(logs ? (['logs'] as const) : []),
+        ...(metrics ? (['metrics'] as const) : []),
+      ],
       headers,
     });
   });
   return plans;
 }
+
+const OTLP_SIGNAL_ORDER: readonly OtlpSignal[] = ['traces', 'logs', 'metrics'];
 
 /** Names of the route's entries, Mission Control first. */
 export function routeDestinationNames(route: AgentTelemetryRoute): string[] {

@@ -8,17 +8,17 @@ jest.mock('../src/core/control-repo-path', () => ({
 }));
 
 import {
-  getPortalWatermarkPath,
-  readPortalWatermark,
+  coveredSources,
+  readRunsWatermarkEntry,
   selectSince,
-  writePortalWatermark,
-} from '../src/core/portal-watermark';
+  writeRunsWatermark,
+} from '../src/core/sync-watermark';
 
-describe('portal watermark store', () => {
+describe('runs watermark store', () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'har-portal-watermark-'));
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'har-sync-watermark-'));
     process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(tempHome, 'portal-sync-state.json');
   });
 
@@ -28,33 +28,28 @@ describe('portal watermark store', () => {
   });
 
   it('returns null before any sync', () => {
-    expect(readPortalWatermark('/repo/a', 'https://portal.example.com')).toBeNull();
+    expect(readRunsWatermarkEntry('/repo/a', 'runs:http://mc')).toBeNull();
   });
 
-  it('round-trips a watermark per (repo, portal)', () => {
-    writePortalWatermark('/repo/a', 'https://p1.example.com', '2026-01-02T00:00:00.000Z');
-    expect(fs.existsSync(getPortalWatermarkPath())).toBe(true);
-    expect(readPortalWatermark('/repo/a', 'https://p1.example.com')).toBe(
-      '2026-01-02T00:00:00.000Z',
-    );
+  it('keys independently by repo and by target, and upserts in place', () => {
+    writeRunsWatermark('/repo/a', 'runs:http://mc1', 'r1', '2026-01-01T00:00:00.000Z');
+    writeRunsWatermark('/repo/a', 'runs:http://mc2', 'r2', '2026-02-01T00:00:00.000Z');
+    writeRunsWatermark('/repo/a', 'runs:http://mc1', 'r1', '2026-05-01T00:00:00.000Z');
+    expect(readRunsWatermarkEntry('/repo/a', 'runs:http://mc1')).toMatchObject({
+      lastSyncedAt: '2026-05-01T00:00:00.000Z',
+      repoId: 'r1',
+    });
+    expect(readRunsWatermarkEntry('/repo/a', 'runs:http://mc2')?.lastSyncedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(readRunsWatermarkEntry('/repo/b', 'runs:http://mc1')).toBeNull();
   });
 
-  it('keys independently by repo and by portal', () => {
-    writePortalWatermark('/repo/a', 'https://p1.example.com', '2026-01-01T00:00:00.000Z');
-    writePortalWatermark('/repo/a', 'https://p2.example.com', '2026-02-01T00:00:00.000Z');
-    writePortalWatermark('/repo/b', 'https://p1.example.com', '2026-03-01T00:00:00.000Z');
-
-    expect(readPortalWatermark('/repo/a', 'https://p1.example.com')).toBe('2026-01-01T00:00:00.000Z');
-    expect(readPortalWatermark('/repo/a', 'https://p2.example.com')).toBe('2026-02-01T00:00:00.000Z');
-    expect(readPortalWatermark('/repo/b', 'https://p1.example.com')).toBe('2026-03-01T00:00:00.000Z');
-  });
-
-  it('upserts the same (repo, portal) in place', () => {
-    writePortalWatermark('/repo/a', 'https://p1.example.com', '2026-01-01T00:00:00.000Z');
-    writePortalWatermark('/repo/a', 'https://p1.example.com', '2026-05-01T00:00:00.000Z');
-    expect(readPortalWatermark('/repo/a', 'https://p1.example.com')).toBe('2026-05-01T00:00:00.000Z');
-    const parsed = JSON.parse(fs.readFileSync(getPortalWatermarkPath(), 'utf8'));
-    expect(parsed.states).toHaveLength(1);
+  it('remembers the sources a watermark covers', () => {
+    expect(coveredSources('/repo/a', null)).toEqual(['/repo/a']);
+    writeRunsWatermark('/repo/a', 'runs:http://mc', 'r1', '2026-01-01T00:00:00.000Z', ['/ws/b']);
+    expect(coveredSources('/repo/a', readRunsWatermarkEntry('/repo/a', 'runs:http://mc'))).toEqual([
+      '/repo/a',
+      '/ws/b',
+    ]);
   });
 });
 

@@ -4,23 +4,16 @@ import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
-import {
-  checkUsageInvariants,
-  ledgerRowsFromPortalUsage,
-  type LedgerObservation,
-  type UsageInvariantReport,
-  type UsageLedger,
-} from '../packages/schemas/src/usage-invariants';
+import { type UsageInvariantReport } from '../packages/schemas/src/usage-invariants';
 
 /**
  * Usage integrity, end to end (FE-2058; station S1 of the `usage-integrity`
  * factory line). Mission Control runs from source (`next dev`, fresh SQLite),
  * the built CLI drives real repositories, slots and worktrees in a sandbox
- * HOME, and `har control sync` posts to a capture portal. Sessions are
+ * HOME, and `har control sync` posts to Mission Control. Sessions are
  * synthetic OTLP shaped like otel-hook with os-factory/otel-hook#42 (place
  * evidence) and Claude Code's `api_request` logs (usage). The usage
- * invariants must hold on Mission Control and on the captured `usage[]`, and
- * every request must land in the place it happened.
+ * invariants must hold on Mission Control, before and after a resend.
  *
  * No model, no Docker. Opt-in:
  *   npm run build && HAR_USAGE_E2E=1 npx jest tests/usage-integrity.e2e.test.ts
@@ -30,8 +23,6 @@ const ROOT = path.resolve(__dirname, '..');
 const CONTROL = path.join(ROOT, 'control');
 const HAR_BIN = path.join(ROOT, 'dist', 'index.js');
 const run = process.env.HAR_USAGE_E2E === '1' ? describe : describe.skip;
-
-type Rows = Array<Record<string, unknown>>;
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -75,23 +66,6 @@ const attrs = (map: Record<string, string | number>) =>
     value: typeof value === 'number' ? { intValue: value } : { stringValue: value },
   }));
 
-/** A har-portal stand-in: answers every request and appends it to a JSONL file. */
-const CAPTURE_PORTAL = `
-const http = require('http'); const fs = require('fs');
-const [port, out] = process.argv.slice(1);
-fs.writeFileSync(out, '');
-http.createServer((req, res) => {
-  const chunks = [];
-  req.on('data', (c) => chunks.push(c));
-  req.on('end', () => {
-    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
-    fs.appendFileSync(out, JSON.stringify({ url: req.url, body }) + '\\n');
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(req.url === '/api/sync' ? { repositoryId: 'portal:' + (body.path || '') } : {}));
-  });
-}).listen(Number(port), '127.0.0.1');
-`;
-
 const sid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const S = {
   main: sid(1),
@@ -107,7 +81,7 @@ const S = {
 };
 
 run(
-  'usage integrity end to end: Mission Control from source → har control sync → capture portal',
+  'usage integrity end to end: Mission Control from source → har control sync',
   () => {
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'har-usage-e2e-'));
     const home = path.join(base, 'home');
@@ -116,11 +90,8 @@ run(
     const repoB = path.join(base, 'b');
     const wt1 = path.join(base, 'a-wt-feat');
     const wt2 = path.join(base, 'a-wt-feat2');
-    const capturePath = path.join(base, 'captures.jsonl');
     let mc: ChildProcess | null = null;
-    let portal: ChildProcess | null = null;
     let mcUrl = '';
-    let portalUrl = '';
     let clock = Date.now() - 600_000;
     /** Strictly increasing event time, never in the future. */
     const tick = () => (clock += 1_000);
@@ -134,8 +105,6 @@ run(
       HAR_CONTROL_API_URL: mcUrl,
       HAR_CONTROL_IMAGE: 'har-usage-e2e/blocked:none',
       HAR_SKIP_TELEMETRY_POSTINSTALL: '1',
-      HAR_PORTAL_URL: portalUrl,
-      HAR_PORTAL_TOKEN: 'har_ingest_e2e',
       GIT_AUTHOR_NAME: 'e2e',
       GIT_AUTHOR_EMAIL: 'e2e@example.com',
       GIT_COMMITTER_NAME: 'e2e',
@@ -334,50 +303,6 @@ run(
       har(repo, 'control', 'register', '--repo', repo, '--api-url', mcUrl);
     }
 
-    /** The portal's current rows per repository: a sync replaces a provider session's rows with what it carries. */
-    function portalState(): Map<string, Rows> {
-      const byRepo = new Map<string, Map<string, Rows>>();
-      const calls = fs.readFileSync(capturePath, 'utf8').split('\n').filter(Boolean);
-      for (const { url, body } of calls.map(
-        (line) => JSON.parse(line) as { url: string; body: Record<string, unknown> },
-      )) {
-        if (url !== '/api/sync' || !Array.isArray(body.usage)) continue;
-        const sessions = byRepo.get(String(body.path)) ?? new Map<string, Rows>();
-        const carried = new Map<string, Rows>();
-        for (const row of body.usage as Rows) {
-          const key = `${row.agentTool}\0${row.providerSessionId ?? row.sessionKey}`;
-          carried.set(key, [...(carried.get(key) ?? []), row]);
-        }
-        for (const [key, rows] of carried) sessions.set(key, rows);
-        byRepo.set(String(body.path), sessions);
-      }
-      return new Map([...byRepo].map(([repo, sessions]) => [repo, [...sessions.values()].flat()]));
-    }
-
-    /** The portal's rows, against Mission Control's requests. */
-    async function capturedLedger(): Promise<UsageLedger> {
-      const repositories = await api<Array<{ id: string; path: string }>>('/api/repos');
-      const observations: LedgerObservation[] = [];
-      for (const repo of repositories) {
-        const { observations: list } = await api<{ observations: Rows }>(
-          `/api/repos/${repo.id}/usage-observations?limit=5000`,
-        );
-        for (const o of list) {
-          observations.push({
-            ...(o as unknown as LedgerObservation),
-            repositoryId: repo.id,
-            observedAt: new Date(String(o.observedAt)),
-            costUsd: (o.costUsd as number | null) ?? null,
-          });
-        }
-      }
-      const idOf = new Map(repositories.map((r) => [path.resolve(r.path), r.id]));
-      const rows = [...portalState()].flatMap(([repoPath, usage]) =>
-        ledgerRowsFromPortalUsage(idOf.get(path.resolve(repoPath)) ?? repoPath, usage),
-      );
-      return { repositories, observations, rows };
-    }
-
     beforeAll(async () => {
       if (!fs.existsSync(HAR_BIN)) throw new Error('build the CLI first: npm run build');
       fs.mkdirSync(home, { recursive: true });
@@ -396,18 +321,12 @@ run(
         stdio: ['ignore', log, log],
         detached: true,
       });
-      // The capture portal is its own process: the CLI runs synchronously here.
-      const portalPort = await freePort();
-      portalUrl = `http://127.0.0.1:${portalPort}`;
-      portal = spawn(process.execPath, ['-e', CAPTURE_PORTAL, String(portalPort), capturePath], {
-        stdio: 'ignore',
-      });
       for (let i = 0; i < 120; i++) {
         const up = await fetch(`${mcUrl}/api/health`).then(
           (r) => r.ok,
           () => false,
         );
-        if (up && fs.existsSync(capturePath)) break;
+        if (up) break;
         await new Promise((r) => setTimeout(r, 1_000));
       }
 
@@ -425,7 +344,6 @@ run(
 
     afterAll(() => {
       if (mc?.pid) process.kill(-mc.pid, 'SIGTERM');
-      portal?.kill('SIGTERM');
       if (process.env.HAR_USAGE_E2E_KEEP === '1') process.stderr.write(`kept ${base}\n`);
       else fs.rmSync(base, { recursive: true, force: true });
     });
@@ -491,57 +409,11 @@ run(
       expect(report.violations).toEqual([]);
     });
 
-    it('the captured usage[] keeps every invariant against Mission Control’s requests', async () => {
-      expect(checkUsageInvariants(await capturedLedger()).violations).toEqual([]);
-    });
-
-    it('every request lands where it happened', () => {
-      const state = portalState();
-      /** `<place> <tokensTotal>` of each of a session's rows in a repository. */
-      const rowsOf = (repo: string, sessionId: string) =>
-        (state.get(repo) ?? [])
-          .filter((r) => r.providerSessionId === sessionId)
-          .map((r) => `${String(r.sessionKey).split('@')[1]} ${r.tokensTotal}`)
-          .sort();
-      const places = (repo: string, sessionId: string) =>
-        rowsOf(repo, sessionId).map((r) => r.split(' ')[0]);
-      // The retried request is counted once.
-      expect(rowsOf(repoA, S.main)).toEqual([`main ${10 + 100 + 5_000 + 12 + 120 + 6_000}`]);
-      expect(places(repoA, S.worktree)).toEqual(['wt:feat']);
-      expect(places(repoA, S.slot)).toEqual([expect.stringMatching(/^1:/)]);
-      expect(places(repoA, S.moves)).toEqual(['main', 'wt:feat']);
-      expect(places(repoA, S.parallelA)).toEqual(['wt:feat']);
-      expect(places(repoA, S.parallelB)).toEqual(['wt:feat2']);
-      const relaunch = places(repoA, S.relaunch);
-      expect(relaunch).toEqual([expect.stringMatching(/^2:/), expect.stringMatching(/^2:/)]);
-      expect(new Set(relaunch).size).toBe(2);
-      const holders = (sessionId: string) =>
-        [...state]
-          .filter(([, rows]) => rows.some((r) => r.providerSessionId === sessionId))
-          .map(([repo]) => repo);
-      expect(holders(S.nested)).toEqual([nested]);
-      // One request, one place, one repository.
-      expect(rowsOf(repoA, S.twoRepos)).toEqual([`main ${60 + 600 + 11_000}`]);
-      expect(rowsOf(repoB, S.twoRepos)).toEqual([`main ${61 + 610 + 11_100}`]);
-      expect(rowsOf(repoA, S.crossRepo)).toEqual([`main ${90 + 92 + 2 * (900 + 14_000)}`]);
-      expect(rowsOf(repoB, S.crossRepo)).toEqual([
-        expect.stringMatching(new RegExp(`^1:\\S* ${91 + 900 + 14_000}$`)),
-      ]);
-    });
-
-    it('a resend and a --full resend change nothing', async () => {
-      const snapshot = () =>
-        JSON.stringify(
-          [...portalState()].map(([repo, rows]) => [
-            repo,
-            rows.map((r) => [r.sessionKey, r.tokensTotal, r.costUsd]).sort(),
-          ]),
-        );
-      const before = snapshot();
+    it('a resend and a --full resend keep every invariant', async () => {
       syncAll();
       syncAll('--full');
-      expect(snapshot()).toBe(before);
-      expect(checkUsageInvariants(await capturedLedger()).violations).toEqual([]);
+      const report = await api<UsageInvariantReport>('/api/usage/invariants');
+      expect(report.violations).toEqual([]);
     }, 600_000);
   },
 );

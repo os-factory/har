@@ -30,11 +30,14 @@ har telemetry destination test collector
   them. At the `full` level logs carry prompts, replies and tool input/output
   verbatim, so `add` prints a warning when you subscribe to them.
 - `--include-local-paths` keeps the attributes that hold absolute local paths. By
-  default they are stripped, except `factory.local.*` in agent traces while Mission
-  Control is a destination (see [Privacy](#privacy)).
+  default they are stripped for every destination, Mission Control included (see
+  [Privacy](#privacy)).
 - `--include-account-identity` keeps the attributes that identify your account
   (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) in what the
   CLI sends. By default they are stripped.
+- `--no-include-session-id` leaves `session.id` off metric points, for backends where
+  one series per session is too many. otel-hook has one setting for every
+  destination, so one destination turning it off turns it off for all.
 - `--disabled` stores the destination without sending to it. `--overwrite`
   replaces a destination with the same name.
 
@@ -55,9 +58,12 @@ har telemetry destination test vendor   # one OTLP/JSON test record, prints the 
 har telemetry destination remove vendor
 ```
 
-Destinations live in `~/.har/destinations/telemetry.json`, mode `0600`, because
-header values are secrets. They are machine-wide: every repository's sessions go to
-the same destinations.
+Destinations live in one list, `~/.har/destinations/destinations.json`, mode `0600`,
+because header values are secrets. The same list holds Mission Control, HAR HQ and
+`git-notes` (see the [CLI reference](/docs/reference/cli/#destinations-one-list-for-everything-har-sends));
+an `otlp` destination takes OTLP signals only, never records, proofs or evidence. A
+2.0 prerelease `telemetry.json` is migrated on first read. Destinations are
+machine-wide: every repository's sessions go to the same destinations.
 
 ## What each signal carries
 
@@ -66,7 +72,7 @@ the same destinations.
 | `traces` | `@osfactory/otel-hook` (`outline`, `full`) | One span per session, prompt, generation and tool call, with `gen_ai.*` attributes. No text at any level |
 | `traces` | `har env verify` (every level except `off`) | One run span and one child span per stage, with `cicd.pipeline.*` and `factory.*` attributes. Ids, results and timings only |
 | `logs` (opt-in) | otel-hook event records (`outline`, `full`) | At `full`, prompts, agent replies and tool inputs and outputs (see [Privacy](#privacy)). At `outline`, metadata only |
-| `metrics` | none | Nothing is sent to destinations. Claude Code's native metrics and `claude_code.api_request` log events carry account identity and go to Mission Control only |
+| `metrics` | otel-hook (`outline`, `full`) | Hook-derived running totals (tokens per model, tool calls), with `session.id` unless a destination turned it off. Claude Code's token counts are read from the transcript at `Stop`. Claude Code's native metrics and `claude_code.api_request` log events carry account identity and go to Mission Control only |
 
 Verification traces follow the telemetry profile's
 [verification spans](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md#verification-spans).
@@ -117,9 +123,7 @@ docker run --rm -p 4318:4318 -v "$PWD/otelcol.yaml:/etc/otelcol/config.yaml" \
 
 Replace `debug` with your real exporter. Add an
 [`attributes` or `transform` processor](https://opentelemetry.io/docs/collector/configuration/#processors)
-to drop anything else you don't want to keep, for example the `factory.local.*`
-keys that agent traces carry while Mission Control is a destination
-([#519](https://github.com/os-factory/har/issues/519)).
+to drop anything else you don't want to keep.
 
 The agent hook and the CLI run on your machine, so a Collector on the same machine
 is reached at `http://localhost:4318`, the same URL `destination test` uses.
@@ -148,11 +152,16 @@ Destination health:
 HAR writes one destination list into the hook config
 (`~/.har/otel-hooks/otel_config.json`) as otel-hook's `exporter.destinations[]`:
 
-- `mission-control`, when Mission Control is enabled and set up (a container, or a
-  custom `HAR_CONTROL_API_URL`): traces to `/api/otel/v1/traces` and, from the
-  `outline` level, logs to `/api/otel/v1/logs`, with no headers;
-- every enabled destination subscribed to `traces` or `logs`, with only the signals
-  it subscribes to.
+- `mission-control`, when its entry is enabled and Mission Control is set up (a
+  container, or a custom `HAR_CONTROL_API_URL`): `/api/otel/v1/<signal>` for each
+  signal of its entry, with no headers;
+- every other enabled destination with an OTLP signal (`hq` at `<base URL>/otel`),
+  with only the signals it subscribes to.
+
+The same config sets `providers.claudeCode.readTranscriptUsage: true` (hooks carry no
+token counts) and `sessionContext.dir` to `~/.har/sessions`: otel-hook stamps work
+identity (`factory.work_unit.id`, `factory.attempt.id`, `factory.slot.id`) from the
+session context HAR writes, never from the agent's environment.
 
 otel-hook sends each batch to every entry in parallel, and whatever one entry could
 not take waits in that entry's own spool for the next hook event, so a slow or
@@ -164,16 +173,16 @@ failing destination never blocks the others or the agent.
   wrapper loads at run time. No secret is on a command line, in the wrapper or in
   the hook config.
 - **One Resource for every entry.** One hook process sends the same Resource to all
-  of them. Mission Control needs `factory.local.*` to attribute sessions, so while
-  it is in the list every destination receives those keys
-  ([#519](https://github.com/os-factory/har/issues/519)). Without Mission Control,
-  `factory.local.*` stays out of the agent's Resource unless **every** destination
-  has `--include-local-paths`. otel-hook itself sends hashed workspace ids, not paths.
+  of them, so `factory.local.*` stays out of the agent's Resource unless **every**
+  destination, Mission Control included, has `--include-local-paths`. otel-hook
+  itself sends hashed workspace ids, not paths.
 - **Claude Code's own telemetry is not in the list.** Its native metrics and logs
   carry account identity: they go to Mission Control only, and stay off without it.
-- **otel-hook 0.9.0 or later.** HAR installs it on `har env launch` and
-  `har telemetry on`. With an older copy, HAR sends agent traces to Mission Control
-  only and says which version it needs.
+- **otel-hook 0.12.0.** HAR installs it on `har env launch` and
+  `har telemetry on` (`HAR_OTEL_HOOKS_PACKAGE` names another spec, a `.tgz` or a
+  directory, to test an unreleased build). With an older copy, HAR writes only the
+  keys it understands; before 0.9.0 it sends agent traces to Mission Control only and
+  says which version it needs.
 - **Re-routing.** `destination add|remove`, `har control up|down` and
   `har telemetry on|off` rewrite the list; hooks pick it up on their next event.
 
@@ -194,9 +203,8 @@ each receiver:
 
 - The CLI sends one copy to Mission Control and one to every enabled destination
   subscribed to `traces`, in parallel, as OTLP/JSON, about 3 seconds each.
-  Mission Control's copy keeps `factory.local.checkout_path` so it can attribute the
-  run, stores it as a verification run and includes it in the next HQ sync. Each
-  destination's copy is stripped of the denied attributes.
+  Mission Control stores its copy as a verification run. Every copy is stripped of
+  the denied attributes, local paths included.
 - A copy that was not taken (Mission Control not running, a destination down) is
   queued in `~/.har/spool/traces` for that receiver alone. A queued copy is deleted
   as soon as it is accepted, and no receiver is ever sent another receiver's copy.
@@ -244,9 +252,9 @@ har telemetry status          # Agent traces:  → collector
 
 HAR follows the Factory Commits
 [telemetry profile](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md).
-These resource attributes are set on every agent session HAR launches and on every
-verification trace, so any backend can group sessions and runs by work unit,
-attempt, repository and branch. The values
+These attributes are on every verification trace, and on every agent record otel-hook
+sends while the session works in a slot (stamped from the session context), so any
+backend can group sessions and runs by work unit, attempt, repository and branch. The values
 are the same ones HAR writes into [Factory Commits proofs](/docs/guides/factory-commits/).
 
 | Attribute | Value |
@@ -259,14 +267,17 @@ are the same ones HAR writes into [Factory Commits proofs](/docs/guides/factory-
 | `factory.producer.name` | `har` |
 | `factory.producer.version` | The HAR version |
 
-Agent sessions also carry, on their Resource:
+Agent sessions also carry `factory.slot.id` (the slot number) from the session
+context. Telemetry outside any segment (before `launch`, after `complete`) carries no
+work unit, attempt or slot. The agent's environment (`OTEL_RESOURCE_ATTRIBUTES`)
+holds no work identity, only:
 
 | Attribute | Value |
 |---|---|
 | `session.id` | The HAR session key (the slot's branch, or `agent-<id>-…`) |
-| `factory.slot.id` | The slot number |
-| `factory.local.checkout_path` | Absolute path of the main checkout (local-only) |
-| `factory.local.work_dir` | Absolute path of the slot's work dir (local-only) |
+| `vcs.repository.url.full`, `vcs.ref.head.name`, `factory.producer.*` | As above |
+| `factory.local.checkout_path` | Absolute path of the main checkout (local-only, only when every destination opts in) |
+| `factory.local.work_dir` | Absolute path of the slot's work dir (local-only, likewise) |
 
 Verification run spans add `factory.run.id`, `factory.git.tree`, `factory.verdict`
 (on `--full`) and `cicd.pipeline.*`. These match the `Factory-Run` trailer and the
@@ -276,18 +287,16 @@ proof's tree. Session spans carry the OpenTelemetry GenAI attributes (`gen_ai.re
 
 HAR 2.0 removed the 1.x `har.*` attributes; the
 [upgrade guide](/docs/guides/upgrading-to-2-0/#removed-telemetry-attributes) maps
-each one to its new name. `factory.local.*` is a local-only namespace: destinations
-receive its keys with `--include-local-paths`, and in agent traces while Mission
-Control is a destination ([#519](https://github.com/os-factory/har/issues/519)).
+each one to its new name. `factory.local.*` is a local-only namespace: a destination
+receives its keys only with `--include-local-paths`.
 
 An unknown value is left out, never sent empty. A slot launched without
 `--work-id` has no work unit attributes.
 
 ## Privacy
 
-With the default settings, no prompt, reply or tool text and no account identity
-leaves the machine, and no absolute local path does unless Mission Control is one
-of the agent route's destinations:
+With the default settings, no prompt, reply or tool text, no account identity and no
+absolute local path leaves the machine:
 
 - **Logs are opt-in.** Only logs can carry text, and `--preset otlp` subscribes to
   `traces` and `metrics` unless you name `logs` in `--signals`. The Langfuse preset
@@ -297,13 +306,9 @@ of the agent route's destinations:
   `gen_ai.client.repository_root`, `cwd`, `process.cwd`,
   `process.executable.path`, `process.command`, `process.command_line`,
   `process.command_args`, `code.filepath` and `code.file.path`. The CLI strips them
-  from every verification copy it sends a destination or writes to its spool. Agent
-  traces carry one Resource for every receiver: while Mission Control is in the
-  list they keep the `factory.local.*` keys it needs for attribution, so your
-  destinations receive them too. That is a known trade-off, tracked in
-  [#519](https://github.com/os-factory/har/issues/519). Without Mission Control,
-  HAR leaves them out unless every destination has `--include-local-paths`. A
-  destination added with `--include-local-paths` receives them in every case.
+  from every verification copy it sends a destination or writes to its spool, and
+  leaves them out of agent telemetry unless every destination, Mission Control
+  included, has `--include-local-paths` (one hook process has one Resource).
 - **Account identity stays in Mission Control.** Claude Code attaches your email,
   account and organization ids to its own metrics and events, and those go to
   Mission Control only. In anything the CLI sends a destination, these attributes
@@ -318,20 +323,20 @@ destination receives what the producers send it.
 What each signal carries once it reaches a destination:
 
 - **Verification traces** carry ids, results and timings only: no commands or logs.
-  Their Resource `factory.local.checkout_path` is for Mission Control's attribution
-  and is stripped from every copy sent to a destination or written to a spool,
-  unless the destination opted in with `--include-local-paths`.
+  Their Resource `factory.local.checkout_path` is stripped from every copy sent to a
+  destination or written to a spool, unless the destination opted in with
+  `--include-local-paths`.
 - **Session traces** carry no prompt, reply or tool text at any level. They do carry
   model names, token counts, tool names, branch names and HAR's resource attributes
-  (work unit, attempt, repository URL, branch, HAR version, slot number), plus the
-  `factory.local.*` paths while Mission Control is a destination.
+  (work unit, attempt, repository URL, branch, HAR version, slot number).
 - **Logs**, if you subscribe to them, carry otel-hook's event records: at the `full`
   level your prompts, the agent's replies and tool inputs and outputs **verbatim,
   without secret redaction**, truncated by otel-hook (1,024 characters per piece by
   default). At `outline` they carry the kind, length and a hash of each piece, never
   the text.
-- **Metrics**: nothing. Claude Code's token and cost counters stay in Mission
-  Control.
+- **Metrics**, if you subscribe to them, carry otel-hook's running totals: model
+  names, token counts and tool names, and `session.id` unless turned off. Claude
+  Code's native token and cost counters stay in Mission Control.
 
 To send less:
 

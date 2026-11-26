@@ -2,12 +2,12 @@ import * as path from 'path';
 import { applyLine, readInstalledLineProgram, type ApplyLineOptions, type ApplyLineResult } from '../harness/lines';
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
 import { readLineLedger } from '../harness/line-ledger';
-import { listLocalLineIds } from '../harness/line-resolve';
 import { readStageRegistry } from '../harness/stages';
 import type { LineGateStage, LineProgram, LineStation } from '../harness/schema';
 import { listSlotRegistryEntries } from './slot-registry';
 import { listRuns } from './runs';
 import { runStage } from './run-service';
+import { listInstalledLineIds } from './line-programs';
 import type { StageResult } from '../harness/schema';
 
 /**
@@ -63,15 +63,7 @@ export interface LineStatus {
   warnings: string[];
 }
 
-/** Ids of every line installed in this repo (ledger first, then on-disk). */
-export function listInstalledLineIds(repoPath: string): string[] {
-  const ledger = readLineLedger(repoPath);
-  const fromLedger = ledger?.lines.map((l) => l.id) ?? [];
-  const onDisk = listLocalLineIds(repoPath).filter(
-    (id) => readInstalledLineProgram(repoPath, id) !== null,
-  );
-  return [...new Set([...fromLedger, ...onDisk])].sort();
-}
+export { listInstalledLineIds };
 
 /**
  * The ratchet, as data: a stage tagged `fromStation: X` is required at X and

@@ -4,10 +4,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readHarnessEnv } from '../harness/env';
 import { getHarnessDir } from '../harness/manifest';
-import { HarnessStageRegistry, ValidationRecord, VerificationResult } from '../harness/schema';
+import {
+  FactoryRunStageResult,
+  HarnessStageRegistry,
+  StageEvidenceFile,
+  ValidationRecord,
+  VerificationResult,
+} from '../harness/schema';
 import { readStageRegistry } from '../harness/stages';
 import { resolveVerificationPlan } from '../harness/verification';
 import { canonicalizeControlRepoPath } from './control-repo-path';
+import { gitNotesDestinationEnabled } from './telemetry-destinations';
 import { getHarPackageVersion } from './package-version';
 import { findValidation, setValidationAttestationDigest } from './validations';
 import { findWorkUnit, listValidationBindings } from './work-units';
@@ -255,6 +262,8 @@ export interface FactoryRunPredicate {
     addedBy?: 'policy' | 'agent';
     kind?: string;
     durationMs?: number;
+    /** Stage log and artifacts by SHA-256 (ADR 0005 section 4); names are relative, never paths. */
+    artifacts?: Array<{ name: string; digest: { sha256: string } }>;
   }>;
   verdict: 'pass' | 'fail';
   producer: { name: string; version: string };
@@ -279,6 +288,8 @@ export interface BuildFactoryRunPredicateInput {
   producerVersion: string;
   /** Set only when the verification trace will actually be exported. */
   telemetry?: { traceId: string };
+  /** Evidence files per stage id (stage log first), listed in `stages[].artifacts[]`. */
+  stageArtifacts?: ReadonlyMap<string, ReadonlyArray<{ name: string; sha256: string }>>;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -311,20 +322,22 @@ export function computeFactoryVerdict(
 }
 
 /**
- * Map one full HAR validation to a Factory Commits `factory-run` predicate.
- * Privacy (SPEC §6): no absolute paths, prompts, stage output, work-unit
- * titles or URLs.
+ * Factory Commits stages of a verification: status, `addedBy` (policy when the
+ * stage is in `verificationStages`), kind and duration, first result per id.
+ * `required` is the full-verify policy.
  */
-export function buildFactoryRunPredicate(input: BuildFactoryRunPredicateInput): FactoryRunPredicate {
-  const env = input.env ?? process.env;
-  const plan = resolveVerificationPlan(input.registry, { full: true });
+export function mapVerificationStages(
+  registry: HarnessStageRegistry,
+  verification: VerificationResult,
+): { required: string[]; stages: FactoryRunPredicate['stages'] } {
+  const plan = resolveVerificationPlan(registry, { full: true });
   const required = [...new Set(plan.steps.map((stage) => stage.id))];
   const requiredSet = new Set(required);
-  const kindById = new Map(input.registry.stages.map((stage) => [stage.id, stage.kind]));
+  const kindById = new Map(registry.stages.map((stage) => [stage.id, stage.kind]));
 
   const stages: FactoryRunPredicate['stages'] = [];
   const seen = new Set<string>();
-  for (const step of input.verification.stages) {
+  for (const step of verification.stages) {
     if (seen.has(step.name)) continue;
     seen.add(step.name);
     const status: FactoryStageStatus = step.pass
@@ -342,6 +355,50 @@ export function buildFactoryRunPredicate(input: BuildFactoryRunPredicateInput): 
         ? { durationMs: Math.max(0, Math.round(step.ms)) }
         : {}),
     });
+  }
+  return { required, stages };
+}
+
+/**
+ * The stage results stored on the factory run (and sent later as ingest v2
+ * `StageResult` records): the predicate's view of each stage plus its log
+ * digest and evidence files. Stages the runner kept no evidence for get
+ * `logDigest: null` and no artifacts.
+ */
+export function buildFactoryRunStageResults(
+  registry: HarnessStageRegistry,
+  verification: VerificationResult,
+  evidence: ReadonlyArray<{ stageId: string; logDigest: string | null; files: StageEvidenceFile[] }> | undefined,
+): FactoryRunStageResult[] {
+  const byStage = new Map((evidence ?? []).map((entry) => [entry.stageId, entry]));
+  return mapVerificationStages(registry, verification).stages.map((stage) => {
+    const found = byStage.get(stage.id);
+    return {
+      stageId: stage.id,
+      status: stage.status,
+      addedBy: stage.addedBy ?? 'agent',
+      ...(stage.kind ? { kind: stage.kind } : {}),
+      durationMs: stage.durationMs ?? null,
+      logDigest: found?.logDigest ?? null,
+      artifacts: found?.files ?? [],
+    };
+  });
+}
+
+/**
+ * Map one full HAR validation to a Factory Commits `factory-run` predicate.
+ * Privacy (SPEC §6): no absolute paths, prompts, stage output, work-unit
+ * titles or URLs. Stage logs and artifacts appear only as relative names and
+ * SHA-256 digests.
+ */
+export function buildFactoryRunPredicate(input: BuildFactoryRunPredicateInput): FactoryRunPredicate {
+  const env = input.env ?? process.env;
+  const { required, stages } = mapVerificationStages(input.registry, input.verification);
+  for (const stage of stages) {
+    const files = input.stageArtifacts?.get(stage.id);
+    if (files?.length) {
+      stage.artifacts = files.map((file) => ({ name: file.name, digest: { sha256: file.sha256 } }));
+    }
   }
 
   const startedOn = toRfc3339(input.run?.startedAt);
@@ -554,6 +611,9 @@ export function produceValidationProof(input: ProduceValidationProofInput): Prod
       workUnit: input.workUnit,
       producerVersion: getHarPackageVersion(),
       telemetry: input.telemetry,
+      stageArtifacts: new Map(
+        (input.validation.stageResults ?? []).map((stage) => [stage.stageId, stage.artifacts]),
+      ),
       env: input.env,
     });
     const outcome = attestFactoryRun({
@@ -574,7 +634,7 @@ export function produceValidationProof(input: ProduceValidationProofInput): Prod
     );
     // Only a passing full validation gets a note, as on commit (findPassingAttestation).
     const noteable =
-      proofModeIncludesNotes(mode) &&
+      writesFactoryNotes(mode, explicit) &&
       input.validation.status === 'pass' &&
       input.validation.full &&
       predicate.verdict === 'pass';
@@ -609,6 +669,18 @@ export function proofModeIncludesNotes(mode: FactoryProofMode): boolean {
 }
 
 /**
+ * Whether proofs are written as factory notes. Notes are one proof destination
+ * among the others (ADR 0005 section 6) and opt-in: a `git-notes` entry in the
+ * destination list, or `HAR_FACTORY_PROOF=notes|notes+trailers` set explicitly
+ * in the repo's harness.env. Unset, the attestation is still produced (and
+ * sent to the receivers that take proofs), but no note is written.
+ */
+export function writesFactoryNotes(mode: FactoryProofMode, explicit: boolean): boolean {
+  if (!proofModeIncludesNotes(mode)) return false;
+  return explicit || gitNotesDestinationEnabled();
+}
+
+/**
  * The attestation entry file for a passing full validation of `treeHash`,
  * when one exists and still matches the digest on the record.
  */
@@ -637,7 +709,7 @@ export function addFactoryNoteForCommit(
 ): FactoryProofOutcome | undefined {
   try {
     const { mode, explicit } = resolveFactoryProofMode(checkoutDir);
-    if (!proofModeIncludesNotes(mode)) return undefined;
+    if (!writesFactoryNotes(mode, explicit)) return undefined;
     const attestation = findPassingAttestation(checkoutDir, treeHash);
     if (!attestation) return undefined;
     const bin = options.bin ?? resolveFactoryProofBin(options.env);

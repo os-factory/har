@@ -36,6 +36,7 @@ import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
 import { collectTelemetryHealth, withTelemetryHealth } from '../core/telemetry-health';
+import { collectIngestHealth, withIngestHealth } from '../core/ingest-health';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -301,6 +302,8 @@ export const HAR_MCP_TOOLS: Tool[] = [
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
         full: { type: 'boolean' },
+        line: { type: 'string', description: 'Factory line this verify runs under (needs station)' },
+        station: { type: 'string', description: 'Station of the line, recorded on the factory run' },
       },
       ['agentId'],
     ),
@@ -709,6 +712,8 @@ export async function handleMcpToolCall(
         full: input.full,
         capture: true,
         trigger: 'mcp',
+        line: input.line,
+        station: input.station,
       });
       return jsonContent(
         RunVerificationOutputSchema.parse({
@@ -724,7 +729,10 @@ export async function handleMcpToolCall(
 
     case 'har_doctor': {
       // Destination health is advisory: it never turns the contract verdict.
-      const report = withTelemetryHealth(runDoctor(repo), collectTelemetryHealth());
+      const report = withIngestHealth(
+        withTelemetryHealth(runDoctor(repo), collectTelemetryHealth()),
+        await collectIngestHealth({ checkCapabilities: true }),
+      );
       return {
         ...jsonContent(report),
         ...(report.ok ? {} : { isError: true }),

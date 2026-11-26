@@ -210,6 +210,44 @@ export function createWorkAttempt(
   return attempt;
 }
 
+export function findWorkAttempt(harnessRoot: string, attemptId: string): WorkAttemptRecord | undefined {
+  const file = hashedRecordPath(harnessRoot, WORK_ATTEMPTS_DIR, attemptId);
+  try {
+    return WorkAttemptRecordSchema.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Mark an attempt ended (teardown, complete, rebinding the slot). Callers close
+ * the attempt's session segments first (ADR 0004 section 2), so a crash in
+ * between leaves "segment closed, attempt live", never the reverse. An attempt
+ * already ended keeps its first end time.
+ */
+export function markWorkAttemptEnded(
+  harnessRoot: string,
+  attemptId: string,
+  endedAt: string = new Date().toISOString(),
+): WorkAttemptRecord | undefined {
+  const attempt = findWorkAttempt(harnessRoot, attemptId);
+  if (!attempt) return undefined;
+  if (attempt.endedAt) return attempt;
+  const updated = WorkAttemptRecordSchema.parse({ ...attempt, endedAt });
+  writeRecord(hashedRecordPath(harnessRoot, WORK_ATTEMPTS_DIR, attemptId), updated);
+  markDirty(harnessRoot);
+  return updated;
+}
+
+/** End time of an attempt recorded under this harness root, when it has ended. */
+export function workAttemptEndLookup(harnessRoot: string): (attemptId: string) => string | undefined {
+  const cache = new Map<string, string | undefined>();
+  return (attemptId) => {
+    if (!cache.has(attemptId)) cache.set(attemptId, findWorkAttempt(harnessRoot, attemptId)?.endedAt);
+    return cache.get(attemptId);
+  };
+}
+
 export function listWorkAttempts(harnessRoot: string): WorkAttemptRecord[] {
   return listRecords(harnessRoot, WORK_ATTEMPTS_DIR, (value) =>
     WorkAttemptRecordSchema.parse(value),

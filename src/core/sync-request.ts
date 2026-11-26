@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 
 /**
- * Bounded HTTP for Mission Control / HQ sync.
+ * Bounded HTTP for the Mission Control sync.
  *
  * Every request gets its own timeout, and a sync run under `runWithDeadline`
  * shares one abort signal: when the deadline passes, the in-flight request is
