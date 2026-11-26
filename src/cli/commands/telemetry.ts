@@ -44,11 +44,12 @@ import {
   type AgentTelemetryRoute,
 } from '../../core/telemetry-route';
 import { collectTelemetryHealth } from '../../core/telemetry-health';
+import { collectIngestHealth } from '../../core/ingest-health';
 import { readTelemetryDestinations } from '../../core/telemetry-destinations';
 import { verificationTraceControlUrl } from '../../core/verification-spans';
 import { destinationsForSignal } from '../../harness/schema';
 import { error, header, info, success, warn } from '../../utils/logging';
-import { telemetryDestinationCommand } from './telemetry-destination';
+import { handleTelemetryFlush, telemetryDestinationCommand } from './telemetry-destination';
 
 function printLevels(current: TelemetryLevel): void {
   info('Levels (each includes the ones below it; recorded in local Mission Control):');
@@ -57,7 +58,7 @@ function printLevels(current: TelemetryLevel): void {
     info(`  ${marker} ${entry.level.padEnd(7)} ${entry.label} — ${entry.detail}`);
   }
   info('Change: har telemetry on --level <full|outline|usage>   •   har telemetry off');
-  info('HAR HQ gets the text only with har control trajectory on.');
+  info('A destination gets the text (logs) only when it subscribes to logs: har telemetry destination list.');
 }
 
 /** One entry of the agent route as the hook config has it: endpoints only, never a header. */
@@ -66,6 +67,8 @@ export interface AgentRouteTarget {
   tracesEndpoint?: string;
   /** Set when this entry receives event records at the current level. */
   logsEndpoint?: string;
+  /** Set when this entry receives hook metrics at the current level. */
+  metricsEndpoint?: string;
 }
 
 /** The route's entries with the endpoints otel-hook sends to at the current level. */
@@ -76,6 +79,7 @@ export function agentRouteTargets(route: AgentTelemetryRoute): AgentRouteTarget[
     name: byHookName.get(entry.name) ?? entry.name,
     ...(entry.tracesEndpoint ? { tracesEndpoint: entry.tracesEndpoint } : {}),
     ...(entry.logsEndpoint ? { logsEndpoint: entry.logsEndpoint } : {}),
+    ...(entry.metricsEndpoint ? { metricsEndpoint: entry.metricsEndpoint } : {}),
   }));
 }
 
@@ -106,6 +110,7 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   const appliedNames = appliedRouteNames(applied);
   const verification = enabled ? verificationTraceTargets() : [];
   const health = collectTelemetryHealth();
+  const ingest = await collectIngestHealth();
   const localPaths = route.mode === 'off' ? null : routeStripsLocalPaths(route) ? 'stripped' : 'kept';
   // Names and endpoints only: a destination's header values never reach this output.
   const agentTraces = {
@@ -133,6 +138,8 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
     verificationTraces: { destinations: verification },
     localPaths,
     destinationHealth: health,
+    /** Records, proofs and evidence: one queue per destination (depth, last success, last error). */
+    ingestQueues: ingest,
     otelEndpoint: `${apiUrl.replace(/\/$/, '')}/api/otel`,
     otelHooksHome: getOtelHooksHome(),
     otelHooksConfig: getOtelHooksConfigPath(),
@@ -157,6 +164,7 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
     const endpoints = [
       ...(target.tracesEndpoint ? [`traces ${target.tracesEndpoint}`] : []),
       ...(target.logsEndpoint ? [`logs ${target.logsEndpoint}`] : []),
+      ...(target.metricsEndpoint ? [`metrics ${target.metricsEndpoint}`] : []),
     ];
     info(`  ${target.name.padEnd(width)}  ${endpoints.join(', ')}`);
   }
@@ -169,10 +177,20 @@ async function handleStatus(argv: { json: boolean }): Promise<void> {
   if (enabled) {
     info(`Verification traces: ${verification.length > 0 ? `→ ${verification.join(', ')}` : 'nowhere'}`);
   }
-  if (localPaths === 'kept' && route.mode === 'fanout' && route.missionControl && route.destinations.length > 0) {
-    info('Local paths:   kept in agent traces (Mission Control needs them), so your destinations receive them too (#519)');
+  if (localPaths === 'kept') {
+    info('Local paths:   kept in agent telemetry (every destination opted in with --include-local-paths)');
   } else if (localPaths === 'stripped') {
-    info('Local paths:   stripped from agent traces');
+    info('Local paths:   stripped from agent telemetry');
+  }
+  if (ingest.destinations.length > 0) {
+    info('Records, proofs, evidence:');
+    for (const destination of ingest.destinations) {
+      if (destination.status === 'warn') warn(`  ${destination.summary}`);
+      else info(`  ${destination.summary}`);
+    }
+    if (ingest.destinations.some((destination) => destination.queue.depth > 0)) {
+      info('  Retried on every har command; send now: har telemetry flush');
+    }
   }
   if (health.status !== 'skip' || health.notes.length > 0) {
     info(`Destination health:${health.destinations.length === 0 && health.notes.length === 0 ? ' nothing queued' : ''}`);
@@ -456,7 +474,17 @@ export const telemetryCommand = {
             suffix: argv.suffix as string | undefined,
           }),
       )
+      .command(
+        'flush',
+        'Send everything queued for every destination now (records, proofs, evidence, verification traces)',
+        (y: Argv) => y.option('json', { type: 'boolean', default: false }),
+        (argv) =>
+          handleTelemetryFlush({ json: argv.json as boolean }).catch((err) => {
+            error(err instanceof Error ? err.message : String(err));
+            process.exitCode = 1;
+          }),
+      )
       .command(telemetryDestinationCommand)
-      .demandCommand(1, 'Please specify a subcommand: status, on, off, install-hooks, write-env, print-env, destination'),
+      .demandCommand(1, 'Please specify a subcommand: status, on, off, install-hooks, write-env, print-env, flush, destination'),
   handler: () => {},
 };

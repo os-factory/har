@@ -11,6 +11,7 @@ import {
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { recordRebindBindings, slotOccupancyKey } from './session-bindings';
 import { rebindSlotSegments } from './session-context';
+import { queueSlotRecords } from './ingest-publish';
 import {
   listSlotRegistryEntries,
   resolveSlotRegistryContext,
@@ -295,6 +296,9 @@ export function bindWorkUnit(options: BindWorkUnitOptions): BindWorkUnitResult {
   } catch {
     // Session context is best-effort; the binding itself succeeded.
   }
+  // ADR 0004 §6: the new attempt and segments, and the old attempt's end, for every
+  // receiver; queued here, sent by the command's final drain (fail-open).
+  queueSlotRecords({ harnessRoot, session: after, ...(previousAttemptId ? { endedAttemptId: previousAttemptId } : {}) });
 
   const envFile = path.join(session.workDir, `.env.agent.${agentId}`);
   if (fs.existsSync(envFile)) {

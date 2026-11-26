@@ -17,34 +17,18 @@ import {
   SyncUsageObservationsInputSchema,
   SyncValidationsInputSchema,
 } from '../harness/schema';
+import { getControlApiUrl, isControlEnabled } from './control-config';
 import {
-  getControlApiUrl,
-  isControlEnabled,
-  PortalTarget,
-} from './control-config';
-import { kernoApiUrlFor } from './portal-hosts';
-import {
-  isRepoPortalSyncEnabled,
   listRegisteredRepos,
   recordRepoForControlSync,
   removeRegisteredRepo,
 } from './control-registry';
 import { readPortalCredentials } from './portal-credentials';
-import {
-  isPortalTargetActive,
-  isPortalTrajectoryEnabledForTarget,
-  resolvePortalTarget,
-  updatePortalTargetTokens,
-} from './portal-targets';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import {
   collectRunsBySource,
   collectRunsForSync,
-  mergeRunsBySource,
-  RunsBySource,
   collectCommitBindingsForSync,
-  collectValidationBindingsForSync,
-  collectValidationsForSync,
   collectWorkUnitsForSync,
   mergeSlotStatuses,
   resolveSyncSourcePaths,
@@ -52,42 +36,25 @@ import {
 } from './sync-sources';
 import { collectEnvironmentStatus } from './slot-status';
 import { listValidations } from './validations';
-import {
-  listValidationBindings,
-} from './work-units';
+import { listValidationBindings } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
-import { getTelemetryLevel, getTelemetrySignals, isTelemetryEnabled } from './telemetry-config';
-import { getHarPackageVersion } from './package-version';
+import { isTelemetryEnabled } from './telemetry-config';
 import { warn } from '../utils/logging';
-import { harvestEventsForSlot, harvestUsageForSlot, omitHarvestEventsWhenOtelPresent, omitHarvestWhenOtelPresent } from './usage-harvest';
+import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
 import {
   collectSessionAttribution,
   parseRemoteSessionBindings,
   type AttributionSlot,
 } from './session-attribution-sync';
 import { buildSessionKey } from './telemetry-env';
-import { fetchPersistedPortalTelemetry } from './control-persisted-usage';
+import { chunkBySerializedSize, maxSyncBatchBytes } from './sync-batches';
 import {
-  chunkBySerializedSize,
-  maxSyncBatchBytes,
-  maxSyncBatchRows,
-  packSyncBodies,
-  type SyncUnit,
-} from './sync-batches';
-import type { ChannelReadFailure } from './control-api-read';
-import { fetchPersistedTrajectory } from './control-persisted-trajectory';
-import { fetchPersistedVerificationRuns } from './control-persisted-verification';
-import { dedupePortalEvents, mergePortalUsage } from './portal-usage-merge';
-import { enrichUsageWithPricing } from '../harness/schema';
-import {
-  readPortalWatermark,
-  writePortalWatermark,
   coveredSources,
   readRunsWatermarkEntry,
   writeRunsWatermark,
   selectSince,
-} from './portal-watermark';
-import type { AgentSessionEvent, AgentSessionUsage } from '../harness/schema';
+} from './sync-watermark';
+import type { AgentSessionUsage } from '../harness/schema';
 import {
   isRetryableStatus,
   retryDelayMs,
@@ -97,13 +64,6 @@ import {
   throwIfSyncAborted,
 } from './sync-request';
 import { readSyncSelection, resolveSyncSelection } from './control-sync-selection';
-import {
-  describeHeldUsage,
-  fetchUsageInvariantReport,
-  heldUnitsForRepo,
-  partitionHeldUsage,
-  type HeldUsageUnits,
-} from './usage-invariants-check';
 import { recordSentObservations, unsentObservations } from './observation-ledger';
 import { snapshotMemo, withStatusSnapshot } from './status-snapshot';
 
@@ -116,16 +76,8 @@ export interface ControlSyncOptions {
   cloud?: boolean;
   /** Re-register even if the path was previously unregistered. */
   force?: boolean;
-  /** Ignore the portal watermark and resend the complete persisted payload. */
+  /** Ignore the runs watermark and resend every run. */
   full?: boolean;
-  /**
-   * False when Mission Control is known to be disabled or unreachable: the
-   * Mission Control leg is skipped and the HQ leg sends what it reads locally
-   * (runs, validations, work records, bindings, slots), leaving out what only
-   * Mission Control stores. Unset: the Mission Control leg runs, and a failure
-   * there is checked against its health endpoint.
-   */
-  controlReachable?: boolean;
 }
 
 export interface SyncRepoResult {
@@ -152,58 +104,6 @@ function rewindSince(since: string | null): string | null {
   const raw = Number(process.env.HAR_SYNC_OVERLAP_MS);
   const overlap = Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_SYNC_OVERLAP_MS;
   return new Date(new Date(since).getTime() - overlap).toISOString();
-}
-
-function watermarkKeyForTarget(target: PortalTarget): string {
-  const apiUrl = kernoApiUrlFor(target.url);
-  return apiUrl ? `${apiUrl}|${target.identityKey}` : target.identityKey;
-}
-
-function legacyWatermarkKeysForTarget(target: PortalTarget): string[] {
-  return target.url === target.identityKey ? [] : [target.url];
-}
-
-function readScopedPortalWatermark(
-  repoPath: string,
-  scopedKey: string,
-  legacyScopedKeys: string[] = [],
-): string | null {
-  const direct = readPortalWatermark(repoPath, scopedKey);
-  if (direct) return direct;
-  for (const legacyKey of legacyScopedKeys) {
-    const legacy = readPortalWatermark(repoPath, legacyKey);
-    if (legacy) return legacy;
-  }
-  return null;
-}
-
-function legacyScopedWatermarkKeys(portal: PortalTarget, prefix: string): string[] {
-  if (portal.url === portal.identityKey) return [];
-  return [`${prefix}:${portal.url}`];
-}
-
-function runsWatermarkTargetForPortal(target: PortalTarget): string {
-  return runsWatermarkTarget(watermarkKeyForTarget(target));
-}
-
-function readPortalWatermarkForTarget(repoPath: string, target: PortalTarget): string | null {
-  return readScopedPortalWatermark(
-    repoPath,
-    watermarkKeyForTarget(target),
-    legacyWatermarkKeysForTarget(target),
-  );
-}
-
-function trajectoryWatermarkTarget(target: PortalTarget): string {
-  return `trajectory:${watermarkKeyForTarget(target)}`;
-}
-
-function spansWatermarkTarget(target: PortalTarget): string {
-  return `spans:${watermarkKeyForTarget(target)}`;
-}
-
-function verificationRunsWatermarkTarget(target: PortalTarget): string {
-  return `verification-runs:${watermarkKeyForTarget(target)}`;
 }
 
 function runsWatermarkTarget(target: string): string {
@@ -314,351 +214,8 @@ async function postJsonIfSupported(url: string, body: unknown, dryRun?: boolean)
   return true;
 }
 
-const PORTAL_API_PREFIX = '/api';
-const KERNO_INGEST_PREFIX = '/api/har/ingest';
-
-function portalEndpointUrl(target: PortalTarget, endpoint: string): string {
-  const apiUrl = kernoApiUrlFor(target.url);
-  if (!apiUrl) return `${target.url}${endpoint}`;
-  return `${apiUrl}${KERNO_INGEST_PREFIX}${endpoint.slice(PORTAL_API_PREFIX.length)}`;
-}
-
-/**
- * The CLI sends to one org at a time. A target resolved before the user
- * switched org (or disconnected) must not send anything — not data, and not a
- * token refresh — to the previous org.
- */
-function assertPortalTargetActive(target: PortalTarget): void {
-  if (!isPortalTargetActive(target)) {
-    throw new Error(
-      'HAR HQ connection changed during sync — nothing more is sent to the previous org.',
-    );
-  }
-}
-
-function postPortalOnce(
-  target: PortalTarget,
-  endpoint: string,
-  body: unknown,
-): Promise<Response> {
-  assertPortalTargetActive(target);
-  return postForResponse(
-    portalEndpointUrl(target, endpoint),
-    {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${target.token}`,
-    },
-    JSON.stringify(body),
-  );
-}
-
-// Rotate an expired ingest token via the stored refresh token: on success
-// mutates target.token and persists the rotated credential, else returns false
-// so the caller surfaces the original 401.
-async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
-  if (!target.refreshToken) return false;
-  if (!isPortalTargetActive(target)) return false;
-
-  let response: Response;
-  try {
-    response = await syncFetch(portalEndpointUrl(target, '/api/cli/refresh'), {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${target.refreshToken}` },
-    });
-  } catch (err) {
-    // Out of time is not an auth problem — don't let it read as a rejected token.
-    if (err instanceof SyncDeadlineError) throw err;
-    return false;
-  }
-  if (!response.ok) return false;
-
-  const data = (await response.json().catch(() => null)) as {
-    token?: string;
-    expiresAt?: string;
-  } | null;
-  if (!data?.token) return false;
-
-  target.token = data.token;
-  if (target.alias) {
-    updatePortalTargetTokens(target.identityKey, {
-      token: data.token,
-      expiresAt: data.expiresAt,
-    });
-  }
-  return true;
-}
-
-async function postPortalWithRefresh(
-  target: PortalTarget,
-  endpoint: string,
-  body: unknown,
-): Promise<Response> {
-  const response = await postPortalOnce(target, endpoint, body);
-
-  if (
-    (response.status === 401 || response.status === 403) &&
-    (await refreshPortalToken(target))
-  ) {
-    return postPortalOnce(target, endpoint, body);
-  }
-
-  return response;
-}
-
-/** har-portal refused a request as too large (HTTP 413). */
-class PortalPayloadTooLargeError extends Error {}
-
-async function throwPortalFailure(response: Response): Promise<never> {
-  if (response.status === 401 || response.status === 403) {
-    throw new Error(
-      `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har hq connect\` (or check HAR_PORTAL_TOKEN).`,
-    );
-  }
-  const text = await response.text().catch(() => '');
-  const message = `har-portal sync failed: HTTP ${response.status}${text ? ` — ${text}` : ''}`;
-  if (response.status === 413) throw new PortalPayloadTooLargeError(message);
-  throw new Error(message);
-}
-
-async function postPortal(
-  target: PortalTarget,
-  endpoint: string,
-  body: unknown,
-  dryRun?: boolean,
-): Promise<Record<string, unknown> | null> {
-  if (dryRun) return null;
-
-  const response = await postPortalWithRefresh(target, endpoint, body);
-  if (!response.ok) await throwPortalFailure(response);
-
-  return (await response.json().catch(() => null)) as Record<string, unknown> | null;
-}
-
-async function postPortalIfSupported(
-  target: PortalTarget,
-  endpoint: string,
-  body: unknown,
-  dryRun?: boolean,
-): Promise<boolean> {
-  if (dryRun) return true;
-
-  const response = await postPortalWithRefresh(target, endpoint, body);
-  if (response.status === 404) return false;
-  if (!response.ok) await throwPortalFailure(response);
-
-  return true;
-}
-
-function maxRowsInBody(body: Record<string, unknown>): number {
-  return Math.max(0, ...Object.values(body).map((value) => (Array.isArray(value) ? value.length : 0)));
-}
-
-/**
- * POST `units` to the portal in as many requests as the per-request budget
- * needs; the first carries `head` (when given), the rest `{ path }`. A request the portal
- * still refuses as too large (its limit is below ours) is packed again at half
- * its size and sent in parts. `onLanded` runs after each request lands, in order.
- */
-async function postPortalPacked(
-  portal: PortalTarget,
-  endpoint: string,
-  path: string,
-  head: Record<string, unknown> | null,
-  units: SyncUnit[],
-  dryRun: boolean | undefined,
-  onLanded: (landed: SyncUnit[], response: Record<string, unknown> | null) => void,
-  maxBytes = maxSyncBatchBytes(),
-  maxRows = maxSyncBatchRows(),
-): Promise<void> {
-  const continuation = { path };
-  const bodies = packSyncBodies(head, continuation, units, maxBytes, maxRows);
-  for (let i = 0; i < bodies.length; i++) {
-    const { body, units: bodyUnits } = bodies[i];
-    let response: Record<string, unknown> | null;
-    try {
-      response = await postPortal(portal, endpoint, body, dryRun);
-    } catch (err) {
-      if (!(err instanceof PortalPayloadTooLargeError)) throw err;
-      const bodyHead = i === 0 ? head : null;
-      const halfBytes = Math.floor(Buffer.byteLength(JSON.stringify(body), 'utf8') / 2);
-      const halfRows = Math.max(1, Math.floor(maxRowsInBody(body) / 2));
-      if (packSyncBodies(bodyHead, continuation, bodyUnits, halfBytes, halfRows).length < 2) {
-        throw new PortalPayloadTooLargeError(
-          `${err.message} (a single record is larger than the portal accepts; it cannot be split further)`,
-        );
-      }
-      await postPortalPacked(portal, endpoint, path, bodyHead, bodyUnits, dryRun, onLanded, halfBytes, halfRows);
-      continue;
-    }
-    onLanded(bodyUnits, response);
-  }
-}
-
-function runUnits(runs: RunRecord[]): SyncUnit[] {
-  return [...runs]
-    .sort((a, b) => runTimestamp(a).localeCompare(runTimestamp(b)))
-    .map((run) => ({ key: 'runs', rows: [run] }));
-}
-
-function lastRunIn(units: SyncUnit[]): RunRecord | undefined {
-  for (let i = units.length - 1; i >= 0; i--) {
-    if (units[i].key === 'runs') return units[i].rows[units[i].rows.length - 1] as RunRecord;
-  }
-  return undefined;
-}
-
-function resolvePortalUserEmail(target?: PortalTarget): string | undefined {
-  if (target?.email) return target.email;
+function resolvePortalUserEmail(): string | undefined {
   return readPortalCredentials()?.email || undefined;
-}
-
-function dropNullFields(record: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== null));
-}
-
-function modelsFromBreakdown(
-  breakdown: Record<string, unknown> | undefined,
-): Record<string, unknown>[] {
-  if (!breakdown) return [];
-  return Object.entries(breakdown).map(([model, totals]) => ({
-    model,
-    ...(totals && typeof totals === 'object' ? totals : {}),
-  }));
-}
-
-interface TelemetryCollection {
-  /** One array per provider session: a session's rows always travel in one request. */
-  usage: Array<Array<Record<string, unknown>>>;
-  events: Record<string, unknown>[];
-  maxSyncedAt: string | null;
-  failures: ChannelReadFailure[];
-  truncated: string[];
-}
-
-function describeReadFailures(repoPath: string, failures: ChannelReadFailure[]): string {
-  const detail = [...new Set(failures.map((f) => `${f.channel} (${f.reason})`))].join(', ');
-  return (
-    `${path.basename(repoPath)}: could not read ${detail} from Mission Control — ` +
-    'that telemetry is missing from this sync and its watermark is held, so the next sync retries it.'
-  );
-}
-
-function describeTruncatedReads(repoPath: string, channels: string[]): string {
-  return (
-    `${path.basename(repoPath)}: ${channels.join(', ')} hit the read page cap — ` +
-    'the remainder syncs on the next run.'
-  );
-}
-
-/**
- * Usage and events for the portal sync.
- *
- * Usage is Mission Control's: the rows it attributed (slot, main checkout,
- * non-slot worktree) and priced, sent unchanged (`portal-attributed-usage`).
- * Only a Mission Control that predates attribution gets the legacy path —
- * session totals harvested per slot (the lowest slot taking main-checkout
- * sessions), max-merged with its stored totals and repriced.
- */
-async function collectPortalTelemetry(
-  repoPath: string,
-  slots: EnvironmentStatus['slots'],
-  controlApiUrl: string,
-  since: string | null,
-  portal?: PortalTarget,
-): Promise<TelemetryCollection> {
-  if (!isTelemetryEnabled()) {
-    return { usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] };
-  }
-  try {
-    const userEmail = resolvePortalUserEmail(portal);
-    const persisted = await fetchPersistedPortalTelemetry(repoPath, controlApiUrl, { since, userEmail });
-    const legacyUsage = persisted.attributedUsage == null;
-    // Legacy only: no unassigned bucket there, so main-checkout sessions land
-    // on the lowest slot, as they always have.
-    const fallbackAgentId =
-      slots.length > 0 ? Math.min(...slots.map((slot) => slot.agentId)) : null;
-    const liveUsage: AgentSessionUsage[] = !legacyUsage ? [] : slots.flatMap((slot) =>
-      harvestUsageForSlot({
-        agentId: slot.agentId,
-        workDir: slot.workDir,
-        worktreePath: slot.worktreePath,
-        branch: slot.branch,
-        suffix: slot.suffix,
-        sessionCreatedAt: slot.sessionCreatedAt,
-        repoPath,
-        includeRepoPathFallback: slot.agentId === fallbackAgentId,
-      }).map((row) => ({
-        ...row,
-        workUnitId: slot.workUnitId ?? row.workUnitId,
-        attemptId: slot.attemptId ?? row.attemptId,
-        sessionKey:
-          row.sessionKey ||
-          buildSessionKey({
-            branch: slot.branch,
-            agentId: slot.agentId,
-            suffix: slot.suffix,
-            createdAt: slot.sessionCreatedAt,
-          }),
-      })),
-    );
-
-    const liveEvents: AgentSessionEvent[] = slots.flatMap((slot) =>
-      harvestEventsForSlot({
-        agentId: slot.agentId,
-        workDir: slot.workDir,
-        worktreePath: slot.worktreePath,
-        branch: slot.branch,
-        suffix: slot.suffix,
-        sessionCreatedAt: slot.sessionCreatedAt,
-        repoPath,
-        includeRepoPathFallback: slot.agentId === fallbackAgentId,
-      }).map((event) => ({
-        ...event,
-        workUnitId: slot.workUnitId ?? event.workUnitId,
-        attemptId: slot.attemptId ?? event.attemptId,
-      })),
-    );
-
-    const harvestedEvents = omitHarvestEventsWhenOtelPresent(liveEvents, persisted.events);
-
-    const usage: Array<Array<Record<string, unknown>>> =
-      persisted.attributedUsage ??
-      mergePortalUsage(omitHarvestWhenOtelPresent(liveUsage, persisted.usage), persisted.usage).map((row) => {
-        const priced = enrichUsageWithPricing(row);
-        const models = modelsFromBreakdown(
-          priced.modelBreakdown as Record<string, unknown> | undefined,
-        );
-        return [
-          {
-            ...priced,
-            ...(userEmail ? { userEmail } : {}),
-            ...(models.length > 0 ? { models } : {}),
-          },
-        ];
-      });
-
-    const events = dedupePortalEvents(harvestedEvents, persisted.events).map((event) =>
-      dropNullFields({ ...event }),
-    );
-
-    return {
-      usage,
-      events,
-      maxSyncedAt: persisted.maxSyncedAt,
-      failures: persisted.failures,
-      truncated: persisted.truncated,
-    };
-  } catch (err: unknown) {
-    return {
-      usage: [],
-      events: [],
-      maxSyncedAt: null,
-      failures: [
-        { channel: 'telemetry', reason: err instanceof Error ? err.message : String(err) },
-      ],
-      truncated: [],
-    };
-  }
 }
 
 /**
@@ -670,7 +227,6 @@ function collectEnvironmentStatusForSync(
   canonicalPath: string,
   sourcePaths: string[],
 ): EnvironmentStatus {
-  // Both legs of one sync (Mission Control, then HQ) report the same status.
   return snapshotMemo(
     ['sync-status', path.resolve(canonicalPath), ...sourcePaths.map((p) => path.resolve(p))].join('\0'),
     () => readEnvironmentStatusForSync(canonicalPath, sourcePaths),
@@ -708,121 +264,6 @@ function readEnvironmentStatusForSync(
   return { ...canonical, slots: mergeSlotStatuses(groups) };
 }
 
-async function buildPortalPayload(
-  repoPath: string,
-  sourcePaths: string[],
-  /** Null when Mission Control is not reachable: no usage or events are read. */
-  controlApiUrl: string | null,
-  since: string | null,
-  full = false,
-  portal?: PortalTarget,
-  loadHeldUnits: () => Promise<HeldUsageUnits> = async () => new Map(),
-): Promise<{
-  syncBody: Record<string, unknown>;
-  /** Usage left out of this sync: sessions breaking a blocking invariant. */
-  held: Array<Array<Record<string, unknown>>>;
-  /** The blocking units the held usage breaks (empty when no usage was checked). */
-  heldUnits: HeldUsageUnits;
-  /** Records and usage after the head, in the order the portal needs them. */
-  units: SyncUnit[];
-  runs: RunRecord[];
-  runsBySource: RunsBySource[];
-  events: Record<string, unknown>[];
-  maxSyncedAt: string | null;
-  failures: ChannelReadFailure[];
-  truncated: string[];
-}> {
-  // Same canonical-identity / workspace-evidence split as the local path (#255).
-  const rawRunsBySource = collectRunsBySource(sourcePaths);
-  const runs = mergeRunsBySource(rawRunsBySource);
-  const status = collectEnvironmentStatusForSync(repoPath, sourcePaths);
-  const manifest = readManifest(repoPath);
-  const stagesRegistry = readStageRegistry(repoPath);
-  const validations = collectValidationsForSync(sourcePaths);
-  const { workUnits, attempts } = collectWorkUnitsForSync(sourcePaths);
-  const validationBindings = collectValidationBindingsForSync(sourcePaths);
-  const commitBindings = collectCommitBindingsForSync(sourcePaths);
-  // Attribute runs/validations to the syncing member so the portal can resolve
-  // a real user FK instead of the lossy (repo, agentId) derivation.
-  const userEmail = resolvePortalUserEmail(portal);
-  const { usage: collected, events, maxSyncedAt, failures, truncated } = controlApiUrl
-    ? await collectPortalTelemetry(repoPath, status.slots, controlApiUrl, since, portal)
-    : { usage: [], events: [], maxSyncedAt: null, failures: [], truncated: [] };
-  // A session breaking I1/I2 is left out whole: the portal replaces only the
-  // sessions a sync carries, so its stored rows stay as they are.
-  // The check reads every repository's usage in Mission Control: ask for it
-  // only when this sync has usage to send.
-  const heldUnits: HeldUsageUnits = collected.length > 0 ? await loadHeldUnits() : new Map();
-  const { sent: usage, held } = partitionHeldUsage(collected, heldUnits);
-
-  if (
-    full &&
-    controlApiUrl &&
-    isTelemetryEnabled() &&
-    failures.length === 0 &&
-    usage.length === 0 &&
-    runs.some((r) => r.agentId != null)
-  ) {
-    warn(
-      `${path.basename(repoPath)}: agent runs found but no usage harvested — attribution will be missing. ` +
-        'This happens when agent sessions ran outside the har worktree slot (e.g. in the main checkout). ' +
-        'Run agents inside `har env launch`.',
-    );
-  }
-
-  if (full && isTelemetryEnabled() && !getTelemetrySignals().prompts) {
-    warn(
-      `${path.basename(repoPath)}: telemetry level is ${getTelemetryLevel()}, so no agent prompt or response text is ` +
-        'recorded — surfaces that show session content stay empty. Record it with `har telemetry on --level full`.',
-    );
-  }
-
-  const syncBody: Record<string, unknown> = {
-    path: repoPath,
-    cliVersion: getHarPackageVersion(),
-    ...(status.gitRemote ? { gitRemote: status.gitRemote } : {}),
-    ...(manifest ? { manifest } : {}),
-    ...(stagesRegistry ? { stagesRegistry } : {}),
-    slots: status.slots,
-    generatedAt: status.generatedAt,
-  };
-
-  // The portal upserts each record by id, so they may span requests, but it
-  // resolves an attempt's work unit (and a binding's attempt) from rows already
-  // stored: work units go first, then attempts, then bindings. A provider
-  // session's usage rows stay in one request: the portal replaces a session's
-  // rows with what one request carries.
-  const each = (key: string, rows: unknown[]): SyncUnit[] => rows.map((row) => ({ key, rows: [row] }));
-  const units: SyncUnit[] = [
-    ...each('workUnits', workUnits),
-    ...each('attempts', attempts),
-    ...each('validations', userEmail ? validations.map((v) => ({ ...v, userEmail })) : validations),
-    ...each('validationBindings', validationBindings),
-    ...each('commitBindings', commitBindings),
-    ...usage.map((session) => ({ key: 'usage', rows: session })),
-  ];
-
-  const runsBySource = userEmail
-    ? rawRunsBySource.map(({ source, runs: sourceRuns }) => ({
-        source,
-        runs: sourceRuns.map((run) => ({ ...run, userEmail })),
-      }))
-    : rawRunsBySource;
-
-  return {
-    syncBody,
-    held,
-    heldUnits,
-    units,
-    runs: mergeRunsBySource(runsBySource),
-    runsBySource,
-    events,
-    maxSyncedAt,
-    failures,
-    truncated,
-  };
-}
-
 export async function isControlApiReachable(apiUrl = getControlApiUrl(), timeoutMs = 2000): Promise<boolean> {
   try {
     const response = await fetch(`${apiUrl}/api/health`, {
@@ -851,7 +292,7 @@ export async function waitForControlApi(
 /**
  * Every har repo known locally: the control registry (`~/.har/repos.json`) plus
  * an optional cwd — both manifest-gated and canonicalized. Detection is registry
- * only; it neither scans the filesystem nor depends on portal/control API state.
+ * only; it neither scans the filesystem nor depends on Mission Control state.
  * Shared by the all-repos auto-sync and the interactive `har control sync`
  * selection.
  */
@@ -879,8 +320,6 @@ export async function syncReposWithControl(options: {
   dryRun?: boolean;
   cloud?: boolean;
   full?: boolean;
-  /** See `ControlSyncOptions.controlReachable`. */
-  controlReachable?: boolean;
 }): Promise<{
   synced: number;
   failed: number;
@@ -903,7 +342,6 @@ export async function syncReposWithControl(options: {
             dryRun: options.dryRun,
             cloud: options.cloud,
             full: options.full,
-            controlReachable: options.controlReachable,
           }),
         EXPLICIT_SYNC_TIMEOUT_MS,
         'control sync',
@@ -939,45 +377,21 @@ function selectedRepos(discovered: string[]): string[] {
 }
 
 /**
- * Sync every selected repo. With Mission Control disabled or unreachable, the
- * repos connected to HAR HQ are still synced with HQ (from local data), with
- * one stderr line saying so; the others are left alone, as before.
- * `repoPaths` lists the repos this call synced, so a caller can skip them.
+ * Sync every selected repo with Mission Control. Nothing happens while it is
+ * disabled or unreachable. `repoPaths` lists the repos this call synced, so a
+ * caller can skip them.
  */
 export async function syncAllKnownReposWithControl(options?: {
   apiUrl?: string;
   cwd?: string;
 }): Promise<{ synced: number; failed: number; repoPaths: string[] }> {
   const apiUrl = options?.apiUrl ?? getControlApiUrl();
-  const controlReachable = isControlEnabled() && (await isControlApiReachable(apiUrl));
+  if (!isControlEnabled() || !(await isControlApiReachable(apiUrl))) {
+    return { synced: 0, failed: 0, repoPaths: [] };
+  }
   const selected = selectedRepos(await discoverHarRepos({ apiUrl, cwd: options?.cwd }));
-
-  if (controlReachable) {
-    const { synced, failed } = await syncReposWithControl({ repoPaths: selected, apiUrl });
-    return { synced, failed, repoPaths: selected };
-  }
-
-  const connected = selected.filter((repoPath) => portalTargetForSync(repoPath) !== null);
-  if (connected.length === 0) return { synced: 0, failed: 0, repoPaths: [] };
-  const subject =
-    connected.length === 1 ? path.basename(connected[0]) : `${connected.length} repositories`;
-  process.stderr.write(
-    `${describeHqOnlySync(subject, apiUrl, portalTargetForSync(connected[0]))}\n`,
-  );
-  const { synced, failed, results } = await syncReposWithControl({
-    repoPaths: connected,
-    apiUrl,
-    controlReachable: false,
-  });
-  for (const result of results) {
-    if (!result.ok) {
-      process.stderr.write(
-        `[har control] HQ sync of ${path.basename(result.repoPath)} failed: ${result.error} — ` +
-          'run `har control sync` to retry\n',
-      );
-    }
-  }
-  return { synced, failed, repoPaths: connected };
+  const { synced, failed } = await syncReposWithControl({ repoPaths: selected, apiUrl });
+  return { synced, failed, repoPaths: selected };
 }
 
 export async function registerRepoWithControl(
@@ -1066,245 +480,10 @@ async function syncRepoWithLocalControl(
   }
 }
 
-async function syncRepoWithPortal(
-  options: ControlSyncOptions & { repoPath: string; workspacePath?: string },
-  /** Null when Mission Control is not reachable: what only it stores is left out. */
-  controlApiUrl: string | null,
-  portal: PortalTarget,
-): Promise<string[]> {
-  if (!isRepoPortalSyncEnabled(options.repoPath)) return [];
-
-  const { repoPath, workspacePath, dryRun, full } = options;
-  const sourcePaths = resolveSyncSourcePaths(repoPath, workspacePath);
-  const watermarkKey = watermarkKeyForTarget(portal);
-  const since = full ? null : readPortalWatermarkForTarget(repoPath, portal);
-
-  const runsTarget = runsWatermarkTargetForPortal(portal);
-  let stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
-  if (!stored && !full) {
-    for (const legacyKey of legacyScopedWatermarkKeys(portal, 'runs')) {
-      stored = readRunsWatermarkEntry(repoPath, legacyKey);
-      if (stored) break;
-    }
-  }
-  const runsSince = rewindSince(stored?.lastSyncedAt ?? null);
-  const loadHeldUnits = async (): Promise<HeldUsageUnits> =>
-    dryRun || !controlApiUrl ? new Map() : heldUsageUnits(controlApiUrl, repoPath);
-  const { syncBody, held, heldUnits, units, runsBySource, events, maxSyncedAt, failures, truncated } =
-    await buildPortalPayload(repoPath, sourcePaths, controlApiUrl, since, full, portal, loadHeldUnits);
-  // Verification runs Mission Control stored from verification traces: an
-  // optional /api/sync collection with its own watermark, packed under the
-  // same request budget as the other records (after the work units, attempts
-  // and validations they point at). A dry run reads nothing new for it.
-  const verificationTarget = verificationRunsWatermarkTarget(portal);
-  const verification = controlApiUrl && isTelemetryEnabled() && !dryRun
-    ? await fetchPersistedVerificationRuns(
-        repoPath,
-        controlApiUrl,
-        full ? null : readPortalWatermark(repoPath, verificationTarget),
-      )
-    : null;
-  const verificationUnits: SyncUnit[] = (verification?.runs ?? []).map((row) => ({
-    key: 'verificationRuns',
-    rows: [row],
-  }));
-  const newRuns = selectRunsForSync(
-    runsBySource,
-    runsSince,
-    coveredSources(repoPath, stored),
-    (rows, rowsSince) => selectSince(rows, rowsSince, runTimestamp).selected,
-  );
-
-  let repoId: string | undefined;
-  let firstLanded = true;
-  // Runs go last, oldest first; the runs watermark advances (with the portal's
-  // repo id) after each request lands, so a sync cut short resumes.
-  const advanceRunsWatermark = (getRepoId: () => string | undefined) =>
-    (landed: SyncUnit[]): void => {
-      const last = lastRunIn(landed);
-      if (!dryRun && last) {
-        writeRunsWatermark(repoPath, runsTarget, getRepoId(), runTimestamp(last), sourcePaths);
-      }
-    };
-  const advanceDelta = advanceRunsWatermark(() => stored?.repoId ?? repoId);
-  await postPortalPacked(
-    portal,
-    '/api/sync',
-    repoPath,
-    // An empty sync still says it has no runs, as it always has.
-    newRuns.length > 0 ? syncBody : { ...syncBody, runs: [] },
-    [...units, ...verificationUnits, ...runUnits(newRuns)],
-    dryRun,
-    (landed, response) => {
-      if (firstLanded && typeof response?.repositoryId === 'string') repoId = response.repositoryId;
-      firstLanded = false;
-      advanceDelta(landed);
-    },
-  );
-
-  // Every /api/sync request carrying the collection landed.
-  if (!dryRun && verification?.maxSyncedAt && verification.failures.length === 0) {
-    writePortalWatermark(repoPath, verificationTarget, verification.maxSyncedAt);
-  }
-
-  if (!full && !dryRun && stored?.repoId && repoId && stored.repoId !== repoId) {
-    await postPortalPacked(
-      portal,
-      '/api/sync',
-      repoPath,
-      null,
-      runUnits(mergeRunsBySource(runsBySource)),
-      dryRun,
-      advanceRunsWatermark(() => repoId),
-    );
-  }
-  for (const batch of chunkBySerializedSize(events, maxSyncBatchBytes(), maxSyncBatchRows())) {
-    await postPortal(portal, '/api/otel', { path: repoPath, events: batch }, dryRun);
-  }
-  // Usage and events share one watermark: advancing it on one channel's rows
-  // strands the other's for good when its read failed.
-  // A held-back session must be offered again once it is fixed, even if its
-  // own facts do not change (the copy may be removed from another repository).
-  if (!dryRun && maxSyncedAt && failures.length === 0 && held.length === 0) {
-    writePortalWatermark(repoPath, watermarkKey, maxSyncedAt);
-  }
-
-  const warnings: string[] = [];
-  if (held.length > 0) warnings.push(describeHeldUsage(repoPath, held, heldUnits));
-  if (failures.length > 0) warnings.push(describeReadFailures(repoPath, failures));
-  if (truncated.length > 0) warnings.push(describeTruncatedReads(repoPath, truncated));
-  if (verification && verification.failures.length > 0) {
-    warnings.push(describeReadFailures(repoPath, verification.failures));
-  }
-  if (verification && verification.truncated.length > 0) {
-    warnings.push(describeTruncatedReads(repoPath, verification.truncated));
-  }
-
-  if (controlApiUrl) {
-    warnings.push(
-      ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),
-    );
-  }
-  for (const message of warnings) warn(message);
-  return warnings;
-}
-
-async function syncTrajectoryWithPortal(
-  portal: PortalTarget,
-  repoPath: string,
-  controlApiUrl: string,
-  dryRun: boolean | undefined,
-  full: boolean | undefined,
-): Promise<string[]> {
-  const wantRecords = isPortalTrajectoryEnabledForTarget(portal);
-  const wantSpans = isTelemetryEnabled() && getTelemetrySignals().traces;
-  if (!wantRecords && !wantSpans) return [];
-
-  const recordsTarget = trajectoryWatermarkTarget(portal);
-  const spansTarget = spansWatermarkTarget(portal);
-  const { records, spans, recordsMaxSyncedAt, spansMaxSyncedAt, failures, truncated } =
-    await fetchPersistedTrajectory(repoPath, controlApiUrl, {
-      records: wantRecords
-        ? {
-            since: full
-              ? null
-              : readScopedPortalWatermark(
-                  repoPath,
-                  recordsTarget,
-                  legacyScopedWatermarkKeys(portal, 'trajectory'),
-                ),
-          }
-        : false,
-      spans: wantSpans
-        ? {
-            since: full
-              ? null
-              : readScopedPortalWatermark(
-                  repoPath,
-                  spansTarget,
-                  legacyScopedWatermarkKeys(portal, 'spans'),
-                ),
-          }
-        : false,
-    });
-
-  const failedChannel = (channel: string) =>
-    failures.some((failure) => failure.channel === channel || failure.channel === 'repos');
-
-  for (const batch of chunkBySerializedSize(spans, maxSyncBatchBytes(), maxSyncBatchRows())) {
-    await postPortal(portal, '/api/otel', { path: repoPath, spans: batch }, dryRun);
-  }
-  if (!dryRun && spansMaxSyncedAt && !failedChannel('spans')) {
-    writePortalWatermark(repoPath, spansTarget, spansMaxSyncedAt);
-  }
-
-  let recordsLanded = true;
-  for (const batch of chunkBySerializedSize(records, maxSyncBatchBytes(), maxSyncBatchRows())) {
-    const supported = await postPortalIfSupported(
-      portal,
-      '/api/trajectory',
-      { path: repoPath, records: batch },
-      dryRun,
-    );
-    if (!supported) {
-      recordsLanded = false;
-      warn(
-        `${path.basename(repoPath)}: this har-portal has no /api/trajectory endpoint — ` +
-          'trajectory forwarding skipped (upgrade the portal; records are kept for the next sync).',
-      );
-      break;
-    }
-  }
-  if (!dryRun && recordsLanded && recordsMaxSyncedAt && !failedChannel('trajectory')) {
-    writePortalWatermark(repoPath, recordsTarget, recordsMaxSyncedAt);
-  }
-
-  return [
-    ...(failures.length > 0 ? [describeReadFailures(repoPath, failures)] : []),
-    ...(truncated.length > 0 ? [describeTruncatedReads(repoPath, truncated)] : []),
-  ];
-}
-
-/**
- * What the HQ leg reads from Mission Control and so leaves out while it is
- * down, as a phrase (null when this sync would not send any of it).
- */
-function controlOnlyChannelsNote(portal: PortalTarget): string | null {
-  const channels: string[] = [];
-  if (isTelemetryEnabled()) channels.push('agent usage', 'verification runs');
-  if (isPortalTrajectoryEnabledForTarget(portal) || (isTelemetryEnabled() && getTelemetrySignals().traces)) {
-    channels.push('trajectory');
-  }
-  if (channels.length === 0) return null;
-  const list =
-    channels.length === 1
-      ? channels[0]
-      : `${channels.slice(0, -1).join(', ')} and ${channels[channels.length - 1]}`;
-  return `${list}, which ${channels.length === 1 ? 'is' : 'are'} read from Mission Control`;
-}
-
-/** The repo has an HQ connection it sends to (not attached-but-local-only). */
-function portalTargetForSync(repoPath: string): PortalTarget | null {
-  return isRepoPortalSyncEnabled(repoPath) ? resolvePortalTarget(repoPath) : null;
-}
-
-/** One line for an HQ-only sync: why Mission Control is skipped, and what HQ misses. */
-function describeHqOnlySync(subject: string, apiUrl: string, portal: PortalTarget | null): string {
-  const why = isControlEnabled()
-    ? `Mission Control is not reachable at ${apiUrl}`
-    : 'Mission Control is disabled (HAR_CONTROL_DISABLED)';
-  const missing = portal ? controlOnlyChannelsNote(portal) : null;
-  const later = isControlEnabled() ? ' — run `har control up` to send them' : '';
-  return (
-    `[har control] ${why}: syncing ${subject} with HAR HQ only` +
-    (missing ? `, without ${missing}${later}` : '')
-  );
-}
-
 export async function syncRepoWithControl(
   options: ControlSyncOptions,
 ): Promise<{ warnings: string[] }> {
-  // One read of slots, pm2 and git for the whole sync (both legs).
+  // One read of slots, pm2 and git for the whole sync.
   return withStatusSnapshot(() => syncRepoWithControlOnce(options));
 }
 
@@ -1349,89 +528,8 @@ async function syncRepoWithControlOnce(
     return { warnings: [] };
   }
 
-  // A Mission Control failure (one bad endpoint, e.g. a 400 on commit
-  // bindings) must not also cost the repo its HQ sync: HQ still gets its runs
-  // and slots, and the error is reported once both legs ran.
-  let localError: unknown;
-  if (options.controlReachable !== false) {
-    try {
-      await syncRepoWithLocalControl({ ...options, repoPath, workspacePath, apiUrl });
-    } catch (err) {
-      if (err instanceof SyncDeadlineError) throw err;
-      localError = err;
-    }
-  }
-
-  const portalSyncEnabled = isRepoPortalSyncEnabled(repoPath);
-  const portal = portalSyncEnabled ? resolvePortalTarget(repoPath) : null;
-  let warnings: string[] = [];
-  // Attached to HQ yet opted out: HQ stays empty with no sign of why, so say it.
-  if (!portalSyncEnabled && resolvePortalTarget(repoPath)) {
-    warnings.push(
-      `${path.basename(repoPath)}: attached to HAR HQ but kept local-only, so nothing is sent to HQ — ` +
-        `send it with \`har control register --repo ${repoPath} --portal\`.`,
-    );
-  }
-  let portalError: unknown;
-  // HQ reads usage, verification runs and trajectory from Mission Control.
-  // When it is down, the HQ leg still sends everything read locally, instead
-  // of a read failure per channel.
-  const controlReachable =
-    options.controlReachable ??
-    (localError === undefined || !portal || (await isControlApiReachable(apiUrl)));
-  if (portal) {
-    try {
-      warnings = await syncRepoWithPortal(
-        { ...options, repoPath, workspacePath },
-        controlReachable ? apiUrl : null,
-        portal,
-      );
-    } catch (err) {
-      if (err instanceof SyncDeadlineError) throw err;
-      portalError = err;
-    }
-  }
-
-  const failures = [
-    ...(localError !== undefined ? [`Mission Control: ${errorMessage(localError)}`] : []),
-    ...(portalError !== undefined ? [`HQ: ${errorMessage(portalError)}`] : []),
-  ];
-  if (failures.length > 0) {
-    const missing = portal && !controlReachable ? controlOnlyChannelsNote(portal) : null;
-    const landed =
-      portal && portalError === undefined
-        ? missing
-          ? ` (HQ sync completed without ${missing})`
-          : ' (HQ sync completed)'
-        : localError === undefined && portal
-          ? ' (Mission Control sync completed)'
-          : '';
-    throw new Error(`${failures.join('; ')}${landed}`);
-  }
-  return { warnings };
-}
-
-let warnedUsageCheckUnavailable = false;
-
-/**
- * The sync units (provider sessions, legacy rows) of a repository that break
- * a blocking usage invariant (I1, I2): the HQ sync leaves them out and sends
- * the rest. A Mission Control without the check (older version) or a failed
- * check holds nothing back: the sync warns once and goes on.
- * `HAR_SYNC_ALLOW_USAGE_VIOLATIONS=1` sends everything.
- */
-async function heldUsageUnits(apiUrl: string, repoPath: string): Promise<HeldUsageUnits> {
-  if (process.env.HAR_SYNC_ALLOW_USAGE_VIOLATIONS === '1' || !isTelemetryEnabled()) return new Map();
-  try {
-    return heldUnitsForRepo(await fetchUsageInvariantReport(apiUrl, repoPath), repoPath);
-  } catch (err) {
-    if (err instanceof SyncDeadlineError) throw err;
-    if (!warnedUsageCheckUnavailable) {
-      warnedUsageCheckUnavailable = true;
-      warn(`Usage invariants not checked before the HQ sync: ${errorMessage(err)}`);
-    }
-    return new Map();
-  }
+  await syncRepoWithLocalControl({ ...options, repoPath, workspacePath, apiUrl });
+  return { warnings: [] };
 }
 
 function errorMessage(err: unknown): string {
@@ -1672,7 +770,7 @@ const EXPLICIT_SYNC_TIMEOUT_MS = 120_000;
  *
  * Only a repo in the saved `har control sync` selection is synced (every repo
  * when there is none). A failure is reported on one stderr line — silently
- * dropping it left HQ stale with no sign of why.
+ * dropping it left Mission Control stale with no sign of why.
  *
  * Callers MUST await this before returning control to the CLI: commands call
  * process.exit() as soon as their work resolves, which kills any still-pending
@@ -1698,20 +796,9 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
     const apiUrl = getControlApiUrl();
     const controlEnabled = isControlEnabled();
     if (!controlEnabled || !(await isControlApiReachable(apiUrl))) {
-      // HQ does not need Mission Control: a connected repo still syncs with it.
-      const portal = portalTargetForSync(canonical);
-      if (!portal) {
-        if (verbose && controlEnabled) {
-          process.stderr.write(`[har control] sync skipped: not reachable at ${apiUrl}\n`);
-        }
-        return;
+      if (verbose && controlEnabled) {
+        process.stderr.write(`[har control] sync skipped: not reachable at ${apiUrl}\n`);
       }
-      process.stderr.write(`${describeHqOnlySync(path.basename(canonical), apiUrl, portal)}\n`);
-      await runWithDeadline(
-        () => syncRepoWithControl({ repoPath: canonical, controlReachable: false }),
-        SYNC_TIMEOUT_MS,
-        'control sync',
-      );
       return;
     }
     await runWithDeadline(
@@ -1759,18 +846,6 @@ export async function syncRunWithControlAsync(repoPath: string, run: RunRecord):
     if (await isControlApiReachable(apiUrl)) {
       await syncRunWithLocalControl(canonical, run, apiUrl);
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[har control] run sync skipped: ${message}\n`);
-  }
-
-  const portal = resolvePortalTarget(canonical);
-  if (!portal) return;
-  if (!isRepoPortalSyncEnabled(canonical)) return;
-
-  try {
-    if (!kernoApiUrlFor(portal.url) && !(await isControlApiReachable(portal.url))) return;
-    await postPortal(portal, '/api/sync', { path: canonical, runs: [run] });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[har control] run sync skipped: ${message}\n`);

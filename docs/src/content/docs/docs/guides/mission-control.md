@@ -58,11 +58,12 @@ destination among them, so your backends keep receiving whether it runs or not. 
 SDK you point at Mission Control yourself reaches only Mission Control: point it at
 your backend too, or at a Collector that fans out.
 
-**Local paths ([#519](https://github.com/os-factory/har/issues/519)).** Mission
-Control attributes agent sessions with the Resource's `factory.local.*` keys
-(checkout and worktree paths). One hook process sends the same Resource to every
-destination, so while Mission Control is one of them, your other destinations
-receive those keys too.
+**Local paths.** Agent telemetry carries no `factory.local.*` keys (checkout and
+worktree paths) by default, Mission Control included: otel-hook stamps work identity
+(work unit, attempt, slot) from the session context HAR writes in `~/.har/sessions`.
+Mission Control is one entry of the [destination list](/docs/reference/cli/#destinations-one-list-for-everything-har-sends);
+the hook sends local paths only when every destination opts in with
+`--include-local-paths`.
 
 ## Register and sync
 
@@ -83,8 +84,7 @@ commit, complete — so registered repositories stay current without a manual
 terminal and saves the choice in `~/.har/sync-selection.json` (change it with
 `har control sync --select`). Once saved, every sync — manual, automatic, and the
 all-repos sync after `har control up` or `har hq connect` — touches only those
-repositories, both for Mission Control and for HAR HQ. HAR HQ additionally
-receives only the repositories attached to the connected org. `har control
+repositories. `har control
 register` and attaching a repository with `har hq connect` add it to a saved
 selection; an automatic sync that skips a repository outside the selection says
 so on one `[har control] sync skipped` line.
@@ -93,18 +93,12 @@ An automatic sync that fails prints one `[har control] sync of <repo> failed`
 line and leaves the rest for the next sync; run `har control sync` to retry and
 see the details. Every request has a 30-second timeout
 (`HAR_SYNC_REQUEST_TIMEOUT_MS`), and a sync that runs out of time stops sending
-instead of continuing in the background. When Mission Control rejects part of a
-sync, HAR HQ still receives that repository, and the error is reported once both
-have run.
+instead of continuing in the background.
 
-HAR HQ does not need Mission Control. When Mission Control is disabled
-(`HAR_CONTROL_DISABLED=true`) or not running, a repository connected to HAR HQ
-still syncs with it, and the automatic sync says so on one `[har control]` line.
-That sync carries what HAR reads from the repository: runs, validations, work
-units, bindings and slots. Agent usage, verification runs and trajectory are read
-from Mission Control, so that sync leaves them out; what Mission Control has
-stored reaches HAR HQ with the first sync after `har control up`. A repository without a HAR HQ connection syncs nothing while Mission
-Control is down, as before.
+`har control sync` sends to Mission Control only. HAR HQ does not read anything
+through Mission Control: when HQ is a destination (`har telemetry destination add
+hq`), the CLI and the agent hook send to it directly, whether Mission Control runs
+or not.
 
 Sync reads local Claude Code and Codex transcripts. It remembers which workspace
 each transcript belongs to in `~/.har/cache/transcript-index.json`, so only new
@@ -324,9 +318,12 @@ When telemetry is on:
    to export OTLP `http/protobuf` to `{HAR_CONTROL_API_URL}/api/otel` and to each of your
    [destinations](/docs/guides/otlp-backends/#agent-session-traces), as one destination list
    (`har telemetry status` prints it: `Agent traces: → mission-control, langfuse`).
-3. Launch writes session attribution into `.env.agent.<id>` (`OTEL_RESOURCE_ATTRIBUTES`:
-   `session.id`, `factory.slot.id`, `factory.local.*`, …). Mission Control matches sessions
-   by workspace/cwd → slot work dir first, then by the Resource `session.id`.
+3. Launch opens a session segment in `~/.har/sessions` for the calling agent session, and
+   otel-hook stamps its work unit, attempt and slot on every record while it is in force.
+   `.env.agent.<id>` keeps only `session.id`, the branch and the repository in
+   `OTEL_RESOURCE_ATTRIBUTES` (no work identity). Unstamped data (an older otel-hook, a
+   session that never called `har`) is still matched by workspace/cwd → slot work dir,
+   then by the Resource `session.id`.
 4. Token usage arrives per request or turn — Claude Code's native `api_request` events,
    otel-hook spans — and `har control sync` also **harvests** local Claude/Codex session
    files. Each piece is booked on the slot the agent worked in at that moment; see
@@ -352,8 +349,7 @@ none. Turning it off is the deliberate opt-out, and it is silent by design:
   still appears is mirrored from otel spans, so turn counts read 0 for sessions
   that really had turns.
 - `har telemetry status` prints the effective level and warns when the hook config
-  agents read disagrees with it; `har control sync --full` warns when the level is the
-  reason no content is leaving the machine.
+  agents read disagrees with it.
 - A harvested stream longer than 1000 events keeps the most recent 1000 and marks
   the oldest surviving event with `factory.usage.harvest.truncated`,
   `factory.usage.harvest.dropped_events` and `factory.usage.harvest.total_events`, so a clipped
@@ -379,36 +375,7 @@ span, and usage rows are projections of those facts.
 | Size | Bodies over `HAR_TRAJECTORY_MAX_PAYLOAD_BYTES` (default 64 KiB) are truncated. Binary tool payloads are omitted. |
 | Retention | `HAR_TRAJECTORY_RETENTION_DAYS=0` (default) keeps rows. A positive value expires ledger, event, and span rows older than that. Usage totals stay. |
 | Export / delete | The slot viewer can download the session as local JSONL or delete that session's trajectory. Factory reset still wipes the whole database. |
-| Local vs remote | Default Mission Control is local SQLite. Export is a local download. A hosted portal receives these bodies only after you opt in (see below). |
-
-#### Forwarding the ledger to a hosted portal
-
-`har control sync` pushes runs, slots and token counts to a hosted portal, but the
-ledger's prompts, tool arguments and tool results stay local until you say
-otherwise:
-
-```bash
-har control trajectory          # show the current setting
-har control trajectory on       # forward prompts / tool payloads
-har control trajectory off      # back to counts and events only (default)
-```
-
-`HAR_PORTAL_TRAJECTORY=on|off` overrides the stored choice for one sync, and
-telemetry must be on either way. Forwarding is stored with the connected HQ org,
-so switching to another org starts with it off. What is forwarded goes through the same policy as
-what is stored: bodies are capped at `HAR_TRAJECTORY_MAX_PAYLOAD_BYTES`, secret
-attributes are `[redacted]`, and `contentDisclosure` travels with each record so a
-truncated or withheld body is labelled as such remotely instead of arriving as
-apparently-complete text. The policy is applied again on the way out, so tightening
-the cap also bounds records stored under a looser one.
-
-Forwarding is idempotent on `(source, sourceEventId, contentKey)` and watermarked
-independently of the event and run batches — enabling it later still sends the
-backlog rather than starting from that moment.
-
-Projected **spans** ride along with telemetry rather than with this opt-in: they
-carry call structure and timing, and their attributes were already redacted when
-the span was projected.
+| Local vs remote | Default Mission Control is local SQLite. Export is a local download. Mission Control forwards nothing; a remote destination receives what the agent hook and the CLI send it directly. |
 
 ### Verification runs
 
@@ -427,10 +394,8 @@ a copy the CLI queued while Mission Control was down, by `vcs.repository.url.ful
 matched against the repository's git remote. A trace delivered twice is stored once.
 
 `GET /api/repos/<id>/verification-runs` lists a repository's runs with their
-stages, paged on `since` / `sinceId` like the other repository reads. The HQ sync
-sends them as the optional `verificationRuns` collection of `/api/sync`, with its
-own watermark, whenever telemetry is on. There is no dedicated page in the
-dashboard yet.
+stages, paged on `since` / `sinceId` like the other repository reads. There is no
+dedicated page in the dashboard yet.
 
 ## Local development
 
@@ -449,7 +414,8 @@ conflict and can select another port in the slot lane.
 
 `har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
 repository to the org you pick in the portal. The CLI holds one org connection at
-a time: every sync, OTel and trajectory upload goes to that org only. Other locally
+a time: when HQ is a destination (`har telemetry destination add hq`), everything
+the CLI and the agent hook send to HQ goes to that org only. Other locally
 registered repositories are offered so you can attach them to the same org;
 unattached checkouts are never ingested. Connecting to a different org replaces
 the connection — nothing more is sent to the previous org, and its repositories
@@ -458,7 +424,7 @@ stop syncing until you attach them again. The connection lives in
 never committed into `.har/`. `har control login` still works as a deprecated alias.
 
 Attaching a repository clears a local-only opt-out left by `har control register
---no-portal`, so an attached repository always syncs. `har hq list` shows, per
+--no-portal`, so an attached repository is always sent. `har hq list` shows, per
 repository, whether anything is sent, plus what HQ receives for agent sessions: usage
 and the step outline by default, the full trajectory only when the local level is
 `full` **and** forwarding is on (`har control trajectory on`, or answer yes when

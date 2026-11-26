@@ -12,7 +12,6 @@ import {
   isPortalTrajectoryEnabledForTarget,
   listAttachedRepos,
   migrateLegacyCredentialsIfNeeded,
-  portalTargetIdentityKey,
   portalTargetsPath,
   readPortalConnectionState,
   recordToPortalTarget,
@@ -24,7 +23,6 @@ import {
 } from '../src/core/portal-targets';
 import { readPortalCredentials } from '../src/core/portal-credentials';
 import { readSyncSelection, writeSyncSelection } from '../src/core/control-sync-selection';
-import { readPortalWatermark, writePortalWatermark } from '../src/core/portal-watermark';
 
 const ENV_KEYS = [
   'HAR_PORTAL_URL',
@@ -255,20 +253,6 @@ describe('legacy credentials migration', () => {
     migrateLegacyCredentialsIfNeeded();
 
     expect(resolvePortalTarget(repoPath)?.token).toBe('legacy-token');
-  });
-});
-
-describe('portal watermarks per org', () => {
-  it('does not share cursors between orgs for the same repo', () => {
-    const repoPath = makeRepo('repo');
-    const devKey = portalTargetIdentityKey('https://portal.example.com', 'org_dev');
-    const prodKey = portalTargetIdentityKey('https://portal.example.com', 'org_prod');
-
-    writePortalWatermark(repoPath, devKey, '2026-01-01T00:00:00.000Z');
-    writePortalWatermark(repoPath, prodKey, '2026-02-01T00:00:00.000Z');
-
-    expect(readPortalWatermark(repoPath, devKey)).toBe('2026-01-01T00:00:00.000Z');
-    expect(readPortalWatermark(repoPath, prodKey)).toBe('2026-02-01T00:00:00.000Z');
   });
 });
 

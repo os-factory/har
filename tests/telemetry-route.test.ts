@@ -116,7 +116,7 @@ describe('agent telemetry route: fan-out at the producer', () => {
       });
     });
 
-    it('Mission Control plus every enabled traces or logs destination, in file order (one route, no control/direct split)', () => {
+    it('Mission Control plus every enabled destination with an OTLP signal, in file order (one route, no control/direct split)', () => {
       const decision = selectAgentTelemetryRoute({
         ...base,
         controlAvailable: true,
@@ -126,10 +126,11 @@ describe('agent telemetry route: fan-out at the producer', () => {
       expect(decision.route.mode === 'fanout' && decision.route.missionControl).toBe(MC);
       expect(decision.route.mode === 'fanout' && decision.route.destinations.map((d) => d.name)).toEqual([
         'langfuse',
+        'm',
         'otel',
         'logs-only',
       ]);
-      expect(describeAgentTelemetryRoute(decision.route)).toBe('→ mission-control, langfuse, otel, logs-only');
+      expect(describeAgentTelemetryRoute(decision.route)).toBe('→ mission-control, langfuse, m, otel, logs-only');
     });
 
     it('destinations only, when Mission Control is off or not set up', () => {
@@ -140,7 +141,7 @@ describe('agent telemetry route: fan-out at the producer', () => {
     });
 
     it('nowhere when there is neither', () => {
-      const decision = selectAgentTelemetryRoute({ ...base, destinations: [collector('m', ['metrics'])] });
+      const decision = selectAgentTelemetryRoute({ ...base, destinations: [{ ...collector('m', ['metrics']), enabled: false }] });
       expect(decision.route).toEqual(fanout(undefined));
       expect(describeAgentTelemetryRoute(decision.route)).toMatch(/^nowhere/);
     });
@@ -268,10 +269,12 @@ describe('agent telemetry route: fan-out at the producer', () => {
           name: 'team-collector',
           tracesEndpoint: 'http://collector.example:4318/v1/traces',
           logsEndpoint: 'http://collector.example:4318/v1/logs',
+          metricsEndpoint: 'http://collector.example:4318/v1/metrics',
           headers: { 'x-api-key': 'env:HAR_OTEL_DIRECT_HEADER_2_1', 'x-tenant': 'env:HAR_OTEL_DIRECT_HEADER_2_2' },
-          signals: ['traces', 'logs'],
+          signals: ['traces', 'logs', 'metrics'],
         },
       ]);
+      expect(config.exporter.metrics).toEqual({ includeSessionId: true });
       const json = JSON.stringify(config);
       for (const secret of [SECRET_KEY, TOKEN, OTEL_SECRET, 'acme']) expect(json).not.toContain(secret);
     });
@@ -310,28 +313,30 @@ describe('agent telemetry route: fan-out at the producer', () => {
     });
   });
 
-  describe('local paths (#519)', () => {
-    const attrs = 'factory.local.work_dir=/home/dev/wt,factory.slot.id=1';
+  describe('local paths: stripped for every destination unless it opts in (ADR 0004 section 6)', () => {
+    const attrs = 'factory.local.work_dir=/home/dev/wt,session.id=s1';
 
-    it('keeps factory.local.* with Mission Control in the list, even for a destination that did not opt in', () => {
+    it('strips factory.local.* with Mission Control in the list too', () => {
       const route = fanout(MC, langfuse());
-      expect(buildOtelHooksConfig({ route, resourceAttributes: attrs }).exporter.resourceAttributes).toHaveProperty([
-        'factory.local.work_dir',
-      ]);
-      expect(buildRouteEnv(route)).not.toContain(ROUTE_STRIP_LOCAL_ENV);
+      expect(buildOtelHooksConfig({ route, resourceAttributes: attrs }).exporter.resourceAttributes).toEqual({ 'session.id': 's1' });
+      expect(buildRouteEnv(route)).toContain(`export ${ROUTE_STRIP_LOCAL_ENV}=1`);
       writeRouteEnv(route, hooksHome);
-      expect(readAppliedAgentRoute(hooksHome)?.includeLocalPaths).toBe(true);
+      expect(readAppliedAgentRoute(hooksHome)?.includeLocalPaths).toBe(false);
     });
 
-    it('strips them without Mission Control unless every destination sets includeLocalPaths', () => {
+    it('keeps them only when every entry, Mission Control included, sets includeLocalPaths', () => {
       const both = fanout(undefined, langfuse('a', { includeLocalPaths: true }), langfuse('b', { includeLocalPaths: true }));
       const one = fanout(undefined, langfuse('a', { includeLocalPaths: true }), langfuse('b'));
-      expect(buildOtelHooksConfig({ route: both, resourceAttributes: attrs }).exporter.resourceAttributes).toHaveProperty([
-        'factory.local.work_dir',
-      ]);
-      expect(buildRouteEnv(both)).not.toContain(ROUTE_STRIP_LOCAL_ENV);
+      const withMc: FanoutAgentTelemetryRoute = { ...both, missionControl: MC, missionControlIncludesLocalPaths: true };
+      for (const route of [both, withMc]) {
+        expect(buildOtelHooksConfig({ route, resourceAttributes: attrs }).exporter.resourceAttributes).toHaveProperty([
+          'factory.local.work_dir',
+        ]);
+        expect(buildRouteEnv(route)).not.toContain(ROUTE_STRIP_LOCAL_ENV);
+      }
+      expect(buildRouteEnv({ ...both, missionControl: MC })).toContain(ROUTE_STRIP_LOCAL_ENV);
       expect(buildOtelHooksConfig({ route: one, resourceAttributes: attrs }).exporter.resourceAttributes).toEqual({
-        'factory.slot.id': '1',
+        'session.id': 's1',
       });
       expect(buildRouteEnv(one)).toContain(`export ${ROUTE_STRIP_LOCAL_ENV}=1`);
       writeRouteEnv(one, hooksHome);
@@ -342,7 +347,7 @@ describe('agent telemetry route: fan-out at the producer', () => {
       const session = { sessionKey: 'feat-x', agentId: 2, repoPath: '/home/dev/repo', workDir: '/home/dev/wt', repositoryUrl: 'https://github.com/o/r' };
       expect(buildOtelResourceAttributes(session, { omitLocalPaths: true })).not.toContain('factory.local.');
       writeRouteEnv(fanout(MC, langfuse()), hooksHome);
-      expect(buildTelemetryEnvBlock(session)).toContain('factory.local.');
+      expect(buildTelemetryEnvBlock(session)).not.toContain('factory.local.');
       writeRouteEnv(fanout(undefined, langfuse()), hooksHome);
       expect(buildTelemetryEnvBlock(session)).not.toContain('factory.local.');
       writeRouteEnv(fanout(undefined, langfuse('lf', { includeLocalPaths: true })), hooksHome);
@@ -372,7 +377,7 @@ describe('agent telemetry route: fan-out at the producer', () => {
         missionControl: true,
         destinations: ['langfuse', 'team'],
         logs: true,
-        includeLocalPaths: true,
+        includeLocalPaths: false,
       });
     });
 
@@ -467,10 +472,10 @@ describe('agent telemetry route: fan-out at the producer', () => {
       expect(seen.env.HAR_OTEL_DIRECT_HEADER_2_1).toBe(OTEL_SECRET);
       expect(seen.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBeUndefined();
       expect(seen.env.OTEL_HOOK_EXPORTER_ENDPOINT).toBeUndefined();
-      // Mission Control in the list: the local paths stay (#519).
-      expect(seen.env.OTEL_RESOURCE_ATTRIBUTES).toBe('session.id=s1,factory.local.work_dir=/home/dev/wt');
+      // No destination opted in to local paths, Mission Control included: the wrapper drops them.
+      expect(seen.env.OTEL_RESOURCE_ATTRIBUTES).toBe('session.id=s1');
 
-      // Without Mission Control: the wrapper drops them.
+      // Without Mission Control too.
       writeRouteEnv(fanout(undefined, langfuse()), hooksHome);
       spawnSync('bash', [wrapper], {
         encoding: 'utf8',
@@ -539,24 +544,21 @@ describe('agent telemetry route: fan-out at the producer', () => {
         expect(value('HAR_RESOURCE_ATTRIBUTES')).toBe(value('OTEL_RESOURCE_ATTRIBUTES'));
       });
 
-      it('restores session.id and factory.* from HAR_RESOURCE_ATTRIBUTES with Mission Control in the list', () => {
+      it('restores session.id and the repository from HAR_RESOURCE_ATTRIBUTES, never work identity', () => {
         const attrs = runHookLikeClaudeCode(buildTelemetryEnvBlock(sessionAttrs));
         expect(attrs['session.id']).toBe('feat-x');
-        expect(attrs['factory.slot.id']).toBe('4');
-        expect(attrs['factory.work_unit.id']).toBe('W-484');
         expect(attrs['vcs.repository.url.full']).toBe('https://github.com/o/r');
-        // Mission Control needs local paths for attribution (#519).
-        expect(attrs['factory.local.work_dir']).toBe('/home/dev/wt');
+        // Work identity is stamped from the session context only (ADR 0004 section 3).
+        expect(Object.keys(attrs)).not.toContain('factory.slot.id');
+        expect(Object.keys(attrs)).not.toContain('factory.work_unit.id');
+        expect(Object.keys(attrs).filter((key) => key.startsWith('factory.local.'))).toEqual([]);
       });
 
-      it('still strips factory.local.* without Mission Control in the list', () => {
-        // A block written while Mission Control was in the list still carries local paths.
-        const block = buildTelemetryEnvBlock(sessionAttrs);
-        expect(block).toContain('factory.local.');
-        writeRouteEnv(fanout(undefined, langfuse()), hooksHome);
+      it('still strips factory.local.* from a block an older HAR wrote with local paths', () => {
+        const block = 'OTEL_RESOURCE_ATTRIBUTES=session.id=feat-x,factory.local.work_dir=/home/dev/wt\nHAR_RESOURCE_ATTRIBUTES=session.id=feat-x,factory.local.work_dir=/home/dev/wt\n';
+        writeRouteEnv(fanout(MC, langfuse()), hooksHome);
         const attrs = runHookLikeClaudeCode(block);
         expect(attrs['session.id']).toBe('feat-x');
-        expect(attrs['factory.work_unit.id']).toBe('W-484');
         expect(Object.keys(attrs).filter((key) => key.startsWith('factory.local.'))).toEqual([]);
       });
 
@@ -611,7 +613,7 @@ describe('agent telemetry route: fan-out at the producer', () => {
       expect(text).toContain('Agent traces:  → mission-control, langfuse');
       expect(text).toMatch(/mission-control\s+traces http:\/\/control\.example:3847\/api\/otel\/v1\/traces, logs http:\/\/control\.example:3847\/api\/otel\/v1\/logs/);
       expect(text).toMatch(/langfuse\s+traces https:\/\/langfuse\.example\/api\/public\/otel\/v1\/traces/);
-      expect(text).toContain('so your destinations receive them too (#519)');
+      expect(text).toContain('Local paths:   stripped from agent telemetry');
       expect(text).not.toContain('OTLP endpoint:');
       expect(text).not.toContain('run har telemetry on to apply');
       expect(text).not.toContain(TOKEN);
@@ -640,7 +642,8 @@ describe('agent telemetry route: fan-out at the producer', () => {
           { name: 'otel', tracesEndpoint: 'http://collector.example:4318/v1/traces' },
         ],
       });
-      expect(parsed.localPaths).toBe('kept');
+      expect(parsed.localPaths).toBe('stripped');
+      expect(parsed).toHaveProperty('ingestQueues');
       expect(parsed).toHaveProperty('destinationHealth');
       expect(parsed).toHaveProperty('verificationTraces');
       expect(json).not.toContain(TOKEN);
@@ -663,16 +666,21 @@ describe('agent telemetry route: fan-out at the producer', () => {
       addTelemetryDestination(collector('otel'));
       addTelemetryDestination(collector('metrics-only', ['metrics']));
       applyAgentTelemetryRoute(hooksHome);
-      const json = await capture(['telemetry', 'destination', 'list', '--json'], (text) => text.includes('agentTraces'));
-      const parsed = JSON.parse(json) as { agentTraces: string[]; missionControl: Record<string, boolean> };
-      expect(parsed.agentTraces).toEqual(['mission-control', 'langfuse', 'otel']);
-      expect(parsed.missionControl.agentTraces).toBe(true);
+      const json = await capture(['telemetry', 'destination', 'list', '--json'], (text) => text.includes('agentTelemetry'));
+      const parsed = JSON.parse(json) as { agentTelemetry: string[]; destinations: Array<{ name: string; preset: string }> };
+      expect(parsed.agentTelemetry).toEqual(['mission-control', 'langfuse', 'otel', 'metrics-only']);
+      expect(parsed.destinations.map((d) => [d.name, d.preset])).toEqual([
+        ['mission-control', 'mission-control'],
+        ['langfuse', 'langfuse'],
+        ['otel', 'otlp'],
+        ['metrics-only', 'otlp'],
+      ]);
       expect(json).not.toContain(SECRET_KEY);
 
       const text = await capture(['telemetry', 'destination', 'list'], (out) => out.includes('Config:'));
-      expect(text).toContain('Agent traces: → mission-control, langfuse, otel');
-      expect(text).toContain('forwards nothing');
-      expect(text).toContain('factory.local.* in agent traces while Mission Control is a destination (#519)');
+      expect(text).toContain('Agent telemetry: → mission-control, langfuse, otel, metrics-only');
+      expect(text).toContain('records, proofs, evidence: records, proofs, evidence');
+      expect(text).toContain('local paths: stripped');
     });
   });
 });

@@ -51,7 +51,7 @@ export async function handleCheckUsage(argv: {
       if (report.ok) success('Usage invariants hold.');
       else if (report.blockedUnits.length > 0)
         warn(
-          `\`har control sync\` leaves ${report.blockedUnits.length} session(s) counted twice out of the HQ post until fixed.`,
+          `${report.blockedUnits.length} session(s) are counted twice in Mission Control until fixed.`,
         );
     }
     if (!report.ok) return finishCommand(1);

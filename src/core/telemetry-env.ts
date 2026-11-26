@@ -40,10 +40,26 @@ function escapeAttrValue(value: string): string {
 }
 
 /**
- * Session Resource attributes for an agent HAR launched (telemetry profile):
- * `session.id` (OTel semconv) correlates everything the session emits,
- * `factory.slot.id` names the slot, and the local-only `factory.local.*` keys
- * hold the absolute paths Mission Control needs for attribution.
+ * Work identity keys HAR no longer puts in an agent's environment (ADR 0004
+ * section 3): otel-hook stamps them from the session context, segment by
+ * segment, so a session that leaves the slot (complete, teardown, another
+ * launch) stops reporting it. A value in the environment would outlive the
+ * segment, since records outside any segment keep the Resource.
+ */
+export const AGENT_ENV_OMITTED_IDENTITY_ATTRIBUTES = [
+  SLOT_ID_ATTR,
+  'factory.work_unit.id',
+  'factory.work_unit.source',
+  'factory.attempt.id',
+] as const;
+
+/**
+ * Session Resource attributes for an agent HAR launched: `session.id` (the
+ * slot's session key, which otel-hook's own `session.id` overrides on its
+ * records), the branch, the repository and the producer, plus the local-only
+ * `factory.local.*` paths when every destination opts in. Work identity
+ * (`AGENT_ENV_OMITTED_IDENTITY_ATTRIBUTES`: slot, work unit, attempt) comes
+ * from the session context only, never from here.
  */
 export function buildOtelResourceAttributes(
   attrs: TelemetrySessionAttrs,
@@ -51,7 +67,6 @@ export function buildOtelResourceAttributes(
 ): string {
   const parts = [
     `${SESSION_ID_ATTR}=${escapeAttrValue(attrs.sessionKey)}`,
-    `${SLOT_ID_ATTR}=${attrs.agentId}`,
     ...(options.omitLocalPaths
       ? []
       : [
@@ -59,7 +74,8 @@ export function buildOtelResourceAttributes(
           `${LOCAL_WORK_DIR_ATTR}=${escapeAttrValue(attrs.workDir)}`,
         ]),
   ];
-  parts.push(...factoryCorrelationAttributes(attrs));
+  const omitted = new Set<string>(AGENT_ENV_OMITTED_IDENTITY_ATTRIBUTES);
+  parts.push(...factoryCorrelationAttributes(attrs).filter((pair) => !omitted.has(pair.slice(0, pair.indexOf('=')))));
   return parts.join(',');
 }
 
@@ -148,19 +164,18 @@ export function buildSessionKey(input: {
 
 /**
  * Whether the agent route leaves `factory.local.*` out (`direct.env` written by
- * `har telemetry`): no Mission Control in the destination list, and a
- * destination that does not take local paths. Then those attributes stay out
- * of the agent's `OTEL_RESOURCE_ATTRIBUTES` too. Under a test runner only an
- * explicit `HAR_OTEL_HOOKS_HOME` counts, so unit tests never read a
- * developer's real hooks home.
+ * `har telemetry`): it does unless every destination, Mission Control included,
+ * opted in with `includeLocalPaths` (ADR 0004 section 6). No route applied yet
+ * strips too. Under a test runner only an explicit `HAR_OTEL_HOOKS_HOME`
+ * counts, so unit tests never read a developer's real hooks home.
  */
 export function agentRouteOmitsLocalPaths(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.NODE_ENV === 'test' && !env.HAR_OTEL_HOOKS_HOME) return false;
+  if (env.NODE_ENV === 'test' && !env.HAR_OTEL_HOOKS_HOME) return true;
   try {
     const applied = readAppliedAgentRoute(getOtelHooksHome());
-    return applied !== null && !applied.includeLocalPaths;
+    return applied === null || !applied.includeLocalPaths;
   } catch {
-    return false;
+    return true;
   }
 }
 

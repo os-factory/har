@@ -20,10 +20,11 @@ export type OtlpSignal = (typeof OTLP_SIGNALS)[number];
 export const OTLP_DESTINATION_PROTOCOLS = ['http/protobuf', 'http/json'] as const;
 export type OtlpDestinationProtocol = (typeof OTLP_DESTINATION_PROTOCOLS)[number];
 
-export const TELEMETRY_DESTINATION_PRESETS = ['otlp', 'langfuse'] as const;
+/** Presets of an OTLP destination as the producers see it (`hq` is the hosted receiver's OTLP side). */
+export const TELEMETRY_DESTINATION_PRESETS = ['otlp', 'langfuse', 'hq'] as const;
 export type TelemetryDestinationPreset = (typeof TELEMETRY_DESTINATION_PRESETS)[number];
 
-/** File name inside the destinations directory. */
+/** File name of the #522 OTLP-only list (version 1), migrated into `destinations.json`. */
 export const TELEMETRY_DESTINATIONS_FILE = 'telemetry.json';
 
 /** Environment variable overriding the destinations directory (default `~/.har/destinations`). */
@@ -32,12 +33,11 @@ export const HAR_DESTINATIONS_DIR_ENV = 'HAR_DESTINATIONS_DIR';
 /**
  * Attribute keys whose values are absolute paths on the user's machine (repo
  * checkout, slot worktree, agent workspace, process cwd, source file). Mission
- * Control keeps them for attribution; the CLI strips them — at resource,
+ * Control no longer needs them for attribution (ADR 0004 section 6: telemetry
+ * is stamped from the session context); the CLI strips them — at resource,
  * scope, span, span event/link, log record and metric data point (and exemplar)
- * level — from every copy it sends a destination unless that destination sets
- * `includeLocalPaths: true`. Agent hook traces are one Resource for every
- * receiver: they keep `factory.local.*` while Mission Control is one of them
- * (os-factory/har#519).
+ * level — from every copy it sends a destination, Mission Control included,
+ * unless that destination sets `includeLocalPaths: true`.
  *
  * An entry ending in `*` is a prefix rule: `factory.local.*` strips every key in
  * the local-only namespace (`attributeKeyDenied`).
@@ -197,8 +197,7 @@ export const telemetryDestinationSchema = z.object({
   /**
    * Send attributes that hold absolute local paths
    * (`TELEMETRY_LOCAL_PATH_ATTRIBUTES`). Absent or false (the default): they are
-   * stripped before the copy is spooled or sent, except `factory.local.*` in
-   * agent hook traces while Mission Control is a destination (#519).
+   * stripped before the copy is spooled or sent.
    */
   includeLocalPaths: z.boolean().optional(),
   /**
@@ -207,6 +206,8 @@ export const telemetryDestinationSchema = z.object({
    * they are stripped before the copy is spooled or sent.
    */
   includeAccountIdentity: z.boolean().optional(),
+  /** `session.id` on every hook metric point (default true). */
+  includeSessionId: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
 export type TelemetryDestination = z.infer<typeof telemetryDestinationSchema>;
@@ -238,4 +239,160 @@ export function destinationsForSignal(
 export function maskHeaderValue(value: string): string {
   const scheme = /^(Basic|Bearer|Token|ApiKey|Api-Key)\s+/i.exec(value);
   return scheme ? `${scheme[1]} ****` : '****';
+}
+
+// ---------------------------------------------------------------------------
+// One destination list (ADR 0005 section 6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Presets of the one destination list HAR keeps for everything it sends
+ * (`~/.har/destinations/destinations.json`):
+ *
+ * | Preset            | OTLP signals                    | Records, proofs, evidence |
+ * |-------------------|---------------------------------|---------------------------|
+ * | `mission-control` | traces, logs, metrics           | yes                       |
+ * | `hq`              | traces, logs, metrics           | yes                       |
+ * | `git-notes`       | none                            | proofs only (opt-in)      |
+ * | `otlp`            | any (default traces, metrics)   | no                        |
+ * | `langfuse`        | traces                          | no                        |
+ *
+ * Mission Control books Claude Code usage from Claude Code's own telemetry and
+ * takes otel-hook metrics only for the other providers (ADR 0005 section 5):
+ * that filter is the receiver's, by `otelhook.provider.id`.
+ */
+export const DESTINATION_PRESETS = ['mission-control', 'hq', 'git-notes', 'otlp', 'langfuse'] as const;
+export type DestinationPreset = (typeof DESTINATION_PRESETS)[number];
+
+/** Presets that implement the ingest v2 contract (records, proofs, evidence over HTTP). */
+export const INGEST_RECEIVER_PRESETS = ['mission-control', 'hq'] as const satisfies readonly DestinationPreset[];
+
+/** File name of the destination list inside the destinations directory. */
+export const DESTINATIONS_FILE = 'destinations.json';
+export const DESTINATIONS_FILE_VERSION = 2;
+
+/** Default name of the Mission Control entry. */
+export const MISSION_CONTROL_DESTINATION_NAME = 'mission-control';
+
+/** What a preset sends when the user does not narrow it. */
+export interface DestinationPresetDefaults {
+  signals: readonly OtlpSignal[];
+  records: boolean;
+  proofs: boolean;
+  evidence: boolean;
+}
+
+export const DESTINATION_PRESET_DEFAULTS: Readonly<Record<DestinationPreset, DestinationPresetDefaults>> = {
+  'mission-control': { signals: ['traces', 'logs', 'metrics'], records: true, proofs: true, evidence: true },
+  hq: { signals: ['traces', 'logs', 'metrics'], records: true, proofs: true, evidence: true },
+  'git-notes': { signals: [], records: false, proofs: true, evidence: false },
+  otlp: { signals: ['traces', 'metrics'], records: false, proofs: false, evidence: false },
+  langfuse: { signals: ['traces'], records: false, proofs: false, evidence: false },
+};
+
+/**
+ * How HAR authenticates to a receiver without storing the secret in the
+ * destination file. `hq-token`: `Authorization: Bearer <token>`, the token from
+ * `HAR_PORTAL_TOKEN` or the saved HAR HQ connection (`har hq connect`).
+ */
+export const DESTINATION_AUTH_KINDS = ['hq-token'] as const;
+export const destinationAuthSchema = z.object({ kind: z.enum(DESTINATION_AUTH_KINDS) });
+export type DestinationAuth = z.infer<typeof destinationAuthSchema>;
+
+export const harDestinationSchema = z
+  .object({
+    name: telemetryDestinationNameSchema,
+    preset: z.enum(DESTINATION_PRESETS),
+    enabled: z.boolean().default(true),
+    /**
+     * Ingest base URL of a receiver (`mission-control`, `hq`): `v2/records`,
+     * `otel/v1/<signal>`, … are resolved against it. Mission Control's defaults
+     * to `HAR_CONTROL_API_URL` + `/api`.
+     */
+    baseUrl: endpointSchema.optional(),
+    /** Base OTLP/HTTP URL of an `otlp` / `langfuse` destination (`<endpoint>/v1/<signal>`). */
+    endpoint: endpointSchema.optional(),
+    protocol: z.enum(OTLP_DESTINATION_PROTOCOLS).default('http/protobuf'),
+    /** Header values are secrets: never printed unmasked, never written to the hook config. */
+    headers: z.record(headerNameSchema, z.string().max(8192)).default({}),
+    auth: destinationAuthSchema.optional(),
+    /** OTLP signals this destination receives (empty: none). */
+    signals: z.array(z.enum(OTLP_SIGNALS)).default([]),
+    /** Ingest v2 records (`POST v2/records`). */
+    records: z.boolean().default(false),
+    /** Factory Commits proofs (`POST v2/proofs`; for `git-notes`, the factory note). */
+    proofs: z.boolean().default(false),
+    /** Stage logs and artifacts (`v2/evidence/missing` + `PUT v2/evidence/<sha256>`). */
+    evidence: z.boolean().default(false),
+    /** Opt-in: keep `factory.local.*` and other local path attributes. */
+    includeLocalPaths: z.boolean().optional(),
+    /** Opt-in: keep account identity attributes. */
+    includeAccountIdentity: z.boolean().optional(),
+    /** `session.id` on every metric point (default true); off where per-session series are too many. */
+    includeSessionId: z.boolean().optional(),
+    createdAt: z.string().optional(),
+  })
+  .superRefine((destination, ctx) => {
+    const issue = (message: string, path: string) => ctx.addIssue({ code: 'custom', message, path: [path] });
+    const receiver = (INGEST_RECEIVER_PRESETS as readonly string[]).includes(destination.preset);
+    if (destination.preset === 'otlp' || destination.preset === 'langfuse') {
+      if (!destination.endpoint) issue(`a ${destination.preset} destination needs an endpoint`, 'endpoint');
+      if (destination.signals.length === 0) issue('subscribe at least one signal', 'signals');
+    } else if (destination.endpoint) {
+      issue(`a ${destination.preset} destination has no OTLP endpoint (use baseUrl)`, 'endpoint');
+    }
+    if (!receiver) {
+      for (const key of ['records', 'evidence'] as const) {
+        if (destination[key]) issue(`a ${destination.preset} destination does not take ${key}`, key);
+      }
+      if (destination.baseUrl) issue(`a ${destination.preset} destination has no ingest base URL`, 'baseUrl');
+    }
+    if (destination.preset !== 'git-notes' && !receiver && destination.proofs) {
+      issue(`a ${destination.preset} destination does not take proofs`, 'proofs');
+    }
+    if (destination.preset === 'hq' && !destination.baseUrl) issue('an hq destination needs a baseUrl', 'baseUrl');
+    if (destination.preset === 'git-notes' && destination.signals.length > 0) {
+      issue('a git-notes destination takes no OTLP signals', 'signals');
+    }
+    if (destination.preset === 'mission-control' && (destination.auth || Object.keys(destination.headers).length > 0)) {
+      issue('Mission Control takes no credentials', 'headers');
+    }
+  });
+export type HarDestination = z.infer<typeof harDestinationSchema>;
+
+export const harDestinationsFileSchema = z.object({
+  version: z.literal(DESTINATIONS_FILE_VERSION),
+  destinations: z.array(harDestinationSchema).default([]),
+});
+export type HarDestinationsFile = z.infer<typeof harDestinationsFileSchema>;
+
+/** Whether a destination is an ingest v2 receiver (`mission-control`, `hq`). */
+export function isIngestReceiver(destination: Pick<HarDestination, 'preset'>): boolean {
+  return (INGEST_RECEIVER_PRESETS as readonly string[]).includes(destination.preset);
+}
+
+/** A #522 (`telemetry.json`, version 1) OTLP destination as a v2 list entry: signals only. */
+export function migrateTelemetryDestination(destination: TelemetryDestination): HarDestination {
+  return harDestinationSchema.parse({
+    name: destination.name,
+    preset: destination.preset ?? 'otlp',
+    enabled: destination.enabled,
+    endpoint: destination.endpoint,
+    protocol: destination.protocol,
+    headers: destination.headers,
+    signals: destination.signals,
+    records: false,
+    proofs: false,
+    evidence: false,
+    ...(destination.includeLocalPaths !== undefined ? { includeLocalPaths: destination.includeLocalPaths } : {}),
+    ...(destination.includeAccountIdentity !== undefined
+      ? { includeAccountIdentity: destination.includeAccountIdentity }
+      : {}),
+    ...(destination.createdAt ? { createdAt: destination.createdAt } : {}),
+  });
+}
+
+/** Join an ingest v2 path (`v2/records`, `otel/v1/traces`) onto a base URL. */
+export function ingestUrl(baseUrl: string, relativePath: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${relativePath.replace(/^\/+/, '')}`;
 }

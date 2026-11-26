@@ -82,7 +82,7 @@ export const hqCommand = {
       )
       .command(
         'disconnect',
-        'Remove the HAR HQ org connection (nothing syncs until you connect again)',
+        'Remove the HAR HQ org connection (nothing is sent to HQ until you connect again)',
         (y: Argv) => y.option('json', { type: 'boolean', default: false }),
         (argv) => handleHqDisconnect(argv as { json: boolean }),
       )
@@ -234,7 +234,7 @@ export async function handleHqConnect(argv: {
     }
 
     printHqTrajectorySummary();
-    info('Sync: har control sync');
+    info('Send records and telemetry to HQ: har telemetry destination add hq');
   } catch (err) {
     error(`Connect failed: ${(err as Error).message}`);
     return finishCommand(1);

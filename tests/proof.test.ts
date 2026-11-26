@@ -18,6 +18,7 @@ import {
   isSupportedFactoryProofVersion,
 } from '../src/core/proof';
 import { findValidation, recordValidation } from '../src/core/validations';
+import { addDestination, buildGitNotesDestination, removeDestination } from '../src/core/telemetry-destinations';
 import { HarnessStageRegistrySchema, ValidationRecordSchema, VerificationResult } from '../src/harness/schema';
 
 // Vendored from the Factory Commits repository (v0.1, factory-proof >= 0.2.0):
@@ -410,7 +411,7 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
     expect(result.outcome?.message).toContain('or newer not found');
   });
 
-  it('attests locally when git-factory is installed', () => {
+  const attestDefault = () => {
     const dir = initHarnessRepo();
     const record = recordValidation({ checkoutDir: dir, harnessRoot: dir, status: 'pass', full: true });
     const log = path.join(tmp('har-proof-log-'), 'calls.jsonl');
@@ -422,11 +423,27 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
       bin: FAKE_BIN,
       env: { FAKE_GIT_FACTORY_LOG: log },
     });
+    const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { argv: string[] });
+    return { result, calls };
+  };
+
+  it('attests locally when git-factory is installed, without a note: notes are an opt-in destination', () => {
+    const { result, calls } = attestDefault();
     expect(result.outcome?.status).toBe('attested');
     expect(result.validation.attestationDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
-    const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { argv: string[] });
-    // The verified tree is HEAD's (clean checkout), so the note goes on HEAD right away.
-    expect(calls.map((c) => c.argv[0])).toEqual(['attest', 'note']);
-    expect(result.note?.status).toBe('attested');
+    expect(calls.map((c) => c.argv[0])).toEqual(['attest']);
+    expect(result.note).toBeUndefined();
+  });
+
+  it('adds the note on HEAD right away with a git-notes destination (ADR 0005 section 6)', () => {
+    addDestination(buildGitNotesDestination());
+    try {
+      const { result, calls } = attestDefault();
+      // The verified tree is HEAD's (clean checkout), so the note goes on HEAD right away.
+      expect(calls.map((c) => c.argv[0])).toEqual(['attest', 'note']);
+      expect(result.note?.status).toBe('attested');
+    } finally {
+      removeDestination('git-notes');
+    }
   });
 });

@@ -1,12 +1,11 @@
 import * as path from 'path';
-import { usageUnitKey, type UsageInvariantId, type UsageInvariantReport } from '../harness/schema';
+import { type UsageInvariantReport } from '../harness/schema';
 import { syncFetch } from './sync-request';
 
 /**
- * Client of Mission Control's usage invariants (`GET /api/usage/invariants`,
- * FE-2058). Mission Control holds the facts, so the checks run there; the CLI
- * prints the report (`har control check-usage`) and leaves the blocked units
- * out of the HQ post (`har control sync`).
+ * Client of Mission Control's usage invariants (`GET /api/usage/invariants`).
+ * Mission Control holds the facts, so the checks run there; the CLI prints
+ * the report (`har control check-usage`).
  */
 
 export type MissionControlUsageReport = UsageInvariantReport & {
@@ -72,70 +71,4 @@ export function formatUsageInvariantReport(
     lines.push(`  … ${report.violations.length - shown.length} more (use --json for all)`);
   }
   return lines;
-}
-
-/** Unit key (`usageUnitKey`) → the blocking invariants it breaks, for one repository. */
-export type HeldUsageUnits = Map<string, UsageInvariantId[]>;
-
-/** The units of `repoPath` a sync leaves out of the HQ post. */
-export function heldUnitsForRepo(
-  report: MissionControlUsageReport,
-  repoPath: string,
-): HeldUsageUnits {
-  const repo = report.repositories.find((r) => path.resolve(r.path) === path.resolve(repoPath));
-  return new Map(
-    report.blockedUnits
-      .filter((u) => u.repositoryId === repo?.id)
-      .map((u) => [usageUnitKey(u), u.invariants]),
-  );
-}
-
-type PortalRows = Array<Record<string, unknown>>;
-
-/** Unit key of a sync group: one provider session's portal rows, or one legacy row. */
-function groupKey(group: PortalRows): string {
-  const row = group[0] ?? {};
-  return usageUnitKey({
-    agentTool: String(row.agentTool),
-    key: String(row.providerSessionId || row.sessionKey),
-  });
-}
-
-/** Split a sync's usage groups into sent and held back. */
-export function partitionHeldUsage(
-  groups: PortalRows[],
-  held: HeldUsageUnits,
-): { sent: PortalRows[]; held: PortalRows[] } {
-  return {
-    sent: groups.filter((g) => !held.has(groupKey(g))),
-    held: groups.filter((g) => held.has(groupKey(g))),
-  };
-}
-
-/** The warning a sync prints for what it held back, with its cost. */
-export function describeHeldUsage(
-  repoPath: string,
-  held: PortalRows[],
-  units: HeldUsageUnits,
-  limit = 5,
-): string {
-  const items = held
-    .map((group) => ({
-      key: groupKey(group).split('\0')[1],
-      invariants: units.get(groupKey(group)) ?? [],
-      cost: group.reduce((sum, row) => sum + (Number(row.costUsd) || 0), 0),
-      tokens: group.reduce((sum, row) => sum + (Number(row.tokensTotal) || 0), 0),
-    }))
-    .sort((a, b) => b.cost - a.cost || b.tokens - a.tokens);
-  const total = items.reduce((sum, i) => sum + i.cost, 0);
-  const shown = items
-    .slice(0, limit)
-    .map((i) => `${i.key} (${i.invariants.join('/')}, ${tokens(i.tokens)} tokens, ${usd(i.cost)})`)
-    .join(', ');
-  return (
-    `${path.basename(repoPath)}: held back ${items.length} session(s) from HQ, ${usd(total)}, ` +
-    `because their usage is counted twice: ${shown}` +
-    (items.length > limit ? ` and ${items.length - limit} more` : '') +
-    `. The rest of the repository was sent. Details: har control check-usage --repo ${repoPath}`
-  );
 }

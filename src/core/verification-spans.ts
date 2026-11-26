@@ -20,7 +20,7 @@ import { getHarPackageVersion } from './package-version';
 import { FACTORY_PROOF_POLICY_ID, readPolicyDigest, verificationTraceId } from './proof';
 import { getRun } from './runs';
 import { isTelemetryEnabled } from './telemetry-config';
-import { readTelemetryDestinations } from './telemetry-destinations';
+import { missionControlReceives, readTelemetryDestinations } from './telemetry-destinations';
 import { FACTORY_PRODUCER_NAME, factoryCorrelationResource } from './telemetry-env';
 import {
   CONTROL_POST_HEADERS,
@@ -465,6 +465,8 @@ export function verificationTraceControlUrl(env: NodeJS.ProcessEnv = process.env
   // NODE_ENV must not bypass it while a test runner is running.
   const underTest = env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test';
   if (underTest && env[VERIFICATION_TRACE_CONTROL_TEST_ENV] !== 'on') return undefined;
+  // Mission Control is one entry of the destination list: removed, disabled or not subscribed to traces → not sent.
+  if (!missionControlReceives('traces', env)) return undefined;
   return getControlApiUrl().replace(/\/+$/, '');
 }
 
