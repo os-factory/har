@@ -7,7 +7,8 @@ import {
   type BundleSourceKind,
   type ResolvedBundleSource,
 } from './bundle-resolve';
-import { linesDirRel, type LineScope } from './line-scope';
+import * as path from 'path';
+import { linesDirRel, personalHarRoot, type LineScope } from './line-scope';
 import { LINE_MANIFEST_FILES } from './schema';
 
 export type LineSourceKind = BundleSourceKind;
@@ -34,8 +35,18 @@ export const PERSONAL_LINE_BUNDLE_CONFIG: BundleResolveConfig = {
   localDir: PERSONAL_LINES_DIR,
 };
 
-export function lineBundleConfig(scope: LineScope): BundleResolveConfig {
-  return scope === 'personal' ? PERSONAL_LINE_BUNDLE_CONFIG : LINE_BUNDLE_CONFIG;
+/**
+ * Bundle config for a scope. With `repoPath`, the personal home is made
+ * absolute under {@link personalHarRoot}, so a bare id resolves from the main
+ * checkout inside a worktree slot while path specs stay relative to the repo.
+ */
+export function lineBundleConfig(scope: LineScope, repoPath?: string): BundleResolveConfig {
+  if (scope === 'team') return LINE_BUNDLE_CONFIG;
+  if (repoPath === undefined) return PERSONAL_LINE_BUNDLE_CONFIG;
+  return {
+    ...PERSONAL_LINE_BUNDLE_CONFIG,
+    localDir: path.join(personalHarRoot(repoPath), PERSONAL_LINES_DIR),
+  };
 }
 
 /**
@@ -48,7 +59,7 @@ export function resolveLineSource(
   repoPath = '.',
   scope: LineScope = 'team',
 ): ResolvedLineSource {
-  return resolveBundleSource(spec, repoPath, lineBundleConfig(scope));
+  return resolveBundleSource(spec, repoPath, lineBundleConfig(scope, repoPath));
 }
 
 function knownLinesHint(repoPath: string): string {
@@ -70,7 +81,7 @@ function knownLinesHint(repoPath: string): string {
 
 /** List line ids under <repo>/.har/lines/<id>/ (team) or <repo>/.har/local/lines/<id>/ (personal). */
 export function listLocalLineIds(repoPath = '.', scope: LineScope = 'team'): string[] {
-  return listLocalBundleIds(repoPath, lineBundleConfig(scope));
+  return listLocalBundleIds(repoPath, lineBundleConfig(scope, repoPath));
 }
 
 /** List line ids discovered under templates/lines/<id>/line.manifest.json */

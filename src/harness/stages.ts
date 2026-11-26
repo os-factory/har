@@ -13,7 +13,7 @@ import {
 } from './schema';
 import { parseHarnessEnvInt, readHarnessEnv } from './env';
 import { getHarnessDir } from './manifest';
-import { ensureHarLocalIgnored, HAR_LOCAL_DIR } from './line-scope';
+import { ensureHarLocalIgnored, HAR_LOCAL_DIR, personalHarRoot } from './line-scope';
 
 export { HAR_AGENT_SLOT_MIN };
 export const STAGE_REGISTRY_FILE = 'stages.json';
@@ -155,8 +155,12 @@ export function stageOverlayClashMessage(ids: string[]): string {
   );
 }
 
+/**
+ * The personal overlay is gitignored, so a worktree slot has none of its own:
+ * it reads (and writes) the main checkout's, next to the personal lines.
+ */
 export function getStageOverlayPath(repoPath: string): string {
-  return path.join(getHarnessDir(repoPath), STAGE_OVERLAY_FILE);
+  return path.join(getHarnessDir(personalHarRoot(repoPath)), STAGE_OVERLAY_FILE);
 }
 
 /** The personal stage overlay, or null when there is none. Throws when it is invalid. */
@@ -189,7 +193,7 @@ export function writeStageOverlay(repoPath: string, overlay: HarnessStageOverlay
     if (fs.existsSync(overlayPath)) fs.unlinkSync(overlayPath);
     return;
   }
-  ensureHarLocalIgnored(repoPath);
+  ensureHarLocalIgnored(personalHarRoot(repoPath));
   fs.mkdirSync(path.dirname(overlayPath), { recursive: true });
   fs.writeFileSync(overlayPath, JSON.stringify(parsed.data, null, 2) + '\n');
 }

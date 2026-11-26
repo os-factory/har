@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveTemplatesDir } from '../utils/paths';
 import { harnessExists } from './parser';
-import { ensureHarLocalIgnored, linesDirRel, type LineScope } from './line-scope';
+import { ensureHarLocalIgnored, linesDirRel, scopeRoot, type LineScope } from './line-scope';
 import { installedLineScopes } from './lines';
 import {
   LINE_BUNDLE_KIND,
@@ -72,10 +72,11 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
   const scope: LineScope = options.scope ?? 'team';
   const otherScope: LineScope = scope === 'personal' ? 'team' : 'personal';
   const lineDirRel = `${linesDirRel(scope)}/${id}`;
-  const lineDir = path.join(resolved, lineDirRel);
+  // Personal lines live in the main checkout's .har/local/ when run from a worktree slot.
+  const lineDir = path.join(scopeRoot(resolved, scope), lineDirRel);
   const otherDirRel = `${linesDirRel(otherScope)}/${id}`;
   if (
-    fs.existsSync(path.join(resolved, otherDirRel)) ||
+    fs.existsSync(path.join(scopeRoot(resolved, otherScope), otherDirRel)) ||
     installedLineScopes(resolved, id).includes(otherScope)
   ) {
     throw new Error(
@@ -87,7 +88,7 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
     throw new Error(`Line already exists: ${lineDirRel}/. Use --force to overwrite.`);
   }
   if (scope === 'personal') {
-    ensureHarLocalIgnored(resolved);
+    ensureHarLocalIgnored(scopeRoot(resolved, scope));
   }
   const personalFlag = scope === 'personal' ? ' --personal' : '';
 

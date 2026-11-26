@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
 import { readHarnessEnv } from '../harness/env';
+import { resolveHarPath } from '../harness/line-scope';
 import {
   getArtifactsDir,
   resolveStage,
@@ -23,7 +24,7 @@ import {
   StageExecutor,
   StageRunOptions,
 } from './types';
-import { readSlotRegistry } from './slot-registry';
+import { readSlotRegistry, resolveSlotRegistryContext } from './slot-registry';
 import {
   launchSession,
   runAgentOp,
@@ -120,8 +121,9 @@ function substituteAgentId(value: string, agentId?: number): string {
 function resolveStageScriptPath(repoPath: string, stage: HarnessStage): string {
   const harnessDir = getHarnessDir(repoPath);
 
+  // Personal scripts (`local/…`) resolve from the main checkout inside a worktree slot.
   if (stage.script) {
-    return path.join(harnessDir, stage.script);
+    return resolveHarPath(repoPath, stage.script);
   }
 
   if (stage.command) {
@@ -129,7 +131,7 @@ function resolveStageScriptPath(repoPath: string, stage: HarnessStage): string {
       .split(/\s+/)[0]
       .replace(/^\.\/\.har\//, '')
       .replace(/^\.\//, '');
-    return path.join(harnessDir, scriptName);
+    return resolveHarPath(repoPath, scriptName);
   }
 
   const stageScript = path.join(harnessDir, 'stages', `${stage.id}.sh`);
@@ -160,7 +162,8 @@ interface LaunchedSlot {
 /** The slot's work dir and env file, once launched (registry work dir holds .env.agent.<id>). */
 function launchedSlot(repoPath: string, agentId: number | undefined): LaunchedSlot | undefined {
   if (agentId === undefined) return undefined;
-  const session = readSlotRegistry(resolveHarnessRoot(repoPath), agentId);
+  // From inside a worktree slot the registry lives in the main checkout.
+  const session = resolveSlotRegistryContext(repoPath, agentId)?.session;
   if (!session?.workDir || session.status === 'completed') return undefined;
   const envFile = path.join(session.workDir, `.env.agent.${agentId}`);
   return fs.existsSync(envFile) ? { agentId, workDir: session.workDir, envFile } : undefined;

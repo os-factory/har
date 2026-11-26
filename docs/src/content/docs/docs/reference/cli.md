@@ -372,6 +372,14 @@ older HAR (`har line add <id> --personal --force`) moves its stage from
 `.har/stages.json` into the overlay. `har env doctor` warns about any that are
 left.
 
+Git does not copy gitignored files into a new worktree, so a worktree slot has
+no `.har/local/` of its own. Inside a slot, HAR reads and writes the main
+checkout's `.har/local/` instead, just as run records already live in the main
+checkout. A personal line you install once shows up in every slot, and
+installing one from a slot puts it in the main checkout. Its gate still runs in
+the slot: the stage script comes from the main checkout, and it runs with the
+slot's work dir as its working directory.
+
 Poka-yoke runs both ways: `har env add-plugin` refuses a line bundle, and
 `har line add` refuses a verification-plugin manifest. If a check should gate
 *every* verify, it is a plugin, not a line. `har env doctor` fails if a line

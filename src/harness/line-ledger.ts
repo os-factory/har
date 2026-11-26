@@ -1,16 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { writeFileSafe } from '../utils/file-ops';
-import { lineLedgerPathRel, LINE_SCOPES, type LineScope } from './line-scope';
+import { lineLedgerPathRel, LINE_SCOPES, scopeRoot, type LineScope } from './line-scope';
 import { LineLedger, LineLedgerEntry, LineLedgerSchema } from './schema';
 
 /**
  * Installed-line ledgers, one per scope:
  * team `.har/lines.json` (committed, sibling of `.har/plugins.json`) and
- * personal `.har/local/lines.json` (gitignored).
+ * personal `.har/local/lines.json` (gitignored; the main checkout's inside a
+ * worktree slot — see `personalHarRoot`).
  */
 export function getLineLedgerPath(repoPath: string, scope: LineScope = 'team'): string {
-  return path.join(path.resolve(repoPath), lineLedgerPathRel(scope));
+  return path.join(scopeRoot(repoPath, scope), lineLedgerPathRel(scope));
 }
 
 export function readLineLedger(repoPath: string, scope: LineScope = 'team'): LineLedger | null {
