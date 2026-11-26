@@ -74,6 +74,7 @@ receiver a line is about.
 | 12 | HAR 1.x (`@osfactory/har@latest`) syncs to the hosted receiver's v1 endpoint; replies carry `Deprecation`, `Sunset` and `Link` |
 | 13 | Trajectory built from otel-hook's log records: `session.start` first when present (a receiver without local paths may not place the events before launch, which carry no work identity), every event id is stored once, no two events share a sequence, tool calls pair by call id, each subagent has a start and an end with its tool calls nested under `otelhook.subagent.id`; the Codex session has its prompts. `SKIP` for a receiver whose adapter has no `trajectory` reads |
 | 14 | `--real-agents` only: the Claude Code generations otel-hook exported (Collector) hold the same tokens per model as Claude Code's own `--output-format json` report (`modelUsage`; a resumed session reports its running total) |
+| 15 | otel-hook metrics: each receiver keeps a series, with its provider, of every metric the Collector got for each agent session (otel-hook names the provider on each point, not on the resource). `SKIP` for a receiver whose adapter has no `metrics` reads |
 
 ## Real agents
 
@@ -141,6 +142,7 @@ with it, outside this repository.
 | `read-headers` | `Name: value` lines for read requests |
 | `spans trace <trace-id>` / `spans session <session-id>` | A JSON array of `{traceId, spanId, parentSpanId, name, startTime, endTime?, attributes, resource}` |
 | `trajectory session <session-id>` | Optional: a JSON array of `{eventId, eventType, sequence, attributes}`, one per stored trajectory record of the agent session. Exit 2 or 3 when the receiver has no trajectory reads (check 13 is then `SKIP`) |
+| `metrics session <session-id>` | Optional: a JSON array of `{name, providerId, value, attributes}`, one per stored otel-hook metric series of the agent session. Exit 2 or 3 when the receiver has no metric reads (check 15 is then `SKIP`) |
 | `stop`, `start` | Stop the receiver; start it and wait until it answers |
 | `v1-headers` | Hosted only: `Name: value` lines a gateway in front of its v1 routes would add; `{client-bearer}` is the 1.x client's token |
 

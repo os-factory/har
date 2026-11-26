@@ -66,6 +66,17 @@ case "${1:-}" in
       console.log(JSON.stringify(rows.map((r) => ({ ...r, attributes: typeof r.attributes === "string" ? JSON.parse(r.attributes) : r.attributes ?? {} }))));
     ' "$rows"
     ;;
+  metrics)
+    # otel-hook metric series (latest value per series) of an agent session:
+    # one row per series, {name, providerId, value, attributes}.
+    [ "${2:-}" = session ] || { echo "metrics: session <id>" >&2; exit 2; }
+    value=${3//\'/}
+    rows=$(sql_json "select name, providerId, value, attributes from MetricSeries where sessionId = '$value'")
+    node -e '
+      const rows = JSON.parse(process.argv[1] || "[]");
+      console.log(JSON.stringify(rows.map((r) => ({ ...r, attributes: typeof r.attributes === "string" ? JSON.parse(r.attributes) : r.attributes ?? {} }))));
+    ' "$rows"
+    ;;
   stop)
     [ -n "${HAR_E2E_MC_STOP:-}" ] || { echo "HAR_E2E_MC_STOP is not set" >&2; exit 3; }
     bash -c "$HAR_E2E_MC_STOP" >/dev/null

@@ -511,10 +511,7 @@ function collectorLogs() {
   return logs;
 }
 
-function checkCollector() {
-  const stamped = (records) => records.filter((r) => r.attributes['factory.attempt.id'] === state.attemptId || r.resource['factory.attempt.id'] === state.attemptId).length;
-  const spanList = collectorSpans();
-  const logs = collectorLogs();
+function collectorPoints() {
   const points = [];
   for (const batch of collectorLines('metrics')) {
     for (const rm of batch.resourceMetrics ?? []) {
@@ -522,11 +519,19 @@ function checkCollector() {
       for (const sm of rm.scopeMetrics ?? []) {
         for (const metric of sm.metrics ?? []) {
           const data = metric.sum ?? metric.gauge ?? metric.histogram ?? metric.exponentialHistogram ?? {};
-          for (const point of data.dataPoints ?? []) points.push({ attributes: attrMap(point.attributes), resource });
+          for (const point of data.dataPoints ?? []) points.push({ name: metric.name, attributes: attrMap(point.attributes), resource });
         }
       }
     }
   }
+  return points;
+}
+
+function checkCollector() {
+  const stamped = (records) => records.filter((r) => r.attributes['factory.attempt.id'] === state.attemptId || r.resource['factory.attempt.id'] === state.attemptId).length;
+  const spanList = collectorSpans();
+  const logs = collectorLogs();
+  const points = collectorPoints();
   const counts = { spans: stamped(spanList), logs: stamped(logs), metrics: stamped(points) };
   need(counts.spans > 0 && counts.logs > 0 && counts.metrics > 0, `stamped records: ${JSON.stringify(counts)} (of ${spanList.length} spans, ${logs.length} logs, ${points.length} points)`);
   const leaks = ['traces', 'logs', 'metrics'].filter((signal) => {
@@ -541,6 +546,39 @@ function checkCollector() {
   });
   need(native.length === 0, `native Claude Code telemetry (claude_code.*) found in ${native.join(', ')}`);
   return `stamped spans ${counts.spans}, logs ${counts.logs}, metric points ${counts.metrics}; no factory.local.* key; no claude_code.* (native) telemetry`;
+}
+
+// --- 15. otel-hook metrics at the receivers ----------------------------------------
+function metricSeries(rx, sessionId) {
+  let out;
+  try {
+    out = execFileSync(rx.adapter, ['metrics', 'session', sessionId], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    if (error.status === 2 || error.status === 3) throw new Skip(`${rx.name} adapter has no metric reads`);
+    throw error;
+  }
+  return JSON.parse(out.trim() || '[]');
+}
+
+/**
+ * otel-hook names its provider on each metric point (its resource only names
+ * the service): a receiver keeps a series of every metric the Collector got for
+ * each agent session.
+ */
+function checkMetrics(name) {
+  const rx = receiver(name);
+  const kept = [];
+  for (const [tool, sessionId] of Object.entries(state.sessions)) {
+    const sent = new Set(collectorPoints().filter((p) => (p.attributes['session.id'] ?? p.resource['session.id']) === sessionId).map((p) => p.name));
+    need(sent.size > 0, `the Collector holds no metric point of the ${tool} session`);
+    const series = metricSeries(rx, sessionId);
+    const names = new Set(series.map((row) => row.name));
+    const missing = [...sent].filter((metric) => !names.has(metric));
+    need(missing.length === 0, `${name}: no ${tool} series of ${missing.join(', ')} (has ${[...names].join(', ') || 'none'})`);
+    need(series.every((row) => row.providerId), `${name}: a ${tool} series without provider`);
+    kept.push(`${tool} ${sent.size} metrics/${series.length} series`);
+  }
+  return `${name}: ${kept.join(', ')}`;
 }
 
 // --- 14. what the real agents reported (run.sh --real-agents) ----------------------
@@ -656,6 +694,8 @@ async function main() {
       return print('7 usage-agree', await settle(() => checkUsageAgree()));
     case 'collector':
       return print('10 collector', await settle(() => checkCollector()));
+    case 'metrics':
+      return print(label(15, 'metrics'), await settle(() => checkMetrics(target)));
     case 'agent-report':
       return print('14 agent-report', await settle(() => checkAgentReport()));
     case 'trajectory':

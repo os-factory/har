@@ -407,6 +407,7 @@ for target in "${RECEIVERS[@]}" collector; do check usage "$target"; done
 [ $HOSTED_ON = 1 ] && check usage-agree
 check collector
 for rx in "${RECEIVERS[@]}"; do check trajectory "$rx"; done
+for rx in "${RECEIVERS[@]}"; do check metrics "$rx"; done
 [ "$REAL_AGENTS" = 1 ] && check agent-report
 
 levels=()
