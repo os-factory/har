@@ -42,7 +42,8 @@ export const hqCommand = {
             })
             .option('api-key', {
               type: 'string',
-              describe: 'Store this ingest token directly instead of browser login',
+              describe:
+                'Connect with a Kerno portal API key (or an ingest token) instead of browser login; the key decides the org',
             })
             .option('repo', {
               type: 'string',
