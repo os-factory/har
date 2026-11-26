@@ -409,6 +409,19 @@ export const WorkAttemptRecordSchema = z
 
 export type WorkAttemptRecord = z.infer<typeof WorkAttemptRecordSchema>;
 
+/**
+ * Factory-line context a stage ran under — set only when `har line gate` runs
+ * it, so a gate's stage runs can be told apart from runs of the same stage
+ * outside the line. `gateRunId` joins the run to its `LineGateRun` record.
+ */
+export const RunLineContextSchema = z.object({
+  lineId: z.string().min(1),
+  stationId: z.string().min(1),
+  gateRunId: z.guid(),
+});
+
+export type RunLineContext = z.infer<typeof RunLineContextSchema>;
+
 export const RunRecordSchema = z
   .object({
     runId: z.guid(),
@@ -428,6 +441,7 @@ export const RunRecordSchema = z
     harnessRoot: z.string().optional(),
     workUnitId: WorkUnitIdSchema.optional(),
     attemptId: WorkAttemptIdSchema.optional(),
+    line: RunLineContextSchema.optional(),
   })
   .passthrough();
 

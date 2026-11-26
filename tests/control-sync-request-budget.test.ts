@@ -29,6 +29,8 @@ jest.mock('../src/core/telemetry-config', () => ({
   readTelemetryPreference: () => ({ enabled: false, signals: {}, portalTrajectory: false }),
 }));
 jest.mock('../src/harness/manifest', () => ({
+  DEFAULT_HAR_DIR: '.har',
+  getHarnessDir: (p: string) => `${p}/.har`,
   readManifest: () => null,
   resolveHarnessRoot: (p: string) => p,
 }));

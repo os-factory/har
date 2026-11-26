@@ -1,8 +1,10 @@
+import * as crypto from 'crypto';
 import * as path from 'path';
 import {
   applyLine,
   installedLineScopes,
   lineProgramPathRel,
+  listInstalledLineIds,
   locateInstalledLine,
   readInstalledLineProgram,
   type ApplyLineOptions,
@@ -11,12 +13,15 @@ import {
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
 import { readAllLineLedgerEntries, readLineLedger } from '../harness/line-ledger';
 import { listBundledLineIds, listLocalLineIds } from '../harness/line-resolve';
-import { LINE_SCOPES, type LineScope } from '../harness/line-scope';
+import type { LineScope } from '../harness/line-scope';
 import { readStageRegistry, stageRequiresAgentId } from '../harness/stages';
 import type { LineGateStage, LineProgram, LineStation } from '../harness/schema';
-import { listSlotRegistryEntries } from './slot-registry';
+import { getCurrentBranch, getHeadSha } from './change-batch';
+import { recordLineGateRun } from './line-gates';
+import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
 import { listRuns } from './runs';
 import { runStage } from './run-service';
+import { markDirty } from './sync-context';
 import type { StageResult } from '../harness/schema';
 
 /**
@@ -74,19 +79,7 @@ export interface LineStatus {
   warnings: string[];
 }
 
-/**
- * Ids of every line installed in this repo, team and personal (ledgers first,
- * then on-disk). An id in both scopes is listed once; resolving it reports the clash.
- */
-export function listInstalledLineIds(repoPath: string): string[] {
-  const fromLedger = readAllLineLedgerEntries(repoPath).map((l) => l.id);
-  const onDisk = LINE_SCOPES.flatMap((scope) =>
-    listLocalLineIds(repoPath, scope).filter(
-      (id) => readInstalledLineProgram(repoPath, id, scope) !== null,
-    ),
-  );
-  return [...new Set([...fromLedger, ...onDisk])].sort();
-}
+export { listInstalledLineIds };
 
 /** Line ids installed in both scopes — each is an error to resolve. */
 export function listLineScopeClashes(repoPath: string): string[] {
@@ -221,11 +214,15 @@ export interface LineGateStageResult {
   stageId: string;
   fromStation: string;
   status: StageResult['status'] | 'skipped';
+  /** The run record this stage produced; absent when it was skipped. */
+  runId?: string;
   durationMs?: number;
   reason?: string;
 }
 
 export interface RunLineGateResult {
+  /** Id of the `.har/line-gates/` record written for this gate run. */
+  gateRunId: string;
   lineId: string;
   station: string;
   /** Cumulative set actually considered, in station order. */
@@ -277,15 +274,44 @@ function resolveLineId(repoPath: string, lineId?: string): string {
 export async function runLineGate(options: RunLineGateOptions): Promise<RunLineGateResult> {
   const repoPath = path.resolve(options.repoPath);
   const lineId = resolveLineId(repoPath, options.lineId);
-  const program = readInstalledLineProgram(repoPath, lineId);
-  if (!program) {
+  const scope = locateInstalledLine(repoPath, lineId);
+  const program = scope ? readInstalledLineProgram(repoPath, lineId, scope) : null;
+  if (!scope || !program) {
     throw new Error(`Line not installed: ${lineId}`);
   }
 
   const required = cumulativeGateStages(program, options.station);
+  const gateRunId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  const lineContext = { lineId, stationId: options.station, gateRunId };
+
+  const persist = (result: Omit<RunLineGateResult, 'gateRunId'>): RunLineGateResult => {
+    const slot =
+      options.agentId !== undefined ? readSlotRegistry(repoPath, options.agentId) : null;
+    const checkout = slot?.workDir ?? repoPath;
+    recordLineGateRun({
+      gateRunId,
+      lineId,
+      stationId: options.station,
+      scope,
+      repoPath,
+      agentId: options.agentId,
+      branch: slot?.branch ?? getCurrentBranch(checkout),
+      headSha: getHeadSha(checkout),
+      workUnitId: slot?.workUnitId,
+      attemptId: slot?.attemptId,
+      stages: result.stages,
+      pass: result.pass,
+      skipped: result.skipped,
+      skipReason: result.skipReason,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    });
+    return { gateRunId, ...result };
+  };
 
   if (program.gate.optInEnv && !options.force && process.env[program.gate.optInEnv] !== '1') {
-    return {
+    return persist({
       lineId,
       station: options.station,
       stages: required.map((stage) => ({
@@ -297,7 +323,7 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
       pass: true,
       skipped: true,
       skipReason: `Gate is opt-in: set ${program.gate.optInEnv}=1 (or pass --force) to run it.`,
-    };
+    });
   }
 
   const registry = readStageRegistry(repoPath);
@@ -332,16 +358,27 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
       continue;
     }
 
-    const result = await runStage({
-      repoPath,
-      stageId: stage.id,
-      agentId: options.agentId,
-      trigger: 'cli',
-    });
+    let result: StageResult;
+    try {
+      result = await runStage({
+        repoPath,
+        stageId: stage.id,
+        agentId: options.agentId,
+        trigger: 'cli',
+        line: lineContext,
+      });
+    } catch (err) {
+      // The run record is already finished as `error`; keep the gate record too.
+      results.push({ stageId: stage.id, fromStation: stage.fromStation, status: 'error' });
+      persist({ lineId, station: options.station, stages: results, pass: false, skipped: false });
+      throw err;
+    }
+    const runId = (result.data as { runId?: unknown } | undefined)?.runId;
     results.push({
       stageId: stage.id,
       fromStation: stage.fromStation,
       status: result.status,
+      ...(typeof runId === 'string' ? { runId } : {}),
       durationMs: result.durationMs,
       ...(result.status !== 'pass' ? { reason: failureReason(result) } : {}),
     });
@@ -350,7 +387,7 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
     }
   }
 
-  return { lineId, station: options.station, stages: results, pass, skipped: false };
+  return persist({ lineId, station: options.station, stages: results, pass, skipped: false });
 }
 
 /** Scaffold a project-owned line at `.har/lines/<id>/`. */
@@ -358,7 +395,9 @@ export function createLineBundle(
   repoPath: string,
   options: CreateLineOptions,
 ): CreateLineResult {
-  return createLine(repoPath, options);
+  const result = createLine(repoPath, options);
+  markDirty(repoPath);
+  return result;
 }
 
 /** Install a line bundle (path → git → bundled id → npm). */
@@ -367,7 +406,9 @@ export function addLine(
   spec: string,
   options: ApplyLineOptions = {},
 ): ApplyLineResult {
-  return applyLine(repoPath, spec, options);
+  const result = applyLine(repoPath, spec, options);
+  markDirty(repoPath);
+  return result;
 }
 
 /** How to run every station of a line at once: its last station's cumulative gate. */

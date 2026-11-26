@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HarnessStageKindSchema, HarnessStageSchema } from './schema';
+import { HarnessStageKindSchema, HarnessStageRunStatusSchema, HarnessStageSchema } from './schema';
 
 /**
  * Factory line schemas (#302 Phase 2 / #304).
@@ -194,3 +194,48 @@ export const LineLedgerSchema = z.object({
 });
 
 export type LineLedger = z.infer<typeof LineLedgerSchema>;
+
+/** One stage of a gate run, pointing at the ordinary run record it produced. */
+export const LineGateRunStageSchema = z.object({
+  stageId: z.string().min(1),
+  fromStation: StationIdSchema,
+  status: HarnessStageRunStatusSchema,
+  /** Absent when the stage was skipped and never ran. */
+  runId: z.guid().optional(),
+  durationMs: z.number().nonnegative().optional(),
+  reason: z.string().min(1).optional(),
+});
+
+/**
+ * One `har line gate <station>` invocation — `.har/line-gates/<date>/<file>.json`.
+ *
+ * The gate's verdict over its stage runs, the way a validation record is the
+ * verdict over `verify --full`. It is written even when the gate is skipped
+ * (opt-in env unset), because a skip produces no run records at all.
+ */
+export const LineGateRunSchema = z
+  .object({
+    gateRunId: z.guid(),
+    lineId: LineIdSchema,
+    stationId: StationIdSchema,
+    /** Where the line was installed. Personal gate runs stay local and are never synced. */
+    scope: z.enum(['team', 'personal']).optional(),
+    repoPath: z.string(),
+    harnessRoot: z.string().optional(),
+    agentId: z.number().int().optional(),
+    branch: z.string().optional(),
+    headSha: z.string().optional(),
+    workUnitId: z.string().optional(),
+    attemptId: z.string().optional(),
+    stages: z.array(LineGateRunStageSchema).default([]),
+    pass: z.boolean(),
+    skipped: z.boolean(),
+    skipReason: z.string().min(1).optional(),
+    startedAt: z.string(),
+    finishedAt: z.string(),
+    relativePath: z.string().optional(),
+  })
+  .passthrough();
+
+export type LineGateRun = z.infer<typeof LineGateRunSchema>;
+export type LineGateRunStage = z.infer<typeof LineGateRunStageSchema>;
