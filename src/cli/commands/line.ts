@@ -7,6 +7,7 @@ import {
   describeLine,
   describeLines,
   listLines,
+  promoteLine,
   runLineGate,
   type LineDescription,
 } from '../../core/lines';
@@ -97,6 +98,39 @@ function handleLineAdd(argv: {
     );
     console.error('');
     console.error('  Next steps:');
+    for (const step of result.nextSteps) {
+      console.error(`    ${step}`);
+    }
+    console.error('');
+  } catch (err: unknown) {
+    error((err as Error).message);
+    return finishCommand(1);
+  }
+}
+
+function handleLinePromote(argv: { id?: string; repo: string; json: boolean }): Promise<void> | void {
+  if (!argv.id) {
+    error('Missing line id. Usage: har line promote <id>');
+    return finishCommand(1);
+  }
+  const repoPath = path.resolve(argv.repo);
+  try {
+    const result = promoteLine(repoPath, argv.id);
+    if (argv.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    header('har line promote');
+    success(`Promoted ${result.lineId} to a team line: ${result.lineDirRel}/`);
+    info(
+      result.stageIds.length > 0
+        ? `Moved stage(s) to .har/stages.json (NOT on verify): ${result.stageIds.join(', ')}`
+        : 'No stages to move',
+    );
+    for (const warning of result.warnings) warn(warning);
+    divider();
+    console.error('');
+    console.error('  Teammates and CI see it once you commit:');
     for (const step of result.nextSteps) {
       console.error(`    ${step}`);
     }
@@ -417,6 +451,21 @@ export const lineCommand = {
             line: argv.line as string | undefined,
             agent: argv.agent as number | undefined,
             force: argv.force as boolean,
+            json: argv.json as boolean,
+          }),
+      )
+      .command(
+        'promote [id]',
+        'Share a personal line with the team: move it from .har/local/ into the committed .har/ (one way — there is no demote)',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'string', describe: 'Personal line id' })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' }),
+        (argv) =>
+          handleLinePromote({
+            id: argv.id as string | undefined,
+            repo: argv.repo as string,
             json: argv.json as boolean,
           }),
       )

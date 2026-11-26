@@ -345,6 +345,11 @@ export const AddLineInputSchema = z.object({
     .describe('Install under the gitignored .har/local/ (yours only, not the team or CI)'),
 });
 
+export const LinePromoteInputSchema = z.object({
+  repo: z.string().default('.'),
+  line: z.string().min(1).describe('Personal line id to share with the team'),
+});
+
 export const LineListInputSchema = z.object({
   repo: z.string().default('.'),
 });

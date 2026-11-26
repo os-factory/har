@@ -219,6 +219,10 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
   };
 }
 
+/** The scaffolded README's personal-scope note (`har line promote` strips it). */
+export const PERSONAL_LINE_README_NOTE = `\nThis is a **personal** line: it lives in the gitignored \`.har/local/\` and is
+not shared with the team or CI.\n`;
+
 function renderLineReadme(
   id: string,
   title: string,
@@ -229,11 +233,7 @@ function renderLineReadme(
 ): string {
   const home = `${linesDirRel(scope)}/${id}`;
   const personalFlag = scope === 'personal' ? ' --personal' : '';
-  const scopeNote =
-    scope === 'personal'
-      ? `\nThis is a **personal** line: it lives in the gitignored \`.har/local/\` and is
-not shared with the team or CI.\n`
-      : '';
+  const scopeNote = scope === 'personal' ? PERSONAL_LINE_README_NOTE : '';
   return `# ${title}
 ${scopeNote}
 

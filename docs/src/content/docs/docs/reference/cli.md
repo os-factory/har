@@ -313,6 +313,7 @@ har line create <id> [--stations S1,S2,S3] [--title <text>]
                      [--description <text>] [--opt-in-env <VAR>]
                      [--no-gate-stage] [--personal] [--force]
 har line add <id|./path|@org/pkg|github:org/repo> [--personal] [--force]
+har line promote <id> [--json]
 har line list [--json]
 har line describe [id] [--json]
 har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
@@ -379,6 +380,16 @@ checkout. A personal line you install once shows up in every slot, and
 installing one from a slot puts it in the main checkout. Its gate still runs in
 the slot: the stage script comes from the main checkout, and it runs with the
 slot's work dir as its working directory.
+
+`har line promote <id>` shares a personal line with the team. It moves the
+line from `.har/local/` into `.har/lines/<id>/`, copies its stage scripts to
+`.har/stages/`, moves its stages from the overlay into `.har/stages.json`, and
+moves its ledger entry into `.har/lines.json`. `verificationStages` is not
+touched. The result is an ordinary diff; the command prints the files to
+commit. It checks everything first and rolls back on a failed write, so a line
+never ends up in both scopes. A line you only scaffolded with
+`har line create --personal` can be promoted too. Promoting runs one way: there
+is no demote, because teammates and CI may already rely on a team line.
 
 Poka-yoke runs both ways: `har env add-plugin` refuses a line bundle, and
 `har line add` refuses a verification-plugin manifest. If a check should gate

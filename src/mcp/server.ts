@@ -25,6 +25,7 @@ import {
 import { getRun, listRuns } from '../core/runs';
 import {
   addLine,
+  promoteLine,
   createLineBundle,
   describeLine,
   describeLines,
@@ -70,6 +71,7 @@ import {
   MaintainHarnessInputSchema,
   AddPluginInputSchema,
   AddLineInputSchema,
+  LinePromoteInputSchema,
   CreateLineInputSchema,
   LineDescribeInputSchema,
   LineListInputSchema,
@@ -449,6 +451,18 @@ export const HAR_MCP_TOOLS: Tool[] = [
           type: 'boolean',
           description: 'Install under the gitignored .har/local/ (yours only, not the team or CI)',
         },
+      },
+      ['line'],
+    ),
+  },
+  {
+    name: 'har_line_promote',
+    description:
+      'Share a personal line with the team: move it from the gitignored .har/local/ into the committed .har/lines/, .har/stages.json and .har/lines.json, and return the files to commit. One way only — there is no demote. Never touches verificationStages.',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        line: { type: 'string', description: 'Personal line id to share with the team' },
       },
       ['line'],
     ),
@@ -873,6 +887,11 @@ export async function handleMcpToolCall(
         adaptPromptPath: result.adaptPromptPath,
         verificationStagesUnchanged: true,
       });
+    }
+
+    case 'har_line_promote': {
+      const input = LinePromoteInputSchema.parse({ ...args, repo });
+      return jsonContent({ ...promoteLine(repo, input.line), verificationStagesUnchanged: true });
     }
 
     case 'har_line_list': {
