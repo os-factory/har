@@ -66,7 +66,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `status` | Inspect all slots |
 | `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
 | `agent <id> <command>` | Per-slot ops: `status`, `logs`, `restart`, `psql`, `health`, `url`, `reset-db`, `slow-queries`, `exec`, `attach` |
-| `run-stage <id> <stage> [args..]` | Run one registered harness stage by id |
+| `run-stage <id> <stage> [args..] [-- args..]` | Run one registered harness stage by id, as verify runs it: in the slot work dir with `WORK_DIR`, `AGENT_ID` and the slot env file; args after `--` pass through verbatim |
 | `artifacts` | List result files under `.har/artifacts/` |
 | `cleanup` | Discover stale sessions and orphan worktrees across registered repos |
 | `runs list` | List persisted run records |

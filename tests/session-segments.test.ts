@@ -8,8 +8,11 @@ import { buildFactoryRunPredicate } from '../src/core/proof';
 import { finalizeStageEvidence } from '../src/core/stage-evidence';
 import { HarnessStageRegistrySchema } from '../src/harness/schema';
 import {
+  SessionContextLockError,
   closeSegmentsForOccupancy,
+  endSlotOccupancySegments,
   rebindSlotSegments,
+  setSessionContextLockOptions,
   computeSessionRefs,
   listSessionContexts,
   mergeSessionRefs,
@@ -383,8 +386,9 @@ describe('run service: launch, teardown, complete, verify', () => {
     expect(closed.to).not.toBeNull();
     const attempt = findWorkAttempt(repo, attemptId)!;
     expect(attempt.endedAt).toBeDefined();
-    // Segments are closed first, at the instant the attempt is then marked ended.
-    expect(closed.to).toBe(attempt.endedAt);
+    // Segments are closed first, each at its own write decision; the attempt ends after them.
+    expect(Date.parse(attempt.endedAt!)).toBeGreaterThanOrEqual(Date.parse(closed.to!));
+    expect(Date.parse(attempt.endedAt!) - Date.parse(closed.to!)).toBeLessThan(5_000);
   });
 
   it('complete closes the attempt segments of every session', async () => {
@@ -502,6 +506,63 @@ describe('work-bind moves sessions to the new attempt', () => {
     ]);
     expect(findWorkAttempt(repo, ATTEMPT)!.endedAt).toBe('2026-11-12T11:00:00.000Z');
     expect(findWorkAttempt(repo, OTHER_ATTEMPT)!.endedAt).toBeUndefined();
+  });
+});
+
+describe('boundaries at the write decision, and locked files', () => {
+  afterEach(() => setSessionContextLockOptions({}));
+
+  it('without a pinned instant, a rebind closes and opens at one instant and ends the old attempt after it', () => {
+    bindAttempt();
+    openSessionSegment({
+      agent: { agentTool: 'claude_code', sessionId: 'worker' },
+      attributes: { 'factory.attempt.id': ATTEMPT, 'factory.slot.id': '1' },
+      at: '2026-11-12T10:00:00.000Z',
+      home,
+    });
+    bindAttempt(OTHER_ATTEMPT, '417');
+    const before = Date.now();
+    rebindSlotSegments({
+      harnessRoot: repo,
+      before: { agentId: 1, attemptId: ATTEMPT, workUnitId: '416', workDir: repo },
+      after: { agentId: 1, attemptId: OTHER_ATTEMPT, workUnitId: '417', workDir: repo },
+      env: {},
+      home,
+    });
+    const after = Date.now();
+    const [old, fresh] = contextOf('worker')!.segments;
+    expect(old.to).toBe(fresh.from);
+    expect(Date.parse(old.to!)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(old.to!)).toBeLessThanOrEqual(after);
+    expect(Date.parse(findWorkAttempt(repo, ATTEMPT)!.endedAt!)).toBeGreaterThanOrEqual(Date.parse(old.to!));
+  });
+
+  it('teardown with a session file locked by a live process: other files closed, attempt ended, error reported', () => {
+    bindAttempt();
+    for (const sessionId of ['free', 'busy']) {
+      openSessionSegment({
+        agent: { agentTool: 'claude_code', sessionId },
+        attributes: { 'factory.attempt.id': ATTEMPT, 'factory.slot.id': '1' },
+        at: '2026-11-12T10:00:00.000Z',
+        home,
+      });
+    }
+    const busy = sessionContextFile({ agentTool: 'claude_code', sessionId: 'busy' }, home)!;
+    fs.writeFileSync(`${busy}.lock`, JSON.stringify({ pid: process.pid, token: 'other' }));
+    setSessionContextLockOptions({ timeoutMs: 100 });
+    expect(() =>
+      endSlotOccupancySegments({ harnessRoot: repo, session: { agentId: 1, attemptId: ATTEMPT, workDir: repo }, home }),
+    ).toThrow(SessionContextLockError);
+    expect(contextOf('free')!.segments[0].to).not.toBeNull();
+    expect(contextOf('busy')!.segments[0].to).toBeNull();
+    const endedAt = findWorkAttempt(repo, ATTEMPT)!.endedAt!;
+    expect(endedAt).toBeDefined();
+    // Readers treat the busy session's open segment as closed: its attempt ended.
+    expect(segmentInForce(contextOf('busy')!, Date.now(), { isAttemptEnded: (id) => id === ATTEMPT })).toBeUndefined();
+    // Once the lock is gone, the next write repairs it to the attempt's end.
+    fs.rmSync(`${busy}.lock`);
+    openSessionSegment({ agent: { agentTool: 'codex', sessionId: 'later' }, attributes: { 'factory.slot.id': '2' }, attemptEndedAt: (id) => (id === ATTEMPT ? endedAt : undefined), home });
+    expect(contextOf('busy')!.segments[0].to).toBe(endedAt);
   });
 });
 

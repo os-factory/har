@@ -13,6 +13,7 @@ import {
   type SessionContext,
   type SessionSegment,
 } from '../harness/schema';
+import { FileLockTimeoutError, withFileLock, type FileLockOptions } from '../utils/file-lock';
 import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { currentAgentSession, type InnermostAgentResolver } from './session-bindings';
 import { findWorkAttempt, findWorkUnit, markWorkAttemptEnded, workAttemptEndLookup } from './work-units';
@@ -27,7 +28,16 @@ import { findWorkAttempt, findWorkUnit, markWorkAttemptEnded, workAttemptEndLook
  * its `to` is still empty; every write here repairs such segments first.
  *
  * Files live at `~/.har/sessions/<agent-tool>/<session-id>.json`, mode 0600,
- * written atomically (temp file + rename).
+ * written atomically (temp file + rename). Every read-modify-write holds
+ * `<file>.lock` (see {@link updateSessionContextFile}): HAR processes in other
+ * repos may touch the same session at once, and an unlocked write could drop
+ * the segment another one just added. A lock that cannot be had in time fails
+ * the write loudly; it never writes without it.
+ *
+ * Boundaries (`from` / `to`) are the moment of the write decision, taken with
+ * the lock held, unless a caller passes an explicit instant. Readers judge a
+ * record by its event time against them, so a record emitted during the write
+ * itself may fall on either side: skew up to the write latency is accepted.
  */
 
 /** Attribute keys a segment carries (telemetry profile + OTel semconv). Never paths. */
@@ -132,6 +142,68 @@ function laterOf(a: string, b: string): string {
   return Date.parse(a) >= Date.parse(b) ? a : b;
 }
 
+// ---------------------------------------------------------------------------
+// Locked read-modify-write
+// ---------------------------------------------------------------------------
+
+/**
+ * A session file could not be locked in time. Nothing was written to it: a
+ * write without the lock could drop a segment another HAR process just added.
+ */
+export class SessionContextLockError extends Error {
+  readonly failures: readonly FileLockTimeoutError[];
+  constructor(failures: readonly FileLockTimeoutError[]) {
+    super(
+      failures.length === 1
+        ? `Session context not updated: ${failures[0].message}`
+        : `Session context not updated for ${failures.length} sessions:\n${failures.map((f) => `  ${f.message}`).join('\n')}`,
+    );
+    this.name = 'SessionContextLockError';
+    this.failures = [...failures];
+  }
+}
+
+/** Lock timing for session files; tests shorten it. */
+let sessionLockOptions: FileLockOptions = {};
+
+export function setSessionContextLockOptions(options: FileLockOptions): void {
+  sessionLockOptions = { ...options };
+}
+
+/**
+ * The only way a session file changes: under `<file>.lock`, re-read the file,
+ * let `mutate` decide from what is on disk now, write the result atomically.
+ * `mutate` returning undefined writes nothing. Boundary timestamps that are not
+ * given explicitly are taken inside `mutate`, i.e. at the write decision, once
+ * the lock is held: a segment boundary is then off from the true moment by at
+ * most the write latency (lock wait is excluded).
+ */
+export function updateSessionContextFile(
+  file: string,
+  mutate: (current: SessionContext | undefined) => SessionContext | undefined,
+  lockOptions: FileLockOptions = {},
+): SessionContext | undefined {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  try {
+    return withFileLock(
+      file,
+      () => {
+        const next = mutate(readSessionContextFile(file));
+        if (next) writeSessionContextFile(file, next);
+        return next;
+      },
+      { ...sessionLockOptions, ...lockOptions },
+    );
+  } catch (err) {
+    if (err instanceof FileLockTimeoutError) throw new SessionContextLockError([err]);
+    throw err;
+  }
+}
+
+function boundary(at: string | undefined): string {
+  return new Date(at ?? Date.now()).toISOString();
+}
+
 /**
  * Set `to` on open segments whose attempt has ended: the attempt's end time
  * (never before the segment's `from`). Returns a new context when anything
@@ -153,17 +225,23 @@ export function repairEndedSegments(
   return changed ? { ...context, segments } : undefined;
 }
 
+const REPAIR_LOCK_TIMEOUT_MS = 500;
+
 /** Repair every session file on this machine (see {@link repairEndedSegments}). */
 export function repairAllSessionContexts(attemptEndedAt: AttemptEndLookup, home?: string): number {
   let repaired = 0;
   for (const entry of listSessionContexts(home)) {
-    const fixed = repairEndedSegments(entry.context, attemptEndedAt);
-    if (!fixed) continue;
+    if (!repairEndedSegments(entry.context, attemptEndedAt)) continue;
     try {
-      writeSessionContextFile(entry.file, fixed);
-      repaired += 1;
+      const written = updateSessionContextFile(
+        entry.file,
+        (current) => (current ? repairEndedSegments(current, attemptEndedAt) : undefined),
+        // A repair is optional: never hold up the write that triggered it on a busy file.
+        { timeoutMs: Math.min(sessionLockOptions.timeoutMs ?? REPAIR_LOCK_TIMEOUT_MS, REPAIR_LOCK_TIMEOUT_MS) },
+      );
+      if (written) repaired += 1;
     } catch {
-      // Best effort: readers already treat these segments as closed.
+      // Best effort (a busy lock included): readers already treat these segments as closed.
     }
   }
   return repaired;
@@ -224,10 +302,33 @@ export function buildSegmentAttributes(input: {
   return attributes;
 }
 
+/**
+ * Append an open segment to what is on disk (already repaired), closing the
+ * session's open segment at the same instant. The instant never goes back
+ * before the last boundary, so segments stay ordered and non-overlapping even
+ * with a skewed clock.
+ */
+function appendSegment(
+  agent: AgentSessionRef,
+  current: SessionContext | undefined,
+  segment: { at: string; reason: string; attributes: Record<string, string> },
+): SessionContext {
+  let at = segment.at;
+  const segments: SessionSegment[] = (current?.segments ?? []).map((s) => ({ ...s }));
+  const last = segments[segments.length - 1];
+  if (last) {
+    const floor = last.to ?? last.from;
+    if (Date.parse(at) < Date.parse(floor)) at = new Date(floor).toISOString();
+    if (last.to === null) last.to = at;
+  }
+  segments.push({ from: at, to: null, reason: segment.reason, attributes: { ...segment.attributes } });
+  return { version: SESSION_CONTEXT_VERSION, agentTool: agent.agentTool, sessionId: agent.sessionId, segments };
+}
+
 export interface OpenSegmentInput {
   agent: AgentSessionRef;
   attributes: Record<string, string>;
-  /** ISO timestamp; defaults to now. */
+  /** ISO timestamp; defaults to the write decision (lock held). */
   at?: string;
   attemptEndedAt?: AttemptEndLookup;
   home?: string;
@@ -238,34 +339,21 @@ export interface OpenSegmentInput {
 /**
  * Open a segment for one agent session (`har env launch`). The session's open
  * segment, if any, is closed at the same instant. Returns the written context,
- * or undefined when the session ids cannot name a file.
+ * or undefined when the session ids cannot name a file. Throws
+ * {@link SessionContextLockError} when the file stays locked.
  */
 export function openSessionSegment(input: OpenSegmentInput): SessionContext | undefined {
   const file = sessionContextFile(input.agent, input.home);
   if (!file) return undefined;
   const ended = input.attemptEndedAt ?? noAttemptEnded;
   repairAllSessionContexts(ended, input.home);
-
-  let at = new Date(input.at ?? Date.now()).toISOString();
-  const existing = readSessionContextFile(file);
-  const segments: SessionSegment[] = (existing?.segments ?? []).map((segment) => ({ ...segment }));
-  const last = segments[segments.length - 1];
-  if (last) {
-    // Segments never overlap and stay in time order, even with a skewed clock.
-    const floor = last.to ?? last.from;
-    if (Date.parse(at) < Date.parse(floor)) at = new Date(floor).toISOString();
-    if (last.to === null) last.to = at;
-  }
-  segments.push({ from: at, to: null, reason: input.reason ?? 'launch', attributes: { ...input.attributes } });
-
-  const context: SessionContext = {
-    version: SESSION_CONTEXT_VERSION,
-    agentTool: input.agent.agentTool,
-    sessionId: input.agent.sessionId,
-    segments,
-  };
-  writeSessionContextFile(file, context);
-  return context;
+  return updateSessionContextFile(file, (current) =>
+    appendSegment(input.agent, current ? (repairEndedSegments(current, ended) ?? current) : undefined, {
+      at: boundary(input.at),
+      reason: input.reason ?? 'launch',
+      attributes: input.attributes,
+    }),
+  );
 }
 
 export interface ClosedSegment extends AgentSessionRef {
@@ -275,9 +363,41 @@ export interface ClosedSegment extends AgentSessionRef {
 }
 
 /**
+ * Run `update` for every session file whose listed copy passes `relevant`.
+ * Lock timeouts do not stop the others; they are thrown together at the end.
+ */
+function updateEachSessionFile(
+  home: string | undefined,
+  relevant: (context: SessionContext) => boolean,
+  update: (file: string) => void,
+): void {
+  const failures: FileLockTimeoutError[] = [];
+  for (const entry of listSessionContexts(home)) {
+    if (!relevant(entry.context)) continue;
+    try {
+      update(entry.file);
+    } catch (err) {
+      if (err instanceof SessionContextLockError) {
+        failures.push(...err.failures);
+        continue;
+      }
+      throw err;
+    }
+  }
+  if (failures.length > 0) throw new SessionContextLockError(failures);
+}
+
+function lastOpenBelonging(context: SessionContext, occupancy: SegmentOccupancy): SessionSegment | undefined {
+  const last = context.segments[context.segments.length - 1];
+  return last && last.to === null && segmentBelongsTo(last, occupancy) ? last : undefined;
+}
+
+/**
  * Close every open segment of an occupancy, in every session file
  * (`teardown`, `complete`, `work-bind`). Keyed by the attempt, not by the
  * caller: a terminal with no agent session closes the agent's segments too.
+ * Each file is decided under its lock; a file that stays locked is skipped and
+ * reported by a {@link SessionContextLockError} after the others are written.
  */
 export function closeSegmentsForOccupancy(input: {
   occupancy: SegmentOccupancy;
@@ -287,38 +407,31 @@ export function closeSegmentsForOccupancy(input: {
 }): ClosedSegment[] {
   const ended = input.attemptEndedAt ?? noAttemptEnded;
   repairAllSessionContexts(ended, input.home);
-  const at = new Date(input.at ?? Date.now()).toISOString();
   const closed: ClosedSegment[] = [];
-  for (const entry of listSessionContexts(input.home)) {
-    let changed = false;
-    const segments = entry.context.segments.map((segment) => {
-      if (segment.to !== null || !segmentBelongsTo(segment, input.occupancy)) return segment;
-      changed = true;
-      const to = laterOf(segment.from, at);
-      closed.push({
-        agentTool: entry.context.agentTool,
-        sessionId: entry.context.sessionId,
-        from: segment.from,
-        to,
-        attributes: segment.attributes,
+  updateEachSessionFile(
+    input.home,
+    (context) => lastOpenBelonging(context, input.occupancy) !== undefined,
+    (file) => {
+      updateSessionContextFile(file, (current) => {
+        if (!current) return undefined;
+        const fresh = repairEndedSegments(current, ended) ?? current;
+        const open = lastOpenBelonging(fresh, input.occupancy);
+        if (!open) return fresh === current ? undefined : fresh;
+        const to = laterOf(open.from, boundary(input.at));
+        closed.push({ agentTool: fresh.agentTool, sessionId: fresh.sessionId, from: open.from, to, attributes: open.attributes });
+        return { ...fresh, segments: fresh.segments.map((s) => (s === open ? { ...s, to } : s)) };
       });
-      return { ...segment, to };
-    });
-    if (!changed) continue;
-    try {
-      writeSessionContextFile(entry.file, { ...entry.context, segments });
-    } catch {
-      // Best effort: once the attempt is marked ended, readers treat it as closed.
-    }
-  }
+    },
+  );
   return closed;
 }
 
 /**
  * `har env work-bind` gives a running slot a new attempt. Sessions working in
- * the slot under the old occupancy keep working there, so each gets its open
- * segment closed and a new one opened with the new attributes at the same
- * instant; the session running the bind gets a new segment too.
+ * the slot under the old occupancy keep working there: in one locked write per
+ * session file, its open segment is closed and a new one with the new
+ * attributes opened at the same instant. The session running the bind gets a
+ * new segment too.
  */
 export function rebindSessionSegments(input: {
   before: SegmentOccupancy;
@@ -328,28 +441,53 @@ export function rebindSessionSegments(input: {
   attemptEndedAt?: AttemptEndLookup;
   home?: string;
 }): AgentSessionRef[] {
-  const at = new Date(input.at ?? Date.now()).toISOString();
-  const closed = closeSegmentsForOccupancy({
-    occupancy: input.before,
-    at,
-    attemptEndedAt: input.attemptEndedAt,
-    home: input.home,
-  });
-  const sessions = new Map<string, AgentSessionRef>();
-  for (const segment of closed) sessions.set(`${segment.agentTool}\0${segment.sessionId}`, segment);
-  if (input.caller) sessions.set(`${input.caller.agentTool}\0${input.caller.sessionId}`, input.caller);
+  const ended = input.attemptEndedAt ?? noAttemptEnded;
+  repairAllSessionContexts(ended, input.home);
   const opened: AgentSessionRef[] = [];
-  for (const agent of sessions.values()) {
-    const context = openSessionSegment({
-      agent: { agentTool: agent.agentTool, sessionId: agent.sessionId },
-      attributes: input.attributes,
-      at,
-      attemptEndedAt: input.attemptEndedAt,
-      home: input.home,
-    });
-    if (context) opened.push({ agentTool: agent.agentTool, sessionId: agent.sessionId });
+  const key = (agent: AgentSessionRef) => `${agent.agentTool}\0${agent.sessionId}`;
+  const done = new Set<string>();
+  let failure: SessionContextLockError | undefined;
+  try {
+    updateEachSessionFile(
+      input.home,
+      (context) => lastOpenBelonging(context, input.before) !== undefined,
+      (file) => {
+        updateSessionContextFile(file, (current) => {
+          if (!current) return undefined;
+          const fresh = repairEndedSegments(current, ended) ?? current;
+          if (!lastOpenBelonging(fresh, input.before)) return fresh === current ? undefined : fresh;
+          const agent = { agentTool: fresh.agentTool, sessionId: fresh.sessionId };
+          done.add(key(agent));
+          opened.push(agent);
+          return appendSegment(agent, fresh, { at: boundary(input.at), reason: 'launch', attributes: input.attributes });
+        });
+      },
+    );
+  } catch (err) {
+    if (!(err instanceof SessionContextLockError)) throw err;
+    failure = err;
   }
+  if (input.caller && !done.has(key(input.caller))) {
+    try {
+      const context = openSessionSegment({
+        agent: { agentTool: input.caller.agentTool, sessionId: input.caller.sessionId },
+        attributes: input.attributes,
+        at: input.at,
+        attemptEndedAt: ended,
+        home: input.home,
+      });
+      if (context) opened.push({ agentTool: input.caller.agentTool, sessionId: input.caller.sessionId });
+    } catch (err) {
+      if (!(err instanceof SessionContextLockError)) throw err;
+      failure = failure ? mergeLockErrors(failure, err) : err;
+    }
+  }
+  if (failure) throw failure;
   return opened;
+}
+
+function mergeLockErrors(a: SessionContextLockError, b: SessionContextLockError): SessionContextLockError {
+  return new SessionContextLockError([...a.failures, ...b.failures]);
 }
 
 /** The segment of a session in force now (ended attempts count as closed). */
@@ -591,20 +729,29 @@ export function endSlotOccupancySegments(options: {
   at?: string;
   home?: string;
 }): ClosedSegment[] {
-  const at = new Date(options.at ?? Date.now()).toISOString();
-  const closed = closeSegmentsForOccupancy({
-    occupancy: slotSegmentOccupancy(options.session, options.harnessRoot),
-    at,
-    attemptEndedAt: workAttemptEndLookup(options.harnessRoot),
-    home: options.home,
-  });
-  if (options.session.attemptId) markWorkAttemptEnded(options.harnessRoot, options.session.attemptId, at);
+  let closed: ClosedSegment[] = [];
+  try {
+    closed = closeSegmentsForOccupancy({
+      occupancy: slotSegmentOccupancy(options.session, options.harnessRoot),
+      at: options.at,
+      attemptEndedAt: workAttemptEndLookup(options.harnessRoot),
+      home: options.home,
+    });
+  } finally {
+    // Even when a session file stayed locked: its open segment then reads as
+    // closed because the attempt ended, and the next write repairs it.
+    // Without an explicit instant the attempt ends after every close (>= each `to`).
+    if (options.session.attemptId) {
+      markWorkAttemptEnded(options.harnessRoot, options.session.attemptId, boundary(options.at));
+    }
+  }
   return closed;
 }
 
 /**
  * `har env work-bind` gave the slot a new attempt: move the sessions working in
- * it to the new attempt, then mark the old attempt ended.
+ * it to the new attempt, then mark the old attempt ended (also when a session
+ * file stayed locked; the error is rethrown after).
  */
 export function rebindSlotSegments(options: {
   harnessRoot: string;
@@ -615,19 +762,20 @@ export function rebindSlotSegments(options: {
   home?: string;
   resolveInnermost?: InnermostAgentResolver;
 }): AgentSessionRef[] {
-  const at = new Date(options.at ?? Date.now()).toISOString();
-  const opened = rebindSessionSegments({
-    before: slotSegmentOccupancy(options.before, options.harnessRoot),
-    attributes: slotSegmentAttributes(options.after, options.harnessRoot),
-    caller: currentAgentSession(options.env ?? process.env, options.resolveInnermost),
-    at,
-    attemptEndedAt: workAttemptEndLookup(options.harnessRoot),
-    home: options.home,
-  });
-  if (options.before.attemptId && options.before.attemptId !== options.after.attemptId) {
-    markWorkAttemptEnded(options.harnessRoot, options.before.attemptId, at);
+  try {
+    return rebindSessionSegments({
+      before: slotSegmentOccupancy(options.before, options.harnessRoot),
+      attributes: slotSegmentAttributes(options.after, options.harnessRoot),
+      caller: currentAgentSession(options.env ?? process.env, options.resolveInnermost),
+      at: options.at,
+      attemptEndedAt: workAttemptEndLookup(options.harnessRoot),
+      home: options.home,
+    });
+  } finally {
+    if (options.before.attemptId && options.before.attemptId !== options.after.attemptId) {
+      markWorkAttemptEnded(options.harnessRoot, options.before.attemptId, boundary(options.at));
+    }
   }
-  return opened;
 }
 
 /**
