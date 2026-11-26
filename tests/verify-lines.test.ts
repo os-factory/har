@@ -30,6 +30,7 @@ describe('factory lines as a next step after verify', () => {
       {
         lineId: 'alpha-line',
         title: 'Alpha',
+        scope: 'team',
         stationIds: ['S1', 'S2'],
         nextStationId: 'S1',
         allGreen: false,
@@ -39,6 +40,7 @@ describe('factory lines as a next step after verify', () => {
       {
         lineId: 'example-line',
         title: 'Example factory line',
+        scope: 'team',
         stationIds: ['S1', 'S2', 'S3'],
         nextStationId: 'S2',
         allGreen: false,
@@ -63,9 +65,9 @@ describe('factory lines as a next step after verify', () => {
 
     expect(renderLinesNextStep(lines)).toEqual([
       'Optional next step — factory lines installed (not run by verify):',
-      '  alpha-line    Alpha (S1 → S2, next: S1)',
+      '  alpha-line    Alpha [team] (S1 → S2, next: S1)',
       '    har line gate S2 --line alpha-line --agent 1 --force',
-      '  example-line  Example factory line (S1 → S2 → S3, next: S2)',
+      '  example-line  Example factory line [team] (S1 → S2 → S3, next: S2)',
       '    har line gate S3 --line example-line --agent 1',
       'What a line checks: har line describe <id>',
     ]);

@@ -314,7 +314,7 @@ har line create <id> [--stations S1,S2,S3] [--title <text>]
                      [--no-gate-stage] [--personal] [--force]
 har line add <id|./path|@org/pkg|github:org/repo> [--personal] [--force]
 har line promote <id> [--json]
-har line list [--json]
+har line list [--scope team|personal] [--json]
 har line describe [id] [--json]
 har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
 ```
@@ -359,9 +359,13 @@ and `.har/lines.json`, both committed. Pass `--personal` to `create` or `add`
 to keep a line for your own workflow instead: it lives in `.har/local/lines/<id>/`
 and `.har/local/lines.json`, its stage scripts are copied to
 `.har/local/stages/`, and `.har/local/` is gitignored (`har env maintain` adds
-the rule to older harnesses). `status`, `list` and `gate` read both scopes and
-show each line's scope. An id may exist in only one scope; installing the same
-id in both is refused, and `har env doctor` reports one made by hand.
+the rule to older harnesses). `list`, `describe`, `gate` and the line offer
+after `har env verify` read both scopes and tag each line `[team]` or
+`[personal]` (`scope` in `--json`). `har line list --scope personal` (or
+`team`) shows only that scope. `add` and `create` say who will see the line:
+only you, or your team and CI once you commit it. An id may exist in only one
+scope; installing the same id in both is refused, and `har env doctor` reports
+one made by hand.
 
 A personal line's stages go to the gitignored overlay `.har/local/stages.json`,
 never to `.har/stages.json`, so installing one leaves every committed file

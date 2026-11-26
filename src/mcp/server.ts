@@ -1,5 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import * as path from 'path';
+import { LINE_SCOPES } from '../harness/line-scope';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
@@ -471,7 +472,14 @@ export const HAR_MCP_TOOLS: Tool[] = [
     name: 'har_line_list',
     description:
       'Installed factory lines with what each covers (title, description), stations, progress, and how to run every station (runAll), plus lines available to install. Use it to decide whether a line is relevant to your change. A line that cannot be read is listed with `unreadable`. Pure read.',
-    inputSchema: objectJsonSchema({ repo: repoJsonProperty }),
+    inputSchema: objectJsonSchema({
+      repo: repoJsonProperty,
+      scope: {
+        type: 'string',
+        enum: [...LINE_SCOPES],
+        description: 'Only team (committed) or personal (gitignored) lines',
+      },
+    }),
   },
   {
     name: 'har_line_describe',
@@ -895,8 +903,8 @@ export async function handleMcpToolCall(
     }
 
     case 'har_line_list': {
-      LineListInputSchema.parse({ ...args, repo });
-      return jsonContent(listLines(repo));
+      const input = LineListInputSchema.parse({ ...args, repo });
+      return jsonContent(listLines(repo, { scope: input.scope }));
     }
 
     case 'har_line_describe': {

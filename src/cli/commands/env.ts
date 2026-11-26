@@ -1221,7 +1221,7 @@ export function renderLinesNextStep(lines: VerifyNextStepLine[]): string[] {
     ...lines.flatMap((line) => {
       const progress = line.allGreen ? 'all stations green' : `next: ${line.nextStationId}`;
       return [
-        `  ${line.lineId.padEnd(width)}  ${line.title} (${line.stationIds.join(' → ')}, ${progress})`,
+        `  ${line.lineId.padEnd(width)}  ${line.title} [${line.scope}] (${line.stationIds.join(' → ')}, ${progress})`,
         `    ${line.runAll.command}`,
       ];
     }),

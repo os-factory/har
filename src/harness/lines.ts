@@ -366,6 +366,17 @@ function assertGateStagesResolvable(program: LineProgram, registeredIds: string[
   return warnings;
 }
 
+function personalizeStep(step: string, manifest: LineManifest, scope: LineScope): string {
+  if (scope === 'team') return step;
+  let out = step.split(`${lineDirRel(manifest.id, 'team')}/`).join(`${lineDirRel(manifest.id, 'personal')}/`);
+  for (const file of manifest.files) {
+    if (!isUnderHarDir(file.dest)) continue;
+    const teamPath = file.dest.replace(/\\/g, '/').replace(/^\.\//, '');
+    out = out.split(teamPath).join(personalFileDest(teamPath));
+  }
+  return out;
+}
+
 function applyLineFromDir(
   repoPath: string,
   bundleDir: string,
@@ -464,9 +475,11 @@ function applyLineFromDir(
       program.gate.stages.some((stage) => stage.fromStation === station.id),
     )?.id ?? program.stations[0].id;
 
+  // A bundle's own next steps name its files' team paths; a personal install
+  // moved them under .har/local/, so point the steps there too.
   const nextSteps =
     manifest.nextSteps.length > 0
-      ? manifest.nextSteps
+      ? manifest.nextSteps.map((step) => personalizeStep(step, manifest, scope))
       : [
           `har line describe ${manifest.id}`,
           `har line gate ${firstGatedStation} --line ${manifest.id}`,
