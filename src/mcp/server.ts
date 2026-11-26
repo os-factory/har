@@ -404,7 +404,7 @@ export const HAR_MCP_TOOLS: Tool[] = [
   {
     name: 'har_line_create',
     description:
-      'Scaffold a project-owned factory line at .har/lines/<id>/ (manifest, program, optional gate stage, README). A line is a multi-station program, not a verification plugin.',
+      'Scaffold a project-owned factory line at .har/lines/<id>/ (or the gitignored .har/local/lines/<id>/ with personal: true) — manifest, program, optional gate stage, README. A line is a multi-station program, not a verification plugin.',
     inputSchema: objectJsonSchema(
       {
         repo: repoJsonProperty,
@@ -425,6 +425,10 @@ export const HAR_MCP_TOOLS: Tool[] = [
           description: 'Env var that must be "1" for the gate to run (e.g. HAR_FIXTURE_E2E)',
         },
         force: { type: 'boolean', description: 'Overwrite an existing line' },
+        personal: {
+          type: 'boolean',
+          description: 'Scaffold under the gitignored .har/local/lines/ (yours only, not the team or CI)',
+        },
       },
       ['id'],
     ),
@@ -441,6 +445,10 @@ export const HAR_MCP_TOOLS: Tool[] = [
           description: 'Line id, local path (./line), npm package (@org/pkg), or git URL',
         },
         force: { type: 'boolean', description: 'Overwrite existing line files and stage entries' },
+        personal: {
+          type: 'boolean',
+          description: 'Install under the gitignored .har/local/ (yours only, not the team or CI)',
+        },
       },
       ['line'],
     ),
@@ -831,9 +839,12 @@ export async function handleMcpToolCall(
         gateStage: input.gateStage,
         optInEnv: input.optInEnv,
         force: input.force,
+        scope: input.personal ? 'personal' : 'team',
       });
       return jsonContent({
         lineId: result.lineId,
+        scope: result.scope,
+        lineDir: result.lineDirRel,
         filesWritten: result.filesWritten,
         nextSteps: result.nextSteps,
       });
@@ -841,10 +852,15 @@ export async function handleMcpToolCall(
 
     case 'har_add_line': {
       const input = AddLineInputSchema.parse({ ...args, repo });
-      const result = addLine(repo, input.line, { force: input.force, spec: input.line });
+      const result = addLine(repo, input.line, {
+        force: input.force,
+        spec: input.line,
+        scope: input.personal ? 'personal' : 'team',
+      });
       return jsonContent({
         lineId: result.lineId,
         title: result.title,
+        scope: result.scope,
         stationIds: result.stationIds,
         firstGatedStationId: result.firstGatedStationId,
         stageIds: result.stageIds,

@@ -1,16 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { writeFileSafe } from '../utils/file-ops';
-import { DEFAULT_HAR_DIR } from './manifest';
+import { lineLedgerPathRel, LINE_SCOPES, type LineScope } from './line-scope';
 import { LineLedger, LineLedgerEntry, LineLedgerSchema } from './schema';
 
-/** Installed-line ledger — `.har/lines.json`, sibling of `.har/plugins.json`. */
-export function getLineLedgerPath(repoPath: string): string {
-  return path.join(path.resolve(repoPath), DEFAULT_HAR_DIR, 'lines.json');
+/**
+ * Installed-line ledgers, one per scope:
+ * team `.har/lines.json` (committed, sibling of `.har/plugins.json`) and
+ * personal `.har/local/lines.json` (gitignored).
+ */
+export function getLineLedgerPath(repoPath: string, scope: LineScope = 'team'): string {
+  return path.join(path.resolve(repoPath), lineLedgerPathRel(scope));
 }
 
-export function readLineLedger(repoPath: string): LineLedger | null {
-  const ledgerPath = getLineLedgerPath(repoPath);
+export function readLineLedger(repoPath: string, scope: LineScope = 'team'): LineLedger | null {
+  const ledgerPath = getLineLedgerPath(repoPath, scope);
   if (!fs.existsSync(ledgerPath)) return null;
   try {
     const parsed = LineLedgerSchema.safeParse(JSON.parse(fs.readFileSync(ledgerPath, 'utf8')));
@@ -20,32 +24,52 @@ export function readLineLedger(repoPath: string): LineLedger | null {
   }
 }
 
-export function writeLineLedger(repoPath: string, ledger: LineLedger): void {
-  const ledgerPath = getLineLedgerPath(repoPath);
-  const harnessDir = path.dirname(ledgerPath);
-  if (!fs.existsSync(harnessDir)) {
-    fs.mkdirSync(harnessDir, { recursive: true });
+/** A ledger entry plus the scope it was read from (derived, never stored). */
+export interface ScopedLineLedgerEntry extends LineLedgerEntry {
+  scope: LineScope;
+}
+
+/** Entries from both ledgers, team first. The same id may appear in both — callers report the clash. */
+export function readAllLineLedgerEntries(repoPath: string): ScopedLineLedgerEntry[] {
+  return LINE_SCOPES.flatMap((scope) =>
+    (readLineLedger(repoPath, scope)?.lines ?? []).map((entry) => ({ ...entry, scope })),
+  );
+}
+
+export function writeLineLedger(repoPath: string, ledger: LineLedger, scope: LineScope = 'team'): void {
+  const ledgerPath = getLineLedgerPath(repoPath, scope);
+  const ledgerDir = path.dirname(ledgerPath);
+  if (!fs.existsSync(ledgerDir)) {
+    fs.mkdirSync(ledgerDir, { recursive: true });
   }
   writeFileSafe(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
 }
 
-export function upsertLineLedgerEntry(repoPath: string, entry: LineLedgerEntry): LineLedger {
-  const existing = readLineLedger(repoPath) ?? { version: '1' as const, lines: [] };
+export function upsertLineLedgerEntry(
+  repoPath: string,
+  entry: LineLedgerEntry,
+  scope: LineScope = 'team',
+): LineLedger {
+  const existing = readLineLedger(repoPath, scope) ?? { version: '1' as const, lines: [] };
   const lines = existing.lines.filter((l) => l.id !== entry.id);
   lines.push(entry);
   lines.sort((a, b) => a.id.localeCompare(b.id));
 
   const ledger: LineLedger = { version: '1', lines };
-  writeLineLedger(repoPath, ledger);
+  writeLineLedger(repoPath, ledger, scope);
   return ledger;
 }
 
-export function removeLineLedgerEntry(repoPath: string, lineId: string): LineLedger {
-  const existing = readLineLedger(repoPath) ?? { version: '1' as const, lines: [] };
+export function removeLineLedgerEntry(
+  repoPath: string,
+  lineId: string,
+  scope: LineScope = 'team',
+): LineLedger {
+  const existing = readLineLedger(repoPath, scope) ?? { version: '1' as const, lines: [] };
   const ledger: LineLedger = {
     version: '1',
     lines: existing.lines.filter((l) => l.id !== lineId),
   };
-  writeLineLedger(repoPath, ledger);
+  writeLineLedger(repoPath, ledger, scope);
   return ledger;
 }

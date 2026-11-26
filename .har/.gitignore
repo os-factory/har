@@ -21,3 +21,6 @@ slots/
 # Generated at launch (also listed in repo-root .gitignore)
 .env.agent.*
 ecosystem.agent.*.config.cjs
+
+# Personal factory lines and their stage scripts (har line … --personal)
+local/

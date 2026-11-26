@@ -23,3 +23,6 @@ simulators/
 
 # Xcode build artifacts (harness-specific DerivedData)
 build/DerivedData
+
+# Personal factory lines and their stage scripts (har line … --personal)
+local/

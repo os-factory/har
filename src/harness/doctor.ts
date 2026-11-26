@@ -8,8 +8,8 @@ import { readValidatedHarnessEnv } from './env';
 import { getHarnessDir, readManifest } from './manifest';
 import { PACKAGE_RUNTIME_KINDS, stagePointsAtLifecycleShim } from './lifecycle-shims';
 import { HarnessStage, HarnessStageRegistry, PortLane } from './schema';
-import { readLineLedger } from './line-ledger';
-import { readInstalledLineProgram } from './lines';
+import { readAllLineLedgerEntries } from './line-ledger';
+import { installedLineScopes, lineScopeClashMessage, readInstalledLineProgram } from './lines';
 import { readStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
@@ -557,12 +557,28 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
   // the verify plan. A hand edit (or a bad bundle) that leaks one there turns
   // an opt-in station gate into a tax on every `verify --full` — the exact
   // failure mode the separate bundle kind exists to prevent.
-  const lineLedger = readLineLedger(repoPath);
-  if (lineLedger) {
+  // Team (.har/lines.json) and personal (.har/local/lines.json) ledgers alike.
+  const lineEntries = readAllLineLedgerEntries(repoPath);
+  if (lineEntries.length > 0) {
     const verificationStages = registry?.verificationStages ?? [];
     const registeredIds = new Set((registry?.stages ?? []).map((stage) => stage.id));
+    const reportedClashes = new Set<string>();
 
-    for (const line of lineLedger.lines) {
+    for (const line of lineEntries) {
+      if (installedLineScopes(repoPath, line.id).length > 1) {
+        if (!reportedClashes.has(line.id)) {
+          reportedClashes.add(line.id);
+          findings.push({
+            check: 'factory-lines',
+            severity: 'error',
+            file: line.programPath,
+            message: lineScopeClashMessage(line.id),
+            remedy: `Delete the copy you do not want (team: .har/lines/${line.id}, personal: .har/local/lines/${line.id}) and its ledger entry`,
+          });
+        }
+        continue;
+      }
+
       for (const stageId of line.stageIds) {
         if (verificationStages.includes(stageId)) {
           findings.push({
@@ -576,14 +592,15 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
         }
       }
 
-      const program = readInstalledLineProgram(repoPath, line.id);
+      const ledgerFile = line.scope === 'personal' ? '.har/local/lines.json' : '.har/lines.json';
+      const program = readInstalledLineProgram(repoPath, line.id, line.scope);
       if (!program) {
         findings.push({
           check: 'factory-lines',
           severity: 'warning',
           file: line.programPath,
-          message: `line "${line.id}" is in .har/lines.json but its program is missing or invalid`,
-          remedy: `Reinstall it (\`har line add ${line.id}\`) or drop the entry from .har/lines.json`,
+          message: `line "${line.id}" is in ${ledgerFile} but its program is missing or invalid`,
+          remedy: `Reinstall it (\`har line add ${line.id}${line.scope === 'personal' ? ' --personal' : ''}\`) or drop the entry from ${ledgerFile}`,
         });
         continue;
       }

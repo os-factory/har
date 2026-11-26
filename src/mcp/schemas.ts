@@ -327,7 +327,10 @@ export const CreateLineInputSchema = z.object({
     .min(1)
     .optional()
     .describe('Env var that must be "1" for the gate to run (e.g. HAR_FIXTURE_E2E)'),
-  force: z.boolean().default(false),
+  force: z.boolean().default(false),  personal: z
+    .boolean()
+    .default(false)
+    .describe('Scaffold under the gitignored .har/local/lines/ (yours only, not the team or CI)'),
 });
 
 export const AddLineInputSchema = z.object({
@@ -336,7 +339,10 @@ export const AddLineInputSchema = z.object({
     .string()
     .min(1)
     .describe('Line id, local path (./line), npm package (@org/pkg), or git URL (github:org/repo)'),
-  force: z.boolean().default(false).describe('Overwrite existing line files and stage entries'),
+  force: z.boolean().default(false).describe('Overwrite existing line files and stage entries'),  personal: z
+    .boolean()
+    .default(false)
+    .describe('Install under the gitignored .har/local/ (yours only, not the team or CI)'),
 });
 
 export const LineListInputSchema = z.object({

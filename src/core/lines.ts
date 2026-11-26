@@ -1,8 +1,17 @@
 import * as path from 'path';
-import { applyLine, readInstalledLineProgram, type ApplyLineOptions, type ApplyLineResult } from '../harness/lines';
+import {
+  applyLine,
+  installedLineScopes,
+  lineProgramPathRel,
+  locateInstalledLine,
+  readInstalledLineProgram,
+  type ApplyLineOptions,
+  type ApplyLineResult,
+} from '../harness/lines';
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
-import { readLineLedger } from '../harness/line-ledger';
+import { readAllLineLedgerEntries, readLineLedger } from '../harness/line-ledger';
 import { listBundledLineIds, listLocalLineIds } from '../harness/line-resolve';
+import { LINE_SCOPES, type LineScope } from '../harness/line-scope';
 import { readStageRegistry, stageRequiresAgentId } from '../harness/stages';
 import type { LineGateStage, LineProgram, LineStation } from '../harness/schema';
 import { listSlotRegistryEntries } from './slot-registry';
@@ -45,6 +54,8 @@ export interface LineSlotInFlight {
 export interface LineStatus {
   lineId: string;
   title: string;
+  /** `team` (committed `.har/lines/`) or `personal` (gitignored `.har/local/lines/`). */
+  scope: LineScope;
   programPath: string;
   installed: boolean;
   source?: string;
@@ -63,14 +74,23 @@ export interface LineStatus {
   warnings: string[];
 }
 
-/** Ids of every line installed in this repo (ledger first, then on-disk). */
+/**
+ * Ids of every line installed in this repo, team and personal (ledgers first,
+ * then on-disk). An id in both scopes is listed once; resolving it reports the clash.
+ */
 export function listInstalledLineIds(repoPath: string): string[] {
-  const ledger = readLineLedger(repoPath);
-  const fromLedger = ledger?.lines.map((l) => l.id) ?? [];
-  const onDisk = listLocalLineIds(repoPath).filter(
-    (id) => readInstalledLineProgram(repoPath, id) !== null,
+  const fromLedger = readAllLineLedgerEntries(repoPath).map((l) => l.id);
+  const onDisk = LINE_SCOPES.flatMap((scope) =>
+    listLocalLineIds(repoPath, scope).filter(
+      (id) => readInstalledLineProgram(repoPath, id, scope) !== null,
+    ),
   );
   return [...new Set([...fromLedger, ...onDisk])].sort();
+}
+
+/** Line ids installed in both scopes — each is an error to resolve. */
+export function listLineScopeClashes(repoPath: string): string[] {
+  return listInstalledLineIds(repoPath).filter((id) => installedLineScopes(repoPath, id).length > 1);
 }
 
 /**
@@ -103,14 +123,15 @@ function latestRunStatusByStage(repoPath: string, stageIds: string[]): Map<strin
 
 export function getLineStatus(repoPath: string, lineId: string): LineStatus {
   const resolved = path.resolve(repoPath);
-  const program = readInstalledLineProgram(resolved, lineId);
-  if (!program) {
+  const scope = locateInstalledLine(resolved, lineId);
+  const program = scope ? readInstalledLineProgram(resolved, lineId, scope) : null;
+  if (!scope || !program) {
     throw new Error(
       `Line not installed: ${lineId}. Install one with "har line add <spec>" or scaffold with "har line create <id>".`,
     );
   }
 
-  const ledger = readLineLedger(resolved);
+  const ledger = readLineLedger(resolved, scope);
   const entry = ledger?.lines.find((l) => l.id === lineId);
   const registry = readStageRegistry(resolved);
   const registeredIds = new Set(registry.stages.map((s) => s.id));
@@ -171,7 +192,8 @@ export function getLineStatus(repoPath: string, lineId: string): LineStatus {
   return {
     lineId,
     title: program.title,
-    programPath: entry?.programPath ?? `.har/lines/${lineId}/line.json`,
+    scope,
+    programPath: entry?.programPath ?? lineProgramPathRel(lineId, scope),
     installed: true,
     source: entry?.source,
     stations,
@@ -391,6 +413,8 @@ function lineRunAll(lineId: string, program: LineProgram, slot: GateSlot): LineR
 export interface LineListEntry {
   lineId: string;
   title: string;
+  /** `team` or `personal`; absent when the line is unreadable. */
+  scope?: LineScope;
   description?: string;
   stationIds: string[];
   /** First station that is not green; undefined when every station is green. */
@@ -406,6 +430,8 @@ export interface LineListEntry {
 export interface AvailableLine {
   lineId: string;
   source: 'bundled' | 'local';
+  /** For a `local` line: the home it was authored in (install it with that scope). */
+  scope?: LineScope;
 }
 
 export interface LineList {
@@ -414,7 +440,7 @@ export interface LineList {
 }
 
 function safeLedgerIds(repoPath: string): string[] {
-  return readLineLedger(repoPath)?.lines.map((l) => l.id) ?? [];
+  return readAllLineLedgerEntries(repoPath).map((l) => l.id);
 }
 
 /**
@@ -427,7 +453,8 @@ export function listLines(repoPath: string, options: { agentId?: number } = {}):
   const resolved = path.resolve(repoPath);
   const registry = readStageRegistry(resolved);
   const ledgerIds = new Set(safeLedgerIds(resolved));
-  const localIds = listLocalLineIds(resolved);
+  const personalLocalIds = new Set(listLocalLineIds(resolved, 'personal'));
+  const localIds = [...listLocalLineIds(resolved, 'team'), ...personalLocalIds];
   const installed: LineListEntry[] = [];
   const available: AvailableLine[] = [];
 
@@ -443,7 +470,11 @@ export function listLines(repoPath: string, options: { agentId?: number } = {}):
       if (ledgerIds.has(lineId)) {
         installed.push(unreadableEntry(lineId, 'line.json is missing or invalid'));
       } else {
-        available.push({ lineId, source: 'local' });
+        available.push({
+          lineId,
+          source: 'local',
+          scope: personalLocalIds.has(lineId) ? 'personal' : 'team',
+        });
       }
       continue;
     }
@@ -457,6 +488,8 @@ export function listLines(repoPath: string, options: { agentId?: number } = {}):
     installed.push({
       lineId,
       title: program.title,
+      // The program read above already ruled out a scope clash.
+      scope: locateInstalledLine(resolved, lineId) ?? 'team',
       description: program.description,
       stationIds: program.stations.map((s) => s.id),
       nextStationId,
@@ -507,6 +540,8 @@ export interface LineDescriptionGateStage {
 export interface LineDescription {
   lineId: string;
   title: string;
+  /** `team` (committed `.har/lines/`) or `personal` (gitignored `.har/local/lines/`). */
+  scope: LineScope;
   description?: string;
   programPath: string;
   source?: string;
@@ -551,6 +586,7 @@ export function describeLine(repoPath: string, lineId: string): LineDescription 
   return {
     lineId,
     title: program.title,
+    scope: status.scope,
     description: program.description,
     programPath: status.programPath,
     source: status.source,
