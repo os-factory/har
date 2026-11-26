@@ -5,17 +5,7 @@ import {
   AgentSlotStatus,
   EnvironmentStatus,
   RegisterRepoInput,
-  RunRecord,
-  SyncRunsInputSchema,
   SyncSlotsInputSchema,
-  SyncWorkUnitsInputSchema,
-  SyncValidationBindingsInputSchema,
-  SyncValidationCommitBindingsInputSchema,
-  SyncSessionEventsInputSchema,
-  SyncSessionBindingsInputSchema,
-  SyncUsageInputSchema,
-  SyncUsageObservationsInputSchema,
-  SyncValidationsInputSchema,
 } from '../harness/schema';
 import { getControlApiUrl, isControlEnabled } from './control-config';
 import {
@@ -23,38 +13,19 @@ import {
   recordRepoForControlSync,
   removeRegisteredRepo,
 } from './control-registry';
-import { readPortalCredentials } from './portal-credentials';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import {
-  collectRunsBySource,
   collectRunsForSync,
   collectCommitBindingsForSync,
   collectWorkUnitsForSync,
   mergeSlotStatuses,
   resolveSyncSourcePaths,
-  selectRunsForSync,
 } from './sync-sources';
 import { collectEnvironmentStatus } from './slot-status';
 import { listValidations } from './validations';
 import { listValidationBindings } from './work-units';
 import { createRemoteExecutor } from './cloud-executor';
-import { isTelemetryEnabled } from './telemetry-config';
 import { warn } from '../utils/logging';
-import { harvestEventsForSlot, harvestUsageForSlot } from './usage-harvest';
-import {
-  collectSessionAttribution,
-  parseRemoteSessionBindings,
-  type AttributionSlot,
-} from './session-attribution-sync';
-import { buildSessionKey } from './telemetry-env';
-import { chunkBySerializedSize, maxSyncBatchBytes } from './sync-batches';
-import {
-  coveredSources,
-  readRunsWatermarkEntry,
-  writeRunsWatermark,
-  selectSince,
-} from './sync-watermark';
-import type { AgentSessionUsage } from '../harness/schema';
 import {
   isRetryableStatus,
   retryDelayMs,
@@ -64,10 +35,17 @@ import {
   throwIfSyncAborted,
 } from './sync-request';
 import { readSyncSelection, resolveSyncSelection } from './control-sync-selection';
-import { recordSentObservations, unsentObservations } from './observation-ledger';
 import { snapshotMemo, withStatusSnapshot } from './status-snapshot';
 
-export { chunkBySerializedSize };
+/**
+ * Mission Control's local endpoints, outside the ingest contract.
+ *
+ * The CLI 2.0 sends records, proofs, evidence and telemetry through ingest v2
+ * only (ADR 0005 section 7): every receiver, Mission Control included, gets
+ * them from `ingest-publish.ts` and otel-hook. What is left here is local to
+ * Mission Control and has no v2 record: registering a repository (and listing
+ * or unregistering it), and the live view of its slots.
+ */
 
 export interface ControlSyncOptions {
   repoPath: string;
@@ -76,8 +54,6 @@ export interface ControlSyncOptions {
   cloud?: boolean;
   /** Re-register even if the path was previously unregistered. */
   force?: boolean;
-  /** Ignore the runs watermark and resend every run. */
-  full?: boolean;
 }
 
 export interface SyncRepoResult {
@@ -89,55 +65,6 @@ export interface SyncRepoResult {
 
 export interface ControlRegisterOptions extends ControlSyncOptions {
   gitRemote?: string;
-}
-
-function runTimestamp(run: RunRecord): string {
-  return run.finishedAt ?? run.startedAt;
-}
-
-// Re-send a small window past the watermark so a same-ms sibling or a backward
-// clock step isn't dropped (the resend is an idempotent upsert).
-const DEFAULT_SYNC_OVERLAP_MS = 60_000;
-
-function rewindSince(since: string | null): string | null {
-  if (!since) return null;
-  const raw = Number(process.env.HAR_SYNC_OVERLAP_MS);
-  const overlap = Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_SYNC_OVERLAP_MS;
-  return new Date(new Date(since).getTime() - overlap).toISOString();
-}
-
-function runsWatermarkTarget(target: string): string {
-  return `runs:${target}`;
-}
-
-/** Send run batches oldest-first, advancing the watermark (with the server repo
- * id) after each lands — so a sync killed mid-flight resumes, and a wiped repo
- * invalidates it. */
-async function syncRunBatches(
-  newRuns: RunRecord[],
-  repoPath: string,
-  runsTarget: string,
-  getRepoId: () => string | undefined,
-  dryRun: boolean | undefined,
-  send: (batch: RunRecord[], index: number) => Promise<void>,
-  sources?: string[],
-): Promise<void> {
-  const ordered = [...newRuns].sort((a, b) => runTimestamp(a).localeCompare(runTimestamp(b)));
-  const batches = chunkBySerializedSize(ordered, maxSyncBatchBytes());
-  const toSend = batches.length > 0 ? batches : [[]];
-  for (let i = 0; i < toSend.length; i++) {
-    const batch = toSend[i];
-    await send(batch, i);
-    if (!dryRun && batch.length > 0) {
-      writeRunsWatermark(
-        repoPath,
-        runsTarget,
-        getRepoId(),
-        runTimestamp(batch[batch.length - 1]),
-        sources,
-      );
-    }
-  }
 }
 
 function describeFetchFailure(url: string, bodyBytes: number, err: unknown): string {
@@ -196,26 +123,6 @@ async function postJson<T>(url: string, body: unknown, dryRun?: boolean): Promis
   }
 
   return (await response.json()) as T;
-}
-
-/** POST that tolerates an older Mission Control without the route: false on 404. */
-async function postJsonIfSupported(url: string, body: unknown, dryRun?: boolean): Promise<boolean> {
-  if (dryRun) return true;
-  const response = await postForResponse(
-    url,
-    { 'Content-Type': 'application/json' },
-    JSON.stringify(body),
-  );
-  if (response.status === 404) return false;
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Control API ${response.status}: ${text || response.statusText}`);
-  }
-  return true;
-}
-
-function resolvePortalUserEmail(): string | undefined {
-  return readPortalCredentials()?.email || undefined;
 }
 
 /**
@@ -319,7 +226,6 @@ export async function syncReposWithControl(options: {
   apiUrl?: string;
   dryRun?: boolean;
   cloud?: boolean;
-  full?: boolean;
 }): Promise<{
   synced: number;
   failed: number;
@@ -341,7 +247,6 @@ export async function syncReposWithControl(options: {
             apiUrl,
             dryRun: options.dryRun,
             cloud: options.cloud,
-            full: options.full,
           }),
         EXPLICIT_SYNC_TIMEOUT_MS,
         'control sync',
@@ -457,7 +362,7 @@ async function syncRepoWithLocalControl(
   options: ControlSyncOptions & { repoPath: string; workspacePath?: string },
 ): Promise<void> {
   const apiUrl = options.apiUrl ?? getControlApiUrl();
-  const { repoPath, workspacePath, dryRun, full } = options;
+  const { repoPath, workspacePath, dryRun } = options;
 
   const registerResult = await registerRepoWithControl({ ...options, repoPath });
   const repoId = registerResult?.id;
@@ -471,12 +376,12 @@ async function syncRepoWithLocalControl(
       // Unregistered / blocked — nothing to sync locally.
       return;
     }
-    await syncRepoRunsAndSlots(apiUrl, existing.id, repoPath, workspacePath, dryRun, full);
+    await syncRepoSlots(apiUrl, existing.id, repoPath, workspacePath, dryRun);
     return;
   }
 
   if (repoId) {
-    await syncRepoRunsAndSlots(apiUrl, repoId, repoPath, workspacePath, dryRun, full);
+    await syncRepoSlots(apiUrl, repoId, repoPath, workspacePath, dryRun);
   }
 }
 
@@ -536,230 +441,25 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-let warnedSessionBindingsUnsupported = false;
-
-async function fetchRemoteSessionBindings(apiUrl: string, repoId: string) {
-  try {
-    const response = await syncFetch(`${apiUrl}/api/repos/${repoId}/session-bindings`);
-    if (!response.ok) return [];
-    return parseRemoteSessionBindings(await response.json());
-  } catch {
-    return [];
-  }
-}
-
 /**
- * Session → slot attribution (ADR 0003): post the `launch` / `release` /
- * `workspace` bindings, then, when harvesting, the usage observations of every
- * session this repo has evidence for. Never fails the sync.
- *
- * Returns false only when Mission Control has no `/usage-observations` route
- * (an older version), so the caller can fall back to per-slot session totals.
+ * The live slot view: the slot statuses of every source that stores a session
+ * for this repository. Everything else Mission Control holds comes through
+ * ingest v2 and OTLP.
  */
-export async function syncSessionAttributionWithControl(
-  apiUrl: string,
-  repoId: string,
-  sourcePaths: string[],
-  slots: AttributionSlot[],
-  harvest: boolean,
-  dryRun?: boolean,
-): Promise<boolean> {
-  try {
-    const remoteBindings = harvest ? await fetchRemoteSessionBindings(apiUrl, repoId) : [];
-    const { bindings, observations } = collectSessionAttribution({
-      sourcePaths,
-      slots,
-      remoteBindings,
-      harvest,
-    });
-
-    if (bindings.length > 0) {
-      const body = SyncSessionBindingsInputSchema.parse({ bindings });
-      const accepted = await postJsonIfSupported(
-        `${apiUrl}/api/repos/${repoId}/session-bindings`,
-        body,
-        dryRun,
-      );
-      if (!accepted && !warnedSessionBindingsUnsupported) {
-        warnedSessionBindingsUnsupported = true;
-        warn(
-          'Mission Control does not accept session bindings yet (no /session-bindings route); ' +
-            'usage stays attributed per slot work dir until it is upgraded.',
-        );
-      }
-    }
-
-    if (!harvest) return true;
-    // Only what Mission Control has not accepted in this form yet. Posted even
-    // when empty: an older Mission Control answers 404, which is how the caller
-    // knows to fall back to per-slot totals.
-    const unsent = unsentObservations(apiUrl, repoId, observations);
-    const batches = chunkBySerializedSize(unsent, maxSyncBatchBytes());
-    const accepted: typeof observations = [];
-    try {
-      for (const batch of batches.length > 0 ? batches : [[]]) {
-        const body = SyncUsageObservationsInputSchema.parse({ observations: batch });
-        const supported = await postJsonIfSupported(
-          `${apiUrl}/api/repos/${repoId}/usage-observations`,
-          body,
-          dryRun,
-        );
-        if (!supported) return false;
-        accepted.push(...batch);
-      }
-    } finally {
-      if (!dryRun) recordSentObservations(apiUrl, repoId, observations, accepted);
-    }
-    return true;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[har control] session attribution sync skipped: ${message}\n`);
-    return true;
-  }
-}
-
-async function syncRepoRunsAndSlots(
+async function syncRepoSlots(
   apiUrl: string,
   repoId: string,
   repoPath: string,
   workspacePath?: string,
   dryRun?: boolean,
-  full?: boolean,
 ): Promise<void> {
   const sourcePaths = resolveSyncSourcePaths(repoPath, workspacePath);
-  const runsTarget = runsWatermarkTarget(apiUrl);
-  const stored = full ? null : readRunsWatermarkEntry(repoPath, runsTarget);
-  const runsSince = rewindSince(stored?.repoId === repoId ? (stored?.lastSyncedAt ?? null) : null);
-  const newRuns = selectRunsForSync(
-    collectRunsBySource(sourcePaths),
-    runsSince,
-    coveredSources(repoPath, stored),
-    (rows, since) => selectSince(rows, since, runTimestamp).selected,
-  );
-
-  await syncRunBatches(
-    newRuns,
-    repoPath,
-    runsTarget,
-    () => repoId,
-    dryRun,
-    async (batch) => {
-      await postJson(`${apiUrl}/api/repos/${repoId}/runs`, SyncRunsInputSchema.parse({ runs: batch }), dryRun);
-    },
-    sourcePaths,
-  );
-
   const status: EnvironmentStatus = collectEnvironmentStatusForSync(repoPath, sourcePaths);
   const slotsBody = SyncSlotsInputSchema.parse({
     slots: status.slots,
     generatedAt: status.generatedAt,
   });
   await postJson(`${apiUrl}/api/repos/${repoId}/slots`, slotsBody, dryRun);
-
-  const workUnitsBody = SyncWorkUnitsInputSchema.parse(collectWorkUnitsForSync(sourcePaths));
-  if (workUnitsBody.workUnits.length > 0 || workUnitsBody.attempts.length > 0) {
-    await postJson(`${apiUrl}/api/repos/${repoId}/work-units`, workUnitsBody, dryRun);
-  }
-
-  const harvest = isTelemetryEnabled() && process.env.NODE_ENV !== 'test';
-  const observationsAccepted = await syncSessionAttributionWithControl(
-    apiUrl,
-    repoId,
-    sourcePaths,
-    status.slots,
-    harvest,
-    dryRun,
-  );
-
-  if (harvest) {
-    try {
-      // Mission Control without `/usage-observations` (older than ADR 0003)
-      // still takes per-slot session totals: only sessions that ran inside a
-      // slot's work dir, which is evidence, never a guessed slot.
-      if (!observationsAccepted) {
-        const userEmail = resolvePortalUserEmail();
-        const usage: AgentSessionUsage[] = status.slots.flatMap((slot) =>
-          harvestUsageForSlot({
-            agentId: slot.agentId,
-            workDir: slot.workDir,
-            worktreePath: slot.worktreePath,
-            branch: slot.branch,
-            suffix: slot.suffix,
-            sessionCreatedAt: slot.sessionCreatedAt,
-            repoPath,
-          }).map((row) => ({
-            ...row,
-            workUnitId: slot.workUnitId,
-            attemptId: slot.attemptId,
-            sessionKey:
-              row.sessionKey ||
-              buildSessionKey({
-                branch: slot.branch,
-                agentId: slot.agentId,
-                suffix: slot.suffix,
-                createdAt: slot.sessionCreatedAt,
-              }),
-            ...(userEmail ? { userEmail } : {}),
-          })),
-        );
-        if (usage.length > 0) {
-          const usageBody = SyncUsageInputSchema.parse({ usage });
-          await postJson(`${apiUrl}/api/repos/${repoId}/usage`, usageBody, dryRun);
-        }
-      }
-
-      const events = status.slots.flatMap((slot) =>
-        harvestEventsForSlot({
-          agentId: slot.agentId,
-          workDir: slot.workDir,
-          worktreePath: slot.worktreePath,
-          branch: slot.branch,
-          suffix: slot.suffix,
-          sessionCreatedAt: slot.sessionCreatedAt,
-          repoPath,
-        }).map((event) => ({
-          ...event,
-          workUnitId: slot.workUnitId,
-          attemptId: slot.attemptId,
-        })),
-      );
-      if (events.length > 0) {
-        const eventsBody = SyncSessionEventsInputSchema.parse({ events });
-        await postJson(`${apiUrl}/api/repos/${repoId}/events`, eventsBody, dryRun);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[har control] usage harvest skipped: ${message}\n`);
-    }
-  }
-
-  const validations = listValidations(resolveHarnessRoot(repoPath));
-  if (validations.length > 0) {
-    const validationsBody = SyncValidationsInputSchema.parse({ validations });
-    await postJson(`${apiUrl}/api/repos/${repoId}/validations`, validationsBody, dryRun);
-  }
-
-  const bindingsBody = SyncValidationBindingsInputSchema.parse({
-    bindings: listValidationBindings(resolveHarnessRoot(repoPath)),
-  });
-  if (bindingsBody.bindings.length > 0) {
-    await postJson(
-      `${apiUrl}/api/repos/${repoId}/validation-bindings`,
-      bindingsBody,
-      dryRun,
-    );
-  }
-
-  const commitBindingsBody = SyncValidationCommitBindingsInputSchema.parse({
-    bindings: collectCommitBindingsForSync(sourcePaths),
-  });
-  if (commitBindingsBody.bindings.length > 0) {
-    await postJson(
-      `${apiUrl}/api/repos/${repoId}/commit-bindings`,
-      commitBindingsBody,
-      dryRun,
-    );
-  }
 }
 
 const SYNC_TIMEOUT_MS = 15_000;
@@ -811,43 +511,5 @@ export async function syncRepoWithControlAsync(repoPath: string): Promise<void> 
       `[har control] sync of ${path.basename(canonical)} failed: ${errorMessage(err)} — ` +
         'run `har control sync` to retry\n',
     );
-  }
-}
-
-async function syncRunWithLocalControl(
-  repoPath: string,
-  run: RunRecord,
-  apiUrl: string,
-): Promise<void> {
-  const registerResult = await registerRepoWithControl({ repoPath, apiUrl });
-  let repoId = registerResult?.id;
-
-  if (!repoId) {
-    const listResponse = await syncFetch(`${apiUrl}/api/repos`);
-    if (!listResponse.ok) return;
-    const repos = (await listResponse.json()) as { id: string; path: string }[];
-    repoId = repos.find((r) => path.resolve(r.path) === repoPath)?.id;
-  }
-
-  if (!repoId) return;
-
-  const runsBody = SyncRunsInputSchema.parse({ runs: [run] });
-  await postJson(`${apiUrl}/api/repos/${repoId}/runs`, runsBody);
-}
-
-export async function syncRunWithControlAsync(repoPath: string, run: RunRecord): Promise<void> {
-  if (process.env.HAR_CONTROL_DISABLED === 'true') return;
-
-  const apiUrl = getControlApiUrl();
-  const canonical = canonicalizeControlRepoPath(repoPath);
-  if (selectedRepos([canonical]).length === 0) return;
-
-  try {
-    if (await isControlApiReachable(apiUrl)) {
-      await syncRunWithLocalControl(canonical, run, apiUrl);
-    }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[har control] run sync skipped: ${message}\n`);
   }
 }

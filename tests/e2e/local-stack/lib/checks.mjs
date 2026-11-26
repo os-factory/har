@@ -3,8 +3,9 @@
 //
 //   checks.mjs <check> <state.json> [receiver|collector] [args...]
 //
-// Every check prints exactly one line, `PASS <label>: <detail>` or
-// `FAIL <label>: <detail>`, and exits 0 either way; run.sh counts the FAILs.
+// Every check prints exactly one line, `PASS <label>: <detail>`,
+// `FAIL <label>: <detail>` or `SKIP <label>: <why>` (a receiver whose adapter
+// cannot read what the check needs), and exits 0; run.sh counts the FAILs.
 // `probe-*` commands print a bare detail line and exit 1 on failure, for
 // run.sh to fold into one of its own checks.
 //
@@ -31,6 +32,7 @@ const traceIdOf = (runId) => sha256(`factory-run:${runId}`).slice(0, 32);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class Problem extends Error {}
+class Skip extends Error {}
 function need(condition, message) {
   if (!condition) throw new Problem(message);
 }
@@ -63,6 +65,7 @@ async function settle(fn) {
     try {
       return { ok: true, detail: await fn() };
     } catch (error) {
+      if (error instanceof Skip) return { ok: 'skip', detail: error.message };
       if (!(error instanceof Problem) || Date.now() >= deadline) {
         return { ok: false, detail: error instanceof Error ? error.message : String(error) };
       }
@@ -72,7 +75,8 @@ async function settle(fn) {
 }
 
 function print(label, outcome) {
-  console.log(`${outcome.ok ? 'PASS' : 'FAIL'} ${label}: ${String(outcome.detail).replace(/\s+/g, ' ').trim()}`);
+  const verdict = outcome.ok === 'skip' ? 'SKIP' : outcome.ok ? 'PASS' : 'FAIL';
+  console.log(`${verdict} ${label}: ${String(outcome.detail).replace(/\s+/g, ' ').trim()}`);
 }
 
 const trailer = (message, name) => new RegExp(`^${name}: (.+)$`, 'm').exec(message)?.[1];
@@ -263,7 +267,65 @@ function expectedCodex() {
   return total;
 }
 
+/** Expected Claude Code usage per model: one generation per turn and one per subagent run (otel-hook#68). */
+function expectedClaude() {
+  const byModel = new Map();
+  for (const generation of state.claudeGenerations) {
+    const row = byModel.get(generation.model) ?? { observations: 0, tokensInput: 0, tokensOutput: 0, tokensCacheRead: 0, tokensCacheCreation: 0 };
+    row.observations += 1;
+    row.tokensInput += generation.input;
+    row.tokensOutput += generation.output;
+    row.tokensCacheRead += generation.cacheRead;
+    row.tokensCacheCreation += generation.cacheCreation;
+    byModel.set(generation.model, row);
+  }
+  return byModel;
+}
+
+/** Claude Code usage booked once per generation, fresh input = input - cache, priced by the receiver. */
+function checkClaudeRows(usage) {
+  const rows = usage.byModel.filter((row) => row.agentTool === 'claude_code');
+  const want = expectedClaude();
+  need(rows.length === want.size, `claude_code rows ${JSON.stringify(rows.map((r) => r.model))}, want ${JSON.stringify([...want.keys()])}`);
+  for (const [model, expected] of want) {
+    const row = rows.find((entry) => entry.model === model);
+    need(row, `no claude_code/${model} row`);
+    need(row.observations === expected.observations, `claude_code/${model}: ${row.observations} observations for ${expected.observations} generations (double counted?)`);
+    for (const key of ['tokensInput', 'tokensOutput', 'tokensCacheRead', 'tokensCacheCreation']) {
+      need(row[key] === expected[key], `claude_code/${model} ${key} ${row[key]} ≠ ${expected[key]}`);
+    }
+    need(row.costUsd > 0 && row.costSource === 'estimated', `claude_code/${model} cost ${row.costUsd} (${row.costSource}), want a receiver estimate`);
+    need(row.pricedWith?.length > 0 && row.pricedWith.every((v) => /genai-prices/.test(v)), `claude_code/${model} priced with ${JSON.stringify(row.pricedWith)}`);
+  }
+  return rows;
+}
+
+/** The Collector keeps what otel-hook sent: each Claude Code generation span once, with its tokens. */
+function checkCollectorUsage() {
+  const generations = collectorSpans().filter(
+    (span) =>
+      /^generation( |$)/.test(span.name) &&
+      (span.attributes['otelhook.session.id'] ?? span.attributes['gen_ai.conversation.id']) === state.sessions.claude_code,
+  );
+  const byId = new Map();
+  for (const span of generations) {
+    const id = span.attributes['otelhook.generation.id'];
+    need(id, `generation span ${span.spanId} without otelhook.generation.id`);
+    byId.set(id, [...(byId.get(id) ?? []), span]);
+  }
+  const twice = [...byId].filter(([, list]) => list.length > 1).map(([id]) => id);
+  need(twice.length === 0, `generation ids exported more than once: ${twice.join(', ')}`);
+  need(byId.size === state.claudeGenerations.length, `${byId.size} Claude Code generation spans, want ${state.claudeGenerations.length}`);
+  const sum = (key) => generations.reduce((total, span) => total + Number(span.attributes[key] ?? 0), 0);
+  const want = state.claudeGenerations.reduce((total, g) => total + g.input + g.cacheRead + g.cacheCreation, 0);
+  need(sum('gen_ai.usage.input_tokens') === want, `gen_ai.usage.input_tokens ${sum('gen_ai.usage.input_tokens')} ≠ ${want} (input includes cache)`);
+  const subagents = generations.filter((span) => span.attributes['otelhook.subagent.id']).length;
+  need(subagents === state.claudeGenerations.filter((g) => g.subagent).length, `${subagents} subagent generations`);
+  return `claude_code ${byId.size} generation spans once each (${subagents} subagent), input tokens ${want} incl. cache`;
+}
+
 async function checkUsage(name) {
+  if (name === 'collector') return checkCollectorUsage();
   const rx = receiver(name);
   const usage = await attemptUsage(rx);
   need(usage, 'no usage on the attempt');
@@ -274,42 +336,92 @@ async function checkUsage(name) {
   need(codex.observations === state.codexTurns.length, `codex: ${codex.observations} observations, want ${state.codexTurns.length}`);
   need(codex.costUsd > 0 && codex.costSource === 'estimated', `codex cost ${codex.costUsd} (${codex.costSource}), want a receiver estimate`);
   need(codex.pricedWith?.length > 0 && codex.pricedWith.every((v) => /genai-prices/.test(v)), `codex priced with ${JSON.stringify(codex.pricedWith)}`);
-  const claudeRows = usage.byModel.filter((row) => row.agentTool === 'claude_code');
-  const native = state.native;
-  const sum = (key) => native.reduce((total, event) => total + event[key], 0);
-  let claudeNote;
-  if (rx.claudeNative) {
-    // Claude Code's native telemetry reaches this receiver: it is the one source.
-    need(claudeRows.length === 1, `claude_code rows ${JSON.stringify(claudeRows.map((r) => r.model))}`);
-    const [claude] = claudeRows;
-    need(claude.observations === native.length, `claude_code: ${claude.observations} observations for ${native.length} api_request events (double counted?)`);
-    need(claude.tokensInput === sum('input') && claude.tokensOutput === sum('output'), `claude_code tokens ${claude.tokensInput}/${claude.tokensOutput} ≠ ${sum('input')}/${sum('output')}`);
-    need(claude.costSource === 'reported' && Math.abs(claude.costUsd - sum('cost')) < 1e-9, `claude_code cost ${claude.costUsd} (${claude.costSource}) ≠ reported ${sum('cost')}`);
-    claudeNote = `claude_code ${claude.observations} requests as reported ($${claude.costUsd.toFixed(4)}), not double counted`;
-  } else {
-    // HAR sends Claude Code's native telemetry to Mission Control only; otel-hook's Claude rows must not be booked.
-    need(claudeRows.length === 0, `claude_code booked from otel-hook: ${JSON.stringify(claudeRows)}`);
-    claudeNote = 'claude_code not booked (no native telemetry here; otel-hook rows ignored)';
-  }
-  return `codex/${state.codexModel} ${codex.observations} turns $${codex.costUsd.toFixed(6)} priced with ${codex.pricedWith.join(',')}; ${claudeNote}`;
+  const claude = checkClaudeRows(usage);
+  const claudeNote = claude.map((row) => `claude_code/${row.model} ${row.observations} generations $${row.costUsd.toFixed(6)}`).join(', ');
+  return `codex/${state.codexModel} ${codex.observations} turns $${codex.costUsd.toFixed(6)} priced with ${codex.pricedWith.join(',')}; ${claudeNote}, from otel-hook, booked once`;
 }
 
 async function checkUsageAgree() {
   const rows = [];
   for (const rx of state.receivers) {
     const usage = await attemptUsage(rx);
-    const codex = usage?.byModel.find((row) => row.agentTool === 'codex' && row.model === state.codexModel);
-    need(codex, `${rx.name}: no codex usage`);
-    rows.push({ name: rx.name, codex });
+    const booked = (usage?.byModel ?? []).filter((row) => row.agentTool === 'codex' || row.agentTool === 'claude_code');
+    need(booked.some((row) => row.agentTool === 'codex' && row.model === state.codexModel), `${rx.name}: no codex usage`);
+    rows.push({ name: rx.name, booked });
   }
   const [a, b] = rows;
   need(rows.length === 2, 'needs two receivers');
-  for (const key of ['tokensInput', 'tokensOutput', 'tokensCacheRead', 'tokensCacheCreation', 'observations']) {
-    need(a.codex[key] === b.codex[key], `${key}: ${a.name} ${a.codex[key]} ≠ ${b.name} ${b.codex[key]}`);
+  const key = (row) => `${row.agentTool}/${row.model}`;
+  need(JSON.stringify(a.booked.map(key).sort()) === JSON.stringify(b.booked.map(key).sort()), `rows: ${a.name} ${a.booked.map(key)} ≠ ${b.name} ${b.booked.map(key)}`);
+  for (const left of a.booked) {
+    const right = b.booked.find((row) => key(row) === key(left));
+    for (const field of ['tokensInput', 'tokensOutput', 'tokensCacheRead', 'tokensCacheCreation', 'observations']) {
+      need(left[field] === right[field], `${key(left)} ${field}: ${a.name} ${left[field]} ≠ ${b.name} ${right[field]}`);
+    }
+    need(Math.abs(left.costUsd - right.costUsd) < 1e-9, `${key(left)} cost: ${a.name} ${left.costUsd} ≠ ${b.name} ${right.costUsd}`);
+    need(JSON.stringify(left.pricedWith) === JSON.stringify(right.pricedWith), `${key(left)} priced with ${left.pricedWith} vs ${right.pricedWith}`);
   }
-  need(Math.abs(a.codex.costUsd - b.codex.costUsd) < 1e-9, `cost: ${a.name} ${a.codex.costUsd} ≠ ${b.name} ${b.codex.costUsd}`);
-  need(JSON.stringify(a.codex.pricedWith) === JSON.stringify(b.codex.pricedWith), `priced with ${a.codex.pricedWith} vs ${b.codex.pricedWith}`);
-  return `${a.name} and ${b.name} book the same codex rows at the same cost ($${a.codex.costUsd}) with ${a.codex.pricedWith.join(',')}`;
+  return `${a.name} and ${b.name} book the same ${a.booked.length} rows (${a.booked.map(key).join(', ')}) at the same cost`;
+}
+
+// --- 13. trajectory ---------------------------------------------------------------
+/**
+ * The trajectory a receiver built from otel-hook's logs (ADR 0005 section 3),
+ * through its adapter (`<adapter> trajectory session <id>`: a JSON array of
+ * `{eventId, eventType, sequence, attributes}`, one per stored row).
+ */
+function trajectory(rx, sessionId) {
+  let out;
+  try {
+    out = execFileSync(rx.adapter, ['trajectory', 'session', sessionId], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    if (error.status === 2 || error.status === 3) throw new Skip(`${rx.name} adapter has no trajectory reads`);
+    throw error;
+  }
+  return JSON.parse(out.trim() || '[]');
+}
+
+function trajectoryEvents(rows) {
+  // One stored row per content fact: an event may have several, never two events one id.
+  const events = new Map();
+  for (const row of rows) {
+    const seen = events.get(row.eventId);
+    need(!seen || (seen.eventType === row.eventType && seen.sequence === row.sequence), `event ${row.eventId} stored twice with different facts`);
+    events.set(row.eventId, row);
+  }
+  const ordered = [...events.values()].sort((left, right) => left.sequence - right.sequence);
+  const sequences = ordered.map((event) => event.sequence);
+  need(new Set(sequences).size === sequences.length, `two events share a sequence: ${sequences.join(',')}`);
+  return ordered;
+}
+
+async function checkTrajectory(name) {
+  const rx = receiver(name);
+  const claude = trajectoryEvents(trajectory(rx, state.sessions.claude_code));
+  const count = (type) => claude.filter((event) => event.eventType === type).length;
+  need(claude[0]?.eventType === 'session.start', `claude_code trajectory starts with ${claude[0]?.eventType ?? 'nothing'}`);
+  const turns = state.claudeGenerations.filter((g) => !g.subagent).length;
+  need(count('prompt.submitted') >= turns + 1, `${count('prompt.submitted')} prompts, want ${turns + 1}`);
+  // Tool calls pair by call id; a subagent nests its own tool calls under its id.
+  const starts = claude.filter((event) => event.eventType === 'tool.start');
+  const ends = claude.filter((event) => event.eventType === 'tool.end');
+  const callId = (event) => event.attributes['gen_ai.tool.call_id'] ?? event.attributes['gen_ai.tool.call.id'];
+  // A call still running (a start with no end yet) is fine; an end with no start is not.
+  const paired = starts.filter((start) => ends.some((end) => callId(end) && callId(end) === callId(start)));
+  need(ends.every((end) => starts.some((start) => callId(start) === callId(end))), `tool ends without a start (${ends.length} ends)`);
+  need(paired.length >= turns * 3, `${paired.length} paired tool calls, want ${turns * 3} (edit, Agent, nested Read per turn)`);
+  const subagentIds = state.claudeGenerations.filter((g) => g.subagent).map((g) => g.subagent);
+  for (const id of subagentIds) {
+    const inside = claude.filter((event) => event.attributes['otelhook.subagent.id'] === id);
+    const types = inside.map((event) => event.eventType);
+    need(types.includes('subagent.start') && types.includes('subagent.end'), `subagent ${id}: ${types.join(',') || 'no records'}`);
+    need(types.filter((type) => type.startsWith('tool.')).length >= 2, `subagent ${id}: no nested tool call (${types.join(',')})`);
+    const [first, last] = [inside.find((e) => e.eventType === 'subagent.start'), inside.find((e) => e.eventType === 'subagent.end')];
+    need(first.sequence < last.sequence, `subagent ${id} ends before it starts`);
+  }
+  const codex = trajectoryEvents(trajectory(rx, state.sessions.codex));
+  need(codex.some((event) => event.eventType === 'prompt.submitted'), 'codex trajectory has no prompt');
+  return `claude_code ${claude.length} events in sequence order (${paired.length} paired tool calls, ${subagentIds.length} subagents with nested calls), codex ${codex.length} events; each event id once`;
 }
 
 // --- 10. collector ---------------------------------------------------------------
@@ -437,6 +549,8 @@ async function main() {
       return print('7 usage-agree', await settle(() => checkUsageAgree()));
     case 'collector':
       return print('10 collector', await settle(() => checkCollector()));
+    case 'trajectory':
+      return print(label(13, 'trajectory'), await settle(() => checkTrajectory(target)));
     case 'probe-received':
     case 'probe-usage': {
       const outcome = await settle(() =>

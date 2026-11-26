@@ -602,50 +602,6 @@ function observationView(row: {
 }
 
 // ---------------------------------------------------------------------------
-// Provider-reported session totals (cross-check only)
-
-export interface ReportedUsageInput {
-  agentTool: string;
-  sessionId: string;
-  costUsd: number | null;
-  tokensTotal: number;
-  at: Date;
-  /** `cumulative` points are running totals (max-merge); `delta` points add up. */
-  temporality: 'cumulative' | 'delta';
-}
-
-export async function recordReportedUsage(repositoryId: string, input: ReportedUsageInput) {
-  const where = {
-    repositoryId_agentTool_sessionId: {
-      repositoryId,
-      agentTool: input.agentTool,
-      sessionId: input.sessionId,
-    },
-  };
-  const existing = await prisma.sessionReportedUsage.findUnique({ where });
-  const previousCost = existing?.costUsd == null ? null : Number(existing.costUsd);
-  const previousTokens = Number(existing?.tokensTotal ?? 0);
-  const combine = (a: number | null, b: number | null): number | null => {
-    if (a == null) return b;
-    if (b == null) return a;
-    return input.temporality === 'delta' ? a + b : Math.max(a, b);
-  };
-  const costUsd = combine(previousCost, input.costUsd);
-  const tokensTotal = combine(previousTokens, input.tokensTotal) ?? 0;
-  const data = {
-    costUsd: costUsd == null ? null : new Prisma.Decimal(costUsd),
-    tokensTotal: toBigInt(tokensTotal),
-    firstSeenAt: existing && existing.firstSeenAt < input.at ? existing.firstSeenAt : input.at,
-    lastSeenAt: existing && existing.lastSeenAt > input.at ? existing.lastSeenAt : input.at,
-  };
-  return prisma.sessionReportedUsage.upsert({
-    where,
-    create: { repositoryId, agentTool: input.agentTool, sessionId: input.sessionId, ...data },
-    update: data,
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Read model: the projection, merged with legacy session totals
 
 /**
@@ -772,7 +728,8 @@ export function slotRowFromBucket(
   const attemptId = attemptIdFromOccupancyKey(bucket.occupancyKey) ?? slot?.attemptId ?? null;
   const attempt = attemptId ? attempts.find((candidate) => candidate.attemptId === attemptId) : undefined;
   return {
-    id: `obs:${bucket.agentTool}:${bucket.sessionId}:${bucket.slotId}:${bucket.occupancyKey ?? ''}`,
+    // Unique across repositories: one session's usage can be booked in two (FE-2058), and the usage page lists every repository's rows.
+    id: `obs:${repositoryId}:${bucket.agentTool}:${bucket.sessionId}:${bucket.slotId}:${bucket.occupancyKey ?? ''}`,
     repositoryId,
     sessionKey: bucket.sessionId,
     agentId: bucket.slotId,

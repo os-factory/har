@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentTrajectoryRecord } from '@prisma/client';
-import {
-  eventInputFromTrajectoryRecord,
-  usageFromTrajectoryRecord,
-} from './trajectory-projections';
+import { eventInputFromTrajectoryRecord } from './trajectory-projections';
 
 function record(overrides: Partial<AgentTrajectoryRecord> = {}): AgentTrajectoryRecord {
   return {
@@ -68,18 +65,5 @@ describe('trajectory projections', () => {
     expect(event.promptText).toBeNull();
     expect(event.responseText).toBeNull();
     expect(event.rawTruncated).toBeNull();
-  });
-
-  it('derives usage from ledger attributes when tokens are present', () => {
-    expect(usageFromTrajectoryRecord(record())).toMatchObject({
-      tokensInput: 11,
-      tokensTotal: 11,
-      workDir: '/tmp/work',
-      sources: ['otel'],
-      modelBreakdown: { 'grok-4.5': { tokensInput: 11 } },
-    });
-    expect(usageFromTrajectoryRecord(record({
-      payload: { attributes: { 'gen_ai.request.model': 'grok-4.5' } },
-    }))).toBeNull();
   });
 });

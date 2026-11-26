@@ -20,7 +20,12 @@ import {
 import { drainIngestQueues, summarizeIngestQueues } from '../src/core/ingest-queue';
 import { publishFactoryRun, publishIngest } from '../src/core/ingest-publish';
 import { collectIngestHealth, withIngestHealth } from '../src/core/ingest-health';
-import { applyAgentTelemetryRoute, buildOtelHooksConfig } from '../src/core/otel-hooks';
+import {
+  CLAUDE_CODE_HOOK_FLAGS,
+  applyAgentTelemetryRoute,
+  buildOtelHooksConfig,
+  buildProviderHookCommand,
+} from '../src/core/otel-hooks';
 import { getRouteEnvPath, resolveAgentTelemetryRoute } from '../src/core/telemetry-route';
 import { INGEST_V2_FIXTURE_ENVELOPE, ingestV2FixtureRecords } from '../packages/schemas/src/ingest-v2-fixtures';
 import {
@@ -252,6 +257,42 @@ describe('one destination list, direct fan-out (ADR 0005 sections 2, 4, 6)', () 
       // No identity through OTEL_* and no local paths: stripped for every destination by default.
       expect(written).not.toMatch(/(^|[^A-Z_])OTEL_/);
       expect(routeEnv).toContain('export HAR_OTEL_DIRECT_STRIP_LOCAL=1');
+    });
+
+    it('sends otel-hook usage to every receiver at the Usage level: spans and metrics, no event records', () => {
+      writeTelemetryLevel('usage');
+      writeDestinations({ version: 2, destinations: receiversList() });
+      const hooksHome = path.join(tmp, 'hooks-0.12');
+      const pkgDir = path.join(hooksHome, 'node_modules', '@osfactory', 'otel-hook');
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ version: '0.12.0' }));
+      const config = buildOtelHooksConfig({ route: resolveAgentTelemetryRoute(hooksHome).route });
+      expect(config.exporter.enabled).toBe(true);
+      expect(config.exporter.logs.enabled).toBe(false);
+      expect(config.exporter.destinations?.map((d) => [d.name, d.signals])).toEqual([
+        ['mission-control', ['traces', 'metrics']],
+        ['hq', ['traces', 'metrics']],
+      ]);
+      expect(config.providers).toEqual({ claudeCode: { readTranscriptUsage: true } });
+    });
+
+    it('gives an implicit Mission Control entry metrics too: it books Claude Code usage from otel-hook', () => {
+      // No destinations file: Mission Control is in the list by default.
+      const route = resolveAgentTelemetryRoute(path.join(tmp, 'none')).route;
+      const config = buildOtelHooksConfig({ route });
+      expect(config.exporter.destinations?.[0]).toMatchObject({
+        name: 'mission-control',
+        metricsEndpoint: `${MC}/api/otel/v1/metrics`,
+        signals: ['traces', 'logs', 'metrics'],
+      });
+    });
+
+    it('registers the Claude Code hook with transcript usage, logs and metrics on its command line', () => {
+      expect(buildProviderHookCommand('claude-code', '/h/run-otel-hook.sh')).toBe(
+        '/h/run-otel-hook.sh --provider claude-code --claude-transcript-usage --logs --metrics',
+      );
+      expect(CLAUDE_CODE_HOOK_FLAGS).toEqual(['--claude-transcript-usage', '--logs', '--metrics']);
+      expect(buildProviderHookCommand('codex', '/h/run-otel-hook.sh')).toBe('/h/run-otel-hook.sh --provider codex');
     });
 
     it('writes no key an older otel-hook would reject', () => {

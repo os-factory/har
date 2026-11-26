@@ -67,11 +67,17 @@ export interface TrajectoryNode {
   endedAt?: string;
   records: SerializedTrajectoryRecord[];
   note?: string;
+  /**
+   * The subagent this step ran inside (`otelhook.subagent.id`): its records
+   * nest under that subagent's node. Unset on the subagent node itself.
+   */
+  subagentId?: string;
 }
 
 const TOOL_CALL_ID_KEYS = [
   'otelhook.tool.call.id',
   'otelhook.tool_call.id',
+  'gen_ai.tool.call_id',
   'gen_ai.tool.call.id',
   'tool.call.id',
   'tool_call_id',
@@ -154,6 +160,7 @@ function contentTitle(record: SerializedTrajectoryRecord, fallback: string): str
       'gen_ai.tool.name',
       'tool.name',
       'otelhook.subagent.name',
+      'otelhook.subagent.type',
       'subagent.name',
     ]) ||
     fallback;
@@ -179,8 +186,15 @@ function simpleKind(record: SerializedTrajectoryRecord): TrajectoryNodeKind {
   return 'event';
 }
 
+/** The subagent a non-subagent record ran inside, if any. */
+function enclosingSubagentId(record: SerializedTrajectoryRecord, kind: TrajectoryNodeKind): string | undefined {
+  if (kind === 'subagent') return undefined;
+  return attributeString(record, SUBAGENT_ID_KEYS) ?? undefined;
+}
+
 function nodeForRecord(record: SerializedTrajectoryRecord): TrajectoryNode {
   const kind = simpleKind(record);
+  const subagentId = enclosingSubagentId(record, kind);
   const titles: Record<TrajectoryNodeKind, string> = {
     prompt: 'User prompt',
     response: 'Assistant response',
@@ -198,6 +212,7 @@ function nodeForRecord(record: SerializedTrajectoryRecord): TrajectoryNode {
     status: kind === 'error' ? 'error' : undefined,
     startedAt: record.eventTimestamp,
     records: [record],
+    ...(subagentId ? { subagentId } : {}),
   };
 }
 
@@ -388,9 +403,11 @@ export function assembleTrajectory(records: SerializedTrajectoryRecord[]): Traje
     const { key, confidence } = pairingKey(record, boundaryKind);
     const mapKey = `${boundaryKind}:${key}`;
     if (start) {
+      const subagentId = enclosingSubagentId(record, boundaryKind);
       const node: TrajectoryNode = {
         id: record.id,
         kind: boundaryKind,
+        ...(subagentId ? { subagentId } : {}),
         title: contentTitle(record, boundaryKind === 'tool' ? 'Tool call' : 'Subagent'),
         status: 'running',
         startedAt: record.eventTimestamp,

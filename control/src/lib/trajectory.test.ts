@@ -45,6 +45,40 @@ function record(
 }
 
 describe('trajectory assembler', () => {
+  it('builds a Claude Code trajectory from otel-hook logs: sequence order, tool pairs, subagent nesting', () => {
+    // otel-hook canonical log records, delivered out of order (ADR 0005 section 3).
+    const claude = (id: string, sequence: number, eventType: string, attributes: Record<string, unknown>, contentKind = 'event') =>
+      record(id, {
+        agentTool: 'claude_code',
+        eventType,
+        sequence,
+        contentKind,
+        contentDisclosure: 'metadata_only',
+        eventTimestamp: new Date(Date.parse('2026-11-26T10:00:00.000Z') + sequence * 1000).toISOString(),
+        payload: { attributes: { 'otelhook.event.type': eventType, 'otelhook.event.sequence': sequence, ...attributes } },
+      });
+    const records = [
+      claude('tool-end', 4, 'tool.end', { 'gen_ai.tool.call_id': 'call-1', 'otelhook.outcome': 'ok' }),
+      claude('start', 1, 'session.start', { 'otelhook.agent.name': 'claude-code' }),
+      claude('prompt', 2, 'prompt.submitted', { 'otelhook.prompt.source': 'user' }, 'prompt'),
+      claude('tool-start', 3, 'tool.start', { 'gen_ai.tool.name': 'Agent', 'gen_ai.tool.call_id': 'call-1' }),
+      claude('sub-start', 5, 'subagent.start', { 'otelhook.subagent.id': 'agent-7', 'otelhook.subagent.type': 'Explore' }),
+      claude('sub-tool-start', 6, 'tool.start', { 'gen_ai.tool.name': 'Read', 'gen_ai.tool.call_id': 'call-2', 'otelhook.subagent.id': 'agent-7' }),
+      claude('sub-tool-end', 7, 'tool.end', { 'gen_ai.tool.call_id': 'call-2', 'otelhook.outcome': 'ok', 'otelhook.subagent.id': 'agent-7' }),
+      claude('sub-end', 8, 'subagent.end', { 'otelhook.subagent.id': 'agent-7' }),
+    ];
+
+    const nodes = assembleTrajectory(records);
+
+    expect(nodes.map((node) => [node.kind, node.title, node.status ?? null, node.subagentId ?? null])).toEqual([
+      ['metadata', 'Session started', null, null],
+      ['prompt', 'User prompt', null, null],
+      ['tool', 'Agent', 'completed', null],
+      ['subagent', 'Explore', 'completed', null],
+      ['tool', 'Read', 'completed', 'agent-7'],
+    ]);
+  });
+
   it('deduplicates row ids and applies canonical ordering', () => {
     const later = record('later', { sequence: 2 });
     const first = record('first', { contentKey: 'a' });

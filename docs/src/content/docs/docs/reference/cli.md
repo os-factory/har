@@ -441,7 +441,7 @@ har control down
 har control register [--repo .] [--api-url <url>] [--dry-run] [--force] [--portal|--no-portal]
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
-har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
+har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud]
 har control check-usage [--repo <path|id>] [--api-url <url>] [--json] [--limit 20]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
 har control login [--portal <url>] [--api-key <key>] [--repo .]
@@ -451,9 +451,12 @@ har control trajectory [on|off]
 `login` is a deprecated alias for `har hq connect`. Prefer `har hq connect`.
 `sync --select` interactively chooses repositories, saved in
 `~/.har/sync-selection.json`; once saved, automatic syncs also touch only those
-repositories. `register` adds its repository to a saved selection. `--full` ignores the runs watermark and resends every run.
-`sync` sends to local Mission Control only (or to HAR Cloud with `--cloud`); it no
-longer sends anything to HAR HQ. The CLI sends records and telemetry to HAR HQ
+repositories. `register` adds its repository to a saved selection.
+`sync` registers each repository with local Mission Control and sends its live slot
+view, Mission Control's two local endpoints outside the ingest contract (or to HAR
+Cloud with `--cloud`); it no longer sends anything to HAR HQ. Runs, work units,
+factory runs, commit bindings, usage and the trajectory reach every receiver,
+Mission Control included, as ingest v2 records and otel-hook OTLP. The CLI sends records and telemetry to HAR HQ
 directly when HQ is a destination (`har telemetry destination add hq`).
 `check-usage` is read-only: Mission Control checks the usage invariants over
 everything it holds (I1 a request is stored in one repository,
@@ -514,8 +517,8 @@ One **level** is stored; each includes the ones below it:
 | Level | Records |
 |-------|---------|
 | `full` (default) | Everything in `outline`, plus prompts, agent replies and tool inputs/outputs |
-| `outline` | `usage`, plus one row per prompt, generation and tool call with timing — no text |
-| `usage` | Tokens and cost per request (Claude Code native telemetry, Claude / Codex session files at sync). Cursor reports usage only through the hook, so it needs `outline` |
+| `outline` | `usage`, plus the trajectory: one row per prompt, generation, tool call and subagent with timing — no text |
+| `usage` | Tokens per turn and per subagent from the agent hook (otel-hook spans and token metrics, no event records, no text), priced by the receiver |
 | `off` | Nothing |
 
 `on` stores the level (replacing the previous one outright), ensures Mission Control is
@@ -576,8 +579,8 @@ keeps its entry, disabled, so it does not come back. A 2.0 prerelease
   Resource).
 - Account identity attributes (`user.email`, `user.account_uuid`, `user.account_id`,
   `user.id`, `organization.id`, `enduser.id`, …) are stripped from what the CLI sends;
-  Claude Code's native telemetry, which carries them, goes to Mission Control only.
-  `--include-account-identity` keeps them for that destination.
+  HAR turns no agent's native telemetry on, so agent telemetry (otel-hook) carries
+  none. `--include-account-identity` keeps them for that destination.
 - `--no-include-session-id` leaves `session.id` off metric points, for backends where
   one series per session is too many. otel-hook has one setting for every destination,
   so one destination turning it off turns it off for all.

@@ -51,6 +51,21 @@ case "${1:-}" in
       console.log(JSON.stringify(rows.map((r) => ({ ...r, startTime: iso(r.startTime), attributes: json(r.attributes), resource: json(r.resource) }))));
     ' "$rows"
     ;;
+  trajectory)
+    # The agent trajectory Mission Control built from otel-hook's log records,
+    # one row per stored record: {eventId, eventType, sequence, attributes}.
+    [ "${2:-}" = session ] || { echo "trajectory: session <id>" >&2; exit 2; }
+    value=${3//\'/}
+    rows=$(sql_json "select sourceEventId as eventId, eventType, sequence, json_extract(payload, '\$.attributes') as attributes
+      from AgentTrajectoryRecord
+      where source = 'otel' and eventType not like 'span.%'
+        and (json_extract(payload, '\$.attributes.\"otelhook.session.id\"') = '$value'
+          or json_extract(payload, '\$.attributes.\"gen_ai.conversation.id\"') = '$value')")
+    node -e '
+      const rows = JSON.parse(process.argv[1] || "[]");
+      console.log(JSON.stringify(rows.map((r) => ({ ...r, attributes: typeof r.attributes === "string" ? JSON.parse(r.attributes) : r.attributes ?? {} }))));
+    ' "$rows"
+    ;;
   stop)
     [ -n "${HAR_E2E_MC_STOP:-}" ] || { echo "HAR_E2E_MC_STOP is not set" >&2; exit 3; }
     bash -c "$HAR_E2E_MC_STOP" >/dev/null
@@ -65,5 +80,5 @@ case "${1:-}" in
     echo "Mission Control did not come back at $URL" >&2
     exit 1
     ;;
-  *) echo "usage: $0 describe|ingest-key|setup|read-headers|spans|stop|start" >&2; exit 2 ;;
+  *) echo "usage: $0 describe|ingest-key|setup|read-headers|spans|trajectory|stop|start" >&2; exit 2 ;;
 esac

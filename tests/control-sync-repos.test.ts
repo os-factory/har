@@ -16,14 +16,6 @@ jest.mock('../src/core/work-units', () => ({
   listWorkAttempts: () => [],
   listValidationBindings: () => [],
 }));
-jest.mock('../src/core/usage-harvest', () => {
-  const actual = jest.requireActual('../src/core/usage-harvest') as typeof import('../src/core/usage-harvest');
-  return {
-    ...actual,
-    harvestUsageForSlot: () => [],
-    harvestEventsForSlot: () => [],
-  };
-});
 jest.mock('../src/core/telemetry-config', () => ({
   isTelemetryEnabled: () => false,
   isPortalTrajectoryEnabled: () => false,

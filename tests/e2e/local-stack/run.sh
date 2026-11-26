@@ -24,6 +24,7 @@ GIT_FACTORY="${HAR_E2E_GIT_FACTORY:-$(command -v git-factory || true)}"
 FIXTURE="$REPO_ROOT/tests/fixtures/fixture-e2e"
 CODEX_MODEL="${HAR_E2E_CODEX_MODEL:-gpt-5}"
 CLAUDE_MODEL="${HAR_E2E_CLAUDE_MODEL:-claude-sonnet-4-5}"
+CLAUDE_SUBAGENT_MODEL="${HAR_E2E_CLAUDE_SUBAGENT_MODEL:-claude-haiku-4-5}"
 
 RUN_TAG="$(date -u +%Y%m%d%H%M%S)-$$"
 TMP="$(mktemp -d "${HAR_E2E_TMPDIR:-${TMPDIR:-/tmp}}/har-local-stack.XXXXXX")"
@@ -51,7 +52,7 @@ check() { # checks.mjs <command> [target]
   local line
   line="$("${CHECKS[@]}" "$1" "$TMP/state.json" "${@:2}" 2>>"$LOG")" || line="FAIL $1${2:+ @$2}: checks.mjs crashed (see $LOG)"
   echo "$line"
-  case "$line" in PASS*) ;; *) FAILS=$((FAILS + 1)) ;; esac
+  case "$line" in PASS* | SKIP*) ;; *) FAILS=$((FAILS + 1)) ;; esac
 }
 die() {
   report FAIL "0 setup" "$* (log: $LOG)"
@@ -82,7 +83,14 @@ log "run $RUN_TAG in $TMP (log $LOG)"
 # --- preflight ------------------------------------------------------------------
 [ -f "$CLI" ] || die "no CLI at $CLI (npm run build)"
 [ -d "$FIXTURE/project" ] || die "missing fixture $FIXTURE"
-[ -n "$HOSTED_ADAPTER" ] && [ -x "$HOSTED_ADAPTER" ] || die "HAR_E2E_HOSTED_ADAPTER is not an executable adapter"
+# The hosted receiver is optional: without an adapter, its checks are skipped.
+HOSTED_ON=0
+if [ -n "$HOSTED_ADAPTER" ]; then
+  [ -x "$HOSTED_ADAPTER" ] || die "HAR_E2E_HOSTED_ADAPTER is not an executable adapter"
+  HOSTED_ON=1
+fi
+RECEIVERS=(mission-control)
+[ $HOSTED_ON = 1 ] && RECEIVERS+=(hosted)
 [ -n "$OTEL_HOOK_PACKAGE" ] || die "HAR_E2E_OTEL_HOOK_PACKAGE is not set (an otel-hook build with the session-context step)"
 [ -n "$GIT_FACTORY" ] && [ -x "$GIT_FACTORY" ] || die "git-factory not found (HAR_E2E_GIT_FACTORY)"
 REAL_DOCKER="$(command -v docker)" || die "docker is required for the collector"
@@ -91,17 +99,22 @@ describe() { "$1" describe | sed -n "s/^$2=//p"; }
 MC_INGEST="$(describe "$MC_ADAPTER" INGEST_BASE)" || die "Mission Control adapter: describe failed"
 MC_READ="$(describe "$MC_ADAPTER" READ_BASE)"
 MC_URL="${MC_INGEST%/api}"
-"$HOSTED_ADAPTER" setup >>"$LOG" 2>&1 || die "hosted adapter: setup failed"
-HOSTED_INGEST="$(describe "$HOSTED_ADAPTER" INGEST_BASE)"
-HOSTED_READ="$(describe "$HOSTED_ADAPTER" READ_BASE)"
-HOSTED_KEY="$("$HOSTED_ADAPTER" ingest-key)"
+HOSTED_INGEST="" HOSTED_READ="" HOSTED_KEY=""
+if [ $HOSTED_ON = 1 ]; then
+  "$HOSTED_ADAPTER" setup >>"$LOG" 2>&1 || die "hosted adapter: setup failed"
+  HOSTED_INGEST="$(describe "$HOSTED_ADAPTER" INGEST_BASE)"
+  HOSTED_READ="$(describe "$HOSTED_ADAPTER" READ_BASE)"
+  HOSTED_KEY="$("$HOSTED_ADAPTER" ingest-key)"
+fi
 curl -sf "$MC_INGEST/v2/capabilities" >/dev/null || die "no ingest v2 receiver at $MC_INGEST"
-curl -sf -H "Authorization: Bearer $HOSTED_KEY" "$HOSTED_INGEST/v2/capabilities" >/dev/null || die "no ingest v2 receiver at $HOSTED_INGEST"
+if [ $HOSTED_ON = 1 ]; then
+  curl -sf -H "Authorization: Bearer $HOSTED_KEY" "$HOSTED_INGEST/v2/capabilities" >/dev/null || die "no ingest v2 receiver at $HOSTED_INGEST"
+fi
 # HAR_E2E_RECORD_HOSTED=1: the CLI and otel-hook send to the hosted receiver through
 # a recording proxy; every exchange (and the body of every non-2xx reply) goes to
 # $TMP/hosted-exchanges.jsonl.
 HOSTED_SEND="$HOSTED_INGEST"
-if [ "${HAR_E2E_RECORD_HOSTED:-0}" = "1" ]; then
+if [ $HOSTED_ON = 1 ] && [ "${HAR_E2E_RECORD_HOSTED:-0}" = "1" ]; then
   node "$LIB/recording-proxy.mjs" "$TMP/hosted-proxy.port" "$TMP/hosted-exchanges.jsonl" "$HOSTED_INGEST" >>"$LOG" 2>&1 &
   PIDS+=($!)
   for _ in $(seq 1 50); do [ -s "$TMP/hosted-proxy.port" ] && break; sleep 0.1; done
@@ -209,26 +222,47 @@ step "harness commit" sandbox git commit -qm "harness"
 step "har hooks install" sandbox har hooks install
 
 log "destinations: Mission Control (implicit), hosted receiver, collector, git notes"
-step "destination hq" sandbox har telemetry destination add hq --preset hq --base-url "$HOSTED_SEND"
+if [ $HOSTED_ON = 1 ]; then
+  step "destination hq" sandbox har telemetry destination add hq --preset hq --base-url "$HOSTED_SEND"
+fi
 step "destination collector" sandbox har telemetry destination add collector --preset otlp \
   --endpoint "http://127.0.0.1:$COLLECTOR_PORT" --signals traces,logs,metrics
 step "destination git notes" sandbox har telemetry destination add notes --preset git-notes
 step "otel-hook install" sandbox har telemetry install-hooks
 [ -x "$TMP/home/.har/otel-hooks/run-otel-hook.sh" ] || die "otel-hook wrapper missing after install-hooks"
 grep -q '"sessionContext"' "$TMP/home/.har/otel-hooks/otel_config.json" || die "otel-hook config has no sessionContext (otel-hook too old?)"
+# Claude Code usage and trajectory come from otel-hook only: HAR registers its
+# hook with transcript usage, logs and metrics, and turns no native telemetry on.
+node -e '
+  const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const commands = Object.values(s.hooks ?? {}).flat().flatMap((g) => (g.hooks ?? []).map((h) => h.command)).filter((c) => /run-otel-hook/.test(c ?? ""));
+  if (commands.length === 0 || !commands.every((c) => /--claude-transcript-usage/.test(c) && /--logs/.test(c) && /--metrics/.test(c))) process.exit(1);
+  if (s.env?.CLAUDE_CODE_ENABLE_TELEMETRY) process.exit(2);
+' "$TMP/home/.claude/settings.json" || die "Claude Code hook not registered with --claude-transcript-usage --logs --metrics, or native telemetry on"
 
 TRANSCRIPT="$TMP/transcripts/$CLAUDE_SESSION.jsonl"
 : >"$TRANSCRIPT"
-NATIVE=()
-claude_turn() { # <cwd> <input> <output> <cache-read> <cache-creation> <reported cost>
+CLAUDE_GENERATIONS=()
+# One Claude Code turn: an edit, then an Explore subagent that reads a file. Two
+# generations, each with its own tokens: the turn's (main model) at Stop and the
+# subagent's (its model) at SubagentStop.
+claude_turn() { # <cwd> <input> <output> <cache-read> <cache-creation> <subagent input> <subagent output> <subagent cache-read>
+  local agent="a$(hex 8)" edit="toolu_$(hex 8)" task="toolu_$(hex 8)" read="toolu_$(hex 8)"
+  local agent_transcript="$TMP/transcripts/$CLAUDE_SESSION/subagents/agent-$agent.jsonl"
   event hook claude-code UserPromptSubmit "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT"
-  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1"
-  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1"
+  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "call=$edit"
+  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "call=$edit"
+  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Agent "call=$task" agent_type=Explore
+  event hook claude-code SubagentStart "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "agent=$agent" agent_type=Explore
+  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Read "call=$read" "agent=$agent" agent_type=Explore
+  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Read "call=$read" "agent=$agent" agent_type=Explore
+  event transcript "$agent_transcript" "$CLAUDE_SESSION" "$CLAUDE_SUBAGENT_MODEL" "$6" "$7" "$8" 0 "$agent"
+  event hook claude-code SubagentStop "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "agent=$agent" agent_type=Explore "agent_transcript=$agent_transcript"
+  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Agent "call=$task" agent_type=Explore
   event transcript "$TRANSCRIPT" "$CLAUDE_SESSION" "$CLAUDE_MODEL" "$2" "$3" "$4" "$5"
   event hook claude-code Stop "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT"
-  # What Claude Code itself exports per API request, where HAR pointed it.
-  event claude-native "$CLAUDE_SESSION" "$CLAUDE_MODEL" "$2" "$3" "$4" "$5" "$6" "req_e2e_$(hex 8)"
-  NATIVE+=("{\"input\":$2,\"output\":$3,\"cacheRead\":$4,\"cacheCreation\":$5,\"cost\":$6}")
+  CLAUDE_GENERATIONS+=("{\"model\":\"$CLAUDE_MODEL\",\"input\":$2,\"output\":$3,\"cacheRead\":$4,\"cacheCreation\":$5}")
+  CLAUDE_GENERATIONS+=("{\"model\":\"$CLAUDE_SUBAGENT_MODEL\",\"input\":$6,\"output\":$7,\"cacheRead\":$8,\"cacheCreation\":0,\"subagent\":\"$agent\"}")
 }
 CODEX_TURNS=()
 codex_turn() { # <cwd> <turn> <input> <cached> <output>   (Codex reports session running totals)
@@ -258,7 +292,7 @@ JOINED_AT="$(segment_time codex "$CODEX_SESSION" from)"
 [ -n "$LAUNCHED_AT" ] && [ -n "$JOINED_AT" ] || die "no session segment after launch / work-bind"
 
 GREETINGS=("hello, local stack" "hello again, local stack")
-claude_turn "$SLOT" 120 340 5000 800 0.0123
+claude_turn "$SLOT" 120 340 5000 800 40 90 2000
 echo "${GREETINGS[0]}" >"$SLOT/src/greeting.txt"
 codex_turn "$SLOT" t1 12000 8000 1500
 CODEX_TURNS+=('{"input":12000,"cached":8000,"output":1500}')
@@ -274,7 +308,7 @@ verify_and_commit() { # <message> <as-function>
 verify_and_commit "Change the greeting" as_claude
 
 # --- 4. a changed tree, verified again in the same attempt ----------------------------
-claude_turn "$SLOT" 80 210 9000 300 0.0081
+claude_turn "$SLOT" 80 210 9000 300 30 70 2500
 echo "${GREETINGS[1]}" >"$SLOT/src/greeting.txt"
 codex_turn "$SLOT" t2 20000 15000 2500
 CODEX_TURNS+=('{"input":20000,"cached":15000,"output":2500}')
@@ -296,8 +330,8 @@ sleep 3
 
 # --- state for the checks -------------------------------------------------------------
 MC_HEADERS="$("$MC_ADAPTER" read-headers)"
-HOSTED_HEADERS="$("$HOSTED_ADAPTER" read-headers)"
-CLAUDE_LOGS="$(node -e 'try{process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT??"")}catch{}' "$TMP/home/.claude/settings.json")"
+HOSTED_HEADERS=""
+[ $HOSTED_ON = 1 ] && HOSTED_HEADERS="$("$HOSTED_ADAPTER" read-headers)"
 commits_json() {
   local first=1 sha
   printf '['
@@ -315,33 +349,35 @@ write_state() {
   node -e '
     const [file, ...a] = process.argv.slice(1);
     const headers = (text) => Object.fromEntries(text.split("\n").filter(Boolean).map((l) => [l.slice(0, l.indexOf(":")).trim(), l.slice(l.indexOf(":") + 1).trim()]));
-    const [repoUrl, workId, claude, codex, attemptId, launch, join, complete, collectorDir, commits, greetings, native, codexTurns,
-      codexModel, mcAdapter, mcRead, mcHeaders, mcIngest, hostedAdapter, hostedRead, hostedHeaders, hostedIngest, claudeLogs] = a;
-    const rx = (name, adapter, readBase, h, ingest) => ({ name, adapter, readBase, headers: headers(h), claudeNative: claudeLogs.startsWith(ingest + "/") });
+    const [repoUrl, workId, claude, codex, attemptId, launch, join, complete, collectorDir, commits, greetings, claudeGenerations, codexTurns,
+      codexModel, mcAdapter, mcRead, mcHeaders, hostedAdapter, hostedRead, hostedHeaders] = a;
+    const rx = (name, adapter, readBase, h) => ({ name, adapter, readBase, headers: headers(h) });
     require("fs").writeFileSync(file, JSON.stringify({
       repoUrl, workId, sessions: { claude_code: claude, codex }, attemptId,
       times: { launch, codexJoin: join, complete }, collectorDir,
-      commits: JSON.parse(commits), greetings: JSON.parse(greetings), native: JSON.parse(native), codexTurns: JSON.parse(codexTurns), codexModel,
-      receivers: [rx("mission-control", mcAdapter, mcRead, mcHeaders, mcIngest), rx("hosted", hostedAdapter, hostedRead, hostedHeaders, hostedIngest)],
+      commits: JSON.parse(commits), greetings: JSON.parse(greetings), claudeGenerations: JSON.parse(claudeGenerations),
+      codexTurns: JSON.parse(codexTurns), codexModel,
+      receivers: [rx("mission-control", mcAdapter, mcRead, mcHeaders), ...(hostedAdapter ? [rx("hosted", hostedAdapter, hostedRead, hostedHeaders)] : [])],
     }, null, 2));
   ' "$TMP/state.json" "$REPO_URL" "$WORK_ID" "$CLAUDE_SESSION" "$CODEX_SESSION" "$ATTEMPT" "$LAUNCHED_AT" "$JOINED_AT" "$COMPLETED_AT" \
     "$TMP/collector" "$(commits_json "${COMMITS[@]}")" "$(printf '%s\n' "${GREETINGS[@]}" | node -e 'console.log(JSON.stringify(require("fs").readFileSync(0,"utf8").trim().split("\n")))')" \
-    "[$(IFS=,; echo "${NATIVE[*]}")]" "[$(IFS=,; echo "${CODEX_TURNS[*]}")]" "$CODEX_MODEL" \
-    "$MC_ADAPTER" "$MC_READ" "$MC_HEADERS" "$MC_INGEST" "$HOSTED_ADAPTER" "$HOSTED_READ" "$HOSTED_HEADERS" "$HOSTED_INGEST" "$CLAUDE_LOGS"
+    "[$(IFS=,; echo "${CLAUDE_GENERATIONS[*]}")]" "[$(IFS=,; echo "${CODEX_TURNS[*]}")]" "$CODEX_MODEL" \
+    "$MC_ADAPTER" "$MC_READ" "$MC_HEADERS" "$HOSTED_ADAPTER" "$HOSTED_READ" "$HOSTED_HEADERS"
 }
 write_state || die "cannot write the check state"
 
-# --- checks 1 to 7, 10, 11 --------------------------------------------------------------
+# --- checks 1 to 7, 10, 11, 13 ----------------------------------------------------------
 log "checks"
 check trailers
-for rx in mission-control hosted; do check view "$rx"; done
-for rx in mission-control hosted; do check evidence "$rx"; done
-for rx in mission-control hosted; do check proof "$rx"; done
-for target in mission-control hosted collector; do check stamping "$target"; done
-for target in mission-control hosted collector; do check vtrace "$target"; done
-for rx in mission-control hosted; do check usage "$rx"; done
-check usage-agree
+for rx in "${RECEIVERS[@]}"; do check view "$rx"; done
+for rx in "${RECEIVERS[@]}"; do check evidence "$rx"; done
+for rx in "${RECEIVERS[@]}"; do check proof "$rx"; done
+for target in "${RECEIVERS[@]}" collector; do check stamping "$target"; done
+for target in "${RECEIVERS[@]}" collector; do check vtrace "$target"; done
+for target in "${RECEIVERS[@]}" collector; do check usage "$target"; done
+[ $HOSTED_ON = 1 ] && check usage-agree
 check collector
+for rx in "${RECEIVERS[@]}"; do check trajectory "$rx"; done
 
 levels=()
 notes_ok=1
@@ -367,7 +403,10 @@ verify_and_commit "Change the greeting with Mission Control down" as_claude
 COMMITS_B+=("${COMMITS[@]}")
 flush
 problems=()
-hosted_detail="$("${CHECKS[@]}" probe-received "$TMP/state.json" hosted "$WORK_ID_B" "${COMMITS_B[@]}" 2>>"$LOG")" || problems+=("$hosted_detail")
+hosted_detail="no hosted receiver"
+if [ $HOSTED_ON = 1 ]; then
+  hosted_detail="$("${CHECKS[@]}" probe-received "$TMP/state.json" hosted "$WORK_ID_B" "${COMMITS_B[@]}" 2>>"$LOG")" || problems+=("$hosted_detail")
+fi
 mc_queued="$(queue_pending mission-control)"
 [ "$mc_queued" -gt 0 ] || problems+=("nothing queued for Mission Control while it was down")
 "$MC_ADAPTER" start >>"$LOG" 2>&1 || problems+=("Mission Control did not come back")
@@ -382,6 +421,7 @@ else
 fi
 
 # --- 9. hosted receiver down -------------------------------------------------------------
+if [ $HOSTED_ON = 1 ]; then
 log "9: hosted receiver down — codex joins, works, verify and commit"
 HOSTED_STOPPED=1
 "$HOSTED_ADAPTER" stop >>"$LOG" 2>&1 || die "hosted receiver did not stop"
@@ -411,10 +451,19 @@ if [ ${#problems[@]} -eq 0 ]; then
 else
   report FAIL "9 hosted-down" "$(IFS=';'; echo "${problems[*]}")"
 fi
+else
+  echo "SKIP 9 hosted-down: no hosted receiver (HAR_E2E_HOSTED_ADAPTER unset)"
+fi
 step "complete B" sandbox har env complete 1
 flush
 
 # --- 12. HAR 1.x against the hosted receiver's v1 sync ---------------------------------------
+if [ $HOSTED_ON = 0 ]; then
+  echo "SKIP 12 v1-compat: no hosted receiver (HAR_E2E_HOSTED_ADAPTER unset)"
+  log "done: $FAILS failing check(s)"
+  [ "$FAILS" -eq 0 ]
+  exit
+fi
 log "12: HAR 1.x sync to the hosted receiver's v1 endpoint"
 if [ -z "$HAR1_CLI" ]; then
   step "install HAR 1.x" npm install --prefix "$TMP/v1/prefix" --no-audit --no-fund --ignore-scripts @osfactory/har@latest

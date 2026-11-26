@@ -17,8 +17,8 @@ import {
   stableTrajectoryKey,
 } from '@/server/trajectory-ledger';
 import {
-  claudeApiRequestObservation,
   codexSseObservation,
+  isClaudeNativeUsageRecord,
   harnessSessionKey,
   isUsageOnlyLogRecord,
   latestBindingRepositoryAt,
@@ -38,7 +38,6 @@ import {
 import {
   recordBindings,
   recordObservations,
-  recordReportedUsage,
   type ObservationInput,
 } from '@/server/session-attribution';
 import {
@@ -962,67 +961,6 @@ async function repositoryForRecord(
   return { repositoryId: resolved.context?.repositoryId ?? null, placed: false, reason: resolved.reason };
 }
 
-function isClaudeCostPoint(point: ParsedMetricPoint): boolean {
-  return point.name === 'claude_code.cost.usage' || point.name.endsWith('cost.usage');
-}
-
-function isClaudeTokenPoint(point: ParsedMetricPoint): boolean {
-  return point.name === 'claude_code.token.usage' || point.name.endsWith('token.usage');
-}
-
-/**
- * Claude Code's native metrics are session totals (`claude_code.cost.usage`,
- * `claude_code.token.usage`), not units of usage: they are kept per session as
- * a cross-check against the sum of its `api_request` observations and never
- * booked on a slot (ADR 0003).
- */
-async function ingestClaudeSessionTotals(
-  resource: AttrMap,
-  points: ParsedMetricPoint[],
-): Promise<OtelIngestResult> {
-  const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
-  const bySession = new Map<string, ParsedMetricPoint[]>();
-  for (const point of points) {
-    const sessionId = String(point.attributes['session.id'] ?? '');
-    const list = bySession.get(sessionId) ?? [];
-    list.push(point);
-    bySession.set(sessionId, list);
-  }
-  for (const [sessionId, sessionPoints] of bySession) {
-    const ref = sessionId ? providerSessionRef('claude_code', { 'session.id': sessionId }) : null;
-    if (!ref) {
-      result.dropped += 1;
-      result.reasons.push('Claude metrics without session.id');
-      continue;
-    }
-    const { repositoryId, reason } = await repositoryForRecord(ref, resource, sessionPoints[0].attributes);
-    if (!repositoryId) {
-      result.dropped += 1;
-      result.reasons.push(reason ?? `no repository known for Claude session ${sessionId}`);
-      continue;
-    }
-    const costPoints = sessionPoints.filter(isClaudeCostPoint);
-    const tokenPoints = sessionPoints.filter(isClaudeTokenPoint);
-    if (costPoints.length === 0 && tokenPoints.length === 0) {
-      result.dropped += 1;
-      result.reasons.push(`no token/cost points for ${sessionId}`);
-      continue;
-    }
-    const temporality = sessionPoints.some((point) => point.temporality === 1) ? 'delta' : 'cumulative';
-    const at = new Date(Math.max(...sessionPoints.map((point) => point.time.getTime())));
-    await recordReportedUsage(repositoryId, {
-      agentTool: 'claude_code',
-      sessionId: ref.sessionId,
-      costUsd: costPoints.length ? costPoints.reduce((sum, point) => sum + point.value, 0) : null,
-      tokensTotal: tokenPoints.reduce((sum, point) => sum + point.value, 0),
-      at,
-      temporality,
-    });
-    result.accepted += 1;
-  }
-  return result;
-}
-
 /** Store observations, grouped per repository of their session. */
 async function storeObservations(
   observations: ObservationInput[],
@@ -1058,22 +996,20 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
 
   for (const group of extractPointsFromResourceMetrics(payload)) {
     // otel-hook metrics (ADR 0005 section 5): the latest value per series, for
-    // providers other than Claude Code, whose usage comes from its native telemetry.
+    // every provider, Claude Code included.
     const hookProvider = otelHookProviderId(group.resource);
     if (hookProvider) {
       merge(await ingestOtelHookMetrics(group.resource, group.points));
       continue;
     }
+    // An agent's native metrics are not booked: usage comes from otel-hook
+    // generation spans only, so nothing is counted twice (Claude Code's
+    // `claude_code.*` metrics, which HAR before 2.0 turned on, included).
     const tool = detectAgentTool(group.resource);
-    if (tool === 'claude_code') {
-      merge(await ingestClaudeSessionTotals(group.resource, group.points));
-      continue;
-    }
-    // Other agents' metrics name no unit of usage and no session to bind it to
-    // (Codex `codex.turn.token_usage` carries no thread id): their usage comes
-    // from otel-hook generation spans and harvest (ADR 0003).
-    result.dropped += 1;
-    result.reasons.push(`metrics from ${tool ?? 'an unknown agent'} carry no attributable usage`);
+    result.dropped += group.points.length;
+    result.reasons.push(
+      `native metrics from ${tool ?? 'an unknown agent'} are not booked: agent usage comes from otel-hook`,
+    );
   }
 
   return result;
@@ -1291,7 +1227,8 @@ export function canonicalizeOtelLogRecord(record: ParsedLogRecord) {
     String(record.attributes['otelhook.generation.id'] ?? '').trim() || undefined;
   const toolCallId =
     String(
-      record.attributes['gen_ai.tool.call.id'] ??
+      record.attributes['gen_ai.tool.call_id'] ??
+        record.attributes['gen_ai.tool.call.id'] ??
         record.attributes['tool.call.id'] ??
         record.attributes.tool_call_id ??
         '',
@@ -1391,10 +1328,17 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
   const reasons: string[] = [];
 
   for (const record of records) {
-    // Per-request usage events (Claude `api_request`, Codex `sse_event`) are
-    // usage observations, attributed when read — not trajectory facts.
+    // Claude Code's native `api_request` events (HAR before 2.0 turned them
+    // on): its usage comes from otel-hook generations only, never from both.
+    if (isClaudeNativeUsageRecord(record)) {
+      dropped += 1;
+      reasons.push('Claude Code native api_request events are not booked: its usage comes from otel-hook');
+      continue;
+    }
+    // Per-request Codex `sse_event` usage events are usage observations,
+    // attributed when read — not trajectory facts.
     if (isUsageOnlyLogRecord(record)) {
-      const observation = claudeApiRequestObservation(record) ?? codexSseObservation(record);
+      const observation = codexSseObservation(record);
       if (!observation) {
         dropped += 1;
         reasons.push(`usage event ${record.eventName} without session id or tokens`);

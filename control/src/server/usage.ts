@@ -223,15 +223,6 @@ export async function upsertSessionUsage(repositoryId: string, input: UsageUpser
   });
 }
 
-export async function syncUsage(repositoryId: string, records: UsageUpsertInput[]) {
-  let synced = 0;
-  for (const record of records) {
-    await upsertSessionUsage(repositoryId, record);
-    synced += 1;
-  }
-  return { synced };
-}
-
 /**
  * Usage rows of a repository (ADR 0003): per-slot usage derived from usage
  * observations and the session binding timeline, plus legacy session totals

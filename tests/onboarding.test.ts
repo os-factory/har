@@ -117,7 +117,7 @@ describe('applyOnboardingTelemetry', () => {
     await applyOnboardingTelemetry('usage', { setupHooks: false });
     expect(readTelemetryPreference().signals).toEqual({
       metrics: true,
-      traces: false,
+      traces: true,
       logs: false,
       prompts: false,
     });

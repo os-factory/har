@@ -94,7 +94,7 @@ import {
   mergeRepeatedObservation,
   recordBindings,
   recordObservations,
-  recordReportedUsage,
+  slotRowFromBucket,
   syncSessionBindings,
   syncUsageObservations,
 } from './session-attribution';
@@ -315,18 +315,6 @@ describe('Codex running totals', () => {
   });
 });
 
-describe('recordReportedUsage', () => {
-  const base = { agentTool: 'claude_code', sessionId: 'S1', tokensTotal: 100, at: new Date(AT) };
-
-  it('max-merges cumulative totals and adds delta ones', async () => {
-    await recordReportedUsage('repo-1', { ...base, costUsd: 1, temporality: 'cumulative' });
-    await recordReportedUsage('repo-1', { ...base, costUsd: 0.5, temporality: 'cumulative' });
-    expect(Number(db.tables.reported[0].costUsd)).toBe(1);
-    await recordReportedUsage('repo-1', { ...base, costUsd: 0.5, temporality: 'delta' });
-    expect(Number(db.tables.reported[0].costUsd)).toBe(1.5);
-  });
-});
-
 describe('buildUsageView', () => {
   const t = (minutes: number) => new Date(Date.parse(AT) + minutes * 60_000);
   const fact = (minutes: number, sessionId = 'S1') => ({
@@ -481,5 +469,31 @@ describe('buildUsageView', () => {
     expect(view.crossChecks).toEqual([
       expect.objectContaining({ sessionId: 'S1', observedCostUsd: 1.5, reportedCostUsd: 1.6, observationCount: 3 }),
     ]);
+  });
+});
+
+describe('slotRowFromBucket', () => {
+  it('gives the same session and slot in two repositories two row ids (the usage page lists both)', () => {
+    const at = new Date('2026-11-26T10:00:00.000Z');
+    const bucket = {
+      agentTool: 'claude_code',
+      sessionId: 'S1',
+      slotId: 1,
+      occupancyKey: null,
+      branch: 'main-har-agent-1',
+      tokensInput: 1,
+      tokensOutput: 1,
+      tokensCacheRead: 0,
+      tokensCacheCreation: 0,
+      tokensTotal: 2,
+      costUsd: null,
+      costSource: null,
+      modelBreakdown: {},
+      sources: [],
+      observationCount: 1,
+      firstSeenAt: at,
+      lastSeenAt: at,
+    };
+    expect(slotRowFromBucket('repo-a', bucket, [], []).id).not.toBe(slotRowFromBucket('repo-b', bucket, [], []).id);
   });
 });

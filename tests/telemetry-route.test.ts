@@ -222,7 +222,7 @@ describe('agent telemetry route: fan-out at the producer', () => {
         signals: ['traces', 'logs', 'metrics'],
       });
 
-    it('Mission Control only: traces and logs to its OTLP routes, no headers, no endpoint of its own', () => {
+    it('Mission Control only: traces, logs and metrics to its OTLP routes, no headers, no endpoint of its own', () => {
       const config = buildOtelHooksConfig({ route: fanout(MC) });
       expect(config.exporter.enabled).toBe(true);
       expect(config.exporter.endpoint).toBeUndefined();
@@ -232,21 +232,25 @@ describe('agent telemetry route: fan-out at the producer', () => {
           name: MISSION_CONTROL_DESTINATION,
           tracesEndpoint: `${MC}/api/otel/v1/traces`,
           logsEndpoint: `${MC}/api/otel/v1/logs`,
-          signals: ['traces', 'logs'],
+          metricsEndpoint: `${MC}/api/otel/v1/metrics`,
+          signals: ['traces', 'logs', 'metrics'],
         },
       ]);
       expect(config.exporter.logs.enabled).toBe(true);
       expect(config.privacy.contentMode).toBe('raw');
     });
 
-    it('sends Mission Control logs per telemetry level: none at outline-free levels', () => {
+    it('sends Mission Control logs per telemetry level: none below Outline, spans and metrics from Usage', () => {
       writeTelemetryLevel('outline');
       const outline = buildOtelHooksConfig({ route: fanout(MC) });
       expect(outline.exporter.logs.includeContent).toBe(false);
       writeTelemetryLevel('usage');
       const usage = buildOtelHooksConfig({ route: fanout(MC) });
-      expect(usage.exporter.enabled).toBe(false);
-      expect(usage.exporter.destinations).toBeUndefined();
+      expect(usage.exporter.enabled).toBe(true);
+      expect(usage.exporter.logs.enabled).toBe(false);
+      expect(usage.exporter.destinations?.map((d) => d.signals)).toEqual([['traces', 'metrics']]);
+      writeTelemetryLevel('off');
+      expect(buildOtelHooksConfig({ route: fanout(MC) }).exporter.destinations).toBeUndefined();
     });
 
     it('Mission Control plus N destinations: Mission Control first, env: references, per-signal endpoints', () => {
@@ -257,7 +261,8 @@ describe('agent telemetry route: fan-out at the producer', () => {
           name: 'mission-control',
           tracesEndpoint: `${MC}/api/otel/v1/traces`,
           logsEndpoint: `${MC}/api/otel/v1/logs`,
-          signals: ['traces', 'logs'],
+          metricsEndpoint: `${MC}/api/otel/v1/metrics`,
+          signals: ['traces', 'logs', 'metrics'],
         },
         {
           name: 'langfuse',

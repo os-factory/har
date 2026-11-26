@@ -259,7 +259,12 @@ function TrajectoryLog({
         const duration = nodeDurationMs(node);
         const selected = selectedId === node.id;
         return (
-          <li key={node.id} className="relative" data-node-id={node.id}>
+          <li
+            key={node.id}
+            className={cn('relative', node.subagentId && 'pl-5')}
+            data-node-id={node.id}
+            data-subagent-id={node.subagentId}
+          >
             <button
               type="button"
               aria-pressed={selected}
@@ -287,6 +292,14 @@ function TrajectoryLog({
                     {trajectoryRoleLabel(node.kind)}
                   </span>
                   <span className="truncate text-sm font-medium">{node.title}</span>
+                  {node.subagentId ? (
+                    <span
+                      className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                      title={`Ran inside subagent ${node.subagentId}`}
+                    >
+                      In subagent
+                    </span>
+                  ) : null}
                   {leadIn.has(node.id) ? (
                     <span
                       className="rounded border border-dashed px-1.5 py-0.5 text-[10px] text-muted-foreground"

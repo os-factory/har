@@ -131,7 +131,7 @@ describe('telemetry preference', () => {
 
   it('derives every signal from the level', () => {
     expect(signalsForLevel('off')).toEqual({ metrics: false, traces: false, logs: false, prompts: false });
-    expect(signalsForLevel('usage')).toEqual({ metrics: true, traces: false, logs: false, prompts: false });
+    expect(signalsForLevel('usage')).toEqual({ metrics: true, traces: true, logs: false, prompts: false });
     expect(signalsForLevel('outline')).toEqual({ metrics: true, traces: true, logs: true, prompts: false });
     expect(signalsForLevel('full')).toEqual({ metrics: true, traces: true, logs: true, prompts: true });
   });
@@ -447,7 +447,8 @@ describe('otel hooks config', () => {
         name: 'mission-control',
         tracesEndpoint: 'http://localhost:3847/api/otel/v1/traces',
         logsEndpoint: 'http://localhost:3847/api/otel/v1/logs',
-        signals: ['traces', 'logs'],
+        metricsEndpoint: 'http://localhost:3847/api/otel/v1/metrics',
+        signals: ['traces', 'logs', 'metrics'],
       },
     ]);
     expect(config.exporter.protocol).toBe('http/protobuf');
@@ -468,10 +469,12 @@ describe('otel hooks config', () => {
     expect(config.exporter.logs.includeContent).toBe(false);
   });
 
-  it('exports nothing from the hook at the usage level', () => {
+  it('exports spans and token metrics, no event records, at the usage level', () => {
     writeTelemetryLevel('usage');
     const config = buildOtelHooksConfig({ apiUrl: 'http://localhost:3847' });
-    expect(config.exporter.enabled).toBe(false);
+    // The hook is the only source of agent usage: its generation spans carry the tokens.
+    expect(config.exporter.enabled).toBe(true);
+    expect(config.exporter.destinations?.[0].signals).toEqual(['traces', 'metrics']);
     expect(config.exporter.logs.enabled).toBe(false);
     expect(config.privacy.contentMode).toBe('omit');
   });

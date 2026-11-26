@@ -27,8 +27,8 @@ leaves the machine until you add a destination.
   change. See [verification spans](/docs/reference/cli/#har-telemetry) in the CLI
   reference.
 
-Session traces come from `@osfactory/otel-hook`, which HAR installs at the `outline`
-and `full` telemetry levels. At `usage` there are no session traces. Verification
+Session traces come from `@osfactory/otel-hook`, which HAR installs at every
+telemetry level except `off`: it is the only source of agent usage. Verification
 traces are sent at every level except `off`.
 
 Claude Code (2.1.128 and later) removes every `OTEL_*` variable from the hooks it
@@ -166,12 +166,11 @@ A verification span's `factory.local.checkout_path` is always removed from
 Langfuse's copy unless Langfuse has `--include-local-paths`.
 
 Your account identity (`user.email`, `user.account_uuid`, `user.id`,
-`organization.id`, …) is carried by Claude Code's native telemetry, which goes to
-Mission Control only.
+`organization.id`, …) is carried by Claude Code's native telemetry, which HAR does
+not turn on.
 
-The telemetry level changes what Langfuse receives only at the edges: `outline` and
-`full` send the same spans, `usage` sends verification spans only, and `off` sends
-none. To send less:
+The telemetry level changes what Langfuse receives only at the edges: `usage`,
+`outline` and `full` send the same spans, and `off` sends none. To send less:
 
 - `har telemetry destination add langfuse --preset langfuse --disabled --overwrite`
   keeps the destination but stops sending to it;

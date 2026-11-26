@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * OTLP ingest as a producer of the evidence timeline (ADR 0003): spans become
- * `workspace` / `observed` bindings and generation observations; Claude Code
- * `api_request` log events become request observations; trajectory records are
- * placed by evidence, else in the main checkout (agentId 0).
+ * `workspace` / `observed` bindings and generation observations (Claude Code
+ * included); Claude Code native `api_request` log events are dropped; trajectory
+ * records are placed by evidence, else in the main checkout (agentId 0).
  */
 
 const SLOT_2 = '/home/user/worktrees/project-abcd-har-agent-2-xyz';
@@ -79,7 +79,6 @@ vi.mock('@/server/session-attribution', () => ({
     state.observations.push({ repositoryId, observations });
     return { synced: observations.length, created: observations.length };
   },
-  recordReportedUsage: async () => ({}),
 }));
 
 vi.mock('@/server/trajectory-ledger', async (importOriginal) => ({
@@ -237,8 +236,6 @@ describe('evidence time for a span exported when it ends', () => {
   });
 });
 
-const ns = (iso: string) => `${BigInt(Date.parse(iso)) * 1_000_000n}`;
-
 function apiRequests(requests: Array<{ requestId: string; timeUnixNano: string }>) {
   return {
     resourceLogs: [
@@ -265,48 +262,47 @@ function apiRequests(requests: Array<{ requestId: string; timeUnixNano: string }
   };
 }
 
-describe('ingestOtelLogsJson — Claude Code api_request', () => {
-  it('stores one request observation in the session\'s repository and no trajectory fact', async () => {
+describe('Claude Code usage from otel-hook only (ADR 0005 section 5)', () => {
+  it('drops native api_request events: no observation, no trajectory fact', async () => {
     state.placedBindings.push({ sessionId: SID, repositoryId: 'repo-1', at: new Date('2025-11-12T09:00:00Z') });
     const result = await ingestOtelLogsJson(apiRequests([{ requestId: 'req_1', timeUnixNano: '1762941600000000000' }]));
 
-    expect(result).toMatchObject({ accepted: 1, dropped: 0 });
-    expect(state.observations).toEqual([
-      {
-        repositoryId: 'repo-1',
-        observations: [expect.objectContaining({ sessionId: SID, observationKey: 'req_1', producer: 'claude.api_request' })],
-      },
-    ]);
+    expect(result).toMatchObject({ accepted: 0, dropped: 1 });
+    expect(result.reasons[0]).toMatch(/otel-hook/);
+    expect(state.observations).toHaveLength(0);
     expect(state.trajectory).toHaveLength(0);
   });
 
-  it('stores each request in the repository of the session\'s place at its time (FE-2058)', async () => {
-    // A's main checkout → a slot of B (10:30) → A's main checkout again (10:50).
-    state.placedBindings.push(
-      { sessionId: SID, repositoryId: 'repo-b', at: new Date('2025-11-12T10:30:00Z') },
-      { sessionId: SID, repositoryId: 'repo-1', at: new Date('2025-11-12T10:50:00Z') },
-    );
-    await ingestOtelLogsJson(
-      apiRequests([
-        { requestId: 'req_b', timeUnixNano: ns('2025-11-12T10:40:00Z') },
-        { requestId: 'req_a2', timeUnixNano: ns('2025-11-12T11:00:00Z') },
-      ]),
-    );
-
-    expect(state.observations.map((row) => [row.repositoryId, row.observations[0].observationKey])).toEqual([
-      ['repo-b', 'req_b'],
-      ['repo-1', 'req_a2'],
+  it('books the turn and subagent generations of a Claude Code session, each once', async () => {
+    const usage = (generationId: string, extra: Record<string, string | number> = {}) => ({
+      'gen_ai.client.workspace': SLOT_2,
+      'otelhook.session.id': SID,
+      'otelhook.generation.id': generationId,
+      'otelhook.usage.temporality': 'delta',
+      'gen_ai.response.model': 'claude-opus-4-1',
+      'gen_ai.usage.input_tokens': 1300,
+      'gen_ai.usage.cache_read.input_tokens': 1000,
+      'gen_ai.usage.cache_creation.input_tokens': 200,
+      'gen_ai.usage.output_tokens': 50,
+      ...extra,
+    });
+    const batch = traces({ 'otelhook.provider.id': 'claude-code' }, [
+      { name: 'generation claude-opus-4-1', spanId: '1'.repeat(16), attributes: usage('gen-turn') },
+      {
+        name: 'generation claude-haiku-4-5',
+        spanId: '2'.repeat(16),
+        attributes: usage('gen-sub', { 'otelhook.subagent.id': 'agent-1', 'gen_ai.response.model': 'claude-haiku-4-5' }),
+      },
     ]);
-  });
+    const result = await ingestOtelTracesJson(batch);
 
-  it('places a request by the session\'s latest hook span, one keyed by a stale Resource session.id too (FE-2058)', async () => {
-    // A's main checkout at 10:00, then a hook span in B at 10:30 keyed by a stale Resource session.id.
-    state.spans.push(
-      { repositoryId: 'repo-1', sessionKey: SID, attributes: { 'otelhook.session.id': SID }, startTime: new Date('2025-11-12T10:00:00Z') },
-      { repositoryId: 'repo-b', sessionKey: 'old-launch', attributes: { 'otelhook.session.id': SID }, startTime: new Date('2025-11-12T10:30:00Z') },
-    );
-    await ingestOtelLogsJson(apiRequests([{ requestId: 'req_b', timeUnixNano: ns('2025-11-12T10:40:00Z') }]));
-
-    expect(state.observations.map((row) => row.repositoryId)).toEqual(['repo-b']);
+    expect(result).toMatchObject({ accepted: 2, dropped: 0 });
+    const booked = state.observations.flatMap((row) => row.observations);
+    expect(booked).toEqual([
+      expect.objectContaining({ agentTool: 'claude_code', sessionId: SID, observationKey: 'gen-turn', tokensInput: 100, tokensCacheRead: 1000, tokensCacheCreation: 200, tokensOutput: 50 }),
+      expect.objectContaining({ agentTool: 'claude_code', sessionId: SID, subagentId: 'agent-1', observationKey: 'gen-sub', model: 'claude-haiku-4-5' }),
+    ]);
+    // Keyed by otelhook.generation.id: a repeated delivery is the same two facts.
+    expect(new Set(booked.map((observation) => observation.observationKey)).size).toBe(2);
   });
 });

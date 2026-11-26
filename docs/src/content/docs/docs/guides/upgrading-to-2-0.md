@@ -127,6 +127,32 @@ har telemetry destination add hq
 as before; they decide which org and which repositories HQ receives.
 `HAR_SYNC_ALLOW_USAGE_VIOLATIONS` is gone with the HQ leg.
 
+### `har control sync` sends only registration and slots
+
+`har control sync` no longer posts runs, work units, validations, validation and
+commit bindings, session bindings, usage, usage observations or session events
+to Mission Control's `/api/repos/<id>/…` routes, and Mission Control 2.0 no
+longer has those routes. They reach Mission Control as ingest v2 records and
+OTLP, like any receiver. Sync keeps registering repositories and sending the
+live slot view. `--full` (resend every run) is gone, and so is the harvest of
+local Claude Code and Codex transcripts and rollouts: usage comes from otel-hook
+only.
+
+### Claude Code usage and trajectory come from otel-hook only
+
+HAR no longer turns on Claude Code's native OpenTelemetry export. On upgrade it
+removes the keys earlier versions wrote to the `env` block of
+`~/.claude/settings.json` (`CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_*`; a key you
+changed since is left alone), and registers the Claude Code hook with
+`--claude-transcript-usage --logs --metrics`. Every receiver, HAR HQ included,
+gets the same Claude Code traces, logs and metrics from otel-hook: one
+generation per turn and one per subagent run, priced by the receiver, and the
+trajectory from its event records. Run `har telemetry install-hooks` (or launch
+a slot) to apply it, then start a new Claude Code session.
+
+At the `usage` level the hook now runs too: it is the only source of agent usage.
+It sends its spans and token metrics, and no event records or text.
+
 ## Privacy defaults
 
 What a default user sends to a third party, in one sentence: nothing until a
@@ -136,9 +162,8 @@ account identity, prompt, reply and tool text, or local paths.
 | Data | Sent by default? | Opt in with |
 |---|---|---|
 | Absolute local paths (every `factory.local.*` key, `process.cwd`, `code.filepath`, …) | No, for every destination, Mission Control included | `--include-local-paths` (agent spans keep them only when every destination opts in) |
-| Account identity (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) | No: Claude Code's native telemetry, which carries it, goes to Mission Control only | `--include-account-identity` |
+| Account identity (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) | No: Claude Code's native telemetry, which carries it, is not turned on | `--include-account-identity` |
 | Logs (at the `full` level they carry prompts, replies and tool input/output) | No, no preset subscribes to logs | `--signals traces,metrics,logs` |
-| Claude Code native metrics | No, Mission Control only | none |
 | otel-hook metrics (token counts per model, tool calls) | Only to destinations that subscribe to `metrics` | `--signals …,metrics` |
 
 **Local paths are stripped everywhere.** Prereleases kept `factory.local.*` in agent

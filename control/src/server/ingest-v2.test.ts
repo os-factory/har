@@ -357,10 +357,10 @@ describe('OTLP metrics from otel-hook', () => {
     expect((await prisma.metricSeries.findFirstOrThrow({ where: { providerId: 'codex' } })).value).toBe(400);
   });
 
-  it('drops otel-hook metrics for Claude Code, whose usage comes from its native telemetry', async () => {
+  it('keeps otel-hook metrics for Claude Code too: otel-hook is its only telemetry source', async () => {
     const result = await ingestOtelMetricsJson(payload('claude-code', [{ value: 999, at: '2026-11-25T10:00:00.000Z' }]));
-    expect(result.accepted).toBe(0);
-    expect(result.dropped).toBe(1);
-    expect(await prisma.metricSeries.count({ where: { providerId: 'claude-code' } })).toBe(0);
+    expect(result.accepted).toBe(1);
+    expect(result.dropped).toBe(0);
+    expect(await prisma.metricSeries.count({ where: { providerId: 'claude-code' } })).toBe(1);
   });
 });

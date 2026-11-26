@@ -16,12 +16,15 @@ export type TelemetryLevel = (typeof TELEMETRY_LEVELS)[number];
 export const DEFAULT_TELEMETRY_LEVEL: TelemetryLevel = 'full';
 
 /**
- * Exporter switches, all derived from the level:
- * - `metrics`: the agent's own usage telemetry — Claude Code's native token /
- *   cost metrics and per-request `api_request` events (ADR 0003).
- * - `traces`: @osfactory/otel-hook spans — one per prompt, generation and tool call.
- * - `logs`: @osfactory/otel-hook event records (tool start/end, prompt
- *   submitted, generation end). They are the only channel that carries text.
+ * Exporter switches, all derived from the level. Every agent signal comes from
+ * @osfactory/otel-hook (ADR 0005 section 5): HAR turns no agent's native
+ * telemetry on.
+ * - `metrics`: otel-hook token metrics (`gen_ai.client.token.usage`).
+ * - `traces`: otel-hook spans — one per prompt, generation and tool call. The
+ *   generation spans carry each turn's tokens, which is where receivers book
+ *   usage from, so the hook runs from Usage up.
+ * - `logs`: otel-hook event records (session, prompt, tool, subagent,
+ *   generation): the agent trajectory. They are the only channel that carries text.
  * - `prompts`: the text itself — prompts, agent replies, tool inputs and outputs.
  */
 export interface TelemetrySignals {
@@ -41,7 +44,7 @@ export interface TelemetryPreference {
 
 const LEVEL_SIGNALS: Record<TelemetryLevel, TelemetrySignals> = {
   off: { metrics: false, traces: false, logs: false, prompts: false },
-  usage: { metrics: true, traces: false, logs: false, prompts: false },
+  usage: { metrics: true, traces: true, logs: false, prompts: false },
   outline: { metrics: true, traces: true, logs: true, prompts: false },
   full: { metrics: true, traces: true, logs: true, prompts: true },
 };
@@ -67,14 +70,14 @@ export const TELEMETRY_LEVEL_DESCRIPTIONS: readonly TelemetryLevelDescription[] 
     label: 'Outline',
     summary: 'every step and its timing, no text',
     detail:
-      'Usage plus one row per prompt, generation and tool call with its timing and outcome — no prompt or tool text.',
+      'Usage plus the trajectory: one row per prompt, generation, tool call and subagent with its timing and outcome — no prompt or tool text.',
   },
   {
     level: 'usage',
     label: 'Usage only',
     summary: 'tokens and cost',
     detail:
-      "Tokens and cost per request from Claude Code's own telemetry, and from Claude / Codex session files at sync. Cursor reports usage only through the hook, so it needs Outline.",
+      'Tokens per turn and per subagent from the agent hook, priced by the receiver. No trajectory and no text.',
   },
   {
     level: 'off',

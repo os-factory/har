@@ -2,10 +2,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import {
-  disableClaudeNativeTelemetry,
-  enableClaudeNativeTelemetry,
-} from './claude-native-telemetry';
+import { removeClaudeNativeTelemetry } from './claude-native-telemetry';
 import { getControlApiUrl } from './control-config';
 import {
   getTelemetryLevel,
@@ -640,12 +637,32 @@ export function buildOtelHookSetupArgs(
   ];
 }
 
+/**
+ * Flags on the Claude Code hook command. Claude Code strips every `OTEL_*`
+ * variable from the hooks it runs, so these go on the command line, next to
+ * the config file (ADR 0005 section 6):
+ *
+ * - `--claude-transcript-usage`: token usage of each turn and each subagent,
+ *   read from the transcript. Claude Code usage comes from otel-hook only, so
+ *   without it no Claude Code tokens are recorded at all.
+ * - `--logs`: the event records the trajectory is built from. Which
+ *   destinations receive them still follows each one's `signals` in the config.
+ * - `--metrics`: token metrics, likewise only to destinations listing `metrics`.
+ */
+export const CLAUDE_CODE_HOOK_FLAGS = ['--claude-transcript-usage', '--logs', '--metrics'] as const;
+
+/** The hook command `otel-hook setup` writes into a provider's hook settings. */
+export function buildProviderHookCommand(providerId: OtelHooksProviderId, wrapperPath: string): string {
+  const flags = providerId === 'claude-code' ? ` ${CLAUDE_CODE_HOOK_FLAGS.join(' ')}` : '';
+  return `${wrapperPath} --provider ${providerId}${flags}`;
+}
+
 function runSetupProvider(
   providerId: OtelHooksProviderId,
   otelHookCommand: string,
   wrapperPath: string,
 ): { ok: boolean; detail: string } {
-  const hookCommand = `${wrapperPath} --provider ${providerId}`;
+  const hookCommand = buildProviderHookCommand(providerId, wrapperPath);
   const result = spawnSync(otelHookCommand, buildOtelHookSetupArgs(providerId, hookCommand), {
     encoding: 'utf8',
     timeout: 60_000,
@@ -888,8 +905,7 @@ export function ensureOtelHooks(options?: {
 
   const signals = getTelemetrySignals();
   if (options?.setupAgents !== false && isTelemetryEnabled()) {
-    // Hooks only export from Outline up; at Usage the agents' own telemetry
-    // and session files carry everything, so no hook needs to run.
+    // Hooks export from Usage up: they are the only source of agent usage.
     if (signals.traces) {
       for (const provider of OTEL_HOOKS_PROVIDERS) {
         const setup = runSetupProvider(provider.id, resolvedCommand, wrapperPath);
@@ -900,24 +916,9 @@ export function ensureOtelHooks(options?: {
     rewriteKnownHookRegistrations(wrapperPath);
   }
   if (options?.setupAgents !== false) {
-    // Claude reports tokens/cost to no hook — its native metrics and
-    // per-request `api_request` log events carry them (ADR 0003).
-    try {
-      // Claude's native metrics and logs carry account identity: Mission
-      // Control only, and off without it.
-      if (signals.metrics && routeHasMissionControl(decision.route)) {
-        const claude = enableClaudeNativeTelemetry({ hooksHome });
-        if (claude.skipped.length > 0) {
-          errors.push(
-            `Claude native telemetry: left your own ${claude.skipped.join(', ')} in ${claude.settingsPath} — Claude cost needs them pointed at Mission Control`,
-          );
-        }
-      } else {
-        disableClaudeNativeTelemetry({ hooksHome });
-      }
-    } catch (err) {
-      errors.push(`Claude native telemetry not configured: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    // Claude Code usage comes from otel-hook only: drop the native telemetry
+    // keys an earlier HAR wrote into the Claude settings.
+    removeOldClaudeNativeTelemetry(hooksHome);
   }
 
   const agentsSetup = providersSetup.map(providerLabel);
@@ -940,8 +941,13 @@ export function ensureOtelHooks(options?: {
   };
 }
 
-function routeHasMissionControl(route: AgentTelemetryRoute): boolean {
-  return route.mode === 'fanout' && route.missionControl !== undefined;
+/** Best-effort: a malformed Claude settings file must never block telemetry. */
+function removeOldClaudeNativeTelemetry(hooksHome: string): void {
+  try {
+    removeClaudeNativeTelemetry({ hooksHome });
+  } catch {
+    // best-effort
+  }
 }
 
 /**
@@ -988,16 +994,7 @@ export function refreshAgentTelemetryRoute(): AgentTelemetryRouteDecision | unde
     const { decision } = applyAgentTelemetryRoute(hooksHome);
     // Wrappers written before 2.0 do not source direct.env.
     writeOtelHooksWrapper(command, hooksHome);
-    // Claude's native telemetry follows Mission Control in or out of the list.
-    try {
-      if (routeHasMissionControl(decision.route) && getTelemetrySignals().metrics) {
-        enableClaudeNativeTelemetry({ hooksHome });
-      } else {
-        disableClaudeNativeTelemetry({ hooksHome });
-      }
-    } catch {
-      // best-effort: a malformed settings file must not block the refresh
-    }
+    removeOldClaudeNativeTelemetry(hooksHome);
     return decision;
   } catch {
     return undefined;
@@ -1011,11 +1008,7 @@ export function disableOtelHooksExport(): string {
   } catch {
     // best-effort
   }
-  try {
-    disableClaudeNativeTelemetry({ hooksHome: getOtelHooksHome() });
-  } catch {
-    // best-effort: a malformed settings file must not block telemetry off
-  }
+  removeOldClaudeNativeTelemetry(getOtelHooksHome());
   return writeOtelHooksConfig(buildOtelHooksConfig({ enabled: false }));
 }
 

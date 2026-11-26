@@ -1,8 +1,9 @@
 # Local stack end to end
 
 `run.sh` is the definition of done of HAR 2.0's decoupling (ADR 0004, ADR 0005):
-the CLI built from this tree, otel-hook, Mission Control, a hosted receiver and
-an OpenTelemetry Collector, run together on one machine, from a clean state.
+the CLI built from this tree, otel-hook, Mission Control, a hosted receiver
+(optional) and an OpenTelemetry Collector, run together on one machine, from a
+clean state.
 
 It is not part of `har env verify`: it needs running receivers and Docker.
 
@@ -21,14 +22,20 @@ sandbox, `docker` only answers read-only commands.
 2. Sets up the fixture (`tests/fixtures/fixture-e2e`: a harness whose verify has
    one stage writing more than 1 MiB of output and one writing an artifact),
    `har hooks install`, and the destination list: Mission Control (implicit),
-   the hosted receiver (`hq` preset), the Collector (`otlp`, traces, logs and
-   metrics) and `git-notes`. `har telemetry install-hooks` installs the
-   otel-hook build given in `HAR_E2E_OTEL_HOOK_PACKAGE`.
-3. Agent events are hook payloads replayed through the installed otel-hook
-   wrapper, as Claude Code and Codex would call it, with real-looking session
-   ids unique to the run, plus Claude Code's own `claude_code.api_request` log
-   records sent where HAR pointed Claude Code's native telemetry
-   (`~/.claude/settings.json`). No model is called.
+   the hosted receiver (`hq` preset, when it is configured), the Collector
+   (`otlp`, traces, logs and metrics) and `git-notes`. `har telemetry
+   install-hooks` installs the otel-hook build given in
+   `HAR_E2E_OTEL_HOOK_PACKAGE`; the run stops unless the Claude Code hook is
+   registered with `--claude-transcript-usage --logs --metrics` and no Claude
+   Code native telemetry is turned on.
+3. Agent events are hook payloads replayed through the installed otel-hook, as
+   Claude Code and Codex would call it (a Claude Code event runs the exact
+   command HAR registered in `~/.claude/settings.json`), with real-looking
+   session ids unique to the run. Claude Code usage comes from otel-hook only:
+   it reads each turn's tokens from the transcript at `Stop`, and each
+   subagent's from the subagent transcript at `SubagentStop`. Every Claude Code
+   turn here runs an edit and an `Explore` subagent with a nested `Read`, so it
+   has two generations on two models. No model is called.
 4. The flow:
    - events from the main checkout before launch;
    - `har env launch 1 --work-id e2e-1` from the Claude Code session; the Codex
@@ -40,11 +47,15 @@ sandbox, `docker` only answers read-only commands.
 5. Checks every receiver through its read API, then runs the outage scenarios
    (work unit `e2e-2`) and the HAR 1.x compatibility check.
 
+Without `HAR_E2E_HOSTED_ADAPTER` the hosted receiver is left out: its lines
+read `SKIP` (checks 9, 12) or are not printed, and the rest runs against
+Mission Control and the Collector.
+
 ## Checks
 
-One line per check on stdout, `PASS <check>: <detail>` or
-`FAIL <check>: <detail>`; progress goes to stderr, command output to the run
-log. The exit status is non-zero when any check fails. `@<receiver>` names the
+One line per check on stdout, `PASS <check>: <detail>`,
+`FAIL <check>: <detail>` or `SKIP <check>: <why>`; progress goes to stderr,
+command output to the run log. The exit status is non-zero when any check fails. `@<receiver>` names the
 receiver a line is about.
 
 | # | Check |
@@ -55,12 +66,13 @@ receiver a line is about.
 | 4 | Proof stored under D (its payload hashes to D), its tree = the commit tree, commit → run → proof bound |
 | 5 | Agent spans: none stamped before launch, all stamped with `factory.attempt.id` inside the attempt, none after complete (receivers and Collector) |
 | 6 | Verification trace T: one run span with `factory.run.id = R`, one span per stage (receivers and Collector) |
-| 7 | Attempt usage per model, priced by the receiver with the genai-prices version recorded; both receivers agree on the Codex rows; Claude Code booked once, from its native telemetry |
+| 7 | Attempt usage per model, priced by the receiver with the genai-prices version recorded. Claude Code from otel-hook generations only: one per turn and one per subagent run, each booked once, fresh input = input − cache read − cache write, on the turn's and the subagent's model; the Collector holds each generation span once. Both receivers agree on every row |
 | 8 | Mission Control down: verify and commit work, the hosted receiver gets everything, Mission Control's queue drains after restart |
 | 9 | Hosted receiver down: verify and commit work, it catches up from the queues after restart, no duplicates |
 | 10 | The Collector's files hold stamped spans, logs and metrics, and no `factory.local.*` key |
 | 11 | With a `git-notes` destination, `git factory verify <commit> --min-level L1` passes |
 | 12 | HAR 1.x (`@osfactory/har@latest`) syncs to the hosted receiver's v1 endpoint; replies carry `Deprecation`, `Sunset` and `Link` |
+| 13 | Trajectory built from otel-hook's log records: the Claude Code session starts with `session.start`, every event id is stored once, no two events share a sequence, tool calls pair by call id, each subagent has a start and an end with its tool calls nested under `otelhook.subagent.id`; the Codex session has its prompts. `SKIP` for a receiver whose adapter has no `trajectory` reads |
 
 ## Running it
 
@@ -80,11 +92,12 @@ tests/e2e/local-stack/run.sh
 | `HAR_E2E_MC_DB` | Its SQLite file, for span reads (Mission Control has no span read API) |
 | `HAR_E2E_MC_STOP`, `HAR_E2E_MC_START` | Shell commands that stop and start it (check 8) |
 | `HAR_E2E_MC_ADAPTER` | Another Mission Control adapter (default `adapters/mission-control.sh`) |
-| `HAR_E2E_HOSTED_ADAPTER` | The hosted receiver's adapter (required, see below) |
+| `HAR_E2E_HOSTED_ADAPTER` | The hosted receiver's adapter (see below); unset, the hosted receiver is left out |
 | `HAR_E2E_OTEL_HOOK_PACKAGE` | otel-hook to install (npm spec or tarball) with the session context step |
 | `HAR_E2E_GIT_FACTORY` | `git-factory` executable (default: on `PATH`) |
 | `HAR_E2E_HAR1_CLI` | A HAR 1.x `dist/index.js` (default: `npm install @osfactory/har@latest` into the temp dir) |
 | `HAR_E2E_COLLECTOR_IMAGE` | Collector image (default `otel/opentelemetry-collector-contrib:0.139.0`) |
+| `HAR_E2E_CLAUDE_MODEL`, `HAR_E2E_CLAUDE_SUBAGENT_MODEL`, `HAR_E2E_CODEX_MODEL` | Models in the transcripts and turns (defaults `claude-sonnet-4-5`, `claude-haiku-4-5`, `gpt-5`) |
 | `HAR_E2E_CLI` | CLI under test (default this tree's `dist/index.js`) |
 | `HAR_E2E_TMPDIR` | Where the run's temp dir goes |
 | `HAR_E2E_KEEP=1` | Keep the temp dir (run log, sandbox, Collector files) |
@@ -105,8 +118,9 @@ with it, outside this repository.
 | `ingest-key` | The ingest key (sent as `Authorization: Bearer`), empty for none |
 | `read-headers` | `Name: value` lines for read requests |
 | `spans trace <trace-id>` / `spans session <session-id>` | A JSON array of `{traceId, spanId, parentSpanId, name, startTime, attributes, resource}` |
+| `trajectory session <session-id>` | Optional: a JSON array of `{eventId, eventType, sequence, attributes}`, one per stored trajectory record of the agent session. Exit 2 or 3 when the receiver has no trajectory reads (check 13 is then `SKIP`) |
 | `stop`, `start` | Stop the receiver; start it and wait until it answers |
 | `v1-headers` | Hosted only: `Name: value` lines a gateway in front of its v1 routes would add; `{client-bearer}` is the 1.x client's token |
 
-The Mission Control adapter reads spans from its SQLite file: verification spans
-are its factory runs and stage results.
+The Mission Control adapter reads spans and the trajectory from its SQLite
+file: verification spans are its factory runs and stage results.

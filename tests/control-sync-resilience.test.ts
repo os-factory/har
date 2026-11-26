@@ -1,6 +1,6 @@
 // Sync must stay bounded and scoped: requests time out and stop at the sync's
 // deadline, transient errors are retried, unattended syncs only touch the
-// saved selection, and unchanged observations are not re-posted.
+// saved selection.
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
   listLinkedWorktrees: () => [],
@@ -38,18 +38,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { syncAllKnownReposWithControl } from '../src/core/control-sync';
 import { writeSyncSelection } from '../src/core/control-sync-selection';
-import { readRunsWatermarkEntry, writeRunsWatermark } from '../src/core/sync-watermark';
-import {
-  recordSentObservations,
-  unsentObservations,
-} from '../src/core/observation-ledger';
 import { runWithDeadline, SyncDeadlineError, syncFetch } from '../src/core/sync-request';
-import {
-  persistTranscriptIndex,
-  readTranscriptRecords,
-  resetTranscriptCache,
-  transcriptWorkspaces,
-} from '../src/core/usage-harvest/transcript-cache';
 
 const realFetch = global.fetch;
 let tmp: string;
@@ -136,76 +125,5 @@ describe('unattended all-repos sync', () => {
       .map(([, init]) => JSON.parse(String(init.body)).path);
     expect(registered).toEqual(['/repo/selected']);
     expect(result).toEqual({ synced: 1, failed: 0, repoPaths: ['/repo/selected'] });
-  });
-});
-
-describe('runs watermark', () => {
-  it('writes the state file atomically', () => {
-    process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(tmp, 'state.json');
-    try {
-      writeRunsWatermark('/repo/x', 'runs:http://mc', 'r1', '2026-01-01T00:00:00.000Z');
-      expect(readRunsWatermarkEntry('/repo/x', 'runs:http://mc')?.lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
-      expect(fs.readdirSync(tmp)).toEqual(['state.json']);
-    } finally {
-      delete process.env.HAR_PORTAL_SYNC_STATE_PATH;
-    }
-  });
-});
-
-describe('observation ledger', () => {
-  it('re-posts only new or changed observations, per Mission Control repo id', () => {
-    const a = { observationKey: 'a', tokensInput: 1 };
-    const b = { observationKey: 'b', tokensInput: 2 };
-    recordSentObservations('http://mc', 'repo-1', [a, b], [a, b]);
-
-    const bChanged = { ...b, tokensInput: 3 };
-    const c = { observationKey: 'c', tokensInput: 4 };
-    expect(unsentObservations('http://mc', 'repo-1', [a, bChanged, c])).toEqual([bChanged, c]);
-    // A wiped Mission Control hands out a new repo id: everything goes again.
-    expect(unsentObservations('http://mc', 'repo-2', [a, b])).toEqual([a, b]);
-  });
-});
-
-describe('transcript cache', () => {
-  beforeEach(() => {
-    resetTranscriptCache();
-    process.env.HAR_TRANSCRIPT_INDEX_PATH = path.join(tmp, 'index.json');
-  });
-  afterEach(() => {
-    delete process.env.HAR_TRANSCRIPT_INDEX_PATH;
-    resetTranscriptCache();
-  });
-
-  it('reuses the indexed workspaces across processes and re-reads a changed file', () => {
-    const file = path.join(tmp, 'session.jsonl');
-    fs.writeFileSync(file, `${JSON.stringify({ cwd: '/work/a' })}\n${JSON.stringify({ cwd: '/work/b' })}\n`);
-
-    expect(transcriptWorkspaces(file).cwds).toEqual(['/work/a', '/work/b']);
-    persistTranscriptIndex();
-
-    // A new process answers from the index, not the transcript: mark the
-    // indexed entry and see the mark come back.
-    const indexFile = path.join(tmp, 'index.json');
-    const index = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
-    index.files[file].cwds = ['/from/index'];
-    fs.writeFileSync(indexFile, JSON.stringify(index));
-    resetTranscriptCache();
-    expect(transcriptWorkspaces(file).cwds).toEqual(['/from/index']);
-
-    fs.appendFileSync(file, `${JSON.stringify({ cwd: '/work/c', working_directory: '/work/d' })}\n`);
-    expect(transcriptWorkspaces(file)).toMatchObject({
-      cwds: ['/work/a', '/work/b', '/work/c'],
-      lastWorkspace: '/work/d',
-    });
-  });
-
-  it('serves parsed records from memory until the file changes', () => {
-    const file = path.join(tmp, 'session.jsonl');
-    fs.writeFileSync(file, `${JSON.stringify({ n: 1 })}\n`);
-    const first = readTranscriptRecords(file);
-    expect(readTranscriptRecords(file)).toBe(first);
-
-    fs.appendFileSync(file, `${JSON.stringify({ n: 2 })}\n`);
-    expect(readTranscriptRecords(file)).toEqual([{ n: 1 }, { n: 2 }]);
   });
 });

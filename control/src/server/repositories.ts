@@ -2,8 +2,6 @@ import * as path from 'path';
 import {
   AgentSlotStatusSchema,
   RegisterRepoInputSchema,
-  RunRecordSchema,
-  SyncRunsInputSchema,
   SyncSlotsInputSchema,
   UnregisterRepoInputSchema,
   type UnregisterRepoResult,
@@ -12,7 +10,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
-import { isNewOccupancy, resolveRecordOccupancyKey, shouldApplySlotSync, type OccupancyCandidate } from '@/server/occupancy';
+import { isNewOccupancy, shouldApplySlotSync, type OccupancyCandidate } from '@/server/occupancy';
 import { cleanupSessionWorktrees } from '@/server/worktree-cleanup';
 import { claimLateSlotEvidenceSafely } from '@/server/late-slot-evidence';
 
@@ -192,57 +190,6 @@ export async function listSessionWorktrees() {
   });
 }
 
-export async function syncRuns(repositoryId: string, input: unknown) {
-  const { runs } = SyncRunsInputSchema.parse(input);
-  const slots = await listOccupancyCandidates(repositoryId);
-
-  for (const run of runs) {
-    const parsed = RunRecordSchema.parse(run);
-    const occupancyKey = resolveRecordOccupancyKey(
-      { attemptId: parsed.attemptId, agentId: parsed.agentId, workDir: parsed.workDir, at: new Date(parsed.startedAt) },
-      slots,
-    );
-    await prisma.run.upsert({
-      where: { repositoryId_runId: { repositoryId, runId: parsed.runId } },
-      create: {
-        runId: parsed.runId,
-        repositoryId,
-        stageId: parsed.stageId,
-        kind: parsed.kind,
-        agentId: parsed.agentId,
-        status: parsed.status,
-        trigger: parsed.trigger,
-        durationMs: parsed.durationMs,
-        startedAt: new Date(parsed.startedAt),
-        finishedAt: parsed.finishedAt ? new Date(parsed.finishedAt) : null,
-        workDir: parsed.workDir,
-        workUnitId: parsed.workUnitId,
-        attemptId: parsed.attemptId,
-        occupancyKey,
-        result: parsed.result ? toJson(parsed.result) : undefined,
-      },
-      update: {
-        status: parsed.status,
-        durationMs: parsed.durationMs,
-        finishedAt: parsed.finishedAt ? new Date(parsed.finishedAt) : null,
-        workDir: parsed.workDir,
-        workUnitId: parsed.workUnitId,
-        attemptId: parsed.attemptId,
-        // Keep a key stamped earlier: a later sync may run after the slot moved on.
-        ...(occupancyKey ? { occupancyKey } : {}),
-        result: parsed.result ? toJson(parsed.result) : undefined,
-      },
-    });
-  }
-
-  await prisma.repository.update({
-    where: { id: repositoryId },
-    data: { lastSyncAt: new Date() },
-  });
-
-  return { synced: runs.length };
-}
-
 export async function syncSlots(repositoryId: string, input: unknown) {
   const { slots } = SyncSlotsInputSchema.parse(input);
 
@@ -295,14 +242,6 @@ export async function syncSlots(repositoryId: string, input: unknown) {
   }
 
   return { synced };
-}
-
-export async function listRuns(repositoryId: string, limit = 50) {
-  return prisma.run.findMany({
-    where: { repositoryId },
-    orderBy: { startedAt: 'desc' },
-    take: limit,
-  });
 }
 
 export async function getRun(repositoryId: string, runId: string) {

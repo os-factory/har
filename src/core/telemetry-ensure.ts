@@ -87,8 +87,8 @@ export async function ensureTelemetryInfrastructure(options?: {
         started: false,
         otelReady: false,
         warning: reason
-          ? `Telemetry on — Mission Control not started: ${reason}. OTEL export skipped; harvest may fill gaps later.`
-          : `Telemetry on — failed to start Mission Control (exit ${code}). OTEL export skipped; harvest may fill gaps later. Fix Docker / run: har control up`,
+          ? `Telemetry on — Mission Control not started: ${reason}. otel-hook queues what it cannot send and retries on later hooks.`
+          : `Telemetry on — failed to start Mission Control (exit ${code}). otel-hook queues what it cannot send and retries on later hooks. Fix Docker / run: har control up`,
       };
     }
   } catch (err) {

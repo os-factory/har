@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  DESTINATION_PRESET_DEFAULTS,
   LOCAL_ATTR_PREFIX,
   destinationIncludesLocalPaths,
   otlpSignalUrl,
@@ -33,9 +34,8 @@ import { missionControlDestination, readTelemetryDestinations } from './telemetr
  * session context, not the Resource (ADR 0004 section 3). `factory.local.*` is
  * left out unless every entry, Mission Control included, sets `includeLocalPaths`.
  *
- * Claude Code's native telemetry (metrics and logs carrying account identity)
- * is not part of this list: it goes to Mission Control only, and stays off
- * without it.
+ * otel-hook is the only source of agent telemetry, Claude Code included: every
+ * receiver (Mission Control, `hq`) gets traces, logs and metrics from it.
  */
 export type AgentTelemetryRoute =
   | { mode: 'off' }
@@ -43,7 +43,7 @@ export type AgentTelemetryRoute =
       mode: 'fanout';
       /** Mission Control base URL (no trailing slash) when it is in the list. */
       missionControl?: string;
-      /** Signals of the Mission Control entry (default traces and logs). */
+      /** Signals of the Mission Control entry (default traces, logs and metrics). */
       missionControlSignals?: OtlpSignal[];
       /** The Mission Control entry opted in to local paths. */
       missionControlIncludesLocalPaths?: boolean;
@@ -98,7 +98,7 @@ export interface AgentTelemetryRouteInput {
   controlAvailable: boolean;
   /** Mission Control base URL, used when it is available. */
   controlApiUrl?: string;
-  /** Mission Control's entry in the destination list; absent → traces and logs, defaults. */
+  /** Mission Control's entry in the destination list; absent → its preset's signals (traces, logs, metrics). */
   missionControlEntry?: Pick<HarDestination, 'signals' | 'includeLocalPaths' | 'includeSessionId'>;
   destinations: readonly TelemetryDestination[];
   /** The installed otel-hook takes `exporter.destinations[]` with `env:` header values. */
@@ -225,7 +225,7 @@ export function destinationReceivesLogs(destination: TelemetryDestination): bool
 /** Signals of the route's Mission Control entry (none when it is not in the route). */
 export function missionControlRouteSignals(route: AgentTelemetryRoute): OtlpSignal[] {
   if (route.mode === 'off' || route.missionControl === undefined) return [];
-  return route.missionControlSignals ?? ['traces', 'logs'];
+  return route.missionControlSignals ?? [...DESTINATION_PRESET_DEFAULTS['mission-control'].signals];
 }
 
 /** Whether any entry of the route takes otel-hook's event records (logs), before the level is applied. */

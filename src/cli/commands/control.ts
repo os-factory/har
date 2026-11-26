@@ -124,7 +124,7 @@ export const controlCommand = {
       )
       .command(
         'sync',
-        'Sync runs and slot status to Mission Control',
+        'Register repositories and sync slot status to Mission Control',
         (y: Argv) =>
           y
             .option('select', {
@@ -139,11 +139,6 @@ export const controlCommand = {
               type: 'boolean',
               default: false,
               describe: 'Sync to HAR Cloud instead of local Mission Control',
-            })
-            .option('full', {
-              type: 'boolean',
-              default: false,
-              describe: 'Ignore the runs watermark and resend every run',
             }),
         handleSync,
       )
@@ -528,7 +523,6 @@ async function handleSync(argv: {
   dryRun: boolean;
   json: boolean;
   cloud?: boolean;
-  full: boolean;
 }): Promise<void> {
   const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   if (!argv.cloud && !argv.apiUrl && !argv.dryRun) {
@@ -606,7 +600,6 @@ async function handleSync(argv: {
     apiUrl: argv.apiUrl,
     dryRun: argv.dryRun,
     cloud: argv.cloud,
-    full: argv.full,
   });
 
   if (argv.json) {

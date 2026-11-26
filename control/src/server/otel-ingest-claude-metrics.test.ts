@@ -1,113 +1,54 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Shape of Claude Code 2.1.x native metrics (CLAUDE_CODE_ENABLE_TELEMETRY=1):
-// `session.id` and `model` on every data point, no workspace on the resource.
-// Values are synthetic. ADR 0003: these are session totals, kept as a
-// cross-check per provider session — never booked on a slot.
+// Claude Code's own metrics (`claude_code.token.usage`, `claude_code.cost.usage`,
+// turned on by HAR before 2.0) are not booked: Claude Code usage comes from
+// otel-hook only (ADR 0005 section 5). otel-hook's metrics for Claude Code are
+// kept like every other provider's, latest value per series.
 
-interface FakeSpan {
-  id: string;
-  repositoryId: string;
-  sessionKey: string;
-  agentId: number;
-  workUnitId: string | null;
-  attemptId: string | null;
-  sessionId: string;
-}
-
-let spans: FakeSpan[] = [];
-const reported: Array<{ repositoryId: string; input: Record<string, unknown> }> = [];
+const stored = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    repository: { findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
-    agentSessionEvent: { findFirst: vi.fn(async () => null) },
-    sessionSegment: { findFirst: vi.fn(async () => null) },
-    usageObservation: { findFirst: vi.fn(async () => null) },
-    agentSessionSpan: {
-      findUnique: vi.fn(
-        async ({ where }: { where: { id: string } }) =>
-          spans.find((s) => s.id === where.id) ?? null,
-      ),
+    metricSeries: {
+      findUnique: vi.fn(async () => null),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        stored.push(data);
+        return data;
+      }),
+      update: vi.fn(),
+      updateMany: vi.fn(),
     },
-    agentSlot: {
-      findMany: vi.fn(async () => []),
-      findFirst: vi.fn(async () => null),
-      findUnique: vi.fn(
-        async ({
-          where,
-        }: {
-          where: { repositoryId_slotId: { repositoryId: string; slotId: number } };
-        }) =>
-          where.repositoryId_slotId.slotId === 2
-            ? {
-                workDir: '/worktrees/main-abcd-har-agent-2-xy12',
-                worktreePath: '/worktrees/main-abcd-har-agent-2-xy12',
-                branch: 'main-abcd-har-agent-2-xy12',
-                suffix: 'xy12',
-                occupancyKey: 'occ-2',
-              }
-            : null,
-      ),
-    },
-    // The span lookup by provider session: its first values are the session id.
-    $queryRaw: vi.fn(async ({ values: [sessionId] }: { values: unknown[] }) =>
-      spans
-        .filter((s) => s.sessionKey === sessionId || s.sessionId === sessionId)
-        .map((s) => ({ repositoryId: s.repositoryId })),
-    ),
   },
 }));
 
 vi.mock('@/server/session-attribution', () => ({
   recordBindings: vi.fn(),
   recordObservations: vi.fn(),
-  recordReportedUsage: vi.fn(async (repositoryId: string, input: Record<string, unknown>) => {
-    reported.push({ repositoryId, input });
-  }),
 }));
 
 import { ingestOtelMetricsJson } from './otel-ingest';
 
 function attr(key: string, value: string | number) {
-  return {
-    key,
-    value: typeof value === 'number' ? { doubleValue: value } : { stringValue: value },
-  };
+  return { key, value: typeof value === 'number' ? { doubleValue: value } : { stringValue: value } };
 }
 
-function claudeMetrics(sessionId: string) {
-  const base = [attr('session.id', sessionId), attr('model', 'claude-opus-5-5')];
-  const token = (type: string, value: number) => ({
-    asDouble: value,
-    attributes: [...base, attr('type', type)],
-  });
+function metrics(resource: Array<ReturnType<typeof attr>>, name: string, points: Array<Array<ReturnType<typeof attr>>>) {
   return {
     resourceMetrics: [
       {
-        resource: {
-          attributes: [attr('service.name', 'claude-code'), attr('service.version', '2.1.322')],
-        },
+        resource: { attributes: resource },
         scopeMetrics: [
           {
             metrics: [
               {
-                name: 'claude_code.token.usage',
+                name,
                 sum: {
                   aggregationTemporality: 2,
-                  dataPoints: [
-                    token('input', 10),
-                    token('output', 20),
-                    token('cacheRead', 300),
-                    token('cacheCreation', 40),
-                  ],
-                },
-              },
-              {
-                name: 'claude_code.cost.usage',
-                sum: {
-                  aggregationTemporality: 2,
-                  dataPoints: [{ asDouble: 0.25, attributes: base }],
+                  dataPoints: points.map((attributes, index) => ({
+                    attributes,
+                    asDouble: 100 + index,
+                    timeUnixNano: '1762941600000000000',
+                  })),
                 },
               },
             ],
@@ -119,59 +60,32 @@ function claudeMetrics(sessionId: string) {
 }
 
 beforeEach(() => {
-  spans = [];
-  reported.length = 0;
+  stored.length = 0;
 });
 
-describe('ingestOtelMetricsJson — Claude Code native metrics', () => {
-  it('keeps the session total as a cross-check in the repository its hook spans were placed in', async () => {
-    const sid = '7707de5f-74df-4df8-9376-e9fe20cd1f7b';
-    spans = [
-      { id: 's1', repositoryId: 'repo-1', sessionKey: sid, agentId: 2, workUnitId: 'wu-1', attemptId: null, sessionId: sid },
-    ];
-
-    const result = await ingestOtelMetricsJson(claudeMetrics(sid));
-
-    expect(result).toMatchObject({ accepted: 1, dropped: 0 });
-    expect(reported).toHaveLength(1);
-    expect(reported[0].repositoryId).toBe('repo-1');
-    expect(reported[0].input).toMatchObject({
-      agentTool: 'claude_code',
-      sessionId: sid,
-      costUsd: 0.25,
-      tokensTotal: 370,
-      temporality: 'cumulative',
-    });
-    // No slot, no agent id: a session total is never booked on a slot.
-    expect(reported[0].input).not.toHaveProperty('agentId');
-  });
-
-  it('finds the session through span attributes when its sessionKey is a slot branch', async () => {
-    const sid = '43cd320d-812b-4884-b52f-a6f396ea6829';
-    spans = [
-      {
-        id: 's2',
-        repositoryId: 'repo-1',
-        sessionKey: 'main-abcd-har-agent-2-xy12',
-        agentId: 2,
-        workUnitId: null,
-        attemptId: null,
-        sessionId: sid,
-      },
-    ];
-
-    const result = await ingestOtelMetricsJson(claudeMetrics(sid));
-
-    expect(result.accepted).toBe(1);
-    expect(reported[0]).toMatchObject({ repositoryId: 'repo-1', input: { sessionId: sid } });
-  });
-
-  it('drops a session no repository is known for yet', async () => {
+describe('ingestOtelMetricsJson — Claude Code', () => {
+  it('drops Claude Code native metrics: they are not a usage source any more', async () => {
     const result = await ingestOtelMetricsJson(
-      claudeMetrics('aaaaaaaa-0000-4000-8000-000000000000'),
+      metrics([attr('service.name', 'claude-code')], 'claude_code.token.usage', [
+        [attr('session.id', 's-1'), attr('type', 'input'), attr('model', 'claude-opus-5-5')],
+      ]),
     );
-    expect(result.accepted).toBe(0);
-    expect(result.dropped).toBe(1);
-    expect(reported).toHaveLength(0);
+    expect(result).toMatchObject({ accepted: 0, dropped: 1 });
+    expect(result.reasons[0]).toMatch(/native metrics from claude_code are not booked/);
+    expect(stored).toHaveLength(0);
+  });
+
+  it('keeps otel-hook token metrics for Claude Code, one series per token type', async () => {
+    const result = await ingestOtelMetricsJson(
+      metrics([attr('otelhook.provider.id', 'claude-code'), attr('factory.attempt.id', 'att-1')], 'gen_ai.client.token.usage', [
+        [attr('session.id', 's-1'), attr('gen_ai.token.type', 'input')],
+        [attr('session.id', 's-1'), attr('gen_ai.token.type', 'output')],
+      ]),
+    );
+    expect(result).toMatchObject({ accepted: 2, dropped: 0 });
+    expect(stored.map((row) => [row.providerId, row.attemptId, row.sessionId])).toEqual([
+      ['claude-code', 'att-1', 's-1'],
+      ['claude-code', 'att-1', 's-1'],
+    ]);
   });
 });

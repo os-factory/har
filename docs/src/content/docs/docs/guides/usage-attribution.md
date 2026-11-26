@@ -14,14 +14,16 @@ Control books each piece of LLM usage on the slot the agent was working in
 **Usage observations.** The smallest billable unit each agent reports, with its
 own timestamp:
 
-| Agent | Unit | Live | Offline (`har control sync`) |
-|---|---|---|---|
-| Claude Code | one API request | native OTLP event `claude_code.api_request` | session transcript, plus one transcript per subagent |
-| Codex | one turn | `@osfactory/otel-hook` | rollout `token_count` events, per turn |
-| Cursor | one generation | `@osfactory/otel-hook` | none |
+| Agent | Unit | Source |
+|---|---|---|
+| Claude Code | one turn, and one run of each subagent | `@osfactory/otel-hook` generation spans; tokens read from the session transcript at `Stop` and from the subagent's transcript at `SubagentStop` |
+| Codex | one turn | `@osfactory/otel-hook` generation spans |
+| Cursor | one generation | `@osfactory/otel-hook` generation spans |
 
-A live and a harvested copy of the same unit share one key (Claude's request id,
-Codex's turn id), so they never count twice.
+otel-hook is the only source (ADR 0005 section 5). Each unit is keyed by its
+`otelhook.generation.id`, so a span delivered twice counts once. A receiver
+books the uncached input (otel-hook's input count includes cache reads and
+cache writes) and prices the tokens with genai-prices.
 
 **Bindings.** "From time *t*, this session works in slot *N*." HAR creates them
 from:
@@ -29,8 +31,8 @@ from:
 - **launch / release** — `har env launch`, `teardown` or `complete` ran inside
   the session, from the CLI or from the HAR MCP tools. Each agent gives every
   command it runs its session id (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`,
-  `CURSOR_CONVERSATION_ID`); HAR records it next to the slot in
-  `.har/session-bindings/` (git-ignored) and `har control sync` sends it.
+  `CURSOR_CONVERSATION_ID`); HAR records it in the session context and sends
+  it to every receiver as a `SessionSegment` record.
   Teardown also releases the session that launched the slot, even when a human
   runs it from a terminal.
 - **workspace** — the session itself was started inside the slot's work dir.
@@ -41,40 +43,25 @@ from:
 Each observation goes to the binding in force at its timestamp. Usage with no
 binding is the session's **unassigned** usage: planning in the main checkout
 before a launch shows as such and is never booked on a slot. Bindings that
-arrive late (a sync after the spans) re-attribute usage already received.
+arrive late (a record after the spans) re-attribute usage already received.
 
 ## What HAR configures
 
-With telemetry on (`har telemetry on`, or at launch), HAR writes to the `env`
-block of `~/.claude/settings.json`:
+With telemetry on (`har telemetry on`, or at launch), HAR registers otel-hook
+for Claude Code, Codex and Cursor. The Claude Code hook command carries
+`--claude-transcript-usage` (its turns' and subagents' tokens, read from the
+transcripts), `--logs` (the trajectory) and `--metrics`: Claude Code removes
+every `OTEL_*` variable from the hooks it runs, so these are flags, not
+variables. Which destinations receive logs and metrics still follows each
+destination's signals and the telemetry level.
 
-- `CLAUDE_CODE_ENABLE_TELEMETRY=1`
-- the OTLP **logs** exporter (`OTEL_LOGS_EXPORTER`, `OTEL_EXPORTER_OTLP_LOGS_*`,
-  `OTEL_LOGS_EXPORT_INTERVAL`) to `{HAR_CONTROL_API_URL}/api/otel/v1/logs`, for
-  the per-request `claude_code.api_request` events;
-- the OTLP **metrics** exporter to `/api/otel/v1/metrics`, kept as a cross-check
-  of session totals.
-
-HAR never sets `OTEL_LOG_USER_PROMPTS` or `OTEL_LOG_TOOL_DETAILS`, so prompt
-text and tool content stay out of these events. A key you set to another value
-is left alone (HAR warns when it sets telemetry up), and `har telemetry off` removes
-only the keys HAR wrote.
-
-Codex's native OpenTelemetry (`[otel]` in `~/.codex/config.toml`) is **not**
-configured: its log events carry no turn or response id and its metrics no
-session id, so they could not be matched with harvested turns. Codex usage
-comes from otel-hook and the rollout harvest.
-
-## Which sessions `har control sync` harvests
-
-Only sessions the repository has evidence for: sessions with a binding in this
-repository (recorded locally or known to Mission Control), and sessions whose
-transcript or rollout was started inside an active slot's work dir. A session
-that never touched HAR is not read.
-
-When Mission Control is older than this attribution model (no
-`/session-bindings` or `/usage-observations` route), sync warns once and falls
-back to per-slot totals for sessions that ran inside a slot's work dir.
+HAR turns no agent's native telemetry on. Earlier versions pointed Claude Code's
+own exporter at Mission Control through the `env` block of
+`~/.claude/settings.json`; HAR now removes the keys it wrote there (a key you
+changed since is left alone), and receivers ignore Claude Code's
+`claude_code.api_request` events and `claude_code.*` metrics, so nothing is
+counted twice. Codex's native OpenTelemetry (`[otel]` in `~/.codex/config.toml`)
+is not configured either.
 
 ## Limitations
 
@@ -90,7 +77,11 @@ back to per-slot totals for sessions that ran inside a slot's work dir.
   events.
 - **Codex granularity.** A Codex observation is a whole turn, timestamped at its
   last response; a turn that launches a slot is booked on that slot.
-- **Cursor** reports no cost and keeps no offline record: its rows carry tokens
-  and no cost until its model ids map to prices HAR can trust, and usage missed
-  while otel-hook was not installed is lost.
+- **No offline record.** Usage reaches receivers only through otel-hook: usage
+  of a session that ran while the hook was not installed, or while telemetry
+  was off, is not recorded.
+- **Claude Code granularity.** A Claude Code observation is a whole turn (or a
+  whole subagent run), timestamped at its end, not one API request.
+- **Cursor** reports no cost: its rows carry tokens and no cost until its model
+  ids map to prices HAR can trust.
   Its session env was confirmed from the IDE bundle, not at runtime.
