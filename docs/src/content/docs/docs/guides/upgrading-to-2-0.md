@@ -1,6 +1,10 @@
 ---
+# STABLE URL: https://harproject.dev/docs/guides/upgrading-to-2-0/
+# Receivers put this URL in the `Link: <…>; rel="deprecation"` header of their 1.x
+# endpoints, and 1.x CLIs print it. Never rename or move this file, never change
+# its slug, and never add a redirect from it (docs/check-drift.mjs enforces this).
 title: Upgrading to 2.0
-description: What HAR 2.0 adds, the default it changes, what it sends by default, and the har.* telemetry attributes it removes.
+description: What HAR 2.0 changes, what the upgrade does by itself, what to run, what is no longer produced, how to roll back, and how to troubleshoot.
 ---
 
 HAR 2.0 makes HAR a producer of open standards: standard OpenTelemetry that any
@@ -8,20 +12,104 @@ OTLP backend can read, and [Factory Commits](https://github.com/os-factory/facto
 proofs recorded in git. Both are correlated by the same keys: work unit, attempt,
 factory run, git tree, commit and trace.
 
-The major version marks two breaks: one changed default, and **the removal of every
-`har.*` telemetry attribute** in favor of OpenTelemetry semantic-convention and
-`factory.*` names ([removed attributes](#removed-telemetry-attributes)). Every 1.x
-command, flag, config key and Mission Control route still works with the same
-shape, except that `har control sync` no longer sends to HAR HQ
-([see below](#har-control-sync-no-longer-sends-to-har-hq)).
+The major version marks these breaks:
+
+- **the removal of every `har.*` telemetry attribute** in favor of OpenTelemetry
+  semantic-convention and `factory.*` names
+  ([removed attributes](#removed-telemetry-attributes));
+- **one destination list, and records sent directly to every receiver** (ingest
+  v2): Mission Control and HAR HQ no longer relay for each other, and
+  `har control sync` no longer sends to HAR HQ
+  ([see below](#har-control-sync-no-longer-sends-to-har-hq));
+- **Claude Code usage and trajectory come from otel-hook only**: HAR no longer
+  turns on Claude Code's native telemetry
+  ([see below](#claude-code-usage-and-trajectory-come-from-otel-hook-only));
+- **Mission Control 2.0 stores the v2 data model**: it migrates its database in
+  place on first start, keeps a backup, and no longer has the 1.x
+  `/api/repos/<id>/…` record routes;
+- **factory notes are opt-in** ([what changed by default](#what-changed-by-default)).
+
+Commands, MCP tools and config keys keep their names. The few flags and variables
+that went away are listed in [What 2.0 no longer produces](#what-20-no-longer-produces).
+
+## Upgrade checklist
+
+Upgrade the CLI and Mission Control together: Mission Control 2.0 reads only the
+2.0 attribute names and records.
 
 ```bash
-npm install -g @osfactory/har@latest
-har env maintain
+npm install -g @osfactory/har@latest   # the CLI
+har control up                         # Mission Control on the same version; migrates its database
+har telemetry install-hooks            # re-register the agent hooks with otel-hook
+har env maintain                       # in each repository with a .har/ harness
+har env doctor                         # destinations, queues, receivers
 har env verify 1 --full
 ```
 
-## What's new
+Then start new agent sessions: a Claude Code session that was already running
+keeps the hook settings it started with.
+
+Optional, depending on what you want:
+
+```bash
+# Record prompts, replies and tool input/output (the full trajectory) locally
+har telemetry on --level full
+
+# Send chosen repositories to HAR HQ (the upgrade logs a 1.x login out; see below)
+har hq connect
+
+# Write each proof as a git note on the verified commit (opt-in)
+har telemetry destination add git-notes --preset git-notes
+
+# Send a copy to Langfuse or any OTLP backend
+har telemetry destination add langfuse --preset langfuse --host <url> --public-key <pk> --secret-key <sk>
+har telemetry destination add collector --preset otlp --endpoint <base OTLP/HTTP URL>
+```
+
+## What happens automatically
+
+You do not need to do anything for these; each happens once, on the first 2.0
+command that needs it.
+
+- **HAR HQ keeps receiving.** A machine conn- **You are logged out of HAR HQ.** A machine logged in to HAR HQ with 1.x is
+  logged out on the first 2.0 command, with one notice line, and nothing is sent to
+  HAR HQ until you log in again with `har hq connect` and choose repositories and a
+  scope. Your 1.x repositories and trajectory choice are only pre-selected at that
+  login. Details in
+  [HAR HQ is opt-in per repository](#har-hq-is-opt-in-per-repository-the-upgrade-logs-you-out).
+are removed.** The next time HAR
+  configures the agent hooks (`har telemetry install-hooks`, `har telemetry on`,
+  a slot launch, or a destination change), it deletes the
+  `CLAUDE_CODE_ENABLE_TELEMETRY` and `OTEL_*` keys that an earlier HAR wrote into
+  `~/.claude/settings.json`. It removes only the keys it recorded writing, and only
+  while they still hold the value it wrote: a key you set or changed yourself is
+  left alone.
+- **otel-hook is upgraded.** HAR installs `@osfactory/otel-hook@0.14.0` in place of
+  an older copy on the next launch or `har telemetry on`, and registers the Claude
+  Code hook with `--claude-transcript-usage --logs --metrics` and the Codex hook
+  with `--codex-rollout-usage`.
+- **Verify runs the packaged stage runner.** A repository set up by 1.x has a copy
+  of the stage runner committed in `.har/lib/verify-runner.mjs`; 2.0 no longer runs
+  it (it captures no stage logs), and runs the one in the package instead, unless
+  you ejected the runtime (`har env eject`). `har env maintain` deletes the stock
+  copy (commit the deletion); `har env doctor` points at a copy you edited.
+  `har env maintain` leaves your `verificationStages` as they are.
+- **Mission Control migrates its database in place.** On its first start, a
+  Mission Control 2.0 container that finds a 1.x database snapshots it to
+  `har_control.db.v1-backup` (in the `har_control_data` volume, next to
+  `har_control.db`), builds the v2 database next to it, copies every row across and
+  swaps it in with one rename. Nothing is deleted: the 1.x data stays in the
+  backup, and a start that is interrupted before the swap leaves the database
+  untouched and starts over. If a backup already exists, the new one gets a
+  timestamp suffix. See [Rolling back](#rolling-back).
+- **A prerelease `telemetry.json`** (2.0.0-next) is migrated to the destination
+  list on first read.
+
+## What's new in 2.0
+
+This section is the curated summary of the release; the GitHub release notes link
+here. The generated list of every change is in the
+[changelog](https://github.com/os-factory/har/blob/main/CHANGELOG.md).
 
 - **OTLP destinations, fan-out at the producer.**
   `har telemetry destination add|list|remove|test|flush` sends a copy of HAR's
@@ -57,7 +145,17 @@ har env verify 1 --full
   session segments, factory runs, stage results, commit bindings, proofs and stage
   evidence to Mission Control and HAR HQ directly (ingest v2), each through its own
   retry queue in `~/.har/queue/<destination>/`. Every `har` command drains what is
-  due; `har telemetry flush` sends everything now.
+  due; `har telemetry flush` sends everything now. Stage evidence (each stage's log
+  and the files it wrote under `.har/artifacts/`) is sent only after a passing full
+  verify.
+- **Work identity from the session context.** HAR writes which work unit, attempt
+  and slot each agent session is working on to `~/.har/sessions`, as time segments,
+  and otel-hook stamps the segment in force on every span, log record and metric
+  point. A session that joins or leaves a slot is attributed correctly from that
+  moment, and telemetry outside any segment carries no work identity.
+- **Trajectory from otel-hook.** Every receiver, HAR HQ included, builds the agent
+  trajectory (steps, tool calls, subagents) from otel-hook's log records, and books
+  usage from its generation spans.
 - **Destination health.** `har env doctor` and `har telemetry status` report what
   each destination has queued or dropped and when it last failed, for example
   `langfuse: 7 batches queued, last failure 2 min ago (ECONNREFUSED)`. See
@@ -115,7 +213,7 @@ read it back from Mission Control and posted it to the connected org, so HQ got
 nothing while Mission Control was down. In 2.0 `har control sync` sends to local
 Mission Control only (or to HAR Cloud with `--cloud`). The CLI and the agent hook
 send records, proofs, evidence and telemetry to every destination directly, HAR HQ
-included; Mission Control forwards nothing.
+included (only for the repositories you chose); Mission Control forwards nothing.
 
 ### HAR HQ is opt-in per repository: the upgrade logs you out
 
@@ -205,15 +303,16 @@ It sends its spans and token metrics, and no event records or text.
 
 ## Privacy defaults
 
-What a default user sends to a third party, in one sentence: nothing until a
-destination is added, and then verification spans and agent session spans, without
-account identity, prompt, reply and tool text, or local paths.
+What a default user sends to a third-party OTLP backend (an `otlp` or `langfuse`
+destination), in one sentence: nothing until such a destination is added, and then
+verification spans and agent session spans, without account identity, prompt,
+reply and tool text, or local paths.
 
 | Data | Sent by default? | Opt in with |
 |---|---|---|
 | Absolute local paths (every `factory.local.*` key, `process.cwd`, `code.filepath`, …) | No, for every destination, Mission Control included | `--include-local-paths` (agent spans keep them only when every destination opts in) |
 | Account identity (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) | No: Claude Code's native telemetry, which carries it, is not turned on | `--include-account-identity` |
-| Logs (at the `full` level they carry prompts, replies and tool input/output) | No, no preset subscribes to logs | `--signals traces,metrics,logs` |
+| Logs (at the `full` level they carry prompts, replies and tool input/output) | Not to `otlp` or `langfuse` destinations: neither preset subscribes to logs. Mission Control takes them, and an `hq` destination takes them when `logs` is in its signals | `--signals traces,metrics,logs` |
 | otel-hook metrics (token counts per model, tool calls) | Only to destinations that subscribe to `metrics` | `--signals …,metrics` |
 
 **Local paths are stripped everywhere.** Prereleases kept `factory.local.*` in agent
@@ -244,7 +343,7 @@ HAR and Mission Control together (`har control up` after installing 2.0).
 | `har.suffix` | removed, nothing read it |
 | `har.repo_path` | `factory.local.checkout_path` |
 | `har.work_dir` | `factory.local.work_dir` |
-| `har.harvest.truncated`, `har.harvest.dropped_events`, `har.harvest.total_events` | `factory.usage.harvest.truncated`, `factory.usage.harvest.dropped_events`, `factory.usage.harvest.total_events` |
+| `har.harvest.truncated`, `har.harvest.dropped_events`, `har.harvest.total_events` | removed with the transcript harvest ([no longer produced](#what-20-no-longer-produced)); 2.0.0-next prereleases emitted them as `factory.usage.harvest.*` |
 | `har.destination_test` (`har telemetry destination test`) | `factory.telemetry.destination_test` |
 | Instrumentation scope `har.verification` (and `har.telemetry.destination-test`) | Scope `@osfactory/har` |
 
@@ -331,9 +430,88 @@ agent started outside a HAR slot has no `HAR_RESOURCE_ATTRIBUTES`, and its hooks
 behave as before. Slots launched before this change keep their old agent env file:
 relaunch the slot to get the new variable.
 
+## What 2.0 no longer produces
+
+- **The offline usage harvest.** 1.x `har control sync` read Claude Code
+  transcripts and Codex rollouts from disk and posted the usage it found. 2.0
+  books agent usage only from otel-hook, live: a session that ran without the hook
+  has no usage. The `factory.usage.harvest.*` attributes are gone with it.
+- **A per-request Claude Code breakdown.** Claude Code's native `api_request`
+  events and `claude_code.*` metrics are no longer turned on, and Mission Control
+  ignores them if they arrive. Claude Code usage is one otel-hook generation per
+  turn and one per subagent run.
+- **Launch, teardown and run-stage records at the receivers.** HAR still writes
+  every run to `.har/runs/` locally. Receivers get the slot's work unit, attempt and
+  session segments, and one factory run per verified tree with its stage results;
+  the separate run records of a launch or a teardown no longer leave the machine.
+- **Changed files on a verify.** A v2 factory run carries no changed-file list, so
+  Mission Control shows none for verifies recorded after the upgrade. Factory runs
+  migrated from 1.x keep theirs, and the local validation record still has it.
+- **Relaying between receivers.** `har control sync` no longer posts records to
+  Mission Control or forwards anything to HAR HQ, and Mission Control 2.0 forwards
+  nothing. `har control sync --full` and `HAR_SYNC_ALLOW_USAGE_VIOLATIONS` are gone.
+- **Factory notes by default.** A note is written only with a `git-notes`
+  destination or an explicit `HAR_FACTORY_PROOF=notes…` (see
+  [What changed by default](#what-changed-by-default)).
+
+## HAR HQ: 1.x endpoints and their sunset
+
+HAR 2.0 speaks only the v2 ingest contract. HAR HQ runs the v2 endpoints next to
+the 1.x ones, so a 1.x CLI keeps working while you upgrade:
+
+1. **At 2.0.0** the v2 endpoints are live before the 2.0.0 CLI is released. The
+   1.x endpoints are frozen (no new fields) and answer with a `Deprecation`
+   header ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), a `Sunset` header
+   ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)) and a
+   `Link: <https://harproject.dev/docs/guides/upgrading-to-2-0/>; rel="deprecation"`
+   header pointing at this page.
+2. **The sunset** comes no earlier than six months after 2.0.0, and only once 1.x
+   traffic is low. The 1.x endpoints then answer `410 Gone` with the upgrade
+   command. Data sent through them stays readable.
+
+Mission Control has no such period: it ships with the CLI, in the same version,
+and migrates in place.
+
+## Rolling back
+
+To go back to 1.x, restore the Mission Control backup and reinstall the 1.x CLI.
+Records sent to Mission Control after the upgrade are not in the backup. If the
+volume holds more than one backup (`har_control.db.v1-backup-<timestamp>`), use the
+newest.
+
+```bash
+npm install -g @osfactory/har@1
+har control down
+docker run --rm -v har_control_data:/data alpine sh -c \
+  'cd /data && mv har_control.db har_control.db.v2 && cp har_control.db.v1-backup har_control.db'
+har control up          # the 1.x CLI starts the 1.x Mission Control image
+har telemetry on        # re-registers the 1.x agent hooks
+```
+
+Keep the 1.x CLI while you use the restored database: a 2.0 CLI moves Mission
+Control to its own image, which migrates the database again.
+
+## Troubleshooting
+
+Start with `har env doctor` (MCP: `har_doctor`) and `har telemetry status`. Their
+destination checks only ever warn: a receiver that is down never blocks verify, a
+commit or a launch.
+
+| Symptom | What to check | Fix |
+|---|---|---|
+| `har hq status` or doctor: "Logged out of HAR HQ by the upgrade to 2.0", or "repositories: none chosen" | 2.0 sends to HAR HQ only for repositories you choose | `har hq connect`, then `har hq repos add <repo> --scope usage` (scopes: off, usage, outline, full) |
+| doctor `ingest-destinations`: the receiver does not support ingest v2 | Mission Control (or another receiver) still runs a 1.x version | `har control up`. Records stay queued until the receiver answers v2 |
+| doctor `ingest-destinations`: entries queued, or a last failure | The receiver is down or rejected the key. Unknown routes (404, 405, 501) and rejected keys (401, 403) are retried, so nothing is lost before a receiver is upgraded | Fix the receiver or the key, then `har telemetry flush`. Every `har` command also drains what is due |
+| doctor `ingest-destinations`: entries in `dead/` | The receiver rejected a batch as invalid, or it was older than 14 days | Inspect `~/.har/queue/<destination>/dead/`; those entries are not retried |
+| doctor `telemetry-destinations`: batches queued or dropped | An OTLP backend is unreachable | Check the backend, then `har telemetry destination flush` |
+| No Claude Code usage or trajectory | The Claude Code hook was registered by 1.x, or the session started before the upgrade | `har telemetry install-hooks`, then start a new Claude Code session. `har telemetry status` names the otel-hook version it needs |
+| A dashboard or alert matches nothing | It filters on a `har.*` attribute | Use the [2.0 names](#removed-telemetry-attributes) |
+
 ## Everything else is unchanged
 
-- No command, flag, config key or MCP tool was renamed or removed. MCP output
+- No command, config key or MCP tool was renamed or removed, and the only
+  flags and variables removed are those under
+  [What 2.0 no longer produces](#what-20-no-longer-produces). MCP output
   schemas only gained optional fields (for example `proof` on
   `har_run_verification`), and `har_doctor` gained `telemetry-destinations` and
   `ingest-destinations` checks that only ever warn. `har telemetry flush` and

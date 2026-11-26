@@ -50,6 +50,88 @@ Maintainers do **not** hand-cut version tags. Merge conventional commits to `mai
 
 If there is nothing to release, verify still runs and publish steps are skipped. If Docker publish fails, npm is **not** published for that tag (fix the image, then use [Publish Docker (manual)](.github/workflows/publish-docker.yml) and publish npm from the tag, or re-run the failed jobs).
 
+## Prereleases and the 2.0.0 release
+
+`next` is a prerelease branch ([release.config.cjs](release.config.cjs)): every
+releasable merge into it publishes `X.0.0-next.N` to the npm `next` dist-tag and
+Docker Hub, without moving `latest`. 2.0.0 is cut by merging `next` into `main`.
+
+### Machine changelog (semantic-release)
+
+Nothing changes in the tooling. semantic-release writes `CHANGELOG.md` and the
+GitHub release body from the Conventional Commit titles on the branch, so every
+squash-merge title must be conventional, and a breaking one must carry `!`
+(`feat!: …`); a `BREAKING CHANGE:` footer in a PR's own commits is lost in the
+squash.
+
+- **Prereleases.** Each `2.0.0-next.N` gets its own section in `CHANGELOG.md` on
+  `next`, listing only the commits since `2.0.0-next.(N-1)`, under
+  *Features* / *Bug Fixes*, and *⚠ BREAKING CHANGES* when a title had `!`
+  (only `2.0.0-next.1` so far). The GitHub prereleases carry the same text.
+- **2.0.0.** On `main`, semantic-release lists the commits since the last release
+  reachable from `main` (the latest 1.x). Prerelease notes do not roll up by
+  themselves: what 2.0.0 lists depends on how `next` lands on `main`. The repository
+  allows squash and rebase merges only:
+  - **squash** (the usual path): `main` gets one commit, so the 2.0.0 notes have one
+    entry, the squash title. The `next.N` sections come along in `CHANGELOG.md`,
+    below the new 2.0.0 section;
+  - **rebase**: every commit of `next` is replayed onto `main`, and the 2.0.0 notes
+    list all of them (the `chore(release)` commits are not listed).
+
+  Either way the generated notes are an index, not an explanation. Use a squash
+  with the title `feat!: HAR 2.0.0 …` and put the upgrade pointer in a
+  `BREAKING CHANGE:` footer of the squash message itself (it is the commit on
+  `main`, so the footer is kept and appears under *⚠ BREAKING CHANGES*):
+
+  ```text
+  feat!: HAR 2.0.0, one ingest contract and otel-hook as the only agent source
+
+  BREAKING CHANGE: see https://harproject.dev/docs/guides/upgrading-to-2-0/
+  (what changes, what the upgrade does by itself, rollback). Requires
+  @osfactory/otel-hook <pinned version> or newer; Mission Control image
+  theosfactory/har-control:2.0.0.
+  ```
+
+  `next` misses the `1.x` entries released on `main` after it branched: keep both
+  sides of `CHANGELOG.md` when resolving the merge.
+
+### Human changelog
+
+The curated summary is the **What's new in 2.0** section at the top of the
+[upgrade guide](docs/src/content/docs/docs/guides/upgrading-to-2-0.md)
+(`https://harproject.dev/docs/guides/upgrading-to-2-0/`). Write it, and check every
+claim against `next`, before the `next` → `main` merge. The GitHub release body links
+to it (the footer above, or an edit of the release after it is cut), and states:
+
+- the minimum `@osfactory/otel-hook` version (`OTEL_HOOKS_VERSION` in
+  `src/core/otel-hooks.ts`, which HAR installs);
+- the Mission Control image, `theosfactory/har-control:2.0.0` (same version as the
+  CLI; see [Version coupling](#version-coupling)).
+
+The guide's URL is a contract: receivers send it in the
+`Link: <…>; rel="deprecation"` header of their 1.x endpoints. Never move or redirect
+the page; `docs/check-drift.mjs` fails if it goes.
+
+### 2.0.0 release checklist
+
+1. Bump `OTEL_HOOKS_VERSION` to the first published otel-hook release that has the
+   session context and Codex rollout usage (`--codex-rollout-usage`), and check that
+   HAR's hooks pass the flags it needs.
+2. Write the **What's new in 2.0** section and update the rest of the upgrade guide
+   on `next`; full-verify the docs harness.
+3. If 1.x needs a last patch (for example the upgrade notice a 1.x CLI prints on a
+   `Deprecation` header), release it from `main` before the merge, or add a `1.x`
+   maintenance branch to `release.config.cjs` first: after 2.0.0, `main` releases
+   only 2.x.
+4. Dry-run the release on `next` (**Release → Run workflow → Dry run**).
+5. Merge `next` into `main` with a squash, the `feat!:` title and the
+   `BREAKING CHANGE:` footer above. Check that `2.0.0` reached npm (`latest`),
+   Docker Hub (`theosfactory/har-control:2.0.0` and `latest`) and GitHub Releases.
+6. Check that the docs site serves `https://harproject.dev/docs/guides/upgrading-to-2-0/`.
+7. Only then may hosted receivers turn on the `Deprecation`, `Sunset` and `Link`
+   headers of their 1.x endpoints, pointing at that URL (ADR 0005, section 7). The
+   sunset comes no earlier than six months after 2.0.0.
+
 ## Maintainer secrets
 
 | Secret | Used by |

@@ -171,6 +171,20 @@ if (cursorRuleTemplate.includes('har env restart')) {
   failures.push('cursor-rule.mdc.template mentions nonexistent har env restart');
 }
 
+// The 2.0 upgrade guide's URL is a public contract: receivers send it in the
+// `Link: <…>; rel="deprecation"` header of their 1.x endpoints. Keep the file
+// (and so its slug) where it is, with no slug override and no redirect.
+const upgradeGuidePath = `${docsRoot}/guides/upgrading-to-2-0.md`;
+if (!fs.existsSync(path.join(root, upgradeGuidePath))) {
+  failures.push(`${upgradeGuidePath} is gone: its URL is linked from receivers' deprecation headers`);
+} else {
+  const frontMatter = read(upgradeGuidePath).split(/^---$/m)[1] ?? '';
+  if (/^slug:/m.test(frontMatter)) failures.push(`${upgradeGuidePath} must not override its slug`);
+}
+if (/['"]\/docs\/guides\/upgrading-to-2-0\/?['"]\s*\]\s*=/.test(read('docs/astro.config.mjs'))) {
+  failures.push('astro.config.mjs must not redirect /docs/guides/upgrading-to-2-0/');
+}
+
 if (failures.length > 0) {
   console.error('Documentation drift detected:');
   for (const failure of failures) console.error(`  - ${failure}`);
