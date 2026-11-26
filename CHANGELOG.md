@@ -1,3 +1,9 @@
+## [1.37.0](https://github.com/os-factory/har/compare/v1.36.0...v1.37.0) (2026-11-26)
+
+### Features
+
+* **hq:** connect with a Kerno portal API key ([#524](https://github.com/os-factory/har/issues/524)) ([8628387](https://github.com/os-factory/har/commit/8628387847906847af6ccce321e567d7dcf051a1)), closes [kernoio/becore#2539](https://github.com/kernoio/becore/issues/2539)
+
 ## [1.36.0](https://github.com/os-factory/har/compare/v1.35.0...v1.36.0) (2026-11-26)
 
 ### Features
