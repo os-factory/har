@@ -74,7 +74,10 @@ command that needs it.
 
 - **HAR HQ keeps receiving.** A machine connected to HAR HQ (`har hq connect`, or
   `HAR_PORTAL_TOKEN`) gets an `hq` destination with one notice line, so it keeps
-  sending there now that Mission Control no longer relays. A destination you
+  sending there now that Mission Control no longer relays. It keeps your 1.x
+  trajectory choice: without trajectory forwarding it takes traces and metrics
+  but no logs (no prompts, replies or tool output), and one hint names the command
+  that turns the full trajectory on; nothing asks. A destination you
   remove later is not added back. Details in
   [`har control sync` no longer sends to HAR HQ](#har-control-sync-no-longer-sends-to-har-hq).
 - **HAR's Claude Code native telemetry keys are removed.** The next time HAR
@@ -86,7 +89,14 @@ command that needs it.
   left alone.
 - **otel-hook is upgraded.** HAR installs `@osfactory/otel-hook@0.12.0` in place of
   an older copy on the next launch or `har telemetry on`, and registers the Claude
-  Code hook with `--claude-transcript-usage --logs --metrics`.
+  Code hook with `--claude-transcript-usage --logs --metrics` and the Codex hook
+  with `--codex-rollout-usage`.
+- **Verify runs the packaged stage runner.** A repository set up by 1.x has a copy
+  of the stage runner committed in `.har/lib/verify-runner.mjs`; 2.0 no longer runs
+  it (it captures no stage logs), and runs the one in the package instead, unless
+  you ejected the runtime (`har env eject`). `har env maintain` deletes the stock
+  copy (commit the deletion); `har env doctor` points at a copy you edited.
+  `har env maintain` leaves your `verificationStages` as they are.
 - **Mission Control migrates its database in place.** On its first start, a
   Mission Control 2.0 container that finds a 1.x database snapshots it to
   `har_control.db.v1-backup` (in the `har_control_data` volume, next to
