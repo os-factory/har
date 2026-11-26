@@ -34,8 +34,9 @@ summary, and Mission Control is not started by default until Docker works.
 `full`; start Mission Control when Docker is available; no plugins) without prompts.
 
 Onboarding asks **how much agent activity to record** — the same four levels as
-[`har telemetry`](#har-telemetry) — and, when connected to HAR HQ at the `full` level,
-whether HQ also receives the full trajectory (`--hq-trajectory`; off by default). The
+[`har telemetry`](#har-telemetry) — and, when logged in to HAR HQ at the `full` level,
+whether HQ receives this repository's full trajectory (`--hq-trajectory`: scope `full`
+with raw text; otherwise `outline`). The
 level is machine-wide: it applies to every repository on this machine. The older
 `--telemetry on` / `on-no-prompts` still work and mean `full` / `outline`. This is the first-run command for a
 new repository — do not substitute `har env init` in user-facing copy.
@@ -401,43 +402,47 @@ too. Exit codes come from `git factory`: `0` ok,
 ## `har hq`
 
 ```bash
-har hq connect [--portal <url>] [--api-key <key>] [--repo .] [--trajectory|--no-trajectory] [--yes] [--json]
-har hq list [--json]                 # alias: har hq status
+har hq connect [--portal <url>] [--api-key <key>] [--repo <path|url>]... [--scope off|usage|outline|full] [--content none|redacted|masked|raw] [--yes] [--json]
+har hq repos [list] [--json]
+har hq repos add [<path|url>...] [--scope off|usage|outline|full] [--content none|redacted|masked|raw] [--yes] [--json]
+har hq repos remove [<path|url>...] [--json]
+har hq status [--json]               # alias: har hq list
 har hq disconnect [--json]
 ```
 
-The CLI holds **one HAR HQ org connection at a time**, and every sync, OTel and
-trajectory upload goes to that org only. On a TTY, `connect` asks Production
-(`https://portal.kerno.io/har`), Development (`https://portal.dev.kerno.io/har`), or a custom
-URL, then opens browser SSO. The org chosen on the consent screen becomes the
-connection, and HAR attaches **this repository** to it. When other repositories
-are registered locally, a TTY prompt lists them so you can attach more to the
-same org. `--yes` / `--json` skip that prompt and attach only the current checkout.
+HAR HQ receives only the repositories you choose, each at its scope:
 
-Running `connect` again for the same org adds the current checkout and keeps the
-repositories already attached. Connecting to a **different** org replaces the
-connection: the previous org's credentials are removed, nothing more is sent to
-it, and its attached repositories stop syncing until you attach them to the new
-org. A sync that is already running when you switch stops before sending
-anything else to the previous org.
+| Scope | HAR HQ receives |
+|-------|-----------------|
+| `off` | nothing |
+| `usage` | records, proofs, evidence, and the agent's spans and metrics (tokens, cost) |
+| `outline` | `usage` plus the event records (every step and its timing), no text |
+| `full` | `outline` plus the text, per `--content`: `none` (default), `redacted`, `masked`, `raw` |
 
-Automatic sync sends only repositories **attached** to the connection;
-unattached checkouts are never ingested.
+`connect` logs in (on a TTY it asks Production, Development or a custom URL, then
+opens browser SSO; `--api-key` stores a key instead). On a TTY it then asks which
+repositories — this repository, the registered ones, and the ones attached in 1.x;
+the current one and the 1.x ones pre-selected — and one scope for all of them, or one
+per repository. With `--scope`, it chooses without asking: the `--repo` repositories
+(repeatable; default the current repository). Without `--scope` on a non-TTY, or with
+`--yes`, it only logs in and prints the exact `har hq repos add` command.
+`--content` applies to `--scope full` only.
 
-`connect` also adds the `hq` destination (see `har telemetry destination`):
-traces, metrics, records, proofs and evidence, plus logs (the trajectory) only
-when trajectory forwarding is on — `--trajectory`, or the question asked on a
-TTY at the `full` level. Otel-hook's text capture is one switch for every
-destination, so leaving logs off the `hq` destination is what keeps prompts and
-tool output local.
+`repos add` adds or changes repositories (default: the current one), `repos remove`
+removes them; `add` asks the scope on a TTY and fails with the exact command
+otherwise. A local path is matched by its main checkout (worktrees and harnesses in a
+subdirectory included) and by its `origin`; a URL by host and path. Agent telemetry
+is matched by the repository URL only, so a repository without an `origin` sends
+records and verification only.
 
-`list` (or `status`) shows the connection (org + portal host, never tokens), its attached
-repositories, what HQ receives and, when it is less than the full trajectory,
-one hint with the command that turns it on. `disconnect` removes the connection and its credentials.
-Credentials stay in `~/.har/` and are never committed into `.har/`. A
-`~/.har/portal-targets.json` written by an older CLI with several connections is
-reduced to its default (else most recently used) connection the first time it is
-read; the other connections and their tokens are deleted.
+The CLI holds **one HAR HQ org login at a time**. Logging in to a different org
+removes the previous org's credentials and forgets the repositories chosen for it.
+`status` shows the login (org + portal host, never tokens), the chosen repositories
+and the local level, which caps every destination. `disconnect` removes the login and
+its credentials and keeps the choice. The first 2.0 command on a machine logged in by
+1.x logs it out once (see [Upgrading to 2.0](/docs/guides/upgrading-to-2-0/)).
+Credentials stay in `~/.har/` and are never committed into `.har/`. The MCP server
+has a read-only `har_hq_status`; logging in and choosing are human-only.
 
 `har control login` remains a deprecated alias for `har hq connect`.
 
@@ -465,7 +470,8 @@ view, Mission Control's two local endpoints outside the ingest contract (or to H
 Cloud with `--cloud`); it no longer sends anything to HAR HQ. Runs, work units,
 factory runs, commit bindings, usage and the trajectory reach every receiver,
 Mission Control included, as ingest v2 records and otel-hook OTLP. The CLI sends records and telemetry to HAR HQ
-directly when HQ is a destination (`har telemetry destination add hq --preset hq`).
+directly for the repositories chosen for it (`har hq repos add`).
+`trajectory` only points to `har hq repos` in 2.0.
 `check-usage` is read-only: Mission Control checks the usage invariants over
 everything it holds (I1 a request is stored in one repository,
 I2 a legacy session total is stored once, I3 a session's rows hold exactly its
@@ -564,9 +570,10 @@ keeps its entry, disabled, so it does not come back. A 2.0 prerelease
   the HAR HQ connection. The ingest key is never stored in the list: it is read at send
   time from `HAR_PORTAL_TOKEN` or the connection (`har hq connect`), sent as
   `Authorization: Bearer …`, and handed to otel-hook only as an `env:` header reference
-  whose value lives in `~/.har/otel-hooks/direct.env` (mode `0600`). A repository is
-  sent to HAR HQ only when it is attached to the connection (or `HAR_PORTAL_URL` +
-  `HAR_PORTAL_TOKEN` are set).
+  whose value lives in `~/.har/otel-hooks/direct.env` (mode `0600`). An `hq`
+  destination is always scoped per repository (its `repositories`, edited with
+  `har hq repos`): it sends nothing until a repository is chosen, and replacing it with
+  `--overwrite` keeps the choice.
 - `--preset langfuse` sends traces to `<host>/api/public/otel` with
   `Authorization: Basic base64(public:secret)`. Langfuse ingests OTLP traces only.
   The keys default to `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`, the host to

@@ -9,8 +9,9 @@
 #
 # --real-agents (or HAR_E2E_REAL_AGENTS=1): real Claude Code and Codex sessions
 # calling real models replace the replayed hook events (lib/real-agents.sh).
-# --upgrade-from-1x: only the 1.x → 2.0 upgrade of a machine connected to the
-# hosted receiver, with and without 1.x trajectory forwarding (lib/upgrade-from-1x.sh).
+# --upgrade-from-1x: only the 1.x → 2.0 upgrade of a machine logged in to the
+# hosted receiver: logged out, then one of two repositories chosen at scope
+# usage, and at scope full with redacted text (lib/upgrade-from-1x.sh).
 set -uo pipefail
 
 REAL_AGENTS="${HAR_E2E_REAL_AGENTS:-0}"
@@ -330,11 +331,9 @@ step "har hooks install" sandbox har hooks install
 
 log "destinations: Mission Control (implicit), hosted receiver, collector, git notes"
 if [ $HOSTED_ON = 1 ]; then
-  # The full experience: the hosted receiver takes the trajectory (logs) too.
-  step "trajectory forwarding" sandbox har control trajectory on
-  # The first command already added an hq destination for the key in the
-  # environment (the 1.x → 2.0 migration); this one sets where it sends.
   step "destination hq" sandbox har telemetry destination add hq --preset hq --base-url "$HOSTED_SEND" --overwrite
+  # HAR HQ is opt-in per repository; the full experience: this repository, with the raw text.
+  step "hq repository" sandbox har hq repos add . --scope full --content raw --yes
 fi
 step "destination collector" sandbox har telemetry destination add collector --preset otlp \
   --endpoint "http://127.0.0.1:$COLLECTOR_PORT" --signals traces,logs,metrics
@@ -441,7 +440,7 @@ write_state() {
       times: { launch, codexJoin: join, complete }, collectorDir,
       commits: JSON.parse(commits), greetings: JSON.parse(greetings), claudeGenerations: JSON.parse(claudeGenerations),
       codexTurns: JSON.parse(codexTurns), codexModel,
-      receivers: [rx("mission-control", mcAdapter, mcRead, mcHeaders), ...(hostedAdapter ? [rx("hosted", hostedAdapter, hostedRead, hostedHeaders)] : [])],
+      receivers: [rx("mission-control", mcAdapter, mcRead, mcHeaders), ...(hostedAdapter ? [{ ...rx("hosted", hostedAdapter, hostedRead, hostedHeaders), scoped: true }] : [])],
     }, null, 2));
   ' "$TMP/state.json" "$REPO_URL" "$WORK_ID" "$CLAUDE_SESSION" "$CODEX_SESSION" "$ATTEMPT" "$LAUNCHED_AT" "$JOINED_AT" "$COMPLETED_AT" \
     "$TMP/collector" "$(commits_json "${COMMITS[@]}")" "$(printf '%s\n' "${GREETINGS[@]}" | node -e 'console.log(JSON.stringify(require("fs").readFileSync(0,"utf8").trim().split("\n")))')" \

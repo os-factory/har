@@ -9,7 +9,7 @@ import {
   type ValidationRecord,
 } from '../harness/schema';
 import { getArtifactsDir } from '../harness/stages';
-import { isRepoPortalSyncEnabled } from './control-registry';
+import { destinationAcceptsRepository } from './destination-scopes';
 import {
   drainIngestQueues,
   enqueueIngest,
@@ -17,7 +17,6 @@ import {
   type DrainResult,
   type EvidenceFileRef,
 } from './ingest-queue';
-import { resolvePortalTarget } from './portal-targets';
 import {
   FACTORY_PROOF_POLICY_ID,
   attestationFilePath,
@@ -46,7 +45,7 @@ export const PUBLISH_DRAIN_BUDGET_MS = 2_500;
 
 export interface PublishOptions {
   env?: NodeJS.ProcessEnv;
-  /** Repository the data belongs to; a hosted receiver gets only repos attached to it. */
+  /** Repository the data belongs to; a scoped receiver (every hosted receiver) gets only the repositories it lists. */
   repoPath?: string;
   fetchImpl?: typeof fetch;
   budgetMs?: number;
@@ -62,15 +61,13 @@ function receiverAccepts(destination: HarDestination, options: PublishOptions): 
   if (destination.preset === 'mission-control') {
     return env.HAR_CONTROL_DISABLED !== 'true' && isControlAvailable(env);
   }
-  if (destination.preset === 'hq' && options.repoPath) {
-    // HAR HQ receives only repositories attached to the connection (or the HAR_PORTAL_URL/TOKEN override).
-    try {
-      return resolvePortalTarget(options.repoPath) !== null && isRepoPortalSyncEnabled(options.repoPath);
-    } catch {
-      return false;
-    }
+  // A scoped receiver (every hosted receiver) takes only the repositories it lists at a scope above `off`;
+  // data that names no repository never goes there.
+  try {
+    return destinationAcceptsRepository(destination, { repoPath: options.repoPath });
+  } catch {
+    return false;
   }
-  return true;
 }
 
 /** Enabled ingest receivers that take a capability for this repository. */

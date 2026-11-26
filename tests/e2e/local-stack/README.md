@@ -81,34 +81,41 @@ receiver a line is about.
 | 14 | `--real-agents` only: the Claude Code generations otel-hook exported (Collector) hold the same tokens per model as Claude Code's own `--output-format json` report (`modelUsage`; a resumed session reports its running total) |
 | 15 | otel-hook metrics: each receiver keeps a series, with its provider, of every metric the Collector got for each agent session (otel-hook names the provider on each point, not on the resource). `SKIP` for a receiver whose adapter has no `metrics` reads |
 
-| 16 | `--upgrade-from-1x` only, once per variant (1.x trajectory forwarding off / on): the 1.x → 2.0 upgrade, see below |
+| 16 | `--upgrade-from-1x` only, once per variant (scope `usage`; scope `full` with redacted text): the 1.x → 2.0 upgrade, see below |
 
 ## Upgrade from 1.x
 
 `run.sh --upgrade-from-1x` runs only this scenario, and needs the hosted
-receiver. Twice, in a sandbox `HOME` of its own: HAR 1.x (`@osfactory/har@1`,
-or `HAR_E2E_HAR1_CLI`) initialises a fixture repository, sets telemetry to
-`full` and connects to the hosted receiver with its ingest key (`har hq connect
---api-key`, portal URL = the ingest base without `/ingest`), attaching the
-repository, with `--no-trajectory` and then `--trajectory`. The same `HOME`
-then runs the CLI under test with no hosted-receiver variables and stdin
-closed: `har hooks install`, `har telemetry install-hooks`, `har env
-maintain`, a launch, one replayed Claude Code and Codex turn, a full verify, a
-commit, `complete`.
+receiver. In 2.0 the hosted receiver is opt-in per repository, so the upgrade
+logs the user out. Twice, in a sandbox `HOME` of its own: HAR 1.x
+(`@osfactory/har@1`, or `HAR_E2E_HAR1_CLI`) initialises two fixture
+repositories, A and B, sets telemetry to `full` and logs in to the hosted
+receiver with its ingest key (`har hq connect --api-key`, portal URL = the
+ingest base without `/ingest`), attaching both — `--no-trajectory` in the
+`usage` variant, `--trajectory` in the `full` one. The same `HOME` then runs
+the CLI under test with no hosted-receiver variables and stdin closed.
 
-`16 [<variant>] maintain` checks that maintain removed the stage runner 1.x
-committed in `.har/lib/verify-runner.mjs` (2.0 runs its packaged runner unless
-the harness is ejected) and left `verificationStages` as the project had it.
+- `16 [<variant>] logout`: the first 2.0 command printed the logout notice
+  once, removed the stored login and its tokens, added no `hq` destination,
+  kept the 1.x attachments and trajectory choice as login defaults, and
+  `har hq status` says the user was logged out; hook commands carry today's flags.
+- `16 [<variant>] maintain`: maintain removed the stage runner 1.x committed in
+  `.har/lib/verify-runner.mjs` and left `verificationStages` alone.
+- Work in A while logged out (launch, a Claude Code and a Codex turn, full
+  verify, commit, complete): `logged-out @hosted` checks the hosted receiver holds
+  none of it (no work unit, no span, metric point or trajectory record).
+- `har hq connect --repo A --scope usage` (or `--scope full --content redacted`),
+  non-interactive: `connect` checks there was no prompt, the `hq` destination
+  lists A only, otel-hook's `hq` entry is scoped to A's repository with the
+  scope's signals and content mode, and Mission Control stays unscoped with raw text.
+- Work in B, then in A. The hosted receiver must hold A's run with its stages,
+  logs and proof (`records`) and its usage (check 7); the trajectory only at the
+  `full` scope (check 13, `no-trajectory` otherwise). `not-chosen @hosted`: nothing
+  of B there; `not-chosen @mission-control`: Mission Control holds B's run.
 
-`16 [<variant>] local` checks that the first 2.0 command added the `hq`
-destination with one notice, with logs only when 1.x forwarded the trajectory
-(otel-hook's text switch is global, so logs off is what keeps text local),
-printed the "full experience" hint once when it did not, never prompted, kept
-the repository attached, and updated the 1.x hook commands to today's flags.
-Then the hosted receiver must hold the run with its stages, logs and proof
-(`records`), both receivers the session usage (check 7), Mission Control the
-trajectory, and the hosted receiver the trajectory only in the forwarding
-variant (check 13 there, `no-trajectory` otherwise).
+The otel-hook build (`HAR_E2E_OTEL_HOOK_PACKAGE`) must have destination scopes
+(otel-hook#78); without them HAR leaves `hq` out of the hook config and `connect`
+fails.
 
 ## Real agents
 

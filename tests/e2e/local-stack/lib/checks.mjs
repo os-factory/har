@@ -200,7 +200,7 @@ function attributeOf(span, key) {
 // its end: the tool call that runs `har env launch` (or `work-bind`) starts before
 // the attempt and ends inside it, and belongs to it. Spans are bucketed by their
 // end time when the receiver keeps it, else by their start.
-function classifyStamps(list) {
+function classifyStamps(list, scoped = false) {
   const counts = { before: 0, inside: 0, after: 0 };
   const wrong = [];
   for (const { span, tool } of list) {
@@ -214,6 +214,13 @@ function classifyStamps(list) {
     if (!ok) wrong.push(`${tool} "${span.name}" ${span.startTime}..${span.endTime ?? '?'} (${bucket}) attempt=${attempt ?? 'none'}`);
   }
   need(wrong.length === 0, `${wrong.length} spans stamped wrongly: ${wrong.slice(0, 3).join('; ')}`);
+  if (scoped) {
+    // A receiver scoped per repository (the hosted receiver) gets only records that
+    // name the repository: before launch and after complete, the session runs in the
+    // main checkout outside any segment and names none.
+    need(counts.inside > 0, `spans before/inside/after the attempt: ${JSON.stringify(counts)}`);
+    return `agent spans inside ${counts.inside} stamped with the attempt; before ${counts.before} / after ${counts.after} (scoped: only spans naming the repository)`;
+  }
   need(counts.before > 0 && counts.inside > 0 && counts.after > 0, `spans before/inside/after the attempt: ${JSON.stringify(counts)}`);
   return `agent spans before launch ${counts.before} unstamped, inside ${counts.inside} stamped with the attempt, after complete ${counts.after} unstamped`;
 }
@@ -231,6 +238,7 @@ async function checkStamping(name) {
     for (const [tool, id] of Object.entries(state.sessions)) {
       for (const span of spans(rx, 'session', id)) list.push({ span, tool });
     }
+    return classifyStamps(list, rx.scoped === true);
   }
   return classifyStamps(list);
 }
@@ -569,7 +577,14 @@ function checkMetrics(name) {
   const rx = receiver(name);
   const kept = [];
   for (const [tool, sessionId] of Object.entries(state.sessions)) {
-    const sent = new Set(collectorPoints().filter((p) => (p.attributes['session.id'] ?? p.resource['session.id']) === sessionId).map((p) => p.name));
+    // A scoped receiver gets only the points that name the repository.
+    const repo = (url) => (url ?? '').toLowerCase().replace(/^[a-z]+:\/\/([^@/]*@)?/, '').replace(/\.git$/, '');
+    const sent = new Set(
+      collectorPoints()
+        .filter((p) => (p.attributes['session.id'] ?? p.resource['session.id']) === sessionId)
+        .filter((p) => !rx.scoped || repo(p.attributes['vcs.repository.url.full'] ?? p.resource['vcs.repository.url.full']) === repo(state.repoUrl))
+        .map((p) => p.name),
+    );
     need(sent.size > 0, `the Collector holds no metric point of the ${tool} session`);
     const series = metricSeries(rx, sessionId);
     const names = new Set(series.map((row) => row.name));
@@ -684,6 +699,44 @@ function probeTrajectory(name, sessionId, want) {
   return `${name}: ${rows.length} trajectory records`;
 }
 
+/**
+ * probe-nothing <receiver> <repo-url> <work-id> <session-id>...: the receiver holds
+ * nothing of a repository it was not given — no work unit, and no span, metric point
+ * or trajectory record of its sessions. Run after the receiver has caught up with a
+ * repository it does get (a positive check first), so absence is not just lag.
+ */
+async function probeNothing(name, repoUrl, workId, sessions) {
+  const rx = receiver(name);
+  const response = await fetch(
+    `${rx.readBase}/v2/work-units/${encodeURIComponent(workId)}?repository=${encodeURIComponent(repoUrl)}`,
+    { headers: rx.headers ?? {} },
+  );
+  if (response.ok) {
+    const view = await response.json();
+    const runs = (view.attempts ?? []).flatMap((attempt) => attempt.factoryRuns ?? []);
+    need((view.attempts ?? []).length === 0 && runs.length === 0, `${name}: holds work unit ${workId} (${(view.attempts ?? []).length} attempts, ${runs.length} runs)`);
+  } else {
+    need(response.status === 404, `${name}: GET work unit ${workId}: HTTP ${response.status}`);
+  }
+  const counts = [];
+  for (const session of sessions) {
+    const held = { spans: spans(rx, 'session', session).length, trajectory: 0, metrics: 0 };
+    try {
+      held.trajectory = trajectory(rx, session).length;
+    } catch (error) {
+      if (!(error instanceof Skip)) throw error;
+    }
+    try {
+      held.metrics = JSON.parse(execFileSync(rx.adapter, ['metrics', 'session', session], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() || '[]').length;
+    } catch {
+      // no metric reads on this adapter
+    }
+    need(held.spans + held.trajectory + held.metrics === 0, `${name}: session ${session.slice(0, 8)} has ${held.spans} spans, ${held.metrics} metric points, ${held.trajectory} trajectory records`);
+    counts.push(session.slice(0, 8));
+  }
+  return `${name}: nothing of ${repoUrl.replace(/^https?:\/\//, '')} (no work unit; sessions ${counts.join(', ')}: no spans, metrics or trajectory)`;
+}
+
 async function main() {
   const label = (n, what) => `${n} ${what}${target ? ` @${target}` : ''}`;
   switch (command) {
@@ -711,6 +764,16 @@ async function main() {
       return print('14 agent-report', await settle(() => checkAgentReport()));
     case 'trajectory':
       return print(label(13, 'trajectory'), await settle(() => checkTrajectory(target)));
+    case 'probe-nothing': {
+      // Absence is checked once, not settled: waiting would only hide a late arrival.
+      try {
+        console.log(await probeNothing(target, rest[0], rest[1], rest.slice(2)));
+        process.exit(0);
+      } catch (error) {
+        console.log(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
     case 'probe-received':
     case 'probe-usage':
     case 'probe-trajectory': {

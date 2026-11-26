@@ -7,21 +7,39 @@ import {
   type PortalUrlSource,
 } from '../../core/control-config';
 import {
-  applyHqTrajectoryChoice,
-  hqFullExperienceHint,
-  hqTrajectoryForwarding,
-  type HqTrajectoryApplyOutcome,
-} from '../../core/hq-destination-migration';
-import { describePortalSync, runPortalConnect } from '../../core/portal-connect';
-import { attachReposToPortal, unattachedRegisteredRepos } from '../../core/portal-repo-map';
+  CONTENT_LABELS,
+  SCOPE_LABELS,
+  describeRepositoryEntry,
+  isRepositoryContent,
+  isRepositoryScope,
+  resolveRepositoryReference,
+  type RepositoryReference,
+} from '../../core/destination-scopes';
+import {
+  alignHqDestinationAfterLogin,
+  chooseHqRepositories,
+  defaultHqScope,
+  hqRepositoryCandidates,
+  listHqRepositories,
+  removeHqRepositories,
+  type HqRepositoryCandidate,
+  type HqRepositoryChoice,
+} from '../../core/hq-repositories';
+import { hqLoginDefaults } from '../../core/hq-upgrade';
+import { describeHqStatus, runPortalConnect, type HqStatus } from '../../core/portal-connect';
 import {
   disconnectPortal,
   displayPortalTargetLabel,
   redactPortalTargetRecord,
-  writePortalConnectionTrajectoryPreference,
 } from '../../core/portal-targets';
-import { describeTelemetryLevel, getTelemetryLevel } from '../../core/telemetry-config';
-import { promptHqTrajectory } from '../telemetry-prompts';
+import { describeTelemetryLevel, getTelemetryLevel, levelIncludes } from '../../core/telemetry-config';
+import {
+  DESTINATION_REPOSITORY_CONTENT,
+  DESTINATION_REPOSITORY_SCOPES,
+  type DestinationRepository,
+  type DestinationRepositoryContent,
+  type DestinationRepositoryScope,
+} from '../../harness/schema';
 import { error, header, info, success, warn } from '../../utils/logging';
 import { finishCommand } from '../finish-command';
 
@@ -32,67 +50,102 @@ const PORTAL_SOURCE_LABEL: Record<PortalUrlSource, string> = {
   default: 'default',
 };
 
+interface ScopeFlags {
+  repo?: string[];
+  scope?: string;
+  content?: string;
+}
+
+function scopeOptions(y: Argv, repoDescribe: string): Argv {
+  return y
+    .option('repo', {
+      type: 'string',
+      array: true,
+      describe: repoDescribe,
+    })
+    .option('scope', {
+      type: 'string',
+      choices: [...DESTINATION_REPOSITORY_SCOPES],
+      describe:
+        'What HAR HQ receives for these repositories: off (nothing), usage (records, verification, tokens, cost), outline (+ every step, no text), full (+ text, see --content)',
+    })
+    .option('content', {
+      type: 'string',
+      choices: [...DESTINATION_REPOSITORY_CONTENT],
+      describe: 'Text at the full scope: none (default), redacted, masked or raw',
+    });
+}
+
 export const hqCommand = {
   command: 'hq <subcommand>',
-  describe: 'HAR HQ hosted portal (one org connection at a time)',
+  describe: 'HAR HQ hosted portal: log in, and choose which repositories it receives',
   builder: (yargs: Argv) =>
     yargs
       .command(
         'connect',
-        'Connect to a HAR HQ org (browser SSO); replaces any connection to another org',
+        'Log in to a HAR HQ org (browser SSO), then choose which repositories it receives and at what scope',
         (y: Argv) =>
-          y
-            .option('portal', {
-              type: 'string',
-              describe: `Portal base URL (or HAR_PORTAL_URL; default ${DEFAULT_PORTAL_URL})`,
-            })
-            .option('api-key', {
-              type: 'string',
-              describe: 'Store this ingest token directly instead of browser login',
-            })
-            .option('repo', {
-              type: 'string',
-              default: '.',
-              describe: 'Repository to attach to the chosen workspace',
-            })
-            .option('trajectory', {
-              type: 'boolean',
-              describe:
-                'Forward the full trajectory (prompts, replies, tool output) to this org. Asked interactively when omitted; off by default.',
-            })
-            .option('json', { type: 'boolean', default: false })
-            .option('yes', {
-              alias: 'y',
-              type: 'boolean',
-              default: false,
-              describe: 'Skip interactive prompts (portal URL, extra-repo mapping, trajectory forwarding)',
-            }),
-        (argv) =>
-          handleHqConnect(
-            argv as {
-              portal?: string;
-              apiKey?: string;
-              repo: string;
-              trajectory?: boolean;
-              json: boolean;
-              yes: boolean;
-              deprecated?: boolean;
-            },
+          scopeOptions(
+            y
+              .option('portal', {
+                type: 'string',
+                describe: `Portal base URL (or HAR_PORTAL_URL; default ${DEFAULT_PORTAL_URL})`,
+              })
+              .option('api-key', {
+                type: 'string',
+                describe: 'Store this ingest token directly instead of browser login',
+              })
+              .option('trajectory', {
+                type: 'boolean',
+                hidden: true,
+                describe: 'Removed in 2.0: use --scope full --content raw',
+              })
+              .option('json', { type: 'boolean', default: false })
+              .option('yes', {
+                alias: 'y',
+                type: 'boolean',
+                default: false,
+                describe: 'Never prompt: log in, and choose repositories only from --repo/--scope',
+              }),
+            'Repository to send (local path or repository URL; repeatable). Default with --scope: the current repository',
           ),
+        (argv) => handleHqConnect(argv as unknown as HqConnectArgs),
       )
       .command(
-        ['list', 'status'],
-        'Show the HAR HQ org connection, its attached repositories and what it receives',
+        'repos [action] [repos..]',
+        'List, add or remove the repositories HAR HQ receives',
+        (y: Argv) =>
+          scopeOptions(
+            y
+              .positional('action', {
+                type: 'string',
+                choices: ['list', 'add', 'remove'],
+                default: 'list',
+              })
+              .positional('repos', {
+                type: 'string',
+                array: true,
+                describe: 'Local paths or repository URLs (default: the current repository)',
+              })
+              .option('json', { type: 'boolean', default: false })
+              .option('yes', { alias: 'y', type: 'boolean', default: false, describe: 'Never prompt' }),
+            'Repository (local path or repository URL; repeatable), in addition to the positional ones',
+          ),
+        (argv) => handleHqRepos(argv as unknown as HqReposArgs),
+      )
+      .command(
+        ['status', 'list'],
+        'Show the HAR HQ login and which repositories it receives, at which scope',
         (y: Argv) => y.option('json', { type: 'boolean', default: false }),
-        (argv) => handleHqList(argv as { json: boolean }),
+        (argv) => handleHqStatus(argv as { json: boolean }),
       )
       .command(
         'disconnect',
-        'Remove the HAR HQ org connection (nothing is sent to HQ until you connect again)',
+        'Log out of HAR HQ (nothing is sent there until you connect again)',
         (y: Argv) => y.option('json', { type: 'boolean', default: false }),
         (argv) => handleHqDisconnect(argv as { json: boolean }),
       )
-      .demandCommand(1, 'Please specify a subcommand: connect, list, disconnect'),
+      .demandCommand(1, 'Please specify a subcommand: connect, repos, status, disconnect'),
   handler: () => {},
 };
 
@@ -112,7 +165,7 @@ async function resolveConnectPortalUrl(
     {
       type: 'list',
       name: 'choice',
-      message: 'Where should this repository connect?',
+      message: 'Where should this machine log in?',
       choices: [
         { name: `Production (${DEFAULT_PORTAL_URL})`, value: 'prod' },
         { name: `Development (${DEFAULT_DEV_PORTAL_URL})`, value: 'dev' },
@@ -135,77 +188,247 @@ async function resolveConnectPortalUrl(
   return resolvePortalUrl(url);
 }
 
-async function promptExtraRepoAttachments(
-  currentRepo: string | null,
-  orgLabel: string,
-): Promise<string[]> {
-  const repos = unattachedRegisteredRepos(currentRepo);
-  if (repos.length === 0) return [];
+/** The current directory as a repository, when it is one (has a `.git` above it). */
+function currentRepository(): RepositoryReference | null {
+  try {
+    const reference = resolveRepositoryReference('.');
+    return reference.path ? reference : null;
+  } catch {
+    return null;
+  }
+}
 
-  const noun = repos.length === 1 ? 'repository' : 'repositories';
-  info(`${repos.length} other registered ${noun}:`);
-  for (const repoPath of repos) info(`  ${repoPath}`);
+/** Parse `--scope` / `--content`; throws on a content without the full scope. */
+function parseScopeFlags(flags: ScopeFlags): { scope?: DestinationRepositoryScope; content?: DestinationRepositoryContent } {
+  const scope = flags.scope;
+  const content = flags.content;
+  if (scope !== undefined && !isRepositoryScope(scope)) throw new Error(`--scope must be one of ${DESTINATION_REPOSITORY_SCOPES.join(', ')}`);
+  if (content !== undefined && !isRepositoryContent(content)) {
+    throw new Error(`--content must be one of ${DESTINATION_REPOSITORY_CONTENT.join(', ')}`);
+  }
+  if (content !== undefined && content !== 'none' && scope !== 'full') {
+    throw new Error('--content applies to --scope full only');
+  }
+  return { ...(scope ? { scope } : {}), ...(content ? { content } : {}) };
+}
 
+/** The exact command that chooses repositories later. */
+function chooseCommand(repos: readonly string[], scope = 'usage'): string {
+  const targets = repos.length > 0 ? repos : ['.'];
+  return `har hq repos add ${targets.map(shellWord).join(' ')} --scope ${scope}`;
+}
+
+function shellWord(value: string): string {
+  return /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function scopeChoices(): { name: string; value: DestinationRepositoryScope; short: string }[] {
+  return (['full', 'outline', 'usage', 'off'] as const).map((scope) => ({
+    name: SCOPE_LABELS[scope],
+    value: scope,
+    short: scope,
+  }));
+}
+
+function contentChoices(): { name: string; value: DestinationRepositoryContent; short: string }[] {
+  return (['none', 'masked', 'redacted', 'raw'] as const).map((content) => ({
+    name: CONTENT_LABELS[content],
+    value: content,
+    short: content,
+  }));
+}
+
+const PER_REPOSITORY = '__per-repository__';
+
+async function promptContent(message: string, current: DestinationRepositoryContent): Promise<DestinationRepositoryContent> {
+  const { content } = await inquirer.prompt<{ content: DestinationRepositoryContent }>([
+    { type: 'list', name: 'content', message, choices: contentChoices(), default: current },
+  ]);
+  return content;
+}
+
+async function promptScope(
+  message: string,
+  current: { scope: DestinationRepositoryScope; content: DestinationRepositoryContent },
+  allowPerRepository: boolean,
+): Promise<{ scope: DestinationRepositoryScope; content: DestinationRepositoryContent } | 'per-repository'> {
+  const { scope } = await inquirer.prompt<{ scope: string }>([
+    {
+      type: 'list',
+      name: 'scope',
+      message,
+      choices: [
+        ...scopeChoices(),
+        ...(allowPerRepository ? [{ name: 'Choose per repository…', value: PER_REPOSITORY, short: 'per repository' }] : []),
+      ],
+      default: current.scope,
+    },
+  ]);
+  if (scope === PER_REPOSITORY) return 'per-repository';
+  const chosen = scope as DestinationRepositoryScope;
+  if (chosen !== 'full') return { scope: chosen, content: 'none' };
+  const content = await promptContent(
+    'Prompts, agent replies and tool output: how should HAR HQ receive the text?',
+    current.content,
+  );
+  return { scope: chosen, content };
+}
+
+function candidateLabel(candidate: HqRepositoryCandidate): string {
+  const notes = [
+    ...(candidate.current ? ['this repository'] : []),
+    ...(candidate.chosen ? [`now: ${candidate.chosen.scope}`] : []),
+    ...(!candidate.chosen && candidate.attachedIn1x ? ['sent in 1.x'] : []),
+    ...(!candidate.url ? ['no origin remote: records only'] : []),
+  ];
+  return notes.length > 0 ? `${candidate.path}  (${notes.join(', ')})` : candidate.path;
+}
+
+/** Interactive: which repositories, then one scope for all (or one per repository). */
+async function promptRepositoryChoices(orgLabel: string, currentRepo: string | null): Promise<HqRepositoryChoice[]> {
+  const defaults = hqLoginDefaults();
+  const candidates = hqRepositoryCandidates(currentRepo, { attachedIn1x: defaults?.repositories ?? [] });
+  if (candidates.length === 0) {
+    info('No repository registered on this machine yet: run har hq repos add <path> --scope usage from one later.');
+    return [];
+  }
   const { selected } = await inquirer.prompt<{ selected: string[] }>([
     {
       type: 'checkbox',
       name: 'selected',
-      message: `Attach which of these ${repos.length} ${noun} to ${orgLabel}?`,
-      choices: repos.map((repoPath) => ({
-        name: repoPath,
-        value: repoPath,
-        checked: true,
+      message: `Which repositories should ${orgLabel} receive? (space to toggle; nothing else is sent)`,
+      choices: candidates.map((candidate) => ({
+        name: candidateLabel(candidate),
+        value: candidate.path,
+        checked: candidate.preselected,
       })),
     },
   ]);
-  return attachReposToPortal(selected);
+  const unselected = candidates.filter((candidate) => candidate.chosen && candidate.chosen.scope !== 'off' && !selected.includes(candidate.path));
+  const picked = candidates.filter((candidate) => selected.includes(candidate.path));
+  const offs: HqRepositoryChoice[] = unselected.map((candidate) => ({ reference: referenceOf(candidate), scope: 'off' }));
+  if (picked.length === 0) return offs;
+
+  const preset = picked.find((candidate) => candidate.chosen && candidate.chosen.scope !== 'off')?.chosen;
+  const current = preset
+    ? { scope: preset.scope, content: preset.content ?? 'none' }
+    : defaultHqScope(defaults);
+  const answer = await promptScope(
+    picked.length === 1 ? `What should ${orgLabel} receive from it?` : `What should ${orgLabel} receive from these ${picked.length} repositories?`,
+    current,
+    picked.length > 1,
+  );
+  if (answer !== 'per-repository') {
+    return [...offs, ...picked.map((candidate) => ({ reference: referenceOf(candidate), ...answer }))];
+  }
+  const choices: HqRepositoryChoice[] = [...offs];
+  for (const candidate of picked) {
+    const own = candidate.chosen && candidate.chosen.scope !== 'off'
+      ? { scope: candidate.chosen.scope, content: candidate.chosen.content ?? 'none' }
+      : current;
+    const one = await promptScope(`${candidate.path}:`, own, false);
+    if (one !== 'per-repository') choices.push({ reference: referenceOf(candidate), ...one });
+  }
+  return choices;
 }
 
-export async function handleHqConnect(argv: {
+function referenceOf(candidate: HqRepositoryCandidate): RepositoryReference {
+  return { path: candidate.path, ...(candidate.url ? { url: candidate.url } : {}) };
+}
+
+/** What the local level lets through, said once when it caps a chosen scope. */
+function levelCapNote(entries: readonly DestinationRepository[]): string | undefined {
+  const level = getTelemetryLevel();
+  const highest = entries.reduce<DestinationRepositoryScope>(
+    (top, entry) => (DESTINATION_REPOSITORY_SCOPES.indexOf(entry.scope) > DESTINATION_REPOSITORY_SCOPES.indexOf(top) ? entry.scope : top),
+    'off',
+  );
+  if (highest === 'off' || highest === 'usage' || levelIncludes(level, highest)) return undefined;
+  return `This machine records agent activity at the ${describeTelemetryLevel(level).label} level, so HAR HQ gets at most that: har telemetry on --level ${highest}`;
+}
+
+function printChosen(entries: readonly DestinationRepository[], orgLabel: string): void {
+  const sent = entries.filter((entry) => entry.scope !== 'off');
+  const off = entries.filter((entry) => entry.scope === 'off');
+  for (const entry of sent) success(`${orgLabel} receives ${describeRepositoryEntry(entry)}`);
+  for (const entry of off) info(`Not sent: ${entry.path ?? entry.url}`);
+  const note = levelCapNote(sent);
+  if (note) info(note);
+}
+
+interface HqConnectArgs extends ScopeFlags {
   portal?: string;
   apiKey?: string;
-  repo?: string;
   trajectory?: boolean;
   json?: boolean;
   yes?: boolean;
   deprecated?: boolean;
-}): Promise<void> {
+}
+
+export async function handleHqConnect(argv: HqConnectArgs): Promise<void> {
   if (argv.deprecated) {
     warn('har control login is deprecated — use har hq connect');
   }
+  let flags: ReturnType<typeof parseScopeFlags>;
+  try {
+    flags = parseScopeFlags(argv);
+  } catch (err) {
+    error((err as Error).message);
+    return finishCommand(1);
+  }
+  if (argv.trajectory !== undefined && !argv.json) {
+    warn('--trajectory no longer applies: HAR HQ receives each repository at the scope you choose (--scope full --content raw).');
+  }
 
-  const { url: portalUrl, source } = await resolveConnectPortalUrl(argv.portal, argv.yes);
+  const { url: portalUrl, source } = await resolveConnectPortalUrl(argv.portal, argv.yes || argv.json);
   if (!argv.json) {
     header('har hq connect');
     info(`Portal: ${portalUrl} (${PORTAL_SOURCE_LABEL[source]})`);
   }
 
+  const current = currentRepository();
+  const repoFlags = argv.repo ?? [];
   try {
-    const { record, attachedRepo, replaced, detachedRepos } = await runPortalConnect({
+    const { record, replaced } = await runPortalConnect({
       portalUrl,
       apiKey: argv.apiKey,
-      repoPath: argv.repo ?? '.',
+      ...(current?.path ? { repoPath: current.path } : {}),
     });
     const label = displayPortalTargetLabel(record);
-    if (argv.trajectory !== undefined) {
-      writePortalConnectionTrajectoryPreference(argv.trajectory);
+    const forgotten = alignHqDestinationAfterLogin({ switchedOrg: replaced !== null });
+
+    // Repositories and scope: from the flags, else asked on a TTY, else none (print the command).
+    let choices: HqRepositoryChoice[] | undefined;
+    if (flags.scope) {
+      const references = repoFlags.length > 0 ? repoFlags.map((repo) => resolveRepositoryReference(repo)) : current ? [current] : [];
+      if (references.length === 0) throw new Error('--scope needs --repo <path|url> outside a repository');
+      choices = references.map((reference) => ({ reference, scope: flags.scope!, ...(flags.content ? { content: flags.content } : {}) }));
     }
-    // Non-interactive (agents, --yes, --json): the destination follows the saved choice now.
-    const askTrajectory =
-      argv.trajectory === undefined && !argv.json && !argv.yes && isInteractive() && getTelemetryLevel() === 'full';
-    const destination = askTrajectory ? undefined : connectHqDestination();
+    const ask = !choices && !argv.yes && !argv.json && isInteractive();
+
+    if (!argv.json) {
+      if (replaced) {
+        warn(`Switched org: ${displayPortalTargetLabel(replaced)} → ${label}. Nothing is sent to the previous org any more.`);
+        if (forgotten.length > 0) info(`${forgotten.length} repositories chosen for the previous org are no longer sent; choose again below.`);
+      }
+      success(`Logged in to ${label}`);
+      if (record.email) info(`Account: ${record.email}`);
+    }
+
+    if (ask) choices = await promptRepositoryChoices(label, current?.path ?? null);
+    const written = choices && choices.length > 0 ? chooseHqRepositories(choices) : undefined;
+
     if (argv.json) {
+      const status = describeHqStatus();
       process.stdout.write(
         JSON.stringify(
           {
             ok: true,
             connection: redactPortalTargetRecord(record),
-            attachedRepo,
             replaced: replaced ? redactPortalTargetRecord(replaced) : null,
-            detachedRepos,
-            trajectoryForwarding: hqTrajectoryForwarding(),
-            destination: destination && 'destinations' in destination ? destination.destinations : null,
-            hint: hqFullExperienceHint() ?? null,
+            chosen: written?.entries ?? [],
+            repositories: status.repositories,
+            next: status.repositories.some((entry) => entry.scope !== 'off') ? null : chooseCommand(repoFlags),
           },
           null,
           2,
@@ -213,104 +436,99 @@ export async function handleHqConnect(argv: {
       );
       return;
     }
-    if (replaced) {
-      warn(
-        `Switched org: ${displayPortalTargetLabel(replaced)} → ${label}. ` +
-          'Nothing is sent to the previous org any more.',
-      );
-      if (detachedRepos.length > 0) {
-        const noun = detachedRepos.length === 1 ? 'repository' : 'repositories';
-        info(`${detachedRepos.length} ${noun} attached to the previous org no longer sync:`);
-        for (const repoPath of detachedRepos) info(`  ${repoPath}`);
+
+    if (written) {
+      printChosen(written.entries, label);
+    } else if (!ask) {
+      const chosen = listHqRepositories().filter((entry) => entry.scope !== 'off');
+      if (chosen.length > 0) {
+        info(`${label} keeps receiving ${chosen.length === 1 ? 'the repository' : `the ${chosen.length} repositories`} chosen before:`);
+        for (const entry of chosen) info(`  ${describeRepositoryEntry(entry)}`);
+      } else {
+        info('No repository chosen: nothing is sent to HAR HQ yet. Choose with:');
+        info(`  ${chooseCommand(repoFlags)}`);
+        info('  (scopes: off, usage, outline, full; with full, --content none|redacted|masked|raw)');
       }
-    }
-    success(`Connected to ${label}`);
-    if (record.email) info(`Account: ${record.email}`);
-    if (attachedRepo) {
-      success(`Attached ${attachedRepo}`);
     } else {
-      info('No local repository attached (run this from a repo, or pass --repo).');
+      info('No repository chosen: nothing is sent to HAR HQ. Choose later with: har hq repos add <repo> --scope usage');
     }
-
-    if (!argv.yes && isInteractive()) {
-      const extra = await promptExtraRepoAttachments(attachedRepo, label);
-      for (const repoPath of extra) {
-        success(`Attached ${repoPath}`);
-      }
-    }
-
-    // Only the Full level records text, so only then is forwarding a choice.
-    let outcome = destination;
-    if (askTrajectory) {
-      const forward = await promptHqTrajectory(label, record.trajectoryForwarding === true);
-      writePortalConnectionTrajectoryPreference(forward);
-      outcome = connectHqDestination();
-    }
-
-    printHqDestinationOutcome(outcome);
-    printHqTrajectorySummary();
+    printAgentTelemetryNote(describeHqStatus());
   } catch (err) {
     error(`Connect failed: ${(err as Error).message}`);
     return finishCommand(1);
   }
 }
 
-/**
- * Connecting is consent to send to the hosted receiver: add (or align) the
- * `hq` destination, the trajectory (logs) only when forwarding is on.
- */
-function connectHqDestination(): HqTrajectoryApplyOutcome | { status: 'error'; message: string } {
+function printAgentTelemetryNote(status: HqStatus): void {
+  if (status.agentTelemetryScoped === false && status.repositories.some((entry) => entry.scope !== 'off')) {
+    info(
+      'The installed otel-hook cannot filter by repository, so HAR HQ gets records and verification only (no agent telemetry) until it is upgraded: har telemetry on',
+    );
+  }
+}
+
+interface HqReposArgs extends ScopeFlags {
+  action?: string;
+  repos?: string[];
+  json?: boolean;
+  yes?: boolean;
+}
+
+async function handleHqRepos(argv: HqReposArgs): Promise<void> {
+  const action = argv.action ?? 'list';
+  if (action === 'list') return handleHqStatus({ json: argv.json === true });
+  let flags: ReturnType<typeof parseScopeFlags>;
   try {
-    return applyHqTrajectoryChoice(hqTrajectoryForwarding(), { addMissing: true });
+    flags = parseScopeFlags(argv);
   } catch (err) {
-    return { status: 'error', message: err instanceof Error ? err.message : String(err) };
+    error((err as Error).message);
+    return finishCommand(1);
   }
-}
-
-function printHqDestinationOutcome(
-  outcome: HqTrajectoryApplyOutcome | { status: 'error'; message: string } | undefined,
-): void {
-  if (!outcome) return;
-  switch (outcome.status) {
-    case 'added':
-    case 'updated':
-      for (const destination of outcome.destinations) {
-        success(
-          `${outcome.status === 'added' ? 'Added' : 'Updated'} destination "${destination.name}": ${destination.signals.join(', ')}, records, proofs, evidence`,
-        );
+  const named = [...(argv.repos ?? []), ...(argv.repo ?? [])];
+  try {
+    const references = (named.length > 0 ? named : ['.']).map((repo) => resolveRepositoryReference(repo));
+    if (action === 'remove') {
+      const removed = removeHqRepositories(references);
+      if (argv.json) {
+        process.stdout.write(JSON.stringify({ removed, repositories: listHqRepositories() }, null, 2) + '\n');
+        return;
       }
+      if (removed === 0) info('None of these repositories was sent to HAR HQ.');
+      else success(`HAR HQ no longer receives ${removed === 1 ? 'this repository' : `these ${removed} repositories`}.`);
       return;
-    case 'no-base-url':
-      warn('The hosted receiver ingest URL is unknown, so nothing is sent there: har telemetry destination add hq --preset hq --base-url <ingest base URL>');
+    }
+
+    let scope = flags.scope;
+    let content = flags.content;
+    if (!scope) {
+      if (argv.yes || argv.json || !isInteractive()) {
+        error(`Choose a scope: ${chooseCommand(named)}   (off, usage, outline, full; with full, --content none|redacted|masked|raw)`);
+        return finishCommand(1);
+      }
+      const answer = await promptScope('What should HAR HQ receive from it?', defaultHqScope(hqLoginDefaults()), false);
+      if (answer === 'per-repository') return;
+      scope = answer.scope;
+      content = answer.content;
+    }
+    const written = chooseHqRepositories(references.map((reference) => ({ reference, scope: scope!, ...(content ? { content } : {}) })));
+    if (argv.json) {
+      process.stdout.write(JSON.stringify({ chosen: written.entries, repositories: written.destination.repositories ?? [] }, null, 2) + '\n');
       return;
-    case 'error':
-      warn(`Could not add the hq destination: ${outcome.message}`);
-      return;
-    default:
-      return;
+    }
+    printChosen(written.entries, 'HAR HQ');
+    if (!describeHqStatus().connection && !process.env.HAR_PORTAL_TOKEN) {
+      info('Not logged in: nothing is sent until you log in with har hq connect.');
+    }
+    printAgentTelemetryNote(describeHqStatus());
+  } catch (err) {
+    error((err as Error).message);
+    return finishCommand(1);
   }
 }
 
-const HQ_TRAJECTORY_LABEL = {
-  none: 'nothing (telemetry is off)',
-  usage: 'tokens and cost',
-  outline: 'tokens, cost and the step outline (no text)',
-  full: 'the full trajectory (prompts, replies, tool output)',
-} as const;
-
-/** One line on what HQ receives for agent sessions, and how to get more. */
-function printHqTrajectorySummary(): void {
-  const overview = describePortalSync();
-  const level = describeTelemetryLevel(overview.telemetryLevel);
-  info(`  telemetry: ${level.label} (local level — har telemetry on --level <level>)`);
-  info(`  HQ receives: ${HQ_TRAJECTORY_LABEL[overview.hqTrajectory]}`);
-  const hint = hqFullExperienceHint();
-  if (hint) info(`  ${hint}`);
-}
-
-async function handleHqList(argv: { json: boolean }): Promise<void> {
-  const overview = describePortalSync();
-  const { connection } = overview;
+async function handleHqStatus(argv: { json: boolean }): Promise<void> {
+  const status = describeHqStatus();
+  const { connection } = status;
 
   if (argv.json) {
     process.stdout.write(
@@ -319,12 +537,12 @@ async function handleHqList(argv: { json: boolean }): Promise<void> {
           connection: connection
             ? { ...redactPortalTargetRecord(connection), label: displayPortalTargetLabel(connection) }
             : null,
-          attachedRepos: overview.repos.map((repo) => repo.repoPath),
-          repos: overview.repos,
-          telemetryLevel: overview.telemetryLevel,
-          trajectoryForwarding: overview.trajectoryForwarding,
-          hqTrajectory: overview.hqTrajectory,
-          hint: hqFullExperienceHint() ?? null,
+          envToken: status.envToken,
+          repositories: status.repositories,
+          destinationEnabled: status.destinationEnabled,
+          telemetryLevel: status.telemetryLevel,
+          agentTelemetryScoped: status.agentTelemetryScoped,
+          hint: status.hint ?? null,
         },
         null,
         2,
@@ -333,32 +551,26 @@ async function handleHqList(argv: { json: boolean }): Promise<void> {
     return;
   }
 
-  header('har hq list');
-  if (!connection) {
-    info('Not connected to a HAR HQ org.');
-    info('Connect with: har hq connect');
-    return;
-  }
-
-  info(displayPortalTargetLabel(connection));
-  info(`  portal: ${connection.portalUrl}`);
-  if (connection.email) info(`  account: ${connection.email}`);
-  if (overview.repos.length === 0) {
-    info('  repos: (none attached — run har hq connect from a repository)');
+  header('har hq status');
+  if (connection) {
+    info(displayPortalTargetLabel(connection));
+    info(`  portal: ${connection.portalUrl}`);
+    if (connection.email) info(`  account: ${connection.email}`);
+  } else if (status.envToken) {
+    info('Using HAR_PORTAL_TOKEN (no stored login).');
   } else {
-    info('  repos:');
-    for (const repo of overview.repos) {
-      if (repo.sendsToHq) {
-        info(`    ${repo.repoPath}`);
-      } else {
-        warn(
-          `    ${repo.repoPath} — kept local-only, nothing is sent. ` +
-            `Send it: har control register --repo ${repo.repoPath} --portal`,
-        );
-      }
-    }
+    info('Not logged in to HAR HQ: nothing is sent there.');
   }
-  printHqTrajectorySummary();
+  if (status.repositories.length === 0) {
+    info('  repositories: none chosen — nothing is sent (har hq repos add <repo> --scope usage)');
+  } else {
+    info('  repositories:');
+    for (const entry of status.repositories) info(`    ${describeRepositoryEntry(entry)}`);
+    if (!status.destinationEnabled) warn('  the hq destination is disabled: nothing is sent');
+  }
+  info(`  local telemetry: ${describeTelemetryLevel(status.telemetryLevel).label} (caps every destination — har telemetry on --level <level>)`);
+  printAgentTelemetryNote(status);
+  if (status.hint) info(status.hint);
 }
 
 async function handleHqDisconnect(argv: { json: boolean }): Promise<void> {
@@ -373,5 +585,5 @@ async function handleHqDisconnect(argv: { json: boolean }): Promise<void> {
     return;
   }
   header('har hq disconnect');
-  success(`Disconnected ${displayPortalTargetLabel(removed)}`);
+  success(`Logged out of ${displayPortalTargetLabel(removed)}. The chosen repositories are kept for the next login.`);
 }

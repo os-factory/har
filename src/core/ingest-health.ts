@@ -9,7 +9,7 @@ import {
   type CapabilitiesCheck,
   type IngestQueueSummary,
 } from './ingest-queue';
-import { hqDestinationFinding, hqFullExperienceHint } from './hq-destination-migration';
+import { hqStatusHint } from './hq-upgrade';
 import { readDestinations } from './telemetry-destinations';
 import { formatAgo } from './telemetry-health';
 import { isControlAvailable } from './telemetry-route';
@@ -131,19 +131,12 @@ export async function collectIngestHealth(options: CollectIngestHealthOptions = 
         queue.dead > 0;
       out.push({ ...base, status: warn ? 'warn' : 'pass', summary: describe(base, now) });
     }
-    const hqMissing = hqDestinationFinding(env, list);
-    const hint = hqMissing ? undefined : hqFullExperienceHint(env, list);
+    // Informational only: logged out of HAR HQ by the 2.0 upgrade, or nothing chosen to send there.
+    const hint = hqStatusHint(env);
     return {
-      status: hqMissing
-        ? 'warn'
-        : out.length === 0
-          ? 'skip'
-          : out.some((entry) => entry.status === 'warn')
-            ? 'warn'
-            : 'pass',
+      status: out.length === 0 ? 'skip' : out.some((entry) => entry.status === 'warn') ? 'warn' : 'pass',
       destinations: out,
       notes: root ? [] : ['no queue directory (test runner)'],
-      ...(hqMissing ? { findings: [hqMissing] } : {}),
       ...(hint ? { hints: [hint] } : {}),
     };
   } catch (err) {

@@ -7,6 +7,7 @@ import {
   destinationIncludesLocalPaths,
   otlpSignalUrl,
   type HarDestination,
+  type OtelHookScope,
   type OtlpSignal,
   type TelemetryDestination,
 } from '../harness/schema';
@@ -253,8 +254,12 @@ export function routeMetricsIncludeSessionId(route: AgentTelemetryRoute): boolea
   if (missionControlRouteSignals(route).includes('metrics') && route.missionControlIncludesSessionId === false) {
     return false;
   }
+  // A scoped destination carries its own `includeSessionId` in its scopes.
   return !route.destinations.some(
-    (destination) => destination.signals.includes('metrics') && destination.includeSessionId === false,
+    (destination) =>
+      destination.scopes === undefined &&
+      destination.signals.includes('metrics') &&
+      destination.includeSessionId === false,
   );
 }
 
@@ -290,6 +295,8 @@ export interface RouteDestinationPlan {
   metricsEndpoint?: string;
   signals: OtlpSignal[];
   headers: RouteHeaderBinding[];
+  /** Per-repository filter (otel-hook `scopes`); absent: every record. */
+  scopes?: OtelHookScope[];
 }
 
 /** otel-hook destination names are `[a-z0-9][a-z0-9_-]{0,62}` and also its spool directories. */
@@ -351,6 +358,7 @@ export function planRouteDestinations(route: AgentTelemetryRoute): RouteDestinat
         ...(metrics ? (['metrics'] as const) : []),
       ],
       headers,
+      ...(destination.scopes ? { scopes: destination.scopes } : {}),
     });
   });
   return plans;

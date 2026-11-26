@@ -37,7 +37,9 @@ import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
 import { collectTelemetryHealth, withTelemetryHealth } from '../core/telemetry-health';
 import { collectIngestHealth, withIngestHealth } from '../core/ingest-health';
-import { runHqDestinationMigration } from '../core/hq-destination-migration';
+import { runHqUpgradeMigration } from '../core/hq-upgrade';
+import { describeHqStatus } from '../core/portal-connect';
+import { displayPortalTargetLabel, redactPortalTargetRecord } from '../core/portal-targets';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -314,6 +316,12 @@ export const HAR_MCP_TOOLS: Tool[] = [
     description:
       'Validate the harness contract: harness.env schema, stages.json, stage scripts exist and are executable, lifecycle stages resolve, verificationStages ids resolve, port lanes are coherent, slot registry entries point at existing worktrees. Returns pass/fail with actionable findings.',
     inputSchema: objectJsonSchema({ repo: repoJsonProperty }),
+  },
+  {
+    name: 'har_hq_status',
+    description:
+      'Read-only: whether this machine is logged in to HAR HQ and which repositories it receives, at which scope (off/usage/outline/full, text none/redacted/masked/raw). Logging in and choosing repositories are human-only (har hq connect, har hq repos add).',
+    inputSchema: objectJsonSchema({}),
   },
   {
     name: 'har_get_status',
@@ -741,6 +749,21 @@ export async function handleMcpToolCall(
       };
     }
 
+    case 'har_hq_status': {
+      const status = describeHqStatus();
+      return jsonContent({
+        connection: status.connection
+          ? { ...redactPortalTargetRecord(status.connection), label: displayPortalTargetLabel(status.connection) }
+          : null,
+        envToken: status.envToken,
+        repositories: status.repositories,
+        destinationEnabled: status.destinationEnabled,
+        telemetryLevel: status.telemetryLevel,
+        agentTelemetryScoped: status.agentTelemetryScoped,
+        hint: status.hint ?? null,
+      });
+    }
+
     case 'har_get_status': {
       const agentIdRaw = args.agentId as number | undefined;
       const agentId = agentIdRaw !== undefined ? validateAgentId(agentIdRaw, repo) : undefined;
@@ -936,7 +959,7 @@ export async function handleMcpToolCall(
 export async function runHarMcpServer(defaultRepo = '.'): Promise<void> {
   ensureDefaultTelemetryPreference();
   // Same one-time 1.x → 2.0 migration as the CLI; its notice goes to stderr, never the protocol stream.
-  runHqDestinationMigration();
+  runHqUpgradeMigration();
   const server = new Server(
     { name: 'har', version: getHarPackageVersion() },
     { capabilities: { tools: {} } },

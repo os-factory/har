@@ -111,7 +111,7 @@ What to know about the route:
   carry your account identity, so they go to Mission Control only, and stay off
   without it. Without Mission Control, Claude Code token and cost metrics are not
   recorded.
-- **otel-hook 0.12.0.** HAR installs it on `har env launch` and
+- **otel-hook 0.13.2.** HAR installs it on `har env launch` and
   `har telemetry on`. With a copy older than 0.9.0, HAR prints the version it needs
   and sends agent traces to Mission Control only.
 - **Retries and health.** A full spool drops its oldest batches, and a batch Langfuse

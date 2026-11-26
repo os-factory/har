@@ -28,22 +28,29 @@ import {
   type AgentTelemetryRoute,
   type AgentTelemetryRouteDecision,
 } from './telemetry-route';
-import { LOCAL_ATTR_PREFIX } from '../harness/schema';
+import { LOCAL_ATTR_PREFIX, type OtelHookScope } from '../harness/schema';
 import { sessionContextRoot } from './session-context';
 
 /**
- * The otel-hook version HAR installs: the one place to change it. 0.12.0 is
- * the first with the session context (`sessionContext.dir`, ADR 0004 section
- * 3); 0.11.0 brought per-destination metrics, 0.10.0 Claude Code transcript usage.
+ * The otel-hook version HAR installs: the one place to change it. 0.13.2 has
+ * subagent usage, Codex rollout usage with a bounded export, and the Windows
+ * spool claim; 0.12.0 brought the session context (`sessionContext.dir`, ADR
+ * 0004 section 3), 0.11.0 per-destination metrics, 0.10.0 Claude Code
+ * transcript usage.
+ *
+ * TODO(otel-hook scopes): per-destination repository `scopes` (otel-hook#78)
+ * are not released yet. Until the pin reaches the release that has them, HAR
+ * HQ gets no agent telemetry from a pinned install (records and verification
+ * still go): bump this pin and `OTEL_HOOK_SCOPES_MIN_VERSION` together.
  */
-export const OTEL_HOOKS_VERSION = '0.12.0';
+export const OTEL_HOOKS_VERSION = '0.13.2';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
 export const OTEL_HOOKS_PACKAGE = `@osfactory/otel-hook@${OTEL_HOOKS_VERSION}`;
 
 /**
  * Environment override for the package spec HAR installs: any spec the package
- * manager accepts (`@osfactory/otel-hook@0.12.0`, a local `.tgz`, a directory).
+ * manager accepts (`@osfactory/otel-hook@0.13.2`, a local `.tgz`, a directory).
  * For testing an unreleased otel-hook build; unset, HAR installs the pin.
  */
 export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
@@ -106,6 +113,8 @@ export interface OtelHooksDestinationConfig {
   metricsEndpoint?: string;
   headers?: Record<string, string>;
   signals: Array<'traces' | 'logs' | 'metrics'>;
+  /** Per-repository filter (otel-hook with destination scopes); never written to an otel-hook without them. */
+  scopes?: OtelHookScope[];
 }
 
 export interface OtelHooksConfig {
@@ -155,6 +164,8 @@ export interface OtelHookFeatures {
   metrics: boolean;
   /** `sessionContext.dir` (0.12.0). */
   sessionContext: boolean;
+  /** Per-destination repository `scopes` (0.14.0). */
+  scopes: boolean;
 }
 
 /** Every feature: the pinned version, and what a config is built for when no hook is installed yet. */
@@ -163,6 +174,7 @@ export const ALL_OTEL_HOOK_FEATURES: OtelHookFeatures = Object.freeze({
   transcriptUsage: true,
   metrics: true,
   sessionContext: true,
+  scopes: true,
 });
 
 export interface EnsureOtelHooksResult {
@@ -181,6 +193,15 @@ export interface EnsureOtelHooksResult {
   /** Why the route is narrower than might be expected. */
   routeHint?: string;
 }
+
+/**
+ * First otel-hook release with per-destination repository `scopes`
+ * (otel-hook#78; TODO: set to the real release once published, see
+ * `OTEL_HOOKS_VERSION`), and a string its CLI bundle contains from then on, so
+ * an unreleased build installed through `HAR_OTEL_HOOKS_PACKAGE` is detected.
+ */
+export const OTEL_HOOK_SCOPES_MIN_VERSION = '0.14.0';
+export const OTEL_HOOK_SCOPES_MARKER = 'scope_count';
 
 export function getOtelHooksHome(): string {
   if (process.env.HAR_OTEL_HOOKS_HOME) {
@@ -310,6 +331,7 @@ export function detectOtelHookFeatures(hooksHome = getOtelHooksHome()): OtelHook
     transcriptUsage: has('0.10.0', 'readTranscriptUsage'),
     metrics: has('0.11.0', 'metricsEndpoint'),
     sessionContext: has('0.12.0', 'session-context-dir'),
+    scopes: has(OTEL_HOOK_SCOPES_MIN_VERSION, OTEL_HOOK_SCOPES_MARKER),
   };
 }
 
@@ -357,7 +379,11 @@ export function buildOtelHooksConfig(options?: {
   const capturePrompts = logsEnabled && signals.prompts;
   const destinations =
     enabled && !legacy
-      ? plans.map((plan): OtelHooksDestinationConfig => {
+      ? plans
+          // A scoped destination (every hosted receiver) is never written without its scopes:
+          // an otel-hook that cannot filter by repository would send it every repository.
+          .filter((plan) => plan.scopes === undefined || features.scopes)
+          .map((plan): OtelHooksDestinationConfig => {
           const logs = logsEnabled && plan.signals.includes('logs');
           const metrics = metricsEnabled && plan.signals.includes('metrics');
           const planSignals = plan.signals.filter(
@@ -372,6 +398,7 @@ export function buildOtelHooksConfig(options?: {
               ? { headers: Object.fromEntries(plan.headers.map((binding) => [binding.header, `env:${binding.envVar}`])) }
               : {}),
             signals: planSignals,
+            ...(plan.scopes ? { scopes: plan.scopes } : {}),
           };
         })
       : undefined;

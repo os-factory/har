@@ -135,7 +135,13 @@ describe('one destination list, direct fan-out (ADR 0005 sections 2, 4, 6)', () 
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  const receiversList = (): HarDestination[] => [buildMissionControlDestination(), buildHqDestination({ baseUrl: HQ })];
+  // The hosted receiver is scoped: it receives the one repository chosen for it.
+  const REPO_URL = 'https://example.test/acme/app.git';
+  const hqFor = (repoPath: string): HarDestination => ({
+    ...buildHqDestination({ baseUrl: HQ }),
+    repositories: [{ path: repoPath, url: REPO_URL, scope: 'full', content: 'raw' }],
+  });
+  const receiversList = (): HarDestination[] => [buildMissionControlDestination(), hqFor(tmp)];
 
   describe('the list', () => {
     it('is Mission Control alone by default, without writing anything', () => {
@@ -204,11 +210,11 @@ describe('one destination list, direct fan-out (ADR 0005 sections 2, 4, 6)', () 
         version: 2,
         destinations: [...receiversList(), buildGitNotesDestination(), { ...collector, includeSessionId: false }],
       });
-      // otel-hook 0.12.0 installed in the hooks home.
+      // otel-hook 0.14.0 (repository scopes) installed in the hooks home.
       const hooksHome = process.env.HAR_OTEL_HOOKS_HOME as string;
       const pkgDir = path.join(hooksHome, 'node_modules', '@osfactory', 'otel-hook');
       fs.mkdirSync(path.join(pkgDir, 'dist'), { recursive: true });
-      fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ version: '0.12.0', bin: { 'otel-hook': 'dist/cli.js' } }));
+      fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ version: '0.14.0', bin: { 'otel-hook': 'dist/cli.js' } }));
       fs.writeFileSync(path.join(pkgDir, 'dist', 'cli.js'), '// cli\n');
 
       const { configPath } = applyAgentTelemetryRoute(hooksHome);
@@ -233,6 +239,7 @@ describe('one destination list, direct fan-out (ADR 0005 sections 2, 4, 6)', () 
               metricsEndpoint: `${HQ}/otel/v1/metrics`,
               headers: { Authorization: 'env:HAR_OTEL_DIRECT_HEADER_1_1' },
               signals: ['traces', 'logs', 'metrics'],
+              scopes: [{ repositories: ['example.test/acme/app'], signals: ['traces', 'logs', 'metrics'], contentMode: 'raw' }],
             },
             {
               name: 'team',
@@ -263,10 +270,10 @@ describe('one destination list, direct fan-out (ADR 0005 sections 2, 4, 6)', () 
     it('sends otel-hook usage to every receiver at the Usage level: spans and metrics, no event records', () => {
       writeTelemetryLevel('usage');
       writeDestinations({ version: 2, destinations: receiversList() });
-      const hooksHome = path.join(tmp, 'hooks-0.12');
+      const hooksHome = path.join(tmp, 'hooks-0.14');
       const pkgDir = path.join(hooksHome, 'node_modules', '@osfactory', 'otel-hook');
       fs.mkdirSync(pkgDir, { recursive: true });
-      fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ version: '0.12.0' }));
+      fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ version: '0.14.0' }));
       const config = buildOtelHooksConfig({ route: resolveAgentTelemetryRoute(hooksHome).route });
       expect(config.exporter.enabled).toBe(true);
       expect(config.exporter.logs.enabled).toBe(false);
@@ -325,7 +332,7 @@ describe('one destination list, direct fan-out (ADR 0005 sections 2, 4, 6)', () 
       const route = resolveAgentTelemetryRoute(path.join(tmp, 'none')).route;
       const config = buildOtelHooksConfig({
         route,
-        features: { destinations: true, transcriptUsage: false, metrics: false, sessionContext: false },
+        features: { destinations: true, transcriptUsage: false, metrics: false, sessionContext: false, scopes: false },
       });
       expect(config).not.toHaveProperty('sessionContext');
       expect(config).not.toHaveProperty('providers');

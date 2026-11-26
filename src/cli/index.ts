@@ -18,12 +18,12 @@ import { preferencesCommand } from './commands/preferences';
 import { telemetryCommand } from './commands/telemetry';
 import { worktreeCommand } from './commands/worktree';
 import { HAR_ROOT_EPILOG } from './help-text';
-import { runHqDestinationMigration } from '../core/hq-destination-migration';
+import { runHqUpgradeMigration } from '../core/hq-upgrade';
 
 export async function runCli(): Promise<void> {
   ensureDefaultTelemetryPreference();
   // 1.x → 2.0: keep sending to the hosted receiver a connected machine used (once).
-  runHqDestinationMigration();
+  runHqUpgradeMigration();
   await yargs(hideBin(process.argv))
     .scriptName('har')
     .usage('$0 <command> [options]')

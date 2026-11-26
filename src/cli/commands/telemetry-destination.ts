@@ -1,5 +1,4 @@
 import type { Argv } from 'yargs';
-import { hqSignalsFor, hqTrajectoryForwarding } from '../../core/hq-destination-migration';
 import {
   DEFAULT_LANGFUSE_HOST,
   DESTINATION_LOGS_WARNING,
@@ -39,6 +38,7 @@ import {
 import { error, header, info, success, warn } from '../../utils/logging';
 import { countSpooledPayloads } from '../../core/telemetry-spool';
 import { getOtelHooksHome, refreshAgentTelemetryRoute } from '../../core/otel-hooks';
+import { describeRepositoryEntry, isScopedDestination } from '../../core/destination-scopes';
 import { appliedRouteNames, describeAgentTelemetryRoute, readAppliedAgentRoute } from '../../core/telemetry-route';
 import { flushVerificationTraceSpool } from '../../core/verification-spans';
 import {
@@ -147,13 +147,13 @@ export function destinationFromAddArgs(
       if (!baseUrl) {
         throw new Error('--preset hq needs --base-url <ingest base URL>, HAR_HQ_INGEST_URL, or a HAR HQ connection (har hq connect)');
       }
-      // Without --signals, the trajectory (logs) only when forwarding to the hosted receiver is on.
-      destination = buildHqDestination({
-        name: argv.name,
-        baseUrl,
-        enabled: !argv.disabled,
-        signals: hqSignalsFor(hqTrajectoryForwarding(env)),
-      });
+      // Scoped per repository: it sends nothing until repositories are chosen (har hq repos add);
+      // replacing an entry keeps the repositories chosen for it.
+      const previous = findDestination(argv.name, env);
+      destination = {
+        ...buildHqDestination({ name: argv.name, baseUrl, enabled: !argv.disabled }),
+        repositories: previous?.preset === 'hq' ? (previous.repositories ?? []) : [],
+      };
     } else {
       destination = buildMissionControlDestination({ name: argv.name, enabled: !argv.disabled });
       if (argv.baseUrl) destination = { ...destination, baseUrl: argv.baseUrl };
@@ -205,6 +205,11 @@ function describeDestination(destination: HarDestination): string[] {
     lines.push('  metrics: Mission Control books Claude Code usage from Claude Code itself and drops its otel-hook metrics');
   }
   if (destination.auth?.kind === 'hq-token') lines.push('  key: HAR_PORTAL_TOKEN or the HAR HQ connection (never stored here)');
+  if (isScopedDestination(destination)) {
+    const repositories = destination.repositories ?? [];
+    if (repositories.length === 0) lines.push('  repositories: none chosen — nothing is sent (har hq repos add <repo> --scope usage)');
+    else for (const entry of repositories) lines.push(`  repository: ${describeRepositoryEntry(entry)}`);
+  }
   const headers = Object.entries(destination.headers);
   if (headers.length > 0) lines.push(`  headers:  ${headers.map(([key, value]) => `${key}: ${value}`).join(', ')}`);
   return lines;
@@ -380,7 +385,7 @@ export const telemetryDestinationCommand = {
             .option('signals', {
               type: 'string',
               array: true,
-              describe: `Comma list of ${OTLP_SIGNALS.join(', ')} (otlp default: ${OTLP_PRESET_DEFAULT_SIGNALS.join(', ')}; mission-control: ${DESTINATION_PRESET_DEFAULTS['mission-control'].signals.join(', ')}; hq: the same, logs only with trajectory forwarding on (har control trajectory on); langfuse: traces)`,
+              describe: `Comma list of ${OTLP_SIGNALS.join(', ')} (otlp default: ${OTLP_PRESET_DEFAULT_SIGNALS.join(', ')}; mission-control: ${DESTINATION_PRESET_DEFAULTS['mission-control'].signals.join(', ')}; hq: the same, per repository as chosen with har hq repos; langfuse: traces)`,
             })
             .option('records', { type: 'boolean', describe: 'mission-control / hq: send ingest v2 records (default on)' })
             .option('proofs', { type: 'boolean', describe: 'mission-control / hq: send proofs (default on)' })

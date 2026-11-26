@@ -19,6 +19,8 @@ process.env.HAR_CREDENTIALS_PATH = path.join(harHome, 'credentials.json');
 process.env.HAR_DESTINATIONS_DIR = path.join(harHome, 'destinations');
 // Nor open or close segments in the developer's real session context files (ADR 0004).
 process.env.HAR_SESSIONS_DIR = path.join(harHome, 'sessions');
+// Nor rewrite the developer's real otel-hook config when a destination changes.
+process.env.HAR_OTEL_HOOKS_HOME = path.join(harHome, 'otel-hooks');
 
 afterAll(() => {
   fs.rmSync(harHome, { recursive: true, force: true });
@@ -28,6 +30,7 @@ afterAll(() => {
   delete process.env.HAR_CREDENTIALS_PATH;
   delete process.env.HAR_DESTINATIONS_DIR;
   delete process.env.HAR_SESSIONS_DIR;
+  delete process.env.HAR_OTEL_HOOKS_HOME;
 });
 
 // Tests run inside coding agents: never let the developer's own agent session

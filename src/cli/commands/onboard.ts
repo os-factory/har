@@ -347,8 +347,8 @@ function printSummary(result: {
     info(
       `HAR HQ:         ${
         result.hqTrajectory && result.telemetry === 'full'
-          ? 'full trajectory forwarded'
-          : 'usage and step outline only (har control trajectory on to forward the text)'
+          ? 'this repository: full trajectory'
+          : 'this repository: usage and step outline (har hq repos add . --scope full --content raw for the text)'
       }`,
     );
   }

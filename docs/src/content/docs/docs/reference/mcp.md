@@ -50,6 +50,7 @@ active session.
 | `har_run_stage` | `stageId` or `kind`, optional `agentId`, `args` | Normalized generic stage result |
 | `har_run_verification` | `agentId`, `full` | Status, timing, and failed-step output (passing steps omit logs); `proof` outcome after a full verify when Factory Commits proofs are on |
 | `har_doctor` | `repo` | Harness contract validation (same report as `har env doctor --json`): pass/fail checks plus findings with remedies; `isError` when the contract is broken |
+| `har_hq_status` | — | Read-only: the HAR HQ login (never tokens) and the repositories HAR HQ receives with their scopes (`off`/`usage`/`outline`/`full`, text `none`/`redacted`/`masked`/`raw`), same as `har hq status --json`. Logging in and choosing repositories are human-only (`har hq connect`, `har hq repos`) |
 
 Stage kinds are `setup`, `launch`, `verify`, `test`, `inspect`, `reset`,
 `teardown`, and `custom`.

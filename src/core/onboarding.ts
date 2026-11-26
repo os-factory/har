@@ -15,10 +15,10 @@ import {
 import {
   displayPortalTargetLabel,
   getActivePortalConnection,
-  writePortalConnectionTrajectoryPreference,
 } from './portal-targets';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
-import { applyHqTrajectoryChoice } from './hq-destination-migration';
+import { resolveRepositoryReference } from './destination-scopes';
+import { chooseHqRepositories } from './hq-repositories';
 import {
   DOCKER_INSTALL_URL,
   detectDockerStatus,
@@ -224,23 +224,27 @@ export async function applyOnboardingTelemetry(
 }
 
 /**
- * Apply the HQ trajectory choice to the active org connection. Returns the
- * resulting setting, or null when not connected (nothing to apply).
+ * Apply the HQ trajectory choice to the onboarded repository: HAR HQ is
+ * opt-in per repository in 2.0, so the choice sets this repository's scope
+ * (`full` with raw text, else `outline`). Returns the choice, or null when not
+ * logged in to HAR HQ (nothing to apply) or no choice was made.
  */
-export function applyOnboardingHqTrajectory(forward: boolean | undefined): boolean | null {
+export function applyOnboardingHqTrajectory(forward: boolean | undefined, repoPath = '.'): boolean | null {
   const connection = getActivePortalConnection();
-  if (!connection) return null;
-  if (forward === undefined) return connection.trajectoryForwarding === true;
-  writePortalConnectionTrajectoryPreference(forward);
+  if (!connection || forward === undefined) return null;
   try {
-    applyHqTrajectoryChoice(forward);
+    const reference = resolveRepositoryReference(repoPath);
+    chooseHqRepositories([
+      forward ? { reference, scope: 'full', content: 'raw' } : { reference, scope: 'outline' },
+    ]);
   } catch (err) {
-    warn(`Could not update the hq destination: ${err instanceof Error ? err.message : String(err)}`);
+    warn(`Could not update what HAR HQ receives: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
   }
   success(
     forward
-      ? `Full trajectory forwarded to ${displayPortalTargetLabel(connection)}`
-      : `${displayPortalTargetLabel(connection)} receives usage and the step outline only`,
+      ? `${displayPortalTargetLabel(connection)} receives this repository's full trajectory`
+      : `${displayPortalTargetLabel(connection)} receives this repository's usage and step outline only`,
   );
   return forward;
 }
@@ -320,7 +324,7 @@ export async function runOnboarding(
   if (dockerWarning && !alreadyReported) warn(dockerWarning);
 
   await applyTelemetry(options.telemetry);
-  const hqTrajectory = applyOnboardingHqTrajectory(options.hqTrajectory);
+  const hqTrajectory = applyOnboardingHqTrajectory(options.hqTrajectory, repoPath);
 
   const control = await ensureControl({
     startControl: options.startControl,

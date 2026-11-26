@@ -423,23 +423,22 @@ conflict and can select another port in the slot lane.
 
 ## HAR HQ
 
-`har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
-repository to the org you pick in the portal. The CLI holds one org connection at
-a time: when HQ is a destination (`har telemetry destination add hq --preset hq`), everything
-the CLI and the agent hook send to HQ goes to that org only. Other locally
-registered repositories are offered so you can attach them to the same org;
-unattached checkouts are never ingested. Connecting to a different org replaces
-the connection — nothing more is sent to the previous org, and its repositories
-stop syncing until you attach them again. The connection lives in
-`~/.har/portal-targets.json`; `har hq list` / `har hq disconnect` manage it. It is
-never committed into `.har/`. `har control login` still works as a deprecated alias.
+HAR HQ is opt-in per repository. `har hq connect` opens browser SSO (or stores
+`--api-key`), then asks which repositories the org receives and at which scope:
+`off`, `usage` (records, verification, tokens and cost), `outline` (plus every step,
+no text) or `full` (plus the text: `none`, `redacted`, `masked` or `raw`). Nothing
+else is sent: a repository registered later waits until you add it with
+`har hq repos add <path|url> --scope …`. Without a terminal, pass `--repo`,
+`--scope` and `--content`; without them `connect` only logs in and prints the
+command to choose.
 
-Attaching a repository clears a local-only opt-out left by `har control register
---no-portal`, so an attached repository is always sent. `har hq list` shows, per
-repository, whether anything is sent, plus what HQ receives for agent sessions: usage
-and the step outline by default, the full trajectory only when the local level is
-`full` **and** forwarding is on (`har control trajectory on`, or answer yes when
-`har hq connect` / `har onboard` asks).
+The CLI holds one org login at a time. Logging in to a different org forgets the
+repositories chosen for the previous one. The login lives in
+`~/.har/portal-targets.json`, the choice in the `hq` destination of
+`~/.har/destinations/destinations.json`; neither is committed into `.har/`.
+`har hq status` shows both, `har hq disconnect` logs out and keeps the choice for
+the next login. `har control login` still works as a deprecated alias. Mission
+Control is not affected by any of this: it receives what the local level records.
 
 ### A slot's trajectory starts at the prompt
 

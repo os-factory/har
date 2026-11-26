@@ -26,6 +26,7 @@ import {
   type TelemetryDestinationsFile,
 } from '../harness/schema';
 import { getControlApiUrl, isControlEnabled } from './control-config';
+import { buildOtelHookScopes } from './destination-scopes';
 import { kernoApiUrlFor } from './portal-hosts';
 import { getActivePortalConnection } from './portal-targets';
 
@@ -286,7 +287,8 @@ export function defaultHqIngestBaseUrl(env: NodeJS.ProcessEnv = process.env): st
  * verification traces), in the #522 shape: `otlp`, `langfuse`, and the OTLP side
  * of `hq` (`<baseUrl>/otel`, its key resolved). Mission Control is not listed
  * here: producers send to it as before (its URL follows `HAR_CONTROL_API_URL`).
- * An `hq` entry without a key is left out.
+ * An `hq` entry without a key is left out, and so is a scoped entry (every
+ * `hq`) that lists no repository with a URL and a scope above `off`.
  */
 export function materializeOtlpDestinations(
   file: HarDestinationsFile,
@@ -308,6 +310,9 @@ export function materializeOtlpDestinations(
     if (!endpoint) continue;
     const headers = resolveDestinationHeaders(destination, env);
     if (!headers) continue;
+    // A scoped destination (every `hq`) gets only the repositories it lists; none → nothing to send.
+    const scopes = buildOtelHookScopes(destination);
+    if (scopes !== undefined && scopes.length === 0) continue;
     out.push(
       telemetryDestinationSchema.parse({
         name: destination.name,
@@ -322,6 +327,7 @@ export function materializeOtlpDestinations(
           ? { includeAccountIdentity: destination.includeAccountIdentity }
           : {}),
         ...(destination.includeSessionId !== undefined ? { includeSessionId: destination.includeSessionId } : {}),
+        ...(scopes ? { scopes } : {}),
         ...(destination.createdAt ? { createdAt: destination.createdAt } : {}),
       }),
     );

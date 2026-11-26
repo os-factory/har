@@ -208,9 +208,60 @@ export const telemetryDestinationSchema = z.object({
   includeAccountIdentity: z.boolean().optional(),
   /** `session.id` on every hook metric point (default true). */
   includeSessionId: z.boolean().optional(),
+  /**
+   * Per-repository filter, written as otel-hook's destination `scopes`: present,
+   * a record goes here only when its repository matches a scope (first match
+   * wins), and a record without a repository never does.
+   */
+  scopes: z.array(z.lazy(() => otelHookScopeSchema)).min(1).optional(),
   createdAt: z.string().optional(),
 });
 export type TelemetryDestination = z.infer<typeof telemetryDestinationSchema>;
+
+// ---------------------------------------------------------------------------
+// Per-repository scopes (what a receiver gets, repository by repository)
+// ---------------------------------------------------------------------------
+
+/**
+ * How much of a repository's activity a destination receives, in onboarding's
+ * vocabulary: `off` nothing; `usage` records, proofs, evidence and the agent's
+ * usage (spans and metrics, no event records); `outline` plus the event records
+ * without text; `full` plus the text, as `content` says.
+ */
+export const DESTINATION_REPOSITORY_SCOPES = ['off', 'usage', 'outline', 'full'] as const;
+export type DestinationRepositoryScope = (typeof DESTINATION_REPOSITORY_SCOPES)[number];
+
+/** What happens to prompts, replies and tool text at the `full` scope. */
+export const DESTINATION_REPOSITORY_CONTENT = ['none', 'redacted', 'masked', 'raw'] as const;
+export type DestinationRepositoryContent = (typeof DESTINATION_REPOSITORY_CONTENT)[number];
+
+/** otel-hook's `privacy.contentMode` values. */
+export const OTEL_HOOK_CONTENT_MODES = ['omit', 'mask', 'redact', 'raw'] as const;
+export type OtelHookContentMode = (typeof OTEL_HOOK_CONTENT_MODES)[number];
+
+/** One repository a scoped destination receives, and at which scope. */
+export const destinationRepositorySchema = z
+  .object({
+    /** Canonical local path of the main checkout (matches records sent from it and its worktrees). */
+    path: z.string().min(1).optional(),
+    /** Credential-free repository URL (`origin`); agent telemetry is matched by it. */
+    url: z.string().min(1).max(2048).optional(),
+    scope: z.enum(DESTINATION_REPOSITORY_SCOPES),
+    /** Text at the `full` scope (default `none`). */
+    content: z.enum(DESTINATION_REPOSITORY_CONTENT).optional(),
+  })
+  .refine((entry) => entry.path !== undefined || entry.url !== undefined, 'a repository needs a path or a url');
+export type DestinationRepository = z.infer<typeof destinationRepositorySchema>;
+
+/** One otel-hook destination scope (`exporter.destinations[].scopes[]`). */
+export const otelHookScopeSchema = z.object({
+  /** Repository URLs (any spelling of the remote), or `*` for every record that names one. */
+  repositories: z.union([z.literal('*'), z.array(z.string().min(1).max(2048)).min(1)]),
+  signals: z.array(z.enum(OTLP_SIGNALS)).min(1).optional(),
+  contentMode: z.enum(OTEL_HOOK_CONTENT_MODES).optional(),
+  includeSessionId: z.boolean().optional(),
+});
+export type OtelHookScope = z.infer<typeof otelHookScopeSchema>;
 
 export const telemetryDestinationsFileSchema = z.object({
   version: z.literal(1),
@@ -330,6 +381,13 @@ export const harDestinationSchema = z
     includeAccountIdentity: z.boolean().optional(),
     /** `session.id` on every metric point (default true); off where per-session series are too many. */
     includeSessionId: z.boolean().optional(),
+    /**
+     * Per-repository opt-in. Present, the destination receives only these
+     * repositories, each at its scope (records, proofs, evidence and agent
+     * telemetry alike). An `hq` destination is always scoped: without this
+     * field it receives nothing (`har hq repos add`).
+     */
+    repositories: z.array(destinationRepositorySchema).optional(),
     createdAt: z.string().optional(),
   })
   .superRefine((destination, ctx) => {

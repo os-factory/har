@@ -2,13 +2,7 @@ import * as path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
 import { getControlApiUrl, isControlEnabled } from '../../core/control-config';
-import {
-  displayPortalTargetLabel,
-  getActivePortalConnection,
-  writePortalConnectionTrajectoryPreference,
-} from '../../core/portal-targets';
 import { handleHqConnect } from './hq';
-import { applyHqTrajectoryChoice } from '../../core/hq-destination-migration';
 import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   discoverHarRepos,
@@ -47,12 +41,6 @@ import {
   recordRepoForControlSync,
   setRepoPortalSync,
 } from '../../core/control-registry';
-import {
-  getTelemetryLevel,
-  isTelemetryEnabled,
-  readTelemetryPreference,
-  writePortalTrajectoryPreference,
-} from '../../core/telemetry-config';
 import { finishCommand } from '../finish-command';
 import { checkUsageOptions, handleCheckUsage } from './control-check-usage';
 import { refreshAgentRouteAndReport } from './telemetry-destination';
@@ -170,14 +158,14 @@ export const controlCommand = {
             })
             .option('repo', {
               type: 'string',
-              default: '.',
-              describe: 'Repository to attach to the chosen workspace',
+              array: true,
+              describe: 'Repository to send to HAR HQ (with --scope); see har hq connect',
             }),
         (argv) =>
           handleHqConnect({
             portal: argv.portal as string | undefined,
             apiKey: argv.apiKey as string | undefined,
-            repo: (argv.repo as string | undefined) ?? '.',
+            ...(argv.repo ? { repo: argv.repo as string[] } : {}),
             deprecated: true,
           }),
       )
@@ -635,79 +623,15 @@ async function handleSync(argv: {
   }
 }
 
-/** Keep the `hq` destinations' trajectory signal (logs) in line with the forwarding choice. */
-function reportHqDestinationTrajectory(enabled: boolean): void {
-  try {
-    const outcome = applyHqTrajectoryChoice(enabled);
-    if (outcome.status === 'updated') {
-      for (const destination of outcome.destinations) {
-        info(`Destination "${destination.name}" now takes: ${destination.signals.join(', ')}`);
-      }
-    }
-  } catch (err) {
-    warn(`Could not update the hq destination: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
+/**
+ * 1.x switch for forwarding the trajectory to HAR HQ. In 2.0 HAR HQ receives
+ * each repository at the scope chosen for it, so this only points there.
+ */
 async function handleTrajectory(argv: { state?: string }): Promise<void> {
   header('har control trajectory');
-
-  const connection = getActivePortalConnection();
-
-  if (!argv.state) {
-    const enabled = connection
-      ? connection.trajectoryForwarding === true
-      : readTelemetryPreference().portalTrajectory === true;
-    const scope = connection ? ` for ${displayPortalTargetLabel(connection)}` : '';
-    info(`Trajectory forwarding${scope}: ${enabled ? 'on' : 'off'}`);
-    if (!enabled) {
-      info('Enable: har control trajectory on');
-    }
-    if (!isTelemetryEnabled()) {
-      warn('Telemetry is off, so nothing is forwarded regardless of this setting.');
-    }
-    return;
-  }
-
-  const enabled = argv.state === 'on';
-  reportHqDestinationTrajectory(enabled);
-  if (connection) {
-    writePortalConnectionTrajectoryPreference(enabled);
-    const label = displayPortalTargetLabel(connection);
-    if (!enabled) {
-      success(
-        `Trajectory forwarding off for ${label} — the portal receives token counts and events only.`,
-      );
-      return;
-    }
-    success(`Trajectory forwarding on for ${label}.`);
-    info(
-      'Prompts, tool arguments and tool results now sync to that HAR HQ org, ' +
-        'capped and redacted by the local policy (HAR_TRAJECTORY_MAX_PAYLOAD_BYTES).',
-    );
-    const level = getTelemetryLevel();
-    if (level !== 'full') {
-      warn(
-        `Telemetry level is ${level}, so no text is recorded to forward — ` +
-          'record it with har telemetry on --level full.',
-      );
-    }
-    return;
-  }
-
-  writePortalTrajectoryPreference(enabled);
-
-  if (!enabled) {
-    success('Trajectory forwarding off — the portal receives token counts and events only.');
-    return;
-  }
-
-  success('Trajectory forwarding on.');
-  info(
-    'Prompts, tool arguments and tool results now sync to the hosted portal, ' +
-      'capped and redacted by the local policy (HAR_TRAJECTORY_MAX_PAYLOAD_BYTES).',
-  );
-  if (!isTelemetryEnabled()) {
-    warn('Telemetry is off, so nothing is forwarded yet — enable it with har telemetry on.');
-  }
+  info('HAR 2.0 sends to HAR HQ per repository, at the scope you choose (off, usage, outline, full).');
+  info('  see what is sent:        har hq status');
+  if (argv.state === 'on') info('  send the full trajectory: har hq repos add <repo> --scope full --content raw');
+  else if (argv.state === 'off') info('  keep the text local:     har hq repos add <repo> --scope outline');
+  else info('  change a repository:     har hq repos add <repo> --scope <off|usage|outline|full>');
 }

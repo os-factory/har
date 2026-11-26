@@ -37,14 +37,14 @@ import {
 } from '../src/core/otel-hooks';
 
 describe('otel-hook package pin', () => {
-  it('installs the release that reads the session context (sessionContext.dir)', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.12.0');
+  it('installs the release with subagent and Codex rollout usage (0.13.2)', () => {
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.13.2');
   });
 
   it('is the release Mission Control depends on, or the one right after it while that is unpublished', () => {
     // Mission Control derives otel-hook ids with the same package. It pins an
-    // exact, published version; the CLI pin may lead it by one minor until the
-    // release the CLI needs (0.12.0, sessionContext.dir) is on npm.
+    // exact, published version; the CLI pin may lead it by up to two minors
+    // (0.13.2: subagent and Codex rollout usage) until Mission Control moves up.
     const control = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'control', 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>;
     };
@@ -54,7 +54,7 @@ describe('otel-hook package pin', () => {
     const [pinMajor, pinMinor] = OTEL_HOOKS_VERSION.split('.').map(Number);
     expect(controlMajor).toBe(pinMajor);
     expect(pinMinor - controlMinor).toBeGreaterThanOrEqual(0);
-    expect(pinMinor - controlMinor).toBeLessThanOrEqual(1);
+    expect(pinMinor - controlMinor).toBeLessThanOrEqual(2);
     // ADR 0005 section 6: 0.11.0 or later on both sides.
     expect(controlMajor * 1000 + controlMinor).toBeGreaterThanOrEqual(11);
   });
@@ -72,14 +72,14 @@ describe('otel-hook package pin', () => {
     afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
     it('keeps an install of the pinned version', () => {
-      installVersion('0.12.0');
+      installVersion('0.13.2');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(false);
       installVersion('0.5.0');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
     });
 
     it('installs an override once, then again only when it changes or is removed', () => {
-      installVersion('0.12.0');
+      installVersion('0.13.2');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(true);
       recordInstalledSpec(home, '/tmp/otel-hook.tgz');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(false);
