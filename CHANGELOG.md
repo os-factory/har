@@ -1,3 +1,12 @@
+## [2.0.0-next.7](https://github.com/os-factory/har/compare/v2.0.0-next.6...v2.0.0-next.7) (2026-11-26)
+
+### Features
+
+* **control:** Mission Control v2, the reference ingest v2 receiver ([#529](https://github.com/os-factory/har/issues/529)) ([d2a5af9](https://github.com/os-factory/har/commit/d2a5af920b6994312dfed22ef15ae004050d2523)), closes [#540](https://github.com/os-factory/har/issues/540)
+* one destination list, send records, proofs and evidence to every receiver directly ([#530](https://github.com/os-factory/har/issues/530)) ([74cea1e](https://github.com/os-factory/har/commit/74cea1e49de7cc8b85705d45b85558241a449a97)), closes [#540](https://github.com/os-factory/har/issues/540)
+* otel-hook is the only Claude Code source; the CLI speaks only v2 ([#539](https://github.com/os-factory/har/issues/539)) ([f8a907a](https://github.com/os-factory/har/commit/f8a907afb90ce1dd0efc5514dc5502bcf746ff7e)), closes [#540](https://github.com/os-factory/har/issues/540)
+* write session segments, record session refs and stage evidence on the factory run ([#528](https://github.com/os-factory/har/issues/528)) ([595af7c](https://github.com/os-factory/har/commit/595af7c5ab4b9f35254bb851a811f78dc42fe2cc)), closes [#540](https://github.com/os-factory/har/issues/540)
+
 ## [2.0.0-next.6](https://github.com/os-factory/har/compare/v2.0.0-next.5...v2.0.0-next.6) (2026-11-26)
 
 ### Features
