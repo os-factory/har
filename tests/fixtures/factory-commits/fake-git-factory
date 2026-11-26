@@ -77,7 +77,8 @@ if (command === 'trailers') {
   for (let i = 2; i < argv.length; i += 2) {
     const name = { '--work-unit': 'Work-Unit', '--run': 'Factory-Run', '--attestation': 'Factory-Attestation' }[argv[i]];
     if (!name) process.exit(2);
-    trailers.push(`${name}: ${argv[i + 1]}`);
+    // Like the real CLI: `id;trace=x` is written in the SPEC form `id; trace=x`.
+    trailers.push(`${name}: ${argv[i + 1].replace(/;\s*trace=/, '; trace=')}`);
   }
   const body = fs.readFileSync(file, 'utf8').replace(/\s*$/, '');
   fs.writeFileSync(file, `${body}\n\n${trailers.join('\n')}\n`);

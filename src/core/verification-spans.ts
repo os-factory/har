@@ -17,7 +17,7 @@ import { getControlApiUrl, isControlEnabled } from './control-config';
 import { isControlApiReachable } from './control-sync';
 import { readGitRemote, sanitizeGitRemoteUrl } from './git-remote';
 import { getHarPackageVersion } from './package-version';
-import { FACTORY_PROOF_POLICY_ID, readPolicyDigest } from './proof';
+import { FACTORY_PROOF_POLICY_ID, readPolicyDigest, verificationTraceId } from './proof';
 import { getRun } from './runs';
 import { isTelemetryEnabled } from './telemetry-config';
 import { readTelemetryDestinations } from './telemetry-destinations';
@@ -36,6 +36,9 @@ import {
   type SpoolFlushResult,
 } from './telemetry-spool';
 import { findWorkUnit } from './work-units';
+
+/** Re-exported: the verification trace id is derived from the factory run id (see `proof.ts`). */
+export { verificationTraceId };
 
 /**
  * OTel CI/CD spans for verification runs (telemetry profile, "Verification
@@ -62,16 +65,6 @@ const DEFAULT_TIMEOUT_MS = 3_000;
 
 function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
-}
-
-/**
- * Trace id of a verification — derived from the validation id (or the run id
- * when no validation was recorded) so a proof or another HAR surface can
- * reference the trace without coordination. Every verify of the same tree
- * lands in the same trace.
- */
-export function verificationTraceId(id: string): string {
-  return sha256Hex(`har-verify:${id}`).slice(0, 32);
 }
 
 /** Span id of the run span — keyed on the run id, so repeated verifies of one tree never collide. */

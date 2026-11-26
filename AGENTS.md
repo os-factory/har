@@ -157,6 +157,8 @@ These are non-negotiable. Do not introduce imports that violate them.
 | Files copied into target `.har/` | `src/templates/har-boilerplate/` |
 | Optional verification plugins | `src/templates/plugins/` (applied via `har env add-plugin`) |
 | Factory line schemas (program + bundle manifest) | `packages/schemas/src/line.ts` |
+| Session context file format (ADR 0004 §2) | `packages/schemas/src/session-context.ts` |
+| Ingest contract v2: records, proofs, evidence, capabilities; fixtures + contract runner (ADR 0005) | `packages/schemas/src/ingest-v2*.ts` (`npm run build --prefix packages/schemas`, then `node packages/schemas/dist/ingest-v2-contract-cli.js <base-url>`) |
 | Line apply / scaffold / ledger | `src/harness/lines.ts`, `line-create.ts`, `line-ledger.ts` |
 | Line status + cumulative gate orchestration | `src/core/lines.ts` |
 | Bundle install channels shared by plugins and lines | `src/harness/bundle-resolve.ts` |

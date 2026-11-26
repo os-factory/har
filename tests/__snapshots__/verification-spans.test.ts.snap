@@ -116,7 +116,7 @@ exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage
               "status": {
                 "code": 2,
               },
-              "traceId": "c1c9822e96e9d214019f51b02ccf4d2e",
+              "traceId": "94a1c85449a412243d25edaebcc2ff75",
             },
             {
               "attributes": [
@@ -154,7 +154,7 @@ exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage
               "status": {
                 "code": 0,
               },
-              "traceId": "c1c9822e96e9d214019f51b02ccf4d2e",
+              "traceId": "94a1c85449a412243d25edaebcc2ff75",
             },
             {
               "attributes": [
@@ -198,7 +198,7 @@ exports[`OTLP/JSON encoding encodes one full verify run as a run span with stage
               "status": {
                 "code": 2,
               },
-              "traceId": "c1c9822e96e9d214019f51b02ccf4d2e",
+              "traceId": "94a1c85449a412243d25edaebcc2ff75",
             },
           ],
         },

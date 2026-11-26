@@ -554,8 +554,10 @@ destination and reports the HTTP status. Guides: [Langfuse](/docs/guides/langfus
 **Verification spans.** Each `har env verify` (and MCP `har_run_verification`) builds
 one OTel CI/CD trace: a run span (`cicd.pipeline.*`, `factory.run.id`, `factory.git.tree`,
 `factory.verdict` on `--full`) with one child span per stage, plus the work unit,
-attempt, repository and branch on the resource. The trace id is derived from the
-validation id, so it sits next to the agent's session traces in the same backend.
+attempt, repository and branch on the resource. The trace id is
+`sha256("factory-run:" + validation id)`, first 32 hex characters, so the proof and the
+`Factory-Run` trailer (`; trace=<trace-id>`) can name it before it is exported, and it
+sits next to the agent's session traces in the same backend.
 Spans carry ids, results, timings and the verify policy (`factory.policy.id`,
 `factory.policy.digest` on `--full`): no commands or logs. The CLI sends one copy to
 Mission Control, which stores the run and syncs it to HQ, and one to every

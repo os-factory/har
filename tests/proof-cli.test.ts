@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync, spawnSync } from 'child_process';
 import { installHooks, uninstallHooks } from '../src/core/hooks';
-import { produceValidationProof, runFactoryProofQuery } from '../src/core/proof';
+import { produceValidationProof, runFactoryProofQuery, verificationTraceId } from '../src/core/proof';
 import { recordValidation } from '../src/core/validations';
 import { handleMcpToolCall } from '../src/mcp/server';
 
@@ -174,7 +174,7 @@ const builtCli = path.resolve(__dirname, '..', 'dist', 'index.js');
     sh('git commit -q -m "feat: two"');
 
     const body = sh('git log -1 --format=%B');
-    expect(body).toContain(`Factory-Run: ${record.validationId}`);
+    expect(body).toContain(`Factory-Run: ${record.validationId}; trace=${verificationTraceId(record.validationId)}`);
     expect(body).toContain(`Factory-Attestation: ${produced.validation.attestationDigest}`);
 
     const verify = runFactoryProofQuery({ repoPath: dir, command: 'verify', minLevel: 'L1' });

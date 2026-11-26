@@ -10,7 +10,12 @@ import {
   resolveHooksDir,
   uninstallHooks,
 } from '../src/core/hooks';
-import { addFactoryNoteToVerifiedHead, produceValidationProof, resolveFactoryProofMode } from '../src/core/proof';
+import {
+  addFactoryNoteToVerifiedHead,
+  produceValidationProof,
+  resolveFactoryProofMode,
+  verificationTraceId,
+} from '../src/core/proof';
 import { recordValidation } from '../src/core/validations';
 import { bindValidationToAttempt, upsertWorkUnit } from '../src/core/work-units';
 import { VerificationResult } from '../src/harness/schema';
@@ -258,12 +263,14 @@ describe('commit-msg factory trailers', () => {
       '--work-unit',
       'linear:FE-1',
       '--run',
-      validation.validationId,
+      `${validation.validationId};trace=${verificationTraceId(validation.validationId)}`,
       '--attestation',
       validation.attestationDigest,
     ]);
     const message = fs.readFileSync(file, 'utf8');
-    expect(message).toContain(`Factory-Run: ${validation.validationId}`);
+    expect(message).toContain(
+      `Factory-Run: ${validation.validationId}; trace=${verificationTraceId(validation.validationId)}`,
+    );
     expect(message).not.toContain('Secret title');
   });
 

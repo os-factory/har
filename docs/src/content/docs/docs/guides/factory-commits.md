@@ -88,7 +88,9 @@ slot use the same mode, even when a worktree's own copy of `harness.env` lacks t
   rebase and amend. When `git-factory` is missing, HAR prints a one-line hint.
 - **`notes+trailers`** does the same, and adds a `commit-msg` hook that writes
   `Work-Unit`, `Factory-Run` and `Factory-Attestation` trailers on commits of a
-  verified tree. Trailers rewrite commit messages, so they are never on by default.
+  verified tree. `Factory-Run` names the run and its verification trace:
+  `Factory-Run: <run-id>; trace=<trace-id>`. Trailers rewrite commit messages, so
+  they are never on by default.
 
 The `post-commit` hook writes the notes, so install, or re-install, the commit hooks:
 

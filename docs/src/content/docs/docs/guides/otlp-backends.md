@@ -70,7 +70,8 @@ the same destinations.
 
 Verification traces follow the telemetry profile's
 [verification spans](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md#verification-spans).
-The trace id is derived from the validation id. Details are in the
+The trace id is `sha256("factory-run:" + run id)`, first 32 hex characters, where the
+run id is the validation id (`Factory-Run`, `predicate.run.id`). Details are in the
 [CLI reference](/docs/reference/cli/#har-telemetry). How they travel is in
 [How verification traces are delivered](#how-verification-traces-are-delivered).
 
