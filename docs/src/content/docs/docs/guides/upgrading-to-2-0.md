@@ -115,17 +115,93 @@ read it back from Mission Control and posted it to the connected org, so HQ got
 nothing while Mission Control was down. In 2.0 `har control sync` sends to local
 Mission Control only (or to HAR Cloud with `--cloud`). The CLI and the agent hook
 send records, proofs, evidence and telemetry to every destination directly, HAR HQ
-included; Mission Control forwards nothing. To keep sending to HQ, add it as a
-destination once:
+included; Mission Control forwards nothing.
 
-```bash
-har hq connect                       # if not connected yet
-har telemetry destination add hq
+### HAR HQ is opt-in per repository: the upgrade logs you out
+
+In 1.x a HAR HQ login sent every attached repository there. In 2.0 HAR HQ receives
+only the repositories you choose, each at the scope you choose. So the first 2.0
+command on a machine logged in to HAR HQ logs it out: the stored login and its tokens
+are removed, nothing is sent to HAR HQ, and one line says so:
+
+```text
+[har] HAR 2.0 sends to HAR HQ only for repositories you choose. Run `har hq connect` to log in again.
 ```
 
-`har hq connect`, `har hq list`, `har hq disconnect` and repository attachment work
-as before; they decide which org and which repositories HQ receives.
+This happens once; a later login is never logged out again. Mission Control and
+your other destinations are not affected. Until you log in, `har hq status` and
+`har env doctor` print one informational line about it (never a warning, and
+nothing ever prompts on agent paths).
+
+Log in again and choose:
+
+```bash
+har hq connect
+```
+
+On a terminal, after the login it asks **which repositories** HAR HQ receives (this
+repository and the ones attached in 1.x are pre-selected, the other registered
+repositories are listed) and **at which scope**, in onboarding's words — one scope
+for all of them, or one per repository:
+
+| Scope | HAR HQ receives |
+|-------|-----------------|
+| `off` | nothing |
+| `usage` | records, proofs, verification evidence, tokens and cost (agent spans and metrics, no event records) |
+| `outline` | `usage` plus every step and its timing, no text |
+| `full` | `outline` plus prompts, replies and tool output, as you choose: `none`, `redacted` (secrets replaced), `masked` (every character masked) or `raw` |
+
+The scope pre-selected is what 1.x sent: the outline, or the full trajectory with raw
+text when you forwarded it. Without a terminal (CI, agents), pass the choice:
+
+```bash
+har hq connect --api-key "$HAR_PORTAL_TOKEN" --repo . --scope usage --yes
+har hq connect --repo . --repo ../web --scope full --content redacted --yes
+```
+
+Without `--scope`, a non-interactive `connect` only logs in, chooses nothing, and
+prints the command that does. Change the choice any time with
+`har hq repos add <path|url>… --scope …`, `har hq repos remove <path|url>…` and
+`har hq repos` (or `har hq status`). A repository you register later is not sent
+until you add it. The local telemetry level still caps every destination: at
+`outline`, a repository at the `full` scope gets the outline.
+
+The `hq` destination carries the choice (its `repositories`); agent telemetry is
+filtered per record by otel-hook from the repository it names
+(`vcs.repository.url.full`), so a repository without an `origin` remote sends HAR
+HQ records and verification only. An otel-hook that cannot filter by repository
+gets no `hq` entry at all. `HAR_PORTAL_TOKEN` alone is not logged out, but sends
+nothing either until repositories are chosen. `har control trajectory` only points
+to `har hq repos` now.
 `HAR_SYNC_ALLOW_USAGE_VIOLATIONS` is gone with the HQ leg.
+
+### `har control sync` sends only registration and slots
+
+`har control sync` no longer posts runs, work units, validations, validation and
+commit bindings, session bindings, usage, usage observations or session events
+to Mission Control's `/api/repos/<id>/…` routes, and Mission Control 2.0 no
+longer has those routes. They reach Mission Control as ingest v2 records and
+OTLP, like any receiver. Sync keeps registering repositories and sending the
+live slot view. `--full` (resend every run) is gone, and so is the harvest of
+local Claude Code and Codex transcripts and rollouts: usage comes from otel-hook
+only.
+
+### Claude Code usage and trajectory come from otel-hook only
+
+HAR no longer turns on Claude Code's native OpenTelemetry export. On upgrade it
+removes the keys earlier versions wrote to the `env` block of
+`~/.claude/settings.json` (`CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_*`; a key you
+changed since is left alone), and registers the Claude Code hook with
+`--claude-transcript-usage --logs --metrics`, and the Codex hook with
+`--codex-rollout-usage` (each turn's tokens, read from the session rollout at
+`Stop`). `har telemetry status` lists a hook registered without them. Every receiver, HAR HQ included,
+gets the same Claude Code traces, logs and metrics from otel-hook: one
+generation per turn and one per subagent run, priced by the receiver, and the
+trajectory from its event records. Run `har telemetry install-hooks` (or launch
+a slot) to apply it, then start a new Claude Code session.
+
+At the `usage` level the hook now runs too: it is the only source of agent usage.
+It sends its spans and token metrics, and no event records or text.
 
 ## Privacy defaults
 
@@ -136,9 +212,8 @@ account identity, prompt, reply and tool text, or local paths.
 | Data | Sent by default? | Opt in with |
 |---|---|---|
 | Absolute local paths (every `factory.local.*` key, `process.cwd`, `code.filepath`, …) | No, for every destination, Mission Control included | `--include-local-paths` (agent spans keep them only when every destination opts in) |
-| Account identity (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) | No: Claude Code's native telemetry, which carries it, goes to Mission Control only | `--include-account-identity` |
+| Account identity (`user.email`, `user.account_uuid`, `user.id`, `organization.id`, …) | No: Claude Code's native telemetry, which carries it, is not turned on | `--include-account-identity` |
 | Logs (at the `full` level they carry prompts, replies and tool input/output) | No, no preset subscribes to logs | `--signals traces,metrics,logs` |
-| Claude Code native metrics | No, Mission Control only | none |
 | otel-hook metrics (token counts per model, tool calls) | Only to destinations that subscribe to `metrics` | `--signals …,metrics` |
 
 **Local paths are stripped everywhere.** Prereleases kept `factory.local.*` in agent
@@ -188,7 +263,7 @@ outside any segment (before launch, after complete) carries none.
 
 ### Agent hooks (`@osfactory/otel-hook`)
 
-HAR 2.0 installs `@osfactory/otel-hook@0.12.0`. HAR replaces an older installed copy
+HAR 2.0 installs `@osfactory/otel-hook@0.14.0` (0.12.0 or later is required; 0.14.0 or later to send agent telemetry to HAR HQ). HAR replaces an older installed copy
 on the next `har env launch` or `har telemetry on`.
 
 #### Agent hooks need otel-hook 0.12.0
@@ -200,8 +275,13 @@ on the next `har env launch` or `har telemetry on`.
   which Claude Code strips from hooks.
 - **Metrics and Claude Code usage.** Each destination's `signals`, `metrics`
   included (0.11.0), go into its entry; `exporter.metrics.includeSessionId` is one
-  setting for every destination (`--no-include-session-id` on any destination turns
-  it off). `providers.claudeCode.readTranscriptUsage: true` (0.10.0) gives Claude
+  setting for every unscoped destination (`--no-include-session-id` on any of them
+  turns it off); a scoped destination (HAR HQ) carries its own in its scopes.
+- **Repository scopes.** The `hq` destination is written with otel-hook's per-destination
+  `scopes` (repositories, signals, content mode per scope), so HAR HQ gets only the
+  repositories chosen for it. The otel-hook release HAR pins does not have scopes yet:
+  until it does, HAR leaves `hq` out of the hook config (records and verification
+  still go there; agent telemetry does not). `providers.claudeCode.readTranscriptUsage: true` (0.10.0) gives Claude
   Code sessions token counts read from the transcript at `Stop`.
 - **Older copies.** HAR writes only the keys the installed otel-hook understands.
   Before 0.9.0 it sends agent traces to Mission Control only, and

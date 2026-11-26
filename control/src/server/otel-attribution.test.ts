@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/db', () => ({ prisma: {} }));
 
 import {
-  claudeApiRequestObservation,
   codexSseObservation,
+  isClaudeNativeUsageRecord,
   isUsageOnlyLogRecord,
   otelHookGenerationObservation,
   providerSessionRef,
@@ -39,75 +39,14 @@ describe('providerSessionRef', () => {
   });
 });
 
-describe('claudeApiRequestObservation', () => {
-  // Attribute names per Claude Code "Monitoring usage" (claude_code.api_request).
-  const attrs = {
-    'event.name': 'api_request',
-    'event.timestamp': '2026-11-12T10:00:05.000Z',
-    'event.sequence': 7,
-    'session.id': SID,
-    'prompt.id': 'p-1',
-    model: 'claude-opus-5-5',
-    cost_usd: 0.0123,
-    duration_ms: 900,
-    input_tokens: 12,
-    output_tokens: 340,
-    cache_read_tokens: 5000,
-    cache_creation_tokens: 200,
-    request_id: 'req_011abc',
-    query_source: 'repl_main_thread',
-  };
-
-  it('maps one API request to a request observation keyed by its request id', () => {
-    const record = log('api_request', attrs, 'claude_code.api_request');
-    expect(isUsageOnlyLogRecord(record)).toBe(true);
-    expect(claudeApiRequestObservation(record)).toEqual({
-      agentTool: 'claude_code',
-      sessionId: SID,
-      observationKey: 'req_011abc',
-      observedAt: new Date('2026-11-12T10:00:05.000Z'),
-      granularity: 'request',
-      source: 'otel',
-      producer: 'claude.api_request',
-      model: 'claude-opus-5-5',
-      tokensInput: 12,
-      tokensOutput: 340,
-      tokensCacheRead: 5000,
-      tokensCacheCreation: 200,
-      costUsd: 0.0123,
-    });
-  });
-
-  it('accepts the full event name, string numbers, micro-dollar cost and a subagent', () => {
-    const observation = claudeApiRequestObservation(
-      log('claude_code.api_request', {
-        'session.id': SID,
-        agent_id: 'agent-9',
-        input_tokens: '3',
-        output_tokens: '4',
-        cost_usd_micros: 2500,
-        request_id: 'req_2',
-      }),
-    );
-    expect(observation).toMatchObject({
-      subagentId: 'agent-9',
-      tokensInput: 3,
-      tokensOutput: 4,
-      costUsd: 0.0025,
-      observedAt: AT,
-    });
-  });
-
-  it('derives a stable key when the request id is missing', () => {
-    const a = claudeApiRequestObservation(log('api_request', { ...attrs, request_id: '' }));
-    const b = claudeApiRequestObservation(log('api_request', { ...attrs, request_id: '' }));
-    expect(a?.observationKey).toMatch(/^claude-event:/);
-    expect(a?.observationKey).toBe(b?.observationKey);
-  });
-
-  it('ignores other events and events without a session', () => {
-    expect(claudeApiRequestObservation(log('user_prompt', { ...attrs, 'event.name': 'user_prompt' }, 'claude_code.user_prompt'))).toBeNull();
-    expect(claudeApiRequestObservation(log('api_request', { ...attrs, 'session.id': '' }))).toBeNull();
+describe('isClaudeNativeUsageRecord', () => {
+  it('recognizes Claude Code native api_request events, which are never booked', () => {
+    const attrs = { 'event.name': 'api_request', 'session.id': SID, input_tokens: 12, request_id: 'req_1' };
+    expect(isClaudeNativeUsageRecord(log('api_request', attrs, 'claude_code.api_request'))).toBe(true);
+    expect(isClaudeNativeUsageRecord(log('claude_code.api_request', attrs))).toBe(true);
+    // Not a usage observation either: it is dropped, not booked.
+    expect(isUsageOnlyLogRecord(log('api_request', attrs, 'claude_code.api_request'))).toBe(false);
+    expect(isClaudeNativeUsageRecord(log('user_prompt', { 'event.name': 'user_prompt' }, 'claude_code.user_prompt'))).toBe(false);
   });
 });
 
@@ -223,8 +162,48 @@ describe('otelHookGenerationObservation', () => {
     expect(otelHookGenerationObservation(span('generation', legacy), 'cursor')).not.toHaveProperty('runningTotal');
   });
 
-  it('books no Claude Code generation: its native api_request events are the one source (ADR 0005 section 5)', () => {
-    expect(otelHookGenerationObservation(span('generation claude-sonnet-4-5', usage), 'claude_code')).toBeNull();
+  it('books Claude Code turn and subagent generations, delta, fresh input without cache (ADR 0005 section 5)', () => {
+    // A turn: otel-hook's input count includes cache reads and cache writes.
+    const turn = {
+      'otelhook.session.id': SID,
+      'gen_ai.conversation.id': SID,
+      'session.id': 'har-slot-session',
+      'otelhook.generation.id': 'gen-turn-1',
+      'otelhook.usage.temporality': 'delta',
+      'gen_ai.request.model': 'claude-opus-4-1',
+      'gen_ai.response.model': 'claude-opus-4-1',
+      'gen_ai.usage.input_tokens': 5212,
+      'gen_ai.usage.cache_read.input_tokens': 5000,
+      'gen_ai.usage.cache_creation.input_tokens': 200,
+      'gen_ai.usage.output_tokens': 340,
+    };
+    expect(otelHookGenerationObservation(span('generation claude-opus-4-1', turn), 'claude_code')).toEqual({
+      agentTool: 'claude_code',
+      sessionId: SID,
+      observationKey: 'gen-turn-1',
+      observedAt: new Date('2026-11-12T10:00:30.000Z'),
+      granularity: 'turn',
+      source: 'otel',
+      producer: 'otelhook.generation',
+      model: 'claude-opus-4-1',
+      tokensInput: 12,
+      tokensOutput: 340,
+      tokensCacheRead: 5000,
+      tokensCacheCreation: 200,
+      costUsd: null,
+    });
+    // A subagent run: its own generation, the subagent's model, booked on the subagent.
+    const subagent = otelHookGenerationObservation(
+      span('generation claude-haiku-4-5', {
+        ...turn,
+        'otelhook.generation.id': 'gen-sub-1',
+        'otelhook.subagent.id': 'agent-7',
+        'gen_ai.response.model': 'claude-haiku-4-5',
+      }),
+      'claude_code',
+    );
+    expect(subagent).toMatchObject({ sessionId: SID, subagentId: 'agent-7', observationKey: 'gen-sub-1', model: 'claude-haiku-4-5' });
+    expect(subagent).not.toHaveProperty('runningTotal');
   });
 
   it('ignores rollup spans and spans without usage', () => {

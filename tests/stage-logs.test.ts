@@ -13,9 +13,7 @@ const RUNNER = path.join(
   '..',
   'src',
   'templates',
-  'runtime-bundles',
-  'shared-kernel',
-  'lib',
+  'runtime',
   'verify-runner.mjs',
 );
 

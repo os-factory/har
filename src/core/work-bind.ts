@@ -10,7 +10,7 @@ import {
 } from '../harness/schema';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { recordRebindBindings, slotOccupancyKey } from './session-bindings';
-import { joinSlotSegment, rebindSlotSegments } from './session-context';
+import { SessionContextLockError, joinSlotSegment, rebindSlotSegments } from './session-context';
 import { queueSlotRecords } from './ingest-publish';
 import {
   listSlotRegistryEntries,
@@ -185,13 +185,15 @@ export function bindWorkUnit(options: BindWorkUnitOptions): BindWorkUnitResult {
     try {
       // ADR 0004 §2: an agent session joining the slot (a second agent, a resumed
       // session) works under its attempt from now on, as the launching one does.
-      const joined = joinSlotSegment({ harnessRoot, session, env: options.env ?? process.env, at: now });
+      // The boundary is the write decision (lock held), unless the caller pins the instant.
+      const joined = joinSlotSegment({ harnessRoot, session, env: options.env ?? process.env, at: options.now });
       if (joined) {
         notices.push(`Session ${joined.sessionId} (${joined.agentTool}) now works under attempt ${session.attemptId}.`);
         queueSlotRecords({ harnessRoot, session });
       }
-    } catch {
-      // Session context is best-effort; the binding itself succeeded.
+    } catch (err) {
+      // The binding itself succeeded; a session file that stayed locked was not written, and says so.
+      if (err instanceof SessionContextLockError) notices.push(err.message);
     }
     return {
       ok: true,
@@ -304,9 +306,11 @@ export function bindWorkUnit(options: BindWorkUnitOptions): BindWorkUnitResult {
   }
   try {
     // ADR 0004 §2: sessions in the slot move to the new attempt; the old one ends.
-    rebindSlotSegments({ harnessRoot, before: session, after, env: options.env ?? process.env, at: now });
-  } catch {
-    // Session context is best-effort; the binding itself succeeded.
+    // The boundary is the write decision (lock held), unless the caller pins the instant.
+    rebindSlotSegments({ harnessRoot, before: session, after, env: options.env ?? process.env, at: options.now });
+  } catch (err) {
+    // The binding itself succeeded and the old attempt is ended; a locked session file is reported.
+    if (err instanceof SessionContextLockError) notices.push(err.message);
   }
   // ADR 0004 §6: the new attempt and segments, and the old attempt's end, for every
   // receiver; queued here, sent by the command's final drain (fail-open).

@@ -129,7 +129,7 @@ describe('port formulas', () => {
 
 describe('isPortInUse', () => {
   it('detects an IPv4 loopback listener', async () => {
-    const port = 58720;
+    const port = 23720;
     const server = await listenOn('127.0.0.1', port);
     try {
       expect(isPortInUse(port)).toBe(true);
@@ -140,7 +140,7 @@ describe('isPortInUse', () => {
   });
 
   it('detects an IPv6-only loopback listener that IPv4 probing would miss', async () => {
-    const port = 58721;
+    const port = 23721;
     let server: net.Server;
     try {
       server = await listenOn('::1', port);
@@ -162,8 +162,10 @@ describe('isPortInUse', () => {
 });
 
 describe('pickFreePort', () => {
+  // Lanes below the ephemeral port range (32768-60999 on Linux): a client socket
+  // another process holds there would make a fixed port look occupied.
   it('skips an occupied port and returns the next free one in the lane', async () => {
-    const start = 58730;
+    const start = 23730;
     const server = await listenOn('127.0.0.1', start);
     try {
       expect(pickFreePort(start, start + 9)).toBe(start + 1);
@@ -173,7 +175,7 @@ describe('pickFreePort', () => {
   });
 
   it('skips a port occupied only on IPv6 loopback', async () => {
-    const start = 58740;
+    const start = 23740;
     let server: net.Server;
     try {
       server = await listenOn('::1', start);
@@ -192,7 +194,7 @@ describe('pickFreePort', () => {
   });
 
   it('returns undefined when the whole range is busy', async () => {
-    const start = 58750;
+    const start = 23750;
     const server = await listenOn('127.0.0.1', start);
     try {
       expect(pickFreePort(start, start)).toBeUndefined();

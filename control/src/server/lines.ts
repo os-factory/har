@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { LineLedgerSchema, LineProgramSchema, type LineProgram } from '@har/schemas';
+import { latestStageRuns } from '@/server/run-history';
 import { prisma } from '@/lib/db';
 
 /**
@@ -144,16 +145,8 @@ export async function listLineBoards(repositoryId: string): Promise<LineBoard[]>
     const gateStageIds = [...new Set(program.gate.stages.map((s) => s.id))];
 
     // Latest run per gate stage — the same evidence `har line status` uses.
-    const runs = gateStageIds.length
-      ? await prisma.run.findMany({
-          where: { repositoryId, stageId: { in: gateStageIds } },
-          orderBy: { startedAt: 'desc' },
-        })
-      : [];
-    const latestByStage = new Map<string, (typeof runs)[number]>();
-    for (const run of runs) {
-      if (!latestByStage.has(run.stageId)) latestByStage.set(run.stageId, run);
-    }
+    // A 1.x run of the stage, or its result in a v2 factory run, whichever is newer.
+    const latestByStage = await latestStageRuns(repositoryId, gateStageIds);
 
     const stations: LineBoardStation[] = program.stations.map((station, index) => {
       const requiredStageIds = cumulativeStageIds(program, station.id);

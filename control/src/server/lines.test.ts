@@ -6,12 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const repositoryFindUnique = vi.fn();
 const agentSlotFindMany = vi.fn();
 const runFindMany = vi.fn();
+const stageResultFindMany = vi.fn(async (..._a: unknown[]) => [] as unknown[]);
+const factoryRunFindMany = vi.fn(async (..._a: unknown[]) => [] as unknown[]);
 
 vi.mock('@/lib/db', () => ({
   prisma: {
     repository: { findUnique: (...a: unknown[]) => repositoryFindUnique(...a) },
     agentSlot: { findMany: (...a: unknown[]) => agentSlotFindMany(...a) },
     run: { findMany: (...a: unknown[]) => runFindMany(...a) },
+    stageResult: { findMany: (...a: unknown[]) => stageResultFindMany(...a) },
+    factoryRun: { findMany: (...a: unknown[]) => factoryRunFindMany(...a) },
   },
 }));
 

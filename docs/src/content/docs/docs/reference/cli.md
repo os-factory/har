@@ -34,8 +34,9 @@ summary, and Mission Control is not started by default until Docker works.
 `full`; start Mission Control when Docker is available; no plugins) without prompts.
 
 Onboarding asks **how much agent activity to record** — the same four levels as
-[`har telemetry`](#har-telemetry) — and, when connected to HAR HQ at the `full` level,
-whether HQ also receives the full trajectory (`--hq-trajectory`; off by default). The
+[`har telemetry`](#har-telemetry) — and, when logged in to HAR HQ at the `full` level,
+whether HQ receives this repository's full trajectory (`--hq-trajectory`: scope `full`
+with raw text; otherwise `outline`). The
 level is machine-wide: it applies to every repository on this machine. The older
 `--telemetry on` / `on-no-prompts` still work and mean `full` / `outline`. This is the first-run command for a
 new repository — do not substitute `har env init` in user-facing copy.
@@ -66,7 +67,7 @@ With `--yes` and no `--agent-slots`, the profile template default is kept.
 | `status` | Inspect all slots |
 | `logs <id> [service]` | Show recent logs for a slot (optionally one service) |
 | `agent <id> <command>` | Per-slot ops: `status`, `logs`, `restart`, `psql`, `health`, `url`, `reset-db`, `slow-queries`, `exec`, `attach` |
-| `run-stage <id> <stage> [args..]` | Run one registered harness stage by id |
+| `run-stage <id> <stage> [args..] [-- args..]` | Run one registered harness stage by id, as verify runs it: in the slot work dir with `WORK_DIR`, `AGENT_ID` and the slot env file; args after `--` pass through verbatim |
 | `artifacts` | List result files under `.har/artifacts/` |
 | `cleanup` | Discover stale sessions and orphan worktrees across registered repos |
 | `runs list` | List persisted run records |
@@ -401,35 +402,47 @@ too. Exit codes come from `git factory`: `0` ok,
 ## `har hq`
 
 ```bash
-har hq connect [--portal <url>] [--api-key <key>] [--repo .] [--trajectory|--no-trajectory] [--yes] [--json]
-har hq list [--json]
+har hq connect [--portal <url>] [--api-key <key>] [--repo <path|url>]... [--scope off|usage|outline|full] [--content none|redacted|masked|raw] [--yes] [--json]
+har hq repos [list] [--json]
+har hq repos add [<path|url>...] [--scope off|usage|outline|full] [--content none|redacted|masked|raw] [--yes] [--json]
+har hq repos remove [<path|url>...] [--json]
+har hq status [--json]               # alias: har hq list
 har hq disconnect [--json]
 ```
 
-The CLI holds **one HAR HQ org connection at a time**, and every sync, OTel and
-trajectory upload goes to that org only. On a TTY, `connect` asks Production
-(`https://portal.kerno.io/har`), Development (`https://portal.dev.kerno.io/har`), or a custom
-URL, then opens browser SSO. The org chosen on the consent screen becomes the
-connection, and HAR attaches **this repository** to it. When other repositories
-are registered locally, a TTY prompt lists them so you can attach more to the
-same org. `--yes` / `--json` skip that prompt and attach only the current checkout.
+HAR HQ receives only the repositories you choose, each at its scope:
 
-Running `connect` again for the same org adds the current checkout and keeps the
-repositories already attached. Connecting to a **different** org replaces the
-connection: the previous org's credentials are removed, nothing more is sent to
-it, and its attached repositories stop syncing until you attach them to the new
-org. A sync that is already running when you switch stops before sending
-anything else to the previous org.
+| Scope | HAR HQ receives |
+|-------|-----------------|
+| `off` | nothing |
+| `usage` | records, proofs, evidence, and the agent's spans and metrics (tokens, cost) |
+| `outline` | `usage` plus the event records (every step and its timing), no text |
+| `full` | `outline` plus the text, per `--content`: `none` (default), `redacted`, `masked`, `raw` |
 
-Automatic sync sends only repositories **attached** to the connection;
-unattached checkouts are never ingested.
+`connect` logs in (on a TTY it asks Production, Development or a custom URL, then
+opens browser SSO; `--api-key` stores a key instead). On a TTY it then asks which
+repositories — this repository, the registered ones, and the ones attached in 1.x;
+the current one and the 1.x ones pre-selected — and one scope for all of them, or one
+per repository. With `--scope`, it chooses without asking: the `--repo` repositories
+(repeatable; default the current repository). Without `--scope` on a non-TTY, or with
+`--yes`, it only logs in and prints the exact `har hq repos add` command.
+`--content` applies to `--scope full` only.
 
-`list` shows the connection (org + portal host, never tokens) and its attached
-repositories. `disconnect` removes the connection and its credentials.
-Credentials stay in `~/.har/` and are never committed into `.har/`. A
-`~/.har/portal-targets.json` written by an older CLI with several connections is
-reduced to its default (else most recently used) connection the first time it is
-read; the other connections and their tokens are deleted.
+`repos add` adds or changes repositories (default: the current one), `repos remove`
+removes them; `add` asks the scope on a TTY and fails with the exact command
+otherwise. A local path is matched by its main checkout (worktrees and harnesses in a
+subdirectory included) and by its `origin`; a URL by host and path. Agent telemetry
+is matched by the repository URL only, so a repository without an `origin` sends
+records and verification only.
+
+The CLI holds **one HAR HQ org login at a time**. Logging in to a different org
+removes the previous org's credentials and forgets the repositories chosen for it.
+`status` shows the login (org + portal host, never tokens), the chosen repositories
+and the local level, which caps every destination. `disconnect` removes the login and
+its credentials and keeps the choice. The first 2.0 command on a machine logged in by
+1.x logs it out once (see [Upgrading to 2.0](/docs/guides/upgrading-to-2-0/)).
+Credentials stay in `~/.har/` and are never committed into `.har/`. The MCP server
+has a read-only `har_hq_status`; logging in and choosing are human-only.
 
 `har control login` remains a deprecated alias for `har hq connect`.
 
@@ -441,7 +454,7 @@ har control down
 har control register [--repo .] [--api-url <url>] [--dry-run] [--force] [--portal|--no-portal]
 har control unregister [--repo .] [--api-url <url>] [--yes] [--delete-worktrees] [--dry-run] [--json]
 har control reset [--yes] [--no-scrub-local] [--keep-registry] [--api-url <url>] [--dry-run] [--json]
-har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud] [--full]
+har control sync [--select] [--api-url <url>] [--dry-run] [--json] [--cloud]
 har control check-usage [--repo <path|id>] [--api-url <url>] [--json] [--limit 20]
 har control watch [--repo .] [--interval 10] [--api-url <url>]
 har control login [--portal <url>] [--api-key <key>] [--repo .]
@@ -451,10 +464,14 @@ har control trajectory [on|off]
 `login` is a deprecated alias for `har hq connect`. Prefer `har hq connect`.
 `sync --select` interactively chooses repositories, saved in
 `~/.har/sync-selection.json`; once saved, automatic syncs also touch only those
-repositories. `register` adds its repository to a saved selection. `--full` ignores the runs watermark and resends every run.
-`sync` sends to local Mission Control only (or to HAR Cloud with `--cloud`); it no
-longer sends anything to HAR HQ. The CLI sends records and telemetry to HAR HQ
-directly when HQ is a destination (`har telemetry destination add hq`).
+repositories. `register` adds its repository to a saved selection.
+`sync` registers each repository with local Mission Control and sends its live slot
+view, Mission Control's two local endpoints outside the ingest contract (or to HAR
+Cloud with `--cloud`); it no longer sends anything to HAR HQ. Runs, work units,
+factory runs, commit bindings, usage and the trajectory reach every receiver,
+Mission Control included, as ingest v2 records and otel-hook OTLP. The CLI sends records and telemetry to HAR HQ
+directly for the repositories chosen for it (`har hq repos add`).
+`trajectory` only points to `har hq repos` in 2.0.
 `check-usage` is read-only: Mission Control checks the usage invariants over
 everything it holds (I1 a request is stored in one repository,
 I2 a legacy session total is stored once, I3 a session's rows hold exactly its
@@ -514,8 +531,8 @@ One **level** is stored; each includes the ones below it:
 | Level | Records |
 |-------|---------|
 | `full` (default) | Everything in `outline`, plus prompts, agent replies and tool inputs/outputs |
-| `outline` | `usage`, plus one row per prompt, generation and tool call with timing — no text |
-| `usage` | Tokens and cost per request (Claude Code native telemetry, Claude / Codex session files at sync). Cursor reports usage only through the hook, so it needs `outline` |
+| `outline` | `usage`, plus the trajectory: one row per prompt, generation, tool call and subagent with timing — no text |
+| `usage` | Tokens per turn and per subagent from the agent hook (otel-hook spans and token metrics, no event records, no text), priced by the receiver |
 | `off` | Nothing |
 
 `on` stores the level (replacing the previous one outright), ensures Mission Control is
@@ -553,9 +570,10 @@ keeps its entry, disabled, so it does not come back. A 2.0 prerelease
   the HAR HQ connection. The ingest key is never stored in the list: it is read at send
   time from `HAR_PORTAL_TOKEN` or the connection (`har hq connect`), sent as
   `Authorization: Bearer …`, and handed to otel-hook only as an `env:` header reference
-  whose value lives in `~/.har/otel-hooks/direct.env` (mode `0600`). A repository is
-  sent to HAR HQ only when it is attached to the connection (or `HAR_PORTAL_URL` +
-  `HAR_PORTAL_TOKEN` are set).
+  whose value lives in `~/.har/otel-hooks/direct.env` (mode `0600`). An `hq`
+  destination is always scoped per repository (its `repositories`, edited with
+  `har hq repos`): it sends nothing until a repository is chosen, and replacing it with
+  `--overwrite` keeps the choice.
 - `--preset langfuse` sends traces to `<host>/api/public/otel` with
   `Authorization: Basic base64(public:secret)`. Langfuse ingests OTLP traces only.
   The keys default to `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`, the host to
@@ -576,8 +594,8 @@ keeps its entry, disabled, so it does not come back. A 2.0 prerelease
   Resource).
 - Account identity attributes (`user.email`, `user.account_uuid`, `user.account_id`,
   `user.id`, `organization.id`, `enduser.id`, …) are stripped from what the CLI sends;
-  Claude Code's native telemetry, which carries them, goes to Mission Control only.
-  `--include-account-identity` keeps them for that destination.
+  HAR turns no agent's native telemetry on, so agent telemetry (otel-hook) carries
+  none. `--include-account-identity` keeps them for that destination.
 - `--no-include-session-id` leaves `session.id` off metric points, for backends where
   one series per session is too many. otel-hook has one setting for every destination,
   so one destination turning it off turns it off for all.

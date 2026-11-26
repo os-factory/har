@@ -12,8 +12,8 @@ import { type UsageInvariantReport } from '../packages/schemas/src/usage-invaria
  * the built CLI drives real repositories, slots and worktrees in a sandbox
  * HOME, and `har control sync` posts to Mission Control. Sessions are
  * synthetic OTLP shaped like otel-hook with os-factory/otel-hook#42 (place
- * evidence) and Claude Code's `api_request` logs (usage). The usage
- * invariants must hold on Mission Control, before and after a resend.
+ * evidence) and its Claude Code generation spans (usage, otel-hook#68). The
+ * usage invariants must hold on Mission Control, before and after a resend.
  *
  * No model, no Docker. Opt-in:
  *   npm run build && HAR_USAGE_E2E=1 npx jest tests/usage-integrity.e2e.test.ts
@@ -170,11 +170,13 @@ run(
      * target worktree, with the git-root ids of the worktree and of its
      * repository's main checkout and the worktree's kind.
      */
+    const lastCwd = new Map<string, string>();
     async function hookSpan(
       sessionId: string,
       cwd: string,
       target?: { worktree: string; mainCheckout: string; branch: string },
     ) {
+      lastCwd.set(sessionId, cwd);
       const t = BigInt(tick()) * 1_000_000n;
       const targetAttributes: Record<string, string> = target
         ? {
@@ -214,69 +216,45 @@ run(
       );
     }
 
-    /** Claude Code's native `api_request` log: one billed request. Returns its time. */
+    /**
+     * otel-hook's Claude Code generation span: one turn, its tokens read from
+     * the transcript (`input_tokens` includes cache reads). Returns its time.
+     */
     async function apiRequest(
       sessionId: string,
-      requestId: string,
+      generationId: string,
       input: number,
       output: number,
       cacheRead: number,
-      cost: number,
     ) {
       const ms = tick();
-      const record = {
-        timeUnixNano: `${BigInt(ms) * 1_000_000n}`,
-        body: { stringValue: 'claude_code.api_request' },
+      const t = BigInt(ms) * 1_000_000n;
+      const span = {
+        traceId: randomBytes(16).toString('hex'),
+        spanId: randomBytes(8).toString('hex'),
+        name: 'generation claude-opus-5-5',
+        kind: 1,
+        startTimeUnixNano: `${t - 1_000_000n}`,
+        endTimeUnixNano: `${t}`,
         attributes: attrs({
-          'event.name': 'api_request',
-          'event.timestamp': new Date(ms).toISOString(),
           'session.id': sessionId,
-          request_id: requestId,
-          model: 'claude-opus-5-5',
-          input_tokens: input,
-          output_tokens: output,
-          cache_read_tokens: cacheRead,
-          cache_creation_tokens: 0,
-          cost_usd: cost,
+          'otelhook.session.id': sessionId,
+          'gen_ai.conversation.id': sessionId,
+          'otelhook.provider.id': 'claude-code',
+          'otelhook.workspace.id': otelId('working-directory', lastCwd.get(sessionId) ?? repoA),
+          'otelhook.generation.id': generationId,
+          'otelhook.usage.temporality': 'delta',
+          'gen_ai.response.model': 'claude-opus-5-5',
+          'gen_ai.usage.input_tokens': input + cacheRead,
+          'gen_ai.usage.output_tokens': output,
+          'gen_ai.usage.cache_read.input_tokens': cacheRead,
         }),
       };
-      const resource = { attributes: attrs({ 'service.name': 'claude-code' }) };
-      await otlp(
-        'logs',
-        { resourceLogs: [{ resource, scopeLogs: [{ logRecords: [record] }] }] },
-        `request ${requestId}`,
-      );
+      const resource = {
+        attributes: attrs({ 'service.name': 'otel-hook', 'otelhook.provider.id': 'claude-code' }),
+      };
+      await otlp('traces', { resourceSpans: [{ resource, scopeSpans: [{ spans: [span] }] }] }, `generation ${generationId}`);
       return ms;
-    }
-
-    /** A session's Claude Code transcript, as `har control sync` harvests it from `~/.claude/projects`. */
-    function writeTranscript(
-      sessionId: string,
-      launchCwd: string,
-      requests: Array<{ requestId: string; at: number; cwd: string; input: number }>,
-    ) {
-      const dir = path.join(home, '.claude', 'projects', launchCwd.replace(/[/.]/g, '-'));
-      fs.mkdirSync(dir, { recursive: true });
-      const lines = requests.map(({ requestId, at, cwd, input }) =>
-        JSON.stringify({
-          type: 'assistant',
-          sessionId,
-          cwd,
-          timestamp: new Date(at).toISOString(),
-          requestId,
-          message: {
-            id: `msg_${requestId}`,
-            model: 'claude-opus-5-5',
-            usage: {
-              input_tokens: input,
-              output_tokens: 900,
-              cache_read_input_tokens: 14_000,
-              cache_creation_input_tokens: 0,
-            },
-          },
-        }),
-      );
-      fs.writeFileSync(path.join(dir, `${sessionId}.jsonl`), lines.join('\n') + '\n');
     }
 
     function initRepo(repo: string) {
@@ -351,41 +329,41 @@ run(
     it('drives every place a session can be, and syncs', async () => {
       const slot2 = slotDir(repoA, 2);
       await hookSpan(S.main, repoA);
-      await apiRequest(S.main, 'req_main_1', 10, 100, 5_000, 0.05);
-      await apiRequest(S.main, 'req_main_2', 12, 120, 6_000, 0.06);
+      await apiRequest(S.main, 'req_main_1', 10, 100, 5_000);
+      await apiRequest(S.main, 'req_main_2', 12, 120, 6_000);
       // A plain (non-slot) worktree.
       await hookSpan(S.worktree, wt1);
-      await apiRequest(S.worktree, 'req_wt_1', 20, 200, 7_000, 0.07);
+      await apiRequest(S.worktree, 'req_wt_1', 20, 200, 7_000);
       await hookSpan(S.slot, slotDir(repoA, 1));
-      await apiRequest(S.slot, 'req_slot_1', 30, 300, 8_000, 0.08);
+      await apiRequest(S.slot, 'req_slot_1', 30, 300, 8_000);
       // The main checkout, then a tool event in a linked worktree mid-session.
       await hookSpan(S.moves, repoA);
-      await apiRequest(S.moves, 'req_moves_main', 40, 400, 9_000, 0.09);
+      await apiRequest(S.moves, 'req_moves_main', 40, 400, 9_000);
       await hookSpan(S.moves, repoA, { worktree: wt1, mainCheckout: repoA, branch: 'feat' });
-      await apiRequest(S.moves, 'req_moves_wt', 41, 410, 9_100, 0.091);
+      await apiRequest(S.moves, 'req_moves_wt', 41, 410, 9_100);
       await hookSpan(S.parallelA, wt1);
       await hookSpan(S.parallelB, wt2);
-      await apiRequest(S.parallelA, 'req_par_a', 50, 500, 10_000, 0.1);
-      await apiRequest(S.parallelB, 'req_par_b', 51, 510, 10_100, 0.101);
+      await apiRequest(S.parallelA, 'req_par_a', 50, 500, 10_000);
+      await apiRequest(S.parallelB, 'req_par_b', 51, 510, 10_100);
       // A's main checkout, then B's.
       await hookSpan(S.twoRepos, repoA);
-      await apiRequest(S.twoRepos, 'req_two_a', 60, 600, 11_000, 0.11);
+      await apiRequest(S.twoRepos, 'req_two_a', 60, 600, 11_000);
       await hookSpan(S.twoRepos, repoB);
-      await apiRequest(S.twoRepos, 'req_two_b', 61, 610, 11_100, 0.111);
+      await apiRequest(S.twoRepos, 'req_two_b', 61, 610, 11_100);
       await hookSpan(S.nested, nested);
-      await apiRequest(S.nested, 'req_nested', 70, 700, 12_000, 0.12);
+      await apiRequest(S.nested, 'req_nested', 70, 700, 12_000);
       // Slot 2 relaunched (new suffix, new occupancy) while the session goes on.
       await hookSpan(S.relaunch, slot2);
-      await apiRequest(S.relaunch, 'req_relaunch_1', 80, 800, 13_000, 0.13);
+      await apiRequest(S.relaunch, 'req_relaunch_1', 80, 800, 13_000);
       har(repoA, 'env', 'teardown', '2');
       har(repoA, 'env', 'launch', '2');
       har(repoA, 'control', 'sync', '--api-url', mcUrl);
       expect(slotDir(repoA, 2)).not.toBe(slot2);
       await hookSpan(S.relaunch, slotDir(repoA, 2));
-      await apiRequest(S.relaunch, 'req_relaunch_2', 81, 810, 13_100, 0.131);
+      await apiRequest(S.relaunch, 'req_relaunch_2', 81, 810, 13_100);
       // An OTLP retry of one request.
-      await apiRequest(S.main, 'req_main_2', 12, 120, 6_000, 0.06);
-      // A's main checkout → a slot of B → A again; its transcript is harvested too.
+      await apiRequest(S.main, 'req_main_2', 12, 120, 6_000);
+      // A's main checkout → a slot of B → A again.
       const cross = [];
       for (const [cwd, requestId, input] of [
         [repoA, 'req_cross_a1', 90],
@@ -393,14 +371,9 @@ run(
         [repoA, 'req_cross_a2', 92],
       ] as const) {
         await hookSpan(S.crossRepo, cwd);
-        cross.push({
-          requestId,
-          cwd,
-          input,
-          at: await apiRequest(S.crossRepo, requestId, input, 900, 14_000, 0.14),
-        });
+        cross.push(await apiRequest(S.crossRepo, requestId, input, 900, 14_000));
       }
-      writeTranscript(S.crossRepo, repoA, cross);
+      expect(cross).toHaveLength(3);
       syncAll();
     }, 600_000);
 
@@ -409,9 +382,9 @@ run(
       expect(report.violations).toEqual([]);
     });
 
-    it('a resend and a --full resend keep every invariant', async () => {
+    it('a resend keeps every invariant', async () => {
       syncAll();
-      syncAll('--full');
+      syncAll();
       const report = await api<UsageInvariantReport>('/api/usage/invariants');
       expect(report.violations).toEqual([]);
     }, 600_000);

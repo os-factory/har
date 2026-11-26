@@ -134,46 +134,18 @@ function eventIs(record: OtelLogLike, fullName: string): boolean {
   return names.some((name) => name === fullName || name === short);
 }
 
-/** Whether a log record only reports usage (it becomes an observation, not a trajectory fact). */
-export function isUsageOnlyLogRecord(record: OtelLogLike): boolean {
-  return eventIs(record, 'claude_code.api_request') || isCodexCompletedResponse(record);
+/**
+ * Claude Code's native `claude_code.api_request` event (OTLP logs exporter),
+ * which HAR before 2.0 turned on. Claude Code usage comes from otel-hook
+ * generations only (ADR 0005 section 5), so these are dropped, never booked.
+ */
+export function isClaudeNativeUsageRecord(record: OtelLogLike): boolean {
+  return eventIs(record, 'claude_code.api_request');
 }
 
-/**
- * Claude Code `claude_code.api_request` (OTLP logs exporter): one API request.
- * `input_tokens` excludes cache reads and writes, matching HAR's disjoint buckets.
- * The key is the API request id, so a transcript harvest keyed the same way
- * merges with it instead of counting twice.
- */
-export function claudeApiRequestObservation(record: OtelLogLike): ObservationInput | null {
-  if (!eventIs(record, 'claude_code.api_request')) return null;
-  const attrs = record.attributes;
-  const ref = providerSessionRef('claude_code', attrs, providerResource(record.resource));
-  if (!ref) return null;
-  const requestId = str([attrs], ['request_id', 'client_request_id']);
-  const observedAt = isoAttr(attrs['event.timestamp']) ?? record.timestamp;
-  const costMicros = num(attrs.cost_usd_micros);
-  const cost = attrs.cost_usd != null && Number.isFinite(Number(attrs.cost_usd))
-    ? Number(attrs.cost_usd)
-    : costMicros > 0
-      ? costMicros / 1e6
-      : null;
-  return {
-    ...ref,
-    observationKey:
-      requestId ??
-      `claude-event:${shortHash([attrs['prompt.id'] ?? null, attrs['event.sequence'] ?? null, observedAt.toISOString()])}`,
-    observedAt,
-    granularity: 'request',
-    source: 'otel',
-    producer: 'claude.api_request',
-    model: str([attrs], ['model']) ?? null,
-    tokensInput: int(attrs.input_tokens),
-    tokensOutput: int(attrs.output_tokens),
-    tokensCacheRead: int(attrs.cache_read_tokens),
-    tokensCacheCreation: int(attrs.cache_creation_tokens),
-    costUsd: cost,
-  };
+/** Whether a log record only reports usage (it becomes an observation, not a trajectory fact). */
+export function isUsageOnlyLogRecord(record: OtelLogLike): boolean {
+  return isCodexCompletedResponse(record);
 }
 
 function isCodexCompletedResponse(record: OtelLogLike): boolean {
@@ -227,9 +199,10 @@ export interface OtelSpanLike {
 }
 
 /**
- * otel-hook generation span (Cursor `stop`, Codex `Stop`, ...) carrying
- * `gen_ai.usage.*`. Keyed by `otelhook.generation.id` (Cursor `generation_id`,
- * Codex `turn_id` — the key the CLI harvest uses, so both are one fact).
+ * otel-hook generation span (Claude Code and Codex `Stop`, Claude Code
+ * `SubagentStop`, Cursor `stop`, ...) carrying `gen_ai.usage.*`: the only
+ * source of agent usage (ADR 0005 section 5). Keyed by `otelhook.generation.id`
+ * (Cursor `generation_id`, Codex `turn_id`), so a span delivered twice is one fact.
  * otel-hook's input count is inclusive of cache reads (and of cache writes
  * where the provider bills them inside input), so the uncached part is what
  * remains. With `otelhook.usage.temporality = cumulative` (Codex) the counts
@@ -237,15 +210,14 @@ export interface OtelSpanLike {
  * usage is its difference from the previous turn. Session, subagent and
  * compaction spans carry rollups, never units.
  *
- * Claude Code is booked from its native `claude_code.api_request` events only
- * (ADR 0005 section 5, one source per provider): its otel-hook generations,
- * read from the transcript, are the same requests and are never units here.
+ * Claude Code reports one generation per turn and one per subagent run (its
+ * tokens read from the transcript, `otelhook.usage.temporality = delta`); a
+ * subagent's carries `otelhook.subagent.id` and is booked on the subagent.
  */
 export function otelHookGenerationObservation(
   span: OtelSpanLike,
   agentTool: AgentTool,
 ): ObservationInput | null {
-  if (agentTool === 'claude_code') return null;
   if (!(span.name === 'generation' || span.name.startsWith('generation '))) return null;
   const attrs = span.attributes;
   const hasUsage = Object.keys(attrs).some((key) => key.startsWith('gen_ai.usage.'));
@@ -272,7 +244,7 @@ export function otelHookGenerationObservation(
     // merge with a harvest, so it is a stream of its own.
     observationKey: generationId ?? `otelhook-generation:${span.spanId}`,
     observedAt: span.endTime ?? span.startTime,
-    granularity: agentTool === 'codex' ? 'turn' : 'generation',
+    granularity: agentTool === 'codex' || agentTool === 'claude_code' ? 'turn' : 'generation',
     source: 'otel',
     producer: generationId ? 'otelhook.generation' : 'otelhook.generation-span',
     model: str([attrs], ['gen_ai.response.model', 'gen_ai.request.model']) ?? null,

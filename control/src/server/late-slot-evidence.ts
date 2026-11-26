@@ -2,6 +2,8 @@ import { Prisma } from '@prisma/client';
 import { MAIN_CHECKOUT_AGENT_ID, worktreeOccupancyKey, type AgentTool } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { timelineSlotAt } from '@/server/otel-attribution';
+import type { AttrMap } from '@/server/otel-ingest';
+import { stampedIds } from '@/server/stamped-ids';
 import { findTimelinePoints, timelinePointKey } from '@/server/timeline-points';
 
 /**
@@ -104,9 +106,10 @@ async function restampSessionRecords(
     agentId: MAIN_CHECKOUT_AGENT_ID,
   };
   const [spans, events, trajectory] = await Promise.all([
+    // A span that started before `from` but ended after it is placed by its end.
     prisma.agentSessionSpan.findMany({
-      where: { ...scope, startTime: { gte: session.from } },
-      select: { id: true, startTime: true },
+      where: { ...scope, OR: [{ startTime: { gte: session.from } }, { endTime: { gte: session.from } }] },
+      select: { id: true, startTime: true, endTime: true, attributes: true },
       take: RESTAMP_LIMIT,
     }),
     prisma.agentSessionEvent.findMany({
@@ -116,7 +119,7 @@ async function restampSessionRecords(
     }),
     prisma.agentTrajectoryRecord.findMany({
       where: { ...scope, eventTimestamp: { gte: session.from } },
-      select: { id: true, eventTimestamp: true },
+      select: { id: true, eventTimestamp: true, payload: true },
       take: RESTAMP_LIMIT,
     }),
   ]);
@@ -124,11 +127,18 @@ async function restampSessionRecords(
   let restamped = 0;
   const place = async (at: Date) => timelineSlotAt(repositoryId, ref, at);
   for (const span of spans) {
-    const slot = await place(span.startTime);
+    // A span belongs to the attempt in force when it ends (otel-hook stamps it
+    // then), and its own stamp wins over the timeline (ADR 0005 section 3).
+    const slot = await place(span.endTime ?? span.startTime);
     if (!slot) continue;
+    const stamps = stampedIds((span.attributes ?? {}) as AttrMap);
     await prisma.agentSessionSpan.update({
       where: { id: span.id },
-      data: { agentId: slot.slotId, workUnitId: slot.workUnitId, attemptId: slot.attemptId },
+      data: {
+        agentId: slot.slotId,
+        workUnitId: stamps.workUnitId ?? slot.workUnitId,
+        attemptId: stamps.attemptId ?? slot.attemptId,
+      },
     });
     restamped += 1;
   }
@@ -142,15 +152,18 @@ async function restampSessionRecords(
     restamped += 1;
   }
   for (const record of trajectory) {
-    const slot = await place(record.eventTimestamp);
+    const payload = (record.payload ?? {}) as { span?: { endTime?: unknown }; attributes?: AttrMap };
+    const end = typeof payload.span?.endTime === 'string' ? new Date(payload.span.endTime) : null;
+    const slot = await place(end && Number.isFinite(end.getTime()) ? end : record.eventTimestamp);
     if (!slot) continue;
+    const stamps = stampedIds(payload.attributes ?? {});
     await prisma.agentTrajectoryRecord.update({
       where: { id: record.id },
       data: {
         agentId: slot.slotId,
         occupancyKey: slot.occupancyKey,
-        workUnitId: slot.workUnitId,
-        attemptId: slot.attemptId,
+        workUnitId: stamps.workUnitId ?? slot.workUnitId,
+        attemptId: stamps.attemptId ?? slot.attemptId,
       },
     });
     restamped += 1;

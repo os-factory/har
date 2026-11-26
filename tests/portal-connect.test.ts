@@ -2,12 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { isRepoPortalSyncEnabled, setRepoPortalSync } from '../src/core/control-registry';
-import { describePortalSync, runPortalConnect } from '../src/core/portal-connect';
+import { describeHqStatus, runPortalConnect } from '../src/core/portal-connect';
 import {
   getActivePortalConnection,
   listAttachedRepos,
-  writePortalConnectionTrajectoryPreference,
 } from '../src/core/portal-targets';
 import { writeTelemetryLevel } from '../src/core/telemetry-config';
 
@@ -52,7 +50,7 @@ function makeRepo(name: string): string {
 }
 
 describe('runPortalConnect', () => {
-  it('saves an api-key connection and attaches the current repository', async () => {
+  it('logs in with an api key and attaches nothing: HAR HQ gets only repositories chosen afterwards', async () => {
     const repoPath = makeRepo('app');
 
     const result = await runPortalConnect({
@@ -63,81 +61,36 @@ describe('runPortalConnect', () => {
 
     expect(result.record.portalUrl).toBe('https://app.harhq.com');
     expect(result.record.token).toBe('har_ingest_test');
-    expect(result.attachedRepo).toBe(repoPath);
     expect(result.replaced).toBeNull();
-    expect(listAttachedRepos()).toEqual([repoPath]);
+    expect(listAttachedRepos()).toEqual([]);
   });
 
-  it('adds a second repository when reconnecting to the same org', async () => {
-    const first = makeRepo('one');
-    const second = makeRepo('two');
-
-    const a = await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'shared', repoPath: first });
-    const b = await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'shared', repoPath: second });
-
+  it('keeps the same connection when logging in to the same org again', async () => {
+    const a = await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'shared' });
+    const b = await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'shared' });
     expect(a.record.alias).toBe(b.record.alias);
     expect(b.replaced).toBeNull();
-    expect(listAttachedRepos()).toEqual([first, second]);
   });
 
-  it('replaces the connection and its repos when the key belongs to another org', async () => {
-    const first = makeRepo('one');
-    const second = makeRepo('two');
-
-    await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'token-org-a', repoPath: first });
-    const switched = await runPortalConnect({
-      portalUrl: 'https://app.harhq.com',
-      apiKey: 'token-org-b',
-      repoPath: second,
-    });
-
+  it('replaces the connection when the key belongs to another org', async () => {
+    await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'token-org-a' });
+    const switched = await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'token-org-b' });
     expect(switched.replaced?.token).toBe('token-org-a');
-    expect(switched.detachedRepos).toEqual([first]);
     expect(getActivePortalConnection()?.token).toBe('token-org-b');
-    expect(listAttachedRepos()).toEqual([second]);
   });
 });
 
-describe('connecting a repo that was kept local-only', () => {
-  it('clears the opt-out, so an attached repo is never silently unsynced', async () => {
-    const repoPath = makeRepo('ghost');
-    setRepoPortalSync(repoPath, false);
-    expect(isRepoPortalSyncEnabled(repoPath)).toBe(false);
-
-    await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'k', repoPath });
-
-    expect(isRepoPortalSyncEnabled(repoPath)).toBe(true);
-    expect(describePortalSync().repos).toEqual([{ repoPath, sendsToHq: true }]);
-  });
-
-  it('reports an attached repo that is still opted out', async () => {
-    const repoPath = makeRepo('later');
-    await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'k', repoPath });
-    setRepoPortalSync(repoPath, false);
-    expect(describePortalSync().repos).toEqual([{ repoPath, sendsToHq: false }]);
-  });
-});
-
-describe('what HQ receives', () => {
-  it('follows the local level and the org trajectory setting', async () => {
-    await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'k', repoPath: makeRepo('r') });
-
-    writeTelemetryLevel('full');
-    expect(describePortalSync().hqTrajectory).toBe('outline');
-    writePortalConnectionTrajectoryPreference(true);
-    expect(describePortalSync()).toMatchObject({
-      telemetryLevel: 'full',
-      trajectoryForwarding: true,
-      hqTrajectory: 'full',
-    });
-
-    // Forwarding cannot send text the level never recorded.
+describe('describeHqStatus', () => {
+  it('reports the login, no repository chosen, and the local level', async () => {
+    const savedDestinations = process.env.HAR_DESTINATIONS_DIR;
+    process.env.HAR_DESTINATIONS_DIR = path.join(tmpDir, 'destinations');
     writeTelemetryLevel('outline');
-    expect(describePortalSync().hqTrajectory).toBe('outline');
-    writeTelemetryLevel('usage');
-    expect(describePortalSync().hqTrajectory).toBe('usage');
-    writeTelemetryLevel('off');
-    expect(describePortalSync().hqTrajectory).toBe('none');
+    expect(describeHqStatus()).toMatchObject({ connection: null, repositories: [], telemetryLevel: 'outline' });
+    await runPortalConnect({ portalUrl: 'https://app.harhq.com', apiKey: 'k' });
+    const status = describeHqStatus();
+    expect(status.connection?.token).toBe('k');
+    expect(status.repositories).toEqual([]);
+    expect(status.hint).toMatch(/no repository is chosen/);
+    process.env.HAR_DESTINATIONS_DIR = savedDestinations;
   });
 });
-

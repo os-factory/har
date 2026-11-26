@@ -202,3 +202,12 @@ describe('pickDefaultSession / describeSession (#339)', () => {
     expect(formatDurationShort(3_600_000)).toBe('1h');
   });
 });
+
+describe('session rows', () => {
+  it('give two usage rows of one session distinct ids', () => {
+    const at = new Date('2026-11-26T10:00:00Z');
+    const session = { sessionKey: 's-1', agentTool: 'claude_code', agentId: 1, models: [], tokensTotal: 1, costUsd: null, sources: [], firstSeenAt: at, lastSeenAt: at, firstPrompt: null };
+    const ids = buildTimelineRows({ sessions: [session, { ...session, tokensTotal: 2 }] }).map((row) => row.id);
+    expect(new Set(ids).size).toBe(2);
+  });
+});

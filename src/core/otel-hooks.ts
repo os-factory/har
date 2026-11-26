@@ -2,10 +2,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import {
-  disableClaudeNativeTelemetry,
-  enableClaudeNativeTelemetry,
-} from './claude-native-telemetry';
+import { removeClaudeNativeTelemetry } from './claude-native-telemetry';
 import { getControlApiUrl } from './control-config';
 import {
   getTelemetryLevel,
@@ -31,22 +28,25 @@ import {
   type AgentTelemetryRoute,
   type AgentTelemetryRouteDecision,
 } from './telemetry-route';
-import { LOCAL_ATTR_PREFIX } from '../harness/schema';
+import { LOCAL_ATTR_PREFIX, type OtelHookScope } from '../harness/schema';
 import { sessionContextRoot } from './session-context';
 
 /**
- * The otel-hook version HAR installs: the one place to change it. 0.12.0 is
- * the first with the session context (`sessionContext.dir`, ADR 0004 section
- * 3); 0.11.0 brought per-destination metrics, 0.10.0 Claude Code transcript usage.
+ * The otel-hook version HAR installs: the one place to change it. 0.14.0 has
+ * per-destination repository `scopes` (HAR HQ opt-in per repository); 0.13.2
+ * subagent usage, Codex rollout usage with a bounded export, and the Windows
+ * spool claim; 0.12.0 brought the session context (`sessionContext.dir`, ADR
+ * 0004 section 3), 0.11.0 per-destination metrics, 0.10.0 Claude Code
+ * transcript usage.
  */
-export const OTEL_HOOKS_VERSION = '0.12.0';
+export const OTEL_HOOKS_VERSION = '0.14.0';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
 export const OTEL_HOOKS_PACKAGE = `@osfactory/otel-hook@${OTEL_HOOKS_VERSION}`;
 
 /**
  * Environment override for the package spec HAR installs: any spec the package
- * manager accepts (`@osfactory/otel-hook@0.12.0`, a local `.tgz`, a directory).
+ * manager accepts (`@osfactory/otel-hook@0.14.0`, a local `.tgz`, a directory).
  * For testing an unreleased otel-hook build; unset, HAR installs the pin.
  */
 export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
@@ -109,6 +109,8 @@ export interface OtelHooksDestinationConfig {
   metricsEndpoint?: string;
   headers?: Record<string, string>;
   signals: Array<'traces' | 'logs' | 'metrics'>;
+  /** Per-repository filter (otel-hook with destination scopes); never written to an otel-hook without them. */
+  scopes?: OtelHookScope[];
 }
 
 export interface OtelHooksConfig {
@@ -158,6 +160,8 @@ export interface OtelHookFeatures {
   metrics: boolean;
   /** `sessionContext.dir` (0.12.0). */
   sessionContext: boolean;
+  /** Per-destination repository `scopes` (0.14.0). */
+  scopes: boolean;
 }
 
 /** Every feature: the pinned version, and what a config is built for when no hook is installed yet. */
@@ -166,6 +170,7 @@ export const ALL_OTEL_HOOK_FEATURES: OtelHookFeatures = Object.freeze({
   transcriptUsage: true,
   metrics: true,
   sessionContext: true,
+  scopes: true,
 });
 
 export interface EnsureOtelHooksResult {
@@ -184,6 +189,14 @@ export interface EnsureOtelHooksResult {
   /** Why the route is narrower than might be expected. */
   routeHint?: string;
 }
+
+/**
+ * First otel-hook release with per-destination repository `scopes`
+ * (otel-hook#78), and a string its CLI bundle contains from then on, so
+ * an unreleased build installed through `HAR_OTEL_HOOKS_PACKAGE` is detected.
+ */
+export const OTEL_HOOK_SCOPES_MIN_VERSION = '0.14.0';
+export const OTEL_HOOK_SCOPES_MARKER = 'scope_count';
 
 export function getOtelHooksHome(): string {
   if (process.env.HAR_OTEL_HOOKS_HOME) {
@@ -313,6 +326,7 @@ export function detectOtelHookFeatures(hooksHome = getOtelHooksHome()): OtelHook
     transcriptUsage: has('0.10.0', 'readTranscriptUsage'),
     metrics: has('0.11.0', 'metricsEndpoint'),
     sessionContext: has('0.12.0', 'session-context-dir'),
+    scopes: has(OTEL_HOOK_SCOPES_MIN_VERSION, OTEL_HOOK_SCOPES_MARKER),
   };
 }
 
@@ -360,7 +374,11 @@ export function buildOtelHooksConfig(options?: {
   const capturePrompts = logsEnabled && signals.prompts;
   const destinations =
     enabled && !legacy
-      ? plans.map((plan): OtelHooksDestinationConfig => {
+      ? plans
+          // A scoped destination (every hosted receiver) is never written without its scopes:
+          // an otel-hook that cannot filter by repository would send it every repository.
+          .filter((plan) => plan.scopes === undefined || features.scopes)
+          .map((plan): OtelHooksDestinationConfig => {
           const logs = logsEnabled && plan.signals.includes('logs');
           const metrics = metricsEnabled && plan.signals.includes('metrics');
           const planSignals = plan.signals.filter(
@@ -375,6 +393,7 @@ export function buildOtelHooksConfig(options?: {
               ? { headers: Object.fromEntries(plan.headers.map((binding) => [binding.header, `env:${binding.envVar}`])) }
               : {}),
             signals: planSignals,
+            ...(plan.scopes ? { scopes: plan.scopes } : {}),
           };
         })
       : undefined;
@@ -640,12 +659,87 @@ export function buildOtelHookSetupArgs(
   ];
 }
 
+/**
+ * Flags on the Claude Code hook command. Claude Code strips every `OTEL_*`
+ * variable from the hooks it runs, so these go on the command line, next to
+ * the config file (ADR 0005 section 6):
+ *
+ * - `--claude-transcript-usage`: token usage of each turn and each subagent,
+ *   read from the transcript. Claude Code usage comes from otel-hook only, so
+ *   without it no Claude Code tokens are recorded at all.
+ * - `--logs`: the event records the trajectory is built from. Which
+ *   destinations receive them still follows each one's `signals` in the config.
+ * - `--metrics`: token metrics, likewise only to destinations listing `metrics`.
+ */
+export const CLAUDE_CODE_HOOK_FLAGS = ['--claude-transcript-usage', '--logs', '--metrics'] as const;
+
+/**
+ * Flags on the Codex hook command. `--codex-rollout-usage`: each turn's token
+ * usage, read from the session's rollout file at `Stop` (Codex's `Stop` hook
+ * carries none). Opt-in in otel-hook, so without it no Codex tokens are recorded.
+ */
+export const CODEX_HOOK_FLAGS = ['--codex-rollout-usage'] as const;
+
+/** The flags HAR puts on a provider's hook command. */
+export function providerHookFlags(providerId: OtelHooksProviderId): readonly string[] {
+  if (providerId === 'claude-code') return CLAUDE_CODE_HOOK_FLAGS;
+  if (providerId === 'codex') return CODEX_HOOK_FLAGS;
+  return [];
+}
+
+/** The hook command `otel-hook setup` writes into a provider's hook settings. */
+export function buildProviderHookCommand(providerId: OtelHooksProviderId, wrapperPath: string): string {
+  const flags = providerHookFlags(providerId);
+  return `${wrapperPath} --provider ${providerId}${flags.length > 0 ? ` ${flags.join(' ')}` : ''}`;
+}
+
+/**
+ * Registered hook commands that miss a flag HAR passes today (e.g. hooks
+ * registered by HAR 1.x, before `--codex-rollout-usage`): one line each.
+ */
+export function inspectHookCommandFlags(home = os.homedir()): string[] {
+  const files: Array<[OtelHooksProviderId, string]> = [
+    ['claude-code', path.join(home, '.claude', 'settings.json')],
+    ['codex', path.join(home, '.codex', 'hooks.json')],
+  ];
+  const out: string[] = [];
+  for (const [providerId, filePath] of files) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch {
+      continue;
+    }
+    const commands: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const item of node) walk(item);
+        return;
+      }
+      if (!node || typeof node !== 'object') return;
+      const command = (node as { command?: unknown }).command;
+      if (typeof command === 'string' && isOtelHookCommand(command)) commands.push(command);
+      for (const value of Object.values(node as Record<string, unknown>)) walk(value);
+    };
+    walk((parsed as { hooks?: unknown } | null)?.hooks ?? parsed);
+    const missing = new Set<string>();
+    for (const command of commands) {
+      const words = command.split(/\s+/);
+      for (const flag of providerHookFlags(providerId)) if (!words.includes(flag)) missing.add(flag);
+    }
+    if (missing.size > 0) {
+      out.push(`${providerLabel(providerId)} hook command lacks ${[...missing].join(' ')} (har telemetry install-hooks)`);
+    }
+  }
+  return out;
+}
+
 function runSetupProvider(
   providerId: OtelHooksProviderId,
   otelHookCommand: string,
   wrapperPath: string,
 ): { ok: boolean; detail: string } {
-  const hookCommand = `${wrapperPath} --provider ${providerId}`;
+  const hookCommand = buildProviderHookCommand(providerId, wrapperPath);
   const result = spawnSync(otelHookCommand, buildOtelHookSetupArgs(providerId, hookCommand), {
     encoding: 'utf8',
     timeout: 60_000,
@@ -888,8 +982,7 @@ export function ensureOtelHooks(options?: {
 
   const signals = getTelemetrySignals();
   if (options?.setupAgents !== false && isTelemetryEnabled()) {
-    // Hooks only export from Outline up; at Usage the agents' own telemetry
-    // and session files carry everything, so no hook needs to run.
+    // Hooks export from Usage up: they are the only source of agent usage.
     if (signals.traces) {
       for (const provider of OTEL_HOOKS_PROVIDERS) {
         const setup = runSetupProvider(provider.id, resolvedCommand, wrapperPath);
@@ -900,24 +993,9 @@ export function ensureOtelHooks(options?: {
     rewriteKnownHookRegistrations(wrapperPath);
   }
   if (options?.setupAgents !== false) {
-    // Claude reports tokens/cost to no hook — its native metrics and
-    // per-request `api_request` log events carry them (ADR 0003).
-    try {
-      // Claude's native metrics and logs carry account identity: Mission
-      // Control only, and off without it.
-      if (signals.metrics && routeHasMissionControl(decision.route)) {
-        const claude = enableClaudeNativeTelemetry({ hooksHome });
-        if (claude.skipped.length > 0) {
-          errors.push(
-            `Claude native telemetry: left your own ${claude.skipped.join(', ')} in ${claude.settingsPath} — Claude cost needs them pointed at Mission Control`,
-          );
-        }
-      } else {
-        disableClaudeNativeTelemetry({ hooksHome });
-      }
-    } catch (err) {
-      errors.push(`Claude native telemetry not configured: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    // Claude Code usage comes from otel-hook only: drop the native telemetry
+    // keys an earlier HAR wrote into the Claude settings.
+    removeOldClaudeNativeTelemetry(hooksHome);
   }
 
   const agentsSetup = providersSetup.map(providerLabel);
@@ -940,8 +1018,13 @@ export function ensureOtelHooks(options?: {
   };
 }
 
-function routeHasMissionControl(route: AgentTelemetryRoute): boolean {
-  return route.mode === 'fanout' && route.missionControl !== undefined;
+/** Best-effort: a malformed Claude settings file must never block telemetry. */
+function removeOldClaudeNativeTelemetry(hooksHome: string): void {
+  try {
+    removeClaudeNativeTelemetry({ hooksHome });
+  } catch {
+    // best-effort
+  }
 }
 
 /**
@@ -988,16 +1071,7 @@ export function refreshAgentTelemetryRoute(): AgentTelemetryRouteDecision | unde
     const { decision } = applyAgentTelemetryRoute(hooksHome);
     // Wrappers written before 2.0 do not source direct.env.
     writeOtelHooksWrapper(command, hooksHome);
-    // Claude's native telemetry follows Mission Control in or out of the list.
-    try {
-      if (routeHasMissionControl(decision.route) && getTelemetrySignals().metrics) {
-        enableClaudeNativeTelemetry({ hooksHome });
-      } else {
-        disableClaudeNativeTelemetry({ hooksHome });
-      }
-    } catch {
-      // best-effort: a malformed settings file must not block the refresh
-    }
+    removeOldClaudeNativeTelemetry(hooksHome);
     return decision;
   } catch {
     return undefined;
@@ -1011,11 +1085,7 @@ export function disableOtelHooksExport(): string {
   } catch {
     // best-effort
   }
-  try {
-    disableClaudeNativeTelemetry({ hooksHome: getOtelHooksHome() });
-  } catch {
-    // best-effort: a malformed settings file must not block telemetry off
-  }
+  removeOldClaudeNativeTelemetry(getOtelHooksHome());
   return writeOtelHooksConfig(buildOtelHooksConfig({ enabled: false }));
 }
 
@@ -1032,7 +1102,11 @@ export interface TelemetryDrift {
  * version, leaves the file behind — agents then record less (or more) than
  * `har telemetry status` claims.
  */
-export function inspectTelemetryDrift(hooksHome = getOtelHooksHome()): TelemetryDrift {
+export function inspectTelemetryDrift(
+  hooksHome = getOtelHooksHome(),
+  /** Whose agent hook registrations to check; null skips them (default: the user's, for the default hooks home only). */
+  agentHome: string | null = path.resolve(hooksHome) === path.join(os.homedir(), '.har', 'otel-hooks') ? os.homedir() : null,
+): TelemetryDrift {
   const level = getTelemetryLevel();
   const configPath = getOtelHooksConfigPath(hooksHome);
   const applied = readAppliedAgentRoute(hooksHome);
@@ -1065,5 +1139,6 @@ export function inspectTelemetryDrift(hooksHome = getOtelHooksHome()): Telemetry
   check('event records export', expected.exporter.logs.enabled, actual.exporter?.logs?.enabled ?? false);
   check('text capture', expected.exporter.logs.includeContent, actual.exporter?.logs?.includeContent ?? false);
   check('content mode', expected.privacy.contentMode, actual.privacy?.contentMode ?? 'omit');
+  if (expected.exporter.enabled && agentHome !== null) mismatches.push(...inspectHookCommandFlags(agentHome));
   return { level, configPath, mismatches };
 }

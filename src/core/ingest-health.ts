@@ -9,6 +9,7 @@ import {
   type CapabilitiesCheck,
   type IngestQueueSummary,
 } from './ingest-queue';
+import { hqStatusHint } from './hq-upgrade';
 import { readDestinations } from './telemetry-destinations';
 import { formatAgo } from './telemetry-health';
 import { isControlAvailable } from './telemetry-route';
@@ -35,6 +36,10 @@ export interface IngestHealthReport {
   status: 'pass' | 'warn' | 'skip';
   destinations: IngestDestinationHealth[];
   notes: string[];
+  /** Machine-level findings: a hosted receiver key with no `hq` destination. */
+  findings?: DoctorFinding[];
+  /** Advisory one-liners that never turn the status (the hosted receiver's full experience). */
+  hints?: string[];
 }
 
 export interface CollectIngestHealthOptions {
@@ -126,10 +131,13 @@ export async function collectIngestHealth(options: CollectIngestHealthOptions = 
         queue.dead > 0;
       out.push({ ...base, status: warn ? 'warn' : 'pass', summary: describe(base, now) });
     }
+    // Informational only: logged out of HAR HQ by the 2.0 upgrade, or nothing chosen to send there.
+    const hint = hqStatusHint(env);
     return {
       status: out.length === 0 ? 'skip' : out.some((entry) => entry.status === 'warn') ? 'warn' : 'pass',
       destinations: out,
       notes: root ? [] : ['no queue directory (test runner)'],
+      ...(hint ? { hints: [hint] } : {}),
     };
   } catch (err) {
     return { status: 'skip', destinations: [], notes: [`ingest health not read: ${err instanceof Error ? err.message : String(err)}`] };
@@ -149,6 +157,7 @@ export function withIngestHealth(report: DoctorReport, health: IngestHealthRepor
           ? 'The receiver does not support ingest v2 yet: upgrade it (Mission Control: har control up). Records stay queued until then.'
           : 'Check the receiver, then har telemetry flush (queued records, proofs and evidence are also retried on every har command)',
     }));
+  findings.push(...(health.findings ?? []));
   return {
     ...report,
     checks: [
@@ -160,5 +169,6 @@ export function withIngestHealth(report: DoctorReport, health: IngestHealthRepor
       },
     ],
     findings: [...report.findings, ...findings],
+    ...(health.hints && health.hints.length > 0 ? { hints: [...(report.hints ?? []), ...health.hints] } : {}),
   };
 }

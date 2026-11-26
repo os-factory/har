@@ -75,6 +75,19 @@ har control register --repo /path/to/project
 har control sync --repo /path/to/project
 ```
 
+Registration and the live slot view are the only things `har control sync`
+sends: they are local to Mission Control and outside the ingest contract.
+Everything else — runs, work units, attempts, factory runs and stages, commit
+bindings, proofs, evidence, usage and the trajectory — reaches Mission Control
+like any other receiver, as ingest v2 records from the CLI and OTLP from
+otel-hook (ADR 0005 section 7). Slot "last verify", History, the verification
+trend, stage badges and factory lines read each factory run as a verify run, with
+its stage results; the slot, occupancy and work dir of a factory run follow from its
+attempt and the live slot view. Runs a 1.x CLI synced stay in a migrated database
+and still display next to them. A 2.0 factory run records no list of changed files:
+the diff view computes the diff from Git, from the verified tree and the head
+commit its verification span reports.
+
 Sync also runs automatically at every activity edge — login, launch, verify,
 commit, complete — so registered repositories stay current without a manual
 `sync` or a background watcher. `--dry-run` previews registration or sync, and
@@ -99,12 +112,6 @@ instead of continuing in the background.
 through Mission Control: when HQ is a destination (`har telemetry destination add
 hq`), the CLI and the agent hook send to it directly, whether Mission Control runs
 or not.
-
-Sync reads local Claude Code and Codex transcripts. It remembers which workspace
-each transcript belongs to in `~/.har/cache/transcript-index.json`, so only new
-or changed transcripts are read again, and it re-sends a usage observation to
-Mission Control only when it changed (`~/.har/cache/observation-ledger.json`).
-Both files are caches: deleting them only makes the next sync slower.
 
 Linked worktrees that store their own `.har/` evidence (an in-place launch inside
 an external orchestrator's checkout) are included in that sync. Repository
@@ -256,8 +263,8 @@ each level includes the ones below it):
 | Level | What Mission Control gets |
 |-------|---------------------------|
 | `full` (default) | Prompts, agent replies, tool inputs and outputs — plus everything below |
-| `outline` | One row per prompt, generation and tool call, with timing and outcome — no text |
-| `usage` | Tokens and cost per request (Claude Code native telemetry; Claude / Codex session files at sync) |
+| `outline` | The trajectory: one row per prompt, generation, tool call and subagent, with timing and outcome — no text |
+| `usage` | Tokens per turn and per subagent from the agent hook, priced by Mission Control — no trajectory, no text |
 | `off` | Nothing |
 
 The `signals` in the file are derived from the level and never set on their own, so a
@@ -324,10 +331,14 @@ When telemetry is on:
    `OTEL_RESOURCE_ATTRIBUTES` (no work identity). Unstamped data (an older otel-hook, a
    session that never called `har`) is still matched by workspace/cwd → slot work dir,
    then by the Resource `session.id`.
-4. Token usage arrives per request or turn — Claude Code's native `api_request` events,
-   otel-hook spans — and `har control sync` also **harvests** local Claude/Codex session
-   files. Each piece is booked on the slot the agent worked in at that moment; see
-   [Usage attribution](/docs/guides/usage-attribution/).
+4. Token usage arrives per turn (and per subagent run) from otel-hook generation spans,
+   Claude Code included: HAR turns no agent's native telemetry on, and Mission Control
+   ignores Claude Code's own `api_request` events and `claude_code.*` metrics. Each
+   piece is booked on the slot the agent worked in at that moment and priced with
+   genai-prices; see [Usage attribution](/docs/guides/usage-attribution/).
+5. The trajectory is built from otel-hook's event records (`otel/v1/logs`): one row
+   per `otelhook.event.id`, in `otelhook.event.sequence` order, with a subagent's steps
+   nested under its `otelhook.subagent.id`.
 
 **Privacy:** prompt text is included by default and stays in local Mission Control (SQLite).
 Record less with `har telemetry on --level outline` / `--level usage`, or nothing with
@@ -412,23 +423,22 @@ conflict and can select another port in the slot lane.
 
 ## HAR HQ
 
-`har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
-repository to the org you pick in the portal. The CLI holds one org connection at
-a time: when HQ is a destination (`har telemetry destination add hq`), everything
-the CLI and the agent hook send to HQ goes to that org only. Other locally
-registered repositories are offered so you can attach them to the same org;
-unattached checkouts are never ingested. Connecting to a different org replaces
-the connection — nothing more is sent to the previous org, and its repositories
-stop syncing until you attach them again. The connection lives in
-`~/.har/portal-targets.json`; `har hq list` / `har hq disconnect` manage it. It is
-never committed into `.har/`. `har control login` still works as a deprecated alias.
+HAR HQ is opt-in per repository. `har hq connect` opens browser SSO (or stores
+`--api-key`), then asks which repositories the org receives and at which scope:
+`off`, `usage` (records, verification, tokens and cost), `outline` (plus every step,
+no text) or `full` (plus the text: `none`, `redacted`, `masked` or `raw`). Nothing
+else is sent: a repository registered later waits until you add it with
+`har hq repos add <path|url> --scope …`. Without a terminal, pass `--repo`,
+`--scope` and `--content`; without them `connect` only logs in and prints the
+command to choose.
 
-Attaching a repository clears a local-only opt-out left by `har control register
---no-portal`, so an attached repository is always sent. `har hq list` shows, per
-repository, whether anything is sent, plus what HQ receives for agent sessions: usage
-and the step outline by default, the full trajectory only when the local level is
-`full` **and** forwarding is on (`har control trajectory on`, or answer yes when
-`har hq connect` / `har onboard` asks).
+The CLI holds one org login at a time. Logging in to a different org forgets the
+repositories chosen for the previous one. The login lives in
+`~/.har/portal-targets.json`, the choice in the `hq` destination of
+`~/.har/destinations/destinations.json`; neither is committed into `.har/`.
+`har hq status` shows both, `har hq disconnect` logs out and keeps the choice for
+the next login. `har control login` still works as a deprecated alias. Mission
+Control is not affected by any of this: it receives what the local level records.
 
 ### A slot's trajectory starts at the prompt
 

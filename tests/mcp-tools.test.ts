@@ -18,6 +18,7 @@ describe('HAR MCP tool schemas', () => {
       'har_run_stage',
       'har_run_verification',
       'har_doctor',
+      'har_hq_status',
       'har_get_status',
       'har_get_logs',
       'har_teardown_environment',

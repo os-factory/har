@@ -625,8 +625,9 @@ HOOK
           # a) stock files new in the 1.0 surface are installed by --migrate
           [ -f "$CLONE/.har/stages/readiness.sh" ] \
             || fail "M5: migration did not install stages/readiness.sh"
-          [ -f "$CLONE/.har/lib/verify-runner.mjs" ] \
-            || fail "M5: migration did not install lib/verify-runner.mjs"
+          # (the stage runner is package runtime: never installed into .har/lib/)
+          [ ! -f "$CLONE/.har/lib/verify-runner.mjs" ] \
+            || fail "M5: migration installed lib/verify-runner.mjs (the packaged runner runs)"
           # b) HARNESS_ECOSYSTEM=auto resolves to real ecosystem defaults —
           #    never the placeholder smoke
           if grep -q 'No stock smoke for HARNESS_ECOSYSTEM' "$CLONE/.har/stages.json"; then

@@ -24,6 +24,7 @@ import {
   StageRunOptions,
 } from './types';
 import { readSlotRegistry } from './slot-registry';
+import { readAgentEnvFile, resolveAgentEnvFile } from './slot-status';
 import {
   launchSession,
   runAgentOp,
@@ -151,6 +152,37 @@ function resolveStageScriptPath(repoPath: string, stage: HarnessStage): string {
   );
 }
 
+/** Project stage kinds the verify runner runs; `run-stage` gives them the same slot context. */
+const SLOT_CONTEXT_KINDS: ReadonlySet<HarnessStage['kind']> = new Set(['test', 'custom']);
+
+/**
+ * `har env run-stage <id> <stage>` runs a project stage the way verify runs it
+ * for that slot: cwd = the slot work dir (stage `cwd` relative to it), the
+ * slot env file loaded, and WORK_DIR / AGENT_ID / ENV_FILE / HAR_HARNESS_DIR
+ * exported. Undefined when no slot is given or the slot has no work dir yet.
+ */
+function slotStageContext(
+  repoPath: string,
+  stage: HarnessStage,
+  agentId: number | undefined,
+): { workDir: string; env: Record<string, string> } | undefined {
+  if (agentId === undefined || !SLOT_CONTEXT_KINDS.has(stage.kind)) return undefined;
+  const harnessRoot = resolveHarnessRoot(repoPath);
+  const workDir = readSlotRegistry(harnessRoot, agentId)?.workDir;
+  if (!workDir || !fs.existsSync(workDir)) return undefined;
+  const envFile = resolveAgentEnvFile(harnessRoot, agentId);
+  return {
+    workDir,
+    env: {
+      ...(envFile ? readAgentEnvFile(envFile) : {}),
+      WORK_DIR: workDir,
+      AGENT_ID: String(agentId),
+      HAR_HARNESS_DIR: getHarnessDir(harnessRoot),
+      ...(envFile ? { ENV_FILE: envFile } : {}),
+    },
+  };
+}
+
 function buildExecutionPlan(
   repoPath: string,
   stage: HarnessStage,
@@ -158,13 +190,16 @@ function buildExecutionPlan(
 ): StageExecutionPlan {
   const resolvedRepo = resolveRepoPath(repoPath);
   const harnessEnv = readHarnessEnv(resolvedRepo);
+  const slot = slotStageContext(resolvedRepo, stage, options.agentId);
   const mergedEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ...harnessEnv,
+    ...(slot?.env ?? {}),
     ...(stage.env ?? {}),
     ...(stage.kind === 'verify' && options.stageLogDir ? { HAR_STAGE_LOG_DIR: options.stageLogDir } : {}),
   };
-  const cwd = stage.cwd ? path.resolve(resolvedRepo, stage.cwd) : resolvedRepo;
+  const baseDir = slot?.workDir ?? resolvedRepo;
+  const cwd = stage.cwd ? path.resolve(baseDir, stage.cwd) : baseDir;
   const extraArgs = options.args ?? [];
 
   const launchFlagArgs =

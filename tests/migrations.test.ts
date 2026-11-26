@@ -306,7 +306,7 @@ describe('versioned harness migrations (#241)', () => {
     expect(fs.existsSync(har('verify.sh'))).toBe(false);
     expect(fs.existsSync(har('agent-slot.sh'))).toBe(false);
     expect(fs.existsSync(har('provision-toolchain.sh'))).toBe(false);
-    // lib/infra.sh is machinery; lib/ itself may stay (1.0 still ships verify-runner.mjs).
+    // lib/infra.sh is machinery; the stage runner is never installed into .har/lib/.
     expect(fs.existsSync(har('lib', 'infra.sh'))).toBe(false);
     const env = fs.readFileSync(har('harness.env'), 'utf8');
     expect(env).not.toMatch(/\(\)\s*\{/);

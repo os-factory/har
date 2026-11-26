@@ -38,7 +38,7 @@ case "${1:-}" in
           where s.traceId = '$value' and s.spanId is not null")
         ;;
       session)
-        rows=$(sql_json "select traceId, spanId, parentSpanId, name, startTime, attributes, '{}' as resource
+        rows=$(sql_json "select traceId, spanId, parentSpanId, name, startTime, endTime, attributes, '{}' as resource
           from AgentSessionSpan where sessionId = '$value'")
         ;;
       *) echo "spans: trace|session" >&2; exit 2 ;;
@@ -48,7 +48,33 @@ case "${1:-}" in
       const rows = JSON.parse(process.argv[1] || "[]");
       const json = (v) => (typeof v === "string" ? JSON.parse(v || "{}") : v ?? {});
       const iso = (v) => (typeof v === "number" ? new Date(v).toISOString() : /^\d+$/.test(String(v)) ? new Date(Number(v)).toISOString() : v);
-      console.log(JSON.stringify(rows.map((r) => ({ ...r, startTime: iso(r.startTime), attributes: json(r.attributes), resource: json(r.resource) }))));
+      console.log(JSON.stringify(rows.map((r) => ({ ...r, startTime: iso(r.startTime), ...(r.endTime != null ? { endTime: iso(r.endTime) } : {}), attributes: json(r.attributes), resource: json(r.resource) }))));
+    ' "$rows"
+    ;;
+  trajectory)
+    # The agent trajectory Mission Control built from otel-hook's log records,
+    # one row per stored record: {eventId, eventType, sequence, attributes}.
+    [ "${2:-}" = session ] || { echo "trajectory: session <id>" >&2; exit 2; }
+    value=${3//\'/}
+    rows=$(sql_json "select sourceEventId as eventId, eventType, sequence, json_extract(payload, '\$.attributes') as attributes
+      from AgentTrajectoryRecord
+      where source = 'otel' and eventType not like 'span.%'
+        and (json_extract(payload, '\$.attributes.\"otelhook.session.id\"') = '$value'
+          or json_extract(payload, '\$.attributes.\"gen_ai.conversation.id\"') = '$value')")
+    node -e '
+      const rows = JSON.parse(process.argv[1] || "[]");
+      console.log(JSON.stringify(rows.map((r) => ({ ...r, attributes: typeof r.attributes === "string" ? JSON.parse(r.attributes) : r.attributes ?? {} }))));
+    ' "$rows"
+    ;;
+  metrics)
+    # otel-hook metric series (latest value per series) of an agent session:
+    # one row per series, {name, providerId, value, attributes}.
+    [ "${2:-}" = session ] || { echo "metrics: session <id>" >&2; exit 2; }
+    value=${3//\'/}
+    rows=$(sql_json "select name, providerId, value, attributes from MetricSeries where sessionId = '$value'")
+    node -e '
+      const rows = JSON.parse(process.argv[1] || "[]");
+      console.log(JSON.stringify(rows.map((r) => ({ ...r, attributes: typeof r.attributes === "string" ? JSON.parse(r.attributes) : r.attributes ?? {} }))));
     ' "$rows"
     ;;
   stop)
@@ -65,5 +91,5 @@ case "${1:-}" in
     echo "Mission Control did not come back at $URL" >&2
     exit 1
     ;;
-  *) echo "usage: $0 describe|ingest-key|setup|read-headers|spans|stop|start" >&2; exit 2 ;;
+  *) echo "usage: $0 describe|ingest-key|setup|read-headers|spans|trajectory|stop|start" >&2; exit 2 ;;
 esac

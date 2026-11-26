@@ -505,9 +505,11 @@ export const envCommand = {
       )
       .command(
         'run-stage <id> <stage> [args..]',
-        'Run one registered harness stage by id for an agent slot',
+        'Run one registered harness stage by id for an agent slot (args after -- are passed through verbatim)',
         (y: Argv) =>
           y
+            // `-- <args>` reaches the stage verbatim, flags included (otherwise yargs drops them).
+            .parserConfiguration({ 'populate--': true })
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
             .positional('stage', { type: 'string', describe: 'Stage id from .har/stages.json' })
             .positional('args', { type: 'string', array: true, describe: 'Extra arguments passed to the stage' })
@@ -710,6 +712,11 @@ export async function handleMaintain(argv: {
       summary: argv.summary,
     });
 
+    if (result.removedStaleRunner) {
+      info(
+        `Removed .har/${result.removedStaleRunner}: a stale stage-runner copy from an older HAR (HAR runs its packaged runner).`,
+      );
+    }
     if (result.migration) {
       printMigrationSummary(result.migration);
     } else if (argv.migrate) {
@@ -725,6 +732,7 @@ export async function handleMaintain(argv: {
     if (result.doctor.ok) {
       const summary = summarizeDoctorReport(result.doctor);
       info(summary ? `Doctor: PASS (${summary})` : 'Doctor: PASS');
+      for (const hint of result.doctor.hints ?? []) info(`hint: ${hint}`);
     } else {
       warn('Doctor: FAIL — harness contract is broken:');
       for (const line of formatDoctorReport(result.doctor).split('\n')) {
@@ -1471,17 +1479,24 @@ export async function handleLogs(argv: {
   return finishCommand(result.code);
 }
 
+/** Stage args: positionals after the stage id, then everything after `--`, in order. */
+export function runStageArgs(argv: { args?: Array<string | number>; '--'?: Array<string | number> }): string[] | undefined {
+  const args = [...(argv.args ?? []), ...(argv['--'] ?? [])].map(String);
+  return args.length > 0 ? args : undefined;
+}
+
 export async function handleRunStage(argv: {
   id?: number;
   stage?: string;
   repo: string;
   args?: string[];
+  '--'?: Array<string | number>;
   json?: boolean;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
   if (!argv.stage) {
-    error('Missing stage id. Usage: har env run-stage <id> <stage> [args..]');
+    error('Missing stage id. Usage: har env run-stage <id> <stage> [args..] [-- args..]');
     return finishCommand(1);
   }
 
@@ -1490,7 +1505,7 @@ export async function handleRunStage(argv: {
       repoPath: repo,
       stageId: argv.stage,
       agentId,
-      args: argv.args,
+      args: runStageArgs(argv),
       capture: Boolean(argv.json),
     });
     if (argv.json) {

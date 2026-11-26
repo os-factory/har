@@ -13,7 +13,7 @@ export async function GET() {
       path: r.path,
       gitRemote: r.gitRemote,
       lastSyncAt: r.lastSyncAt,
-      runCount: r._count.runs,
+      runCount: r._count.runs + r._count.factoryRuns,
       slotCount: r._count.slots,
       profile: (r.manifest as { profile?: string } | null)?.profile,
     })),

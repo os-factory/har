@@ -112,7 +112,7 @@ sandbox git remote add origin "$REPO_URL"
 sandbox git add -A
 sandbox git commit -qm "fixture project"
 
-log "har env init --profile cli (the runtime, incl. .har/lib/verify-runner.mjs, from the built CLI)"
+log "har env init --profile cli (the runtime, incl. the stage runner, from the built CLI)"
 sandbox har env init --profile cli --yes --no-agents --no-cursor-rule --commit-gate never >&2
 cp "$FIXTURE"/har-overlay/stages/*.sh .har/stages/
 node "$STAGES_DIR/fixture-e2e-assert.mjs" overlay "$FIXTURE/har-overlay/stages.patch.json" .har

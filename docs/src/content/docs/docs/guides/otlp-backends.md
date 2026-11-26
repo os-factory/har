@@ -69,10 +69,10 @@ machine-wide: every repository's sessions go to the same destinations.
 
 | Signal | Source | Content |
 |---|---|---|
-| `traces` | `@osfactory/otel-hook` (`outline`, `full`) | One span per session, prompt, generation and tool call, with `gen_ai.*` attributes. No text at any level |
+| `traces` | `@osfactory/otel-hook` (`usage`, `outline`, `full`) | One span per session, prompt, generation and tool call, with `gen_ai.*` attributes; generation spans carry each turn's and each subagent's tokens. No text at any level |
 | `traces` | `har env verify` (every level except `off`) | One run span and one child span per stage, with `cicd.pipeline.*` and `factory.*` attributes. Ids, results and timings only |
 | `logs` (opt-in) | otel-hook event records (`outline`, `full`) | At `full`, prompts, agent replies and tool inputs and outputs (see [Privacy](#privacy)). At `outline`, metadata only |
-| `metrics` | otel-hook (`outline`, `full`) | Hook-derived running totals (tokens per model, tool calls), with `session.id` unless a destination turned it off. Claude Code's token counts are read from the transcript at `Stop`. Claude Code's native metrics and `claude_code.api_request` log events carry account identity and go to Mission Control only |
+| `metrics` | otel-hook (`usage`, `outline`, `full`) | Hook-derived totals (tokens per model, tool calls), with `session.id` unless a destination turned it off. Claude Code's token counts are read from the transcripts at `Stop` and `SubagentStop`. HAR turns no agent's native telemetry on |
 
 Verification traces follow the telemetry profile's
 [verification spans](https://github.com/os-factory/factory-commits/blob/main/profiles/telemetry.md#verification-spans).

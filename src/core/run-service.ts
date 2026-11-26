@@ -41,7 +41,12 @@ import { ensureTelemetryInfrastructure } from './telemetry-ensure';
 import { isTelemetryEnabled } from './telemetry-config';
 import { resolveWorktreeMode } from './worktree-mode';
 import { recordLaunchBinding, recordReleaseBindings } from './session-bindings';
-import { endSlotOccupancySegments, recordLaunchSegment, verifySessionRefs } from './session-context';
+import {
+  SessionContextLockError,
+  endSlotOccupancySegments,
+  recordLaunchSegment,
+  verifySessionRefs,
+} from './session-context';
 import { publishFactoryRun, publishSlotRecords } from './ingest-publish';
 import {
   appendTelemetryEnvToFile,
@@ -403,8 +408,9 @@ export class RunService {
         try {
           // ADR 0004 §2: the calling agent session works under this slot's attempt from now on.
           recordLaunchSegment({ harnessRoot, session, env: process.env });
-        } catch {
-          // Session context is best-effort; launch still succeeded.
+        } catch (err) {
+          // Launch still succeeded; a session file that stayed locked was not written, and says so.
+          if (err instanceof SessionContextLockError) launchNotices.push(err.message);
         }
         // ADR 0004 §6: WorkUnit, Attempt and SessionSegments straight to every receiver (fail-open).
         await publishSlotRecords({ harnessRoot, session });
@@ -719,8 +725,14 @@ export class RunService {
         // ADR 0004 §2: close every open segment of this attempt, in every session
         // file and whoever runs teardown, then mark the attempt ended.
         endSlotOccupancySegments({ harnessRoot, session });
-      } catch {
-        // Readers treat segments of an ended attempt as closed; never fail teardown.
+      } catch (err) {
+        // Never fail teardown: the attempt is marked ended regardless, so readers
+        // treat its segments as closed. A locked session file is reported, not written.
+        if (err instanceof SessionContextLockError) {
+          const notice = `WARNING: ${err.message}\n`;
+          envResult.stderr = `${envResult.stderr ?? ''}${notice}`;
+          if (!(options.capture ?? false)) process.stderr.write(notice);
+        }
       }
       try {
         // ADR 0003: the occupancy ended, so no session works in it any more.

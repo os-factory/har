@@ -1,5 +1,6 @@
 import type { Attempt } from '@prisma/client';
 import type { WorkUnitRelatedLink } from '@har/schemas';
+import { listRuns } from '@/server/run-history';
 import { prisma } from '@/lib/db';
 import { type FactoryProof } from '@/lib/factory-proof';
 import { changeBatchView, VERIFIED_RUN } from '@/server/change-batches';
@@ -173,16 +174,13 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
   const boundValidationIds = boundRuns.map((row) => row.factoryRunId);
 
   const [runs, snapshots, usageRows, streams] = await Promise.all([
-    prisma.run.findMany({
-      where: {
-        repositoryId,
-        OR: [
-          { occupancyKey },
-          ...(attemptId ? [{ attemptId }] : []),
-          ...(window ? [{ occupancyKey: null, agentId: window.agentId, workDir: window.workDir }] : []),
-        ],
-      },
-      orderBy: { startedAt: 'desc' },
+    listRuns({
+      repositoryIds: [repositoryId],
+      anyOf: [
+        { occupancyKey },
+        ...(attemptId ? [{ attemptId }] : []),
+        ...(window ? [{ occupancyKey: null, agentId: window.agentId, workDir: window.workDir }] : []),
+      ],
       take: 300,
     }),
     prisma.factoryRun.findMany({

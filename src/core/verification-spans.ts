@@ -20,6 +20,7 @@ import { getHarPackageVersion } from './package-version';
 import { FACTORY_PROOF_POLICY_ID, readPolicyDigest, verificationTraceId } from './proof';
 import { getRun } from './runs';
 import { isTelemetryEnabled } from './telemetry-config';
+import { otelScopesAllow } from './destination-scopes';
 import { missionControlReceives, readTelemetryDestinations } from './telemetry-destinations';
 import { FACTORY_PRODUCER_NAME, factoryCorrelationResource } from './telemetry-env';
 import {
@@ -413,9 +414,13 @@ export async function exportVerificationTrace(
 ): Promise<VerificationSpanExportResult | undefined> {
   try {
     if (!isTelemetryEnabled()) return undefined;
-    const destinations = destinationsForSignal(readTelemetryDestinations(options.env), 'traces');
+    const all = destinationsForSignal(readTelemetryDestinations(options.env), 'traces');
+    if (all.length === 0) return undefined;
+    const input = resolve();
+    // A scoped destination (every hosted receiver) gets the trace only for a repository it lists.
+    const destinations = all.filter((destination) => otelScopesAllow(destination.scopes, input.repositoryUrl, 'traces'));
     if (destinations.length === 0) return undefined;
-    const sent = await sendToDestinations(buildVerificationTrace(resolve()), destinations, {
+    const sent = await sendToDestinations(buildVerificationTrace(input), destinations, {
       ...options,
       spool: true,
     });
@@ -490,14 +495,20 @@ export async function deliverVerificationTrace(
 ): Promise<VerificationTraceDeliveryResult> {
   try {
     if (!isTelemetryEnabled()) return {};
-    const destinations = enabledTraceDestinations(options.env);
+    const candidates = enabledTraceDestinations(options.env);
     const controlUrl =
       options.controlApiUrl === false
         ? undefined
         : (options.controlApiUrl?.replace(/\/+$/, '') ?? verificationTraceControlUrl(options.env ?? process.env));
-    if (destinations.length === 0 && !controlUrl) return {};
+    if (candidates.length === 0 && !controlUrl) return {};
 
-    const payload = buildVerificationTrace(resolve());
+    const input = resolve();
+    // A scoped destination (every hosted receiver) gets the trace only for a repository it lists.
+    const destinations = candidates.filter((destination) =>
+      otelScopesAllow(destination.scopes, input.repositoryUrl, 'traces'),
+    );
+    if (destinations.length === 0 && !controlUrl) return {};
+    const payload = buildVerificationTrace(input);
     const fetchImpl = options.fetchImpl ?? fetch;
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 

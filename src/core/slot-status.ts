@@ -122,13 +122,19 @@ export interface AgentSlotPorts {
   db?: number;
 }
 
-function parseEnvFilePorts(envFile: string): AgentSlotPorts {
+/** KEY=value pairs of a slot env file (`.env.agent.<id>`), quotes stripped. */
+export function readAgentEnvFile(envFile: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
     const match = line.match(/^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/);
     if (!match) continue;
     values[match[1]] = match[2].replace(/^["']|["']$/g, '');
   }
+  return values;
+}
+
+function parseEnvFilePorts(envFile: string): AgentSlotPorts {
+  const values = readAgentEnvFile(envFile);
   const num = (raw: string | undefined) => {
     const value = Number(raw);
     return raw !== undefined && raw !== '' && Number.isFinite(value) ? value : undefined;

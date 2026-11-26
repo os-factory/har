@@ -2,19 +2,24 @@
 // Agent events for the local stack end-to-end test (no dependencies; Node >= 20).
 //
 // No real agent runs here: hook payloads, shaped like Claude Code's and Codex's,
-// go through the otel-hook HAR installed (its wrapper, as the agents call it),
-// and Claude Code's own usage events go where HAR pointed Claude Code's native
-// telemetry (~/.claude/settings.json). Session ids are fixed by the caller.
+// go through the otel-hook HAR installed, as the agents call it. A Claude Code
+// or Codex event runs the exact hook command HAR registered in
+// $HOME/.claude/settings.json or $HOME/.codex/hooks.json (with its flags).
+// Neither reports usage to a hook: otel-hook reads it from the Claude Code
+// transcripts and the Codex rollout written here. Session ids
+// are fixed by the caller.
 //
 //   hook <provider> <event> <session-id> <cwd> [key=value ...]
 //       provider: claude-code | codex; event: SessionStart | UserPromptSubmit |
-//       PreToolUse | PostToolUse | Stop. Keys: transcript, model, turn,
-//       usage (JSON), tool (name), file (path).
-//   transcript <file> <session-id> <model> <input> <output> <cache-read> <cache-creation>
-//       append one assistant record (Claude Code's transcript shape)
-//   claude-native <session-id> <model> <input> <output> <cache-read> <cache-creation> <cost-usd> <request-id>
-//       one `claude_code.api_request` log record, OTLP/JSON, to the logs endpoint
-//       in $HOME/.claude/settings.json (exit 3 when HAR configured none)
+//       PreToolUse | PostToolUse | SubagentStart | SubagentStop | Stop. Keys:
+//       transcript, model, turn, usage (JSON), tool (name), file (path),
+//       agent (subagent id), agent_type, agent_transcript (path).
+//   transcript <file> <session-id> <model> <input> <output> <cache-read> <cache-creation> [agent-id]
+//       append one assistant record (Claude Code's transcript shape); with an
+//       agent id, a subagent's (sidechain) record
+//   rollout <file> <session-id> <model> <input> <cached> <output>
+//       append one Codex turn to a rollout file: its model, then the given
+//       session running totals; Codex hooks name the file as transcript_path
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
@@ -37,6 +42,9 @@ function hookPayload(provider, event, sessionId, cwd, opts) {
   if (opts.transcript) payload.transcript_path = opts.transcript;
   if (opts.turn) payload.turn_id = opts.turn;
   if (opts.model) payload.model = opts.model;
+  // Claude Code puts the subagent's id on every hook a subagent fires.
+  if (opts.agent) payload.agent_id = opts.agent;
+  if (opts.agent_type) payload.agent_type = opts.agent_type;
   switch (event) {
     case 'SessionStart':
       payload.source = 'startup';
@@ -47,13 +55,24 @@ function hookPayload(provider, event, sessionId, cwd, opts) {
     case 'PreToolUse':
     case 'PostToolUse': {
       const file = opts.file ?? path.join(cwd, 'src', 'greeting.txt');
-      payload.tool_use_id = `tool-${randomBytes(6).toString('hex')}`;
+      payload.tool_use_id = opts.call ?? `tool-${randomBytes(6).toString('hex')}`;
       payload.tool_name = opts.tool ?? (provider === 'codex' ? 'Bash' : 'Edit');
       payload.tool_input =
-        provider === 'codex' ? { command: `cat ${file}` } : { file_path: file, old_string: 'a', new_string: 'b' };
+        provider === 'codex'
+          ? { command: `cat ${file}` }
+          : payload.tool_name === 'Agent'
+            ? { description: 'Look around', prompt: 'Read the greeting.', subagent_type: opts.agent_type ?? 'Explore' }
+            : { file_path: file, old_string: 'a', new_string: 'b' };
       if (event === 'PostToolUse') payload.tool_response = { success: true };
       break;
     }
+    case 'SubagentStart':
+      break;
+    case 'SubagentStop':
+      payload.stop_hook_active = false;
+      if (opts.agent_transcript) payload.agent_transcript_path = opts.agent_transcript;
+      payload.last_assistant_message = 'Found it.';
+      break;
     case 'Stop':
       payload.stop_hook_active = false;
       payload.last_assistant_message = 'Done.';
@@ -66,6 +85,19 @@ function hookPayload(provider, event, sessionId, cwd, opts) {
   return payload;
 }
 
+/**
+ * The command HAR registered for a hook event (`otel-hook setup`), flags
+ * included: Claude Code's in ~/.claude/settings.json, Codex's in ~/.codex/hooks.json.
+ */
+function registeredCommand(home, provider, event, wrapper) {
+  const file = provider === 'codex' ? path.join(home, '.codex', 'hooks.json') : path.join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const commands = (settings.hooks?.[event] ?? []).flatMap((group) => (group.hooks ?? []).map((entry) => entry.command));
+  const command = commands.find((value) => typeof value === 'string' && value.includes(wrapper));
+  if (!command) throw new Error(`HAR registered no ${event} hook for ${provider} in ${file}`);
+  return command;
+}
+
 function hook(provider, event, sessionId, cwd, rest) {
   const opts = options(rest);
   const home = process.env.HOME ?? os.homedir();
@@ -73,7 +105,11 @@ function hook(provider, event, sessionId, cwd, rest) {
   const wrapper = path.join(hooksHome, 'run-otel-hook.sh');
   if (!fs.existsSync(wrapper)) throw new Error(`no otel-hook wrapper at ${wrapper} (har telemetry install-hooks first)`);
   const payload = hookPayload(provider, event, sessionId, cwd, opts);
-  const result = spawnSync(wrapper, ['--provider', provider], {
+  const [file, args] =
+    provider === 'claude-code' || provider === 'codex'
+      ? ['/bin/sh', ['-c', registeredCommand(home, provider, event, wrapper)]]
+      : [wrapper, ['--provider', provider]];
+  const result = spawnSync(file, args, {
     input: JSON.stringify(payload),
     encoding: 'utf8',
     cwd: fs.existsSync(cwd) ? cwd : undefined,
@@ -82,11 +118,12 @@ function hook(provider, event, sessionId, cwd, rest) {
   if (result.status !== 0) throw new Error(`hook ${provider} ${event} exited ${result.status}: ${result.stderr}`);
 }
 
-function transcript(file, sessionId, model, input, output, cacheRead, cacheCreation) {
+function transcript(file, sessionId, model, input, output, cacheRead, cacheCreation, agentId) {
   const id = randomBytes(8).toString('hex');
   const record = {
     type: 'assistant',
-    isSidechain: false,
+    isSidechain: Boolean(agentId),
+    ...(agentId ? { agentId } : {}),
     sessionId,
     uuid: `uuid-${id}`,
     parentUuid: null,
@@ -111,72 +148,38 @@ function transcript(file, sessionId, model, input, output, cacheRead, cacheCreat
   fs.appendFileSync(file, `${JSON.stringify(record)}\n`);
 }
 
-function attr(key, value) {
-  if (typeof value === 'number') {
-    return Number.isInteger(value) ? { key, value: { intValue: String(value) } } : { key, value: { doubleValue: value } };
-  }
-  return { key, value: { stringValue: String(value) } };
-}
-
-async function claudeNative(sessionId, model, input, output, cacheRead, cacheCreation, cost, requestId) {
-  const home = process.env.HOME ?? os.homedir();
-  const settings = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8'));
-  const env = settings.env ?? {};
-  const endpoint = env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT;
-  if (env.CLAUDE_CODE_ENABLE_TELEMETRY !== '1' || !endpoint) {
-    console.error('claude-native: HAR configured no Claude Code native logs export');
-    process.exit(3);
-  }
-  const resource = [attr('service.name', 'claude-code'), attr('service.version', '2.1.150')];
-  for (const pair of (env.OTEL_RESOURCE_ATTRIBUTES ?? '').split(',').filter(Boolean)) {
-    const index = pair.indexOf('=');
-    if (index > 0) resource.push(attr(pair.slice(0, index).trim(), pair.slice(index + 1).trim()));
-  }
-  const now = new Date();
-  const body = {
-    resourceLogs: [
-      {
-        resource: { attributes: resource },
-        scopeLogs: [
-          {
-            scope: { name: 'com.anthropic.claude_code.events', version: '2.1.150' },
-            logRecords: [
-              {
-                timeUnixNano: String(BigInt(now.getTime()) * 1_000_000n),
-                observedTimeUnixNano: String(BigInt(now.getTime()) * 1_000_000n),
-                body: { stringValue: 'claude_code.api_request' },
-                attributes: [
-                  attr('event.name', 'api_request'),
-                  attr('event.timestamp', now.toISOString()),
-                  attr('session.id', sessionId),
-                  attr('model', model),
-                  attr('input_tokens', Number(input)),
-                  attr('output_tokens', Number(output)),
-                  attr('cache_read_tokens', Number(cacheRead)),
-                  attr('cache_creation_tokens', Number(cacheCreation)),
-                  attr('cost_usd', Number(cost)),
-                  attr('duration_ms', 1200),
-                  attr('request_id', requestId),
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
+/**
+ * Append one Codex turn to a rollout file (Codex's session log): the turn's
+ * model, then the session's running token totals (the arguments), as Codex
+ * writes them. Codex's `Stop` hook carries no usage; otel-hook reads it from
+ * here (`--codex-rollout-usage`).
+ */
+function rollout(file, sessionId, model, input, cached, output) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const timestamp = new Date().toISOString();
+  const records = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [];
+  const zero = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 0 };
+  const before = records.filter((r) => r.type === 'event_msg' && r.payload?.type === 'token_count').at(-1)?.payload.info.total_token_usage ?? zero;
+  const total = {
+    input_tokens: Number(input),
+    cached_input_tokens: Number(cached),
+    output_tokens: Number(output),
+    reasoning_output_tokens: 0,
+    total_tokens: Number(input) + Number(output),
   };
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(`claude-native: POST ${endpoint}: ${response.status} ${await response.text()}`);
+  const last = Object.fromEntries(Object.entries(total).map(([key, value]) => [key, value - (before[key] ?? 0)]));
+  const lines = [
+    ...(records.length === 0 ? [{ timestamp, type: 'session_meta', payload: { id: sessionId, timestamp, cwd: process.cwd() } }] : []),
+    { timestamp, type: 'turn_context', payload: { cwd: process.cwd(), model } },
+    { timestamp, type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: total, last_token_usage: last } } },
+  ];
+  fs.appendFileSync(file, lines.map((line) => `${JSON.stringify(line)}\n`).join(''));
 }
 
 try {
   if (command === 'hook') hook(args[0], args[1], args[2], args[3], args.slice(4));
   else if (command === 'transcript') transcript(...args);
-  else if (command === 'claude-native') await claudeNative(...args);
+  else if (command === 'rollout') rollout(...args);
   else throw new Error(`unknown command ${command}`);
 } catch (error) {
   console.error(`events: ${error instanceof Error ? error.message : String(error)}`);

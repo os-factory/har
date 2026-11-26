@@ -11,26 +11,28 @@ import type { AttrMap, OtelIngestResult, ParsedMetricPoint } from '@/server/otel
  * value when its timestamp is not older. A series is identified like an OTLP
  * series: the metric name, the resource attributes and the point attributes.
  *
- * Mission Control accepts them only for providers whose usage it books from
- * otel-hook (Codex, Cursor, Gemini, ...). Claude Code's usage comes from its
- * native telemetry (`api_request` events and `claude_code.*` metrics), so
- * otel-hook metrics with `otelhook.provider.id = claude-code` are dropped.
+ * Every provider's otel-hook metrics are kept, Claude Code included: otel-hook
+ * is the only source of agent telemetry. They are stored, never booked as
+ * usage, which comes from generation spans only, so nothing is counted twice.
  */
 
 export const OTELHOOK_PROVIDER_ATTR = 'otelhook.provider.id';
-const CLAUDE_CODE_PROVIDERS = new Set(['claude-code', 'claude_code']);
 
-/** `otelhook.provider.id` of a resource, normalized, when otel-hook produced it. */
-export function otelHookProviderId(resource: AttrMap): string | null {
-  const raw = resource[OTELHOOK_PROVIDER_ATTR];
+/** `otelhook.provider.id` of a resource or point, normalized, when otel-hook produced it. */
+export function otelHookProviderId(attributes: AttrMap): string | null {
+  const raw = attributes[OTELHOOK_PROVIDER_ATTR];
   if (raw === undefined || raw === null) return null;
   const value = String(raw).trim().toLowerCase();
   return value || null;
 }
 
-/** Whether Mission Control books this provider's usage from otel-hook metrics (not Claude Code in 2.0). */
-export function acceptsOtelHookMetrics(providerId: string): boolean {
-  return !CLAUDE_CODE_PROVIDERS.has(providerId);
+/**
+ * The otel-hook provider of one point. otel-hook puts `otelhook.provider.id`
+ * on each data point, not on the resource (its resource only names the
+ * service), so a resource-only check dropped every otel-hook metric.
+ */
+export function pointProviderId(resource: AttrMap, point: Pick<ParsedMetricPoint, 'attributes'>): string | null {
+  return otelHookProviderId(resource) ?? otelHookProviderId(point.attributes);
 }
 
 function sortedEntries(map: AttrMap): Array<[string, unknown]> {
@@ -74,17 +76,14 @@ export async function ingestOtelHookMetrics(
   db: Pick<PrismaClient, 'metricSeries'> = prisma,
 ): Promise<OtelIngestResult> {
   const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
-  const providerId = otelHookProviderId(resource);
-  if (!providerId || !acceptsOtelHookMetrics(providerId)) {
-    result.dropped += points.length;
-    result.reasons.push(
-      `otel-hook metrics from ${providerId ?? 'an unknown provider'} are not booked: Claude Code usage comes from its native telemetry`,
-    );
-    return result;
-  }
   // Within one request the newest point of a series wins too.
   const latest = new Map<string, ParsedMetricPoint>();
   for (const point of points) {
+    if (!pointProviderId(resource, point)) {
+      result.dropped += 1;
+      result.reasons.push('otel-hook metrics without otelhook.provider.id');
+      continue;
+    }
     if (!Number.isFinite(point.value)) {
       result.dropped += 1;
       result.reasons.push(`metric ${point.name}: not a number`);
@@ -99,7 +98,7 @@ export async function ingestOtelHookMetrics(
     const data = {
       name: point.name,
       unit: point.unit ?? null,
-      providerId,
+      providerId: pointProviderId(resource, point)!,
       temporality: temporalityName(point),
       value: point.value,
       startTime: nanosToDate(point.startTimeUnixNano),

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getHarPackageVersion } from '../core/package-version';
 import { computeHarnessChecksums, getHarnessDir, readManifest, writeManifest } from './manifest';
 import { retireLifecycleShims } from './lifecycle-shims';
+import { removeVendoredVerifyRunner, vendorVerifyRunner } from './stage-runner';
 
 /**
  * `har env eject` (#239 / #314) — explicit runtime ownership for power users.
@@ -13,8 +14,11 @@ import { retireLifecycleShims } from './lifecycle-shims';
  * comparing the vendored runtime to upstream; `har env doctor` keeps
  * validating the contract (stages resolve, env schema, registry shape).
  *
+ * The stage runner comes along: verify runs `.har/lib/verify-runner.mjs` while
+ * ejected (stage-runner.ts).
+ *
  * Reversible: `har env adopt` (or `har env init --force`) removes
- * `.har/runtime/` and returns to the packaged runtime.
+ * `.har/runtime/` and `.har/lib/verify-runner.mjs` and returns to the packaged runtime.
  */
 
 export const EJECTED_RUNTIME_DIR = 'runtime';
@@ -57,6 +61,7 @@ This directory was created by \`har env eject\`. It contains the complete HAR
 runtime bundle (@osfactory/har@${version}). You own these files:
 
 - Drive the harness with \`har env …\` or \`node .har/runtime/har.cjs env …\`.
+- \`har env verify\` runs the stage runner in \`.har/lib/verify-runner.mjs\`.
 - HAR will never update this directory — \`har env maintain\` treats it as
   user-owned and reports no upstream drift for it.
 - \`har env doctor\` still validates the harness contract (harness.env schema,
@@ -66,7 +71,8 @@ runtime bundle (@osfactory/har@${version}). You own these files:
 - Lifecycle commands that manage templates (\`init\`, \`maintain\`, \`eject\`,
   \`adopt\`, plugins) still require an installed \`har\`.
 
-Return to the packaged runtime (removes this directory):
+Return to the packaged runtime (removes this directory and
+\`.har/lib/verify-runner.mjs\`):
 
     har env adopt
 
@@ -100,6 +106,11 @@ export function ejectHarness(repoPath: string): EjectResult {
   fs.copyFileSync(bundleSource, runtimeFile);
   fs.chmodSync(runtimeFile, 0o755);
   fs.writeFileSync(path.join(runtimeDir, 'README.md'), RUNTIME_README(version));
+  // An ejected harness owns its stage runner too: verify runs .har/lib/verify-runner.mjs.
+  // Keep a copy the repository already has (a 1.x scaffold, or the user's own).
+  if (!fs.existsSync(path.join(harnessDir, 'lib', 'verify-runner.mjs'))) {
+    vendorVerifyRunner(resolved);
+  }
 
   retireLifecycleShims(resolved);
 
@@ -127,6 +138,8 @@ export function adoptHarness(repoPath: string): AdoptResult {
   }
 
   fs.rmSync(path.join(harnessDir, EJECTED_RUNTIME_DIR), { recursive: true, force: true });
+  // Back on the packaged runtime: the packaged stage runner runs, the copy would only go stale.
+  removeVendoredVerifyRunner(resolved);
   const retired = retireLifecycleShims(resolved);
 
   const rest = { ...manifest };

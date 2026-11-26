@@ -1,5 +1,5 @@
 import type { AgentSlot, Run } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { listRuns } from '@/server/run-history';
 
 export interface LatestVerify {
   status: string;
@@ -38,11 +38,7 @@ export async function loadLatestVerifyBySlot(
 ): Promise<Map<string, LatestVerify>> {
   const repositoryIds = [...new Set(slots.map((slot) => slot.repositoryId))];
   if (repositoryIds.length === 0) return new Map();
-  const runs = await prisma.run.findMany({
-    where: { repositoryId: { in: repositoryIds }, stageId: 'verify' },
-    orderBy: { startedAt: 'desc' },
-    take: 100 * repositoryIds.length,
-    select: { repositoryId: true, agentId: true, stageId: true, status: true, startedAt: true, workDir: true, occupancyKey: true, runId: true },
-  });
+  // 1.x runs and v2 factory runs (`run-history.ts`).
+  const runs = await listRuns({ repositoryIds, stageIds: ['verify'], take: 100 * repositoryIds.length });
   return latestVerifyBySlot(runs, slots);
 }

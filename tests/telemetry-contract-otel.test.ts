@@ -15,7 +15,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { buildClaudeNativeTelemetryEnv } from '../src/core/claude-native-telemetry';
 import {
   buildOtelHooksConfig,
   OTEL_HOOKS_PACKAGE,
@@ -224,7 +223,7 @@ describe('otel-hook exporter contract (#416)', () => {
   });
 
   it('pins the otel-hook package, overridable for an unreleased build', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.12.0');
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.14.0');
     expect(OTEL_HOOKS_PACKAGE_ENV).toBe('HAR_OTEL_HOOKS_PACKAGE');
     expect(otelHooksPackageSpec({})).toBe(OTEL_HOOKS_PACKAGE);
     expect(otelHooksPackageSpec({ HAR_OTEL_HOOKS_PACKAGE: ' /tmp/otel-hook.tgz ' })).toBe('/tmp/otel-hook.tgz');
@@ -257,11 +256,5 @@ describe('otel-hook exporter contract (#416)', () => {
       expect.arrayContaining(SESSION_RESOURCE_KEYS.filter((key) => !key.startsWith('factory.local.'))),
     );
     expect(Object.keys(config.exporter.resourceAttributes ?? {}).some((key) => key.startsWith('factory.local.'))).toBe(false);
-  });
-
-  it('points Claude Code native metrics and logs at the same OTLP routes', () => {
-    const env = buildClaudeNativeTelemetryEnv('http://localhost:3847/');
-    expect(env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).toBe('http://localhost:3847/api/otel/v1/metrics');
-    expect(env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe('http://localhost:3847/api/otel/v1/logs');
   });
 });

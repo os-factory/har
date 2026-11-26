@@ -108,7 +108,7 @@ afterEach(() => {
 });
 
 describe('sync from an externally-owned workspace (#255)', () => {
-  it('sends workspace work-units while registering the canonical repo path', async () => {
+  it('registers the canonical repo path and posts no v1 records', async () => {
     const canonical = makeHarness('har-e2e-canon-');
     const workspace = makeHarness('har-e2e-ws-');
     canonicalFor.set(workspace, canonical);
@@ -126,19 +126,12 @@ describe('sync from an externally-owned workspace (#255)', () => {
     const register = captured.find((c) => c.url.endsWith('/api/repos'));
     expect(register?.body.path).toBe(canonical);
 
-    // Evidence written in the workspace now reaches Mission Control.
-    const workUnits = captured.find((c) => c.url.includes('/work-units'));
-    expect(
-      (workUnits?.body.workUnits as { workUnitId: string }[] | undefined)?.map((u) => u.workUnitId),
-    ).toEqual(['demo']);
-
-    const runs = captured.find((c) => c.url.endsWith('/runs'));
-    expect((runs?.body.runs as { runId: string }[] | undefined)?.map((r) => r.runId)).toEqual([
-      '55555555-5555-4555-8555-555555555555',
-    ]);
+    // Records reach Mission Control through ingest v2, not this sync (ADR 0005 section 7):
+    // only registration and the slot view are posted.
+    expect(captured.map((c) => c.url)).toEqual(['http://control.test/api/repos', 'http://control.test/api/repos/repo-1/slots']);
   });
 
-  it('is unchanged when the workspace is the canonical checkout', async () => {
+  it('registers the checkout itself when it is canonical', async () => {
     const canonical = makeHarness('har-e2e-same-');
     writeWorkUnit(canonical, 'main-1');
 
@@ -147,9 +140,7 @@ describe('sync from an externally-owned workspace (#255)', () => {
 
     await syncRepoWithControl({ repoPath: canonical, apiUrl: 'http://control.test' });
 
-    const workUnits = captured.find((c) => c.url.includes('/work-units'));
-    expect(
-      (workUnits?.body.workUnits as { workUnitId: string }[] | undefined)?.map((u) => u.workUnitId),
-    ).toEqual(['main-1']);
+    expect(captured.find((c) => c.url.endsWith('/api/repos'))?.body.path).toBe(canonical);
+    expect(captured.some((c) => c.url.includes('/work-units'))).toBe(false);
   });
 });

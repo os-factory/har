@@ -37,14 +37,14 @@ import {
 } from '../src/core/otel-hooks';
 
 describe('otel-hook package pin', () => {
-  it('installs the release that reads the session context (sessionContext.dir)', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.12.0');
+  it('installs the release with per-destination repository scopes (0.14.0)', () => {
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.14.0');
   });
 
   it('is the release Mission Control depends on, or the one right after it while that is unpublished', () => {
     // Mission Control derives otel-hook ids with the same package. It pins an
-    // exact, published version; the CLI pin may lead it by one minor until the
-    // release the CLI needs (0.12.0, sessionContext.dir) is on npm.
+    // exact, published version; the CLI pin may lead it by up to two minors
+    // until Mission Control moves up.
     const control = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'control', 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>;
     };
@@ -54,7 +54,7 @@ describe('otel-hook package pin', () => {
     const [pinMajor, pinMinor] = OTEL_HOOKS_VERSION.split('.').map(Number);
     expect(controlMajor).toBe(pinMajor);
     expect(pinMinor - controlMinor).toBeGreaterThanOrEqual(0);
-    expect(pinMinor - controlMinor).toBeLessThanOrEqual(1);
+    expect(pinMinor - controlMinor).toBeLessThanOrEqual(2);
     // ADR 0005 section 6: 0.11.0 or later on both sides.
     expect(controlMajor * 1000 + controlMinor).toBeGreaterThanOrEqual(11);
   });
@@ -72,14 +72,14 @@ describe('otel-hook package pin', () => {
     afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
     it('keeps an install of the pinned version', () => {
-      installVersion('0.12.0');
+      installVersion(OTEL_HOOKS_VERSION);
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(false);
       installVersion('0.5.0');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
     });
 
     it('installs an override once, then again only when it changes or is removed', () => {
-      installVersion('0.12.0');
+      installVersion(OTEL_HOOKS_VERSION);
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(true);
       recordInstalledSpec(home, '/tmp/otel-hook.tgz');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(false);
@@ -131,7 +131,7 @@ describe('telemetry preference', () => {
 
   it('derives every signal from the level', () => {
     expect(signalsForLevel('off')).toEqual({ metrics: false, traces: false, logs: false, prompts: false });
-    expect(signalsForLevel('usage')).toEqual({ metrics: true, traces: false, logs: false, prompts: false });
+    expect(signalsForLevel('usage')).toEqual({ metrics: true, traces: true, logs: false, prompts: false });
     expect(signalsForLevel('outline')).toEqual({ metrics: true, traces: true, logs: true, prompts: false });
     expect(signalsForLevel('full')).toEqual({ metrics: true, traces: true, logs: true, prompts: true });
   });
@@ -447,7 +447,8 @@ describe('otel hooks config', () => {
         name: 'mission-control',
         tracesEndpoint: 'http://localhost:3847/api/otel/v1/traces',
         logsEndpoint: 'http://localhost:3847/api/otel/v1/logs',
-        signals: ['traces', 'logs'],
+        metricsEndpoint: 'http://localhost:3847/api/otel/v1/metrics',
+        signals: ['traces', 'logs', 'metrics'],
       },
     ]);
     expect(config.exporter.protocol).toBe('http/protobuf');
@@ -468,10 +469,12 @@ describe('otel hooks config', () => {
     expect(config.exporter.logs.includeContent).toBe(false);
   });
 
-  it('exports nothing from the hook at the usage level', () => {
+  it('exports spans and token metrics, no event records, at the usage level', () => {
     writeTelemetryLevel('usage');
     const config = buildOtelHooksConfig({ apiUrl: 'http://localhost:3847' });
-    expect(config.exporter.enabled).toBe(false);
+    // The hook is the only source of agent usage: its generation spans carry the tokens.
+    expect(config.exporter.enabled).toBe(true);
+    expect(config.exporter.destinations?.[0].signals).toEqual(['traces', 'metrics']);
     expect(config.exporter.logs.enabled).toBe(false);
     expect(config.privacy.contentMode).toBe('omit');
   });

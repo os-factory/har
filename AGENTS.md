@@ -221,6 +221,7 @@ First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
 | Factory Commits proofs (read-only) | `har proof show\|verify` | `har_proof_show`, `har_proof_verify` |
 | factory lines | `har line create\|add\|status\|gate\|list` | `har_line_create`, `har_add_line`, `har_line_status`, `har_run_line_gate` |
 | Mission Control | `har control up` | `har_control_up` |
+| HAR HQ status (read-only) | `har hq status` | `har_hq_status` |
 
 Intentional holes (human-only, no MCP tool):
 
@@ -232,9 +233,10 @@ Intentional holes (human-only, no MCP tool):
   scripts is a deliberate human policy decision with an interactive confirmation.
 - Hooks / commit-gate onboarding (`har hooks …`, init/maintain onboarding prompts) —
   installs git hooks and records user policy preferences; a policy decision for humans.
-- Onboarding/preferences, telemetry toggles, the personal worktree setting, and portal
-  login (`har onboard`, `har preferences`, `har telemetry`, `har worktree`, `har hq`) —
-  account- and machine-level state.
+- Onboarding/preferences, telemetry toggles, the personal worktree setting, portal
+  login and the repositories HAR HQ receives (`har onboard`, `har preferences`,
+  `har telemetry`, `har worktree`, `har hq connect|repos|disconnect`) — account- and
+  machine-level state. Only `har hq status` has an MCP twin (read-only).
 - OTLP destinations (`har telemetry destination add|list|remove|test`) — machine-level
   config that holds backend credentials and decides where telemetry leaves the machine;
   a human choice, never an agent tool call.

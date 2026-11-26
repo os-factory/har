@@ -1,7 +1,6 @@
-import * as fs from 'fs';
 import * as path from 'path';
-import { resolveTemplatesDir } from '../utils/paths';
 import { getHarnessDir, resolveHarnessRoot } from '../harness/manifest';
+import { resolveVerifyRunnerFor } from '../harness/stage-runner';
 import { resolveAgentEnvFile } from '../core/slot-status';
 import { readSlotRegistry } from '../core/slot-registry';
 import { detectProcessManager } from './launch';
@@ -53,19 +52,11 @@ export API_PORT
 `;
 
 /**
- * The #231 stage runner: the harness's installed copy when present, else the
- * package's own (session worktrees don't carry the gitignored .har/lib/).
+ * The #231 stage runner verify executes: the packaged runner, or the
+ * harness's own copy when the runtime is ejected (see harness/stage-runner.ts).
  */
-export function resolveVerifyRunner(harnessDir: string): string {
-  const installed = path.join(harnessDir, 'lib', 'verify-runner.mjs');
-  if (fs.existsSync(installed)) return installed;
-  return path.join(
-    resolveTemplatesDir(),
-    'runtime-bundles',
-    'shared-kernel',
-    'lib',
-    'verify-runner.mjs',
-  );
+export function resolveVerifyRunner(repoRoot: string): string {
+  return resolveVerifyRunnerFor(repoRoot);
 }
 
 export class VerifyPlanError extends Error {
@@ -79,7 +70,7 @@ export class VerifyPlanError extends Error {
 
 /**
  * The verify.sh entry, package-side (#234): resolve the slot's env file and
- * work dir, then exec the #231 stage runner (.har/lib/verify-runner.mjs) with
+ * work dir, then exec the #231 stage runner (the packaged one unless ejected) with
  * the same exported contract (WORK_DIR, API_PORT, HAR_HARNESS_DIR, XC_* for
  * ios). Stage selection itself stays data in stages.json.
  */
@@ -144,7 +135,7 @@ if [ -f ${JSON.stringify(preVerifyHook)} ]; then
   }
 fi
 ${xcBlock}
-exec node ${JSON.stringify(resolveVerifyRunner(harnessDir))} --agent ${agentId}${full ? ' --full' : ''}`;
+exec node ${JSON.stringify(resolveVerifyRunner(repoRoot))} --agent ${agentId}${full ? ' --full' : ''}`;
 
   return {
     shellCommand,

@@ -3,8 +3,9 @@
 //
 //   checks.mjs <check> <state.json> [receiver|collector] [args...]
 //
-// Every check prints exactly one line, `PASS <label>: <detail>` or
-// `FAIL <label>: <detail>`, and exits 0 either way; run.sh counts the FAILs.
+// Every check prints exactly one line, `PASS <label>: <detail>`,
+// `FAIL <label>: <detail>` or `SKIP <label>: <why>` (a receiver whose adapter
+// cannot read what the check needs), and exits 0; run.sh counts the FAILs.
 // `probe-*` commands print a bare detail line and exit 1 on failure, for
 // run.sh to fold into one of its own checks.
 //
@@ -31,6 +32,7 @@ const traceIdOf = (runId) => sha256(`factory-run:${runId}`).slice(0, 32);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class Problem extends Error {}
+class Skip extends Error {}
 function need(condition, message) {
   if (!condition) throw new Problem(message);
 }
@@ -63,6 +65,7 @@ async function settle(fn) {
     try {
       return { ok: true, detail: await fn() };
     } catch (error) {
+      if (error instanceof Skip) return { ok: 'skip', detail: error.message };
       if (!(error instanceof Problem) || Date.now() >= deadline) {
         return { ok: false, detail: error instanceof Error ? error.message : String(error) };
       }
@@ -72,7 +75,8 @@ async function settle(fn) {
 }
 
 function print(label, outcome) {
-  console.log(`${outcome.ok ? 'PASS' : 'FAIL'} ${label}: ${String(outcome.detail).replace(/\s+/g, ' ').trim()}`);
+  const verdict = outcome.ok === 'skip' ? 'SKIP' : outcome.ok ? 'PASS' : 'FAIL';
+  console.log(`${verdict} ${label}: ${String(outcome.detail).replace(/\s+/g, ' ').trim()}`);
 }
 
 const trailer = (message, name) => new RegExp(`^${name}: (.+)$`, 'm').exec(message)?.[1];
@@ -192,20 +196,31 @@ function attributeOf(span, key) {
   return span.attributes?.[key] ?? span.resource?.[key];
 }
 
-function classifyStamps(list) {
+// otel-hook stamps a span with the segment in force when it emits the span, at
+// its end: the tool call that runs `har env launch` (or `work-bind`) starts before
+// the attempt and ends inside it, and belongs to it. Spans are bucketed by their
+// end time when the receiver keeps it, else by their start.
+function classifyStamps(list, scoped = false) {
   const counts = { before: 0, inside: 0, after: 0 };
   const wrong = [];
   for (const { span, tool } of list) {
-    const at = Date.parse(span.startTime);
+    const at = Date.parse(span.endTime ?? span.startTime);
     const opened = Date.parse(tool === 'codex' ? state.times.codexJoin : state.times.launch);
     const closed = Date.parse(state.times.complete);
     const attempt = attributeOf(span, 'factory.attempt.id');
     const bucket = at < opened ? 'before' : at < closed ? 'inside' : 'after';
     counts[bucket] += 1;
     const ok = bucket === 'inside' ? attempt === state.attemptId : attempt === undefined || attempt === null;
-    if (!ok) wrong.push(`${tool} "${span.name}" at ${span.startTime} (${bucket}) attempt=${attempt ?? 'none'}`);
+    if (!ok) wrong.push(`${tool} "${span.name}" ${span.startTime}..${span.endTime ?? '?'} (${bucket}) attempt=${attempt ?? 'none'}`);
   }
   need(wrong.length === 0, `${wrong.length} spans stamped wrongly: ${wrong.slice(0, 3).join('; ')}`);
+  if (scoped) {
+    // A receiver scoped per repository (the hosted receiver) gets only records that
+    // name the repository: before launch and after complete, the session runs in the
+    // main checkout outside any segment and names none.
+    need(counts.inside > 0, `spans before/inside/after the attempt: ${JSON.stringify(counts)}`);
+    return `agent spans inside ${counts.inside} stamped with the attempt; before ${counts.before} / after ${counts.after} (scoped: only spans naming the repository)`;
+  }
   need(counts.before > 0 && counts.inside > 0 && counts.after > 0, `spans before/inside/after the attempt: ${JSON.stringify(counts)}`);
   return `agent spans before launch ${counts.before} unstamped, inside ${counts.inside} stamped with the attempt, after complete ${counts.after} unstamped`;
 }
@@ -223,6 +238,7 @@ async function checkStamping(name) {
     for (const [tool, id] of Object.entries(state.sessions)) {
       for (const span of spans(rx, 'session', id)) list.push({ span, tool });
     }
+    return classifyStamps(list, rx.scoped === true);
   }
   return classifyStamps(list);
 }
@@ -263,10 +279,74 @@ function expectedCodex() {
   return total;
 }
 
+/** Expected Claude Code usage per model: one generation per turn and one per subagent run (otel-hook#68). */
+function expectedClaude() {
+  const byModel = new Map();
+  for (const generation of state.claudeGenerations) {
+    const row = byModel.get(generation.model) ?? { observations: 0, tokensInput: 0, tokensOutput: 0, tokensCacheRead: 0, tokensCacheCreation: 0 };
+    row.observations += 1;
+    row.tokensInput += generation.input;
+    row.tokensOutput += generation.output;
+    row.tokensCacheRead += generation.cacheRead;
+    row.tokensCacheCreation += generation.cacheCreation;
+    byModel.set(generation.model, row);
+  }
+  return byModel;
+}
+
+/** Claude Code usage booked once per generation, fresh input = input - cache, priced by the receiver. */
+function checkClaudeRows(usage) {
+  const rows = usage.byModel.filter((row) => row.agentTool === 'claude_code');
+  const want = expectedClaude();
+  need(rows.length === want.size, `claude_code rows ${JSON.stringify(rows.map((r) => r.model))}, want ${JSON.stringify([...want.keys()])}`);
+  for (const [model, expected] of want) {
+    const row = rows.find((entry) => entry.model === model);
+    need(row, `no claude_code/${model} row`);
+    need(row.observations === expected.observations, `claude_code/${model}: ${row.observations} observations for ${expected.observations} generations (double counted?)`);
+    for (const key of ['tokensInput', 'tokensOutput', 'tokensCacheRead', 'tokensCacheCreation']) {
+      need(row[key] === expected[key], `claude_code/${model} ${key} ${row[key]} ≠ ${expected[key]}`);
+    }
+    need(row.costUsd > 0 && row.costSource === 'estimated', `claude_code/${model} cost ${row.costUsd} (${row.costSource}), want a receiver estimate`);
+    need(row.pricedWith?.length > 0 && row.pricedWith.every((v) => /genai-prices/.test(v)), `claude_code/${model} priced with ${JSON.stringify(row.pricedWith)}`);
+  }
+  return rows;
+}
+
+/** The Collector keeps what otel-hook sent: each Claude Code generation span once, with its tokens. */
+function checkCollectorUsage() {
+  // The attempt's generations: a session may go on after complete (outside the attempt).
+  const generations = collectorSpans().filter(
+    (span) =>
+      /^generation( |$)/.test(span.name) &&
+      (span.attributes['otelhook.session.id'] ?? span.attributes['gen_ai.conversation.id']) === state.sessions.claude_code &&
+      attributeOf(span, 'factory.attempt.id') === state.attemptId,
+  );
+  const byId = new Map();
+  for (const span of generations) {
+    const id = span.attributes['otelhook.generation.id'];
+    need(id, `generation span ${span.spanId} without otelhook.generation.id`);
+    byId.set(id, [...(byId.get(id) ?? []), span]);
+  }
+  const twice = [...byId].filter(([, list]) => list.length > 1).map(([id]) => id);
+  need(twice.length === 0, `generation ids exported more than once: ${twice.join(', ')}`);
+  need(byId.size === state.claudeGenerations.length, `${byId.size} Claude Code generation spans, want ${state.claudeGenerations.length}`);
+  const sum = (key) => generations.reduce((total, span) => total + Number(span.attributes[key] ?? 0), 0);
+  const want = state.claudeGenerations.reduce((total, g) => total + g.input + g.cacheRead + g.cacheCreation, 0);
+  need(sum('gen_ai.usage.input_tokens') === want, `gen_ai.usage.input_tokens ${sum('gen_ai.usage.input_tokens')} ≠ ${want} (input includes cache)`);
+  const subagents = generations.filter((span) => span.attributes['otelhook.subagent.id']).length;
+  need(subagents === state.claudeGenerations.filter((g) => g.subagent).length, `${subagents} subagent generations`);
+  return `claude_code ${byId.size} generation spans once each (${subagents} subagent), input tokens ${want} incl. cache`;
+}
+
 async function checkUsage(name) {
+  if (name === 'collector') return checkCollectorUsage();
   const rx = receiver(name);
   const usage = await attemptUsage(rx);
   need(usage, 'no usage on the attempt');
+  if (!state.sessions.codex) {
+    const claude = checkClaudeRows(usage);
+    return `${claude.map((row) => `claude_code/${row.model} ${row.observations} generations $${row.costUsd.toFixed(6)}`).join(', ')}, from otel-hook, booked once (no codex session)`;
+  }
   const codex = usage.byModel.find((row) => row.agentTool === 'codex' && row.model === state.codexModel);
   const want = expectedCodex();
   need(codex, `no codex/${state.codexModel} usage (got ${JSON.stringify(usage.byModel.map((r) => `${r.agentTool}/${r.model}`))})`);
@@ -274,42 +354,113 @@ async function checkUsage(name) {
   need(codex.observations === state.codexTurns.length, `codex: ${codex.observations} observations, want ${state.codexTurns.length}`);
   need(codex.costUsd > 0 && codex.costSource === 'estimated', `codex cost ${codex.costUsd} (${codex.costSource}), want a receiver estimate`);
   need(codex.pricedWith?.length > 0 && codex.pricedWith.every((v) => /genai-prices/.test(v)), `codex priced with ${JSON.stringify(codex.pricedWith)}`);
-  const claudeRows = usage.byModel.filter((row) => row.agentTool === 'claude_code');
-  const native = state.native;
-  const sum = (key) => native.reduce((total, event) => total + event[key], 0);
-  let claudeNote;
-  if (rx.claudeNative) {
-    // Claude Code's native telemetry reaches this receiver: it is the one source.
-    need(claudeRows.length === 1, `claude_code rows ${JSON.stringify(claudeRows.map((r) => r.model))}`);
-    const [claude] = claudeRows;
-    need(claude.observations === native.length, `claude_code: ${claude.observations} observations for ${native.length} api_request events (double counted?)`);
-    need(claude.tokensInput === sum('input') && claude.tokensOutput === sum('output'), `claude_code tokens ${claude.tokensInput}/${claude.tokensOutput} ≠ ${sum('input')}/${sum('output')}`);
-    need(claude.costSource === 'reported' && Math.abs(claude.costUsd - sum('cost')) < 1e-9, `claude_code cost ${claude.costUsd} (${claude.costSource}) ≠ reported ${sum('cost')}`);
-    claudeNote = `claude_code ${claude.observations} requests as reported ($${claude.costUsd.toFixed(4)}), not double counted`;
-  } else {
-    // HAR sends Claude Code's native telemetry to Mission Control only; otel-hook's Claude rows must not be booked.
-    need(claudeRows.length === 0, `claude_code booked from otel-hook: ${JSON.stringify(claudeRows)}`);
-    claudeNote = 'claude_code not booked (no native telemetry here; otel-hook rows ignored)';
-  }
-  return `codex/${state.codexModel} ${codex.observations} turns $${codex.costUsd.toFixed(6)} priced with ${codex.pricedWith.join(',')}; ${claudeNote}`;
+  const claude = checkClaudeRows(usage);
+  const claudeNote = claude.map((row) => `claude_code/${row.model} ${row.observations} generations $${row.costUsd.toFixed(6)}`).join(', ');
+  return `codex/${state.codexModel} ${codex.observations} turns $${codex.costUsd.toFixed(6)} priced with ${codex.pricedWith.join(',')}; ${claudeNote}, from otel-hook, booked once`;
 }
 
 async function checkUsageAgree() {
   const rows = [];
   for (const rx of state.receivers) {
     const usage = await attemptUsage(rx);
-    const codex = usage?.byModel.find((row) => row.agentTool === 'codex' && row.model === state.codexModel);
-    need(codex, `${rx.name}: no codex usage`);
-    rows.push({ name: rx.name, codex });
+    const booked = (usage?.byModel ?? []).filter((row) => row.agentTool === 'codex' || row.agentTool === 'claude_code');
+    need(!state.sessions.codex || booked.some((row) => row.agentTool === 'codex' && row.model === state.codexModel), `${rx.name}: no codex usage`);
+    rows.push({ name: rx.name, booked });
   }
   const [a, b] = rows;
   need(rows.length === 2, 'needs two receivers');
-  for (const key of ['tokensInput', 'tokensOutput', 'tokensCacheRead', 'tokensCacheCreation', 'observations']) {
-    need(a.codex[key] === b.codex[key], `${key}: ${a.name} ${a.codex[key]} ≠ ${b.name} ${b.codex[key]}`);
+  const key = (row) => `${row.agentTool}/${row.model}`;
+  need(JSON.stringify(a.booked.map(key).sort()) === JSON.stringify(b.booked.map(key).sort()), `rows: ${a.name} ${a.booked.map(key)} ≠ ${b.name} ${b.booked.map(key)}`);
+  for (const left of a.booked) {
+    const right = b.booked.find((row) => key(row) === key(left));
+    for (const field of ['tokensInput', 'tokensOutput', 'tokensCacheRead', 'tokensCacheCreation', 'observations']) {
+      need(left[field] === right[field], `${key(left)} ${field}: ${a.name} ${left[field]} ≠ ${b.name} ${right[field]}`);
+    }
+    need(Math.abs(left.costUsd - right.costUsd) < 1e-9, `${key(left)} cost: ${a.name} ${left.costUsd} ≠ ${b.name} ${right.costUsd}`);
+    need(JSON.stringify(left.pricedWith) === JSON.stringify(right.pricedWith), `${key(left)} priced with ${left.pricedWith} vs ${right.pricedWith}`);
   }
-  need(Math.abs(a.codex.costUsd - b.codex.costUsd) < 1e-9, `cost: ${a.name} ${a.codex.costUsd} ≠ ${b.name} ${b.codex.costUsd}`);
-  need(JSON.stringify(a.codex.pricedWith) === JSON.stringify(b.codex.pricedWith), `priced with ${a.codex.pricedWith} vs ${b.codex.pricedWith}`);
-  return `${a.name} and ${b.name} book the same codex rows at the same cost ($${a.codex.costUsd}) with ${a.codex.pricedWith.join(',')}`;
+  return `${a.name} and ${b.name} book the same ${a.booked.length} rows (${a.booked.map(key).join(', ')}) at the same cost`;
+}
+
+// --- 13. trajectory ---------------------------------------------------------------
+/**
+ * The trajectory a receiver built from otel-hook's logs (ADR 0005 section 3),
+ * through its adapter (`<adapter> trajectory session <id>`: a JSON array of
+ * `{eventId, eventType, sequence, attributes}`, one per stored row).
+ */
+function trajectory(rx, sessionId) {
+  let out;
+  try {
+    out = execFileSync(rx.adapter, ['trajectory', 'session', sessionId], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    if (error.status === 2 || error.status === 3) throw new Skip(`${rx.name} adapter has no trajectory reads`);
+    throw error;
+  }
+  return JSON.parse(out.trim() || '[]');
+}
+
+function trajectoryEvents(rows) {
+  // One stored row per content fact: an event may have several, never two events one id.
+  const events = new Map();
+  for (const row of rows) {
+    const seen = events.get(row.eventId);
+    need(!seen || (seen.eventType === row.eventType && seen.sequence === row.sequence), `event ${row.eventId} stored twice with different facts`);
+    events.set(row.eventId, row);
+  }
+  const ordered = [...events.values()].sort((left, right) => left.sequence - right.sequence);
+  const sequences = ordered.map((event) => event.sequence);
+  need(new Set(sequences).size === sequences.length, `two events share a sequence: ${sequences.join(',')}`);
+  return ordered;
+}
+
+async function checkTrajectory(name) {
+  const rx = receiver(name);
+  const claude = trajectoryEvents(trajectory(rx, state.sessions.claude_code));
+  const count = (type) => claude.filter((event) => event.eventType === type).length;
+  // Events before launch carry no work identity: Mission Control places them by
+  // workspace path, a hosted receiver (no local paths) may have no repository for
+  // them. What happened inside the attempt must be there, in order.
+  const start = claude.findIndex((event) => event.eventType === 'session.start');
+  need(start <= 0, `session.start is not the first event (index ${start})`);
+  const turns = state.claudeGenerations.filter((g) => !g.subagent).length;
+  // Replayed: one prompt per turn. Real: a turn may run without a prompt of its
+  // own, and the first prompt comes before launch; the receiver must hold at
+  // least the prompts the Collector holds stamped with the attempt.
+  const wantPrompts = state.realAgents ? collectorLogs().filter((r) => r.attributes['otelhook.event.type'] === 'prompt.submitted' && r.attributes['otelhook.session.id'] === state.sessions.claude_code && r.attributes['factory.attempt.id'] === state.attemptId).length : turns;
+  need(count('prompt.submitted') >= wantPrompts, `${count('prompt.submitted')} prompts, want at least ${wantPrompts}`);
+  // Tool calls pair by call id; a subagent nests its own tool calls under its id.
+  const starts = claude.filter((event) => event.eventType === 'tool.start');
+  const ends = claude.filter((event) => event.eventType === 'tool.end');
+  const callId = (event) => event.attributes['gen_ai.tool.call_id'] ?? event.attributes['gen_ai.tool.call.id'];
+  // A call still running (a start with no end yet) is fine; an end with no start is not.
+  const paired = starts.filter((start) => ends.some((end) => callId(end) && callId(end) === callId(start)));
+  // A receiver that does not place events before launch misses the start of the
+  // tool call that ran the launch (it ends inside the attempt): an end may lack
+  // its start only when the Collector holds that start unstamped.
+  const unplaced = new Set(
+    start === -1
+      ? collectorLogs()
+          .filter((r) => r.attributes['otelhook.event.type'] === 'tool.start' && r.attributes['otelhook.session.id'] === state.sessions.claude_code && !r.attributes['factory.attempt.id'])
+          .map((r) => r.attributes['gen_ai.tool.call_id'] ?? r.attributes['gen_ai.tool.call.id'])
+      : [],
+  );
+  const orphans = ends.filter((end) => !starts.some((start) => callId(start) === callId(end)));
+  need(orphans.every((end) => unplaced.has(callId(end))), `tool ends without a start (${orphans.length} of ${ends.length} ends)`);
+  // Each replayed turn (and the real task) runs an edit, an Agent call and a nested Read.
+  const wantPairs = state.realAgents ? 3 : turns * 3;
+  need(paired.length >= wantPairs, `${paired.length} paired tool calls, want ${wantPairs} (edit, Agent, nested Read per turn)`);
+  const subagentIds = state.claudeGenerations.filter((g) => g.subagent).map((g) => g.subagent);
+  for (const id of subagentIds) {
+    const inside = claude.filter((event) => event.attributes['otelhook.subagent.id'] === id);
+    const types = inside.map((event) => event.eventType);
+    need(types.includes('subagent.start') && types.includes('subagent.end'), `subagent ${id}: ${types.join(',') || 'no records'}`);
+    need(types.filter((type) => type.startsWith('tool.')).length >= 2, `subagent ${id}: no nested tool call (${types.join(',')})`);
+    const [first, last] = [inside.find((e) => e.eventType === 'subagent.start'), inside.find((e) => e.eventType === 'subagent.end')];
+    need(first.sequence < last.sequence, `subagent ${id} ends before it starts`);
+  }
+  const codex = state.sessions.codex ? trajectoryEvents(trajectory(rx, state.sessions.codex)) : [];
+  need(!state.sessions.codex || codex.some((event) => event.eventType === 'prompt.submitted'), 'codex trajectory has no prompt');
+  return `claude_code ${claude.length} events in sequence order${start === 0 ? ' from session.start' : ' (pre-launch events not placed)'} (${paired.length} paired tool calls, ${subagentIds.length} subagents with nested calls), codex ${codex.length} events; each event id once`;
 }
 
 // --- 10. collector ---------------------------------------------------------------
@@ -346,6 +497,7 @@ function collectorSpans() {
             parentSpanId: span.parentSpanId || null,
             name: span.name,
             startTime: new Date(Number(BigInt(span.startTimeUnixNano) / 1_000_000n)).toISOString(),
+            ...(span.endTimeUnixNano ? { endTime: new Date(Number(BigInt(span.endTimeUnixNano) / 1_000_000n)).toISOString() } : {}),
             attributes: attrMap(span.attributes),
             resource,
           });
@@ -356,9 +508,7 @@ function collectorSpans() {
   return out;
 }
 
-function checkCollector() {
-  const stamped = (records) => records.filter((r) => r.attributes['factory.attempt.id'] === state.attemptId || r.resource['factory.attempt.id'] === state.attemptId).length;
-  const spanList = collectorSpans();
+function collectorLogs() {
   const logs = [];
   for (const batch of collectorLines('logs')) {
     for (const rl of batch.resourceLogs ?? []) {
@@ -366,6 +516,10 @@ function checkCollector() {
       for (const sl of rl.scopeLogs ?? []) for (const record of sl.logRecords ?? []) logs.push({ attributes: attrMap(record.attributes), resource });
     }
   }
+  return logs;
+}
+
+function collectorPoints() {
   const points = [];
   for (const batch of collectorLines('metrics')) {
     for (const rm of batch.resourceMetrics ?? []) {
@@ -373,11 +527,19 @@ function checkCollector() {
       for (const sm of rm.scopeMetrics ?? []) {
         for (const metric of sm.metrics ?? []) {
           const data = metric.sum ?? metric.gauge ?? metric.histogram ?? metric.exponentialHistogram ?? {};
-          for (const point of data.dataPoints ?? []) points.push({ attributes: attrMap(point.attributes), resource });
+          for (const point of data.dataPoints ?? []) points.push({ name: metric.name, attributes: attrMap(point.attributes), resource });
         }
       }
     }
   }
+  return points;
+}
+
+function checkCollector() {
+  const stamped = (records) => records.filter((r) => r.attributes['factory.attempt.id'] === state.attemptId || r.resource['factory.attempt.id'] === state.attemptId).length;
+  const spanList = collectorSpans();
+  const logs = collectorLogs();
+  const points = collectorPoints();
   const counts = { spans: stamped(spanList), logs: stamped(logs), metrics: stamped(points) };
   need(counts.spans > 0 && counts.logs > 0 && counts.metrics > 0, `stamped records: ${JSON.stringify(counts)} (of ${spanList.length} spans, ${logs.length} logs, ${points.length} points)`);
   const leaks = ['traces', 'logs', 'metrics'].filter((signal) => {
@@ -385,7 +547,117 @@ function checkCollector() {
     return fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes('"factory.local.');
   });
   need(leaks.length === 0, `factory.local.* found in ${leaks.join(', ')}`);
-  return `stamped spans ${counts.spans}, logs ${counts.logs}, metric points ${counts.metrics}; no factory.local.* key`;
+  // Claude Code usage comes from otel-hook only: no native Claude Code telemetry.
+  const native = ['traces', 'logs', 'metrics'].filter((signal) => {
+    const file = path.join(state.collectorDir, `${signal}.jsonl`);
+    return fs.existsSync(file) && /"(?:name|stringValue)":"claude_code\./.test(fs.readFileSync(file, 'utf8'));
+  });
+  need(native.length === 0, `native Claude Code telemetry (claude_code.*) found in ${native.join(', ')}`);
+  return `stamped spans ${counts.spans}, logs ${counts.logs}, metric points ${counts.metrics}; no factory.local.* key; no claude_code.* (native) telemetry`;
+}
+
+// --- 15. otel-hook metrics at the receivers ----------------------------------------
+function metricSeries(rx, sessionId) {
+  let out;
+  try {
+    out = execFileSync(rx.adapter, ['metrics', 'session', sessionId], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    if (error.status === 2 || error.status === 3) throw new Skip(`${rx.name} adapter has no metric reads`);
+    throw error;
+  }
+  return JSON.parse(out.trim() || '[]');
+}
+
+/**
+ * otel-hook names its provider on each metric point (its resource only names
+ * the service): a receiver keeps a series of every metric the Collector got for
+ * each agent session.
+ */
+function checkMetrics(name) {
+  const rx = receiver(name);
+  const kept = [];
+  for (const [tool, sessionId] of Object.entries(state.sessions)) {
+    // A scoped receiver gets only the points that name the repository.
+    const repo = (url) => (url ?? '').toLowerCase().replace(/^[a-z]+:\/\/([^@/]*@)?/, '').replace(/\.git$/, '');
+    const sent = new Set(
+      collectorPoints()
+        .filter((p) => (p.attributes['session.id'] ?? p.resource['session.id']) === sessionId)
+        .filter((p) => !rx.scoped || repo(p.attributes['vcs.repository.url.full'] ?? p.resource['vcs.repository.url.full']) === repo(state.repoUrl))
+        .map((p) => p.name),
+    );
+    need(sent.size > 0, `the Collector holds no metric point of the ${tool} session`);
+    const series = metricSeries(rx, sessionId);
+    const names = new Set(series.map((row) => row.name));
+    const missing = [...sent].filter((metric) => !names.has(metric));
+    need(missing.length === 0, `${name}: no ${tool} series of ${missing.join(', ')} (has ${[...names].join(', ') || 'none'})`);
+    need(series.every((row) => row.providerId), `${name}: a ${tool} series without provider`);
+    kept.push(`${tool} ${sent.size} metrics/${series.length} series`);
+  }
+  return `${name}: ${kept.join(', ')}`;
+}
+
+// --- 14. what the real agents reported (run.sh --real-agents) ----------------------
+/**
+ * Claude Code's own report (`claude -p --output-format json`: modelUsage per model,
+ * total_cost_usd) against the generations otel-hook exported for the session
+ * (Collector, every generation once, inside and outside the attempt): tokens
+ * must be equal per model (otel-hook reads the transcripts Claude Code bills
+ * from). A model Claude Code reports that no transcript holds is listed.
+ */
+function checkAgentReport() {
+  const reports = state.realAgents?.claudeReports ?? [];
+  need(reports.length > 0, 'no Claude Code report in the state (run.sh --real-agents)');
+  // `claude -p --resume` reports the session's running total: per session, the
+  // last report covers every run of it.
+  const last = new Map();
+  for (const report of reports) last.set(report.session_id, report);
+  const reported = new Map();
+  let reportedCost = 0;
+  for (const report of last.values()) {
+    reportedCost += report.total_cost_usd ?? 0;
+    for (const [model, u] of Object.entries(report.modelUsage ?? {})) {
+      const row = reported.get(model) ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0 };
+      row.input += u.inputTokens ?? 0;
+      row.output += u.outputTokens ?? 0;
+      row.cacheRead += u.cacheReadInputTokens ?? 0;
+      row.cacheCreation += u.cacheCreationInputTokens ?? 0;
+      row.cost += u.costUSD ?? 0;
+      reported.set(model, row);
+    }
+  }
+  const exported = new Map();
+  const seen = new Set();
+  for (const span of collectorSpans()) {
+    const a = span.attributes;
+    if (!/^generation( |$)/.test(span.name) || a['otelhook.session.id'] !== state.sessions.claude_code || seen.has(a['otelhook.generation.id'])) continue;
+    seen.add(a['otelhook.generation.id']);
+    const model = a['gen_ai.response.model'] ?? a['gen_ai.request.model'];
+    const row = exported.get(model) ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, generations: 0 };
+    const cacheRead = Number(a['gen_ai.usage.cache_read.input_tokens'] ?? 0);
+    const cacheCreation = Number(a['gen_ai.usage.cache_creation.input_tokens'] ?? 0);
+    row.input += Number(a['gen_ai.usage.input_tokens'] ?? 0) - cacheRead - cacheCreation;
+    row.output += Number(a['gen_ai.usage.output_tokens'] ?? 0);
+    row.cacheRead += cacheRead;
+    row.cacheCreation += cacheCreation;
+    row.generations += 1;
+    exported.set(model, row);
+  }
+  need(exported.size > 0, 'otel-hook exported no Claude Code generation');
+  const notes = [];
+  const over = [];
+  for (const [model, got] of exported) {
+    const want = reported.get(model);
+    need(want, `otel-hook model ${model} not in Claude Code's report (${[...reported.keys()].join(', ')})`);
+    const delta = Object.fromEntries(['input', 'output', 'cacheRead', 'cacheCreation'].map((key) => [key, got[key] - want[key]]));
+    for (const [key, value] of Object.entries(delta)) if (value !== 0) over.push(`${model} ${key} ${value > 0 ? '+' : ''}${value}`);
+    notes.push(
+      `${model}: ${got.generations} generations, otel-hook in/out/cacheRead/cacheWrite ${got.input}/${got.output}/${got.cacheRead}/${got.cacheCreation} vs reported ${want.input}/${want.output}/${want.cacheRead}/${want.cacheCreation} (delta ${Object.values(delta).join('/')}), reported $${want.cost.toFixed(6)}`,
+    );
+  }
+  const unseen = [...reported.keys()].filter((model) => !exported.has(model));
+  if (unseen.length) notes.push(`reported but not in a transcript: ${unseen.map((m) => `${m} $${reported.get(m).cost.toFixed(6)}`).join(', ')}`);
+  need(over.length === 0, `otel-hook and Claude Code's own report differ: ${over.join(', ')}; ${notes.join('; ')}`);
+  return `${reports.length} claude -p runs (${last.size} session), reported total $${reportedCost.toFixed(6)}; ${notes.join('; ')}`;
 }
 
 // --- probes for run.sh's composite checks (8, 9) -----------------------------------
@@ -416,6 +688,55 @@ async function probeUsageCount(name, workId, model, count) {
   return `${name}: ${observations} codex observations`;
 }
 
+/** probe-trajectory <receiver> <session-id> <0|1>: the receiver holds (1) or holds no (0) trajectory record of the session. */
+function probeTrajectory(name, sessionId, want) {
+  const rows = trajectory(receiver(name), sessionId);
+  if (want === '0') {
+    need(rows.length === 0, `${name}: ${rows.length} trajectory records of ${sessionId.slice(0, 8)}, want none`);
+    return `${name}: no trajectory record`;
+  }
+  need(rows.length > 0, `${name}: no trajectory record of ${sessionId.slice(0, 8)}`);
+  return `${name}: ${rows.length} trajectory records`;
+}
+
+/**
+ * probe-nothing <receiver> <repo-url> <work-id> <session-id>...: the receiver holds
+ * nothing of a repository it was not given — no work unit, and no span, metric point
+ * or trajectory record of its sessions. Run after the receiver has caught up with a
+ * repository it does get (a positive check first), so absence is not just lag.
+ */
+async function probeNothing(name, repoUrl, workId, sessions) {
+  const rx = receiver(name);
+  const response = await fetch(
+    `${rx.readBase}/v2/work-units/${encodeURIComponent(workId)}?repository=${encodeURIComponent(repoUrl)}`,
+    { headers: rx.headers ?? {} },
+  );
+  if (response.ok) {
+    const view = await response.json();
+    const runs = (view.attempts ?? []).flatMap((attempt) => attempt.factoryRuns ?? []);
+    need((view.attempts ?? []).length === 0 && runs.length === 0, `${name}: holds work unit ${workId} (${(view.attempts ?? []).length} attempts, ${runs.length} runs)`);
+  } else {
+    need(response.status === 404, `${name}: GET work unit ${workId}: HTTP ${response.status}`);
+  }
+  const counts = [];
+  for (const session of sessions) {
+    const held = { spans: spans(rx, 'session', session).length, trajectory: 0, metrics: 0 };
+    try {
+      held.trajectory = trajectory(rx, session).length;
+    } catch (error) {
+      if (!(error instanceof Skip)) throw error;
+    }
+    try {
+      held.metrics = JSON.parse(execFileSync(rx.adapter, ['metrics', 'session', session], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() || '[]').length;
+    } catch {
+      // no metric reads on this adapter
+    }
+    need(held.spans + held.trajectory + held.metrics === 0, `${name}: session ${session.slice(0, 8)} has ${held.spans} spans, ${held.metrics} metric points, ${held.trajectory} trajectory records`);
+    counts.push(session.slice(0, 8));
+  }
+  return `${name}: nothing of ${repoUrl.replace(/^https?:\/\//, '')} (no work unit; sessions ${counts.join(', ')}: no spans, metrics or trajectory)`;
+}
+
 async function main() {
   const label = (n, what) => `${n} ${what}${target ? ` @${target}` : ''}`;
   switch (command) {
@@ -437,10 +758,31 @@ async function main() {
       return print('7 usage-agree', await settle(() => checkUsageAgree()));
     case 'collector':
       return print('10 collector', await settle(() => checkCollector()));
+    case 'metrics':
+      return print(label(15, 'metrics'), await settle(() => checkMetrics(target)));
+    case 'agent-report':
+      return print('14 agent-report', await settle(() => checkAgentReport()));
+    case 'trajectory':
+      return print(label(13, 'trajectory'), await settle(() => checkTrajectory(target)));
+    case 'probe-nothing': {
+      // Absence is checked once, not settled: waiting would only hide a late arrival.
+      try {
+        console.log(await probeNothing(target, rest[0], rest[1], rest.slice(2)));
+        process.exit(0);
+      } catch (error) {
+        console.log(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
     case 'probe-received':
-    case 'probe-usage': {
+    case 'probe-usage':
+    case 'probe-trajectory': {
       const outcome = await settle(() =>
-        command === 'probe-received' ? probeReceived(target, rest[0], rest.slice(1)) : probeUsageCount(target, rest[0], rest[1], rest[2]),
+        command === 'probe-received'
+          ? probeReceived(target, rest[0], rest.slice(1))
+          : command === 'probe-usage'
+            ? probeUsageCount(target, rest[0], rest[1], rest[2])
+            : probeTrajectory(target, rest[0], rest[1]),
       );
       console.log(outcome.detail);
       process.exit(outcome.ok ? 0 : 1);

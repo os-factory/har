@@ -236,11 +236,17 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
     });
   }
 
+  // One session can have two usage rows here (two occupancies of the slot, or a
+  // legacy session total next to observations): each row keeps its own id.
+  const sessionIds = new Map<string, number>();
   for (const session of input.sessions ?? []) {
     const durationMs = Math.max(0, session.lastSeenAt.getTime() - session.firstSeenAt.getTime());
     const cost = session.costUsd;
+    const baseId = `session:${session.sessionKey}:${session.agentTool}`;
+    const seen = sessionIds.get(baseId) ?? 0;
+    sessionIds.set(baseId, seen + 1);
     rows.push({
-      id: `session:${session.sessionKey}:${session.agentTool}`,
+      id: seen === 0 ? baseId : `${baseId}:${seen + 1}`,
       kind: 'session',
       at: session.firstSeenAt.toISOString(),
       title: session.firstPrompt ? truncate(session.firstPrompt, 140) : `${session.agentTool} session`,
@@ -306,7 +312,11 @@ export function buildTimelineRows(input: TimelineInput): TimelineRow[] {
       kind: 'snapshot',
       at: snapshot.createdAt.toISOString(),
       title: `Tree ${snapshot.treeHash.slice(0, 8)}`,
-      detail: `${snapshot.changedFiles.length} changed file${snapshot.changedFiles.length === 1 ? '' : 's'}`,
+      // A 2.0 factory run records no file list (ADR 0005): the diff view still computes it from git.
+      detail:
+        snapshot.changedFiles.length === 0
+          ? 'changed files not recorded'
+          : `${snapshot.changedFiles.length} changed file${snapshot.changedFiles.length === 1 ? '' : 's'}`,
       status: status.label,
       tone: status.tone,
       agentId: snapshot.agentId,

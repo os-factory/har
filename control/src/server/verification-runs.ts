@@ -1,3 +1,4 @@
+import { placeFactoryRunsOfAttemptSafely } from '@/server/factory-run-placement';
 import { LOCAL_CHECKOUT_PATH_ATTR } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { normalizeOtelPath, pickBestRepoPathMatch } from '@/server/otel-workspace';
@@ -188,6 +189,7 @@ export async function ingestVerificationSpans(spans: ParsedSpan[]): Promise<Otel
         },
       });
     }
+    await placeFactoryRunsOfAttemptSafely(fromSpan.attemptId);
     runIds.set(`${span.traceId}:${span.spanId}`, factoryRunId);
     result.accepted += 1;
   }

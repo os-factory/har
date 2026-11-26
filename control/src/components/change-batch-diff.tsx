@@ -205,8 +205,11 @@ export function ChangeBatchDiff({ repoId, batch, open, onOpenChange }: ChangeBat
                 Snapshot <span className="font-mono text-base">{batch.treeHash.slice(0, 8)}</span>
               </SheetTitle>
               <SheetDescription>
-                {batch.branch ?? 'Detached HEAD'} · {batch.changedFiles.length} changed file
-                {batch.changedFiles.length === 1 ? '' : 's'} · {batch.createdAt.toLocaleString()}
+                {batch.branch ?? 'Detached HEAD'} ·{' '}
+                {batch.changedFiles.length > 0
+                  ? `${batch.changedFiles.length} changed file${batch.changedFiles.length === 1 ? '' : 's'} · `
+                  : ''}
+                {batch.createdAt.toLocaleString()}
               </SheetDescription>
             </SheetHeader>
 

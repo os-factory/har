@@ -26,7 +26,6 @@
   },
   "templateChecksums": {
     "STAGES.md": "4b1a83ce3a95aed3",
-    "lib/verify-runner.mjs": "382266eaf701e63d",
     "stages/README.sh": "23b2e858dd2dc27a",
     "stages/readiness.sh": "5ceb071438d92ea5",
     "ecosystem.agent.template.cjs": "d61d6abc056ca32e",

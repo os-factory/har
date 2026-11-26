@@ -13,6 +13,7 @@ import {
 import { readManifest, getHarnessDir, stampManifestWriter } from '../harness/manifest';
 import { getVerificationStageIds, getAgentSlotRange, listStages, syncAgentSlotsToHarnessEnv } from '../harness/stages';
 import { ensureEcosystemVerificationStages } from '../harness/verification';
+import { removeStaleRunnerCopy } from '../harness/stage-runner';
 import { DoctorReport, runDoctor } from '../harness/doctor';
 import {
   AppliedMigration,
@@ -74,6 +75,8 @@ export interface MaintainHarnessResult {
   bundle?: MaintainBundleResult;
   /** Set when the harness has (or just applied) a pending shape migration (#241). */
   migration?: MaintainMigrationInfo;
+  /** Stale stock stage-runner copy maintain removed (path relative to .har/). */
+  removedStaleRunner?: string;
 }
 
 export interface ProjectDescription {
@@ -202,7 +205,14 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
   // Safe on pre-1.0: vendored runtime bash is not managed-shim content.
   retireLifecycleShims(repoPath);
 
-  ensureEcosystemVerificationStages(repoPath);
+  // The verification plan is the project's: plain maintain never adds stages
+  // to it. Only an explicitly applied shape migration registers the ecosystem
+  // defaults the old verify.sh used to run inline.
+  if (migration?.applied) ensureEcosystemVerificationStages(repoPath);
+  // HAR runs its packaged stage runner; a stock copy an older HAR scaffolded
+  // into .har/lib/ no longer runs and only goes stale (an edited one stays:
+  // doctor reports it).
+  const removedStaleRunner = removeStaleRunnerCopy(repoPath) ?? undefined;
   stampManifestWriter(repoPath);
   const drift = compareHarnessToTemplate(repoPath);
   const validation = validateHarness(repoPath);
@@ -230,6 +240,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
       validation,
       drift: compareHarnessToTemplate(repoPath),
       doctor: runDoctor(repoPath),
+      removedStaleRunner,
     };
   }
 
@@ -241,6 +252,7 @@ export async function maintainHarness(options: MaintainHarnessOptions): Promise<
     doctor: runDoctor(repoPath),
     bundle,
     migration,
+    removedStaleRunner,
   };
 }
 

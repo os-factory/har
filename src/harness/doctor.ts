@@ -15,6 +15,7 @@ import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
 import { AGENT_ENV_TEMPLATE_VARS, findUnsubstitutedTemplateVars } from '../runtime/agent-env';
 import { LEGACY_MACHINERY_FILES } from './migrations';
+import { findStaleRunnerCopy, staleRunnerHint } from './stage-runner';
 
 /**
  * `har env doctor` — harness contract validation (#232).
@@ -77,6 +78,8 @@ export interface DoctorReport {
   contract: DoctorContract;
   checks: DoctorCheck[];
   findings: DoctorFinding[];
+  /** Advisory one-liners (never a warning, never the verdict): e.g. how to get the hosted receiver's full experience. */
+  hints?: string[];
 }
 
 /**
@@ -568,11 +571,15 @@ export function runDoctor(repoPath: string): DoctorReport {
     skipped.has(id) ? { id, label: CHECK_LABELS[id], status: 'skip' as const } : checkStatus(findings, id),
   );
 
+  // Advisory: a stage-runner copy in .har/lib/ that verify no longer runs.
+  const runnerHint = staleRunnerHint(findStaleRunnerCopy(repoPath));
+
   return {
     ok: !findings.some((f) => f.severity === 'error'),
     contract,
     checks,
     findings,
+    ...(runnerHint ? { hints: [runnerHint] } : {}),
   };
 }
 
@@ -603,6 +610,7 @@ export function formatDoctorReport(report: DoctorReport): string {
         : 'Contract: no harness.env found.',
     );
   }
+  for (const hint of report.hints ?? []) lines.push(`hint: ${hint}`);
   lines.push(report.ok ? 'Doctor: PASS' : 'Doctor: FAIL');
   return lines.join('\n');
 }

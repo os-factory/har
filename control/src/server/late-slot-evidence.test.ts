@@ -152,4 +152,27 @@ describe('claimLateSlotEvidence', () => {
     expect((await claimLateSlotEvidence(REPO, occupancy)).bindings).toBe(1);
     expect(db.tables.bindings[1]).toMatchObject({ slotId: 1, occupancyKey: OCC, branch: BRANCH });
   });
+
+  it('places a span by its end and keeps the attempt a span was stamped with', async () => {
+    db.tables.spans.length = 0;
+    // Started before the late binding, ended after it: placed by its end.
+    db.insert('spans', { repositoryId: REPO, sessionKey: 'S1', agentTool: 'claude_code', agentId: 0, startTime: t(35), endTime: t(37) });
+    // Stamped by otel-hook when it ended: the stamp wins over the timeline.
+    db.insert('spans', {
+      repositoryId: REPO, sessionKey: 'S1', agentTool: 'claude_code', agentId: 0, startTime: t(38), endTime: t(39),
+      attributes: { 'factory.attempt.id': 'a0', 'factory.work_unit.id': 'HAR-E2E-0' },
+    });
+    db.insert('trajectory', {
+      repositoryId: REPO, sessionKey: 'S1', agentTool: 'claude_code', agentId: 0, eventTimestamp: t(38),
+      payload: { span: { endTime: t(39).toISOString() }, attributes: { 'factory.attempt.id': 'a0' } },
+    });
+
+    await claimLateSlotEvidence(REPO, occupancy);
+
+    expect(db.tables.spans.map((row) => [row.agentId, row.attemptId, row.workUnitId])).toEqual([
+      [1, 'a1', 'HAR-E2E-1'],
+      [1, 'a0', 'HAR-E2E-0'],
+    ]);
+    expect(db.tables.trajectory[0]).toMatchObject({ agentId: 1, attemptId: 'a0' });
+  });
 });
