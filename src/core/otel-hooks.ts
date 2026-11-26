@@ -32,25 +32,21 @@ import { LOCAL_ATTR_PREFIX, type OtelHookScope } from '../harness/schema';
 import { sessionContextRoot } from './session-context';
 
 /**
- * The otel-hook version HAR installs: the one place to change it. 0.13.2 has
+ * The otel-hook version HAR installs: the one place to change it. 0.14.0 has
+ * per-destination repository `scopes` (HAR HQ opt-in per repository); 0.13.2
  * subagent usage, Codex rollout usage with a bounded export, and the Windows
  * spool claim; 0.12.0 brought the session context (`sessionContext.dir`, ADR
  * 0004 section 3), 0.11.0 per-destination metrics, 0.10.0 Claude Code
  * transcript usage.
- *
- * TODO(otel-hook scopes): per-destination repository `scopes` (otel-hook#78)
- * are not released yet. Until the pin reaches the release that has them, HAR
- * HQ gets no agent telemetry from a pinned install (records and verification
- * still go): bump this pin and `OTEL_HOOK_SCOPES_MIN_VERSION` together.
  */
-export const OTEL_HOOKS_VERSION = '0.13.2';
+export const OTEL_HOOKS_VERSION = '0.14.0';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
 export const OTEL_HOOKS_PACKAGE = `@osfactory/otel-hook@${OTEL_HOOKS_VERSION}`;
 
 /**
  * Environment override for the package spec HAR installs: any spec the package
- * manager accepts (`@osfactory/otel-hook@0.13.2`, a local `.tgz`, a directory).
+ * manager accepts (`@osfactory/otel-hook@0.14.0`, a local `.tgz`, a directory).
  * For testing an unreleased otel-hook build; unset, HAR installs the pin.
  */
 export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
@@ -196,8 +192,7 @@ export interface EnsureOtelHooksResult {
 
 /**
  * First otel-hook release with per-destination repository `scopes`
- * (otel-hook#78; TODO: set to the real release once published, see
- * `OTEL_HOOKS_VERSION`), and a string its CLI bundle contains from then on, so
+ * (otel-hook#78), and a string its CLI bundle contains from then on, so
  * an unreleased build installed through `HAR_OTEL_HOOKS_PACKAGE` is detected.
  */
 export const OTEL_HOOK_SCOPES_MIN_VERSION = '0.14.0';

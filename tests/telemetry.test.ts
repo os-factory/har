@@ -37,14 +37,14 @@ import {
 } from '../src/core/otel-hooks';
 
 describe('otel-hook package pin', () => {
-  it('installs the release with subagent and Codex rollout usage (0.13.2)', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.13.2');
+  it('installs the release with per-destination repository scopes (0.14.0)', () => {
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.14.0');
   });
 
   it('is the release Mission Control depends on, or the one right after it while that is unpublished', () => {
     // Mission Control derives otel-hook ids with the same package. It pins an
     // exact, published version; the CLI pin may lead it by up to two minors
-    // (0.13.2: subagent and Codex rollout usage) until Mission Control moves up.
+    // until Mission Control moves up.
     const control = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'control', 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>;
     };
@@ -72,14 +72,14 @@ describe('otel-hook package pin', () => {
     afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
     it('keeps an install of the pinned version', () => {
-      installVersion('0.13.2');
+      installVersion(OTEL_HOOKS_VERSION);
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(false);
       installVersion('0.5.0');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
     });
 
     it('installs an override once, then again only when it changes or is removed', () => {
-      installVersion('0.13.2');
+      installVersion(OTEL_HOOKS_VERSION);
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(true);
       recordInstalledSpec(home, '/tmp/otel-hook.tgz');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(false);

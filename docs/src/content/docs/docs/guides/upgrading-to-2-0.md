@@ -263,7 +263,7 @@ outside any segment (before launch, after complete) carries none.
 
 ### Agent hooks (`@osfactory/otel-hook`)
 
-HAR 2.0 installs `@osfactory/otel-hook@0.13.2` (0.12.0 or later is required). HAR replaces an older installed copy
+HAR 2.0 installs `@osfactory/otel-hook@0.14.0` (0.12.0 or later is required; 0.14.0 or later to send agent telemetry to HAR HQ). HAR replaces an older installed copy
 on the next `har env launch` or `har telemetry on`.
 
 #### Agent hooks need otel-hook 0.12.0
