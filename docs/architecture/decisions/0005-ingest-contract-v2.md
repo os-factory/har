@@ -281,8 +281,9 @@ open. Where the ADR was silent, Mission Control's behavior decided.
   `join`) for the calling session, so a second or resumed session can join a
   running attempt.
 - otel-hook has one global `includeSessionId` and no per-destination provider
-  filter. HAR writes the AND of the per-destination settings, and Mission
-  Control drops Claude Code's otel-hook metrics itself.
+  filter. HAR writes the AND of the per-destination settings. (Before the
+  round-2 decisions below, Mission Control also dropped Claude Code's otel-hook
+  metrics; it now keeps them.)
 - In otel-hook, the worktree a tool event targets keeps its own
   `vcs.ref.head.name` on that span. The session context sets only the work
   identity.
@@ -296,13 +297,72 @@ open. Where the ADR was silent, Mission Control's behavior decided.
   sha256 of (metric name, sorted resource attributes, sorted point attributes).
   A late, older point never replaces a newer one, and delta series are stored
   the same way.
-- Claude Code usage comes only from its native `api_request` events. Every
-  receiver ignores Claude Code's otel-hook generations for usage. A receiver that
-  does not get Claude Code's native telemetry books no Claude Code usage until
-  os-factory/otel-hook#68.
+- *Superseded by "Round 2" below:* Claude Code usage first came only from its
+  native `api_request` events, and receivers ignored Claude Code's otel-hook
+  generations for usage.
 - Every priced row records `costSource` (`reported` or `estimated`) and
   `pricedWith` (`genai-prices@<version>`). Committed test vectors
   (`packages/schemas/pricing-vectors.json`) keep receivers in agreement.
+
+**Round 2: otel-hook is the only agent source, the CLI speaks only v2**
+
+These supersede section 5's Claude Code row and the first Claude Code usage
+rule above.
+
+- HAR no longer turns on Claude Code's native telemetry, and removes the
+  settings keys an earlier HAR wrote (only while they still hold the value HAR
+  wrote). Receivers ignore native `api_request` events and `claude_code.*`
+  metrics if they arrive. A hosted receiver gets OTLP from the CLI and the hook
+  through its destination, like any other.
+- Claude Code tokens come only from otel-hook generation spans, one per turn
+  and one per subagent run; a subagent's end event carries no usage. HAR
+  registers the Claude Code hook with `--claude-transcript-usage --logs
+  --metrics`. Receivers keep otel-hook metrics for Claude Code.
+- Codex usage comes from the session rollout, read by otel-hook only with the
+  opt-in `--codex-rollout-usage`, which HAR's Codex hook must pass. Codex spans
+  report cumulative totals; receivers store per-unit deltas. Usage at a Codex
+  subagent's stop is not read.
+- Every receiver builds the trajectory from otel-hook's OTLP log records. A
+  trajectory record is keyed by (`otelhook.event.id`, content key). Its work
+  identity is its own stamp, else the segment in force at its event time, else
+  the attempt.
+- A log record belongs to the segment in force at its event time; a span to the
+  attempt in force when it **ends** (its stamp may come from either edge). A
+  span is identified by (trace id, span id, start time). A resumed session run
+  gets its own span id, parented to the first run's session span.
+- The metrics provider is read per data point (`otelhook.provider.id` is on
+  the points, not the Resource). Histogram points are kept, with their sum as
+  the value and their count beside it.
+- The `usage` telemetry level runs the hook too (spans and metrics, no logs):
+  it is the only usage source. The CLI's transcript harvest is removed.
+- The CLI 2.0 speaks only v2. `har control sync` keeps only Mission Control's
+  local repository registration and live slot view, which are not part of this
+  contract; the 1.x record routes (`/api/repos/<id>/…`) are gone.
+- A receiver without evidence storage answers `capabilities.evidence: false`
+  and `501` on the evidence endpoints.
+- Telemetry before the first segment carries no work identity. A receiver that
+  knows local paths (Mission Control) may place it by workspace path; a hosted
+  receiver cannot, and leaves it unattributed.
+- Session context files are written under a per-file exclusive lock, so two HAR
+  processes cannot lose a segment. A segment's `from` and `to` are the instant
+  the write was decided under the lock, and an attempt's `endedAt` is never
+  earlier than any of its segments' `to`. Boundaries are as precise as that
+  write (tens of milliseconds). The worktree a tool event targets keeps its own
+  `vcs.ref.head.name` on log records too.
+- otel-hook bounds each export (1.5 s) and treats a destination as down for
+  30 s after a failure, so an unreachable receiver does not stall the agent;
+  any HTTP answer counts as up.
+- Upgrade: on the first 2.0 command, a machine with a hosted receiver key gets
+  an `hq` destination once (recorded in `~/.har/destinations/migrations.json`,
+  so a removed destination is not re-added); doctor warns when a key is set
+  without an enabled `hq` destination. Mission Control migrates its database in
+  place on first start, keeping the 1.x database as `<db>.v1-backup`.
+- The deprecation `Link` (section 7) points at
+  `https://harproject.dev/docs/guides/upgrading-to-2-0/`, a URL the docs keep
+  stable. The `Deprecation` and `Sunset` dates are set when 2.0.0 ships.
+- Open: an optional `FactoryRun.changedFiles` and head commit are proposed, so
+  receivers can show what a verify covered; until then a v2 factory run carries
+  no file list.
 
 ## Consequences
 
