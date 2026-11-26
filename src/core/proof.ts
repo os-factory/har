@@ -36,6 +36,21 @@ export const FACTORY_RUN_PREDICATE_TYPE = 'https://os-factory.dev/factory-commit
 /** Policy id recorded for `har env verify --full`: the stages in verificationStages. */
 export const FACTORY_PROOF_POLICY_ID = 'har-verify-full';
 
+/**
+ * Trace id of a factory run's verification trace: `sha256("factory-run:" + run.id)`, first 32 hex
+ * chars (Factory Commits telemetry profile, ADR 0004 section 4). Known before the trace is exported,
+ * so the predicate (`telemetry.traceId`) and the `Factory-Run` trailer (`trace=`) can name it.
+ * `id` is the factory run id (the validation id), so every verify of the same tree lands in one trace.
+ */
+export function verificationTraceId(id: string): string {
+  return crypto.createHash('sha256').update(`factory-run:${id}`).digest('hex').slice(0, 32);
+}
+
+/** `--run` value for `git factory trailers`: `<run-id>;trace=<trace-id>` (written as `<run-id>; trace=<trace-id>`). */
+export function factoryRunTrailerArg(runId: string): string {
+  return `${runId};trace=${verificationTraceId(runId)}`;
+}
+
 const ATTESTATION_SUFFIX = '.attestation.json';
 const DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 const SOURCE_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -791,7 +806,7 @@ export function addFactoryTrailers(
     const args = ['trailers', messageFile];
     const workUnit = workUnitTrailerValue(validation, checkoutDir);
     if (workUnit) args.push('--work-unit', workUnit);
-    args.push('--run', validation.validationId);
+    args.push('--run', factoryRunTrailerArg(validation.validationId));
     const attestation = findPassingAttestation(checkoutDir, treeHash);
     if (attestation) args.push('--attestation', attestation.digest);
 

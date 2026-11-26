@@ -64,6 +64,10 @@ har env verify 1 --full
   in `refs/notes/factory`, and optionally as trailers. `har proof show|verify`
   (MCP: `har_proof_show`, `har_proof_verify`) reads them. The predicate carries the
   verification trace id when that trace is exported, so a proof leads to its trace.
+  The trace id is `sha256("factory-run:" + run id)`, first 32 hex characters, as the
+  Factory Commits telemetry profile derives it (2.0.0-next prereleases hashed
+  `"har-verify:" + id`), and the `Factory-Run` trailer carries it:
+  `Factory-Run: <run-id>; trace=<trace-id>`.
   Proofs need `git-factory` from `@osfactory/factory-proof` 0.2.0 or newer, and are
   always `self-reported`: they say what this checkout reports, not that an
   independent runner checked it.

@@ -94,8 +94,12 @@ function sha(input: string): string {
 }
 
 describe('verification span ids', () => {
+  it('derives the trace id as sha256("factory-run:" + run id), first 32 hex chars (Factory Commits vector)', () => {
+    expect(verificationTraceId('01JD4X7Q')).toBe('08a4c2fcb06d20d6c9f76d79addde080');
+  });
+
   it('derives deterministic trace and span ids from the run id', () => {
-    expect(verificationTraceId(VALIDATION_ID)).toBe(sha(`har-verify:${VALIDATION_ID}`).slice(0, 32));
+    expect(verificationTraceId(VALIDATION_ID)).toBe(sha(`factory-run:${VALIDATION_ID}`).slice(0, 32));
     expect(verificationRunSpanId(VALIDATION_ID)).toBe(sha(`har-verify-span:${VALIDATION_ID}`).slice(0, 16));
     expect(verificationStageSpanId(VALIDATION_ID, 'lint')).toBe(
       sha(`har-verify-span:${VALIDATION_ID}:lint`).slice(0, 16),
