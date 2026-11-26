@@ -87,3 +87,31 @@ export function sameGitCheckout(a: string, b: string): boolean {
   const right = gitCommonDir(b);
   return right !== undefined && left === right;
 }
+
+/**
+ * The same location in the repository's main working tree when `p` is inside a
+ * linked worktree (`<main>/<same relative path>`); `p` itself otherwise — main
+ * checkout, submodule, bare-repo worktree, or no git at all. Filesystem only:
+ * no `git` process, so it is cheap enough for every registry read.
+ */
+export function mainWorktreePath(p: string): string {
+  const resolved = path.resolve(p);
+  try {
+    const dotGit = findDotGit(resolved);
+    if (!dotGit || fs.statSync(dotGit).isDirectory()) return resolved;
+
+    const match = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
+    if (!match) return resolved;
+    const gitDir = path.resolve(path.dirname(dotGit), match[1]);
+    // Only linked worktrees have `commondir`; a submodule's .git file does not.
+    const commonDirFile = path.join(gitDir, 'commondir');
+    if (!fs.existsSync(commonDirFile)) return resolved;
+    const commonDir = path.resolve(gitDir, fs.readFileSync(commonDirFile, 'utf8').trim());
+    if (path.basename(commonDir) !== '.git') return resolved;
+
+    const rel = path.relative(path.dirname(dotGit), resolved);
+    return path.join(path.dirname(commonDir), rel);
+  } catch {
+    return resolved;
+  }
+}

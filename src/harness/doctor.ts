@@ -17,7 +17,7 @@ import {
   STAGE_OVERLAY_FILE,
   stageOverlayClashMessage,
 } from './stages';
-import { HAR_LOCAL_DIR } from './line-scope';
+import { HAR_LOCAL_DIR, resolveHarPath } from './line-scope';
 import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
 import { AGENT_ENV_TEMPLATE_VARS, findUnsubstitutedTemplateVars } from '../runtime/agent-env';
@@ -183,22 +183,24 @@ function detectContract(harnessDir: string): DoctorContract {
  * lifecycle stages and command stages that run arbitrary shell (e.g. `npm test`)
  * resolve to null and are not file-checked.
  */
-function resolveStageFile(harnessDir: string, stage: HarnessStage): string | null {
+function resolveStageFile(repoPath: string, stage: HarnessStage): { rel: string; file: string } | null {
   if (PACKAGE_RUNTIME_KINDS.has(stage.kind) && (!stage.command && !stage.script || stagePointsAtLifecycleShim(stage))) {
     return null;
   }
-  if (stage.script) return path.join(harnessDir, stage.script);
+  // `.har/`-relative; personal (`local/…`) files resolve from the main checkout inside a slot.
+  const at = (rel: string) => ({ rel: path.normalize(rel), file: resolveHarPath(repoPath, rel) });
+  if (stage.script) return at(stage.script);
   if (stage.command) {
     const first = stage.command.trim().split(/\s+/)[0];
     if (first.startsWith('./.har/')) {
-      return path.join(harnessDir, first.replace(/^\.\/\.har\//, ''));
+      return at(first.replace(/^\.\/\.har\//, ''));
     }
     if (first.startsWith('.har/')) {
-      return path.join(harnessDir, first.replace(/^\.har\//, ''));
+      return at(first.replace(/^\.har\//, ''));
     }
     return null;
   }
-  return path.join(harnessDir, 'stages', `${stage.id}.sh`);
+  return at(path.join('stages', `${stage.id}.sh`));
 }
 
 function checkStatus(findings: DoctorFinding[], id: DoctorCheckId): DoctorCheck {
@@ -388,9 +390,9 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
     // 3. Every registered stage's script/command file exists and is executable
     // (committed stages plus this machine's personal overlay).
     for (const stage of [...registry.stages, ...overlayStages]) {
-      const file = resolveStageFile(harnessDir, stage);
-      if (!file) continue;
-      const rel = path.relative(harnessDir, file);
+      const resolvedFile = resolveStageFile(repoPath, stage);
+      if (!resolvedFile) continue;
+      const { rel, file } = resolvedFile;
       if (!fs.existsSync(file)) {
         findings.push({
           check: 'stage-files',
@@ -425,14 +427,14 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
         });
         continue;
       }
-      const file = resolveStageFile(harnessDir, stage);
-      if (file && !fs.existsSync(file)) {
+      const resolvedFile = resolveStageFile(repoPath, stage);
+      if (resolvedFile && !fs.existsSync(resolvedFile.file)) {
         findings.push({
           check: 'lifecycle-stages',
           severity: contractSeverity,
-          file: path.relative(harnessDir, file),
+          file: resolvedFile.rel,
           message: `Lifecycle stage \`${stage.id}\` (${kind}) points at a missing file`,
-          remedy: `Restore .har/${path.relative(harnessDir, file)} or fix the \`${stage.id}\` entry in stages.json`,
+          remedy: `Restore .har/${resolvedFile.rel} or fix the \`${stage.id}\` entry in stages.json`,
         });
       }
     }

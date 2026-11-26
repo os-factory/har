@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { writeFileSafe } from '../utils/file-ops';
 import { getHarnessDir } from './manifest';
-import { HAR_LOCAL_DIR, type LineScope } from './line-scope';
+import { HAR_LOCAL_DIR, personalHarRoot, type LineScope } from './line-scope';
 import type { LineProgram } from './schema';
 import type { ApplyLineResult } from './lines';
 
@@ -136,7 +136,10 @@ export function writeLineAdaptationPrompt(
   content: string,
   scope: LineScope = 'team',
 ): string {
-  const dir = scope === 'personal' ? path.join(getHarnessDir(repoPath), HAR_LOCAL_DIR) : getHarnessDir(repoPath);
+  const dir =
+    scope === 'personal'
+      ? path.join(getHarnessDir(personalHarRoot(repoPath)), HAR_LOCAL_DIR)
+      : getHarnessDir(repoPath);
   const filePath = path.join(dir, lineAdaptationPromptFile(lineId));
   writeFileSafe(filePath, content);
   return filePath;

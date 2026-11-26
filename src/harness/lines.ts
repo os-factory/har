@@ -10,6 +10,9 @@ import {
   LINE_SCOPES,
   linesDirRel,
   personalFileDest,
+  personalHarRoot,
+  resolveRepoFilePath,
+  scopeRoot,
   type LineScope,
 } from './line-scope';
 import { buildLineAdaptationPrompt, writeLineAdaptationPrompt } from './line-prompt';
@@ -80,7 +83,7 @@ export function installedLineScopes(repoPath: string, lineId: string): LineScope
   return LINE_SCOPES.filter(
     (scope) =>
       (readLineLedger(resolved, scope)?.lines.some((l) => l.id === lineId) ?? false) ||
-      fs.existsSync(path.join(resolved, lineProgramPathRel(lineId, scope))),
+      fs.existsSync(path.join(scopeRoot(resolved, scope), lineProgramPathRel(lineId, scope))),
   );
 }
 
@@ -158,7 +161,7 @@ export function readInstalledLineProgram(
 ): LineProgram | null {
   const where = scope ?? locateInstalledLine(repoPath, lineId);
   if (!where) return null;
-  const programPath = path.join(path.resolve(repoPath), lineProgramPathRel(lineId, where));
+  const programPath = path.join(scopeRoot(repoPath, where), lineProgramPathRel(lineId, where));
   if (!fs.existsSync(programPath)) return null;
   const parsed = LineProgramSchema.safeParse(JSON.parse(fs.readFileSync(programPath, 'utf8')));
   return parsed.success ? parsed.data : null;
@@ -212,7 +215,7 @@ function copyBundleFile(
   force: boolean,
 ): string {
   const srcPath = path.join(bundleDir, file.src);
-  const destPath = path.join(repoPath, file.dest);
+  const destPath = resolveRepoFilePath(repoPath, file.dest);
 
   if (!fs.existsSync(srcPath)) {
     throw new Error(`Line file missing: ${file.src}`);
@@ -390,7 +393,7 @@ function applyLineFromDir(
     );
   }
   if (scope === 'personal') {
-    ensureHarLocalIgnored(resolved);
+    ensureHarLocalIgnored(personalHarRoot(resolved));
   }
 
   const scoped = scopeBundle(manifest, scope);
@@ -408,7 +411,7 @@ function applyLineFromDir(
   // The program always lands at <scope home>/<id>/line.json, whatever the
   // bundle called it, so `har line describe` has one place to look.
   const programPathRel = lineProgramPathRel(manifest.id, scope);
-  const programDest = path.join(resolved, programPathRel);
+  const programDest = path.join(scopeRoot(resolved, scope), programPathRel);
   const programSrc = path.join(bundleDir, manifest.program);
   if (path.resolve(programSrc) !== path.resolve(programDest)) {
     if (fs.existsSync(programDest) && !force) {
@@ -420,7 +423,7 @@ function applyLineFromDir(
   filesWritten.push(programPathRel);
 
   // Keep the manifest next to the program so a bare id re-resolves locally.
-  const manifestDest = path.join(resolved, lineDirRel(manifest.id, scope), 'line.manifest.json');
+  const manifestDest = path.join(scopeRoot(resolved, scope), lineDirRel(manifest.id, scope), 'line.manifest.json');
   const manifestSrc = findManifestPath(bundleDir, LINE_BUNDLE_CONFIG) as string;
   if (path.resolve(manifestSrc) !== path.resolve(manifestDest)) {
     ensureParentDir(manifestDest);
