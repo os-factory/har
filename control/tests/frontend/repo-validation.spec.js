@@ -17,7 +17,11 @@ test.describe('Repository validation stages', () => {
 
     const validationTab = page.getByRole('tab', { name: 'Validation' });
     await expect(validationTab).toBeVisible();
-    await validationTab.click();
+    // A click that lands before hydration is lost: click until the tab is selected.
+    await expect(async () => {
+      await validationTab.click();
+      await expect(validationTab).toHaveAttribute('aria-selected', 'true', { timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
 
     await expect(page.getByText('Validation stages', { exact: true })).toBeVisible();
 

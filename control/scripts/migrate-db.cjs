@@ -38,6 +38,14 @@ const V1_TABLES = [
   'SessionSlotBinding',
 ];
 
+/**
+ * Tables Mission Control no longer has. `prisma db push` refuses to drop a
+ * table that holds rows, so they are dropped first; the 1.x backup keeps them.
+ * `CloudConfig` held the settings of the removed Mission Control to hosted
+ * receiver forwarding: the CLI sends to every receiver directly (ADR 0005).
+ */
+const RETIRED_TABLES = ['CloudConfig'];
+
 /** v2 tables filled by explicit conversions, never by the generic copy. */
 const CONVERTED_TABLES = new Set([
   'WorkUnit',
@@ -327,6 +335,20 @@ async function v1TablesIn(file) {
   }
 }
 
+async function dropRetiredTables(file) {
+  const PrismaClient = loadPrismaClient();
+  const db = new PrismaClient({ datasourceUrl: `file:${file}?connection_limit=1` });
+  try {
+    const names = await tableNames(db, 'main');
+    for (const table of RETIRED_TABLES.filter((name) => names.includes(name))) {
+      await db.$executeRawUnsafe(`DROP TABLE "${table}"`);
+      log(`dropped retired table ${table}`);
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 async function backupTo(file, backup) {
   const PrismaClient = loadPrismaClient();
   const db = new PrismaClient({ datasourceUrl: `file:${file}?connection_limit=1` });
@@ -351,6 +373,7 @@ async function migrateDatabase(file, pushArgs = []) {
   }
   const legacy = await v1TablesIn(file);
   if (legacy.length === 0) {
+    await dropRetiredTables(file);
     dbPush(file, pushArgs);
     return { migrated: false, backup: null };
   }

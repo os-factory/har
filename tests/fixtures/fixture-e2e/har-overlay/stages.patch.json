@@ -1,0 +1,26 @@
+{
+  "verificationStages": ["big-output", "write-artifact"],
+  "stages": [
+    {
+      "id": "big-output",
+      "kind": "test",
+      "description": "Writes about 1.5 MiB of output (the stage log keeps the last 1 MiB)",
+      "script": "stages/big-output.sh",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "quick"
+    },
+    {
+      "id": "write-artifact",
+      "kind": "test",
+      "description": "Writes .har/artifacts/fixture-report/report.json",
+      "script": "stages/write-artifact.sh",
+      "artifacts": [{ "path": ".har/artifacts/fixture-report", "kind": "directory" }],
+      "requiresAgentId": true,
+      "tier": "full"
+    }
+  ],
+  "harnessEnv": {
+    "HAR_FACTORY_PROOF": "notes+trailers"
+  }
+}

@@ -488,6 +488,15 @@ export function repositoryUrlOf(dir: string | undefined): string | undefined {
   return dir ? sanitizeGitRemoteUrl(readGitRemote(dir)) : undefined;
 }
 
+/**
+ * The repository URL of a slot: its work dir's remote, else the harness root's.
+ * Teardown and complete send their records after the slot's worktree is
+ * removed; the main checkout has the same remote.
+ */
+export function slotRepositoryUrl(workDir: string | undefined, harnessRoot: string): string | undefined {
+  return repositoryUrlOf(workDir) ?? repositoryUrlOf(harnessRoot);
+}
+
 export function slotSegmentOccupancy(
   session: SlotOccupancySource,
   harnessRoot: string,
@@ -496,7 +505,7 @@ export function slotSegmentOccupancy(
     attemptId: session.attemptId,
     slotId: String(session.agentId),
     branch: session.branch,
-    repositoryUrl: repositoryUrlOf(session.workDir ?? harnessRoot),
+    repositoryUrl: slotRepositoryUrl(session.workDir, harnessRoot),
   };
 }
 
@@ -507,7 +516,7 @@ export function slotSegmentAttributes(session: SlotOccupancySource, harnessRoot:
     workUnitSource: source,
     attemptId: session.attemptId,
     slotId: session.agentId,
-    repositoryUrl: repositoryUrlOf(session.workDir ?? harnessRoot),
+    repositoryUrl: slotRepositoryUrl(session.workDir, harnessRoot),
     branch: session.branch,
   });
 }

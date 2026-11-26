@@ -25,7 +25,7 @@ import {
   readPolicyDigest,
   verificationTraceId,
 } from './proof';
-import { SEGMENT_ATTR, listSessionContexts, repositoryUrlOf, segmentBelongsTo, type SegmentOccupancy } from './session-context';
+import { SEGMENT_ATTR, listSessionContexts, segmentBelongsTo, slotRepositoryUrl, type SegmentOccupancy } from './session-context';
 import { slotArtifactsRoot } from './stage-evidence';
 import { enabledDestinations } from './telemetry-destinations';
 import { isControlAvailable } from './telemetry-route';
@@ -286,7 +286,7 @@ function occupancyOf(session: SlotSessionLike, harnessRoot: string): SegmentOccu
     attemptId: session.attemptId,
     slotId: String(session.agentId),
     branch: session.branch,
-    repositoryUrl: repositoryUrlOf(session.workDir ?? harnessRoot),
+    repositoryUrl: slotRepositoryUrl(session.workDir, harnessRoot),
   };
 }
 

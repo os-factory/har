@@ -1,0 +1,6 @@
+{
+  "name": "har-fixture-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fixture project for the control harness fixture-e2e stage"
+}

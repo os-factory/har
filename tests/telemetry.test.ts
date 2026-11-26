@@ -28,6 +28,7 @@ import {
   inspectTelemetryDrift,
   needsPackageInstall,
   OTEL_HOOKS_PACKAGE,
+  OTEL_HOOKS_VERSION,
   pruneLegacyCursorHookEvents,
   recordInstalledSpec,
   rewriteHookCommandsToWrapper,
@@ -40,17 +41,22 @@ describe('otel-hook package pin', () => {
     expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.12.0');
   });
 
-  it('is not older than the version Mission Control derives otel-hook ids with', () => {
-    // Mission Control only uses otel-hook's id derivation, unchanged since 0.9.0;
-    // it moves to the pin once that release is published.
+  it('is the release Mission Control depends on, or the one right after it while that is unpublished', () => {
+    // Mission Control derives otel-hook ids with the same package. It pins an
+    // exact, published version; the CLI pin may lead it by one minor until the
+    // release the CLI needs (0.12.0, sessionContext.dir) is on npm.
     const control = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'control', 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>;
     };
-    const parse = (version: string) => version.replace(/^[^0-9]*/, '').split('.').map((part) => Number.parseInt(part, 10));
-    const [controlMajor, controlMinor] = parse(control.dependencies['@osfactory/otel-hook']);
-    const [pinMajor, pinMinor] = parse(OTEL_HOOKS_PACKAGE.slice(OTEL_HOOKS_PACKAGE.lastIndexOf('@') + 1));
-    expect(controlMajor * 1000 + controlMinor).toBeGreaterThanOrEqual(9);
-    expect(controlMajor * 1000 + controlMinor).toBeLessThanOrEqual(pinMajor * 1000 + pinMinor);
+    const controlVersion = control.dependencies['@osfactory/otel-hook'];
+    expect(controlVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    const [controlMajor, controlMinor] = controlVersion.split('.').map(Number);
+    const [pinMajor, pinMinor] = OTEL_HOOKS_VERSION.split('.').map(Number);
+    expect(controlMajor).toBe(pinMajor);
+    expect(pinMinor - controlMinor).toBeGreaterThanOrEqual(0);
+    expect(pinMinor - controlMinor).toBeLessThanOrEqual(1);
+    // ADR 0005 section 6: 0.11.0 or later on both sides.
+    expect(controlMajor * 1000 + controlMinor).toBeGreaterThanOrEqual(11);
   });
 
   describe('HAR_OTEL_HOOKS_PACKAGE override', () => {

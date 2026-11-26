@@ -207,21 +207,27 @@ export async function ingestVerificationSpans(spans: ParsedSpan[]): Promise<Otel
       continue;
     }
     const stageId = text(span.attributes, 'cicd.pipeline.task.name') ?? span.name;
-    const fields = {
+    const described = {
       status: stageStatusOfCicdResult(cicdResult(span, 'cicd.pipeline.task.run.result')),
       kind: text(span.attributes, 'cicd.pipeline.task.type') ?? null,
       addedBy: text(span.attributes, 'factory.stage.added_by') ?? null,
       durationMs: durationMs(span),
-      traceId: span.traceId,
-      spanId: span.spanId,
-      startTime: span.startTime,
-      endTime: span.endTime,
     };
-    await prisma.stageResult.upsert({
-      where: { factoryRunId_stageId: { factoryRunId, stageId } },
-      create: { factoryRunId, stageId, ...fields },
-      update: fields,
-    });
+    const timing = { traceId: span.traceId, spanId: span.spanId, startTime: span.startTime, endTime: span.endTime };
+    const where = { factoryRunId_stageId: { factoryRunId, stageId } };
+    const stored = await prisma.stageResult.findUnique({ where });
+    if (!stored) {
+      await prisma.stageResult.create({ data: { factoryRunId, stageId, ...described, ...timing } });
+    } else {
+      // A StageResult record (ADR 0005; it always stores `artifacts`) describes the stage:
+      // its span only fills what the record left empty. Without a record, the latest span wins.
+      const recordOwned = stored.artifacts != null;
+      const fill: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(described)) {
+        if (!recordOwned || (value != null && (stored as Record<string, unknown>)[key] == null)) fill[key] = value;
+      }
+      await prisma.stageResult.update({ where: { id: stored.id }, data: { ...fill, ...timing } });
+    }
     const run = await prisma.factoryRun.findUnique({ where: { factoryRunId }, select: { id: true, stageIds: true } });
     const ids = Array.isArray(run?.stageIds) ? (run.stageIds as string[]) : [];
     if (run && !ids.includes(stageId)) {
