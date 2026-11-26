@@ -73,6 +73,13 @@ export function resolveRepoFilePath(repoPath: string, repoRelPath: string): stri
   return path.join(path.resolve(repoPath), repoRelPath);
 }
 
+/** Who sees a line in a scope, for install / describe text. */
+export function lineScopeAudience(scope: LineScope): string {
+  return scope === 'personal'
+    ? 'only you — it lives in the gitignored .har/local/ (not your team, not CI)'
+    : 'your team and CI, once you commit it';
+}
+
 /** Repo-relative home of every line in a scope. */
 export function linesDirRel(scope: LineScope): string {
   return scope === 'personal'

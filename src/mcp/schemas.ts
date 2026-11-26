@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LINE_SCOPES } from '../harness/line-scope';
 import {
   EnvironmentStatusSchema,
   HAR_AGENT_SLOT_MIN,
@@ -352,6 +353,10 @@ export const LinePromoteInputSchema = z.object({
 
 export const LineListInputSchema = z.object({
   repo: z.string().default('.'),
+  scope: z
+    .enum(LINE_SCOPES)
+    .optional()
+    .describe('Only team (committed) or personal (gitignored) lines'),
 });
 
 export const LineDescribeInputSchema = z.object({

@@ -12,6 +12,7 @@ import {
   type LineDescription,
 } from '../../core/lines';
 import { divider, error, header, info, success, warn } from '../../utils/logging';
+import { LINE_SCOPES, lineScopeAudience, type LineScope } from '../../harness/line-scope';
 
 function handleLineCreate(argv: {
   id?: string;
@@ -47,10 +48,8 @@ function handleLineCreate(argv: {
     });
 
     divider();
-    success(
-      `Factory line scaffolded: ${result.lineDirRel}/` +
-        (result.scope === 'personal' ? ' (personal — gitignored, not shared with the team or CI)' : ''),
-    );
+    success(`Factory line scaffolded: ${result.lineDirRel}/ [${result.scope}]`);
+    info(`Who sees it: ${lineScopeAudience(result.scope)}`);
     for (const file of result.filesWritten) {
       info(`  + ${file}`);
     }
@@ -90,6 +89,7 @@ function handleLineAdd(argv: {
       spec: argv.spec,
       scope: argv.personal ? 'personal' : 'team',
     });
+    info(`Scope: ${result.scope} — who sees it: ${lineScopeAudience(result.scope)}`);
     divider();
     console.error('');
     console.error('  verificationStages unchanged — line gate stages are opt-in.');
@@ -169,7 +169,7 @@ async function handleLineGate(argv: {
       return finishCommand(result.pass ? 0 : 1);
     }
 
-    header(`har line gate ${result.station} (${result.lineId})`);
+    header(`har line gate ${result.station} (${result.lineId}, ${result.scope})`);
     if (result.skipped) {
       info(result.skipReason ?? 'Gate skipped.');
       for (const stage of result.stages) {
@@ -203,8 +203,12 @@ function firstSentence(text: string): string {
   return (match ? match[1] : text.trim()).replace(/\s+/g, ' ');
 }
 
-function handleLineList(argv: { repo: string; json: boolean }): void {
-  const list = listLines(path.resolve(argv.repo));
+function handleLineList(argv: { repo: string; json: boolean; scope?: string }): Promise<void> | void {
+  if (argv.scope !== undefined && !(LINE_SCOPES as readonly string[]).includes(argv.scope)) {
+    error(`Invalid --scope "${argv.scope}". Use one of: ${LINE_SCOPES.join(', ')}`);
+    return finishCommand(1);
+  }
+  const list = listLines(path.resolve(argv.repo), { scope: argv.scope as LineScope | undefined });
   if (argv.json) {
     console.log(JSON.stringify(list, null, 2));
     return;
@@ -220,7 +224,7 @@ function handleLineList(argv: { repo: string; json: boolean }): void {
         continue;
       }
       const progress = line.allGreen ? 'all stations green' : `next: ${line.nextStationId}`;
-      const scope = line.scope === 'personal' ? '  [personal]' : '';
+      const scope = line.scope ? `  [${line.scope}]` : '';
       console.log(`  ${line.lineId}  ${line.title}${scope}  (${line.stationIds.join(' → ')}; ${progress})`);
       if (line.description) console.log(`      ${firstSentence(line.description)}`);
       if (line.runAll) console.log(`      run every station: ${line.runAll.command}`);
@@ -251,7 +255,7 @@ function handleLineList(argv: { repo: string; json: boolean }): void {
 
 function renderDescription(line: LineDescription): void {
   console.log(`${line.lineId} — ${line.title}`);
-  console.log(`Scope: ${line.scope}${line.scope === 'personal' ? ' (gitignored — yours only)' : ''}`);
+  console.log(`Scope: ${line.scope} — who sees it: ${lineScopeAudience(line.scope)}`);
   console.log(`Program: ${line.programPath}${line.source ? ` (source: ${line.source})` : ''}`);
   if (line.description) {
     console.log('');
@@ -475,8 +479,18 @@ export const lineCommand = {
         (y: Argv) =>
           y
             .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
-            .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' }),
-        (argv) => handleLineList({ repo: argv.repo as string, json: argv.json as boolean }),
+            .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' })
+            .option('scope', {
+              type: 'string',
+              choices: [...LINE_SCOPES],
+              describe: 'Only team (committed) or personal (gitignored) lines',
+            }),
+        (argv) =>
+          handleLineList({
+            repo: argv.repo as string,
+            json: argv.json as boolean,
+            scope: argv.scope as string | undefined,
+          }),
       )
       .command(
         'describe [id]',

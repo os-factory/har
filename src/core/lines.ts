@@ -228,6 +228,8 @@ export interface LineGateStageResult {
 
 export interface RunLineGateResult {
   lineId: string;
+  /** `team` or `personal`. */
+  scope: LineScope;
   station: string;
   /** Cumulative set actually considered, in station order. */
   stages: LineGateStageResult[];
@@ -278,8 +280,9 @@ function resolveLineId(repoPath: string, lineId?: string): string {
 export async function runLineGate(options: RunLineGateOptions): Promise<RunLineGateResult> {
   const repoPath = path.resolve(options.repoPath);
   const lineId = resolveLineId(repoPath, options.lineId);
-  const program = readInstalledLineProgram(repoPath, lineId);
-  if (!program) {
+  const scope = locateInstalledLine(repoPath, lineId);
+  const program = scope ? readInstalledLineProgram(repoPath, lineId, scope) : null;
+  if (!scope || !program) {
     throw new Error(`Line not installed: ${lineId}`);
   }
 
@@ -288,6 +291,7 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
   if (program.gate.optInEnv && !options.force && process.env[program.gate.optInEnv] !== '1') {
     return {
       lineId,
+      scope,
       station: options.station,
       stages: required.map((stage) => ({
         stageId: stage.id,
@@ -351,7 +355,7 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
     }
   }
 
-  return { lineId, station: options.station, stages: results, pass, skipped: false };
+  return { lineId, scope, station: options.station, stages: results, pass, skipped: false };
 }
 
 /** Scaffold a project-owned line at `.har/lines/<id>/`. */
@@ -425,7 +429,7 @@ function lineRunAll(lineId: string, program: LineProgram, slot: GateSlot): LineR
 export interface LineListEntry {
   lineId: string;
   title: string;
-  /** `team` or `personal`; absent when the line is unreadable. */
+  /** `team` or `personal`; absent only for an unreadable line found in neither ledger. */
   scope?: LineScope;
   description?: string;
   stationIds: string[];
@@ -451,8 +455,11 @@ export interface LineList {
   available: AvailableLine[];
 }
 
-function safeLedgerIds(repoPath: string): string[] {
-  return readAllLineLedgerEntries(repoPath).map((l) => l.id);
+export interface ListLinesOptions {
+  /** Run commands target this slot. */
+  agentId?: number;
+  /** Only lines in this scope (bundled lines stay available: they install in either). */
+  scope?: LineScope;
 }
 
 /**
@@ -461,10 +468,17 @@ function safeLedgerIds(repoPath: string): string[] {
  * `unreadable` so one bad file cannot hide the others. With `agentId`, run
  * commands target that slot.
  */
-export function listLines(repoPath: string, options: { agentId?: number } = {}): LineList {
+export function listLines(repoPath: string, options: ListLinesOptions = {}): LineList {
   const resolved = path.resolve(repoPath);
   const registry = readStageRegistry(resolved);
-  const ledgerIds = new Set(safeLedgerIds(resolved));
+  const ledgerEntries = readAllLineLedgerEntries(resolved);
+  const ledgerIds = new Set(ledgerEntries.map((l) => l.id));
+  const ledgerScope = (lineId: string): LineScope | undefined =>
+    ledgerEntries.find((l) => l.id === lineId)?.scope;
+  const unreadable = (lineId: string, reason: string): LineListEntry => ({
+    ...unreadableEntry(lineId, reason),
+    ...(ledgerScope(lineId) ? { scope: ledgerScope(lineId) } : {}),
+  });
   const personalLocalIds = new Set(listLocalLineIds(resolved, 'personal'));
   const localIds = [...listLocalLineIds(resolved, 'team'), ...personalLocalIds];
   const installed: LineListEntry[] = [];
@@ -475,12 +489,12 @@ export function listLines(repoPath: string, options: { agentId?: number } = {}):
     try {
       program = readInstalledLineProgram(resolved, lineId);
     } catch (err: unknown) {
-      installed.push(unreadableEntry(lineId, `cannot read line.json: ${(err as Error).message}`));
+      installed.push(unreadable(lineId, `cannot read line.json: ${(err as Error).message}`));
       continue;
     }
     if (!program) {
       if (ledgerIds.has(lineId)) {
-        installed.push(unreadableEntry(lineId, 'line.json is missing or invalid'));
+        installed.push(unreadable(lineId, 'line.json is missing or invalid'));
       } else {
         available.push({
           lineId,
@@ -494,7 +508,7 @@ export function listLines(repoPath: string, options: { agentId?: number } = {}):
     try {
       nextStationId = getLineStatus(resolved, lineId).nextStationId;
     } catch (err: unknown) {
-      installed.push(unreadableEntry(lineId, (err as Error).message));
+      installed.push(unreadable(lineId, (err as Error).message));
       continue;
     }
     installed.push({
@@ -515,7 +529,12 @@ export function listLines(repoPath: string, options: { agentId?: number } = {}):
   for (const lineId of listBundledLineIds()) {
     if (!known.has(lineId)) available.push({ lineId, source: 'bundled' });
   }
-  return { installed, available };
+  if (!options.scope) return { installed, available };
+  // An unreadable line in neither ledger has no known scope: keep it visible.
+  return {
+    installed: installed.filter((l) => l.scope === options.scope || (l.unreadable && !l.scope)),
+    available: available.filter((l) => l.source === 'bundled' || l.scope === options.scope),
+  };
 }
 
 function unreadableEntry(lineId: string, reason: string): LineListEntry {

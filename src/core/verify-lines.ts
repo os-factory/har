@@ -1,3 +1,4 @@
+import type { LineScope } from '../harness/line-scope';
 import { listLines, type LineRunAll } from './lines';
 
 /**
@@ -13,6 +14,8 @@ import { listLines, type LineRunAll } from './lines';
 export interface VerifyNextStepLine {
   lineId: string;
   title: string;
+  /** `team` or `personal` — a personal line is only on this machine. */
+  scope: LineScope;
   stationIds: string[];
   /** First station that is not green; undefined when every station is green. */
   nextStationId?: string;
@@ -34,12 +37,13 @@ export function verifyLinesNextStep(repoPath: string, agentId: number): VerifyNe
     return [];
   }
   return installed.flatMap((line) =>
-    line.unreadable || !line.runAll
+    line.unreadable || !line.runAll || !line.scope
       ? []
       : [
           {
             lineId: line.lineId,
             title: line.title,
+            scope: line.scope,
             stationIds: line.stationIds,
             nextStationId: line.nextStationId,
             allGreen: line.allGreen,
