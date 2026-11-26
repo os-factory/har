@@ -206,6 +206,104 @@ Receivers move to v2 without breaking 1.x CLIs.
 - The CLI 2.0 speaks only v2. A receiver without v2 is reported by doctor, not
   silently skipped.
 
+### 8. Decisions made during implementation
+
+The first implementation (the CLI, otel-hook, Mission Control, and a hosted
+receiver run against the same contract tests) settled the points this ADR left
+open. Where the ADR was silent, Mission Control's behavior decided.
+
+**Keys and records**
+
+- Work ids are scoped to a repository. `WorkUnit` and `Attempt` carry
+  `repositoryUrl` (credential-free, `null` without a remote, never a local
+  path). The `WorkUnit` key is (repository, `workUnitId`); receivers normalize
+  the URL to its lowercased host and path.
+- Receivers join records by natural keys, with no foreign keys between them, so
+  a batch may arrive in any order. A receiver keeps an attempt's repository when
+  a later record of the same attempt has none.
+- `FactoryRun.stages` is the ordered list of stage ids; status and evidence live
+  in `StageResult`. `policy` is `{ id, digest?, required[] }`. A `FactoryRun`
+  holds the latest verify of its tree; session refs accumulate across verifies.
+- A `StageResult` record wins over the verification span for the same stage. A
+  verification trace that arrives after its records joins the existing factory
+  run.
+- `SessionSegment` carries `attemptId`, equal to `attributes["factory.attempt.id"]`.
+  Its key is (agent tool, session id, `from`). Segments are half-open,
+  `[from, to)`, ordered and non-overlapping, and only the last one may be open.
+- The CLI sends no `EvidenceBlob` or `Attestation` records. A receiver derives
+  them from evidence uploads and `v2/proofs`.
+- Receivers stamp `CommitBinding` and `WorkUnit` with the time they first saw
+  them, because the records carry none.
+
+**Wire format**
+
+- Evidence digests are bare 64-character hex (they appear in URL paths);
+  statement digests keep the `sha256:` prefix.
+- `uploadUrl` may be absolute or relative to the ingest base. Uploads go through
+  the receiver, not a presigned storage URL, because the receiver must reject a
+  wrong digest (400, 409 or 422; the digest stays missing).
+- An invalid body gets 400 or 422. A receiver-side failure gets 5xx, which the
+  CLI retries.
+- The proofs body is `{ envelopes: [] }`. An `Attestation` whose envelope does not
+  hash to its digest rejects the whole batch with 422.
+- Capabilities are `{ contractVersion: "2", signals, recordTypes, proofs,
+  evidence, maxEvidenceBytes? }`. Unknown fields are ignored everywhere.
+- Read APIs (work unit view, factory run, proof by digest, evidence by digest)
+  are not part of the ingest contract. Mission Control serves them under
+  `/api/v2/`, and each receiver picks its own paths and authentication.
+
+**Evidence**
+
+- A stage log file is at most 1 MiB **including** its header line,
+  `[har] <N> bytes dropped, last <K> bytes kept`. Output of exactly 1 MiB is
+  kept whole, with no header. The cut never starts inside a UTF-8 sequence.
+- A file belongs to a stage when it is new or changed under `.har/artifacts/`
+  between snapshots taken just before and just after the stage.
+- In the predicate, `stages[].artifacts[]` is `{ name, digest: { sha256 } }`.
+- The CLI copies evidence bytes into each destination's queue at verify time,
+  so teardown never loses them. Evidence is sent only after a passing full
+  verify. An expired blob counts as missing and can be uploaded again.
+
+**Destinations and stamping**
+
+- Each destination keeps its own retry queue. 408, 429, 5xx, network errors,
+  401/403 and 404/405/501 are retried, so nothing is lost before a receiver is
+  upgraded. Other 4xx responses go to a dead-letter directory. Entries expire
+  after 14 days.
+- Work identity (`factory.attempt.id`, `factory.work_unit.*`, `factory.slot.id`)
+  no longer goes in the agent's environment. Only the session context stamps it,
+  so records outside a segment carry none. `factory.local.*` is stripped for
+  every destination unless it opts in.
+- otel-hook trusts a segment's `to` and knows nothing about attempts. The CLI
+  closes an attempt's segments **before** it records the attempt's end, and
+  repairs stale segments on its next write.
+- `har env work-bind` with the slot's own work unit opens a segment (reason
+  `join`) for the calling session, so a second or resumed session can join a
+  running attempt.
+- otel-hook has one global `includeSessionId` and no per-destination provider
+  filter. HAR writes the AND of the per-destination settings, and Mission
+  Control drops Claude Code's otel-hook metrics itself.
+- In otel-hook, the worktree a tool event targets keeps its own
+  `vcs.ref.head.name` on that span. The session context sets only the work
+  identity.
+- Git notes are written only with a `git-notes` destination (or an explicit
+  `HAR_FACTORY_PROOF=notes…`). The attestation is still built and sent to
+  receivers.
+
+**Usage**
+
+- A receiver stores the latest value of each OTLP metric series, keyed by
+  sha256 of (metric name, sorted resource attributes, sorted point attributes).
+  A late, older point never replaces a newer one, and delta series are stored
+  the same way.
+- Claude Code usage comes only from its native `api_request` events. Every
+  receiver ignores Claude Code's otel-hook generations for usage. A receiver that
+  does not get Claude Code's native telemetry books no Claude Code usage until
+  os-factory/otel-hook#68.
+- Every priced row records `costSource` (`reported` or `estimated`) and
+  `pricedWith` (`genai-prices@<version>`). Committed test vectors
+  (`packages/schemas/pricing-vectors.json`) keep receivers in agreement.
+
 ## Consequences
 
 Positive:
