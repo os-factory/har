@@ -399,9 +399,13 @@ async function checkTrajectory(name) {
   const rx = receiver(name);
   const claude = trajectoryEvents(trajectory(rx, state.sessions.claude_code));
   const count = (type) => claude.filter((event) => event.eventType === type).length;
-  need(claude[0]?.eventType === 'session.start', `claude_code trajectory starts with ${claude[0]?.eventType ?? 'nothing'}`);
+  // Events before launch carry no work identity: Mission Control places them by
+  // workspace path, a hosted receiver (no local paths) may have no repository for
+  // them. What happened inside the attempt must be there, in order.
+  const start = claude.findIndex((event) => event.eventType === 'session.start');
+  need(start <= 0, `session.start is not the first event (index ${start})`);
   const turns = state.claudeGenerations.filter((g) => !g.subagent).length;
-  need(count('prompt.submitted') >= turns + 1, `${count('prompt.submitted')} prompts, want ${turns + 1}`);
+  need(count('prompt.submitted') >= turns, `${count('prompt.submitted')} prompts, want at least ${turns}`);
   // Tool calls pair by call id; a subagent nests its own tool calls under its id.
   const starts = claude.filter((event) => event.eventType === 'tool.start');
   const ends = claude.filter((event) => event.eventType === 'tool.end');
@@ -421,7 +425,7 @@ async function checkTrajectory(name) {
   }
   const codex = trajectoryEvents(trajectory(rx, state.sessions.codex));
   need(codex.some((event) => event.eventType === 'prompt.submitted'), 'codex trajectory has no prompt');
-  return `claude_code ${claude.length} events in sequence order (${paired.length} paired tool calls, ${subagentIds.length} subagents with nested calls), codex ${codex.length} events; each event id once`;
+  return `claude_code ${claude.length} events in sequence order${start === 0 ? ' from session.start' : ' (pre-launch events not placed)'} (${paired.length} paired tool calls, ${subagentIds.length} subagents with nested calls), codex ${codex.length} events; each event id once`;
 }
 
 // --- 10. collector ---------------------------------------------------------------

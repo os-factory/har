@@ -365,6 +365,31 @@ function freeBackupPath(file) {
   return `${base}-${new Date().toISOString().replace(/[:.]/g, '-')}`;
 }
 
+/**
+ * Fill where a factory run happened from its attempt (as `factory-run-placement.ts`
+ * does at ingest), for v2 runs stored before Mission Control derived it: the
+ * occupancy `attempt::<id>`, the attempt's slot number, the live slot's work dir.
+ * Only empty columns are filled, so it is idempotent.
+ */
+async function placeFactoryRuns(file) {
+  const PrismaClient = loadPrismaClient();
+  const db = new PrismaClient({ datasourceUrl: `file:${file}?connection_limit=1` });
+  try {
+    const placed = await db.$executeRawUnsafe(`UPDATE "FactoryRun" SET "occupancyKey" = 'attempt::' || "attemptId"
+      WHERE "attemptId" IS NOT NULL AND "occupancyKey" IS NULL`);
+    await db.$executeRawUnsafe(`UPDATE "FactoryRun" SET "agentId" = (
+        SELECT COALESCE(a."agentId", (SELECT s."slotId" FROM "AgentSlot" s WHERE s."occupancyKey" = 'attempt::' || "FactoryRun"."attemptId" LIMIT 1))
+        FROM "Attempt" a WHERE a."attemptId" = "FactoryRun"."attemptId")
+      WHERE "attemptId" IS NOT NULL AND "agentId" IS NULL`);
+    await db.$executeRawUnsafe(`UPDATE "FactoryRun" SET "workDir" = (
+        SELECT COALESCE(s."workDir", s."worktreePath") FROM "AgentSlot" s WHERE s."occupancyKey" = 'attempt::' || "FactoryRun"."attemptId" LIMIT 1)
+      WHERE "attemptId" IS NOT NULL AND "workDir" IS NULL`);
+    if (placed > 0) log(`placed ${placed} factory runs by their attempt`);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 /** Migrate the database at `file` (see the header). Returns what was done. */
 async function migrateDatabase(file, pushArgs = []) {
   if (!fs.existsSync(file) || fs.statSync(file).size === 0) {
@@ -375,6 +400,7 @@ async function migrateDatabase(file, pushArgs = []) {
   if (legacy.length === 0) {
     await dropRetiredTables(file);
     dbPush(file, pushArgs);
+    await placeFactoryRuns(file);
     return { migrated: false, backup: null };
   }
   const backup = freeBackupPath(file);
@@ -384,6 +410,7 @@ async function migrateDatabase(file, pushArgs = []) {
   for (const leftover of [next, `${next}-journal`, `${next}-wal`, `${next}-shm`]) fs.rmSync(leftover, { force: true });
   dbPush(next, pushArgs);
   await copyFromBackup(next, backup);
+  await placeFactoryRuns(next);
   fs.renameSync(next, file);
   log('v2 migration done');
   return { migrated: true, backup };

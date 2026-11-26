@@ -1,4 +1,5 @@
 import type { AgentSessionUsage, AgentSlot, CommitBinding, Run } from '@prisma/client';
+import { listRuns } from '@/server/run-history';
 import { prisma } from '@/lib/db';
 import {
   buildTimelineRows,
@@ -179,11 +180,7 @@ export async function getSlotTimeline(repositoryId: string, slot: AgentSlot): Pr
   };
 
   const [runs, snapshots, usage, streams] = await Promise.all([
-    prisma.run.findMany({
-      where: { repositoryId, agentId: slot.slotId },
-      orderBy: { startedAt: 'desc' },
-      take: RUN_LIMIT,
-    }),
+    listRuns({ repositoryIds: [repositoryId], agentId: slot.slotId, take: RUN_LIMIT }),
     prisma.factoryRun
       .findMany({
         where: { repositoryId, agentId: slot.slotId, ...VERIFIED_RUN },

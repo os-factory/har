@@ -7,12 +7,14 @@ import {
   type UnregisterRepoResult,
 } from '@har/schemas';
 import { Prisma } from '@prisma/client';
+import { listRuns } from '@/server/run-history';
 import { prisma } from '@/lib/db';
 import { canonicalizeControlRepoPath } from '@/server/git-repo-path';
 import { buildAgentSlotSyncFields } from '@/server/slot-sync-fields';
 import { isNewOccupancy, shouldApplySlotSync, type OccupancyCandidate } from '@/server/occupancy';
 import { cleanupSessionWorktrees } from '@/server/worktree-cleanup';
 import { claimLateSlotEvidenceSafely } from '@/server/late-slot-evidence';
+import { placeFactoryRunsOfAttemptSafely } from '@/server/factory-run-placement';
 
 function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as object;
@@ -149,20 +151,20 @@ export async function listRepositories() {
   const repos = await prisma.repository.findMany({
     orderBy: { updatedAt: 'desc' },
     include: {
-      _count: { select: { runs: true, slots: true } },
+      // 1.x runs plus v2 factory runs not converted from one of them.
+      _count: { select: { runs: true, slots: true, factoryRuns: { where: { runId: null } } } },
     },
   });
   return pruneWorktreeRepositoryDuplicates(repos);
 }
 
 export async function getRepository(id: string) {
-  return prisma.repository.findUnique({
+  const repository = await prisma.repository.findUnique({
     where: { id },
-    include: {
-      slots: { orderBy: { slotId: 'asc' } },
-      runs: { orderBy: { startedAt: 'desc' }, take: 20 },
-    },
+    include: { slots: { orderBy: { slotId: 'asc' } } },
   });
+  if (!repository) return null;
+  return { ...repository, runs: await listRuns({ repositoryIds: [id], take: 20 }) };
 }
 
 export async function listActiveWorktrees() {
@@ -238,6 +240,8 @@ export async function syncSlots(repositoryId: string, input: unknown) {
         since: fields.sessionCreatedAt,
       });
     }
+    // The slot view is where a v2 factory run's work dir comes from.
+    await placeFactoryRunsOfAttemptSafely(fields.attemptId);
     synced++;
   }
 
@@ -254,11 +258,7 @@ export async function getRepositoryHealth(repositoryId: string) {
   const repo = await prisma.repository.findUnique({ where: { id: repositoryId } });
   if (!repo) return null;
 
-  const recentRuns = await prisma.run.findMany({
-    where: { repositoryId },
-    orderBy: { startedAt: 'desc' },
-    take: 100,
-  });
+  const recentRuns = await listRuns({ repositoryIds: [repositoryId], take: 100 });
 
   const verifyRuns = recentRuns.filter((r) => r.stageId === 'verify');
   const passCount = verifyRuns.filter((r) => r.status === 'pass').length;
@@ -290,14 +290,7 @@ export async function getVerificationTrend(repositoryId: string, days = 14) {
   const since = new Date();
   since.setDate(since.getDate() - days);
 
-  const runs = await prisma.run.findMany({
-    where: {
-      repositoryId,
-      stageId: 'verify',
-      startedAt: { gte: since },
-    },
-    orderBy: { startedAt: 'asc' },
-  });
+  const runs = await listRuns({ repositoryIds: [repositoryId], stageIds: ['verify'], since, order: 'asc', take: 1000 });
 
   return runs.map((r) => ({
     date: r.startedAt.toISOString().slice(0, 10),

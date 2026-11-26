@@ -173,6 +173,28 @@ describe('scripts/migrate-db.cjs: 1.x database to the v2 data model', () => {
     expect(again).toEqual({ migrated: false, backup: null });
   }, 60_000);
 
+  it('places a v2 factory run stored without slot or occupancy by its attempt and live slot', async () => {
+    const db = clientFor(file);
+    try {
+      await db.$executeRawUnsafe(`INSERT INTO "Attempt" (id, attemptId, repositoryKey, repositoryId, slotId, agentId, startedAt, createdAt, updatedAt)
+        VALUES ('at-v2', 'attempt-v2', 'repo:repo-1', 'repo-1', '4', 4, ${T(20)}, ${T(20)}, ${T(20)})`);
+      await db.$executeRawUnsafe(`INSERT INTO "AgentSlot" (id, repositoryId, slotId, workDir, occupancyKey, attemptId, updatedAt)
+        VALUES ('slot-4', 'repo-1', 4, '/wt/app-4', 'attempt::attempt-v2', 'attempt-v2', ${T(20)})`);
+      await db.$executeRawUnsafe(`INSERT INTO "FactoryRun" (id, factoryRunId, attemptId, repositoryId, tree, startedAt, createdAt, updatedAt)
+        VALUES ('fr-v2', 'run-v2', 'attempt-v2', 'repo-1', '${TREE}', ${T(21)}, ${T(21)}, ${T(21)})`);
+    } finally {
+      await db.$disconnect();
+    }
+    await migrate.migrateDatabase(file, ['--skip-generate']);
+    const after = clientFor(file);
+    try {
+      const run = await after.factoryRun.findUnique({ where: { factoryRunId: 'run-v2' } });
+      expect(run).toMatchObject({ agentId: 4, occupancyKey: 'attempt::attempt-v2', workDir: '/wt/app-4' });
+    } finally {
+      await after.$disconnect();
+    }
+  }, 60_000);
+
   it('drops the retired CloudConfig table even when it holds a row', async () => {
     const db = clientFor(file);
     try {

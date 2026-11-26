@@ -1,3 +1,4 @@
+import { placeFactoryRunsOfAttemptSafely } from '@/server/factory-run-placement';
 import { createHash } from 'crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import {
@@ -186,6 +187,8 @@ async function writeAttempt(db: Db, record: IngestV2RecordOf<'Attempt'>): Promis
       }),
     data,
   );
+  // Factory runs that arrived before their attempt learn where they ran.
+  await placeFactoryRunsOfAttemptSafely(record.attemptId, db);
   // A work unit seen before its first attempt takes the attempt's registered repository.
   if (record.workUnitId && status !== 'unchanged') {
     const attempt = await attemptRepository(db, record.attemptId);
@@ -275,7 +278,7 @@ async function writeFactoryRun(db: Db, record: IngestV2RecordOf<'FactoryRun'>): 
     stageIds: json(record.stages),
     attestationDigest: proof?.statementDigest ?? existing?.attestationDigest ?? null,
   };
-  return upsertBy(
+  const status = await upsertBy(
     async () => existing,
     () =>
       db.factoryRun.create({
@@ -288,6 +291,8 @@ async function writeFactoryRun(db: Db, record: IngestV2RecordOf<'FactoryRun'>): 
       }),
     data,
   );
+  await placeFactoryRunsOfAttemptSafely(record.attemptId, db);
+  return status;
 }
 
 async function writeStageResult(db: Db, record: IngestV2RecordOf<'StageResult'>): Promise<WriteStatus> {

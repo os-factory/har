@@ -38,7 +38,8 @@ export function changeBatchView(run: FactoryRun): ChangeBatchView {
     agentId: run.agentId,
     status: run.status ?? run.verdict ?? 'unknown',
     full: run.full,
-    runId: run.runId,
+    // A 1.x batch names the verify command's run; a v2 factory run is its own run (`run-history.ts`).
+    runId: run.runId ?? run.factoryRunId,
     changedFiles: run.changedFiles,
     commitSha: run.commitSha,
     committedAt: run.committedAt,

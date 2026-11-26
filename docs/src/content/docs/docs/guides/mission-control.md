@@ -80,7 +80,13 @@ sends: they are local to Mission Control and outside the ingest contract.
 Everything else — runs, work units, attempts, factory runs and stages, commit
 bindings, proofs, evidence, usage and the trajectory — reaches Mission Control
 like any other receiver, as ingest v2 records from the CLI and OTLP from
-otel-hook (ADR 0005 section 7).
+otel-hook (ADR 0005 section 7). Slot "last verify", History, the verification
+trend, stage badges and factory lines read each factory run as a verify run, with
+its stage results; the slot, occupancy and work dir of a factory run follow from its
+attempt and the live slot view. Runs a 1.x CLI synced stay in a migrated database
+and still display next to them. A 2.0 factory run records no list of changed files:
+the diff view computes the diff from Git, from the verified tree and the head
+commit its verification span reports.
 
 Sync also runs automatically at every activity edge — login, launch, verify,
 commit, complete — so registered repositories stay current without a manual

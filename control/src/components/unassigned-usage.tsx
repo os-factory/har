@@ -15,6 +15,9 @@ export interface UnassignedUsageRow {
   lastSeenAt: Date;
   /** Repository name, on cross-repo pages. */
   repository?: string;
+  /** A non-slot worktree the session was bound to: one session can have a row for each. */
+  workDir?: string | null;
+  branch?: string | null;
 }
 
 /**
@@ -56,7 +59,7 @@ export function UnassignedUsage({ rows }: { rows: UnassignedUsageRow[] }) {
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={`${row.repository ?? ''}:${row.agentTool}:${row.sessionId}`}>
+              <TableRow key={`${row.repository ?? ''}:${row.agentTool}:${row.sessionId}:${row.workDir ?? ''}:${row.branch ?? ''}`}>
                 {showRepository && <TableCell>{row.repository}</TableCell>}
                 <TableCell>{formatAgentToolLabel(row.agentTool)}</TableCell>
                 <TableCell className="font-mono text-xs" title={row.sessionId}>

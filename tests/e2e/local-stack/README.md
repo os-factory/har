@@ -72,7 +72,7 @@ receiver a line is about.
 | 10 | The Collector's files hold stamped spans, logs and metrics, and no `factory.local.*` key |
 | 11 | With a `git-notes` destination, `git factory verify <commit> --min-level L1` passes |
 | 12 | HAR 1.x (`@osfactory/har@latest`) syncs to the hosted receiver's v1 endpoint; replies carry `Deprecation`, `Sunset` and `Link` |
-| 13 | Trajectory built from otel-hook's log records: the Claude Code session starts with `session.start`, every event id is stored once, no two events share a sequence, tool calls pair by call id, each subagent has a start and an end with its tool calls nested under `otelhook.subagent.id`; the Codex session has its prompts. `SKIP` for a receiver whose adapter has no `trajectory` reads |
+| 13 | Trajectory built from otel-hook's log records: `session.start` first when present (a receiver without local paths may not place the events before launch, which carry no work identity), every event id is stored once, no two events share a sequence, tool calls pair by call id, each subagent has a start and an end with its tool calls nested under `otelhook.subagent.id`; the Codex session has its prompts. `SKIP` for a receiver whose adapter has no `trajectory` reads |
 
 ## Running it
 

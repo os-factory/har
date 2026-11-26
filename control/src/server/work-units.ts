@@ -1,4 +1,5 @@
 import { Prisma, type Attempt, type WorkUnit } from '@prisma/client';
+import { listRuns } from '@/server/run-history';
 import { prisma } from '@/lib/db';
 import { attributeWorkUnitUsage } from '@/server/work-unit-usage';
 import { changeBatchView } from '@/server/change-batches';
@@ -27,11 +28,7 @@ async function factoryWorkUnit(unit: WorkUnit) {
       where: { repositoryId: { in: repositoryIds }, workUnitId: unit.workUnitId },
       orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
     }),
-    prisma.run.findMany({
-      where: { repositoryId: { in: repositoryIds }, workUnitId: unit.workUnitId },
-      orderBy: { startedAt: 'desc' },
-      take: 100,
-    }),
+    listRuns({ repositoryIds, workUnitId: unit.workUnitId, take: 100 }),
     prisma.factoryRun.findMany({
       where: {
         OR: [

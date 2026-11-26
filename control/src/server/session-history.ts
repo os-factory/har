@@ -5,6 +5,7 @@ import {
   type HistoryCommitBinding,
   type HistorySnapshot,
 } from '@har/schemas';
+import { listRuns } from '@/server/run-history';
 import { prisma } from '@/lib/db';
 import type { SessionHistoryExplanation, SessionHistoryView } from '@/lib/session-history-view';
 import { listChangeBatches } from '@/server/change-batches';
@@ -103,7 +104,7 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
   // repository's latest run, which may belong to another slot or branch.
   const runIds = [...new Set(graph.nodes.map((node) => node.runId).filter((id): id is string => Boolean(id)))];
   const runs = runIds.length
-    ? await prisma.run.findMany({ where: { repositoryId, runId: { in: runIds } }, select: { runId: true, result: true } })
+    ? await listRuns({ repositoryIds: [repositoryId], runIds, take: runIds.length })
     : [];
   const stagesByRun = new Map<string, SessionHistoryStageBadge[]>();
   for (const run of runs) {

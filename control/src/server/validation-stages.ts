@@ -5,6 +5,7 @@ import {
   type HarnessVerificationResult,
 } from '@har/schemas';
 import { z } from 'zod';
+import { listRuns } from '@/server/run-history';
 import { prisma } from '@/lib/db';
 
 export interface ValidationStageStatus {
@@ -136,16 +137,14 @@ export async function getValidationStages(
       : [],
   );
 
-  const verifyRuns = await prisma.run.findMany({
-    where: {
-      repositoryId,
-      stageId: 'verify',
-      ...(options?.agentId != null ? { agentId: options.agentId } : {}),
-      ...(options?.since ? { startedAt: { gte: options.since } } : {}),
-      ...(options?.workDir ? { workDir: options.workDir } : {}),
-      ...(options?.runIds ? { runId: { in: options.runIds } } : {}),
-    },
-    orderBy: { startedAt: 'desc' },
+  // 1.x runs and v2 factory runs with their stage results (`run-history.ts`).
+  const verifyRuns = await listRuns({
+    repositoryIds: [repositoryId],
+    stageIds: ['verify'],
+    ...(options?.agentId != null ? { agentId: options.agentId } : {}),
+    ...(options?.since ? { since: options.since } : {}),
+    ...(options?.workDir ? { workDir: options.workDir } : {}),
+    ...(options?.runIds ? { runIds: options.runIds } : {}),
     take: 50,
   });
 
