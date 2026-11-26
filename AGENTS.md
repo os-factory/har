@@ -157,7 +157,7 @@ These are non-negotiable. Do not introduce imports that violate them.
 | Files copied into target `.har/` | `src/templates/har-boilerplate/` |
 | Optional verification plugins | `src/templates/plugins/` (applied via `har env add-plugin`) |
 | Factory line schemas (program + bundle manifest) | `packages/schemas/src/line.ts` |
-| Line apply / scaffold / ledger | `src/harness/lines.ts`, `line-create.ts`, `line-ledger.ts` |
+| Line apply / scaffold / ledger / promote | `src/harness/lines.ts`, `line-create.ts`, `line-ledger.ts`, `line-promote.ts` |
 | Line status + cumulative gate orchestration | `src/core/lines.ts` |
 | Bundle install channels shared by plugins and lines | `src/harness/bundle-resolve.ts` |
 | Bundled example line (seed for `os-factory/har-line`) | `src/templates/lines/example-line/` |
@@ -208,7 +208,7 @@ First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
 | doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
 | complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
 | runs / work links / work binding | `har env runs list\|get`, `work-link`, `work-bind` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link`, `har_bind_work_unit` |
-| factory lines | `har line create\|add\|list\|describe\|gate` | `har_line_create`, `har_add_line`, `har_line_list`, `har_line_describe`, `har_run_line_gate` |
+| factory lines | `har line create\|add\|promote\|list\|describe\|gate` | `har_line_create`, `har_add_line`, `har_line_promote`, `har_line_list`, `har_line_describe`, `har_run_line_gate` |
 | Mission Control | `har control up` | `har_control_up` |
 
 Intentional holes (human-only, no MCP tool):

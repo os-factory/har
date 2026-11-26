@@ -10,6 +10,7 @@ import {
 } from '../harness/lines';
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
 import { readAllLineLedgerEntries, readLineLedger } from '../harness/line-ledger';
+import { promoteLine as promoteLineInRepo, type PromoteLineResult } from '../harness/line-promote';
 import { listBundledLineIds, listLocalLineIds } from '../harness/line-resolve';
 import { LINE_SCOPES, type LineScope } from '../harness/line-scope';
 import { readStageRegistry, stageRequiresAgentId } from '../harness/stages';
@@ -369,6 +370,17 @@ export function addLine(
 ): ApplyLineResult {
   return applyLine(repoPath, spec, options);
 }
+
+/**
+ * Share a personal line with the team: move it from `.har/local/` into the
+ * committed `.har/lines/`, `.har/stages.json` and `.har/lines.json`. One way
+ * only — there is no demote.
+ */
+export function promoteLine(repoPath: string, lineId: string): PromoteLineResult {
+  return promoteLineInRepo(repoPath, lineId);
+}
+
+export type { PromoteLineResult };
 
 /** How to run every station of a line at once: its last station's cumulative gate. */
 export interface LineRunAll {
