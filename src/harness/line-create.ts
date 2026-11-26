@@ -3,6 +3,7 @@ import * as path from 'path';
 import { resolveTemplatesDir } from '../utils/paths';
 import { harnessExists } from './parser';
 import { ensureHarLocalIgnored, linesDirRel, scopeRoot, type LineScope } from './line-scope';
+import { lineAdaptationPromptFile } from './line-prompt';
 import { installedLineScopes } from './lines';
 import {
   LINE_BUNDLE_KIND,
@@ -196,7 +197,7 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
         __STAGE_DESCRIPTION__: `Line-owned gate for ${id} (not on verify)`,
       },
     );
-    write(`stages/${gateStageId}.sh`, stageScript, true);
+    write(`stages/${gateStageId}.sh`, scopeNeutralScript(stageScript, gateStageId), true);
   }
 
   write('README.md', renderLineReadme(id, title, stationIds, gateStageId, withGateStage, scope));
@@ -213,10 +214,23 @@ export function createLine(repoPath: string, options: CreateLineOptions): Create
         ? [`Edit ${lineDirRel}/stages/${gateStageId}.sh — replace the TODO with the real gate`]
         : []),
       `Install it: har line add ${id}${personalFlag}   (re-run with --force after changes)`,
-      `Installing writes .har/ADAPT-PROMPT-line-${id}.md — a ready adaptation prompt for your coding agent`,
+      `Installing writes ${scope === 'personal' ? '.har/local/' : '.har/'}${lineAdaptationPromptFile(id)} — a ready adaptation prompt for your coding agent`,
       'Publishing later (npm/git) needs zero format changes — see the README',
     ],
   };
+}
+
+/**
+ * The gate script is bundle content: the same file installs to `.har/stages/`
+ * (team) or `.har/local/stages/` (personal) and may be promoted later, so it
+ * must not name either path. The TODO reports the path it actually ran from.
+ */
+function scopeNeutralScript(script: string, stageId: string): string {
+  return script
+    .split(`# Usage: ./.har/stages/${stageId}.sh`)
+    .join(`# Installed as .har/stages/${stageId}.sh (team) or .har/local/stages/${stageId}.sh (personal).\n# Usage: ${stageId}.sh`)
+    .split(`echo "TODO: implement .har/stages/${stageId}.sh"`)
+    .join(`echo "TODO: implement \${BASH_SOURCE[0]}"`);
 }
 
 /** The scaffolded README's personal-scope note (`har line promote` strips it). */

@@ -136,6 +136,30 @@ describe('line scope in every output (BE-3802)', () => {
     expect(applyLine(teamRepo, 'example-line').nextSteps.join('\n')).toContain('Edit .har/stages/example-gate.sh');
   });
 
+  it("create's next steps and gate script name the right paths for each scope", () => {
+    const repo = makeTempRepo('har-scope-create-text');
+    const personal = createLine(repo, { id: 'mine', scope: 'personal' });
+    expect(personal.nextSteps.join('\n')).toContain('Installing writes .har/local/ADAPT-PROMPT-line-mine.md');
+    const team = createLine(repo, { id: 'ours' });
+    expect(team.nextSteps.join('\n')).toContain('Installing writes .har/ADAPT-PROMPT-line-ours.md');
+
+    // The script is bundle content: it names neither home as *the* path…
+    const script = fs.readFileSync(path.join(repo, '.har/local/lines/mine/stages/mine-gate.sh'), 'utf8');
+    expect(script).not.toContain('Usage: ./.har/stages/');
+    expect(script).not.toContain('TODO: implement .har/stages/');
+    expect(script).toContain('.har/local/stages/mine-gate.sh (personal)');
+
+    // …and once installed as personal, its TODO reports where it really is.
+    applyLine(repo, 'mine', { scope: 'personal' });
+    const installed = path.join(repo, '.har/local/stages/mine-gate.sh');
+    const run = spawnSync('bash', [installed, '1'], {
+      encoding: 'utf8',
+      env: { ...process.env, AGENT_ID: '1', ENV_FILE: '/dev/null', WORK_DIR: repo },
+    });
+    expect(run.status).not.toBe(0);
+    expect(run.stdout).toContain(`TODO: implement ${installed}`);
+  });
+
   it('says who sees a line in each scope', () => {
     expect(lineScopeAudience('personal')).toMatch(/only you/);
     expect(lineScopeAudience('team')).toMatch(/team and CI/);
