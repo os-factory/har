@@ -140,8 +140,9 @@ database. `docker-compose.agent.yml` is a stub for a future service if one is ne
 ### Database
 
 Each slot gets its own SQLite file at `prisma/agent_<id>.db`. `har env launch` runs
-`HARNESS_DB_MIGRATE_CMD` (`prisma db push`) against that file on every launch
-(idempotent), so schema changes are applied before the slot starts serving.
+`HARNESS_DB_MIGRATE_CMD` (`node scripts/migrate-db.cjs`: `prisma db push`, plus the
+in-place migration of a 1.x database to the v2 data model) against that file on every
+launch (idempotent), so schema changes are applied before the slot starts serving.
 
 It also installs `@har/schemas` dependencies under `packages/schemas/` when typechecking
 from a fresh worktree (monorepo `file:` link).
@@ -165,7 +166,7 @@ for agent dev, `har control up` for the packaged dashboard — not both on 3847 
 |--|--|
 | **App URL** | the slot URL (`har env agent <id> url`) |
 | **Health** | the slot URL (`har env agent <id> url`)/api/health |
-| **Database** | SQLite `prisma/agent_<id>.db` in the session work dir (created by `prisma db push` at launch) |
+| **Database** | SQLite `prisma/agent_<id>.db` in the session work dir (created by `scripts/migrate-db.cjs` at launch) |
 | **Work dir** | Fresh session worktree per launch — see the launch output or `control/.har/slots/agent-<id>.json` |
 
 **Never edit the main checkout** — launch FIRST, then make ALL file edits under the work dir from the launch output. Edits there hot-reload in the running slot (`next dev`); use `har env agent <id> restart web` if a change doesn't take. An occupied slot always blocks a new launch — run `har env teardown <id>` (or `complete <id>`) first, then launch again.
@@ -181,7 +182,7 @@ har env agent <id> health
 ## Readiness — what “agent usable” means
 
 1. **Process ready** — `har env agent <id> health` (`/api/health`)
-2. **Slot data ready** — SQLite `prisma/agent_<id>.db` exists (created by `prisma db push` at launch, then seeded with curated demo data via `HARNESS_DB_SEED_CMD`)
+2. **Slot data ready** — SQLite `prisma/agent_<id>.db` exists (created by `scripts/migrate-db.cjs` at launch, then seeded with curated demo data via `HARNESS_DB_SEED_CMD`)
 3. **Workflow usable** — dashboard loads at the slot URL (`har env agent <id> url`) with repos, work units, runs, and slots pre-populated; no shared Postgres
 4. **No extra credentials** — local SQLite, no seed login required
 
@@ -209,6 +210,25 @@ the session branch for a manual push. Prefer `complete` over bare `teardown` whe
 the work succeeded. See `.cursor/rules/har-workflow.mdc` for the handoff shape.
 
 Quick check during development: `har env verify <id>` (stops before lint/e2e).
+
+## Ingest v2 (ADR 0005)
+
+Mission Control is the reference receiver of the ingest v2 contract. Its ingest base URL
+is the slot URL plus `/api`:
+
+- `POST v2/records`, `POST v2/proofs`, `POST v2/evidence/missing`, `PUT v2/evidence/{sha256}`,
+  `GET v2/capabilities`, and OTLP at `otel/v1/{traces,logs,metrics}`;
+- reads: `GET v2/work-units/{workUnitId}[?repository=<url>]`, `GET v2/factory-runs/{id}`,
+  `GET v2/proofs/{digest}`, `GET v2/evidence/{sha256}` (bytes).
+
+Evidence files are stored next to the database (`prisma/evidence/` in a slot,
+`/data/evidence` in the container). The contract checks run in the unit tests
+(`src/server/ingest-v2.test.ts`); against a running slot:
+
+```bash
+(cd ../packages/schemas && npm run build)
+node ../packages/schemas/dist/ingest-v2-contract-cli.js "$(har env agent <id> url)/api"
+```
 
 ## Project commands (in work dir)
 

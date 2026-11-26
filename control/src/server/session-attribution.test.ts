@@ -79,7 +79,7 @@ const db = vi.hoisted(() => {
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    sessionSlotBinding: db.table('bindings'),
+    sessionSegment: db.table('bindings'),
     usageObservation: db.table('observations'),
     sessionReportedUsage: db.table('reported'),
     $queryRaw: async () => [],

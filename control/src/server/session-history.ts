@@ -42,17 +42,15 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
   });
   if (!repo) return null;
 
-  const [batches, bindings, validationBindings] = await Promise.all([
+  const [batches, bindings] = await Promise.all([
     listChangeBatches(repositoryId, 200),
     listCommitBindings(repositoryId),
-    prisma.validationBinding.findMany({
-      where: { repositoryId },
-      select: { validationId: true, attempt: { select: { attemptId: true } } },
-    }),
   ]);
-  // A validation binding ties the snapshot to the attempt exactly; the stamped key is
+  // A factory run's attempt ties the snapshot to the attempt exactly; the stamped key is
   // the fallback for snapshots produced without --work-id (#348).
-  const attemptByValidation = new Map(validationBindings.map((row) => [row.validationId, row.attempt.attemptId]));
+  const attemptByValidation = new Map(
+    batches.flatMap((batch) => (batch.attemptId ? [[batch.validationId, batch.attemptId] as const] : [])),
+  );
 
   const snapshots: HistorySnapshot[] = batches.map((batch) => ({
     validationId: batch.validationId,
@@ -73,15 +71,15 @@ export async function getSessionHistory(repositoryId: string): Promise<SessionHi
   }));
 
   const historyBindings: HistoryCommitBinding[] = bindings.map((row) => ({
-    bindingId: row.bindingId,
-    validationId: row.validationId,
-    treeHash: row.treeHash,
+    bindingId: row.id,
+    validationId: row.factoryRunId,
+    treeHash: row.tree,
     commitSha: row.commitSha,
     parents: asStringArray(row.parents),
     refs: asStringArray(row.refs),
     message: row.message ?? undefined,
     runId: row.runId ?? undefined,
-    createdAt: row.sourceCreatedAt.toISOString(),
+    createdAt: row.committedAt.toISOString(),
   }));
 
   const graph = buildSessionHistoryGraph({

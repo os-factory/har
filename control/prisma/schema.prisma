@@ -18,19 +18,18 @@ model Repository {
   updatedAt       DateTime    @updatedAt
   slots           AgentSlot[]
   runs            Run[]
-  changeBatches   ChangeBatch[]
   sessionUsage    AgentSessionUsage[]
-  sessionBindings SessionSlotBinding[]
+  sessionSegments SessionSegment[]
   usageObservations    UsageObservation[]
   sessionReportedUsage SessionReportedUsage[]
   sessionEvents   AgentSessionEvent[]
   sessionSpans    AgentSessionSpan[]
   trajectoryRecords AgentTrajectoryRecord[]
   workUnits       WorkUnit[]
-  workAttempts    WorkAttempt[]
-  validationBindings ValidationBinding[]
-  commitBindings     ValidationCommitBinding[]
-  verificationRuns   VerificationRun[]
+  attempts        Attempt[]
+  factoryRuns     FactoryRun[]
+  commitBindings  CommitBinding[]
+  attestations    Attestation[]
 }
 
 model AgentSlot {
@@ -104,31 +103,6 @@ model AgentSessionUsage {
   @@index([lastSeenAt])
 }
 
-/// One point of a session's slot timeline (ADR 0003): from `at` on, the session
-/// (or one subagent of it) works in slot `slotId` — or, for `release`, no longer does.
-model SessionSlotBinding {
-  id           String     @id @default(uuid())
-  repositoryId String
-  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  agentTool    String
-  sessionId    String
-  /// "" for the session itself: SQLite treats NULLs as distinct in a unique index.
-  subagentId   String     @default("")
-  /// launch | release | workspace | observed
-  kind         String
-  slotId       Int
-  occupancyKey String?
-  branch       String?
-  at           DateTime
-  /// Who recorded it: "sync" (HAR CLI) or "otel" (derived from a span by Mission Control).
-  origin       String     @default("sync")
-  createdAt    DateTime   @default(now())
-
-  @@unique([repositoryId, agentTool, sessionId, subagentId, kind, slotId, at])
-  @@index([repositoryId, agentTool, sessionId, at])
-  @@index([repositoryId, slotId, at])
-}
-
 /// One billable unit of LLM usage as reported (ADR 0003). Never merged into another;
 /// slot usage is derived from these and the binding timeline at read time.
 model UsageObservation {
@@ -159,6 +133,15 @@ model UsageObservation {
   reportedTotals      Json?
   /// Whether `reportedTotals` is set (JSON columns are not filterable on SQLite).
   reportsTotal        Boolean    @default(false)
+  /// Where `costUsd` comes from, set at ingest (ADR 0005 section 5): "reported" by the
+  /// provider (stored as reported), "estimated" with genai-prices, null when unpriced.
+  costSource          String?
+  /// The genai-prices version that priced an estimated row (`genai-prices@x.y.z`).
+  pricedWith          String?
+  /// Stamped telemetry attributes (ADR 0004 section 3), lifted out for the work unit view.
+  workUnitId          String?
+  attemptId           String?
+  factoryRunId        String?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
@@ -167,6 +150,8 @@ model UsageObservation {
   @@index([repositoryId, agentTool, sessionId, observedAt])
   /// A session's units across repositories: its running-total series and the copy another repository holds (FE-2058).
   @@index([agentTool, sessionId, observedAt])
+  @@index([attemptId, observedAt])
+  @@index([workUnitId])
 }
 
 /// A session total a provider reports itself (Claude Code `claude_code.cost.usage`).
@@ -201,11 +186,18 @@ model AgentSessionEvent {
   responseText   String?
   rawTruncated   String?
   source         String     @default("otel")
+  /// `factory.work_unit.id`, `factory.attempt.id`, `factory.run.id`, `session.id` (ADR 0005 section 3).
   workUnitId     String?
   attemptId      String?
+  factoryRunId   String?
+  sessionId      String?
   createdAt      DateTime   @default(now())
 
   @@unique([repositoryId, sessionKey, agentTool, eventName, sequence])
+  @@index([attemptId, timestamp])
+  @@index([workUnitId])
+  @@index([factoryRunId])
+  @@index([sessionId])
   @@index([repositoryId, agentId, timestamp])
   @@index([repositoryId, createdAt, id])
   @@index([timestamp])
@@ -218,8 +210,11 @@ model AgentSessionSpan {
   sessionKey     String
   agentId        Int
   agentTool      String
+  /// `factory.work_unit.id`, `factory.attempt.id`, `factory.run.id`, `session.id` (ADR 0005 section 3).
   workUnitId     String?
   attemptId      String?
+  factoryRunId   String?
+  sessionId      String?
   traceId        String
   spanId         String
   parentSpanId   String?
@@ -230,6 +225,10 @@ model AgentSessionSpan {
   createdAt      DateTime   @default(now())
 
   @@unique([repositoryId, traceId, spanId])
+  @@index([attemptId, startTime])
+  @@index([workUnitId])
+  @@index([factoryRunId])
+  @@index([sessionId])
   @@index([repositoryId, agentId, startTime])
   @@index([repositoryId, createdAt, id])
 }
@@ -264,6 +263,7 @@ model AgentTrajectoryRecord {
   createdAt         DateTime   @default(now())
 
   @@unique([repositoryId, source, sourceEventId, contentKey])
+  @@index([attemptId, eventTimestamp])
   @@index([repositoryId, agentId, occupancyKey])
   @@index([repositoryId, agentId, sessionKey, agentTool, sequence, eventTimestamp, source])
   @@index([repositoryId, agentId, sessionKey, agentTool, createdAt])
@@ -296,115 +296,6 @@ model Run {
   @@index([repositoryId, occupancyKey])
 }
 
-model WorkUnit {
-  id               String     @id @default(uuid())
-  repositoryId     String
-  repository       Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  workUnitId       String
-  source           String?
-  sourceUrl        String?
-  title            String?
-  parentWorkUnitId String?
-  relatedLinks     Json?
-  outcome          Json?
-  sourceCreatedAt  DateTime
-  sourceUpdatedAt  DateTime
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  attempts         WorkAttempt[]
-  validationBindings ValidationBinding[]
-
-  @@unique([repositoryId, workUnitId])
-  @@index([repositoryId, sourceUpdatedAt])
-}
-
-model WorkAttempt {
-  id           String     @id @default(uuid())
-  repositoryId String
-  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  workUnitDbId String
-  workUnit     WorkUnit   @relation(fields: [workUnitDbId], references: [id], onDelete: Cascade)
-  attemptId    String
-  agentId      Int
-  sessionKey   String?
-  workDir      String?
-  worktreePath String?
-  branch       String?
-  baseCommit   String?
-  sourceCreatedAt DateTime
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  validationBindings ValidationBinding[]
-
-  @@unique([repositoryId, attemptId])
-  @@index([workUnitDbId, sourceCreatedAt])
-}
-
-model ValidationBinding {
-  id           String      @id @default(uuid())
-  repositoryId String
-  repository   Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  bindingId    String
-  workUnitDbId String
-  workUnit     WorkUnit    @relation(fields: [workUnitDbId], references: [id], onDelete: Cascade)
-  attemptDbId  String
-  attempt      WorkAttempt @relation(fields: [attemptDbId], references: [id], onDelete: Cascade)
-  validationId String
-  treeHash     String
-  sourceCreatedAt DateTime
-  createdAt    DateTime    @default(now())
-
-  @@unique([repositoryId, bindingId])
-  @@index([repositoryId, validationId])
-  @@index([workUnitDbId, sourceCreatedAt])
-}
-
-model ValidationCommitBinding {
-  id              String     @id @default(uuid())
-  repositoryId    String
-  repository      Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  bindingId       String
-  validationId    String
-  treeHash        String
-  commitSha       String
-  parents         Json
-  refs            Json
-  message         String?
-  runId           String?
-  sourceCreatedAt DateTime
-  createdAt       DateTime   @default(now())
-
-  @@unique([repositoryId, bindingId])
-  @@unique([repositoryId, treeHash, commitSha])
-  @@index([repositoryId, validationId])
-}
-
-model ChangeBatch {
-  id           String     @id @default(uuid())
-  repositoryId String
-  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  validationId String
-  treeHash     String
-  headSha      String?
-  branch       String?
-  workDir      String?
-  agentId      Int?
-  status       String
-  full         Boolean    @default(false)
-  runId        String?
-  changedFiles Json?
-  commitSha    String?
-  committedAt  DateTime?
-  /// One occupancy of a slot (#316) — stamped at sync so the record joins exactly (#348).
-  occupancyKey String?
-  createdAt    DateTime
-  updatedAt    DateTime   @updatedAt
-
-  @@unique([repositoryId, treeHash])
-  @@index([repositoryId, branch, createdAt])
-  @@index([repositoryId, occupancyKey])
-}
-
 model CloudConfig {
   id        String   @id @default("default")
   apiKey    String?
@@ -420,62 +311,270 @@ model UnregisteredRepository {
   deleteWorktrees  Boolean  @default(false)
 }
 
-/// One `har env verify` as received over OTLP: the run span of a verification
-/// trace (instrumentation scope `@osfactory/har`, `cicd.pipeline.run.id`).
-/// Every verify of one tree shares the trace and run id; the span id is per verify.
-model VerificationRun {
-  id                String     @id @default(uuid())
-  repositoryId      String
-  repository        Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  /// `cicd.pipeline.run.id`: the validation id (or the run id when none was recorded).
-  runId             String
-  traceId           String
-  spanId            String
-  pipelineName      String
-  /// `cicd.pipeline.result`: success | failure | error | timeout | cancellation | skip.
-  result            String
-  /// `factory.verdict` (full verify only): pass | fail.
-  verdict           String?
-  treeHash          String?
-  headRevision      String?
-  attestationDigest String?
-  /// `factory.policy.id`: the policy the verdict was computed against, when the producer sends it.
-  policyId          String?
-  /// `factory.policy.digest`: digest of the policy source (e.g. stages.json), when sent.
-  policyDigest      String?
-  workUnitId        String?
-  attemptId         String?
-  branch            String?
-  producerVersion   String?
-  startTime         DateTime
-  endTime           DateTime?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  stages            VerificationStage[]
 
-  @@unique([traceId, spanId])
-  @@index([repositoryId, createdAt, id])
-  @@index([repositoryId, runId])
+// ---------------------------------------------------------------------------
+// Data model v2 (ADR 0005 section 3). Every table is keyed by the record's
+// natural key and joined by it: no foreign key between them, so records are
+// accepted in any order. `repositoryId` is the registered repository a record
+// was matched to (display only); `repositoryKey` is the normalized repository
+// URL a work unit id is scoped to ("" when the record has none).
+
+/// A unit of tracked work (an issue, a ticket). Key: (`repositoryKey`, `workUnitId`).
+model WorkUnit {
+  id               String      @id @default(uuid())
+  repositoryKey    String      @default("")
+  repositoryUrl    String?
+  repositoryId     String?
+  repository       Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workUnitId       String
+  source           String?
+  sourceUrl        String?
+  title            String?
+  parentWorkUnitId String?
+  relatedLinks     Json?
+  outcome          Json?
+  sourceCreatedAt  DateTime
+  sourceUpdatedAt  DateTime
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@unique([repositoryKey, workUnitId])
+  @@index([repositoryId, sourceUpdatedAt])
+  @@index([workUnitId])
 }
 
-/// One stage span of a verification run (`cicd.pipeline.task.*`).
-model VerificationStage {
-  id                String          @id @default(uuid())
-  verificationRunId String
-  verificationRun   VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
-  traceId           String
-  spanId            String
-  name              String
-  /// `cicd.pipeline.task.run.result`.
-  result            String
-  /// `cicd.pipeline.task.type` when the stage id names one (build | test).
-  taskType          String?
-  /// `factory.stage.added_by`: `policy` (required by the policy) or `agent`.
-  addedBy           String?
-  startTime         DateTime
-  endTime           DateTime?
-  createdAt         DateTime        @default(now())
+/// One try at a work unit in one slot (replaces WorkAttempt). Key: `attemptId`.
+model Attempt {
+  id            String      @id @default(uuid())
+  attemptId     String      @unique
+  /// Null for a slot launched without a work unit.
+  workUnitId    String?
+  repositoryKey String      @default("")
+  repositoryUrl String?
+  repositoryId  String?
+  repository    Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  slotId        String
+  /// `slotId` as a number, when it is one (slot pages and the ADR 0003 resolver).
+  agentId       Int?
+  branch        String?
+  baseCommit    String?
+  startedAt     DateTime
+  endedAt       DateTime?
+  /// Local facts a 1.x `har control sync` sends; never part of a v2 record.
+  sessionKey    String?
+  workDir       String?
+  worktreePath  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  @@unique([traceId, spanId])
-  @@index([verificationRunId, startTime])
+  @@index([repositoryKey, workUnitId, startedAt])
+  @@index([workUnitId])
+  @@index([repositoryId, agentId, startedAt])
+}
+
+/// A session's place over time (replaces SessionSlotBinding). A v2 record is a
+/// segment (`kind = "segment"`, ADR 0004 section 2): the session works for
+/// `attemptId` from `from` until `to`. The ADR 0003 timeline points
+/// (launch | release | workspace | observed) keep `to` null. Key: `segmentKey`.
+model SessionSegment {
+  id           String      @id @default(uuid())
+  /// The record's natural key: `ingestV2RecordKey` for a segment, the
+  /// (repository, tool, session, subagent, kind, slot, from) tuple for a timeline point.
+  segmentKey   String      @unique
+  repositoryId String?
+  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  agentTool    String
+  sessionId    String
+  /// "" for the session itself.
+  subagentId   String      @default("")
+  kind         String
+  slotId       Int?
+  occupancyKey String?
+  attemptId    String?
+  workUnitId   String?
+  branch       String?
+  from         DateTime
+  to           DateTime?
+  reason       String?
+  attributes   Json?
+  /// Who recorded it: "record" (ingest v2), "sync" (1.x HAR CLI) or "otel" (derived from a span).
+  origin       String      @default("sync")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([repositoryId, agentTool, sessionId, from])
+  @@index([repositoryId, slotId, from])
+  @@index([agentTool, sessionId, from])
+  @@index([attemptId])
+}
+
+/// One factory run: every verify of one tree (replaces ChangeBatch,
+/// VerificationRun and ValidationBinding). Key: `factoryRunId` (the validation id).
+model FactoryRun {
+  id                String      @id @default(uuid())
+  /// `Factory-Run`, `predicate.run.id`, `cicd.pipeline.run.id`.
+  factoryRunId      String      @unique
+  attemptId         String?
+  workUnitId        String?
+  repositoryKey     String      @default("")
+  repositoryId      String?
+  repository        Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  tree              String
+  /// pass | fail (full verify); null for a run without a verdict.
+  verdict           String?
+  /// Status of a 1.x change batch (pass | fail | ...), or the cicd pipeline result of the latest verify span.
+  status            String?
+  full              Boolean     @default(false)
+  policyId          String?
+  policyDigest      String?
+  policyRequired    Json?
+  factoryLine       String?
+  station           String?
+  /// `sha256("factory-run:" + factoryRunId)`, first 32 hex chars.
+  traceId           String?
+  /// Span id of the latest verify span received over OTLP.
+  spanId            String?
+  pipelineName      String?
+  producerVersion   String?
+  headSha           String?
+  branch            String?
+  workDir           String?
+  agentId           Int?
+  /// `Run.runId` of the verify command that produced it (1.x sync).
+  runId             String?
+  occupancyKey      String?
+  changedFiles      Json?
+  commitSha         String?
+  committedAt       DateTime?
+  attestationDigest String?
+  /// Sessions that worked on the run (ADR 0004 section 4), merged across records.
+  sessions          Json?
+  /// Stage ids in run order.
+  stageIds          Json?
+  startedAt         DateTime
+  finishedAt        DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([repositoryId, branch, startedAt])
+  @@index([repositoryId, occupancyKey])
+  @@index([repositoryId, createdAt, id])
+  @@index([attemptId, startedAt])
+  @@index([workUnitId])
+  @@index([tree])
+  @@index([traceId])
+}
+
+/// One stage of a factory run (replaces VerificationStage). Key: (`factoryRunId`, `stageId`).
+model StageResult {
+  id           String    @id @default(uuid())
+  factoryRunId String
+  stageId      String
+  /// passed | failed | error | skipped (Factory Commits).
+  status       String
+  /// policy | agent
+  addedBy      String?
+  kind         String?
+  durationMs   Int?
+  /// sha256 of the stage log as kept (the last 1 MiB).
+  logDigest    String?
+  /// [{ name, sha256, size, mediaType }]
+  artifacts    Json?
+  traceId      String?
+  spanId       String?
+  startTime    DateTime?
+  endTime      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([factoryRunId, stageId])
+}
+
+/// A commit of a verified tree (replaces ValidationCommitBinding). Key: `commitSha`.
+model CommitBinding {
+  id           String      @id @default(uuid())
+  commitSha    String      @unique
+  tree         String
+  factoryRunId String
+  proofDigest  String?
+  branch       String?
+  repositoryId String?
+  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  parents      Json?
+  refs         Json?
+  message      String?
+  runId        String?
+  committedAt  DateTime
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([factoryRunId])
+  @@index([repositoryId, tree])
+  @@index([repositoryId, committedAt])
+}
+
+/// A Factory Commits proof as received: a DSSE envelope. Key: `statementDigest`,
+/// recomputed by Mission Control from the payload.
+model Attestation {
+  id              String      @id @default(uuid())
+  statementDigest String      @unique
+  envelope        Json
+  payloadType     String
+  predicateType   String?
+  factoryRunId    String?
+  tree            String?
+  verdict         String?
+  trust           String?
+  signer          String?
+  repositoryId    String?
+  repository      Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  receivedAt      DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([factoryRunId])
+  @@index([tree])
+}
+
+/// A file of evidence (a stage log or artifact), by digest. `location` is set
+/// once the bytes are stored under Mission Control's data directory.
+model EvidenceBlob {
+  sha256    String    @id
+  size      Int
+  mediaType String
+  location  String?
+  storedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+/// The latest value of one OTLP metric series (ADR 0005 section 5): otel-hook
+/// metrics are running totals, so a point replaces the stored one when it is
+/// newer, and points are never summed.
+model MetricSeries {
+  id           String    @id @default(uuid())
+  /// sha256 of the series identity: metric name, resource and point attributes.
+  seriesKey    String    @unique
+  name         String
+  unit         String?
+  /// `otelhook.provider.id`
+  providerId   String?
+  /// cumulative | delta | gauge
+  temporality  String
+  value        Float
+  startTime    DateTime?
+  time         DateTime
+  attributes   Json
+  resource     Json
+  workUnitId   String?
+  attemptId    String?
+  factoryRunId String?
+  sessionId    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([name, time])
+  @@index([attemptId])
+  @@index([workUnitId])
+  @@index([factoryRunId])
+  @@index([sessionId])
 }

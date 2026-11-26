@@ -1,7 +1,9 @@
-import type { WorkAttempt } from '@prisma/client';
+import type { Attempt } from '@prisma/client';
 import type { WorkUnitRelatedLink } from '@har/schemas';
 import { prisma } from '@/lib/db';
-import { toFactoryProof, type FactoryProof } from '@/lib/factory-proof';
+import { type FactoryProof } from '@/lib/factory-proof';
+import { changeBatchView, VERIFIED_RUN } from '@/server/change-batches';
+import { factoryProofsOf } from '@/server/factory-runs';
 import { attachProofs, buildTimelineRows, type TimelineRow } from '@/lib/slot-timeline';
 import { attemptIdFromOccupancyKey } from '@/server/occupancy';
 import {
@@ -88,23 +90,23 @@ function relatedLinks(value: unknown): WorkUnitRelatedLink[] {
  * attempt owned its work dir: from the attempt start until the next attempt that
  * reused the same work dir on the same slot.
  */
-export async function legacyWindow(repositoryId: string, attempt: WorkAttempt) {
-  if (!attempt.workDir) return null;
-  const next = await prisma.workAttempt.findFirst({
+export async function legacyWindow(repositoryId: string, attempt: Attempt) {
+  if (!attempt.workDir || attempt.agentId == null) return null;
+  const next = await prisma.attempt.findFirst({
     where: {
       repositoryId,
       agentId: attempt.agentId,
       workDir: attempt.workDir,
-      sourceCreatedAt: { gt: attempt.sourceCreatedAt },
+      startedAt: { gt: attempt.startedAt },
     },
-    orderBy: { sourceCreatedAt: 'asc' },
-    select: { sourceCreatedAt: true },
+    orderBy: { startedAt: 'asc' },
+    select: { startedAt: true },
   });
   return {
     agentId: attempt.agentId,
     workDir: attempt.workDir,
-    from: attempt.sourceCreatedAt,
-    to: next?.sourceCreatedAt ?? null,
+    from: attempt.startedAt,
+    to: next?.startedAt ?? null,
   };
 }
 
@@ -132,38 +134,43 @@ export async function proofsForAttempt(
   const validationIds = [...new Set(snapshots.map((snapshot) => snapshot.validationId))];
   const or = [
     ...(attemptId ? [{ attemptId }] : []),
-    ...(validationIds.length ? [{ runId: { in: validationIds } }] : []),
-    ...(verifyRunIds.length ? [{ runId: { in: verifyRunIds } }] : []),
+    ...(validationIds.length ? [{ factoryRunId: { in: validationIds } }] : []),
+    ...(verifyRunIds.length ? [{ factoryRunId: { in: verifyRunIds } }] : []),
   ];
   if (or.length === 0) return [];
-  const runs = await prisma.verificationRun.findMany({
-    where: { repositoryId, OR: or },
-    orderBy: [{ startTime: 'desc' }, { id: 'asc' }],
+  const runs = await prisma.factoryRun.findMany({
+    where: { repositoryId, traceId: { not: null }, OR: or },
+    orderBy: [{ startedAt: 'desc' }, { id: 'asc' }],
     take: 50,
-    include: { stages: { orderBy: [{ startTime: 'asc' }, { name: 'asc' }] } },
   });
   const byValidation = new Map(snapshots.map((snapshot) => [snapshot.validationId, snapshot.runId]));
-  const runIds = new Set(verifyRunIds);
-  return runs.map((run) => toFactoryProof(run, byValidation, runIds));
+  return factoryProofsOf(runs, byValidation, new Set(verifyRunIds));
 }
 
 export async function getAttemptRecord(repositoryId: string, occupancyKey: string): Promise<AttemptRecord | null> {
   const attemptId = attemptIdFromOccupancyKey(occupancyKey);
   const [attempt, slot, repository] = await Promise.all([
     attemptId
-      ? prisma.workAttempt.findUnique({
-          where: { repositoryId_attemptId: { repositoryId, attemptId } },
-          include: { workUnit: true, validationBindings: { select: { validationId: true } } },
-        })
+      ? prisma.attempt.findUnique({ where: { attemptId } })
       : null,
     prisma.agentSlot.findFirst({ where: { repositoryId, occupancyKey } }),
     prisma.repository.findUnique({ where: { id: repositoryId }, select: { path: true, gitRemote: true } }),
   ]);
   if (!attempt && !slot) return null;
+  const [unit, boundRuns] = attempt
+    ? await Promise.all([
+        attempt.workUnitId
+          ? prisma.workUnit.findUnique({
+              where: { repositoryKey_workUnitId: { repositoryKey: attempt.repositoryKey, workUnitId: attempt.workUnitId } },
+            })
+          : null,
+        prisma.factoryRun.findMany({ where: { attemptId: attempt.attemptId }, select: { factoryRunId: true } }),
+      ])
+    : [null, []];
 
   const agentId = attempt?.agentId ?? slot?.slotId ?? null;
   const window: LegacyWindow | null = attempt ? await legacyWindow(repositoryId, attempt) : null;
-  const boundValidationIds = attempt?.validationBindings.map((row) => row.validationId) ?? [];
+  const boundValidationIds = boundRuns.map((row) => row.factoryRunId);
 
   const [runs, snapshots, usageRows, streams] = await Promise.all([
     prisma.run.findMany({
@@ -178,18 +185,19 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
       orderBy: { startedAt: 'desc' },
       take: 300,
     }),
-    prisma.changeBatch.findMany({
+    prisma.factoryRun.findMany({
       where: {
         repositoryId,
+        ...VERIFIED_RUN,
         OR: [
           { occupancyKey },
-          ...(boundValidationIds.length ? [{ validationId: { in: boundValidationIds } }] : []),
+          ...(boundValidationIds.length ? [{ factoryRunId: { in: boundValidationIds } }] : []),
           ...(window ? [{ occupancyKey: null, agentId: window.agentId, workDir: window.workDir }] : []),
         ],
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { startedAt: 'desc' },
       take: 200,
-    }),
+    }).then((runs) => runs.map(changeBatchView)),
     listSessionUsageForRepo(repositoryId),
     agentId != null ? listTrajectoryStreams(repositoryId, agentId, occupancyKey) : Promise.resolve([]),
   ]);
@@ -227,7 +235,7 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
     ),
   ]);
 
-  const startedAt = attempt?.sourceCreatedAt ?? slot?.sessionCreatedAt ?? null;
+  const startedAt = attempt?.startedAt ?? slot?.sessionCreatedAt ?? null;
   const branch = attempt?.branch ?? slot?.branch ?? null;
   const occupancy = startedAt
     ? [{
@@ -242,7 +250,6 @@ export async function getAttemptRecord(repositoryId: string, occupancyKey: strin
       }]
     : [];
 
-  const unit = attempt?.workUnit ?? null;
   const outcome = (unit?.outcome ?? null) as { decision?: string } | null;
 
   return {

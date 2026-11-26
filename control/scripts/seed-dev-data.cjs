@@ -12,7 +12,10 @@ const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 
+const { repositoryKeyFor, repositoryUrl } = require('./migrate-db.cjs');
+
 const SEED_FILE = path.join(__dirname, '../prisma/seed-data.json');
+const STAGE_STATUS = { success: 'passed', failure: 'failed', skip: 'skipped' };
 
 function toDate(value) {
   return value ? new Date(value) : undefined;
@@ -84,10 +87,23 @@ async function loadSeed(prisma) {
     });
   }
 
-  if (seed.workUnits?.length) {
-    await prisma.workUnit.createMany({
-      data: seed.workUnits.map((row) => ({
+  // The seed file keeps the 1.x shape (work units, attempts, validation bindings,
+  // change batches, verification runs); load it into the v2 tables (ADR 0005).
+  const repoKeys = new Map(seed.repositories.map((repo) => [repo.id, repositoryKeyFor(repo)]));
+  const repoUrls = new Map(seed.repositories.map((repo) => [repo.id, repositoryUrl(repo.gitRemote)]));
+  const unitById = new Map((seed.workUnits ?? []).map((row) => [row.id, row]));
+  const attemptById = new Map((seed.workAttempts ?? []).map((row) => [row.id, row]));
+
+  const unitKeys = new Set();
+  for (const row of seed.workUnits ?? []) {
+    const key = `${repoKeys.get(row.repositoryId)}\0${row.workUnitId}`;
+    if (unitKeys.has(key)) continue;
+    unitKeys.add(key);
+    await prisma.workUnit.create({
+      data: {
         id: row.id,
+        repositoryKey: repoKeys.get(row.repositoryId),
+        repositoryUrl: repoUrls.get(row.repositoryId),
         repositoryId: row.repositoryId,
         workUnitId: row.workUnitId,
         source: row.source,
@@ -98,107 +114,112 @@ async function loadSeed(prisma) {
         outcome: toJson(row.outcome),
         sourceCreatedAt: toDate(row.sourceCreatedAt),
         sourceUpdatedAt: toDate(row.sourceUpdatedAt),
-      })),
+      },
     });
   }
 
-  if (seed.workAttempts?.length) {
-    await prisma.workAttempt.createMany({
-      data: seed.workAttempts.map((row) => ({
+  for (const row of seed.workAttempts ?? []) {
+    await prisma.attempt.create({
+      data: {
         id: row.id,
-        repositoryId: row.repositoryId,
-        workUnitDbId: row.workUnitDbId,
         attemptId: row.attemptId,
+        workUnitId: unitById.get(row.workUnitDbId)?.workUnitId ?? null,
+        repositoryKey: repoKeys.get(row.repositoryId),
+        repositoryUrl: repoUrls.get(row.repositoryId),
+        repositoryId: row.repositoryId,
+        slotId: String(row.agentId),
         agentId: row.agentId,
         sessionKey: row.sessionKey,
         workDir: row.workDir,
         worktreePath: row.worktreePath,
         branch: row.branch,
         baseCommit: row.baseCommit,
-        sourceCreatedAt: toDate(row.sourceCreatedAt),
-      })),
+        startedAt: toDate(row.sourceCreatedAt),
+      },
     });
   }
 
-  if (seed.validationBindings?.length) {
-    await prisma.validationBinding.createMany({
-      data: seed.validationBindings.map((row) => ({
-        id: row.id,
-        repositoryId: row.repositoryId,
-        bindingId: row.bindingId,
-        workUnitDbId: row.workUnitDbId,
-        attemptDbId: row.attemptDbId,
-        validationId: row.validationId,
-        treeHash: row.treeHash,
-        sourceCreatedAt: toDate(row.sourceCreatedAt),
-      })),
-    });
+  const runs = new Map();
+  const runFor = (validationId, base) => {
+    const run = runs.get(validationId) ?? { factoryRunId: validationId, ...base };
+    runs.set(validationId, run);
+    return run;
+  };
+  for (const row of seed.changeBatches ?? []) {
+    Object.assign(runFor(row.validationId, {}), compactRow({
+      id: row.id,
+      repositoryId: row.repositoryId,
+      repositoryKey: repoKeys.get(row.repositoryId),
+      tree: row.treeHash,
+      headSha: row.headSha,
+      branch: row.branch,
+      workDir: row.workDir,
+      agentId: row.agentId,
+      status: row.status,
+      full: row.full,
+      runId: row.runId,
+      changedFiles: toJson(row.changedFiles),
+      commitSha: row.commitSha,
+      committedAt: toDate(row.committedAt),
+      occupancyKey: row.occupancyKey,
+      startedAt: toDate(row.createdAt),
+    }));
   }
-
-  if (seed.changeBatches?.length) {
-    await prisma.changeBatch.createMany({
-      data: seed.changeBatches.map((row) => ({
-        id: row.id,
-        repositoryId: row.repositoryId,
-        validationId: row.validationId,
-        treeHash: row.treeHash,
-        headSha: row.headSha,
-        branch: row.branch,
-        workDir: row.workDir,
-        agentId: row.agentId,
-        status: row.status,
-        full: row.full,
-        runId: row.runId,
-        changedFiles: toJson(row.changedFiles),
-        commitSha: row.commitSha,
-        committedAt: toDate(row.committedAt),
-        occupancyKey: row.occupancyKey,
-        createdAt: toDate(row.createdAt),
-        updatedAt: toDate(row.updatedAt),
-      })),
+  for (const row of seed.validationBindings ?? []) {
+    const run = runFor(row.validationId, {
+      repositoryId: row.repositoryId,
+      repositoryKey: repoKeys.get(row.repositoryId),
+      tree: row.treeHash,
+      startedAt: toDate(row.sourceCreatedAt),
     });
+    run.attemptId = attemptById.get(row.attemptDbId)?.attemptId ?? run.attemptId;
+    run.workUnitId = unitById.get(row.workUnitDbId)?.workUnitId ?? run.workUnitId;
   }
-
   // Factory Commits proofs (HAR 2.0): verification runs received over OTLP, with their stages.
-  for (const run of seed.verificationRuns ?? []) {
-    await prisma.verificationRun.create({
-      data: compactRow({
-        id: run.id,
-        repositoryId: run.repositoryId,
-        runId: run.runId,
-        traceId: run.traceId,
-        spanId: run.spanId,
-        pipelineName: run.pipelineName,
-        result: run.result,
-        verdict: run.verdict,
-        treeHash: run.treeHash,
-        headRevision: run.headRevision,
-        attestationDigest: run.attestationDigest,
-        policyId: run.policyId,
-        policyDigest: run.policyDigest,
-        workUnitId: run.workUnitId,
-        attemptId: run.attemptId,
-        branch: run.branch,
-        producerVersion: run.producerVersion,
-        startTime: toDate(run.startTime),
-        endTime: toDate(run.endTime),
-        stages: {
-          create: (run.stages ?? []).map((stage) =>
-            compactRow({
-              traceId: run.traceId,
-              spanId: stage.spanId,
-              name: stage.name,
-              result: stage.result,
-              taskType: stage.taskType,
-              addedBy: stage.addedBy,
-              startTime: toDate(stage.startTime),
-              endTime: toDate(stage.endTime),
-            }),
-          ),
-        },
-      }),
+  const stageResults = [];
+  for (const vr of seed.verificationRuns ?? []) {
+    const run = runFor(vr.runId, {
+      repositoryId: vr.repositoryId,
+      repositoryKey: repoKeys.get(vr.repositoryId),
+      tree: vr.treeHash ?? '',
+      status: vr.result,
+      startedAt: toDate(vr.startTime),
     });
+    Object.assign(run, compactRow({
+      verdict: vr.verdict,
+      full: vr.verdict != null ? true : run.full,
+      traceId: vr.traceId,
+      spanId: vr.spanId,
+      pipelineName: vr.pipelineName,
+      producerVersion: vr.producerVersion,
+      attestationDigest: vr.attestationDigest,
+      policyId: vr.policyId,
+      policyDigest: vr.policyDigest,
+      finishedAt: toDate(vr.endTime),
+    }));
+    run.attemptId = run.attemptId ?? vr.attemptId;
+    run.workUnitId = run.workUnitId ?? vr.workUnitId;
+    run.branch = run.branch ?? vr.branch;
+    const stages = vr.stages ?? [];
+    run.stageIds = stages.map((stage) => stage.name);
+    for (const stage of stages) {
+      stageResults.push(compactRow({
+        factoryRunId: vr.runId,
+        stageId: stage.name,
+        status: STAGE_STATUS[stage.result] ?? 'error',
+        addedBy: stage.addedBy,
+        kind: stage.taskType,
+        durationMs: stage.endTime ? Date.parse(stage.endTime) - Date.parse(stage.startTime) : undefined,
+        traceId: vr.traceId,
+        spanId: stage.spanId,
+        startTime: toDate(stage.startTime),
+        endTime: toDate(stage.endTime),
+      }));
+    }
   }
+  for (const run of runs.values()) await prisma.factoryRun.create({ data: compactRow(run) });
+  if (stageResults.length) await prisma.stageResult.createMany({ data: stageResults });
+
   if (seed.agentSlots?.length) {
     await prisma.agentSlot.createMany({
       data: seed.agentSlots.map((row) => ({

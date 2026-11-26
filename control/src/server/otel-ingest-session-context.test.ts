@@ -86,34 +86,37 @@ vi.mock('@/lib/db', () => ({
           findSessionRow(sessionEvents, where),
       ),
     },
-    sessionSlotBinding: {
+    sessionSegment: {
       // The session's latest binding at a time, in any repository.
       findFirst: vi.fn(
-        async ({ where }: { where: { agentTool: string; sessionId: string; at?: { lte: Date } } }) =>
+        async ({ where }: { where: { agentTool: string; sessionId: string; from?: { lte: Date } } }) =>
           bindings
             .filter(
               (b) =>
                 b.agentTool === where.agentTool &&
                 b.sessionId === where.sessionId &&
-                (!where.at || b.at <= where.at.lte),
+                (!where.from || b.at <= where.from.lte),
             )
-            .sort((a, b) => b.at.getTime() - a.at.getTime())[0] ?? null,
+            .sort((a, b) => b.at.getTime() - a.at.getTime())
+            .map((b) => ({ ...b, from: b.at }))[0] ?? null,
       ),
       findMany: vi.fn(
-        async ({ where }: { where: { repositoryId: string; sessionId?: string; kind?: string; at: { lte: Date } } }) =>
-          bindings.filter(
-            (b) =>
-              b.repositoryId === where.repositoryId &&
-              (where.sessionId === undefined || b.sessionId === where.sessionId) &&
-              (where.kind === undefined || b.kind === where.kind) &&
-              b.at <= where.at.lte,
-          ),
+        async ({ where }: { where: { repositoryId: string; sessionId?: string; kind?: string; from: { lte: Date } } }) =>
+          bindings
+            .filter(
+              (b) =>
+                b.repositoryId === where.repositoryId &&
+                (where.sessionId === undefined || b.sessionId === where.sessionId) &&
+                (typeof where.kind !== 'string' || b.kind === where.kind) &&
+                b.at <= where.from.lte,
+            )
+            .map((b) => ({ ...b, from: b.at })),
       ),
     },
     agentSessionSpan: { findFirst: vi.fn(async () => null) },
     usageObservation: { findFirst: vi.fn(async () => null) },
     $queryRaw: vi.fn(async () => []),
-    workAttempt: {
+    attempt: {
       findMany: vi.fn(async () => []),
       findFirst: vi.fn(async () => null),
     },

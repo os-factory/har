@@ -1,0 +1,482 @@
+// Mission Control 1.x schema (before ADR 0005). Fixture for the v2 migration test only.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Repository {
+  id              String      @id @default(uuid())
+  path            String      @unique
+  gitRemote       String?
+  manifest        Json?
+  stagesRegistry  Json?
+  lastSyncAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  slots           AgentSlot[]
+  runs            Run[]
+  changeBatches   ChangeBatch[]
+  sessionUsage    AgentSessionUsage[]
+  sessionBindings SessionSlotBinding[]
+  usageObservations    UsageObservation[]
+  sessionReportedUsage SessionReportedUsage[]
+  sessionEvents   AgentSessionEvent[]
+  sessionSpans    AgentSessionSpan[]
+  trajectoryRecords AgentTrajectoryRecord[]
+  workUnits       WorkUnit[]
+  workAttempts    WorkAttempt[]
+  validationBindings ValidationBinding[]
+  commitBindings     ValidationCommitBinding[]
+  verificationRuns   VerificationRun[]
+}
+
+model AgentSlot {
+  id               String     @id @default(uuid())
+  repositoryId     String
+  repository       Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  slotId           Int
+  active           Boolean    @default(false)
+  workDir          String?
+  worktreePath     String?
+  branch           String?
+  previewUrls      Json?
+  harnessUsage     String     @default("none")
+  lastRunId        String?
+  lastRunAt        DateTime?
+  lastVerifyStatus String?
+  lastBuildPass    Boolean?
+  mode             String?
+  suffix           String?
+  baseBranch       String?
+  baseCommit       String?
+  sessionCreatedAt DateTime?
+  purpose          String?
+  // One occupancy of this workstation (#316). A slot number is reused; an
+  // occupancy is not. Null when the slot is idle.
+  occupancyKey     String?
+  workUnitId       String?
+  attemptId        String?
+  detachedHead     Boolean?
+  dirty            Boolean?
+  ahead            Int?
+  behind           Int?
+  stale            Boolean?
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([repositoryId, slotId])
+}
+
+model AgentSessionUsage {
+  id                  String     @id @default(uuid())
+  repositoryId        String
+  repository          Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sessionKey          String
+  agentId             Int
+  agentTool           String
+  workDir             String?
+  branch              String?
+  suffix              String?
+  occupancyKey        String?
+  workUnitId          String?
+  attemptId           String?
+  tokensInput         BigInt     @default(0)
+  tokensOutput        BigInt     @default(0)
+  tokensCacheRead     BigInt     @default(0)
+  tokensCacheCreation BigInt     @default(0)
+  tokensTotal         BigInt     @default(0)
+  costUsd             Decimal?
+  /// Where costUsd comes from: "reported" by the agent, "estimated" via genai-prices, or null (#339).
+  costSource          String?
+  modelBreakdown      Json?
+  sources             Json       @default("[]")
+  // Harvest generation behind these counters; 0 = pre-dedupe, reads high.
+  harvestVersion      Int        @default(0)
+  firstSeenAt         DateTime
+  lastSeenAt          DateTime
+  updatedAt           DateTime   @updatedAt
+
+  @@unique([repositoryId, sessionKey, agentTool])
+  @@index([repositoryId, agentId])
+  @@index([repositoryId, agentId, occupancyKey])
+  @@index([lastSeenAt])
+}
+
+/// One point of a session's slot timeline (ADR 0003): from `at` on, the session
+/// (or one subagent of it) works in slot `slotId` — or, for `release`, no longer does.
+model SessionSlotBinding {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  agentTool    String
+  sessionId    String
+  /// "" for the session itself: SQLite treats NULLs as distinct in a unique index.
+  subagentId   String     @default("")
+  /// launch | release | workspace | observed
+  kind         String
+  slotId       Int
+  occupancyKey String?
+  branch       String?
+  at           DateTime
+  /// Who recorded it: "sync" (HAR CLI) or "otel" (derived from a span by Mission Control).
+  origin       String     @default("sync")
+  createdAt    DateTime   @default(now())
+
+  @@unique([repositoryId, agentTool, sessionId, subagentId, kind, slotId, at])
+  @@index([repositoryId, agentTool, sessionId, at])
+  @@index([repositoryId, slotId, at])
+}
+
+/// One billable unit of LLM usage as reported (ADR 0003). Never merged into another;
+/// slot usage is derived from these and the binding timeline at read time.
+model UsageObservation {
+  id                  String     @id @default(uuid())
+  repositoryId        String
+  repository          Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  agentTool           String
+  sessionId           String
+  /// "" for the session itself.
+  subagentId          String     @default("")
+  observationKey      String
+  observedAt          DateTime
+  /// request | turn | generation | message
+  granularity         String
+  /// otel | harvest
+  source              String
+  /// Producer stream (claude.api_request, codex.sse_event, otelhook.generation, sync.harvest, ...).
+  /// Streams that report the same usage under different keys are de-duplicated by it.
+  producer            String
+  model               String?
+  tokensInput         BigInt     @default(0)
+  tokensOutput        BigInt     @default(0)
+  tokensCacheRead     BigInt     @default(0)
+  tokensCacheCreation BigInt     @default(0)
+  costUsd             Decimal?
+  /// For producers that report a session running total (Codex hooks): that total as reported
+  /// at this unit. The token columns then hold the difference from the previous unit.
+  reportedTotals      Json?
+  /// Whether `reportedTotals` is set (JSON columns are not filterable on SQLite).
+  reportsTotal        Boolean    @default(false)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  @@unique([repositoryId, agentTool, sessionId, observationKey])
+  @@index([repositoryId, observedAt])
+  @@index([repositoryId, agentTool, sessionId, observedAt])
+  /// A session's units across repositories: its running-total series and the copy another repository holds (FE-2058).
+  @@index([agentTool, sessionId, observedAt])
+}
+
+/// A session total a provider reports itself (Claude Code `claude_code.cost.usage`).
+/// Kept as a cross-check against the sum of observations — never booked on a slot.
+model SessionReportedUsage {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  agentTool    String
+  sessionId    String
+  costUsd      Decimal?
+  tokensTotal  BigInt     @default(0)
+  firstSeenAt  DateTime
+  lastSeenAt   DateTime
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([repositoryId, agentTool, sessionId])
+}
+
+model AgentSessionEvent {
+  id             String     @id @default(uuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sessionKey     String
+  agentId        Int
+  agentTool      String
+  eventName      String
+  sequence       Int        @default(0)
+  timestamp      DateTime
+  attributes     Json?
+  promptText     String?
+  responseText   String?
+  rawTruncated   String?
+  source         String     @default("otel")
+  workUnitId     String?
+  attemptId      String?
+  createdAt      DateTime   @default(now())
+
+  @@unique([repositoryId, sessionKey, agentTool, eventName, sequence])
+  @@index([repositoryId, agentId, timestamp])
+  @@index([repositoryId, createdAt, id])
+  @@index([timestamp])
+}
+
+model AgentSessionSpan {
+  id             String     @id @default(uuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sessionKey     String
+  agentId        Int
+  agentTool      String
+  workUnitId     String?
+  attemptId      String?
+  traceId        String
+  spanId         String
+  parentSpanId   String?
+  name           String
+  startTime      DateTime
+  endTime        DateTime?
+  attributes     Json?
+  createdAt      DateTime   @default(now())
+
+  @@unique([repositoryId, traceId, spanId])
+  @@index([repositoryId, agentId, startTime])
+  @@index([repositoryId, createdAt, id])
+}
+
+model AgentTrajectoryRecord {
+  id                String     @id @default(uuid())
+  repositoryId      String
+  repository        Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  version           Int        @default(1)
+  source            String
+  sourceEventId     String
+  contentKey        String
+  sessionKey        String
+  agentId           Int
+  agentTool         String
+  eventType         String
+  sequence          Int
+  eventTimestamp    DateTime
+  payload           Json
+  contentKind       String
+  contentDisclosure String
+  contentLabel      String?
+  traceId           String?
+  spanId            String?
+  parentSpanId      String?
+  generationId      String?
+  toolCallId        String?
+  correlationId     String?
+  occupancyKey      String?
+  workUnitId        String?
+  attemptId         String?
+  createdAt         DateTime   @default(now())
+
+  @@unique([repositoryId, source, sourceEventId, contentKey])
+  @@index([repositoryId, agentId, occupancyKey])
+  @@index([repositoryId, agentId, sessionKey, agentTool, sequence, eventTimestamp, source])
+  @@index([repositoryId, agentId, sessionKey, agentTool, createdAt])
+  @@index([repositoryId, createdAt, id])
+}
+
+model Run {
+  id           String     @id @default(uuid())
+  runId        String
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  stageId      String
+  kind         String?
+  agentId      Int?
+  status       String
+  trigger      String
+  durationMs   Int?
+  startedAt    DateTime
+  finishedAt   DateTime?
+  workDir      String?
+  workUnitId   String?
+  attemptId    String?
+  /// One occupancy of a slot (#316) — stamped at sync so the record joins exactly (#348).
+  occupancyKey String?
+  result       Json?
+  createdAt    DateTime   @default(now())
+
+  @@unique([repositoryId, runId])
+  @@index([repositoryId, startedAt])
+  @@index([repositoryId, occupancyKey])
+}
+
+model WorkUnit {
+  id               String     @id @default(uuid())
+  repositoryId     String
+  repository       Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workUnitId       String
+  source           String?
+  sourceUrl        String?
+  title            String?
+  parentWorkUnitId String?
+  relatedLinks     Json?
+  outcome          Json?
+  sourceCreatedAt  DateTime
+  sourceUpdatedAt  DateTime
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  attempts         WorkAttempt[]
+  validationBindings ValidationBinding[]
+
+  @@unique([repositoryId, workUnitId])
+  @@index([repositoryId, sourceUpdatedAt])
+}
+
+model WorkAttempt {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workUnitDbId String
+  workUnit     WorkUnit   @relation(fields: [workUnitDbId], references: [id], onDelete: Cascade)
+  attemptId    String
+  agentId      Int
+  sessionKey   String?
+  workDir      String?
+  worktreePath String?
+  branch       String?
+  baseCommit   String?
+  sourceCreatedAt DateTime
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  validationBindings ValidationBinding[]
+
+  @@unique([repositoryId, attemptId])
+  @@index([workUnitDbId, sourceCreatedAt])
+}
+
+model ValidationBinding {
+  id           String      @id @default(uuid())
+  repositoryId String
+  repository   Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  bindingId    String
+  workUnitDbId String
+  workUnit     WorkUnit    @relation(fields: [workUnitDbId], references: [id], onDelete: Cascade)
+  attemptDbId  String
+  attempt      WorkAttempt @relation(fields: [attemptDbId], references: [id], onDelete: Cascade)
+  validationId String
+  treeHash     String
+  sourceCreatedAt DateTime
+  createdAt    DateTime    @default(now())
+
+  @@unique([repositoryId, bindingId])
+  @@index([repositoryId, validationId])
+  @@index([workUnitDbId, sourceCreatedAt])
+}
+
+model ValidationCommitBinding {
+  id              String     @id @default(uuid())
+  repositoryId    String
+  repository      Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  bindingId       String
+  validationId    String
+  treeHash        String
+  commitSha       String
+  parents         Json
+  refs            Json
+  message         String?
+  runId           String?
+  sourceCreatedAt DateTime
+  createdAt       DateTime   @default(now())
+
+  @@unique([repositoryId, bindingId])
+  @@unique([repositoryId, treeHash, commitSha])
+  @@index([repositoryId, validationId])
+}
+
+model ChangeBatch {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  validationId String
+  treeHash     String
+  headSha      String?
+  branch       String?
+  workDir      String?
+  agentId      Int?
+  status       String
+  full         Boolean    @default(false)
+  runId        String?
+  changedFiles Json?
+  commitSha    String?
+  committedAt  DateTime?
+  /// One occupancy of a slot (#316) — stamped at sync so the record joins exactly (#348).
+  occupancyKey String?
+  createdAt    DateTime
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([repositoryId, treeHash])
+  @@index([repositoryId, branch, createdAt])
+  @@index([repositoryId, occupancyKey])
+}
+
+model CloudConfig {
+  id        String   @id @default("default")
+  apiKey    String?
+  apiUrl    String?
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+/** Paths removed via unregister — blocks auto-sync re-registration until force register. */
+model UnregisteredRepository {
+  path             String   @id
+  unregisteredAt   DateTime @default(now())
+  deleteWorktrees  Boolean  @default(false)
+}
+
+/// One `har env verify` as received over OTLP: the run span of a verification
+/// trace (instrumentation scope `@osfactory/har`, `cicd.pipeline.run.id`).
+/// Every verify of one tree shares the trace and run id; the span id is per verify.
+model VerificationRun {
+  id                String     @id @default(uuid())
+  repositoryId      String
+  repository        Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  /// `cicd.pipeline.run.id`: the validation id (or the run id when none was recorded).
+  runId             String
+  traceId           String
+  spanId            String
+  pipelineName      String
+  /// `cicd.pipeline.result`: success | failure | error | timeout | cancellation | skip.
+  result            String
+  /// `factory.verdict` (full verify only): pass | fail.
+  verdict           String?
+  treeHash          String?
+  headRevision      String?
+  attestationDigest String?
+  /// `factory.policy.id`: the policy the verdict was computed against, when the producer sends it.
+  policyId          String?
+  /// `factory.policy.digest`: digest of the policy source (e.g. stages.json), when sent.
+  policyDigest      String?
+  workUnitId        String?
+  attemptId         String?
+  branch            String?
+  producerVersion   String?
+  startTime         DateTime
+  endTime           DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  stages            VerificationStage[]
+
+  @@unique([traceId, spanId])
+  @@index([repositoryId, createdAt, id])
+  @@index([repositoryId, runId])
+}
+
+/// One stage span of a verification run (`cicd.pipeline.task.*`).
+model VerificationStage {
+  id                String          @id @default(uuid())
+  verificationRunId String
+  verificationRun   VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
+  traceId           String
+  spanId            String
+  name              String
+  /// `cicd.pipeline.task.run.result`.
+  result            String
+  /// `cicd.pipeline.task.type` when the stage id names one (build | test).
+  taskType          String?
+  /// `factory.stage.added_by`: `policy` (required by the policy) or `agent`.
+  addedBy           String?
+  startTime         DateTime
+  endTime           DateTime?
+  createdAt         DateTime        @default(now())
+
+  @@unique([traceId, spanId])
+  @@index([verificationRunId, startTime])
+}

@@ -10,6 +10,8 @@ import {
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { ingestVerificationSpans, isVerificationSpan } from '@/server/verification-runs';
+import { ingestOtelHookMetrics, otelHookProviderId } from '@/server/metric-series';
+import { stampedIds, withResourceStamps } from '@/server/stamped-ids';
 import {
   appendTrajectoryRecord,
   stableTrajectoryKey,
@@ -128,8 +130,11 @@ export interface AttrMap {
   [key: string]: string | number | boolean;
 }
 
-interface ParsedMetricPoint {
+export interface ParsedMetricPoint {
   name: string;
+  unit?: string;
+  /** `gauge`, `sum` or `histogram`. */
+  kind?: string;
   attributes: AttrMap;
   value: number;
   /** OTLP AggregationTemporality: 1 delta, 2 cumulative, 0 unspecified (gauges). */
@@ -214,6 +219,12 @@ function extractPointsFromResourceMetrics(payload: unknown): Array<{
       for (const metric of metrics) {
         if (!metric || typeof metric !== 'object') continue;
         const name = String((metric as { name?: string }).name ?? '');
+        const unit = String((metric as { unit?: string }).unit ?? '') || undefined;
+        const kind = (metric as { sum?: unknown }).sum
+          ? 'sum'
+          : (metric as { gauge?: unknown }).gauge
+            ? 'gauge'
+            : 'histogram';
         const data =
           (metric as { sum?: { dataPoints?: unknown[] }; gauge?: { dataPoints?: unknown[] } })
             .sum ??
@@ -228,6 +239,8 @@ function extractPointsFromResourceMetrics(payload: unknown): Array<{
           const time = record.timeUnixNano ?? record.time_unix_nano;
           points.push({
             name,
+            unit,
+            kind,
             attributes: attrsFromOtel(record.attributes),
             value: numberFromDataPoint(record),
             temporality,
@@ -1044,6 +1057,13 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
   };
 
   for (const group of extractPointsFromResourceMetrics(payload)) {
+    // otel-hook metrics (ADR 0005 section 5): the latest value per series, for
+    // providers other than Claude Code, whose usage comes from its native telemetry.
+    const hookProvider = otelHookProviderId(group.resource);
+    if (hookProvider) {
+      merge(await ingestOtelHookMetrics(group.resource, group.points));
+      continue;
+    }
     const tool = detectAgentTool(group.resource);
     if (tool === 'claude_code') {
       merge(await ingestClaudeSessionTotals(group.resource, group.points));
@@ -1380,7 +1400,12 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
         reasons.push(`usage event ${record.eventName} without session id or tokens`);
         continue;
       }
-      const stored = await storeObservations([observation], record.resource, () => record.attributes);
+      const stamps = stampedIds(record.attributes, record.resource);
+      const stored = await storeObservations(
+        [{ ...observation, workUnitId: stamps.workUnitId, attemptId: stamps.attemptId, factoryRunId: stamps.factoryRunId }],
+        record.resource,
+        () => record.attributes,
+      );
       accepted += stored.accepted;
       dropped += stored.dropped;
       reasons.push(...stored.reasons);
@@ -1398,7 +1423,8 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
     // A `span.*` event mirrors a span at the span's start time, with the cwd
     // seen at its end; the span itself records that evidence at the right time.
     if (!isSpanMirrorLogRecord(record)) await recordContextEvidence(context, resolved.evidence, at);
-    const canonical = canonicalizeOtelLogRecord(record);
+    const stamps = stampedIds(record.attributes, record.resource);
+    const canonical = canonicalizeOtelLogRecord({ ...record, attributes: withResourceStamps(record.resource, record.attributes) });
     const { eventType, sequence } = canonical;
     const promptText = extractPromptText(record.attributes, eventType, record.bodyText);
 
@@ -1432,8 +1458,8 @@ export async function ingestOtelLogsJson(payload: unknown): Promise<OtelIngestRe
         generationId: canonical.generationId,
         toolCallId: canonical.toolCallId,
         correlationId: canonical.correlationId,
-        workUnitId: context.workUnitId,
-        attemptId: context.attemptId,
+        workUnitId: stamps.workUnitId ?? context.workUnitId,
+        attemptId: stamps.attemptId ?? context.attemptId,
         occupancyKey: context.occupancyKey,
       }),
     );
@@ -1557,9 +1583,17 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
     }
     const { context } = resolved;
     await recordContextEvidence(context, resolved.evidence, evidenceAt);
+    // A stamp (ADR 0004 section 3) wins over the slot the resolver placed the span in.
+    const stamps = stampedIds(span.attributes, span.resource);
+    const workUnitId = stamps.workUnitId ?? context.workUnitId;
+    const attemptId = stamps.attemptId ?? context.attemptId;
     const observation = otelHookGenerationObservation(span, context.agentTool);
-    if (observation) await recordObservations(context.repositoryId, [observation]);
-    const canonical = canonicalizeOtelSpan(span);
+    if (observation) {
+      await recordObservations(context.repositoryId, [
+        { ...observation, workUnitId, attemptId, factoryRunId: stamps.factoryRunId },
+      ]);
+    }
+    const canonical = canonicalizeOtelSpan({ ...span, attributes: withResourceStamps(span.resource, span.attributes) });
 
     await appendTrajectoryRecord(
       context.repositoryId,
@@ -1587,8 +1621,8 @@ export async function ingestOtelTracesJson(payload: unknown): Promise<OtelIngest
         traceId: span.traceId,
         spanId: span.spanId,
         parentSpanId: span.parentSpanId ?? undefined,
-        workUnitId: context.workUnitId,
-        attemptId: context.attemptId,
+        workUnitId,
+        attemptId,
         occupancyKey: context.occupancyKey,
       }),
     );
