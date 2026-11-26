@@ -1,3 +1,9 @@
+## [1.36.0](https://github.com/os-factory/har/compare/v1.35.0...v1.36.0) (2026-11-26)
+
+### Features
+
+* **lines:** record line gate runs and sync factory lines to the portal ([#517](https://github.com/os-factory/har/issues/517)) ([4b6a573](https://github.com/os-factory/har/commit/4b6a573feb57024d7bb3fbf88fffc86bd7f146c5)), closes [#515](https://github.com/os-factory/har/issues/515)
+
 ## [1.35.0](https://github.com/os-factory/har/compare/v1.34.0...v1.35.0) (2026-11-26)
 
 ### Features
