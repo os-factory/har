@@ -115,12 +115,17 @@ read it back from Mission Control and posted it to the connected org, so HQ got
 nothing while Mission Control was down. In 2.0 `har control sync` sends to local
 Mission Control only (or to HAR Cloud with `--cloud`). The CLI and the agent hook
 send records, proofs, evidence and telemetry to every destination directly, HAR HQ
-included; Mission Control forwards nothing. To keep sending to HQ, add it as a
-destination once:
+included; Mission Control forwards nothing.
+
+A machine that is already connected (`har hq connect`, or `HAR_PORTAL_TOKEN`) gets the
+`hq` destination added automatically on the first 2.0 command, with one notice line.
+This happens once: if you remove the destination later, it is not added again.
+`har env doctor` warns when a key is set but no `hq` destination is enabled. To add
+it by hand, or again after removing it:
 
 ```bash
 har hq connect                       # if not connected yet
-har telemetry destination add hq
+har telemetry destination add hq --preset hq
 ```
 
 `har hq connect`, `har hq list`, `har hq disconnect` and repository attachment work

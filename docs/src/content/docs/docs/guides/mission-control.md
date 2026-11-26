@@ -425,7 +425,7 @@ conflict and can select another port in the slot lane.
 
 `har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
 repository to the org you pick in the portal. The CLI holds one org connection at
-a time: when HQ is a destination (`har telemetry destination add hq`), everything
+a time: when HQ is a destination (`har telemetry destination add hq --preset hq`), everything
 the CLI and the agent hook send to HQ goes to that org only. Other locally
 registered repositories are offered so you can attach them to the same org;
 unattached checkouts are never ingested. Connecting to a different org replaces

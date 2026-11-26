@@ -457,7 +457,7 @@ view, Mission Control's two local endpoints outside the ingest contract (or to H
 Cloud with `--cloud`); it no longer sends anything to HAR HQ. Runs, work units,
 factory runs, commit bindings, usage and the trajectory reach every receiver,
 Mission Control included, as ingest v2 records and otel-hook OTLP. The CLI sends records and telemetry to HAR HQ
-directly when HQ is a destination (`har telemetry destination add hq`).
+directly when HQ is a destination (`har telemetry destination add hq --preset hq`).
 `check-usage` is read-only: Mission Control checks the usage invariants over
 everything it holds (I1 a request is stored in one repository,
 I2 a legacy session total is stored once, I3 a session's rows hold exactly its

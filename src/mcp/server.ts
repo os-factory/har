@@ -37,6 +37,7 @@ import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
 import { collectTelemetryHealth, withTelemetryHealth } from '../core/telemetry-health';
 import { collectIngestHealth, withIngestHealth } from '../core/ingest-health';
+import { runHqDestinationMigration } from '../core/hq-destination-migration';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -933,6 +934,8 @@ export async function handleMcpToolCall(
 
 export async function runHarMcpServer(defaultRepo = '.'): Promise<void> {
   ensureDefaultTelemetryPreference();
+  // Same one-time 1.x → 2.0 migration as the CLI; its notice goes to stderr, never the protocol stream.
+  runHqDestinationMigration();
   const server = new Server(
     { name: 'har', version: getHarPackageVersion() },
     { capabilities: { tools: {} } },
