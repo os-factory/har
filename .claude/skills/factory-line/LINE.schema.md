@@ -161,6 +161,6 @@ Settled in epic #302 / #304. Do not reopen without updating them:
    resolver but with its own apply path, which cannot patch
    `verificationStages`. `har env add-plugin` refuses a line bundle and
    `har line add` refuses a plugin manifest.
-4. **Preflight.** `har line status` reports gate progress and any stage that
+4. **Preflight.** `har line describe` reports gate progress and any stage that
    leaked onto the verify plan; `har env doctor` fails on such a leak. Skill and
    MCP presence stay an agent preflight — HAR declares, it does not vendor.

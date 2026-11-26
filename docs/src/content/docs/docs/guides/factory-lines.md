@@ -27,7 +27,7 @@ repo, npm package, or a bundled id. The difference is the apply path.
 har line add github:os-factory/har-line   # git
 har line add ./my-line                    # local path
 har line add @acme/onboarding-line        # npm
-har line status                           # stations and gate progress
+har line describe                         # what it checks, stations, gate progress
 har line gate S2 --line my-line           # run the cumulative gate
 ```
 
@@ -158,7 +158,7 @@ The two bundle kinds are deliberately not interchangeable:
 
 Mission Control draws every installed line at `/repos/<id>/lines`: stations in
 order, the cumulative gate, which workstations are in use, and the latest gate
-run per stage. It reads the same ledger and program `har line status` reads, so
+run per stage. It reads the same ledger and program `har line describe` reads, so
 the two always agree.
 
 It is a **view**. The board never runs a stage, installs a bundle, or edits a

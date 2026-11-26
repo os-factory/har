@@ -7,7 +7,14 @@ import { applyLine, installedLineScopes, readInstalledLineProgram } from '../src
 import { createLine } from '../src/harness/line-create';
 import { readLineLedger } from '../src/harness/line-ledger';
 import { ensureHarLocalIgnored, personalFileDest } from '../src/harness/line-scope';
-import { getLineStatus, listInstalledLineIds, listLineScopeClashes, runLineGate } from '../src/core/lines';
+import {
+  describeLine,
+  getLineStatus,
+  listInstalledLineIds,
+  listLineScopeClashes,
+  listLines,
+  runLineGate,
+} from '../src/core/lines';
 import { runDoctor } from '../src/harness/doctor';
 import { readStageRegistry } from '../src/harness/stages';
 
@@ -148,6 +155,23 @@ describe('personal factory lines', () => {
       programPath: '.har/local/lines/example-line/line.json',
     });
     expect(getLineStatus(repoPath, 'team-line').scope).toBe('team');
+  });
+
+  it('reports scope in har line list and describe', () => {
+    const repoPath = makeTempRepo('har-line-personal-list');
+    applyLine(repoPath, 'example-line', { scope: 'personal' });
+    createLine(repoPath, { id: 'draft', scope: 'personal', gateStage: false });
+
+    // A scaffolded line already has its program on disk, so it lists as installed (same as team lines).
+    const list = listLines(repoPath);
+    expect(list.installed).toEqual([
+      expect.objectContaining({ lineId: 'draft', scope: 'personal' }),
+      expect.objectContaining({ lineId: 'example-line', scope: 'personal' }),
+    ]);
+    expect(describeLine(repoPath, 'example-line')).toMatchObject({
+      scope: 'personal',
+      programPath: '.har/local/lines/example-line/line.json',
+    });
   });
 
   it('creates a personal line and installs it by bare id with --personal', () => {

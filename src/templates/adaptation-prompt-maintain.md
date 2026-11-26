@@ -105,7 +105,7 @@ If harness commands, rules, or workflow changed, update the **HAR / agent enviro
 
 If `AGENTS.md` does not mention HAR yet, add a concise section. If it already has a HAR section, update it minimally — do not replace unrelated content.
 
-Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Do not create a `CLAUDE.md`; if one exists, keep it as the line `@AGENTS.md`.
+Do **not** create `AGENT.md` (singular). If legacy `AGENT.md` exists, merge unique notes into `AGENTS.md` and delete `AGENT.md`. Do not create or edit `CLAUDE.md` — Claude Code reads `AGENTS.md` directly; never add an `@AGENTS.md` import to an existing one.
 
 ## Rules
 

@@ -63,7 +63,7 @@
       "claude": {
         "frontmatter": {
           "name": "factory-line",
-          "description": "Execute one station of an installed factory line (har line status / .har/lines/<id>/line.json): parallel HAR slots, cumulative gate via har line gate, human handoff. Use when asked to run a factory line, the next station, or a milestone program."
+          "description": "Execute one station of an installed factory line (har line describe / .har/lines/<id>/line.json): parallel HAR slots, cumulative gate via har line gate, human handoff. Use when asked to run a factory line, the next station, or a milestone program."
         }
       },
       "cursor": {

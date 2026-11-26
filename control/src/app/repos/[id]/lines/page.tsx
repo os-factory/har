@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 /**
  * Factory line board (#305) — read-only view of the lines installed in a repo.
  *
- * Explainable from `har line status`: same ledger, same program, same run
+ * Explainable from `har line describe`: same ledger, same program, same run
  * records. Installing a line here is not offered on purpose — that is
  * `har line add` plus the adaptation prompt it writes.
  */

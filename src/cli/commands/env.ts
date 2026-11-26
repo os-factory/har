@@ -55,6 +55,7 @@ import { EnvironmentStatusSchema, SlotReadinessSchema } from '../../harness/sche
 import { validateAgentId } from '../../utils/validation';
 import { slimVerificationResult } from '../../core/results';
 import { info, success, error, header, divider, warn } from '../../utils/logging';
+import { verifyLinesNextStep, type VerifyNextStepLine } from '../../core/verify-lines';
 import {
   HAR_ENV_EPILOG,
   LAUNCH_COMMAND_DESCRIBE,
@@ -1207,6 +1208,27 @@ export async function handleRecover(argv: { id?: number; repo: string }): Promis
   });
 }
 
+/**
+ * Installed factory lines as an optional next step after a passing verify.
+ * Verify never runs them and never asks; these are the commands to run each
+ * one against the slot that was just verified.
+ */
+export function renderLinesNextStep(lines: VerifyNextStepLine[]): string[] {
+  if (lines.length === 0) return [];
+  const width = Math.max(...lines.map((line) => line.lineId.length));
+  return [
+    'Optional next step — factory lines installed (not run by verify):',
+    ...lines.flatMap((line) => {
+      const progress = line.allGreen ? 'all stations green' : `next: ${line.nextStationId}`;
+      return [
+        `  ${line.lineId.padEnd(width)}  ${line.title} (${line.stationIds.join(' → ')}, ${progress})`,
+        `    ${line.runAll.command}`,
+      ];
+    }),
+    'What a line checks: har line describe <id>',
+  ];
+}
+
 export async function handleVerify(argv: {
   id?: number;
   repo: string;
@@ -1221,6 +1243,8 @@ export async function handleVerify(argv: {
     full: argv.full,
     capture: Boolean(argv.json),
   });
+  const passed = result.code === 0 && result.verification?.status !== 'fail';
+  const lines = passed ? verifyLinesNextStep(repo, agentId) : [];
 
   if (argv.json) {
     const payload = slimVerificationResult(result.verification) ?? {
@@ -1228,7 +1252,8 @@ export async function handleVerify(argv: {
       agent_id: agentId,
       stages: [],
     };
-    process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+    const output = lines.length > 0 ? { ...payload, lines } : payload;
+    process.stdout.write(JSON.stringify(output, null, 2) + '\n');
     return finishCommand(result.code);
   }
 
@@ -1241,6 +1266,12 @@ export async function handleVerify(argv: {
     } else {
       success(`Verification ${result.verification.status}${elapsed}`);
     }
+  }
+
+  const nextStep = renderLinesNextStep(lines);
+  if (nextStep.length > 0) {
+    console.error('');
+    for (const line of nextStep) console.error(line);
   }
 
   return finishCommand(result.code);

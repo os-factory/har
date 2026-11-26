@@ -15,7 +15,7 @@ found, and shows where HAR instructions will be installed after you confirm targ
 | File | Role |
 | --- | --- |
 | `AGENTS.md` | Canonical shared HAR workflow section (always created/updated — Codex and Claude Code auto-load this) |
-| `CLAUDE.md` | Deprecated pointer → `AGENTS.md` — never created; an existing one is kept as the `@AGENTS.md` import |
+| `CLAUDE.md` | Not managed by HAR — never created or edited (Claude Code reads `AGENTS.md` directly) |
 | `.cursor/rules/har-workflow.mdc` | Always-on Cursor injection (when Cursor is confirmed) |
 | Skills / prompts | `/setup-har`, `/har-wt`, `/har-maintain`, `/factory-line` for confirmed agents |
 

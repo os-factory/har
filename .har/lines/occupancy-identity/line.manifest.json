@@ -137,7 +137,7 @@
     }
   ],
   "nextSteps": [
-    "har line status occupancy-identity",
+    "har line describe occupancy-identity",
     "har line gate S2 --line occupancy-identity   # unit stations, no Docker",
     "har line gate S3 --line occupancy-identity   # adds the sandbox lab"
   ],

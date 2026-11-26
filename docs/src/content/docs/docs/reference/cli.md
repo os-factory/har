@@ -209,6 +209,26 @@ duplicates step logs already shown. Use `--json` when a script needs the
 structured result. Passing steps omit `output`; failed steps keep a truncated
 excerpt. MCP `har_run_verification` returns the same slim shape.
 
+**Factory lines after verify.** Verify never runs a [line](#har-line) and
+never asks about one. When lines are installed and verify passes, it lists
+them as an optional next step, each with the command that runs every station
+against the slot it just verified:
+
+```
+Optional next step — factory lines installed (not run by verify):
+  alpha-line    Alpha (S1 → S2, next: S2)
+    har line gate S2 --line alpha-line --agent 1
+  example-line  Example factory line (S1 → S2 → S3, all stations green)
+    har line gate S3 --line example-line --agent 1 --force
+What a line checks: har line describe <id>
+```
+
+`--force` appears for lines that declare an opt-in env var. `--json` and MCP
+`har_run_verification` return the same data as `lines` (`lineId`, `title`,
+`stationIds`, `nextStationId`, `allGreen`, `runAll: { station, force, command }`).
+Use `har line describe <id>` (MCP: `har_line_describe`) to decide whether a
+line covers your change.
+
 ### Doctor
 
 ```bash
@@ -293,9 +313,9 @@ har line create <id> [--stations S1,S2,S3] [--title <text>]
                      [--description <text>] [--opt-in-env <VAR>]
                      [--no-gate-stage] [--personal] [--force]
 har line add <id|./path|@org/pkg|github:org/repo> [--personal] [--force]
-har line status [id] [--json]
+har line list [--json]
+har line describe [id] [--json]
 har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
-har line list
 ```
 
 A **factory line** is a program: an ordered set of stations plus a cumulative
@@ -311,6 +331,18 @@ long as it did before. Line gate stages run on demand:
 ```bash
 har line gate S2 --line my-line
 ```
+
+`har line list` is the inventory: each installed line's title, first sentence
+of its description, stations, progress and the command that runs every
+station, plus the lines available to install. `har line describe <id>` shows
+what a line checks and where it stands — description, stations with gate
+progress, each gate stage with its description and last run, registered
+stages, any stage that leaked onto the verify plan, and slots in flight — so
+you (or an agent) can decide whether a line covers your change before running
+it. Without an id it describes every installed line.
+
+After a passing `har env verify`, the installed lines are listed as an
+optional next step (see [Verify and finish](#verify-and-finish)).
 
 `gate.stages[].fromStation` is the ratchet: a stage tagged at a station is
 required at that station **and every later one**, so growing a line can never

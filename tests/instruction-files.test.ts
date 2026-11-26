@@ -12,7 +12,6 @@ import {
   LEGACY_AGENT_MD,
   buildInstallPlan,
   detectInstructionFiles,
-  ensureClaudeMdPointer,
   extractOutsideHarSection,
   formatDetectionReport,
   formatInstallPlan,
@@ -94,45 +93,21 @@ describe('instruction-files', () => {
     expect(content).toContain(HAR_SECTION_START);
   });
 
-  // Claude Code reads AGENTS.md directly, so the pointer is deprecated: HAR
-  // keeps an existing CLAUDE.md current but never creates one.
-  it('never creates CLAUDE.md when it is absent', () => {
-    const repoPath = makeTempRepo('har-claude-thin');
-    const action = ensureClaudeMdPointer(repoPath);
-    expect(action).toBe('skipped');
+  // Claude Code reads AGENTS.md directly: HAR never creates or edits CLAUDE.md.
+  it('leaves an existing CLAUDE.md untouched', async () => {
+    const repoPath = makeTempRepo('har-claude-untouched');
+    fs.mkdirSync(path.join(repoPath, '.claude'));
+    const own = '# My project\n\n## Style\nUse tabs.\n';
+    fs.writeFileSync(path.join(repoPath, CLAUDE_MD), own);
+    await handleInstructionFiles({ repoPath, mode: 'maintain', agents: 'claude' });
+    expect(fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8')).toBe(own);
+  });
+
+  it('never creates CLAUDE.md when it is absent', async () => {
+    const repoPath = makeTempRepo('har-claude-absent');
+    fs.mkdirSync(path.join(repoPath, '.claude'));
+    await handleInstructionFiles({ repoPath, mode: 'maintain', agents: 'claude' });
     expect(fs.existsSync(path.join(repoPath, CLAUDE_MD))).toBe(false);
-  });
-
-  it('replaces a HAR-authored pointer with the import', () => {
-    const repoPath = makeTempRepo('har-claude-legacy');
-    fs.writeFileSync(
-      path.join(repoPath, CLAUDE_MD),
-      '# Proj\n\nRead [AGENTS.md](./AGENTS.md) and [.har/README.md](./.har/README.md).\n',
-    );
-    expect(ensureClaudeMdPointer(repoPath)).toBe('updated');
-    expect(fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8').trim()).toBe('@AGENTS.md');
-  });
-
-  it("preserves a user's own CLAUDE.md and prepends the import", () => {
-    const repoPath = makeTempRepo('har-claude-rich');
-    const rich = '# My project\n\n' + 'x'.repeat(700) + '\n\n## Style\nUse tabs.\n';
-    fs.writeFileSync(path.join(repoPath, CLAUDE_MD), rich);
-    const action = ensureClaudeMdPointer(repoPath);
-    expect(action).toBe('appended');
-    const content = fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8');
-    expect(content.startsWith('@AGENTS.md\n')).toBe(true);
-    expect(content).toContain('Use tabs.');
-    expect(content).toContain('x'.repeat(700));
-    expect(content).not.toContain('Definition of done');
-  });
-
-  it('is idempotent — a file that already imports AGENTS.md is untouched', () => {
-    const repoPath = makeTempRepo('har-claude-idem');
-    const rich = '@AGENTS.md\n\n# Mine\n' + 'y'.repeat(700) + '\n';
-    fs.writeFileSync(path.join(repoPath, CLAUDE_MD), rich);
-    expect(ensureClaudeMdPointer(repoPath)).toBe('skipped');
-    expect(fs.readFileSync(path.join(repoPath, CLAUDE_MD), 'utf8')).toBe(rich);
-    expect(ensureClaudeMdPointer(repoPath)).toBe('skipped');
   });
 
   // #301: the always-loaded block teaches one way to drive the harness. The
@@ -170,18 +145,10 @@ describe('instruction-files', () => {
     });
     expect(plan.agentsMd).toBe(true);
     expect(plan.migrateLegacyAgentMd).toBe(true);
-    // No CLAUDE.md in the repo — the deprecated pointer is never created.
-    expect(plan.claudeMd).toBe(false);
     expect(plan.cursorRule).toBe(false);
     expect(plan.skills).toEqual(['claude']);
     expect(formatInstallPlan(plan, detection)).toContain('[x] Create AGENTS.md');
-    expect(formatInstallPlan(plan, detection)).toContain('no CLAUDE.md created');
-
-    const withExisting = buildInstallPlan({ ...detection, claudeMd: true }, ['claude'], {
-      skills: ['claude'],
-      respectProviderSelection: true,
-    });
-    expect(withExisting.claudeMd).toBe(true);
+    expect(formatInstallPlan(plan, detection)).toContain('CLAUDE.md left untouched');
   });
 
   it('preselects detected providers and leaves skill installation off by default', async () => {
@@ -208,7 +175,6 @@ describe('instruction-files', () => {
     expect(skillsQuestion).toEqual(expect.objectContaining({ type: 'confirm', default: false }));
     expect(result.targets).toEqual(['claude', 'cursor']);
     expect(result.plan.skills).toEqual([]);
-    expect(result.plan.claudeMd).toBe(false);
     expect(result.plan.cursorRule).toBe(true);
   });
 

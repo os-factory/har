@@ -73,7 +73,8 @@ Verification plugins (which *do* join verify) use `har_add_plugin` instead.
 | --- | --- | --- |
 | `har_line_create` | `id`, optional `title`, `description`, `stations`, `gateStage`, `optInEnv`, `force`, `personal` | Scaffolds `.har/lines/<id>/` (or the gitignored `.har/local/lines/<id>/` with `personal: true`) — manifest, program, gate stage, README — and returns its `scope`, files written and next steps |
 | `har_add_line` | `line` (local id, path, npm package, or git URL), optional `force`, `personal` | Installed line id, `scope` (`team` or `personal`), stations, registered stage ids, files written, program path, adaptation prompt path, and `verificationStagesUnchanged: true` |
-| `har_line_status` | optional `line` | Stations with cumulative gate progress from run records, slots in flight, and any stage that leaked onto the verify plan. A pure read — writes no run records |
+| `har_line_list` | — | Installed lines with title, description, stations, progress and `runAll` (the station and `force` that run every station), plus lines available to install. A line that cannot be read is listed as `unreadable` |
+| `har_line_describe` | optional `line` | What a line checks and where it stands: description, stations with cumulative gate progress from run records, gate stages (description, registered, last run status), registered stages, any stage that leaked onto the verify plan, slots in flight, `runAll` and `runStationCommand`. Without `line`, every installed line (`{ lines }`; a broken one comes back as `unreadable`). A pure read — writes no run records |
 | `har_run_line_gate` | `station`, optional `line`, `agentId`, `force` | Per-stage results for every gate stage tagged at that station or earlier |
 
 `har_add_line` refuses a verification-plugin bundle, and `har_add_plugin`

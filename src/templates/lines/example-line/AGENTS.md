@@ -43,6 +43,6 @@ Then prove the invariant on a scratch harness:
 
 ```bash
 har line add ./           # from a repo with a .har/ harness
-har line status <id>
+har line describe <id>
 git diff -- .har/stages.json   # verificationStages must be untouched
 ```

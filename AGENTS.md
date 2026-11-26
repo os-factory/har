@@ -183,7 +183,7 @@ naming plugins ≠ shipping a marketplace.
 
 - **`StageExecutor`** (`src/core/types.ts`) — swap local vs cloud execution by injecting a different executor into `RunService`. `local-executor.ts` is the current implementation.
 - **Project-owned stages** — runtime behavior lives in the target repo's `.har/` scripts and `stages.json`, not as hardcoded tool APIs in core.
-- **Factory lines** — installable *programs* (`har line add <id|path|npm|git>`), resolved through the same channels as plugins (`bundle-resolve.ts`) but with an apply path that registers stages and **never** touches `verificationStages`. `har line gate <station>` runs the cumulative set through `RunService`; there is no second stage runner. Poka-yoke both ways: `add-plugin` refuses `kind: line`, `line add` refuses a plugin manifest, and `doctor` fails if a line stage reaches the verify plan.
+- **Factory lines** — installable *programs* (`har line add <id|path|npm|git>`), resolved through the same channels as plugins (`bundle-resolve.ts`) but with an apply path that registers stages and **never** touches `verificationStages`. `har line gate <station>` runs the cumulative set through `RunService`; there is no second stage runner. After a passing `har env verify`, installed lines are listed as an optional next step with the command to run each against the verified slot (`src/core/verify-lines.ts`); verify never runs or prompts for a line, and line stages never join the verify plan. Poka-yoke both ways: `add-plugin` refuses `kind: line`, `line add` refuses a plugin manifest, and `doctor` fails if a line stage reaches the verify plan.
 - **Plugins** — optional bundles applied with `har env add-plugin <id|path|npm|git>` (e.g. `playwright` → `browser-e2e` stage + test scaffold). Discovered from `src/templates/plugins/*/template.manifest.json` (no closed enum). Installs are recorded in `.har/plugins.json`. They compile down to generic stage kinds (`setup`, `launch`, `verify`, `test`, `custom`, etc.). Do not add stack-specific MCP tools like `run_playwright`. Philosophy: *plugins install stages; agents only talk to the stage registry.*
 - **Profiles** — ordered runtime bundles (`src/templates/profiles/<id>/profile.manifest.json`), not forked logic in core. Stack capabilities (PM2, Simulator, ports) are detected via `src/harness/capabilities.ts` marker files.
 
@@ -208,7 +208,7 @@ First-run scaffold: humans use `har onboard`; agents use `har_init_harness`.
 | doctor | `har env doctor` (also auto-runs in `maintain` and before `launch`) | `har_doctor` |
 | complete / teardown | `har env complete`, `teardown` | `har_complete_environment`, `har_teardown_environment` |
 | runs / work links / work binding | `har env runs list\|get`, `work-link`, `work-bind` | `har_list_runs`, `har_get_run`, `har_add_work_unit_link`, `har_bind_work_unit` |
-| factory lines | `har line create\|add\|status\|gate\|list` | `har_line_create`, `har_add_line`, `har_line_status`, `har_run_line_gate` |
+| factory lines | `har line create\|add\|list\|describe\|gate` | `har_line_create`, `har_add_line`, `har_line_list`, `har_line_describe`, `har_run_line_gate` |
 | Mission Control | `har control up` | `har_control_up` |
 
 Intentional holes (human-only, no MCP tool):

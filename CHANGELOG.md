@@ -1,3 +1,15 @@
+## [1.34.0](https://github.com/os-factory/har/compare/v1.33.0...v1.34.0) (2026-11-25)
+
+### Features
+
+* **verify:** offer installed line gates after har env verify ([#479](https://github.com/os-factory/har/issues/479)) ([5cf936d](https://github.com/os-factory/har/commit/5cf936d29f50a437dfa5151595650221d2c88094))
+
+## [1.33.0](https://github.com/os-factory/har/compare/v1.32.1...v1.33.0) (2026-11-25)
+
+### Features
+
+* stop writing @AGENTS.md into CLAUDE.md ([#518](https://github.com/os-factory/har/issues/518)) ([1ab8ba1](https://github.com/os-factory/har/commit/1ab8ba1d828f4d8bd263305f4f251423db5f8594))
+
 ## [1.32.1](https://github.com/os-factory/har/compare/v1.32.0...v1.32.1) (2026-11-25)
 
 ### Bug Fixes

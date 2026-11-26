@@ -324,7 +324,7 @@ function applyLineFromDir(
   }
 
   // The program always lands at <scope home>/<id>/line.json, whatever the
-  // bundle called it, so `har line status` has one place to look.
+  // bundle called it, so `har line describe` has one place to look.
   const programPathRel = lineProgramPathRel(manifest.id, scope);
   const programDest = path.join(resolved, programPathRel);
   const programSrc = path.join(bundleDir, manifest.program);
@@ -383,7 +383,7 @@ function applyLineFromDir(
     manifest.nextSteps.length > 0
       ? manifest.nextSteps
       : [
-          `har line status ${manifest.id}`,
+          `har line describe ${manifest.id}`,
           `har line gate ${firstGatedStation} --line ${manifest.id}`,
           `Adapt the program: ${programPathRel}`,
         ];

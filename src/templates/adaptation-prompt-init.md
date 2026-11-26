@@ -219,7 +219,7 @@ If **no `AGENTS.md` exists**, create one at the repo root using this structure:
 
 If **`AGENTS.md` already exists** (project-owned), add or update a concise **HAR / agent environment** section — do not replace unrelated content.
 
-Do **not** create a `CLAUDE.md` — Claude Code reads `AGENTS.md` directly. If one already exists, keep it as the line `@AGENTS.md` and never paste the harness workflow into it — `AGENTS.md` is the single instruction file.
+Do **not** create or edit `CLAUDE.md` — Claude Code reads `AGENTS.md` directly. Leave an existing one as the project wrote it: never add an `@AGENTS.md` import or paste the harness workflow into it — `AGENTS.md` is the single instruction file.
 
 ### Monorepos / multiple harnesses
 
