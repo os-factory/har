@@ -10,6 +10,7 @@ import {
 } from '../harness/schema';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { recordRebindBindings, slotOccupancyKey } from './session-bindings';
+import { rebindSlotSegments } from './session-context';
 import {
   listSlotRegistryEntries,
   resolveSlotRegistryContext,
@@ -287,6 +288,12 @@ export function bindWorkUnit(options: BindWorkUnitOptions): BindWorkUnitResult {
     });
   } catch {
     // Attribution evidence is best-effort; the binding itself succeeded.
+  }
+  try {
+    // ADR 0004 §2: sessions in the slot move to the new attempt; the old one ends.
+    rebindSlotSegments({ harnessRoot, before: session, after, env: options.env ?? process.env, at: now });
+  } catch {
+    // Session context is best-effort; the binding itself succeeded.
   }
 
   const envFile = path.join(session.workDir, `.env.agent.${agentId}`);

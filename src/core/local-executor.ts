@@ -162,6 +162,7 @@ function buildExecutionPlan(
     ...process.env,
     ...harnessEnv,
     ...(stage.env ?? {}),
+    ...(stage.kind === 'verify' && options.stageLogDir ? { HAR_STAGE_LOG_DIR: options.stageLogDir } : {}),
   };
   const cwd = stage.cwd ? path.resolve(resolvedRepo, stage.cwd) : resolvedRepo;
   const extraArgs = options.args ?? [];
@@ -365,6 +366,7 @@ async function runPackageRuntimeStage(
         ...process.env,
         ...readHarnessEnv(resolveHarnessRoot(repoPath)),
         ...(stage.env ?? {}),
+        ...(options.stageLogDir ? { HAR_STAGE_LOG_DIR: options.stageLogDir } : {}),
       });
     } catch (err) {
       if (err instanceof VerifyPlanError) {

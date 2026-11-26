@@ -194,7 +194,7 @@ for a `--no-worktree` launch. The same warning appears in `har env status --json
 ### Verify and finish
 
 ```bash
-har env verify 1 [--full] [--json]
+har env verify 1 [--full] [--json] [--line <id> --station <id>]
 har env complete 1 [--verify]
 har env teardown 1 [--delete-branch]
 ```
@@ -208,6 +208,22 @@ summary). It does **not** reprint the machine JSON contract — that blob
 duplicates step logs already shown. Use `--json` when a script needs the
 structured result. Passing steps omit `output`; failed steps keep a truncated
 excerpt. MCP `har_run_verification` returns the same slim shape.
+
+Each verify keeps every stage's combined stdout and stderr, capped to the last
+1 MiB (a longer log starts with one `[har] <N> bytes dropped, last <K> bytes
+kept` line; the cap includes that line), in
+`.har/artifacts/<factory-run-id>/<stage-id>.log` in the slot. The factory run
+(the validation record of the tree) lists each stage's log and the files the
+stage wrote under `.har/artifacts/` with their SHA-256, and a full verify's
+Factory Commits proof lists the same digests in `stages[].artifacts[]`. The
+factory run also records the agent sessions that worked on the attempt up to
+the verify (merged when the same tree is verified again) and, with `--line` and
+`--station` (MCP `line`, `station`), the factory line station it ran at.
+
+`har env launch` records which agent session launched the slot in
+`~/.har/sessions/<agent-tool>/<session-id>.json` (attempt, work unit, slot,
+repository URL and branch; never paths). `teardown` and `complete` close the
+attempt's open segments in every session file, whoever runs them.
 
 ### Doctor
 
