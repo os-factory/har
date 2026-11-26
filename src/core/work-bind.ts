@@ -10,7 +10,7 @@ import {
 } from '../harness/schema';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 import { recordRebindBindings, slotOccupancyKey } from './session-bindings';
-import { rebindSlotSegments } from './session-context';
+import { joinSlotSegment, rebindSlotSegments } from './session-context';
 import { queueSlotRecords } from './ingest-publish';
 import {
   listSlotRegistryEntries,
@@ -181,6 +181,18 @@ export function bindWorkUnit(options: BindWorkUnitOptions): BindWorkUnitResult {
     } catch (err) {
       throw new WorkBindError(err instanceof Error ? err.message : String(err));
     }
+    const notices = [`Slot ${agentId} is already bound to work unit ${options.workUnitId}; metadata updated.`];
+    try {
+      // ADR 0004 §2: an agent session joining the slot (a second agent, a resumed
+      // session) works under its attempt from now on, as the launching one does.
+      const joined = joinSlotSegment({ harnessRoot, session, env: options.env ?? process.env, at: now });
+      if (joined) {
+        notices.push(`Session ${joined.sessionId} (${joined.agentTool}) now works under attempt ${session.attemptId}.`);
+        queueSlotRecords({ harnessRoot, session });
+      }
+    } catch {
+      // Session context is best-effort; the binding itself succeeded.
+    }
     return {
       ok: true,
       agentId,
@@ -190,7 +202,7 @@ export function bindWorkUnit(options: BindWorkUnitOptions): BindWorkUnitResult {
       workDir: session.workDir,
       branch: session.branch,
       workUnit,
-      notices: [`Slot ${agentId} is already bound to work unit ${options.workUnitId}; metadata updated.`],
+      notices,
     };
   }
 

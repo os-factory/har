@@ -14,6 +14,7 @@ import {
   slotOccupancyKey,
 } from '../src/core/session-bindings';
 import { findWorkUnit, listWorkAttempts, upsertWorkUnit } from '../src/core/work-units';
+import { readSessionContextFile, sessionContextFile } from '../src/core/session-context';
 import { handleMcpToolCall } from '../src/mcp/server';
 import { handleWorkBind } from '../src/cli/commands/env';
 
@@ -147,6 +148,29 @@ describe('bindWorkUnit', () => {
     expect(again).toMatchObject({ changed: false, attemptId: first.attemptId });
     expect(listWorkAttempts(repo)).toHaveLength(1);
     expect(findWorkUnit(repo, 'FE-1')?.title).toBe('Now with a title');
+  });
+
+  it('opens a segment for an agent session joining the slot on its own unit, once', () => {
+    const first = bindWorkUnit({ repoPath: repo, agentId: 2, workUnitId: 'FE-1', env: {} });
+    const codex = { CODEX_THREAD_ID: 'thread-codex-1' };
+    const joined = bindWorkUnit({ repoPath: repo, agentId: 2, workUnitId: 'FE-1', env: codex, now: '2026-11-17T11:00:00.000Z' });
+    expect(joined).toMatchObject({ changed: false, attemptId: first.attemptId });
+    expect(joined.notices.join('\n')).toContain('thread-codex-1 (codex) now works under attempt');
+    const file = sessionContextFile({ agentTool: 'codex', sessionId: 'thread-codex-1' })!;
+    const segments = readSessionContextFile(file)!.segments;
+    expect(segments).toEqual([
+      expect.objectContaining({
+        from: '2026-11-17T11:00:00.000Z',
+        to: null,
+        reason: 'join',
+        attributes: expect.objectContaining({ 'factory.work_unit.id': 'FE-1', 'factory.attempt.id': first.attemptId }),
+      }),
+    ]);
+    // Already working under the attempt: nothing changes.
+    const again = bindWorkUnit({ repoPath: repo, agentId: 2, workUnitId: 'FE-1', env: codex, now: '2026-11-17T12:00:00.000Z' });
+    expect(again.notices.join('\n')).not.toContain('now works under attempt');
+    expect(readSessionContextFile(file)!.segments).toHaveLength(1);
+    expect(listWorkAttempts(repo)).toHaveLength(1);
   });
 
   it('refuses a unit bound to another slot, and leaves the slot untouched', () => {

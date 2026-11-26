@@ -236,11 +236,16 @@ export interface OtelSpanLike {
  * are the session's running total: they are stored as such and the turn's own
  * usage is its difference from the previous turn. Session, subagent and
  * compaction spans carry rollups, never units.
+ *
+ * Claude Code is booked from its native `claude_code.api_request` events only
+ * (ADR 0005 section 5, one source per provider): its otel-hook generations,
+ * read from the transcript, are the same requests and are never units here.
  */
 export function otelHookGenerationObservation(
   span: OtelSpanLike,
   agentTool: AgentTool,
 ): ObservationInput | null {
+  if (agentTool === 'claude_code') return null;
   if (!(span.name === 'generation' || span.name.startsWith('generation '))) return null;
   const attrs = span.attributes;
   const hasUsage = Object.keys(attrs).some((key) => key.startsWith('gen_ai.usage.'));

@@ -231,6 +231,8 @@ export interface OpenSegmentInput {
   at?: string;
   attemptEndedAt?: AttemptEndLookup;
   home?: string;
+  /** Why the segment opens (default `launch`). */
+  reason?: string;
 }
 
 /**
@@ -254,7 +256,7 @@ export function openSessionSegment(input: OpenSegmentInput): SessionContext | un
     if (Date.parse(at) < Date.parse(floor)) at = new Date(floor).toISOString();
     if (last.to === null) last.to = at;
   }
-  segments.push({ from: at, to: null, reason: 'launch', attributes: { ...input.attributes } });
+  segments.push({ from: at, to: null, reason: input.reason ?? 'launch', attributes: { ...input.attributes } });
 
   const context: SessionContext = {
     version: SESSION_CONTEXT_VERSION,
@@ -542,6 +544,38 @@ export function recordLaunchSegment(options: {
     attemptEndedAt: workAttemptEndLookup(options.harnessRoot),
     home: options.home,
   });
+}
+
+/**
+ * `har env work-bind` with the slot's own work unit, from an agent session that
+ * does not work under the slot's attempt yet (a second agent, a resumed
+ * session with a new id): open a segment for it, as launch does for the
+ * session that launched. A session already working under the attempt keeps its
+ * segment. Returns the joined session, or undefined when nothing changed.
+ */
+export function joinSlotSegment(options: {
+  harnessRoot: string;
+  session: SlotOccupancySource;
+  env?: Env;
+  at?: string;
+  home?: string;
+  resolveInnermost?: InnermostAgentResolver;
+}): AgentSessionRef | undefined {
+  const agent = currentAgentSession(options.env ?? process.env, options.resolveInnermost);
+  if (!agent) return undefined;
+  const occupancy = slotSegmentOccupancy(options.session, options.harnessRoot);
+  const attemptEndedAt = workAttemptEndLookup(options.harnessRoot);
+  const current = openSegmentOf(agent, { attemptEndedAt, home: options.home, at: options.at });
+  if (current && segmentBelongsTo(current, occupancy)) return undefined;
+  const context = openSessionSegment({
+    agent,
+    attributes: slotSegmentAttributes(options.session, options.harnessRoot),
+    at: options.at,
+    attemptEndedAt,
+    home: options.home,
+    reason: 'join',
+  });
+  return context ? agent : undefined;
 }
 
 /**
