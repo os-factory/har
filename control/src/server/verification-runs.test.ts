@@ -232,6 +232,32 @@ describe('verification trace ingest', () => {
     });
   });
 
+  it('keeps what a v2 StageResult record set: its span adds the timing only', async () => {
+    await prisma.stageResult.create({
+      data: {
+        factoryRunId: 'validation-1',
+        stageId: 'build',
+        status: 'passed',
+        addedBy: 'agent',
+        kind: 'custom',
+        durationMs: 900,
+        logDigest: 'e'.repeat(64),
+        artifacts: [],
+      },
+    });
+    await ingestOtelTracesJson(verificationPayload([...correlation, str('factory.local.checkout_path', MAIN)]));
+    const build = (await stages()).find((stage) => stage.stageId === 'build');
+    expect(build).toMatchObject({
+      status: 'passed',
+      addedBy: 'agent',
+      kind: 'custom',
+      durationMs: 900,
+      logDigest: 'e'.repeat(64),
+      spanId: '2222222222222222',
+      startTime: new Date('2026-11-23T10:00:00Z'),
+    });
+  });
+
   it('drops a run whose repository is unknown, and its stages', async () => {
     const result = await ingestOtelTracesJson(
       verificationPayload([str('vcs.repository.url.full', 'https://github.com/acme/unknown.git')]),

@@ -15,7 +15,7 @@ Generated and maintained by [`har`](https://github.com/antoineFrau/har). Run `ha
 | `README.md` | This file — index of the harness |
 | `harness.env` | Schema-validated config: primary app, ports, agent slot limits, `HARNESS_INFRA_SERVICES`, migrate/seed commands |
 | `stages.json` | Registered stages, verification tiers, artifacts, slot limits, gate policy |
-| `stages/` | Project-owned stage scripts (`api-health.sh`, `browser-e2e.sh`, `docker-build.sh`, `readiness.sh`) |
+| `stages/` | Project-owned stage scripts (`api-health.sh`, `browser-e2e.sh`, `fixture-e2e.sh`, `docker-build.sh`, `readiness.sh`) |
 | `hooks/` | Lifecycle hooks — `pre-teardown.sh` drops the slot's SQLite store |
 | `plugins/` | Optional local plugins (`har plugin create <id>`) |
 | `env.template` | Per-agent env vars (expanded into `.env.agent.<id>` at launch) |
@@ -60,9 +60,10 @@ Read **`stages.json`** for registered stages and **`verificationStages`** for th
 | Mode | Command | Typical steps |
 |------|---------|---------------|
 | Quick | `har env verify <id>` | typecheck, unit tests, api-health |
-| Full | `har env verify <id> --full` | + lint + optional readiness smoke + **`browser-e2e`** + **`docker-build`** (when those stage scripts exist) |
+| Full | `har env verify <id> --full` | + lint + optional readiness smoke + **`browser-e2e`** + **`fixture-e2e`** + **`docker-build`** (when those stage scripts exist) |
 
 Install Playwright plugin: `har env add-plugin playwright` (optional). UI changes should add or update specs under `tests/`.
+The `fixture-e2e` stage is ADR 0005's end-to-end test: it builds the CLI from the session worktree (`npm run build` at the monorepo root) and, with a throwaway HOME and the slot's Mission Control as the only receiver, runs `env init`, `hooks install`, `env launch 1 --work-id fx-1`, `env verify 1 --full`, `git commit`, `telemetry flush` and `env complete 1` on a copy of `tests/fixtures/fixture-e2e` as a fake Claude Code session. It then checks `GET /api/v2/work-units/fx-1`: one attempt and factory run, both stages, the capped stage log and the artifact stored with the digests the proof lists, the proof digest equal to the commit's `Factory-Attestation`, the bound commit, the `Factory-Run` trailer's trace id and the session segment, open and then closed. `git-factory` comes from PATH (or `HAR_FIXTURE_E2E_GIT_FACTORY`), else is npm-installed into the temp dir; `HAR_FIXTURE_E2E_KEEP=1` keeps the temp dir.
 The `docker-build` stage builds `control/Dockerfile` against the session worktree (no push; native platform), then smoke-boots the image and waits for `/api/health`. That catches first-boot failures (for example a broken Prisma CLI / missing wasm) that a build-only check would miss. PR CI runs this via the `control` job's full verify.
 
 ## Run history

@@ -17,6 +17,7 @@ import {
   readSessionContextFile,
   recordLaunchSegment,
   sessionContextFile,
+  slotRepositoryUrl,
   writeSessionContextFile,
 } from '../src/core/session-context';
 import { completeEnvironment, launchEnvironment, runVerification, teardownEnvironment } from '../src/core/run-service';
@@ -569,5 +570,19 @@ describe('stage evidence in the proof', () => {
     fs.mkdirSync(stagingDir, { recursive: true });
     expect(finalizeStageEvidence({ stagingDir, artifactsRoot, factoryRunId: ATTEMPT })).toBeUndefined();
     expect(fs.existsSync(path.join(artifactsRoot, '.staging'))).toBe(false);
+  });
+});
+
+describe('slot repository URL', () => {
+  it("falls back to the main checkout's remote once the slot worktree is removed", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'har-slot-url-'));
+    try {
+      execSync('git init -q && git remote add origin https://github.com/acme/app.git', { cwd: repo });
+      const removed = path.join(repo, 'worktrees', 'gone');
+      expect(slotRepositoryUrl(removed, repo)).toBe('https://github.com/acme/app.git');
+      expect(slotRepositoryUrl(undefined, repo)).toBe('https://github.com/acme/app.git');
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 });

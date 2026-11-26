@@ -175,6 +175,10 @@ async function writeAttempt(db: Db, record: IngestV2RecordOf<'Attempt'>): Promis
         where: { id: existing.id as string },
         data: {
           ...data,
+          // A record without a repository URL never unscopes an attempt seen with one.
+          ...(record.repositoryUrl
+            ? {}
+            : { repositoryKey: existing.repositoryKey as string, repositoryUrl: existing.repositoryUrl as string | null }),
           repositoryId:
             (existing.repositoryId as string | null) ??
             (await registeredRepositoryFor(db, record.repositoryUrl, { attemptId: record.attemptId, branch: record.branch })),

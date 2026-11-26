@@ -296,14 +296,6 @@ model Run {
   @@index([repositoryId, occupancyKey])
 }
 
-model CloudConfig {
-  id        String   @id @default("default")
-  apiKey    String?
-  apiUrl    String?
-  enabled   Boolean  @default(false)
-  updatedAt DateTime @updatedAt
-}
-
 /** Paths removed via unregister — blocks auto-sync re-registration until force register. */
 model UnregisteredRepository {
   path             String   @id

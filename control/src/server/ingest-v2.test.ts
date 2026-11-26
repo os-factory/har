@@ -272,6 +272,33 @@ describe('work unit view', () => {
     expect(scoped.status).toBe(200);
     expect(scoped.body.attempts).toHaveLength(1);
   });
+
+  it('keeps an attempt in its repository when a later record of it has no repository URL', async () => {
+    const attempt = {
+      type: 'Attempt',
+      attemptId: 'attempt-ended-without-url',
+      workUnitId: 'WU-ENDED',
+      repositoryUrl: 'https://github.com/acme/ended',
+      slotId: '1',
+      branch: 'main-har-agent-1',
+      baseCommit: 'a'.repeat(40),
+      startedAt: '2026-11-25T10:00:00.000Z',
+      endedAt: null,
+    };
+    const post = (records: unknown[]) =>
+      receiver(`${BASE}/v2/records`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ records }),
+      });
+    await post([{ type: 'WorkUnit', workUnitId: 'WU-ENDED', repositoryUrl: attempt.repositoryUrl, links: [] }, attempt]);
+    await post([{ ...attempt, repositoryUrl: null, endedAt: '2026-11-25T11:00:00.000Z' }]);
+    const view = await get<WorkUnitView>(`v2/work-units/WU-ENDED?repository=${encodeURIComponent(attempt.repositoryUrl)}`);
+    expect(view.status).toBe(200);
+    expect(view.body.attempts.map((row) => [row.attemptId, row.endedAt])).toEqual([
+      ['attempt-ended-without-url', '2026-11-25T11:00:00.000Z'],
+    ]);
+  });
 });
 
 describe('OTLP metrics from otel-hook', () => {

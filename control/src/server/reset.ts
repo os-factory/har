@@ -8,7 +8,6 @@ import { scrubLocalHarnessForRepos } from './harness-scrub';
 /**
  * Wipe all Mission Control dashboard data and optionally scrub local `.har`
  * history dirs so a later register/sync does not re-pollute the UI.
- * Preserves CloudConfig (API keys / portal settings).
  */
 export async function resetMissionControl(input: unknown): Promise<ResetMissionControlResult> {
   const options = ResetMissionControlInputSchema.parse(input);

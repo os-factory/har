@@ -172,4 +172,22 @@ describe('scripts/migrate-db.cjs: 1.x database to the v2 data model', () => {
     const again = await migrate.migrateDatabase(file, ['--skip-generate']);
     expect(again).toEqual({ migrated: false, backup: null });
   }, 60_000);
+
+  it('drops the retired CloudConfig table even when it holds a row', async () => {
+    const db = clientFor(file);
+    try {
+      await db.$executeRawUnsafe('CREATE TABLE "CloudConfig" (id TEXT PRIMARY KEY, apiKey TEXT, apiUrl TEXT, enabled BOOLEAN)');
+      await db.$executeRawUnsafe(`INSERT INTO "CloudConfig" (id, apiKey, enabled) VALUES ('default', 'key', 1)`);
+    } finally {
+      await db.$disconnect();
+    }
+    await migrate.migrateDatabase(file, ['--skip-generate']);
+    const after = clientFor(file);
+    try {
+      const rows = await after.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'CloudConfig'`);
+      expect(rows).toEqual([]);
+    } finally {
+      await after.$disconnect();
+    }
+  }, 60_000);
 });

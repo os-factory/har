@@ -13,6 +13,7 @@
     "lint",
     "readiness",
     "browser-e2e",
+    "fixture-e2e",
     "docker-build"
   ],
   "stages": [
@@ -104,6 +105,15 @@
         }
       ],
       "requiresAgentId": true
+    },
+    {
+      "id": "fixture-e2e",
+      "kind": "test",
+      "description": "The CLI built from this tree, end to end against the slot's Mission Control on tests/fixtures/fixture-e2e (init, launch, verify --full, commit, flush, complete; sandbox HOME)",
+      "script": "stages/fixture-e2e.sh",
+      "artifacts": [],
+      "requiresAgentId": true,
+      "tier": "full"
     },
     {
       "id": "typecheck",
