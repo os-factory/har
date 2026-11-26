@@ -1,3 +1,9 @@
+## [1.35.0](https://github.com/os-factory/har/compare/v1.34.0...v1.35.0) (2026-11-26)
+
+### Features
+
+* **lines:** add personal scope for factory lines ([#515](https://github.com/os-factory/har/issues/515)) ([c9fbcaf](https://github.com/os-factory/har/commit/c9fbcafa3e17350de27c36d73422d787f6536319)), closes [#479](https://github.com/os-factory/har/issues/479)
+
 ## [1.34.0](https://github.com/os-factory/har/compare/v1.33.0...v1.34.0) (2026-11-25)
 
 ### Features
