@@ -196,18 +196,22 @@ function attributeOf(span, key) {
   return span.attributes?.[key] ?? span.resource?.[key];
 }
 
+// otel-hook stamps a span with the segment in force when it emits the span, at
+// its end: the tool call that runs `har env launch` (or `work-bind`) starts before
+// the attempt and ends inside it, and belongs to it. Spans are bucketed by their
+// end time when the receiver keeps it, else by their start.
 function classifyStamps(list) {
   const counts = { before: 0, inside: 0, after: 0 };
   const wrong = [];
   for (const { span, tool } of list) {
-    const at = Date.parse(span.startTime);
+    const at = Date.parse(span.endTime ?? span.startTime);
     const opened = Date.parse(tool === 'codex' ? state.times.codexJoin : state.times.launch);
     const closed = Date.parse(state.times.complete);
     const attempt = attributeOf(span, 'factory.attempt.id');
     const bucket = at < opened ? 'before' : at < closed ? 'inside' : 'after';
     counts[bucket] += 1;
     const ok = bucket === 'inside' ? attempt === state.attemptId : attempt === undefined || attempt === null;
-    if (!ok) wrong.push(`${tool} "${span.name}" at ${span.startTime} (${bucket}) attempt=${attempt ?? 'none'}`);
+    if (!ok) wrong.push(`${tool} "${span.name}" ${span.startTime}..${span.endTime ?? '?'} (${bucket}) attempt=${attempt ?? 'none'}`);
   }
   need(wrong.length === 0, `${wrong.length} spans stamped wrongly: ${wrong.slice(0, 3).join('; ')}`);
   need(counts.before > 0 && counts.inside > 0 && counts.after > 0, `spans before/inside/after the attempt: ${JSON.stringify(counts)}`);
@@ -302,10 +306,12 @@ function checkClaudeRows(usage) {
 
 /** The Collector keeps what otel-hook sent: each Claude Code generation span once, with its tokens. */
 function checkCollectorUsage() {
+  // The attempt's generations: a session may go on after complete (outside the attempt).
   const generations = collectorSpans().filter(
     (span) =>
       /^generation( |$)/.test(span.name) &&
-      (span.attributes['otelhook.session.id'] ?? span.attributes['gen_ai.conversation.id']) === state.sessions.claude_code,
+      (span.attributes['otelhook.session.id'] ?? span.attributes['gen_ai.conversation.id']) === state.sessions.claude_code &&
+      attributeOf(span, 'factory.attempt.id') === state.attemptId,
   );
   const byId = new Map();
   for (const span of generations) {
@@ -329,6 +335,10 @@ async function checkUsage(name) {
   const rx = receiver(name);
   const usage = await attemptUsage(rx);
   need(usage, 'no usage on the attempt');
+  if (!state.sessions.codex) {
+    const claude = checkClaudeRows(usage);
+    return `${claude.map((row) => `claude_code/${row.model} ${row.observations} generations $${row.costUsd.toFixed(6)}`).join(', ')}, from otel-hook, booked once (no codex session)`;
+  }
   const codex = usage.byModel.find((row) => row.agentTool === 'codex' && row.model === state.codexModel);
   const want = expectedCodex();
   need(codex, `no codex/${state.codexModel} usage (got ${JSON.stringify(usage.byModel.map((r) => `${r.agentTool}/${r.model}`))})`);
@@ -346,7 +356,7 @@ async function checkUsageAgree() {
   for (const rx of state.receivers) {
     const usage = await attemptUsage(rx);
     const booked = (usage?.byModel ?? []).filter((row) => row.agentTool === 'codex' || row.agentTool === 'claude_code');
-    need(booked.some((row) => row.agentTool === 'codex' && row.model === state.codexModel), `${rx.name}: no codex usage`);
+    need(!state.sessions.codex || booked.some((row) => row.agentTool === 'codex' && row.model === state.codexModel), `${rx.name}: no codex usage`);
     rows.push({ name: rx.name, booked });
   }
   const [a, b] = rows;
@@ -405,15 +415,32 @@ async function checkTrajectory(name) {
   const start = claude.findIndex((event) => event.eventType === 'session.start');
   need(start <= 0, `session.start is not the first event (index ${start})`);
   const turns = state.claudeGenerations.filter((g) => !g.subagent).length;
-  need(count('prompt.submitted') >= turns, `${count('prompt.submitted')} prompts, want at least ${turns}`);
+  // Replayed: one prompt per turn. Real: a turn may run without a prompt of its
+  // own, and the first prompt comes before launch; the receiver must hold at
+  // least the prompts the Collector holds stamped with the attempt.
+  const wantPrompts = state.realAgents ? collectorLogs().filter((r) => r.attributes['otelhook.event.type'] === 'prompt.submitted' && r.attributes['otelhook.session.id'] === state.sessions.claude_code && r.attributes['factory.attempt.id'] === state.attemptId).length : turns;
+  need(count('prompt.submitted') >= wantPrompts, `${count('prompt.submitted')} prompts, want at least ${wantPrompts}`);
   // Tool calls pair by call id; a subagent nests its own tool calls under its id.
   const starts = claude.filter((event) => event.eventType === 'tool.start');
   const ends = claude.filter((event) => event.eventType === 'tool.end');
   const callId = (event) => event.attributes['gen_ai.tool.call_id'] ?? event.attributes['gen_ai.tool.call.id'];
   // A call still running (a start with no end yet) is fine; an end with no start is not.
   const paired = starts.filter((start) => ends.some((end) => callId(end) && callId(end) === callId(start)));
-  need(ends.every((end) => starts.some((start) => callId(start) === callId(end))), `tool ends without a start (${ends.length} ends)`);
-  need(paired.length >= turns * 3, `${paired.length} paired tool calls, want ${turns * 3} (edit, Agent, nested Read per turn)`);
+  // A receiver that does not place events before launch misses the start of the
+  // tool call that ran the launch (it ends inside the attempt): an end may lack
+  // its start only when the Collector holds that start unstamped.
+  const unplaced = new Set(
+    start === -1
+      ? collectorLogs()
+          .filter((r) => r.attributes['otelhook.event.type'] === 'tool.start' && r.attributes['otelhook.session.id'] === state.sessions.claude_code && !r.attributes['factory.attempt.id'])
+          .map((r) => r.attributes['gen_ai.tool.call_id'] ?? r.attributes['gen_ai.tool.call.id'])
+      : [],
+  );
+  const orphans = ends.filter((end) => !starts.some((start) => callId(start) === callId(end)));
+  need(orphans.every((end) => unplaced.has(callId(end))), `tool ends without a start (${orphans.length} of ${ends.length} ends)`);
+  // Each replayed turn (and the real task) runs an edit, an Agent call and a nested Read.
+  const wantPairs = state.realAgents ? 3 : turns * 3;
+  need(paired.length >= wantPairs, `${paired.length} paired tool calls, want ${wantPairs} (edit, Agent, nested Read per turn)`);
   const subagentIds = state.claudeGenerations.filter((g) => g.subagent).map((g) => g.subagent);
   for (const id of subagentIds) {
     const inside = claude.filter((event) => event.attributes['otelhook.subagent.id'] === id);
@@ -423,8 +450,8 @@ async function checkTrajectory(name) {
     const [first, last] = [inside.find((e) => e.eventType === 'subagent.start'), inside.find((e) => e.eventType === 'subagent.end')];
     need(first.sequence < last.sequence, `subagent ${id} ends before it starts`);
   }
-  const codex = trajectoryEvents(trajectory(rx, state.sessions.codex));
-  need(codex.some((event) => event.eventType === 'prompt.submitted'), 'codex trajectory has no prompt');
+  const codex = state.sessions.codex ? trajectoryEvents(trajectory(rx, state.sessions.codex)) : [];
+  need(!state.sessions.codex || codex.some((event) => event.eventType === 'prompt.submitted'), 'codex trajectory has no prompt');
   return `claude_code ${claude.length} events in sequence order${start === 0 ? ' from session.start' : ' (pre-launch events not placed)'} (${paired.length} paired tool calls, ${subagentIds.length} subagents with nested calls), codex ${codex.length} events; each event id once`;
 }
 
@@ -462,6 +489,7 @@ function collectorSpans() {
             parentSpanId: span.parentSpanId || null,
             name: span.name,
             startTime: new Date(Number(BigInt(span.startTimeUnixNano) / 1_000_000n)).toISOString(),
+            ...(span.endTimeUnixNano ? { endTime: new Date(Number(BigInt(span.endTimeUnixNano) / 1_000_000n)).toISOString() } : {}),
             attributes: attrMap(span.attributes),
             resource,
           });
@@ -472,9 +500,7 @@ function collectorSpans() {
   return out;
 }
 
-function checkCollector() {
-  const stamped = (records) => records.filter((r) => r.attributes['factory.attempt.id'] === state.attemptId || r.resource['factory.attempt.id'] === state.attemptId).length;
-  const spanList = collectorSpans();
+function collectorLogs() {
   const logs = [];
   for (const batch of collectorLines('logs')) {
     for (const rl of batch.resourceLogs ?? []) {
@@ -482,6 +508,13 @@ function checkCollector() {
       for (const sl of rl.scopeLogs ?? []) for (const record of sl.logRecords ?? []) logs.push({ attributes: attrMap(record.attributes), resource });
     }
   }
+  return logs;
+}
+
+function checkCollector() {
+  const stamped = (records) => records.filter((r) => r.attributes['factory.attempt.id'] === state.attemptId || r.resource['factory.attempt.id'] === state.attemptId).length;
+  const spanList = collectorSpans();
+  const logs = collectorLogs();
   const points = [];
   for (const batch of collectorLines('metrics')) {
     for (const rm of batch.resourceMetrics ?? []) {
@@ -501,7 +534,77 @@ function checkCollector() {
     return fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes('"factory.local.');
   });
   need(leaks.length === 0, `factory.local.* found in ${leaks.join(', ')}`);
-  return `stamped spans ${counts.spans}, logs ${counts.logs}, metric points ${counts.metrics}; no factory.local.* key`;
+  // Claude Code usage comes from otel-hook only: no native Claude Code telemetry.
+  const native = ['traces', 'logs', 'metrics'].filter((signal) => {
+    const file = path.join(state.collectorDir, `${signal}.jsonl`);
+    return fs.existsSync(file) && /"(?:name|stringValue)":"claude_code\./.test(fs.readFileSync(file, 'utf8'));
+  });
+  need(native.length === 0, `native Claude Code telemetry (claude_code.*) found in ${native.join(', ')}`);
+  return `stamped spans ${counts.spans}, logs ${counts.logs}, metric points ${counts.metrics}; no factory.local.* key; no claude_code.* (native) telemetry`;
+}
+
+// --- 14. what the real agents reported (run.sh --real-agents) ----------------------
+/**
+ * Claude Code's own report (`claude -p --output-format json`: modelUsage per model,
+ * total_cost_usd) against the generations otel-hook exported for the session
+ * (Collector, every generation once, inside and outside the attempt): tokens
+ * must be equal per model (otel-hook reads the transcripts Claude Code bills
+ * from). A model Claude Code reports that no transcript holds is listed.
+ */
+function checkAgentReport() {
+  const reports = state.realAgents?.claudeReports ?? [];
+  need(reports.length > 0, 'no Claude Code report in the state (run.sh --real-agents)');
+  // `claude -p --resume` reports the session's running total: per session, the
+  // last report covers every run of it.
+  const last = new Map();
+  for (const report of reports) last.set(report.session_id, report);
+  const reported = new Map();
+  let reportedCost = 0;
+  for (const report of last.values()) {
+    reportedCost += report.total_cost_usd ?? 0;
+    for (const [model, u] of Object.entries(report.modelUsage ?? {})) {
+      const row = reported.get(model) ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0 };
+      row.input += u.inputTokens ?? 0;
+      row.output += u.outputTokens ?? 0;
+      row.cacheRead += u.cacheReadInputTokens ?? 0;
+      row.cacheCreation += u.cacheCreationInputTokens ?? 0;
+      row.cost += u.costUSD ?? 0;
+      reported.set(model, row);
+    }
+  }
+  const exported = new Map();
+  const seen = new Set();
+  for (const span of collectorSpans()) {
+    const a = span.attributes;
+    if (!/^generation( |$)/.test(span.name) || a['otelhook.session.id'] !== state.sessions.claude_code || seen.has(a['otelhook.generation.id'])) continue;
+    seen.add(a['otelhook.generation.id']);
+    const model = a['gen_ai.response.model'] ?? a['gen_ai.request.model'];
+    const row = exported.get(model) ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, generations: 0 };
+    const cacheRead = Number(a['gen_ai.usage.cache_read.input_tokens'] ?? 0);
+    const cacheCreation = Number(a['gen_ai.usage.cache_creation.input_tokens'] ?? 0);
+    row.input += Number(a['gen_ai.usage.input_tokens'] ?? 0) - cacheRead - cacheCreation;
+    row.output += Number(a['gen_ai.usage.output_tokens'] ?? 0);
+    row.cacheRead += cacheRead;
+    row.cacheCreation += cacheCreation;
+    row.generations += 1;
+    exported.set(model, row);
+  }
+  need(exported.size > 0, 'otel-hook exported no Claude Code generation');
+  const notes = [];
+  const over = [];
+  for (const [model, got] of exported) {
+    const want = reported.get(model);
+    need(want, `otel-hook model ${model} not in Claude Code's report (${[...reported.keys()].join(', ')})`);
+    const delta = Object.fromEntries(['input', 'output', 'cacheRead', 'cacheCreation'].map((key) => [key, got[key] - want[key]]));
+    for (const [key, value] of Object.entries(delta)) if (value !== 0) over.push(`${model} ${key} ${value > 0 ? '+' : ''}${value}`);
+    notes.push(
+      `${model}: ${got.generations} generations, otel-hook in/out/cacheRead/cacheWrite ${got.input}/${got.output}/${got.cacheRead}/${got.cacheCreation} vs reported ${want.input}/${want.output}/${want.cacheRead}/${want.cacheCreation} (delta ${Object.values(delta).join('/')}), reported $${want.cost.toFixed(6)}`,
+    );
+  }
+  const unseen = [...reported.keys()].filter((model) => !exported.has(model));
+  if (unseen.length) notes.push(`reported but not in a transcript: ${unseen.map((m) => `${m} $${reported.get(m).cost.toFixed(6)}`).join(', ')}`);
+  need(over.length === 0, `otel-hook and Claude Code's own report differ: ${over.join(', ')}; ${notes.join('; ')}`);
+  return `${reports.length} claude -p runs (${last.size} session), reported total $${reportedCost.toFixed(6)}; ${notes.join('; ')}`;
 }
 
 // --- probes for run.sh's composite checks (8, 9) -----------------------------------
@@ -553,6 +656,8 @@ async function main() {
       return print('7 usage-agree', await settle(() => checkUsageAgree()));
     case 'collector':
       return print('10 collector', await settle(() => checkCollector()));
+    case 'agent-report':
+      return print('14 agent-report', await settle(() => checkAgentReport()));
     case 'trajectory':
       return print(label(13, 'trajectory'), await settle(() => checkTrajectory(target)));
     case 'probe-received':

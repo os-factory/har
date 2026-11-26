@@ -64,15 +64,37 @@ receiver a line is about.
 | 2 | Work unit view: 1 attempt (ended), 2 factory runs, stages with statuses, session segments closed |
 | 3 | Every stage log and the artifact stored, ≤ 1 MiB, the big log starting with the dropped-bytes line, bytes hashing to the proof's `stages[].artifacts[]` digests |
 | 4 | Proof stored under D (its payload hashes to D), its tree = the commit tree, commit → run → proof bound |
-| 5 | Agent spans: none stamped before launch, all stamped with `factory.attempt.id` inside the attempt, none after complete (receivers and Collector) |
+| 5 | Agent spans: none stamped before launch, all stamped with `factory.attempt.id` inside the attempt, none after complete (receivers and Collector). A span is placed by its end, when otel-hook emits it: the tool call that runs `har env launch` belongs to the attempt |
 | 6 | Verification trace T: one run span with `factory.run.id = R`, one span per stage (receivers and Collector) |
 | 7 | Attempt usage per model, priced by the receiver with the genai-prices version recorded. Claude Code from otel-hook generations only: one per turn and one per subagent run, each booked once, fresh input = input − cache read − cache write, on the turn's and the subagent's model; the Collector holds each generation span once. Both receivers agree on every row |
 | 8 | Mission Control down: verify and commit work, the hosted receiver gets everything, Mission Control's queue drains after restart |
 | 9 | Hosted receiver down: verify and commit work, it catches up from the queues after restart, no duplicates |
-| 10 | The Collector's files hold stamped spans, logs and metrics, and no `factory.local.*` key |
+| 10 | The Collector's files hold stamped spans, logs and metrics, no `factory.local.*` key and no native Claude Code telemetry (`claude_code.*`) |
 | 11 | With a `git-notes` destination, `git factory verify <commit> --min-level L1` passes |
 | 12 | HAR 1.x (`@osfactory/har@latest`) syncs to the hosted receiver's v1 endpoint; replies carry `Deprecation`, `Sunset` and `Link` |
 | 13 | Trajectory built from otel-hook's log records: `session.start` first when present (a receiver without local paths may not place the events before launch, which carry no work identity), every event id is stored once, no two events share a sequence, tool calls pair by call id, each subagent has a start and an end with its tool calls nested under `otelhook.subagent.id`; the Codex session has its prompts. `SKIP` for a receiver whose adapter has no `trajectory` reads |
+| 14 | `--real-agents` only: the Claude Code generations otel-hook exported (Collector) hold the same tokens per model as Claude Code's own `--output-format json` report (`modelUsage`; a resumed session reports its running total) |
+
+## Real agents
+
+`run.sh --real-agents` (or `HAR_E2E_REAL_AGENTS=1`) replaces the replayed
+events with real sessions calling real models, in the same sandbox, with the
+hooks HAR registered there (`lib/real-agents.sh`):
+
+- Claude Code (`claude -p`, `HAR_E2E_REAL_CLAUDE_MODEL`, default `haiku`), from
+  the main checkout, runs `har env launch 1 --work-id e2e-1` itself, writes the
+  greeting in the slot and has an `Explore` subagent read it back;
+- Codex (`codex exec`, `HAR_E2E_REAL_CODEX_MODEL`, default `gpt-5.6-luna`), when
+  installed and logged in, joins in the slot with `har env work-bind`;
+- the script verifies (`--full`), commits and completes as the Claude Code
+  session would, then resumes that session once outside the attempt.
+
+Only the login files are copied into the sandbox HOME (`HAR_E2E_CLAUDE_CREDENTIALS`,
+default `~/.claude/.credentials.json`; `HAR_E2E_CODEX_AUTH`, default
+`~/.codex/auth.json`), mode 600, and deleted as soon as the sessions end (and on
+exit). Expected usage comes from what otel-hook exported, compared with the
+agents' own reports (check 14). Checks 8, 9 and 12 are skipped. A run costs a
+few cents (`HAR_E2E_REAL_CLAUDE_BUDGET_USD` caps each `claude -p`, default 0.40).
 
 ## Running it
 
@@ -117,7 +139,7 @@ with it, outside this repository.
 | `setup` | Idempotent preparation (for example a reader account) |
 | `ingest-key` | The ingest key (sent as `Authorization: Bearer`), empty for none |
 | `read-headers` | `Name: value` lines for read requests |
-| `spans trace <trace-id>` / `spans session <session-id>` | A JSON array of `{traceId, spanId, parentSpanId, name, startTime, attributes, resource}` |
+| `spans trace <trace-id>` / `spans session <session-id>` | A JSON array of `{traceId, spanId, parentSpanId, name, startTime, endTime?, attributes, resource}` |
 | `trajectory session <session-id>` | Optional: a JSON array of `{eventId, eventType, sequence, attributes}`, one per stored trajectory record of the agent session. Exit 2 or 3 when the receiver has no trajectory reads (check 13 is then `SKIP`) |
 | `stop`, `start` | Stop the receiver; start it and wait until it answers |
 | `v1-headers` | Hosted only: `Name: value` lines a gateway in front of its v1 routes would add; `{client-bearer}` is the 1.x client's token |

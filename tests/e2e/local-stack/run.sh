@@ -6,7 +6,18 @@
 # Prints one `PASS <check>: <detail>` or `FAIL <check>: <detail>` line per check
 # on stdout (progress goes to stderr, command output to the run log) and exits
 # non-zero when any check fails.
+#
+# --real-agents (or HAR_E2E_REAL_AGENTS=1): real Claude Code and Codex sessions
+# calling real models replace the replayed hook events (lib/real-agents.sh).
 set -uo pipefail
+
+REAL_AGENTS="${HAR_E2E_REAL_AGENTS:-0}"
+for arg in "$@"; do
+  case "$arg" in
+    --real-agents) REAL_AGENTS=1 ;;
+    *) echo "usage: $0 [--real-agents]" >&2; exit 2 ;;
+  esac
+done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -42,6 +53,7 @@ CODEX_SESSION="019ac$(hex 2 | cut -c1-3)-$(hex 2)-7$(hex 2 | cut -c2-4)-8$(hex 2
 FAILS=0
 COLLECTOR_NAME=""
 PIDS=()
+CREDENTIAL_FILES=()
 
 log() { echo "==> $*" >&2; }
 report() { # PASS|FAIL <check> <detail>
@@ -61,6 +73,7 @@ die() {
 
 cleanup() {
   local code=$?
+  for file in "${CREDENTIAL_FILES[@]}"; do rm -f "$file"; done
   for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   [ -n "$COLLECTOR_NAME" ] && docker rm -f "$COLLECTOR_NAME" >/dev/null 2>&1
   # A stopped receiver is never left behind.
@@ -271,6 +284,18 @@ codex_turn() { # <cwd> <turn> <input> <cached> <output>   (Codex reports session
     "usage={\"input_tokens\":$3,\"cached_input_tokens\":$4,\"output_tokens\":$5,\"reasoning_output_tokens\":0,\"total_tokens\":$(($3 + $5))}"
 }
 
+COMMITS=()
+verify_and_commit() { # <message> <as-function>
+  log "har env verify 1 --full; git commit \"$1\""
+  step "verify ($1)" "$2" har env verify 1 --full
+  (cd "$SLOT" && "$2" git add -A && "$2" git commit -qm "$1") >>"$LOG" 2>&1 || die "commit \"$1\" failed"
+  COMMITS+=("$(cd "$SLOT" && sandbox git rev-parse HEAD)")
+}
+
+if [ "$REAL_AGENTS" = 1 ]; then
+# shellcheck source=lib/real-agents.sh
+. "$LIB/real-agents.sh"
+else
 # --- 1. agent events before launch, from the main checkout ----------------------------
 log "agent events before launch (claude-code $CLAUDE_SESSION, codex $CODEX_SESSION)"
 event hook claude-code SessionStart "$CLAUDE_SESSION" "$REPO" "transcript=$TRANSCRIPT"
@@ -298,13 +323,6 @@ codex_turn "$SLOT" t1 12000 8000 1500
 CODEX_TURNS+=('{"input":12000,"cached":8000,"output":1500}')
 
 # --- 3. full verify, commit ---------------------------------------------------------
-COMMITS=()
-verify_and_commit() { # <message> <as-function>
-  log "har env verify 1 --full; git commit \"$1\""
-  step "verify ($1)" "$2" har env verify 1 --full
-  (cd "$SLOT" && "$2" git add -A && "$2" git commit -qm "$1") >>"$LOG" 2>&1 || die "commit \"$1\" failed"
-  COMMITS+=("$(cd "$SLOT" && sandbox git rev-parse HEAD)")
-}
 verify_and_commit "Change the greeting" as_claude
 
 # --- 4. a changed tree, verified again in the same attempt ----------------------------
@@ -327,6 +345,7 @@ event hook claude-code PreToolUse "$CLAUDE_SESSION" "$REPO"
 codex_turn "$REPO" t3 26000 19000 3100
 flush
 sleep 3
+fi
 
 # --- state for the checks -------------------------------------------------------------
 MC_HEADERS="$("$MC_ADAPTER" read-headers)"
@@ -365,6 +384,16 @@ write_state() {
     "$MC_ADAPTER" "$MC_READ" "$MC_HEADERS" "$HOSTED_ADAPTER" "$HOSTED_READ" "$HOSTED_HEADERS"
 }
 write_state || die "cannot write the check state"
+if [ "$REAL_AGENTS" = 1 ]; then
+  node -e '
+    const fs = require("fs");
+    const [file, ...reports] = process.argv.slice(1);
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!state.sessions.codex) delete state.sessions.codex;
+    state.realAgents = { claudeReports: reports.map((r) => JSON.parse(fs.readFileSync(r, "utf8"))) };
+    fs.writeFileSync(file, JSON.stringify(state, null, 2));
+  ' "$TMP/state.json" "$TMP/claude-1.json" "$TMP/claude-2.json" || die "cannot write the check state"
+fi
 
 # --- checks 1 to 7, 10, 11, 13 ----------------------------------------------------------
 log "checks"
@@ -378,6 +407,7 @@ for target in "${RECEIVERS[@]}" collector; do check usage "$target"; done
 [ $HOSTED_ON = 1 ] && check usage-agree
 check collector
 for rx in "${RECEIVERS[@]}"; do check trajectory "$rx"; done
+[ "$REAL_AGENTS" = 1 ] && check agent-report
 
 levels=()
 notes_ok=1
@@ -388,6 +418,13 @@ if [ $notes_ok = 1 ]; then
   report PASS "11 git-notes" "git factory verify --min-level L1: $(IFS=';'; echo "${levels[*]}")"
 else
   report FAIL "11 git-notes" "$(IFS=';'; echo "${levels[*]}")"
+fi
+
+if [ "$REAL_AGENTS" = 1 ]; then
+  for skipped in "8 mission-control-down" "9 hosted-down" "12 v1-compat"; do echo "SKIP $skipped: not run with --real-agents"; done
+  log "done: $FAILS failing check(s)"
+  [ "$FAILS" -eq 0 ]
+  exit
 fi
 
 # --- 8. Mission Control down -----------------------------------------------------------

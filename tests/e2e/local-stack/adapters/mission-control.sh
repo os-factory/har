@@ -38,7 +38,7 @@ case "${1:-}" in
           where s.traceId = '$value' and s.spanId is not null")
         ;;
       session)
-        rows=$(sql_json "select traceId, spanId, parentSpanId, name, startTime, attributes, '{}' as resource
+        rows=$(sql_json "select traceId, spanId, parentSpanId, name, startTime, endTime, attributes, '{}' as resource
           from AgentSessionSpan where sessionId = '$value'")
         ;;
       *) echo "spans: trace|session" >&2; exit 2 ;;
@@ -48,7 +48,7 @@ case "${1:-}" in
       const rows = JSON.parse(process.argv[1] || "[]");
       const json = (v) => (typeof v === "string" ? JSON.parse(v || "{}") : v ?? {});
       const iso = (v) => (typeof v === "number" ? new Date(v).toISOString() : /^\d+$/.test(String(v)) ? new Date(Number(v)).toISOString() : v);
-      console.log(JSON.stringify(rows.map((r) => ({ ...r, startTime: iso(r.startTime), attributes: json(r.attributes), resource: json(r.resource) }))));
+      console.log(JSON.stringify(rows.map((r) => ({ ...r, startTime: iso(r.startTime), ...(r.endTime != null ? { endTime: iso(r.endTime) } : {}), attributes: json(r.attributes), resource: json(r.resource) }))));
     ' "$rows"
     ;;
   trajectory)
