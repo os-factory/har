@@ -8,6 +8,7 @@ import {
   writePortalConnectionTrajectoryPreference,
 } from '../../core/portal-targets';
 import { handleHqConnect } from './hq';
+import { applyHqTrajectoryChoice } from '../../core/hq-destination-migration';
 import { inspectControlUpReadiness } from '../../core/control-port';
 import {
   discoverHarRepos,
@@ -634,6 +635,20 @@ async function handleSync(argv: {
   }
 }
 
+/** Keep the `hq` destinations' trajectory signal (logs) in line with the forwarding choice. */
+function reportHqDestinationTrajectory(enabled: boolean): void {
+  try {
+    const outcome = applyHqTrajectoryChoice(enabled);
+    if (outcome.status === 'updated') {
+      for (const destination of outcome.destinations) {
+        info(`Destination "${destination.name}" now takes: ${destination.signals.join(', ')}`);
+      }
+    }
+  } catch (err) {
+    warn(`Could not update the hq destination: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function handleTrajectory(argv: { state?: string }): Promise<void> {
   header('har control trajectory');
 
@@ -655,6 +670,7 @@ async function handleTrajectory(argv: { state?: string }): Promise<void> {
   }
 
   const enabled = argv.state === 'on';
+  reportHqDestinationTrajectory(enabled);
   if (connection) {
     writePortalConnectionTrajectoryPreference(enabled);
     const label = displayPortalTargetLabel(connection);

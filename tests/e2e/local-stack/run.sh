@@ -9,13 +9,17 @@
 #
 # --real-agents (or HAR_E2E_REAL_AGENTS=1): real Claude Code and Codex sessions
 # calling real models replace the replayed hook events (lib/real-agents.sh).
+# --upgrade-from-1x: only the 1.x → 2.0 upgrade of a machine connected to the
+# hosted receiver, with and without 1.x trajectory forwarding (lib/upgrade-from-1x.sh).
 set -uo pipefail
 
 REAL_AGENTS="${HAR_E2E_REAL_AGENTS:-0}"
+UPGRADE=0
 for arg in "$@"; do
   case "$arg" in
     --real-agents) REAL_AGENTS=1 ;;
-    *) echo "usage: $0 [--real-agents]" >&2; exit 2 ;;
+    --upgrade-from-1x) UPGRADE=1 ;;
+    *) echo "usage: $0 [--real-agents | --upgrade-from-1x]" >&2; exit 2 ;;
   esac
 done
 
@@ -106,6 +110,7 @@ RECEIVERS=(mission-control)
 [ $HOSTED_ON = 1 ] && RECEIVERS+=(hosted)
 [ -n "$OTEL_HOOK_PACKAGE" ] || die "HAR_E2E_OTEL_HOOK_PACKAGE is not set (an otel-hook build with the session-context step)"
 [ -n "$GIT_FACTORY" ] && [ -x "$GIT_FACTORY" ] || die "git-factory not found (HAR_E2E_GIT_FACTORY)"
+[ "$UPGRADE" = 0 ] || [ $HOSTED_ON = 1 ] || die "--upgrade-from-1x needs the hosted receiver (HAR_E2E_HOSTED_ADAPTER)"
 REAL_DOCKER="$(command -v docker)" || die "docker is required for the collector"
 
 describe() { "$1" describe | sed -n "s/^$2=//p"; }
@@ -135,6 +140,7 @@ if [ $HOSTED_ON = 1 ] && [ "${HAR_E2E_RECORD_HOSTED:-0}" = "1" ]; then
 fi
 
 # --- the OpenTelemetry Collector (OTLP/HTTP in, one JSON file per signal out) ----
+if [ "$UPGRADE" = 0 ]; then
 COLLECTOR_PORT="$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
 COLLECTOR_NAME="har-e2e-collector-$RUN_TAG"
 cat >"$TMP/collector.yaml" <<'YAML'
@@ -164,6 +170,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 [ "${code:-}" = 200 ] || die "collector does not answer on 127.0.0.1:$COLLECTOR_PORT"
+fi
 
 # --- the sandbox: HOME, PATH, HAR state under $TMP; nothing touches the real ones --
 printf '#!/usr/bin/env bash\nexec %q %q "$@"\n' "$(command -v node)" "$CLI" >"$TMP/bin/har"
@@ -219,6 +226,58 @@ segment_time() { # <tool dir> <session> <from|to> [index]: a segment time from t
 queue_pending() { find "$TMP/queue/$1" -maxdepth 1 -name '*.json' ! -name state.json 2>/dev/null | wc -l; }
 slot_dir() { node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(".har/slots/agent-1.json","utf8")).workDir)'; }
 
+# --- replayed agent turns, verify and commit -----------------------------------------
+TRANSCRIPT="$TMP/transcripts/$CLAUDE_SESSION.jsonl"
+: >"$TRANSCRIPT"
+CLAUDE_GENERATIONS=()
+# One Claude Code turn: an edit, then an Explore subagent that reads a file. Two
+# generations, each with its own tokens: the turn's (main model) at Stop and the
+# subagent's (its model) at SubagentStop.
+claude_turn() { # <cwd> <input> <output> <cache-read> <cache-creation> <subagent input> <subagent output> <subagent cache-read>
+  local agent="a$(hex 8)" edit="toolu_$(hex 8)" task="toolu_$(hex 8)" read="toolu_$(hex 8)"
+  local agent_transcript="$TMP/transcripts/$CLAUDE_SESSION/subagents/agent-$agent.jsonl"
+  event hook claude-code UserPromptSubmit "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT"
+  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "call=$edit"
+  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "call=$edit"
+  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Agent "call=$task" agent_type=Explore
+  event hook claude-code SubagentStart "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "agent=$agent" agent_type=Explore
+  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Read "call=$read" "agent=$agent" agent_type=Explore
+  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Read "call=$read" "agent=$agent" agent_type=Explore
+  event transcript "$agent_transcript" "$CLAUDE_SESSION" "$CLAUDE_SUBAGENT_MODEL" "$6" "$7" "$8" 0 "$agent"
+  event hook claude-code SubagentStop "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "agent=$agent" agent_type=Explore "agent_transcript=$agent_transcript"
+  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Agent "call=$task" agent_type=Explore
+  event transcript "$TRANSCRIPT" "$CLAUDE_SESSION" "$CLAUDE_MODEL" "$2" "$3" "$4" "$5"
+  event hook claude-code Stop "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT"
+  CLAUDE_GENERATIONS+=("{\"model\":\"$CLAUDE_MODEL\",\"input\":$2,\"output\":$3,\"cacheRead\":$4,\"cacheCreation\":$5}")
+  CLAUDE_GENERATIONS+=("{\"model\":\"$CLAUDE_SUBAGENT_MODEL\",\"input\":$6,\"output\":$7,\"cacheRead\":$8,\"cacheCreation\":0,\"subagent\":\"$agent\"}")
+}
+CODEX_TURNS=()
+# Codex's Stop hook carries no usage: otel-hook reads the session's running
+# totals from the rollout the hooks name (--codex-rollout-usage on HAR's command).
+codex_rollout() { echo "$TMP/codex/sessions/$(date +%Y/%m/%d)/rollout-$RUN_TAG-$CODEX_SESSION.jsonl"; }
+CODEX_ROLLOUT="$(codex_rollout)"
+codex_turn() { # <cwd> <turn> <input> <cached> <output>   (session running totals, as Codex reports them)
+  event hook codex UserPromptSubmit "$CODEX_SESSION" "$1" "turn=$2" "transcript=$CODEX_ROLLOUT"
+  sandbox node "$LIB/events.mjs" rollout "$CODEX_ROLLOUT" "$CODEX_SESSION" "$CODEX_MODEL" "$3" "$4" "$5" >>"$LOG" 2>&1 || die "codex rollout failed"
+  event hook codex Stop "$CODEX_SESSION" "$1" "turn=$2" "model=$CODEX_MODEL" "transcript=$CODEX_ROLLOUT"
+}
+
+COMMITS=()
+verify_and_commit() { # <message> <as-function>
+  log "har env verify 1 --full; git commit \"$1\""
+  step "verify ($1)" "$2" har env verify 1 --full
+  (cd "$SLOT" && "$2" git add -A && "$2" git commit -qm "$1") >>"$LOG" 2>&1 || die "commit \"$1\" failed"
+  COMMITS+=("$(cd "$SLOT" && sandbox git rev-parse HEAD)")
+}
+
+if [ "$UPGRADE" = 1 ]; then
+  # shellcheck source=lib/upgrade-from-1x.sh
+  . "$LIB/upgrade-from-1x.sh"
+  log "done: $FAILS failing check(s)"
+  [ "$FAILS" -eq 0 ]
+  exit
+fi
+
 # --- the fixture repository ---------------------------------------------------------
 log "fixture repository $REPO_URL"
 cp -R "$FIXTURE/project/." "$REPO/"
@@ -252,45 +311,12 @@ node -e '
   if (commands.length === 0 || !commands.every((c) => /--claude-transcript-usage/.test(c) && /--logs/.test(c) && /--metrics/.test(c))) process.exit(1);
   if (s.env?.CLAUDE_CODE_ENABLE_TELEMETRY) process.exit(2);
 ' "$TMP/home/.claude/settings.json" || die "Claude Code hook not registered with --claude-transcript-usage --logs --metrics, or native telemetry on"
-
-TRANSCRIPT="$TMP/transcripts/$CLAUDE_SESSION.jsonl"
-: >"$TRANSCRIPT"
-CLAUDE_GENERATIONS=()
-# One Claude Code turn: an edit, then an Explore subagent that reads a file. Two
-# generations, each with its own tokens: the turn's (main model) at Stop and the
-# subagent's (its model) at SubagentStop.
-claude_turn() { # <cwd> <input> <output> <cache-read> <cache-creation> <subagent input> <subagent output> <subagent cache-read>
-  local agent="a$(hex 8)" edit="toolu_$(hex 8)" task="toolu_$(hex 8)" read="toolu_$(hex 8)"
-  local agent_transcript="$TMP/transcripts/$CLAUDE_SESSION/subagents/agent-$agent.jsonl"
-  event hook claude-code UserPromptSubmit "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT"
-  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "call=$edit"
-  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "call=$edit"
-  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Agent "call=$task" agent_type=Explore
-  event hook claude-code SubagentStart "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "agent=$agent" agent_type=Explore
-  event hook claude-code PreToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Read "call=$read" "agent=$agent" agent_type=Explore
-  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Read "call=$read" "agent=$agent" agent_type=Explore
-  event transcript "$agent_transcript" "$CLAUDE_SESSION" "$CLAUDE_SUBAGENT_MODEL" "$6" "$7" "$8" 0 "$agent"
-  event hook claude-code SubagentStop "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" "agent=$agent" agent_type=Explore "agent_transcript=$agent_transcript"
-  event hook claude-code PostToolUse "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT" tool=Agent "call=$task" agent_type=Explore
-  event transcript "$TRANSCRIPT" "$CLAUDE_SESSION" "$CLAUDE_MODEL" "$2" "$3" "$4" "$5"
-  event hook claude-code Stop "$CLAUDE_SESSION" "$1" "transcript=$TRANSCRIPT"
-  CLAUDE_GENERATIONS+=("{\"model\":\"$CLAUDE_MODEL\",\"input\":$2,\"output\":$3,\"cacheRead\":$4,\"cacheCreation\":$5}")
-  CLAUDE_GENERATIONS+=("{\"model\":\"$CLAUDE_SUBAGENT_MODEL\",\"input\":$6,\"output\":$7,\"cacheRead\":$8,\"cacheCreation\":0,\"subagent\":\"$agent\"}")
-}
-CODEX_TURNS=()
-codex_turn() { # <cwd> <turn> <input> <cached> <output>   (Codex reports session running totals)
-  event hook codex UserPromptSubmit "$CODEX_SESSION" "$1" "turn=$2"
-  event hook codex Stop "$CODEX_SESSION" "$1" "turn=$2" "model=$CODEX_MODEL" \
-    "usage={\"input_tokens\":$3,\"cached_input_tokens\":$4,\"output_tokens\":$5,\"reasoning_output_tokens\":0,\"total_tokens\":$(($3 + $5))}"
-}
-
-COMMITS=()
-verify_and_commit() { # <message> <as-function>
-  log "har env verify 1 --full; git commit \"$1\""
-  step "verify ($1)" "$2" har env verify 1 --full
-  (cd "$SLOT" && "$2" git add -A && "$2" git commit -qm "$1") >>"$LOG" 2>&1 || die "commit \"$1\" failed"
-  COMMITS+=("$(cd "$SLOT" && sandbox git rev-parse HEAD)")
-}
+# Codex's Stop hook reports no tokens: HAR registers its hook with --codex-rollout-usage.
+node -e '
+  const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const commands = Object.values(s.hooks ?? {}).flat().flatMap((g) => (g.hooks ?? []).map((h) => h.command)).filter((c) => /run-otel-hook/.test(c ?? ""));
+  if (commands.length === 0 || !commands.every((c) => /--codex-rollout-usage/.test(c))) process.exit(1);
+' "$TMP/home/.codex/hooks.json" || die "Codex hook not registered with --codex-rollout-usage"
 
 if [ "$REAL_AGENTS" = 1 ]; then
 # shellcheck source=lib/real-agents.sh
@@ -300,8 +326,8 @@ else
 log "agent events before launch (claude-code $CLAUDE_SESSION, codex $CODEX_SESSION)"
 event hook claude-code SessionStart "$CLAUDE_SESSION" "$REPO" "transcript=$TRANSCRIPT"
 event hook claude-code UserPromptSubmit "$CLAUDE_SESSION" "$REPO" "transcript=$TRANSCRIPT"
-event hook codex SessionStart "$CODEX_SESSION" "$REPO" "model=$CODEX_MODEL"
-event hook codex UserPromptSubmit "$CODEX_SESSION" "$REPO" "turn=t0"
+event hook codex SessionStart "$CODEX_SESSION" "$REPO" "model=$CODEX_MODEL" "transcript=$CODEX_ROLLOUT"
+event hook codex UserPromptSubmit "$CODEX_SESSION" "$REPO" "turn=t0" "transcript=$CODEX_ROLLOUT"
 sleep 1
 
 # --- 2. launch from the agent session; a second agent joins; work -------------------
@@ -479,7 +505,7 @@ hosted_queued="$(queue_pending hq)"
 unset HOSTED_STOPPED
 flush
 # otel-hook sends what it queued on its next hook event.
-event hook codex UserPromptSubmit "$CODEX_SESSION" "$SLOT" "turn=t5"
+event hook codex UserPromptSubmit "$CODEX_SESSION" "$SLOT" "turn=t5" "transcript=$CODEX_ROLLOUT"
 flush
 hosted_detail="$("${CHECKS[@]}" probe-received "$TMP/state.json" hosted "$WORK_ID_B" "${COMMITS_B[@]}" 2>>"$LOG")" || problems+=("$hosted_detail")
 usage_detail="$("${CHECKS[@]}" probe-usage "$TMP/state.json" hosted "$WORK_ID_B" "$CODEX_MODEL" 1 2>>"$LOG")" || problems+=("$usage_detail")

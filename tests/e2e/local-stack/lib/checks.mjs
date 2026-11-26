@@ -673,6 +673,17 @@ async function probeUsageCount(name, workId, model, count) {
   return `${name}: ${observations} codex observations`;
 }
 
+/** probe-trajectory <receiver> <session-id> <0|1>: the receiver holds (1) or holds no (0) trajectory record of the session. */
+function probeTrajectory(name, sessionId, want) {
+  const rows = trajectory(receiver(name), sessionId);
+  if (want === '0') {
+    need(rows.length === 0, `${name}: ${rows.length} trajectory records of ${sessionId.slice(0, 8)}, want none`);
+    return `${name}: no trajectory record`;
+  }
+  need(rows.length > 0, `${name}: no trajectory record of ${sessionId.slice(0, 8)}`);
+  return `${name}: ${rows.length} trajectory records`;
+}
+
 async function main() {
   const label = (n, what) => `${n} ${what}${target ? ` @${target}` : ''}`;
   switch (command) {
@@ -701,9 +712,14 @@ async function main() {
     case 'trajectory':
       return print(label(13, 'trajectory'), await settle(() => checkTrajectory(target)));
     case 'probe-received':
-    case 'probe-usage': {
+    case 'probe-usage':
+    case 'probe-trajectory': {
       const outcome = await settle(() =>
-        command === 'probe-received' ? probeReceived(target, rest[0], rest.slice(1)) : probeUsageCount(target, rest[0], rest[1], rest[2]),
+        command === 'probe-received'
+          ? probeReceived(target, rest[0], rest.slice(1))
+          : command === 'probe-usage'
+            ? probeUsageCount(target, rest[0], rest[1], rest[2])
+            : probeTrajectory(target, rest[0], rest[1]),
       );
       console.log(outcome.detail);
       process.exit(outcome.ok ? 0 : 1);

@@ -6,6 +6,12 @@ import {
   resolvePortalUrl,
   type PortalUrlSource,
 } from '../../core/control-config';
+import {
+  applyHqTrajectoryChoice,
+  hqFullExperienceHint,
+  hqTrajectoryForwarding,
+  type HqTrajectoryApplyOutcome,
+} from '../../core/hq-destination-migration';
 import { describePortalSync, runPortalConnect } from '../../core/portal-connect';
 import { attachReposToPortal, unattachedRegisteredRepos } from '../../core/portal-repo-map';
 import {
@@ -75,8 +81,8 @@ export const hqCommand = {
           ),
       )
       .command(
-        'list',
-        'Show the HAR HQ org connection and its attached repositories',
+        ['list', 'status'],
+        'Show the HAR HQ org connection, its attached repositories and what it receives',
         (y: Argv) => y.option('json', { type: 'boolean', default: false }),
         (argv) => handleHqList(argv as { json: boolean }),
       )
@@ -184,6 +190,10 @@ export async function handleHqConnect(argv: {
     if (argv.trajectory !== undefined) {
       writePortalConnectionTrajectoryPreference(argv.trajectory);
     }
+    // Non-interactive (agents, --yes, --json): the destination follows the saved choice now.
+    const askTrajectory =
+      argv.trajectory === undefined && !argv.json && !argv.yes && isInteractive() && getTelemetryLevel() === 'full';
+    const destination = askTrajectory ? undefined : connectHqDestination();
     if (argv.json) {
       process.stdout.write(
         JSON.stringify(
@@ -193,6 +203,9 @@ export async function handleHqConnect(argv: {
             attachedRepo,
             replaced: replaced ? redactPortalTargetRecord(replaced) : null,
             detachedRepos,
+            trajectoryForwarding: hqTrajectoryForwarding(),
+            destination: destination && 'destinations' in destination ? destination.destinations : null,
+            hint: hqFullExperienceHint() ?? null,
           },
           null,
           2,
@@ -227,17 +240,54 @@ export async function handleHqConnect(argv: {
     }
 
     // Only the Full level records text, so only then is forwarding a choice.
-    const level = getTelemetryLevel();
-    if (argv.trajectory === undefined && level === 'full' && !argv.yes && isInteractive()) {
+    let outcome = destination;
+    if (askTrajectory) {
       const forward = await promptHqTrajectory(label, record.trajectoryForwarding === true);
       writePortalConnectionTrajectoryPreference(forward);
+      outcome = connectHqDestination();
     }
 
+    printHqDestinationOutcome(outcome);
     printHqTrajectorySummary();
-    info('Send records and telemetry to HQ: har telemetry destination add hq');
   } catch (err) {
     error(`Connect failed: ${(err as Error).message}`);
     return finishCommand(1);
+  }
+}
+
+/**
+ * Connecting is consent to send to the hosted receiver: add (or align) the
+ * `hq` destination, the trajectory (logs) only when forwarding is on.
+ */
+function connectHqDestination(): HqTrajectoryApplyOutcome | { status: 'error'; message: string } {
+  try {
+    return applyHqTrajectoryChoice(hqTrajectoryForwarding(), { addMissing: true });
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function printHqDestinationOutcome(
+  outcome: HqTrajectoryApplyOutcome | { status: 'error'; message: string } | undefined,
+): void {
+  if (!outcome) return;
+  switch (outcome.status) {
+    case 'added':
+    case 'updated':
+      for (const destination of outcome.destinations) {
+        success(
+          `${outcome.status === 'added' ? 'Added' : 'Updated'} destination "${destination.name}": ${destination.signals.join(', ')}, records, proofs, evidence`,
+        );
+      }
+      return;
+    case 'no-base-url':
+      warn('The hosted receiver ingest URL is unknown, so nothing is sent there: har telemetry destination add hq --preset hq --base-url <ingest base URL>');
+      return;
+    case 'error':
+      warn(`Could not add the hq destination: ${outcome.message}`);
+      return;
+    default:
+      return;
   }
 }
 
@@ -254,9 +304,8 @@ function printHqTrajectorySummary(): void {
   const level = describeTelemetryLevel(overview.telemetryLevel);
   info(`  telemetry: ${level.label} (local level — har telemetry on --level <level>)`);
   info(`  HQ receives: ${HQ_TRAJECTORY_LABEL[overview.hqTrajectory]}`);
-  if (overview.telemetryLevel === 'full' && !overview.trajectoryForwarding) {
-    info('  Forward the text too: har control trajectory on');
-  }
+  const hint = hqFullExperienceHint();
+  if (hint) info(`  ${hint}`);
 }
 
 async function handleHqList(argv: { json: boolean }): Promise<void> {
@@ -275,6 +324,7 @@ async function handleHqList(argv: { json: boolean }): Promise<void> {
           telemetryLevel: overview.telemetryLevel,
           trajectoryForwarding: overview.trajectoryForwarding,
           hqTrajectory: overview.hqTrajectory,
+          hint: hqFullExperienceHint() ?? null,
         },
         null,
         2,

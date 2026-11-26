@@ -9,7 +9,7 @@ import {
   type CapabilitiesCheck,
   type IngestQueueSummary,
 } from './ingest-queue';
-import { hqDestinationFinding } from './hq-destination-migration';
+import { hqDestinationFinding, hqFullExperienceHint } from './hq-destination-migration';
 import { readDestinations } from './telemetry-destinations';
 import { formatAgo } from './telemetry-health';
 import { isControlAvailable } from './telemetry-route';
@@ -38,6 +38,8 @@ export interface IngestHealthReport {
   notes: string[];
   /** Machine-level findings: a hosted receiver key with no `hq` destination. */
   findings?: DoctorFinding[];
+  /** Advisory one-liners that never turn the status (the hosted receiver's full experience). */
+  hints?: string[];
 }
 
 export interface CollectIngestHealthOptions {
@@ -130,6 +132,7 @@ export async function collectIngestHealth(options: CollectIngestHealthOptions = 
       out.push({ ...base, status: warn ? 'warn' : 'pass', summary: describe(base, now) });
     }
     const hqMissing = hqDestinationFinding(env, list);
+    const hint = hqMissing ? undefined : hqFullExperienceHint(env, list);
     return {
       status: hqMissing
         ? 'warn'
@@ -141,6 +144,7 @@ export async function collectIngestHealth(options: CollectIngestHealthOptions = 
       destinations: out,
       notes: root ? [] : ['no queue directory (test runner)'],
       ...(hqMissing ? { findings: [hqMissing] } : {}),
+      ...(hint ? { hints: [hint] } : {}),
     };
   } catch (err) {
     return { status: 'skip', destinations: [], notes: [`ingest health not read: ${err instanceof Error ? err.message : String(err)}`] };
@@ -172,5 +176,6 @@ export function withIngestHealth(report: DoctorReport, health: IngestHealthRepor
       },
     ],
     findings: [...report.findings, ...findings],
+    ...(health.hints && health.hints.length > 0 ? { hints: [...(report.hints ?? []), ...health.hints] } : {}),
   };
 }

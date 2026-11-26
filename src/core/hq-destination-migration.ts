@@ -2,7 +2,10 @@ import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { DoctorFinding } from '../harness/doctor';
-import type { HarDestination } from '../harness/schema';
+import { DESTINATION_PRESET_DEFAULTS, type HarDestination, type OtlpSignal } from '../harness/schema';
+import { parseBoolean } from '../utils/parse-boolean';
+import { getActivePortalConnection } from './portal-targets';
+import { getTelemetryLevel, readTelemetryPreference } from './telemetry-config';
 import {
   addDestination,
   buildHqDestination,
@@ -10,6 +13,7 @@ import {
   getDestinationsDir,
   readDestinations,
   resolveHqToken,
+  writeDestinations,
 } from './telemetry-destinations';
 
 /**
@@ -20,13 +24,22 @@ import {
  * destination with its preset defaults, once, and records that it did: a user
  * who removes it later is not re-added. Machines without a key are left alone
  * (and checked again on later runs, so connecting later still migrates).
+ *
+ * The migration never sends more than the user agreed to in 1.x. Forwarding
+ * the trajectory to the hosted receiver was its own opt-in there
+ * (`trajectoryForwarding` on the connection, off by default), while capturing
+ * text is machine-wide. otel-hook's content switch is global too (one
+ * `logs.includeContent` for every destination), so the only way to keep text
+ * away from the hosted receiver is to leave the trajectory signal (OTLP logs)
+ * off that destination: without the opt-in it gets traces and metrics (usage,
+ * spans, stamps), with it the logs as well.
  */
 
 export const MIGRATIONS_FILE = 'migrations.json';
 export const HQ_DESTINATION_MIGRATION = 'hq-destination';
 
 export type HqMigrationOutcome =
-  | { status: 'added'; destination: HarDestination; notice: string }
+  | { status: 'added'; destination: HarDestination; notice: string; hint?: string }
   | { status: 'present' }
   | { status: 'already-ran' }
   | { status: 'no-token' }
@@ -68,6 +81,111 @@ export function hqMigrationRan(env: NodeJS.ProcessEnv = process.env): boolean {
   return readMigrations(env).migrations[HQ_DESTINATION_MIGRATION] !== undefined;
 }
 
+/**
+ * Whether the user agreed to send the trajectory (prompts, replies, tool
+ * output) to the hosted receiver: `HAR_PORTAL_TRAJECTORY`, else the saved
+ * connection's `trajectoryForwarding` (`har hq connect`, `har control
+ * trajectory on`), else the machine preference (`HAR_PORTAL_TOKEN` without a
+ * saved connection). Off unless one of them says yes.
+ */
+export function hqTrajectoryForwarding(env: NodeJS.ProcessEnv = process.env): boolean {
+  const override = parseBoolean(env.HAR_PORTAL_TRAJECTORY);
+  if (override !== undefined) return override;
+  try {
+    const connection = getActivePortalConnection();
+    if (connection) return connection.trajectoryForwarding === true;
+    return readTelemetryPreference().portalTrajectory === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The signals an `hq` destination takes: the preset's, minus the trajectory (logs) without the opt-in. */
+export function hqSignalsFor(forwardTrajectory: boolean): OtlpSignal[] {
+  const defaults = DESTINATION_PRESET_DEFAULTS.hq.signals;
+  return forwardTrajectory ? [...defaults] : defaults.filter((signal) => signal !== 'logs');
+}
+
+function withTrajectory(signals: readonly OtlpSignal[], forward: boolean): OtlpSignal[] {
+  if (forward) return signals.includes('logs') ? [...signals] : [...signals, 'logs'];
+  return signals.filter((signal) => signal !== 'logs');
+}
+
+export type HqTrajectoryApplyOutcome =
+  | { status: 'updated' | 'unchanged'; destinations: HarDestination[] }
+  | { status: 'added'; destinations: HarDestination[] }
+  | { status: 'absent' }
+  | { status: 'no-base-url' };
+
+/**
+ * Make the `hq` destinations follow the trajectory choice: logs on or off
+ * every `hq` entry, other signals kept. With `addMissing` (`har hq connect`,
+ * the user just connected) and no `hq` entry yet, add one. Throws on an
+ * unreadable list.
+ */
+export function applyHqTrajectoryChoice(
+  forward: boolean,
+  options: { env?: NodeJS.ProcessEnv; addMissing?: boolean } = {},
+): HqTrajectoryApplyOutcome {
+  const env = options.env ?? process.env;
+  const file = readDestinations(env);
+  const hq = file.destinations.filter((destination) => destination.preset === 'hq');
+  if (hq.length === 0) {
+    if (!options.addMissing) return { status: 'absent' };
+    const baseUrl = defaultHqIngestBaseUrl(env);
+    if (!baseUrl) return { status: 'no-base-url' };
+    const destination = buildHqDestination({ baseUrl, signals: hqSignalsFor(forward) });
+    addDestination(destination, { env });
+    return { status: 'added', destinations: [destination] };
+  }
+  let changed = false;
+  const destinations = file.destinations.map((destination) => {
+    if (destination.preset !== 'hq') return destination;
+    const signals = withTrajectory(destination.signals, forward);
+    if (signals.length === destination.signals.length) return destination;
+    changed = true;
+    return { ...destination, signals };
+  });
+  if (changed) writeDestinations({ ...file, destinations }, env);
+  return {
+    status: changed ? 'updated' : 'unchanged',
+    destinations: destinations.filter((destination) => destination.preset === 'hq'),
+  };
+}
+
+/**
+ * "Propose the full experience": one line with the exact command when the
+ * hosted receiver gets less than the full trajectory (no logs on its `hq`
+ * destination, or a telemetry level below `full`). Undefined when there is no
+ * enabled `hq` destination or nothing more to turn on. Never prompts.
+ */
+export function hqFullExperienceHint(
+  env: NodeJS.ProcessEnv = process.env,
+  destinations?: readonly HarDestination[],
+): string | undefined {
+  try {
+    const list = destinations ?? readDestinations(env).destinations;
+    const hq = list.filter((destination) => destination.preset === 'hq' && destination.enabled);
+    if (hq.length === 0) return undefined;
+    const level = getTelemetryLevel();
+    if (level === 'off') return undefined;
+    const needsLevel = level !== 'full';
+    const needsLogs = !hq.every((destination) => destination.signals.includes('logs'));
+    if (!needsLevel && !needsLogs) return undefined;
+    const commands = [
+      ...(needsLevel ? ['har telemetry on --level full'] : []),
+      ...(needsLogs ? ['har control trajectory on'] : []),
+    ];
+    const reasons = [
+      ...(needsLogs ? ['trajectory forwarding is off'] : []),
+      ...(needsLevel ? [`telemetry level is ${level}`] : []),
+    ];
+    return `The hosted receiver does not get the full trajectory (${reasons.join(', ')}). Full experience: ${commands.join(' && ')}`;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Run the one-time `hq` destination migration. Never throws. */
 export function migrateHqDestination(env: NodeJS.ProcessEnv = process.env): HqMigrationOutcome {
   try {
@@ -86,13 +204,19 @@ export function migrateHqDestination(env: NodeJS.ProcessEnv = process.env): HqMi
           'har telemetry destination add hq --preset hq --base-url <ingest base URL>',
       };
     }
-    const destination = buildHqDestination({ baseUrl });
+    const forward = hqTrajectoryForwarding(env);
+    const destination = buildHqDestination({ baseUrl, signals: hqSignalsFor(forward) });
     addDestination(destination, { env });
-    recordMigration(HQ_DESTINATION_MIGRATION, 'added', env);
+    recordMigration(HQ_DESTINATION_MIGRATION, forward ? 'added' : 'added-without-trajectory', env);
+    const hint = hqFullExperienceHint(env, [destination]);
     return {
       status: 'added',
       destination,
-      notice: `Added destination "${destination.name}" (hosted receiver, ${baseUrl}): 2.0 sends only to configured destinations. Remove it with: har telemetry destination remove ${destination.name}`,
+      notice:
+        `Added destination "${destination.name}" (hosted receiver, ${baseUrl}, ${destination.signals.join(', ')}` +
+        `${forward ? '' : '; trajectory not forwarded, as in 1.x'}): 2.0 sends only to configured destinations. ` +
+        `Remove it with: har telemetry destination remove ${destination.name}`,
+      ...(hint ? { hint } : {}),
     };
   } catch (err) {
     return {
@@ -112,6 +236,7 @@ export function runHqDestinationMigration(
   if (outcome.status === 'added' || outcome.status === 'error') {
     write(`[har] ${outcome.notice}`);
   }
+  if (outcome.status === 'added' && outcome.hint) write(`[har] ${outcome.hint}`);
   return outcome;
 }
 

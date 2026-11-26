@@ -18,6 +18,7 @@ import {
   writePortalConnectionTrajectoryPreference,
 } from './portal-targets';
 import { ensureTelemetryInfrastructure } from './telemetry-ensure';
+import { applyHqTrajectoryChoice } from './hq-destination-migration';
 import {
   DOCKER_INSTALL_URL,
   detectDockerStatus,
@@ -231,6 +232,11 @@ export function applyOnboardingHqTrajectory(forward: boolean | undefined): boole
   if (!connection) return null;
   if (forward === undefined) return connection.trajectoryForwarding === true;
   writePortalConnectionTrajectoryPreference(forward);
+  try {
+    applyHqTrajectoryChoice(forward);
+  } catch (err) {
+    warn(`Could not update the hq destination: ${err instanceof Error ? err.message : String(err)}`);
+  }
   success(
     forward
       ? `Full trajectory forwarded to ${displayPortalTargetLabel(connection)}`

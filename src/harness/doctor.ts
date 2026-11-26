@@ -77,6 +77,8 @@ export interface DoctorReport {
   contract: DoctorContract;
   checks: DoctorCheck[];
   findings: DoctorFinding[];
+  /** Advisory one-liners (never a warning, never the verdict): e.g. how to get the hosted receiver's full experience. */
+  hints?: string[];
 }
 
 /**
@@ -603,6 +605,7 @@ export function formatDoctorReport(report: DoctorReport): string {
         : 'Contract: no harness.env found.',
     );
   }
+  for (const hint of report.hints ?? []) lines.push(`hint: ${hint}`);
   lines.push(report.ok ? 'Doctor: PASS' : 'Doctor: FAIL');
   return lines.join('\n');
 }

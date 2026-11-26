@@ -1,4 +1,5 @@
 import type { Argv } from 'yargs';
+import { hqSignalsFor, hqTrajectoryForwarding } from '../../core/hq-destination-migration';
 import {
   DEFAULT_LANGFUSE_HOST,
   DESTINATION_LOGS_WARNING,
@@ -146,7 +147,13 @@ export function destinationFromAddArgs(
       if (!baseUrl) {
         throw new Error('--preset hq needs --base-url <ingest base URL>, HAR_HQ_INGEST_URL, or a HAR HQ connection (har hq connect)');
       }
-      destination = buildHqDestination({ name: argv.name, baseUrl, enabled: !argv.disabled });
+      // Without --signals, the trajectory (logs) only when forwarding to the hosted receiver is on.
+      destination = buildHqDestination({
+        name: argv.name,
+        baseUrl,
+        enabled: !argv.disabled,
+        signals: hqSignalsFor(hqTrajectoryForwarding(env)),
+      });
     } else {
       destination = buildMissionControlDestination({ name: argv.name, enabled: !argv.disabled });
       if (argv.baseUrl) destination = { ...destination, baseUrl: argv.baseUrl };
@@ -373,7 +380,7 @@ export const telemetryDestinationCommand = {
             .option('signals', {
               type: 'string',
               array: true,
-              describe: `Comma list of ${OTLP_SIGNALS.join(', ')} (otlp default: ${OTLP_PRESET_DEFAULT_SIGNALS.join(', ')}; mission-control / hq: ${DESTINATION_PRESET_DEFAULTS.hq.signals.join(', ')}; langfuse: traces)`,
+              describe: `Comma list of ${OTLP_SIGNALS.join(', ')} (otlp default: ${OTLP_PRESET_DEFAULT_SIGNALS.join(', ')}; mission-control: ${DESTINATION_PRESET_DEFAULTS['mission-control'].signals.join(', ')}; hq: the same, logs only with trajectory forwarding on (har control trajectory on); langfuse: traces)`,
             })
             .option('records', { type: 'boolean', describe: 'mission-control / hq: send ingest v2 records (default on)' })
             .option('proofs', { type: 'boolean', describe: 'mission-control / hq: send proofs (default on)' })

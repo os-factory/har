@@ -25,6 +25,7 @@ import {
   applyAgentTelemetryRoute,
   buildOtelHooksConfig,
   buildProviderHookCommand,
+  inspectHookCommandFlags,
 } from '../src/core/otel-hooks';
 import { getRouteEnvPath, resolveAgentTelemetryRoute } from '../src/core/telemetry-route';
 import { INGEST_V2_FIXTURE_ENVELOPE, ingestV2FixtureRecords } from '../packages/schemas/src/ingest-v2-fixtures';
@@ -287,12 +288,37 @@ describe('one destination list, direct fan-out (ADR 0005 sections 2, 4, 6)', () 
       });
     });
 
-    it('registers the Claude Code hook with transcript usage, logs and metrics on its command line', () => {
+    it('registers the Claude Code hook with transcript usage, logs and metrics, and Codex with rollout usage', () => {
       expect(buildProviderHookCommand('claude-code', '/h/run-otel-hook.sh')).toBe(
         '/h/run-otel-hook.sh --provider claude-code --claude-transcript-usage --logs --metrics',
       );
       expect(CLAUDE_CODE_HOOK_FLAGS).toEqual(['--claude-transcript-usage', '--logs', '--metrics']);
-      expect(buildProviderHookCommand('codex', '/h/run-otel-hook.sh')).toBe('/h/run-otel-hook.sh --provider codex');
+      expect(buildProviderHookCommand('codex', '/h/run-otel-hook.sh')).toBe(
+        '/h/run-otel-hook.sh --provider codex --codex-rollout-usage',
+      );
+      expect(buildProviderHookCommand('cursor', '/h/run-otel-hook.sh')).toBe('/h/run-otel-hook.sh --provider cursor');
+    });
+
+    it('flags hook commands registered without the current flags (e.g. by HAR 1.x)', () => {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'har-hook-flags-'));
+      try {
+        const write = (file: string, command: string) => {
+          fs.mkdirSync(path.dirname(path.join(home, file)), { recursive: true });
+          fs.writeFileSync(
+            path.join(home, file),
+            JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command }] }] } }),
+          );
+        };
+        write('.claude/settings.json', '/h/run-otel-hook.sh --provider claude-code --claude-transcript-usage --logs --metrics');
+        write('.codex/hooks.json', '/h/run-otel-hook.sh --provider codex');
+        expect(inspectHookCommandFlags(home)).toEqual([
+          'codex hook command lacks --codex-rollout-usage (har telemetry install-hooks)',
+        ]);
+        write('.codex/hooks.json', buildProviderHookCommand('codex', '/h/run-otel-hook.sh'));
+        expect(inspectHookCommandFlags(home)).toEqual([]);
+      } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+      }
     });
 
     it('writes no key an older otel-hook would reject', () => {

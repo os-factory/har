@@ -52,7 +52,9 @@ for Claude Code, Codex and Cursor. The Claude Code hook command carries
 `--claude-transcript-usage` (its turns' and subagents' tokens, read from the
 transcripts), `--logs` (the trajectory) and `--metrics`: Claude Code removes
 every `OTEL_*` variable from the hooks it runs, so these are flags, not
-variables. Which destinations receive logs and metrics still follows each
+variables. The Codex hook command carries `--codex-rollout-usage`: Codex's
+`Stop` hook reports no tokens, so otel-hook reads each turn's from the session
+rollout file, and only when asked to. Which destinations receive logs and metrics still follows each
 destination's signals and the telemetry level.
 
 HAR turns no agent's native telemetry on. Earlier versions pointed Claude Code's

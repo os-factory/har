@@ -402,7 +402,7 @@ too. Exit codes come from `git factory`: `0` ok,
 
 ```bash
 har hq connect [--portal <url>] [--api-key <key>] [--repo .] [--trajectory|--no-trajectory] [--yes] [--json]
-har hq list [--json]
+har hq list [--json]                 # alias: har hq status
 har hq disconnect [--json]
 ```
 
@@ -424,8 +424,16 @@ anything else to the previous org.
 Automatic sync sends only repositories **attached** to the connection;
 unattached checkouts are never ingested.
 
-`list` shows the connection (org + portal host, never tokens) and its attached
-repositories. `disconnect` removes the connection and its credentials.
+`connect` also adds the `hq` destination (see `har telemetry destination`):
+traces, metrics, records, proofs and evidence, plus logs (the trajectory) only
+when trajectory forwarding is on — `--trajectory`, or the question asked on a
+TTY at the `full` level. Otel-hook's text capture is one switch for every
+destination, so leaving logs off the `hq` destination is what keeps prompts and
+tool output local.
+
+`list` (or `status`) shows the connection (org + portal host, never tokens), its attached
+repositories, what HQ receives and, when it is less than the full trajectory,
+one hint with the command that turns it on. `disconnect` removes the connection and its credentials.
 Credentials stay in `~/.har/` and are never committed into `.har/`. A
 `~/.har/portal-targets.json` written by an older CLI with several connections is
 reduced to its default (else most recently used) connection the first time it is

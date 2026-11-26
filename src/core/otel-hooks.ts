@@ -651,10 +651,65 @@ export function buildOtelHookSetupArgs(
  */
 export const CLAUDE_CODE_HOOK_FLAGS = ['--claude-transcript-usage', '--logs', '--metrics'] as const;
 
+/**
+ * Flags on the Codex hook command. `--codex-rollout-usage`: each turn's token
+ * usage, read from the session's rollout file at `Stop` (Codex's `Stop` hook
+ * carries none). Opt-in in otel-hook, so without it no Codex tokens are recorded.
+ */
+export const CODEX_HOOK_FLAGS = ['--codex-rollout-usage'] as const;
+
+/** The flags HAR puts on a provider's hook command. */
+export function providerHookFlags(providerId: OtelHooksProviderId): readonly string[] {
+  if (providerId === 'claude-code') return CLAUDE_CODE_HOOK_FLAGS;
+  if (providerId === 'codex') return CODEX_HOOK_FLAGS;
+  return [];
+}
+
 /** The hook command `otel-hook setup` writes into a provider's hook settings. */
 export function buildProviderHookCommand(providerId: OtelHooksProviderId, wrapperPath: string): string {
-  const flags = providerId === 'claude-code' ? ` ${CLAUDE_CODE_HOOK_FLAGS.join(' ')}` : '';
-  return `${wrapperPath} --provider ${providerId}${flags}`;
+  const flags = providerHookFlags(providerId);
+  return `${wrapperPath} --provider ${providerId}${flags.length > 0 ? ` ${flags.join(' ')}` : ''}`;
+}
+
+/**
+ * Registered hook commands that miss a flag HAR passes today (e.g. hooks
+ * registered by HAR 1.x, before `--codex-rollout-usage`): one line each.
+ */
+export function inspectHookCommandFlags(home = os.homedir()): string[] {
+  const files: Array<[OtelHooksProviderId, string]> = [
+    ['claude-code', path.join(home, '.claude', 'settings.json')],
+    ['codex', path.join(home, '.codex', 'hooks.json')],
+  ];
+  const out: string[] = [];
+  for (const [providerId, filePath] of files) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch {
+      continue;
+    }
+    const commands: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const item of node) walk(item);
+        return;
+      }
+      if (!node || typeof node !== 'object') return;
+      const command = (node as { command?: unknown }).command;
+      if (typeof command === 'string' && isOtelHookCommand(command)) commands.push(command);
+      for (const value of Object.values(node as Record<string, unknown>)) walk(value);
+    };
+    walk((parsed as { hooks?: unknown } | null)?.hooks ?? parsed);
+    const missing = new Set<string>();
+    for (const command of commands) {
+      const words = command.split(/\s+/);
+      for (const flag of providerHookFlags(providerId)) if (!words.includes(flag)) missing.add(flag);
+    }
+    if (missing.size > 0) {
+      out.push(`${providerLabel(providerId)} hook command lacks ${[...missing].join(' ')} (har telemetry install-hooks)`);
+    }
+  }
+  return out;
 }
 
 function runSetupProvider(
@@ -1025,7 +1080,11 @@ export interface TelemetryDrift {
  * version, leaves the file behind — agents then record less (or more) than
  * `har telemetry status` claims.
  */
-export function inspectTelemetryDrift(hooksHome = getOtelHooksHome()): TelemetryDrift {
+export function inspectTelemetryDrift(
+  hooksHome = getOtelHooksHome(),
+  /** Whose agent hook registrations to check; null skips them (default: the user's, for the default hooks home only). */
+  agentHome: string | null = path.resolve(hooksHome) === path.join(os.homedir(), '.har', 'otel-hooks') ? os.homedir() : null,
+): TelemetryDrift {
   const level = getTelemetryLevel();
   const configPath = getOtelHooksConfigPath(hooksHome);
   const applied = readAppliedAgentRoute(hooksHome);
@@ -1058,5 +1117,6 @@ export function inspectTelemetryDrift(hooksHome = getOtelHooksHome()): Telemetry
   check('event records export', expected.exporter.logs.enabled, actual.exporter?.logs?.enabled ?? false);
   check('text capture', expected.exporter.logs.includeContent, actual.exporter?.logs?.includeContent ?? false);
   check('content mode', expected.privacy.contentMode, actual.privacy?.contentMode ?? 'omit');
+  if (expected.exporter.enabled && agentHome !== null) mismatches.push(...inspectHookCommandFlags(agentHome));
   return { level, configPath, mismatches };
 }

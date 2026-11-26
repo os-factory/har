@@ -29,13 +29,18 @@ sandbox, `docker` only answers read-only commands.
    registered with `--claude-transcript-usage --logs --metrics` and no Claude
    Code native telemetry is turned on.
 3. Agent events are hook payloads replayed through the installed otel-hook, as
-   Claude Code and Codex would call it (a Claude Code event runs the exact
-   command HAR registered in `~/.claude/settings.json`), with real-looking
+   Claude Code and Codex would call it (each event runs the exact command HAR
+   registered in `~/.claude/settings.json` or `~/.codex/hooks.json`, flags
+   included; the run stops unless the Codex one carries
+   `--codex-rollout-usage`), with real-looking
    session ids unique to the run. Claude Code usage comes from otel-hook only:
    it reads each turn's tokens from the transcript at `Stop`, and each
    subagent's from the subagent transcript at `SubagentStop`. Every Claude Code
    turn here runs an edit and an `Explore` subagent with a nested `Read`, so it
-   has two generations on two models. No model is called.
+   has two generations on two models. Codex's `Stop` hook carries no tokens
+   either: each Codex turn appends the session's running totals to a rollout
+   file the hooks name as `transcript_path`, and otel-hook reads them from
+   there. No model is called.
 4. The flow:
    - events from the main checkout before launch;
    - `har env launch 1 --work-id e2e-1` from the Claude Code session; the Codex
@@ -75,6 +80,30 @@ receiver a line is about.
 | 13 | Trajectory built from otel-hook's log records: `session.start` first when present (a receiver without local paths may not place the events before launch, which carry no work identity), every event id is stored once, no two events share a sequence, tool calls pair by call id, each subagent has a start and an end with its tool calls nested under `otelhook.subagent.id`; the Codex session has its prompts. `SKIP` for a receiver whose adapter has no `trajectory` reads |
 | 14 | `--real-agents` only: the Claude Code generations otel-hook exported (Collector) hold the same tokens per model as Claude Code's own `--output-format json` report (`modelUsage`; a resumed session reports its running total) |
 | 15 | otel-hook metrics: each receiver keeps a series, with its provider, of every metric the Collector got for each agent session (otel-hook names the provider on each point, not on the resource). `SKIP` for a receiver whose adapter has no `metrics` reads |
+
+| 16 | `--upgrade-from-1x` only, once per variant (1.x trajectory forwarding off / on): the 1.x → 2.0 upgrade, see below |
+
+## Upgrade from 1.x
+
+`run.sh --upgrade-from-1x` runs only this scenario, and needs the hosted
+receiver. Twice, in a sandbox `HOME` of its own: HAR 1.x (`@osfactory/har@1`,
+or `HAR_E2E_HAR1_CLI`) initialises a fixture repository, sets telemetry to
+`full` and connects to the hosted receiver with its ingest key (`har hq connect
+--api-key`, portal URL = the ingest base without `/ingest`), attaching the
+repository, with `--no-trajectory` and then `--trajectory`. The same `HOME`
+then runs the CLI under test with no hosted-receiver variables and stdin
+closed: `har hooks install`, `har telemetry install-hooks`, a launch, one
+replayed Claude Code and Codex turn, a full verify, a commit, `complete`.
+
+`16 [<variant>] local` checks that the first 2.0 command added the `hq`
+destination with one notice, with logs only when 1.x forwarded the trajectory
+(otel-hook's text switch is global, so logs off is what keeps text local),
+printed the "full experience" hint once when it did not, never prompted, kept
+the repository attached, and updated the 1.x hook commands to today's flags.
+Then the hosted receiver must hold the run with its stages, logs and proof
+(`records`), both receivers the session usage (check 7), Mission Control the
+trajectory, and the hosted receiver the trajectory only in the forwarding
+variant (check 13 there, `no-trajectory` otherwise).
 
 ## Real agents
 
@@ -118,7 +147,8 @@ tests/e2e/local-stack/run.sh
 | `HAR_E2E_HOSTED_ADAPTER` | The hosted receiver's adapter (see below); unset, the hosted receiver is left out |
 | `HAR_E2E_OTEL_HOOK_PACKAGE` | otel-hook to install (npm spec or tarball) with the session context step |
 | `HAR_E2E_GIT_FACTORY` | `git-factory` executable (default: on `PATH`) |
-| `HAR_E2E_HAR1_CLI` | A HAR 1.x `dist/index.js` (default: `npm install @osfactory/har@latest` into the temp dir) |
+| `HAR_E2E_HAR1_CLI` | A HAR 1.x `dist/index.js` (default: `npm install @osfactory/har@latest` into the temp dir; `@osfactory/har@1` for `--upgrade-from-1x`) |
+| `HAR_E2E_NPM_CACHE` | `--upgrade-from-1x`: an npm cache for the sandboxes (default one per sandbox `HOME`; HAR 1.x and 2.0 each install otel-hook from it) |
 | `HAR_E2E_COLLECTOR_IMAGE` | Collector image (default `otel/opentelemetry-collector-contrib:0.139.0`) |
 | `HAR_E2E_CLAUDE_MODEL`, `HAR_E2E_CLAUDE_SUBAGENT_MODEL`, `HAR_E2E_CODEX_MODEL` | Models in the transcripts and turns (defaults `claude-sonnet-4-5`, `claude-haiku-4-5`, `gpt-5`) |
 | `HAR_E2E_CLI` | CLI under test (default this tree's `dist/index.js`) |

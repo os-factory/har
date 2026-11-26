@@ -120,16 +120,28 @@ included; Mission Control forwards nothing.
 A machine that is already connected (`har hq connect`, or `HAR_PORTAL_TOKEN`) gets the
 `hq` destination added automatically on the first 2.0 command, with one notice line.
 This happens once: if you remove the destination later, it is not added again.
+It keeps your 1.x choice about the trajectory: without trajectory forwarding
+(`har control trajectory`, off by default) the destination takes traces and
+metrics only (usage, the step outline, verification runs), never the event
+records that carry prompts, replies and tool output, even when you capture that
+text locally at the `full` level. With forwarding on, it takes logs as well.
+When HQ gets less than the full trajectory, the notice, `har hq status` and
+`har env doctor` print one hint with the command that turns it on
+(`har control trajectory on`, `har telemetry on --level full`); nothing asks.
 `har env doctor` warns when a key is set but no `hq` destination is enabled. To add
 it by hand, or again after removing it:
 
 ```bash
-har hq connect                       # if not connected yet
+har hq connect                       # if not connected yet: adds the hq destination
 har telemetry destination add hq --preset hq
 ```
 
-`har hq connect`, `har hq list`, `har hq disconnect` and repository attachment work
-as before; they decide which org and which repositories HQ receives.
+`har hq connect` adds the `hq` destination itself, logs included only when you
+forward the trajectory (asked on a terminal at the `full` level, `--trajectory`
+otherwise). `har control trajectory on|off` turns logs on or off every `hq`
+destination. `har hq list` (also `har hq status`), `har hq disconnect` and
+repository attachment work as before; they decide which org and which
+repositories HQ receives.
 `HAR_SYNC_ALLOW_USAGE_VIOLATIONS` is gone with the HQ leg.
 
 ### `har control sync` sends only registration and slots
@@ -149,7 +161,9 @@ HAR no longer turns on Claude Code's native OpenTelemetry export. On upgrade it
 removes the keys earlier versions wrote to the `env` block of
 `~/.claude/settings.json` (`CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_*`; a key you
 changed since is left alone), and registers the Claude Code hook with
-`--claude-transcript-usage --logs --metrics`. Every receiver, HAR HQ included,
+`--claude-transcript-usage --logs --metrics`, and the Codex hook with
+`--codex-rollout-usage` (each turn's tokens, read from the session rollout at
+`Stop`). `har telemetry status` lists a hook registered without them. Every receiver, HAR HQ included,
 gets the same Claude Code traces, logs and metrics from otel-hook: one
 generation per turn and one per subagent run, priced by the receiver, and the
 trajectory from its event records. Run `har telemetry install-hooks` (or launch
