@@ -1,6 +1,6 @@
-// Exercises the subset push loop end-to-end through the portal path: mock the
+// Exercises the subset push loop end-to-end against Mission Control: mock the
 // data collectors (covered by their own suites) and drive success/failure via
-// the portal fetch, so we only assert the synced/failed/results accounting.
+// the repo registration, so we only assert the synced/failed/results accounting.
 jest.mock('../src/core/control-repo-path', () => ({
   canonicalizeControlRepoPath: (p: string) => p,
   listLinkedWorktrees: () => [],
@@ -43,24 +43,14 @@ import { syncReposWithControl } from '../src/core/control-sync';
 const realFetch = global.fetch;
 let stateDir: string;
 
-function setPortalEnv(): void {
-  process.env.HAR_PORTAL_URL = 'https://portal.example.com';
-  process.env.HAR_PORTAL_TOKEN = 'har_ingest_test';
-}
-
-function clearPortalEnv(): void {
-  delete process.env.HAR_PORTAL_URL;
-  delete process.env.HAR_PORTAL_TOKEN;
-}
-
-// Portal failures are keyed off repo path; local Mission Control always succeeds.
+// Registration fails for a repo path containing "fail"; everything else succeeds.
 function mockFetchByRepo(): void {
   (global as unknown as { fetch: unknown }).fetch = jest.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     const body = init?.body ? (JSON.parse(String(init.body)) as { path?: string }) : {};
     const failed = typeof body.path === 'string' && body.path.includes('fail');
 
-    if (String(url).includes('portal.example.com')) {
+    if (String(url).endsWith('/api/repos') && method === 'POST' && failed) {
       return {
         ok: !failed,
         status: failed ? 500 : 200,
@@ -104,13 +94,11 @@ describe('syncReposWithControl', () => {
   beforeEach(() => {
     stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-sync-state-'));
     process.env.HAR_PORTAL_SYNC_STATE_PATH = path.join(stateDir, 'state.json');
-    setPortalEnv();
     mockFetchByRepo();
   });
   afterEach(() => {
     delete process.env.HAR_PORTAL_SYNC_STATE_PATH;
     fs.rmSync(stateDir, { recursive: true, force: true });
-    clearPortalEnv();
     (global as unknown as { fetch: unknown }).fetch = realFetch;
   });
 

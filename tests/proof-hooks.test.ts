@@ -17,6 +17,7 @@ import {
   verificationTraceId,
 } from '../src/core/proof';
 import { recordValidation } from '../src/core/validations';
+import { addDestination, buildGitNotesDestination, removeDestination } from '../src/core/telemetry-destinations';
 import { bindValidationToAttempt, upsertWorkUnit } from '../src/core/work-units';
 import { VerificationResult } from '../src/harness/schema';
 
@@ -345,7 +346,20 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
     expect(logLines(log)).toEqual([]);
   });
 
-  it('writes the local note on commit when git-factory is installed', async () => {
+  it('writes no note on commit without a git-notes destination (notes are opt-in)', async () => {
+    const dir = initRepo();
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+    attestedValidation(dir);
+    sh(dir, 'git add -A');
+    sh(dir, 'git commit -q -m change');
+    const result = await recordCommitAssociation(dir);
+    expect(result.attached).toBe(true);
+    expect(result.proof).toBeUndefined();
+    expect(logLines(log).map((l) => l.argv[0])).toEqual(['attest']);
+  });
+
+  it('writes the local note on commit with a git-notes destination', async () => {
+    addDestination(buildGitNotesDestination());
     const dir = initRepo();
     fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
     const validation = attestedValidation(dir);
@@ -357,6 +371,7 @@ describe('HAR 2.0 default proof mode (HAR_FACTORY_PROOF unset)', () => {
     const note = JSON.parse(sh(dir, 'git notes --ref refs/notes/factory show HEAD'));
     expect(note.attestations.map((a: { digest: string }) => a.digest)).toEqual([validation.attestationDigest]);
     expect(logLines(log).map((l) => l.argv[0])).toEqual(['attest', 'note']);
+    removeDestination('git-notes');
   });
 
   it('is silent on commit when git-factory disappears, but hints under an explicit opt-in', async () => {
@@ -418,9 +433,14 @@ describe('re-verify after a rebase or amend: note on HEAD right away', () => {
     expect(noteCall?.argv.slice(0, 3)).toEqual(['note', 'add', head]);
   });
 
-  it('works under the 2.0 default mode (unset) too', () => {
-    const dir = unprovenHead();
-    expect(verify(dir).note?.status).toBe('attested');
+  it('works under the 2.0 default mode (unset) with a git-notes destination, and adds nothing without one', () => {
+    expect(verify(unprovenHead()).note).toBeUndefined();
+    addDestination(buildGitNotesDestination());
+    try {
+      expect(verify(unprovenHead()).note?.status).toBe('attested');
+    } finally {
+      removeDestination('git-notes');
+    }
   });
 
   it('leaves the note alone when it already holds a passing attestation for the tree, whatever its digest', () => {

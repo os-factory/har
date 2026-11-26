@@ -35,14 +35,17 @@ import { buildVerificationTrace } from '../src/core/verification-spans';
 /** Session Resource keys HAR 2.0 writes for every launched agent. */
 const SESSION_RESOURCE_KEYS = [
   'session.id',
-  'factory.slot.id',
   'factory.local.checkout_path',
   'factory.local.work_dir',
   'vcs.ref.head.name',
-  'factory.work_unit.id',
-  'factory.attempt.id',
   'factory.producer.name',
 ];
+
+/**
+ * Work identity HAR never puts in an agent's environment (ADR 0004 section 3):
+ * otel-hook stamps it from the session context, segment by segment.
+ */
+const WORK_IDENTITY_KEYS = ['factory.slot.id', 'factory.work_unit.id', 'factory.work_unit.source', 'factory.attempt.id'];
 
 const FULL_ATTRS: TelemetrySessionAttrs = {
   sessionKey: 'main-abcd-har-agent-1-xy12',
@@ -82,22 +85,19 @@ function otlpNames(node: unknown, out: string[] = []): string[] {
 }
 
 describe('OTEL_RESOURCE_ATTRIBUTES contract (#416)', () => {
-  it('carries the session, slot, local paths and correlation keys with their values', () => {
+  it('carries the session, local paths and repository keys, and no work identity', () => {
     const attrs = decode(buildOtelResourceAttributes(FULL_ATTRS));
     expect(Object.keys(attrs)).toEqual(expect.arrayContaining(SESSION_RESOURCE_KEYS));
     expect(attrs).toMatchObject({
       'session.id': 'main-abcd-har-agent-1-xy12',
-      'factory.slot.id': '1',
       'factory.local.checkout_path': '/repo',
       'factory.local.work_dir': '/repo/wt',
       'vcs.ref.head.name': 'main-abcd-har-agent-1-xy12',
-      'factory.work_unit.id': 'ISSUE-416',
-      'factory.work_unit.source': 'github',
-      'factory.attempt.id': '11111111-1111-4111-8111-111111111111',
       'vcs.repository.url.full': 'https://github.com/acme/app.git',
       'factory.producer.name': 'har',
       'factory.producer.version': '2.0.0',
     });
+    for (const key of WORK_IDENTITY_KEYS) expect(Object.keys(attrs)).not.toContain(key);
   });
 
   it('emits no har.* key (removed in 2.0)', () => {
@@ -127,12 +127,11 @@ describe('OTEL_RESOURCE_ATTRIBUTES contract (#416)', () => {
     );
     expect(attrs).toMatchObject({
       'session.id': 's1',
-      'factory.slot.id': '2',
       'factory.local.checkout_path': '/r',
       'factory.local.work_dir': '/r',
     });
-    for (const key of ['vcs.ref.head.name', 'factory.work_unit.id', 'factory.attempt.id']) {
-      expect(attrs).not.toHaveProperty(key);
+    for (const key of ['vcs.ref.head.name', ...WORK_IDENTITY_KEYS]) {
+      expect(Object.keys(attrs)).not.toContain(key);
     }
     expect(Object.values(attrs)).not.toContain('');
   });
@@ -159,7 +158,12 @@ describe('OTEL_RESOURCE_ATTRIBUTES contract (#416)', () => {
     const line = block.split('\n').find((l) => l.startsWith('OTEL_RESOURCE_ATTRIBUTES='));
     expect(line).toBeDefined();
     const value = (line as string).slice('OTEL_RESOURCE_ATTRIBUTES='.length).replace(/^'|'$/g, '');
-    expect(Object.keys(decode(value))).toEqual(expect.arrayContaining(SESSION_RESOURCE_KEYS));
+    expect(Object.keys(decode(value))).toEqual(
+      expect.arrayContaining(SESSION_RESOURCE_KEYS.filter((key) => !key.startsWith('factory.local.'))),
+    );
+    // Stripped unless every destination opts in to local paths.
+    expect(value).not.toContain('factory.local.');
+    for (const key of WORK_IDENTITY_KEYS) expect(value).not.toContain(`${key}=`);
     for (const name of ['HAR_WORK_UNIT_ID', 'HAR_ATTEMPT_ID', 'HAR_CONTROL_API_URL']) {
       expect(block).toMatch(new RegExp(`^${name}=`, 'm'));
     }
@@ -220,7 +224,7 @@ describe('otel-hook exporter contract (#416)', () => {
   });
 
   it('pins the otel-hook package, overridable for an unreleased build', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.9.0');
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.12.0');
     expect(OTEL_HOOKS_PACKAGE_ENV).toBe('HAR_OTEL_HOOKS_PACKAGE');
     expect(otelHooksPackageSpec({})).toBe(OTEL_HOOKS_PACKAGE);
     expect(otelHooksPackageSpec({ HAR_OTEL_HOOKS_PACKAGE: ' /tmp/otel-hook.tgz ' })).toBe('/tmp/otel-hook.tgz');
@@ -248,9 +252,11 @@ describe('otel-hook exporter contract (#416)', () => {
       apiUrl: 'http://localhost:3847',
       resourceAttributes: buildOtelResourceAttributes(FULL_ATTRS),
     });
+    // factory.local.* is stripped: Mission Control did not opt in to local paths.
     expect(Object.keys(config.exporter.resourceAttributes ?? {})).toEqual(
-      expect.arrayContaining(SESSION_RESOURCE_KEYS),
+      expect.arrayContaining(SESSION_RESOURCE_KEYS.filter((key) => !key.startsWith('factory.local.'))),
     );
+    expect(Object.keys(config.exporter.resourceAttributes ?? {}).some((key) => key.startsWith('factory.local.'))).toBe(false);
   });
 
   it('points Claude Code native metrics and logs at the same OTLP routes', () => {

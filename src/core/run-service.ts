@@ -42,6 +42,7 @@ import { isTelemetryEnabled } from './telemetry-config';
 import { resolveWorktreeMode } from './worktree-mode';
 import { recordLaunchBinding, recordReleaseBindings } from './session-bindings';
 import { endSlotOccupancySegments, recordLaunchSegment, verifySessionRefs } from './session-context';
+import { publishFactoryRun, publishSlotRecords } from './ingest-publish';
 import {
   appendTelemetryEnvToFile,
   buildSessionKey,
@@ -405,6 +406,8 @@ export class RunService {
         } catch {
           // Session context is best-effort; launch still succeeded.
         }
+        // ADR 0004 §6: WorkUnit, Attempt and SessionSegments straight to every receiver (fail-open).
+        await publishSlotRecords({ harnessRoot, session });
       }
       if (launchNotices.length) {
         launchBanner += launchNotices.map((notice) => `NOTE: ${notice}\n`).join('');
@@ -553,6 +556,19 @@ export class RunService {
           proof = produced.outcome;
           proofNote = produced.note;
         }
+        // ADR 0005 §§2-4: FactoryRun + StageResults, the proof, then (after a passing
+        // full verify) the evidence — copied into each destination's queue now,
+        // since teardown deletes the slot's work dir. Bounded and fail-open.
+        await publishFactoryRun(
+          {
+            harnessRoot,
+            checkoutDir,
+            validation,
+            workDir: session?.workDir,
+            attemptId: session?.attemptId,
+            evidence: (options.full ?? false) && validation.status === 'pass',
+          },
+        );
       } catch {
         // hashing must never fail the verify (e.g. not a git checkout)
       }
@@ -712,6 +728,8 @@ export class RunService {
       } catch {
         // Attribution evidence must not fail an otherwise successful teardown.
       }
+      // ADR 0004 §6: closed segments and the attempt's end, straight to every receiver (fail-open).
+      await publishSlotRecords({ harnessRoot, session });
     }
 
     // Teardown is the only exit besides `complete`; close the open attempt so

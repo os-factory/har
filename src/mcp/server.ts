@@ -36,6 +36,7 @@ import { bindWorkUnit } from '../core/work-bind';
 import { resolveHarnessRoot } from '../harness/manifest';
 import { runDoctor } from '../harness/doctor';
 import { collectTelemetryHealth, withTelemetryHealth } from '../core/telemetry-health';
+import { collectIngestHealth, withIngestHealth } from '../core/ingest-health';
 import {
   agentIdJsonProperty,
   objectJsonSchema,
@@ -728,7 +729,10 @@ export async function handleMcpToolCall(
 
     case 'har_doctor': {
       // Destination health is advisory: it never turns the contract verdict.
-      const report = withTelemetryHealth(runDoctor(repo), collectTelemetryHealth());
+      const report = withIngestHealth(
+        withTelemetryHealth(runDoctor(repo), collectTelemetryHealth()),
+        await collectIngestHealth({ checkCapabilities: true }),
+      );
       return {
         ...jsonContent(report),
         ...(report.ok ? {} : { isError: true }),

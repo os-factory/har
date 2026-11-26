@@ -451,30 +451,23 @@ har control trajectory [on|off]
 `login` is a deprecated alias for `har hq connect`. Prefer `har hq connect`.
 `sync --select` interactively chooses repositories, saved in
 `~/.har/sync-selection.json`; once saved, automatic syncs also touch only those
-repositories. `register` adds its repository to a saved selection. `--full` ignores the portal watermark and resends the complete
-payload. Portal sync always goes to the one
-connected HAR HQ org; set `HAR_PORTAL_URL` and `HAR_PORTAL_TOKEN` to send a run to
-a different org instead.
+repositories. `register` adds its repository to a saved selection. `--full` ignores the runs watermark and resends every run.
+`sync` sends to local Mission Control only (or to HAR Cloud with `--cloud`); it no
+longer sends anything to HAR HQ. The CLI sends records and telemetry to HAR HQ
+directly when HQ is a destination (`har telemetry destination add hq`).
 `check-usage` is read-only: Mission Control checks the usage invariants over
-everything it holds and would sync (I1 a request is stored in one repository,
+everything it holds (I1 a request is stored in one repository,
 I2 a legacy session total is stored once, I3 a session's rows hold exactly its
 requests, I4 a slot is not the main checkout, I5 Cursor cache reads are counted
 once), listing each violation with its keys, tokens and cost. It exits 1 on a
-violation. `sync` runs the same check and leaves the sessions breaking I1 or I2
-(usage counted twice) out of the HQ post, names them with their cost, and
-offers them again once fixed; the rest of the repository still goes.
-`HAR_SYNC_ALLOW_USAGE_VIOLATIONS=1` posts everything.
-`register --no-portal` keeps the repo on local Mission Control only (skips hosted
-portal sync even when logged in); `--portal` re-enables portal sync for that repo.
+violation.
+`register --no-portal` keeps the repo local-only: nothing of it is sent to HAR HQ
+even when HQ is a destination; `--portal` lifts that.
 
-`trajectory` controls whether sync forwards the trajectory ledger — agent prompts,
-tool arguments and tool results — to a hosted portal. Off by default: without it a
-portal receives runs, slots, token counts and events, and those bodies stay on this
-machine. The setting belongs to the connected HAR HQ org and is stored with it in
-`~/.har/portal-targets.json`; switching org starts with it off. Requires telemetry
-to be on, and `HAR_PORTAL_TRAJECTORY=on|off` overrides the stored choice. Forwarded
-content is capped and redacted by the same local policy that governs storage (see
-the Mission Control guide).
+`trajectory` records whether the connected HAR HQ org should receive the full
+trajectory (agent prompts, tool arguments and tool results). The setting belongs
+to the connected org and is stored with it in `~/.har/portal-targets.json`;
+switching org starts with it off. `HAR_PORTAL_TRAJECTORY=on|off` overrides it.
 
 `unregister` removes the repository from Mission Control and `~/.har/repos.json`.
 Interactively it lists session worktrees and asks whether to delete them; pass
@@ -494,23 +487,28 @@ available in the dashboard under **Settings → Danger zone**.
 har telemetry status [--json]
 har telemetry on [--level full|outline|usage]
 har telemetry off
+har telemetry flush [--json]
 har telemetry install-hooks
 har telemetry write-env --agent-id <n> [--repo .] [--env-file path]
                        [--work-dir path] [--branch name] [--suffix id] [--session-key key]
 har telemetry print-env --agent-id <n> [--repo .]
                        [--work-dir path] [--branch name] [--suffix id]
+har telemetry destination add <name> --preset mission-control [--base-url url]
+har telemetry destination add <name> --preset hq [--base-url url]
+                       [--records] [--proofs] [--evidence] [--signals traces,logs,metrics]
+har telemetry destination add <name> --preset git-notes
 har telemetry destination add <name> --preset langfuse [--host url] [--public-key pk] [--secret-key sk]
-                       [--include-local-paths] [--include-account-identity]
 har telemetry destination add <name> --preset otlp --endpoint url [--header Name=value]…
                        [--signals traces,metrics,logs] [--protocol http/protobuf|http/json]
-                       [--include-local-paths] [--include-account-identity] [--disabled] [--overwrite]
+       (every preset:) [--include-local-paths] [--include-account-identity]
+                       [--no-include-session-id] [--disabled] [--overwrite]
 har telemetry destination list [--json]
 har telemetry destination remove <name>
 har telemetry destination test <name> [--json]
 har telemetry destination flush [--json]
 ```
 
-Controls how much agent activity (Cursor / Claude / Codex) is recorded in Mission Control.
+Controls how much agent activity (Cursor / Claude / Codex) is recorded, and where it goes.
 One **level** is stored; each includes the ones below it:
 
 | Level | Records |
@@ -524,24 +522,40 @@ One **level** is stored; each includes the ones below it:
 running and rewrites the hook config; start a new agent session to pick it up. `--prompts`
 / `--no-prompts` remain as spellings of `full` / `outline`. `status` prints the level, the
 agent route (`Agent traces: → mission-control, langfuse`, then one line per destination
-with its endpoints), where verification traces go, and each destination's health
-(queued batches, recent drops, last failure), and warns when
+with its endpoints), where verification traces go, each destination's OTLP health
+(queued batches, recent drops, last failure), and one line per destination for records,
+proofs and evidence (queue depth, last success, last error). It warns when
 `~/.har/otel-hooks/otel_config.json` records something else (for example a preference
 edited by hand). `--json` keeps `otelEndpoint` and adds `agentTraces.destinations`,
-`agentTraces.targets`, `verificationTraces` and `destinationHealth`. Header values are
-never printed. Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
-HAR HQ receives the text only with `har control trajectory on`.
+`agentTraces.targets`, `verificationTraces`, `destinationHealth` and `ingestQueues`.
+Header values are never printed. Override with `HAR_TELEMETRY=<level>` or `HAR_TELEMETRY=0|1`.
 
-### Destinations (any OTLP backend)
+### Destinations: one list for everything HAR sends
 
-`har telemetry destination` stores OTLP/HTTP backends that receive a copy of the
-telemetry — an OpenTelemetry Collector, Langfuse, Datadog, … — in
-`~/.har/destinations/telemetry.json` (mode `0600`: header values are secrets). Nothing
-is configured by default, and nothing leaves the machine until you add one. The
-producers send to each destination themselves: the agent hook through otel-hook's
-`exporter.destinations[]` (Mission Control first, when it is set up), the CLI for
-verification traces. Mission Control forwards nothing.
+`har telemetry destination` keeps **one destination list** in
+`~/.har/destinations/destinations.json` (mode `0600`; override the directory with
+`HAR_DESTINATIONS_DIR`). Each entry says what it accepts: OTLP signals (traces, logs,
+metrics) and, for ingest v2 receivers, records, proofs and evidence.
 
+| Preset | OTLP signals | Records, proofs, evidence |
+|--------|--------------|---------------------------|
+| `mission-control` | traces, logs, metrics (Mission Control books Claude Code usage from Claude Code's own telemetry and drops its otel-hook metrics) | yes, at `HAR_CONTROL_API_URL` + `/api` |
+| `hq` | traces, logs, metrics | yes, at its ingest base URL |
+| `git-notes` | — | proofs only, as factory notes on each commit (opt-in) |
+| `otlp` | any (default traces, metrics) | no |
+| `langfuse` | traces | no |
+
+Mission Control is in the list by default while it is enabled; `remove mission-control`
+keeps its entry, disabled, so it does not come back. A 2.0 prerelease
+`telemetry.json` is migrated on first read (renamed `telemetry.json.migrated`).
+
+- `--preset hq` takes the ingest base URL from `--base-url`, `HAR_HQ_INGEST_URL`, or
+  the HAR HQ connection. The ingest key is never stored in the list: it is read at send
+  time from `HAR_PORTAL_TOKEN` or the connection (`har hq connect`), sent as
+  `Authorization: Bearer …`, and handed to otel-hook only as an `env:` header reference
+  whose value lives in `~/.har/otel-hooks/direct.env` (mode `0600`). A repository is
+  sent to HAR HQ only when it is attached to the connection (or `HAR_PORTAL_URL` +
+  `HAR_PORTAL_TOKEN` are set).
 - `--preset langfuse` sends traces to `<host>/api/public/otel` with
   `Authorization: Basic base64(public:secret)`. Langfuse ingests OTLP traces only.
   The keys default to `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`, the host to
@@ -551,21 +565,52 @@ verification traces. Mission Control forwards nothing.
   otherwise. Logs are opt-in: name `logs` in `--signals` to receive them. At the
   `full` level they carry prompts, replies and tool input/output verbatim, and `add`
   prints a warning.
+- `--preset git-notes` writes each passing proof as a factory note
+  (`refs/notes/factory`) on the commit. `HAR_FACTORY_PROOF=notes|notes+trailers` set
+  in a repository's `harness.env` still writes notes there without it.
 - Attributes that hold absolute local paths (every `factory.local.*` key,
-  `process.cwd`, `code.filepath`, …) are stripped from what the CLI sends, and
-  `factory.local.*` from agent traces when Mission Control is not a destination.
-  While Mission Control is one, agent traces keep `factory.local.*` for every
-  destination ([#519](https://github.com/os-factory/har/issues/519)).
-  `--include-local-paths` keeps them for that destination in every case.
+  `process.cwd`, `code.filepath`, …) are stripped for every destination, Mission
+  Control included: work identity is stamped from the session context, not from
+  paths. `--include-local-paths` keeps them for a destination; agent telemetry keeps
+  `factory.local.*` only when every destination opts in (one hook process has one
+  Resource).
 - Account identity attributes (`user.email`, `user.account_uuid`, `user.account_id`,
   `user.id`, `organization.id`, `enduser.id`, …) are stripped from what the CLI sends;
   Claude Code's native telemetry, which carries them, goes to Mission Control only.
   `--include-account-identity` keeps them for that destination.
+- `--no-include-session-id` leaves `session.id` off metric points, for backends where
+  one series per session is too many. otel-hook has one setting for every destination,
+  so one destination turning it off turns it off for all.
 
-`list` prints the agent route, masks header values and shows whether local paths and
-account identity are stripped. `test` sends one small OTLP/JSON record to the
-destination and reports the HTTP status. Guides: [Langfuse](/docs/guides/langfuse/),
-[any OTLP backend](/docs/guides/otlp-backends/).
+`list` shows each entry with what it accepts and its queue. `test` checks a receiver's
+`GET v2/capabilities` and sends one small OTLP/JSON record to its OTLP side.
+Guides: [Langfuse](/docs/guides/langfuse/), [any OTLP backend](/docs/guides/otlp-backends/).
+
+**Agent telemetry.** HAR writes otel-hook's config (`~/.har/otel-hooks/otel_config.json`)
+from the list: one `exporter.destinations[]` entry per destination with its signals,
+`providers.claudeCode.readTranscriptUsage: true` (hooks carry no token counts),
+and `sessionContext.dir` set to `~/.har/sessions` (or `HAR_SESSIONS_DIR`). Work identity
+(`factory.work_unit.id`, `factory.attempt.id`, `factory.slot.id`) is stamped by otel-hook
+from the session context only, never from the agent's environment: telemetry outside
+any segment (before launch, after complete) carries none. HAR installs otel-hook
+0.12.0; `HAR_OTEL_HOOKS_PACKAGE` names another package spec (a version, a local `.tgz`
+or a directory) to test an unreleased build.
+
+**Records, proofs and evidence.** The CLI sends them directly to every ingest v2
+receiver in the list (ADR 0005, ingest contract v2):
+after `launch` (work unit, attempt, session segments), on `teardown` / `complete`
+(closed segments, the attempt's end), on `verify` (factory run, stage results, then the
+proof's DSSE envelope, then — after a passing full verify — the stage logs and artifacts
+the receiver lacks, via `v2/evidence/missing`), and from the post-commit hook (the commit
+binding). Each destination has its own retry queue in `~/.har/queue/<destination>/`
+(override `HAR_INGEST_QUEUE_DIR`): evidence bytes are copied into it at verify time, so
+deleting a slot's work dir loses nothing. Receivers upsert by natural key, so a resend
+is a no-op. Sending never blocks verify, commit or teardown; every `har` command drains
+what is due within about 1.5 s, and `har telemetry flush` sends everything now (exit 1
+while something is still queued). Entries a receiver rejects (HTTP 400/413/422) move to
+`dead/`; entries older than 14 days expire. `har env doctor` adds one line per receiver
+with its queue and whether it answers `GET v2/capabilities`, and names a receiver that
+does not support ingest v2 yet.
 
 **Verification spans.** Each `har env verify` (and MCP `har_run_verification`) builds
 one OTel CI/CD trace: a run span (`cicd.pipeline.*`, `factory.run.id`, `factory.git.tree`,
@@ -576,17 +621,15 @@ attempt, repository and branch on the resource. The trace id is
 sits next to the agent's session traces in the same backend.
 Spans carry ids, results, timings and the verify policy (`factory.policy.id`,
 `factory.policy.digest` on `--full`): no commands or logs. The CLI sends one copy to
-Mission Control, which stores the run and syncs it to HQ, and one to every
-destination subscribed to `traces` (about 3 s each, in parallel), and queues each copy
-that was not taken, for that receiver alone, in `~/.har/spool/traces` (64 MB, 24 h),
-so every receiver gets each trace exactly once. The resource's
-`factory.local.checkout_path` goes to Mission Control only, never to a destination
-or the spool. Delivery never changes verify's result; a failed delivery
-prints one dim line, and a queued one another. `har telemetry off` sends none.
+Mission Control (when its entry takes traces), and one to every other destination
+subscribed to `traces` (about 3 s each, in parallel), and queues each copy that was not
+taken, for that receiver alone, in `~/.har/spool/traces` (64 MB, 24 h), so every
+receiver gets each trace exactly once. Local paths are never sent to a destination or
+the spool. Delivery never changes verify's result; a failed delivery prints one dim
+line, and a queued one another. `har telemetry off` sends none.
 
-`flush` retries the queue now (the start of every `har env verify` and
-`har env launch` does it too, with a 2-second budget) and prints how many were sent,
-retried, dropped and left.
+`flush` (`har telemetry flush`, or `destination flush`) sends both queues now and prints
+how many were sent, retried, rejected and left.
 
 ## `har worktree`
 

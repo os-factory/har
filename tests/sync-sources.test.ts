@@ -14,7 +14,7 @@ import {
   coveredSources,
   readRunsWatermarkEntry,
   writeRunsWatermark,
-} from '../src/core/portal-watermark';
+} from '../src/core/sync-watermark';
 
 const tmpDirs: string[] = [];
 

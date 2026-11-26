@@ -241,8 +241,12 @@ describe('correlation keys', () => {
     const resource = attrs((buildVerificationTrace(input) as Json).resourceSpans[0].resource.attributes);
     const spanAttrs = Object.fromEntries(Object.entries(resource).filter(([key]) => CORRELATION_KEYS.includes(key)));
 
-    expect(Object.keys(sessionAttrs).sort()).toEqual([...CORRELATION_KEYS].sort());
-    expect(spanAttrs).toEqual(sessionAttrs);
+    // Agent sessions carry no work identity in their environment (ADR 0004 section 3:
+    // otel-hook stamps it from the session context); every key they do carry matches.
+    const workIdentity = ['factory.work_unit.id', 'factory.work_unit.source', 'factory.attempt.id'];
+    expect(Object.keys(sessionAttrs).sort()).toEqual(CORRELATION_KEYS.filter((key) => !workIdentity.includes(key)).sort());
+    for (const [key, value] of Object.entries(sessionAttrs)) expect(spanAttrs[key]).toEqual(value);
+    for (const key of workIdentity) expect(Object.keys(spanAttrs)).toContain(key);
   });
 });
 

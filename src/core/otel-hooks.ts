@@ -23,21 +23,31 @@ import {
   planRouteDestinations,
   readAppliedAgentRoute,
   resolveAgentTelemetryRoute,
+  routeMetricsIncludeSessionId,
   routeSendsLogs,
+  routeSendsMetrics,
   routeStripsLocalPaths,
   writeRouteEnv,
   type AgentTelemetryRoute,
   type AgentTelemetryRouteDecision,
 } from './telemetry-route';
 import { LOCAL_ATTR_PREFIX } from '../harness/schema';
+import { sessionContextRoot } from './session-context';
+
+/**
+ * The otel-hook version HAR installs: the one place to change it. 0.12.0 is
+ * the first with the session context (`sessionContext.dir`, ADR 0004 section
+ * 3); 0.11.0 brought per-destination metrics, 0.10.0 Claude Code transcript usage.
+ */
+export const OTEL_HOOKS_VERSION = '0.12.0';
 
 /** Pinned npm package for reproducible installs (replaces Python opentelemetry-hooks). */
-export const OTEL_HOOKS_PACKAGE = '@osfactory/otel-hook@0.9.0';
+export const OTEL_HOOKS_PACKAGE = `@osfactory/otel-hook@${OTEL_HOOKS_VERSION}`;
 
 /**
  * Environment override for the package spec HAR installs: any spec the package
- * manager accepts (`@osfactory/otel-hook@0.9.0`, a local `.tgz`, a directory).
- * For dogfooding an unreleased otel-hook build; unset, HAR installs the pin.
+ * manager accepts (`@osfactory/otel-hook@0.12.0`, a local `.tgz`, a directory).
+ * For testing an unreleased otel-hook build; unset, HAR installs the pin.
  */
 export const OTEL_HOOKS_PACKAGE_ENV = 'HAR_OTEL_HOOKS_PACKAGE';
 
@@ -96,8 +106,9 @@ export interface OtelHooksDestinationConfig {
   name: string;
   tracesEndpoint?: string;
   logsEndpoint?: string;
+  metricsEndpoint?: string;
   headers?: Record<string, string>;
-  signals: Array<'traces' | 'logs'>;
+  signals: Array<'traces' | 'logs' | 'metrics'>;
 }
 
 export interface OtelHooksConfig {
@@ -114,12 +125,48 @@ export interface OtelHooksConfig {
       endpoint?: string;
       includeContent: boolean;
     };
+    /**
+     * Hook-derived metrics (otel-hook >= 0.11.0). A destination receives them
+     * when its `signals` name `metrics`; `includeSessionId` is one setting for
+     * every destination in otel-hook.
+     */
+    metrics?: {
+      includeSessionId: boolean;
+    };
   };
   privacy: {
     contentMode: 'omit' | 'raw';
     allowRawContent: boolean;
   };
+  /** Claude Code token usage read from the transcript at Stop (hooks carry none; ADR 0005 section 6). */
+  providers?: {
+    claudeCode: { readTranscriptUsage: boolean };
+  };
+  /** The session context directory HAR writes (ADR 0004 section 3): the only source of work identity. */
+  sessionContext?: {
+    dir: string;
+  };
 }
+
+/** What the installed otel-hook understands; written keys it does not know make it reject the whole file. */
+export interface OtelHookFeatures {
+  /** `exporter.destinations[]` with `env:` header values (0.9.0). */
+  destinations: boolean;
+  /** `providers.claudeCode.readTranscriptUsage` (0.10.0). */
+  transcriptUsage: boolean;
+  /** Per-destination `metrics` signal and `exporter.metrics` (0.11.0). */
+  metrics: boolean;
+  /** `sessionContext.dir` (0.12.0). */
+  sessionContext: boolean;
+}
+
+/** Every feature: the pinned version, and what a config is built for when no hook is installed yet. */
+export const ALL_OTEL_HOOK_FEATURES: OtelHookFeatures = Object.freeze({
+  destinations: true,
+  transcriptUsage: true,
+  metrics: true,
+  sessionContext: true,
+});
 
 export interface EnsureOtelHooksResult {
   ok: boolean;
@@ -230,15 +277,54 @@ export function parseResourceAttributesString(
   return out;
 }
 
-/** Build HAR-managed otel-hook config from current telemetry signals. */
+function versionAtLeast(version: string, min: string): boolean {
+  const parse = (value: string) => value.split(/[.+-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
+  const [x, y] = [parse(version), parse(min)];
+  for (let index = 0; index < 3; index += 1) {
+    if (x[index] !== y[index]) return x[index] > y[index];
+  }
+  return true;
+}
+
+/**
+ * What the otel-hook installed in the hooks home understands, by version, or
+ * (for an unreleased build installed through `HAR_OTEL_HOOKS_PACKAGE`) by what
+ * its CLI bundle contains. Null when none is installed.
+ */
+export function detectOtelHookFeatures(hooksHome = getOtelHooksHome()): OtelHookFeatures | null {
+  const pkgDir = path.join(hooksHome, 'node_modules', '@osfactory', 'otel-hook');
+  let pkg: { version?: string; bin?: string | Record<string, string> };
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8')) as typeof pkg;
+  } catch {
+    return null;
+  }
+  const version = typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  let bundle = '';
+  try {
+    const bin = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.['otel-hook'];
+    if (bin) bundle = fs.readFileSync(path.join(pkgDir, bin), 'utf8');
+  } catch {
+    bundle = '';
+  }
+  const has = (min: string, marker: string) => versionAtLeast(version, min) || bundle.includes(marker);
+  return {
+    destinations: otelHookSupportsDestinations(hooksHome),
+    transcriptUsage: has('0.10.0', 'readTranscriptUsage'),
+    metrics: has('0.11.0', 'metricsEndpoint'),
+    sessionContext: has('0.12.0', 'session-context-dir'),
+  };
+}
+
+/** Build HAR-managed otel-hook config from current telemetry signals and the destination route. */
 export function buildOtelHooksConfig(options?: {
   enabled?: boolean;
   apiUrl?: string;
   resourceAttributes?: string;
   /**
-   * Where traces go. Default: Mission Control alone, at `apiUrl`. Every entry
-   * goes into `exporter.destinations[]`; no `exporter.endpoint` is written,
-   * since otel-hook would add it as a `default` destination next to the list.
+   * Where telemetry goes. Default: Mission Control alone, at `apiUrl`. Every
+   * entry goes into `exporter.destinations[]`; no `exporter.endpoint` is
+   * written, since otel-hook would add it as a `default` destination next to the list.
    */
   route?: AgentTelemetryRoute;
   /**
@@ -246,17 +332,21 @@ export function buildOtelHooksConfig(options?: {
    * write Mission Control as the single `exporter.endpoint` instead.
    */
   legacySingleEndpoint?: boolean;
+  /** What the installed otel-hook understands (default: every feature of the pinned version). */
+  features?: OtelHookFeatures;
+  /** Session context directory (default: `~/.har/sessions` or `HAR_SESSIONS_DIR`). */
+  sessionContextDir?: string;
 }): OtelHooksConfig {
   // Every switch comes from the level: the hook exports spans from Outline up,
   // its event records (the only channel that carries text) alongside them,
   // and the text itself only at Full.
   const signals = options?.enabled === false ? signalsForLevel('off') : getTelemetrySignals();
+  const features = options?.features ?? ALL_OTEL_HOOK_FEATURES;
   const apiUrl = (options?.apiUrl ?? getControlApiUrl()).replace(/\/$/, '');
   const route: AgentTelemetryRoute = options?.route ?? { mode: 'fanout', missionControl: apiUrl, destinations: [] };
   const resourceAttributes = parseResourceAttributesString(options?.resourceAttributes);
   if (routeStripsLocalPaths(route)) {
-    // No Mission Control in the list, and a destination that does not take
-    // local paths: every destination gets the same Resource.
+    // A destination that does not take local paths: every destination gets the same Resource.
     for (const key of Object.keys(resourceAttributes)) {
       if (key.startsWith(LOCAL_ATTR_PREFIX)) delete resourceAttributes[key];
     }
@@ -266,16 +356,21 @@ export function buildOtelHooksConfig(options?: {
   // Nothing to send to (no Mission Control, no destination): export nothing.
   const enabled = signals.traces && (legacy || plans.length > 0);
   const logsEnabled = enabled && signals.logs && routeSendsLogs(route);
+  const metricsEnabled = enabled && !legacy && features.metrics && signals.metrics && routeSendsMetrics(route);
   const capturePrompts = logsEnabled && signals.prompts;
   const destinations =
     enabled && !legacy
       ? plans.map((plan): OtelHooksDestinationConfig => {
           const logs = logsEnabled && plan.signals.includes('logs');
-          const planSignals = plan.signals.filter((signal) => signal === 'traces' || logs);
+          const metrics = metricsEnabled && plan.signals.includes('metrics');
+          const planSignals = plan.signals.filter(
+            (signal) => signal === 'traces' || (signal === 'logs' && logs) || (signal === 'metrics' && metrics),
+          );
           return {
             name: plan.name,
             ...(plan.tracesEndpoint ? { tracesEndpoint: plan.tracesEndpoint } : {}),
             ...(logs && plan.logsEndpoint ? { logsEndpoint: plan.logsEndpoint } : {}),
+            ...(metrics && plan.metricsEndpoint ? { metricsEndpoint: plan.metricsEndpoint } : {}),
             ...(plan.headers.length > 0
               ? { headers: Object.fromEntries(plan.headers.map((binding) => [binding.header, `env:${binding.envVar}`])) }
               : {}),
@@ -283,7 +378,7 @@ export function buildOtelHooksConfig(options?: {
           };
         })
       : undefined;
-  // A logs-only destination with logs off at this level has nothing left to receive.
+  // A logs- or metrics-only destination with that signal off at this level has nothing left to receive.
   const sending = destinations?.filter((destination) => destination.signals.length > 0);
   const legacyUrl = legacy && route.mode === 'fanout' ? route.missionControl : undefined;
 
@@ -301,11 +396,18 @@ export function buildOtelHooksConfig(options?: {
         ...(logsEnabled && legacyUrl ? { endpoint: `${legacyUrl}/api/otel/v1/logs` } : {}),
         includeContent: capturePrompts,
       },
+      ...(metricsEnabled ? { metrics: { includeSessionId: routeMetricsIncludeSessionId(route) } } : {}),
     },
     privacy: {
       contentMode: capturePrompts ? 'raw' : 'omit',
       allowRawContent: capturePrompts,
     },
+    // Hooks carry no token counts: otel-hook reads Claude Code's from the transcript at Stop.
+    ...(features.transcriptUsage && !legacy ? { providers: { claudeCode: { readTranscriptUsage: true } } } : {}),
+    // Work identity comes from the session context only, never from the environment.
+    ...(features.sessionContext && !legacy
+      ? { sessionContext: { dir: path.resolve(options?.sessionContextDir ?? sessionContextRoot()) } }
+      : {}),
   };
 }
 
@@ -851,11 +953,13 @@ export function applyAgentTelemetryRoute(
   resourceAttributes?: string,
 ): { configPath: string; decision: AgentTelemetryRouteDecision } {
   const decision = resolveAgentTelemetryRoute(hooksHome);
+  const features = detectOtelHookFeatures(hooksHome);
   const configPath = writeOtelHooksConfig(
     buildOtelHooksConfig({
       resourceAttributes,
       route: decision.route,
-      legacySingleEndpoint: installedPackageVersion(hooksHome) !== null && !otelHookSupportsDestinations(hooksHome),
+      legacySingleEndpoint: features !== null && !features.destinations,
+      ...(features ? { features } : {}),
     }),
     hooksHome,
   );

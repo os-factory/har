@@ -1,15 +1,10 @@
 import * as path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
-import {
-  describePortalTarget,
-  getControlApiUrl,
-  isControlEnabled,
-} from '../../core/control-config';
+import { getControlApiUrl, isControlEnabled } from '../../core/control-config';
 import {
   displayPortalTargetLabel,
   getActivePortalConnection,
-  resolvePortalTarget,
   writePortalConnectionTrajectoryPreference,
 } from '../../core/portal-targets';
 import { handleHqConnect } from './hq';
@@ -101,7 +96,7 @@ export const controlCommand = {
             .option('portal', {
               type: 'boolean',
               describe:
-                'Sync this repo to the hosted portal when logged in. Use --no-portal to keep it local-only.',
+                'Send this repo to HAR HQ when HQ is a destination (har telemetry destination add hq). Use --no-portal to keep it local-only.',
             }),
         handleRegister,
       )
@@ -148,13 +143,13 @@ export const controlCommand = {
             .option('full', {
               type: 'boolean',
               default: false,
-              describe: 'Ignore the portal watermark and resend the complete payload',
+              describe: 'Ignore the runs watermark and resend every run',
             }),
         handleSync,
       )
       .command(
         'check-usage',
-        'Check the usage invariants over what Mission Control holds and would sync (read-only)',
+        'Check the usage invariants over what Mission Control holds (read-only)',
         checkUsageOptions,
         (argv) =>
           handleCheckUsage({
@@ -347,7 +342,7 @@ async function handleRegister(argv: {
     } else {
       success('Registered and synced with Mission Control');
       if (!isRepoPortalSyncEnabled(repoPath)) {
-        info('Local-only — skipped hosted portal sync');
+        info('Local-only — nothing is sent to HAR HQ');
       }
     }
   } catch (err: unknown) {
@@ -604,10 +599,6 @@ async function handleSync(argv: {
 
   if (!argv.json) {
     header('har control sync');
-    for (const repoPath of repoPaths) {
-      const portal = resolvePortalTarget(repoPath);
-      if (portal) info(`${repoPath} → ${describePortalTarget(portal)}`);
-    }
   }
 
   const { synced, failed, incomplete, results } = await syncReposWithControl({

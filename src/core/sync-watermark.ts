@@ -3,7 +3,13 @@ import * as os from 'os';
 import * as path from 'path';
 import { canonicalizeControlRepoPath } from './control-repo-path';
 
-interface PortalSyncStateEntry {
+/**
+ * Runs watermark of `har control sync` to Mission Control: the newest run each
+ * repository has sent, per target. The file keeps its historical name so the
+ * watermarks written by earlier versions still apply.
+ */
+
+interface SyncStateEntry {
   repoPath: string;
   portalUrl: string;
   lastSyncedAt: string;
@@ -24,8 +30,8 @@ export interface RunsWatermark {
   sources?: string[];
 }
 
-interface PortalSyncState {
-  states: PortalSyncStateEntry[];
+interface SyncState {
+  states: SyncStateEntry[];
 }
 
 function getStatePath(): string {
@@ -35,11 +41,11 @@ function getStatePath(): string {
   return path.join(os.homedir(), '.har', 'portal-sync-state.json');
 }
 
-function readState(): PortalSyncState {
+function readState(): SyncState {
   const statePath = getStatePath();
   try {
     if (!fs.existsSync(statePath)) return { states: [] };
-    const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8')) as PortalSyncState;
+    const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8')) as SyncState;
     return Array.isArray(parsed.states) ? parsed : { states: [] };
   } catch {
     return { states: [] };
@@ -49,43 +55,12 @@ function readState(): PortalSyncState {
 // Write-then-rename: a process killed mid-write (or two syncs writing at once)
 // must never leave a truncated file, because an unreadable state reads as
 // "never synced" and every repo would resend its whole history.
-function writeState(state: PortalSyncState): void {
+function writeState(state: SyncState): void {
   const statePath = getStatePath();
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
   const tmp = `${statePath}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
   fs.renameSync(tmp, statePath);
-}
-
-/** Last-sync timestamp for a (repo, portal) pair, or null when never synced. */
-export function readPortalWatermark(repoPath: string, portalUrl: string): string | null {
-  const canonical = canonicalizeControlRepoPath(repoPath);
-  const entry = readState().states.find(
-    (state) => state.repoPath === canonical && state.portalUrl === portalUrl,
-  );
-  return entry?.lastSyncedAt ?? null;
-}
-
-export function writePortalWatermark(
-  repoPath: string,
-  portalUrl: string,
-  lastSyncedAt: string,
-): void {
-  const canonical = canonicalizeControlRepoPath(repoPath);
-  const state = readState();
-  const existing = state.states.find(
-    (entry) => entry.repoPath === canonical && entry.portalUrl === portalUrl,
-  );
-  if (existing) {
-    existing.lastSyncedAt = lastSyncedAt;
-  } else {
-    state.states.push({ repoPath: canonical, portalUrl, lastSyncedAt });
-  }
-  writeState(state);
-}
-
-export function getPortalWatermarkPath(): string {
-  return getStatePath();
 }
 
 export function readRunsWatermarkEntry(repoPath: string, target: string): RunsWatermark | null {
@@ -137,7 +112,7 @@ export function coveredSources(repoPath: string, entry: RunsWatermark | null): s
 /**
  * Select rows newer than `since` and report the newest timestamp among them.
  * Rows without a comparable timestamp are always included (can't tell → send;
- * the portal upsert is idempotent). `since === null` selects everything.
+ * the upsert is idempotent). `since === null` selects everything.
  */
 export function selectSince<T>(
   rows: T[],

@@ -9,3 +9,4 @@ export * from '../../packages/schemas/src/occupancy';
 export * from '../../packages/schemas/src/usage-invariants';
 export * from '../../packages/schemas/src/telemetry-destinations';
 export * from '../../packages/schemas/src/session-context';
+export * from '../../packages/schemas/src/ingest-v2';

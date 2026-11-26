@@ -29,6 +29,7 @@ Exit code is non-zero when any check fails, so doctor slots directly into CI.
 | Lifecycle hooks | Files in `.har/hooks/` use known hook names and are executable (content is user-owned, never inspected) |
 | Ejected runtime | On an [ejected](/docs/guides/eject/) harness: the vendored runtime exists |
 | Telemetry destinations | What each [telemetry destination](/docs/guides/otlp-backends/#destination-health) has queued, dropped in the last 24 h, or failed on in the last hour (`langfuse: 7 batches queued, last failure 2 min ago (ECONNREFUSED)`), from `otel-hook doctor --json` and the CLI's verification spool. Warns only, never fails; skipped with a note when telemetry is off or otel-hook is not installed. Header values are never printed |
+| Ingest destinations | One line per ingest v2 receiver in the [destination list](/docs/reference/cli/#destinations-one-list-for-everything-har-sends) (Mission Control, HAR HQ): records, proofs and evidence queued, last success, last error, and whether `GET v2/capabilities` answers. A receiver that does not support ingest v2 yet is named as such (`hq: … does not support ingest v2 (GET v2/capabilities: HTTP 404) — upgrade the receiver`). Warns only, never fails. Key values are never printed |
 
 Doctor detects the harness contract generation: on a pre-1.0 harness (legacy
 shell functions or port triplets in `harness.env`) it reports the old shape and

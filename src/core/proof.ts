@@ -14,6 +14,7 @@ import {
 import { readStageRegistry } from '../harness/stages';
 import { resolveVerificationPlan } from '../harness/verification';
 import { canonicalizeControlRepoPath } from './control-repo-path';
+import { gitNotesDestinationEnabled } from './telemetry-destinations';
 import { getHarPackageVersion } from './package-version';
 import { findValidation, setValidationAttestationDigest } from './validations';
 import { findWorkUnit, listValidationBindings } from './work-units';
@@ -633,7 +634,7 @@ export function produceValidationProof(input: ProduceValidationProofInput): Prod
     );
     // Only a passing full validation gets a note, as on commit (findPassingAttestation).
     const noteable =
-      proofModeIncludesNotes(mode) &&
+      writesFactoryNotes(mode, explicit) &&
       input.validation.status === 'pass' &&
       input.validation.full &&
       predicate.verdict === 'pass';
@@ -668,6 +669,18 @@ export function proofModeIncludesNotes(mode: FactoryProofMode): boolean {
 }
 
 /**
+ * Whether proofs are written as factory notes. Notes are one proof destination
+ * among the others (ADR 0005 section 6) and opt-in: a `git-notes` entry in the
+ * destination list, or `HAR_FACTORY_PROOF=notes|notes+trailers` set explicitly
+ * in the repo's harness.env. Unset, the attestation is still produced (and
+ * sent to the receivers that take proofs), but no note is written.
+ */
+export function writesFactoryNotes(mode: FactoryProofMode, explicit: boolean): boolean {
+  if (!proofModeIncludesNotes(mode)) return false;
+  return explicit || gitNotesDestinationEnabled();
+}
+
+/**
  * The attestation entry file for a passing full validation of `treeHash`,
  * when one exists and still matches the digest on the record.
  */
@@ -696,7 +709,7 @@ export function addFactoryNoteForCommit(
 ): FactoryProofOutcome | undefined {
   try {
     const { mode, explicit } = resolveFactoryProofMode(checkoutDir);
-    if (!proofModeIncludesNotes(mode)) return undefined;
+    if (!writesFactoryNotes(mode, explicit)) return undefined;
     const attestation = findPassingAttestation(checkoutDir, treeHash);
     if (!attestation) return undefined;
     const bin = options.bin ?? resolveFactoryProofBin(options.env);

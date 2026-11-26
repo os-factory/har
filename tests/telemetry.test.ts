@@ -36,15 +36,21 @@ import {
 } from '../src/core/otel-hooks';
 
 describe('otel-hook package pin', () => {
-  it('installs the release that reads the Resource session.id and the standard OTLP variables', () => {
-    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.9.0');
+  it('installs the release that reads the session context (sessionContext.dir)', () => {
+    expect(OTEL_HOOKS_PACKAGE).toBe('@osfactory/otel-hook@0.12.0');
   });
 
-  it('is the version Mission Control derives otel-hook ids with', () => {
+  it('is not older than the version Mission Control derives otel-hook ids with', () => {
+    // Mission Control only uses otel-hook's id derivation, unchanged since 0.9.0;
+    // it moves to the pin once that release is published.
     const control = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'control', 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>;
     };
-    expect(`@osfactory/otel-hook@${control.dependencies['@osfactory/otel-hook']}`).toBe(OTEL_HOOKS_PACKAGE);
+    const parse = (version: string) => version.replace(/^[^0-9]*/, '').split('.').map((part) => Number.parseInt(part, 10));
+    const [controlMajor, controlMinor] = parse(control.dependencies['@osfactory/otel-hook']);
+    const [pinMajor, pinMinor] = parse(OTEL_HOOKS_PACKAGE.slice(OTEL_HOOKS_PACKAGE.lastIndexOf('@') + 1));
+    expect(controlMajor * 1000 + controlMinor).toBeGreaterThanOrEqual(9);
+    expect(controlMajor * 1000 + controlMinor).toBeLessThanOrEqual(pinMajor * 1000 + pinMinor);
   });
 
   describe('HAR_OTEL_HOOKS_PACKAGE override', () => {
@@ -60,14 +66,14 @@ describe('otel-hook package pin', () => {
     afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
     it('keeps an install of the pinned version', () => {
-      installVersion('0.9.0');
+      installVersion('0.12.0');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(false);
       installVersion('0.5.0');
       expect(needsPackageInstall(home, OTEL_HOOKS_PACKAGE)).toBe(true);
     });
 
     it('installs an override once, then again only when it changes or is removed', () => {
-      installVersion('0.9.0');
+      installVersion('0.12.0');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(true);
       recordInstalledSpec(home, '/tmp/otel-hook.tgz');
       expect(needsPackageInstall(home, '/tmp/otel-hook.tgz')).toBe(false);
@@ -289,11 +295,12 @@ describe('telemetry env', () => {
       attemptId: '11111111-1111-4111-8111-111111111111',
     });
     expect(attrs).toContain('session.id=main-abcd-har-agent-1-xy12');
-    expect(attrs).toContain('factory.slot.id=1');
     expect(attrs).toContain('factory.local.checkout_path=/repo');
     expect(attrs).toContain('factory.local.work_dir=/repo/wt');
-    expect(attrs).toContain('factory.work_unit.id=ISSUE-123');
-    expect(attrs).toContain('factory.attempt.id=11111111-1111-4111-8111-111111111111');
+    // Work identity is stamped from the session context, never put in the env (ADR 0004 section 3).
+    expect(attrs).not.toContain('factory.slot.id=');
+    expect(attrs).not.toContain('factory.work_unit.id=');
+    expect(attrs).not.toContain('factory.attempt.id=');
     expect(attrs).not.toContain('har.');
   });
 
@@ -337,13 +344,37 @@ describe('telemetry env', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  /** A hooks home whose applied route keeps local paths (every destination opted in). */
+  function withLocalPathsRoute<T>(fn: () => T): T {
+    const saved = process.env.HAR_OTEL_HOOKS_HOME;
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'har-hooks-local-'));
+    fs.writeFileSync(
+      path.join(home, 'direct.env'),
+      '# har-route: mission-control=true destinations= logs=false include-local-paths=true\n',
+    );
+    process.env.HAR_OTEL_HOOKS_HOME = home;
+    try {
+      return fn();
+    } finally {
+      if (saved === undefined) delete process.env.HAR_OTEL_HOOKS_HOME;
+      else process.env.HAR_OTEL_HOOKS_HOME = saved;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  it('leaves factory.local.* out unless every destination opted in to local paths', () => {
+    const attrs = { sessionKey: 's1', agentId: 1, repoPath: '/r', workDir: '/r' };
+    expect(buildTelemetryEnvBlock(attrs)).not.toContain('factory.local.');
+    expect(withLocalPathsRoute(() => buildTelemetryEnvBlock(attrs))).toContain('factory.local.checkout_path=/r');
+  });
+
   it('quotes OTEL_RESOURCE_ATTRIBUTES when the repo path contains a space', () => {
-    const block = buildTelemetryEnvBlock({
+    const block = withLocalPathsRoute(() => buildTelemetryEnvBlock({
       sessionKey: 's1',
       agentId: 1,
       repoPath: '/Users/dev/My Projects/service',
       workDir: '/Users/dev/My Projects/service',
-    });
+    }));
     const line = block
       .split('\n')
       .find((l) => l.startsWith('OTEL_RESOURCE_ATTRIBUTES='));
@@ -357,12 +388,14 @@ describe('telemetry env', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-env-source-'));
     const envFile = path.join(dir, '.env.agent.1');
     const repoPath = '/Users/dev/My Projects/service';
-    appendTelemetryEnvToFile(envFile, {
-      sessionKey: 's1',
-      agentId: 1,
-      repoPath,
-      workDir: repoPath,
-    });
+    withLocalPathsRoute(() =>
+      appendTelemetryEnvToFile(envFile, {
+        sessionKey: 's1',
+        agentId: 1,
+        repoPath,
+        workDir: repoPath,
+      }),
+    );
     // Reproduces the downstream launcher: `set -a; source <file>` then read back.
     // On the unquoted (buggy) output this bash invocation exits non-zero with
     // "No such file or directory"; execSync throws. On the fixed output it
@@ -474,7 +507,7 @@ describe('otel hooks config', () => {
     expect(parsed.exporter.destinations?.[0].tracesEndpoint).toBe('http://localhost:3847/api/otel/v1/traces');
     // otel-hook rejects unknown keys and disables OTLP; keep the file schema-clean.
     expect(parsed).not.toHaveProperty('_comment');
-    expect(Object.keys(parsed).sort()).toEqual(['exporter', 'privacy']);
+    expect(Object.keys(parsed).sort()).toEqual(['exporter', 'privacy', 'providers', 'sessionContext']);
   });
 
   it('rewrites hooks.json commands to the HAR wrapper', () => {
