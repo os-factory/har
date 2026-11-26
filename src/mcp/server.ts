@@ -301,6 +301,8 @@ export const HAR_MCP_TOOLS: Tool[] = [
         repo: repoJsonProperty,
         agentId: agentIdJsonProperty,
         full: { type: 'boolean' },
+        line: { type: 'string', description: 'Factory line this verify runs under (needs station)' },
+        station: { type: 'string', description: 'Station of the line, recorded on the factory run' },
       },
       ['agentId'],
     ),
@@ -709,6 +711,8 @@ export async function handleMcpToolCall(
         full: input.full,
         capture: true,
         trigger: 'mcp',
+        line: input.line,
+        station: input.station,
       });
       return jsonContent(
         RunVerificationOutputSchema.parse({

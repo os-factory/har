@@ -404,6 +404,13 @@ export const WorkAttemptRecordSchema = z
      * under it can be traced to this attempt.
      */
     previousOccupancyKey: z.string().optional(),
+    /**
+     * When the attempt ended (teardown, complete, or rebinding the slot to
+     * another work unit). Written after the attempt's session segments are
+     * closed (ADR 0004 section 2); a segment of an ended attempt counts as
+     * closed for every reader.
+     */
+    endedAt: z.string().optional(),
   })
   .passthrough();
 
@@ -709,6 +716,50 @@ export type ChangedFile = z.infer<typeof ChangedFileSchema>;
  * One validation per change batch, keyed by the git tree hash of the exact
  * code state a verification ran against.
  */
+/**
+ * An agent session that worked on a factory run (ADR 0004 section 4): its
+ * segments for the run's attempt overlap the run window (attempt start to the
+ * run's finish). `to` is `null` while the segment was still open at verify.
+ */
+export const FactoryRunSessionRefSchema = z.object({
+  agentTool: z.string().min(1),
+  sessionId: z.string().min(1),
+  from: z.string(),
+  to: z.string().nullable(),
+  /** True for the session that ran a verify of this tree. */
+  ranVerify: z.boolean(),
+});
+
+export type FactoryRunSessionRef = z.infer<typeof FactoryRunSessionRefSchema>;
+
+/** A file of stage evidence (ADR 0005 section 4), named relative to `.har/<artifactsDir>/`. */
+export const StageEvidenceFileSchema = z.object({
+  name: z.string().min(1),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  size: z.number().int().nonnegative(),
+  mediaType: z.string().min(1),
+});
+
+export type StageEvidenceFile = z.infer<typeof StageEvidenceFileSchema>;
+
+/**
+ * One stage of a factory run, as the ingest v2 `StageResult` record carries it.
+ * `artifacts` lists the stage log first (when one was kept), then the files the
+ * stage wrote under `.har/<artifactsDir>/`.
+ */
+export const FactoryRunStageResultSchema = z.object({
+  stageId: z.string().min(1),
+  status: z.enum(['passed', 'failed', 'error', 'skipped']),
+  addedBy: z.enum(['policy', 'agent']),
+  kind: z.string().optional(),
+  durationMs: z.number().int().nonnegative().nullable(),
+  /** sha256 of the stage log as kept (the last 1 MiB), `null` when no log was kept. */
+  logDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  artifacts: z.array(StageEvidenceFileSchema).default([]),
+});
+
+export type FactoryRunStageResult = z.infer<typeof FactoryRunStageResultSchema>;
+
 export const ValidationRecordSchema = z
   .object({
     validationId: z.guid(),
@@ -733,6 +784,19 @@ export const ValidationRecordSchema = z
      * `<treeHash>.attestation.json`.
      */
     attestationDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/).optional(),
+    /**
+     * Agent sessions that worked on this factory run (ADR 0004 section 4).
+     * Merged, never replaced, when the same tree is verified again.
+     */
+    sessions: z.array(FactoryRunSessionRefSchema).optional(),
+    /** Factory line and station the verify ran under (`har env verify --line --station`); null otherwise. */
+    factoryLine: z.string().nullable().optional(),
+    station: z.string().nullable().optional(),
+    /** Start and finish of the latest verify of this tree (the run window ends at `finishedAt`). */
+    startedAt: z.string().optional(),
+    finishedAt: z.string().optional(),
+    /** Per-stage results and evidence digests of the latest verify of this tree (ADR 0005 section 4). */
+    stageResults: z.array(FactoryRunStageResultSchema).optional(),
   })
   .passthrough();
 

@@ -1,9 +1,15 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ValidationRecord, ValidationRecordSchema } from '../harness/schema';
+import {
+  FactoryRunSessionRef,
+  FactoryRunStageResult,
+  ValidationRecord,
+  ValidationRecordSchema,
+} from '../harness/schema';
 import { computeWorktreeSnapshot, isCheckoutRoot } from './change-batch';
 import { recordCommitBinding } from './commit-bindings';
+import { mergeSessionRefs } from './session-context';
 import { markDirty } from './sync-context';
 
 export const VALIDATIONS_DIR = 'validations';
@@ -97,6 +103,8 @@ export function recordValidation(input: RecordValidationInput): ValidationRecord
     updatedAt: now,
     commitSha: existing?.commitSha,
     committedAt: existing?.committedAt,
+    // Session refs accumulate across verifies of the same tree (ADR 0004 §4).
+    ...(existing?.sessions ? { sessions: existing.sessions } : {}),
   });
 
   writeRecord(input.checkoutDir, record);
@@ -122,6 +130,47 @@ export function setValidationAttestationDigest(
   const updated: ValidationRecord = ValidationRecordSchema.parse({
     ...record,
     attestationDigest,
+    updatedAt: new Date().toISOString(),
+  });
+  writeRecord(checkoutDir, updated);
+  if (path.resolve(harnessRoot) !== path.resolve(checkoutDir)) {
+    writeRecord(harnessRoot, updated);
+  }
+  return updated;
+}
+
+export interface FactoryRunUpdate {
+  /** Session refs of this verify; merged into the stored list, never replacing it. */
+  sessions?: FactoryRunSessionRef[];
+  factoryLine?: string | null;
+  station?: string | null;
+  startedAt?: string;
+  finishedAt?: string;
+  /** Stage results of this verify; replace the previous verify's. */
+  stageResults?: FactoryRunStageResult[];
+}
+
+/**
+ * Add what a verify learned about the factory run (session refs, line and
+ * station, run window, stage evidence) to the validation record of its tree,
+ * in the checkout copy and the harness-root mirror.
+ */
+export function updateValidationFactoryRun(
+  checkoutDir: string,
+  harnessRoot: string,
+  treeHash: string,
+  update: FactoryRunUpdate,
+): ValidationRecord | undefined {
+  const record = findValidation(checkoutDir, treeHash);
+  if (!record) return undefined;
+  const updated: ValidationRecord = ValidationRecordSchema.parse({
+    ...record,
+    ...(update.sessions ? { sessions: mergeSessionRefs(record.sessions, update.sessions) } : {}),
+    ...('factoryLine' in update ? { factoryLine: update.factoryLine ?? null } : {}),
+    ...('station' in update ? { station: update.station ?? null } : {}),
+    ...(update.startedAt ? { startedAt: update.startedAt } : {}),
+    ...(update.finishedAt ? { finishedAt: update.finishedAt } : {}),
+    ...(update.stageResults ? { stageResults: update.stageResults } : {}),
     updatedAt: new Date().toISOString(),
   });
   writeRecord(checkoutDir, updated);
