@@ -189,6 +189,20 @@ describe('verification trace ingest', () => {
     expect((await runs())[0].repositoryId).toBe('repo-app');
   });
 
+  it('attributes a copy with neither a local path nor a registered remote to the factory run its records created', async () => {
+    // A trace the CLI spooled while Mission Control was down: local paths stripped,
+    // the repository registered by its checkout only, the factory run already stored from v2 records.
+    await prisma.repository.update({ where: { id: 'repo-app' }, data: { gitRemote: null } });
+    await prisma.factoryRun.create({
+      data: { factoryRunId: 'validation-1', repositoryKey: 'github.com/acme/app', tree: 'a'.repeat(40), startedAt: new Date('2026-11-23T10:00:00Z') },
+    });
+    const result = await ingestOtelTracesJson(verificationPayload(correlation));
+    expect(result).toEqual({ accepted: 3, dropped: 0, reasons: [] });
+    expect(await runs()).toHaveLength(1);
+    expect((await runs())[0]).toMatchObject({ repositoryKey: 'github.com/acme/app', traceId: TRACE, spanId: RUN_SPAN });
+    expect(await stages()).toHaveLength(2);
+  });
+
   it('is idempotent: a re-delivered trace is stored once', async () => {
     const payload = verificationPayload([...correlation, str('factory.local.checkout_path', MAIN)]);
     await ingestOtelTracesJson(payload);

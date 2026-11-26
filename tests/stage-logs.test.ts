@@ -100,10 +100,12 @@ describe('verify-runner stage logs', () => {
     const { logDir } = runStages([
       {
         id: 'chunks',
+        // Each write waits for the previous one, so neither pipe runs ahead of the
+        // other by more than its buffer, even on a loaded machine.
         command: node(
-          `const line='y'.repeat(1023)+'\\n';` +
-            `for(let i=0;i<3*1024;i++){(i%2?process.stderr:process.stdout).write(line)}` +
-            `process.stdout.write('LAST\\n')`,
+          `const line='y'.repeat(1023)+'\\n';let i=0;` +
+            `const next=()=>{if(i===3*1024){process.stdout.write('LAST\\n');return}` +
+            `(i%2?process.stderr:process.stdout).write(line,next);i++};next()`,
         ),
       },
     ]);
@@ -113,8 +115,8 @@ describe('verify-runner stage logs', () => {
     const match = HEADER.exec(text)!;
     expect(Number(match[1]) + Number(match[2])).toBe(3 * 1024 * 1024 + 5);
     // Two pipes give no cross-stream ordering guarantee at the very end; the
-    // marker written last is within the final few kilobytes.
-    expect(text.slice(-64 * 1024)).toContain('LAST\n');
+    // marker written last is within the final pipe buffers.
+    expect(text.slice(-256 * 1024)).toContain('LAST\n');
   });
 
   it('interleaves stdout and stderr in arrival order', () => {

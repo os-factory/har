@@ -13,7 +13,8 @@ test.describe('Usage page', () => {
 
     const empty = page.getByText(/no usage recorded yet/i);
     const table = page.getByRole('table');
-    await expect(empty.or(table)).toBeVisible();
+    // With usage recorded the page can hold more than one table (sessions, per model).
+    await expect(empty.or(table).first()).toBeVisible();
   });
 
   test('exposes search when sessions exist', async ({ page }) => {

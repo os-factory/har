@@ -119,15 +119,20 @@ export async function ingestVerificationSpans(spans: ParsedSpan[]): Promise<Otel
       result.reasons.push('verification run: missing trace/span id');
       continue;
     }
-    const repository = await resolveVerificationRepository(span.resource);
+    const attrs = span.attributes;
+    const factoryRunId = text(attrs, RUN_ID_ATTR) as string;
+    const existing = await prisma.factoryRun.findUnique({ where: { factoryRunId } });
+    // The v2 records came first (a trace the CLI spooled while Mission Control was
+    // down, local paths stripped): the factory run is keyed already, and its
+    // repository is whatever the records resolved.
+    const repository = existing
+      ? { repositoryId: existing.repositoryId, repositoryKey: existing.repositoryKey }
+      : await resolveVerificationRepository(span.resource);
     if ('reason' in repository) {
       result.dropped += 1;
       result.reasons.push(repository.reason);
       continue;
     }
-    const attrs = span.attributes;
-    const factoryRunId = text(attrs, RUN_ID_ATTR) as string;
-    const existing = await prisma.factoryRun.findUnique({ where: { factoryRunId } });
     const latest = !existing?.finishedAt || !span.endTime || span.endTime >= existing.finishedAt;
     const fromSpan = {
       status: cicdResult(span, 'cicd.pipeline.result'),

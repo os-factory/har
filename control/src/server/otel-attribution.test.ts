@@ -223,6 +223,10 @@ describe('otelHookGenerationObservation', () => {
     expect(otelHookGenerationObservation(span('generation', legacy), 'cursor')).not.toHaveProperty('runningTotal');
   });
 
+  it('books no Claude Code generation: its native api_request events are the one source (ADR 0005 section 5)', () => {
+    expect(otelHookGenerationObservation(span('generation claude-sonnet-4-5', usage), 'claude_code')).toBeNull();
+  });
+
   it('ignores rollup spans and spans without usage', () => {
     expect(otelHookGenerationObservation(span('session', usage), 'cursor')).toBeNull();
     expect(otelHookGenerationObservation(span('subagent', usage), 'cursor')).toBeNull();
