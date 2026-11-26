@@ -388,6 +388,14 @@ export const envCommand = {
             .positional('id', { type: 'number', describe: 'Agent slot id (see .har/stages.json agentSlots)' })
             .option('repo', { type: 'string', default: '.' })
             .option('full', { type: 'boolean', default: false })
+            .option('line', {
+              type: 'string',
+              describe: 'Factory line this verify runs under (needs --station; optional when one line is installed)',
+            })
+            .option('station', {
+              type: 'string',
+              describe: 'Station of the line, recorded on the factory run',
+            })
             .option('json', {
               type: 'boolean',
               default: false,
@@ -1213,6 +1221,8 @@ export async function handleVerify(argv: {
   repo: string;
   full: boolean;
   json?: boolean;
+  line?: string;
+  station?: string;
 }): Promise<void> {
   const repo = path.resolve(argv.repo);
   const agentId = validateAgentId(argv.id, repo);
@@ -1221,6 +1231,8 @@ export async function handleVerify(argv: {
     agentId,
     full: argv.full,
     capture: Boolean(argv.json),
+    line: argv.line,
+    station: argv.station,
   });
 
   if (argv.json) {

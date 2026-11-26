@@ -47,6 +47,11 @@ export interface StageRunOptions {
   launchFlags?: LaunchFlags;
   workUnitId?: string;
   attemptId?: string;
+  /**
+   * Verify only: directory the stage runner writes stage logs and its evidence
+   * index to (`HAR_STAGE_LOG_DIR`, ADR 0005 section 4).
+   */
+  stageLogDir?: string;
 }
 
 export interface LaunchOptions {

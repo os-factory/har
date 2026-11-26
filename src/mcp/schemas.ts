@@ -203,6 +203,10 @@ export const RunVerificationInputSchema = z.object({
   repo: z.string().default('.'),
   agentId: agentIdSchema,
   full: z.boolean().default(false),
+  /** Factory line the verify runs under (needs `station`). */
+  line: z.string().min(1).optional(),
+  /** Station of the line, recorded on the factory run. */
+  station: z.string().min(1).optional(),
 });
 
 /** Factory Commits proof outcome of a full verify (present only when a proof was attempted). */
