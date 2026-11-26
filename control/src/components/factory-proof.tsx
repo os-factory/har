@@ -85,7 +85,7 @@ export function FactoryProofFacts({ proof, compact = false }: { proof: FactoryPr
             {proof.stages
               .filter((stage) => stage.addedBy === 'policy')
               .map((stage) => {
-                const ok = stage.result === 'success';
+                const ok = stage.result === 'success' || stage.result === 'passed';
                 return (
                   <li key={stage.name}>
                     <Badge variant={ok ? 'success' : 'destructive'} className="gap-1 font-mono text-[11px]">

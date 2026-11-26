@@ -2,7 +2,6 @@ import type { Prisma } from '@prisma/client';
 import { AgentTrajectoryRecordSchema } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { boundTrajectoryPayload } from '@/lib/trajectory-privacy';
-import { clampPageLimit, createdAtKeyset } from '@/server/pagination';
 
 export interface SessionEventInput {
   sessionKey: string;
@@ -18,6 +17,8 @@ export interface SessionEventInput {
   source?: string;
   workUnitId?: string;
   attemptId?: string;
+  factoryRunId?: string;
+  sessionId?: string;
 }
 
 const PROMPT_MAX = 8_000;
@@ -40,6 +41,8 @@ export async function upsertSessionEvent(repositoryId: string, input: SessionEve
     source: input.source ?? 'otel',
     workUnitId: input.workUnitId,
     attemptId: input.attemptId,
+    factoryRunId: input.factoryRunId,
+    sessionId: input.sessionId,
   };
 
   return prisma.agentSessionEvent.upsert({
@@ -69,20 +72,6 @@ export async function listSessionEventsForSlot(repositoryId: string, agentId: nu
     where: { repositoryId, agentId },
     orderBy: { timestamp: 'desc' },
     take: 500,
-  });
-}
-
-const REPO_EVENTS_LIMIT = 1_000;
-const REPO_EVENTS_MAX_LIMIT = 5_000;
-
-export async function listSessionEventsForRepo(
-  repositoryId: string,
-  options: { since?: string | null; sinceId?: string | null; limit?: number } = {},
-) {
-  return prisma.agentSessionEvent.findMany({
-    where: { repositoryId, ...createdAtKeyset(options) },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    take: clampPageLimit(options.limit, REPO_EVENTS_LIMIT, REPO_EVENTS_MAX_LIMIT),
   });
 }
 

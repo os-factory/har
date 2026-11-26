@@ -1,17 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { SyncSessionEventsInputSchema } from '@har/schemas';
-import { listSessionEventsForRepo, syncSessionEvents } from '@/server/session-events';
-import { pageParams } from '@/server/pagination';
-
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-  const events = await listSessionEventsForRepo(id, pageParams(new URL(request.url)));
-  return NextResponse.json({ events });
-}
+import { syncSessionEvents } from '@/server/session-events';
 
 export async function POST(
   request: Request,

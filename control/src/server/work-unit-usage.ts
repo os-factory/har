@@ -1,4 +1,4 @@
-import type { AgentSessionUsage, Prisma, WorkAttempt } from '@prisma/client';
+import type { AgentSessionUsage, Attempt, Prisma } from '@prisma/client';
 import { inWindow, legacyWindow, type LegacyWindow } from '@/server/attempt-record';
 import { occupancyKeyForAttempt } from '@/server/occupancy';
 import { listSessionUsageForRepo, toCostSource, type CostSource } from '@/server/usage';
@@ -15,7 +15,7 @@ export interface WorkUnitUsage {
 export function selectWorkUnitUsageRows<T extends Pick<AgentSessionUsage, 'workUnitId' | 'attemptId' | 'occupancyKey' | 'agentId' | 'workDir' | 'firstSeenAt'>>(
   rows: T[],
   workUnitId: string,
-  attempts: Array<Pick<WorkAttempt, 'attemptId'>>,
+  attempts: Array<Pick<Attempt, 'attemptId'>>,
   windows: LegacyWindow[],
 ): T[] {
   const attemptIds = new Set(attempts.map((attempt) => attempt.attemptId));
@@ -65,7 +65,7 @@ export function summarizeWorkUnitUsage(
 export async function attributeWorkUnitUsage(
   repositoryId: string,
   workUnitId: string,
-  attempts: WorkAttempt[],
+  attempts: Attempt[],
 ): Promise<WorkUnitUsage> {
   const [rows, windows] = await Promise.all([
     listSessionUsageForRepo(repositoryId),

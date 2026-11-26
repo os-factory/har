@@ -22,7 +22,7 @@ vi.mock('@/lib/db', () => ({
   prisma: {
     repository: { findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
     agentSessionEvent: { findFirst: vi.fn(async () => null) },
-    sessionSlotBinding: { findFirst: vi.fn(async () => null) },
+    sessionSegment: { findFirst: vi.fn(async () => null) },
     usageObservation: { findFirst: vi.fn(async () => null) },
     agentSessionSpan: {
       findUnique: vi.fn(

@@ -1,10 +1,10 @@
-import type { VerificationRun, VerificationStage } from '@prisma/client';
 import { LOCAL_CHECKOUT_PATH_ATTR } from '@har/schemas';
 import { prisma } from '@/lib/db';
-import { gitRemoteBrowseUrl } from '@/lib/git-remote-url';
-import { clampPageLimit, createdAtKeyset } from '@/server/pagination';
 import { normalizeOtelPath, pickBestRepoPathMatch } from '@/server/otel-workspace';
 import type { AttrMap, OtelIngestResult, ParsedSpan } from '@/server/otel-ingest';
+import { repositoryKeyFor, repositoryUrlKey } from '@/server/repository-key';
+
+export { repositoryUrlKey };
 
 /**
  * Verification runs received over OTLP. `har env verify` sends one trace per
@@ -49,25 +49,12 @@ export function isVerificationSpan(span: ParsedSpan): boolean {
   return isVerificationRunSpan(span) || isVerificationStageSpan(span);
 }
 
-/** Host and path of a remote, lowercased, without scheme, credentials or `.git`. */
-export function repositoryUrlKey(remote: string | null | undefined): string | null {
-  if (!remote) return null;
-  const browse = gitRemoteBrowseUrl(remote);
-  if (!browse) return null;
-  try {
-    const url = new URL(browse);
-    return `${url.hostname}${url.pathname}`.replace(/\/+$/, '').toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
 type RepoRow = { id: string; path: string; gitRemote: string | null };
 
 /** The repository a verification trace belongs to, or a reason it has none. */
 export async function resolveVerificationRepository(
   resource: AttrMap,
-): Promise<{ repositoryId: string } | { reason: string }> {
+): Promise<{ repositoryId: string; repositoryKey: string } | { reason: string }> {
   const repos: RepoRow[] = await prisma.repository.findMany({ select: { id: true, path: true, gitRemote: true } });
   const checkout = text(resource, LOCAL_CHECKOUT_PATH_ATTR);
   if (checkout) {
@@ -76,21 +63,21 @@ export async function resolveVerificationRepository(
       repos.map((repo) => repo.path),
     );
     const match = best ? repos.find((repo) => normalizeOtelPath(repo.path) === best) : undefined;
-    if (match) return { repositoryId: match.id };
+    if (match) return { repositoryId: match.id, repositoryKey: repositoryKeyFor(match) };
   }
   const key = repositoryUrlKey(text(resource, REPOSITORY_URL_ATTR));
   if (key) {
     const matches = repos.filter((repo) => repositoryUrlKey(repo.gitRemote) === key);
-    if (matches.length === 1) return { repositoryId: matches[0].id };
+    if (matches.length === 1) return { repositoryId: matches[0].id, repositoryKey: key };
     if (matches.length > 1) {
       // Several clones of one remote: the one whose slot holds the run's attempt or branch.
       const attemptId = text(resource, 'factory.attempt.id');
       if (attemptId) {
-        const attempt = await prisma.workAttempt.findFirst({
+        const attempt = await prisma.attempt.findFirst({
           where: { attemptId, repositoryId: { in: matches.map((repo) => repo.id) } },
           select: { repositoryId: true },
         });
-        if (attempt) return { repositoryId: attempt.repositoryId };
+        if (attempt?.repositoryId) return { repositoryId: attempt.repositoryId, repositoryKey: key };
       }
       return { reason: `verification run: ${matches.length} repositories share ${key}` };
     }
@@ -102,12 +89,29 @@ function cicdResult(span: ParsedSpan, key: string): string {
   return text(span.attributes, key) ?? 'error';
 }
 
-/** Store the run spans, then the stage spans under their run. */
+/** A cicd task result (`cicd.pipeline.task.run.result`) as a Factory Commits stage status. */
+export function stageStatusOfCicdResult(result: string): 'passed' | 'failed' | 'error' | 'skipped' {
+  if (result === 'success') return 'passed';
+  if (result === 'failure') return 'failed';
+  if (result === 'skip') return 'skipped';
+  return 'error';
+}
+
+function durationMs(span: ParsedSpan): number | null {
+  return span.endTime ? Math.max(0, span.endTime.getTime() - span.startTime.getTime()) : null;
+}
+
+/**
+ * Store the run spans as factory runs, then the stage spans as their stage
+ * results. A factory run is one row per validation id (ADR 0005 section 3):
+ * every verify of a tree shares it, and the latest verify span wins. Fields a
+ * v2 record already set are only filled, never overwritten, by a span.
+ */
 export async function ingestVerificationSpans(spans: ParsedSpan[]): Promise<OtelIngestResult> {
   const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
   const runs = spans.filter(isVerificationRunSpan);
   const stages = spans.filter(isVerificationStageSpan);
-  const runIds = new Map<string, string>(); // `${traceId}:${spanId}` → VerificationRun.id
+  const runIds = new Map<string, string>(); // `${traceId}:${spanId}` → factory run id
 
   for (const span of runs) {
     if (!span.traceId || !span.spanId) {
@@ -122,31 +126,64 @@ export async function ingestVerificationSpans(spans: ParsedSpan[]): Promise<Otel
       continue;
     }
     const attrs = span.attributes;
-    const fields = {
-      repositoryId: repository.repositoryId,
-      runId: text(attrs, RUN_ID_ATTR) as string,
-      pipelineName: text(attrs, 'cicd.pipeline.name') ?? span.name,
-      result: cicdResult(span, 'cicd.pipeline.result'),
+    const factoryRunId = text(attrs, RUN_ID_ATTR) as string;
+    const existing = await prisma.factoryRun.findUnique({ where: { factoryRunId } });
+    const latest = !existing?.finishedAt || !span.endTime || span.endTime >= existing.finishedAt;
+    const fromSpan = {
+      status: cicdResult(span, 'cicd.pipeline.result'),
       verdict: text(attrs, 'factory.verdict') ?? null,
-      treeHash: text(attrs, 'factory.git.tree') ?? null,
-      headRevision: text(attrs, 'vcs.ref.head.revision') ?? null,
+      tree: text(attrs, 'factory.git.tree') ?? null,
+      headSha: text(attrs, 'vcs.ref.head.revision') ?? null,
       attestationDigest: text(attrs, 'factory.attestation.digest') ?? null,
       policyId: text(attrs, 'factory.policy.id') ?? null,
       policyDigest: text(attrs, 'factory.policy.digest') ?? null,
       workUnitId: text(span.resource, 'factory.work_unit.id') ?? text(attrs, 'factory.work_unit.id') ?? null,
       attemptId: text(span.resource, 'factory.attempt.id') ?? text(attrs, 'factory.attempt.id') ?? null,
       branch: text(span.resource, 'vcs.ref.head.name') ?? null,
-      producerVersion: text(span.resource, 'factory.producer.version') ?? null,
-      startTime: span.startTime,
-      endTime: span.endTime,
     };
-    const stored = await prisma.verificationRun.upsert({
-      where: { traceId_spanId: { traceId: span.traceId, spanId: span.spanId } },
-      create: { ...fields, traceId: span.traceId, spanId: span.spanId },
-      update: fields,
-      select: { id: true },
-    });
-    runIds.set(`${span.traceId}:${span.spanId}`, stored.id);
+    const spanFields = {
+      traceId: span.traceId,
+      pipelineName: text(attrs, 'cicd.pipeline.name') ?? span.name,
+      producerVersion: text(span.resource, 'factory.producer.version') ?? null,
+    };
+    if (!existing) {
+      await prisma.factoryRun.create({
+        data: {
+          factoryRunId,
+          repositoryId: repository.repositoryId,
+          repositoryKey: repository.repositoryKey,
+          ...fromSpan,
+          tree: fromSpan.tree ?? '',
+          full: fromSpan.verdict != null,
+          ...spanFields,
+          spanId: span.spanId,
+          startedAt: span.startTime,
+          finishedAt: span.endTime,
+        },
+      });
+    } else {
+      // The latest verify span replaces what an earlier span set; it only fills what a v2 record left empty.
+      const recordOwned = existing.policyRequired != null;
+      const fill: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(fromSpan)) {
+        const stored = (existing as Record<string, unknown>)[key];
+        if (value != null && (stored == null || stored === '' || (latest && !recordOwned))) fill[key] = value;
+      }
+      await prisma.factoryRun.update({
+        where: { id: existing.id },
+        data: {
+          ...fill,
+          ...(latest || existing.spanId == null
+            ? { ...spanFields, spanId: span.spanId, finishedAt: recordOwned ? existing.finishedAt : span.endTime }
+            : {}),
+          traceId: existing.traceId ?? span.traceId,
+          repositoryId: existing.repositoryId ?? repository.repositoryId,
+          startedAt: span.startTime < existing.startedAt ? span.startTime : existing.startedAt,
+          ...(fromSpan.verdict != null ? { full: true } : {}),
+        },
+      });
+    }
+    runIds.set(`${span.traceId}:${span.spanId}`, factoryRunId);
     result.accepted += 1;
   }
 
@@ -156,90 +193,41 @@ export async function ingestVerificationSpans(spans: ParsedSpan[]): Promise<Otel
       result.reasons.push('verification stage: missing trace/span/parent id');
       continue;
     }
-    let verificationRunId = runIds.get(`${span.traceId}:${span.parentSpanId}`);
-    if (!verificationRunId) {
-      const parent = await prisma.verificationRun.findUnique({
-        where: { traceId_spanId: { traceId: span.traceId, spanId: span.parentSpanId } },
-        select: { id: true },
+    let factoryRunId = runIds.get(`${span.traceId}:${span.parentSpanId}`);
+    if (!factoryRunId) {
+      const parent = await prisma.factoryRun.findFirst({
+        where: { traceId: span.traceId, spanId: span.parentSpanId },
+        select: { factoryRunId: true },
       });
-      verificationRunId = parent?.id;
+      factoryRunId = parent?.factoryRunId;
     }
-    if (!verificationRunId) {
+    if (!factoryRunId) {
       result.dropped += 1;
       result.reasons.push('verification stage: its run span was not stored');
       continue;
     }
+    const stageId = text(span.attributes, 'cicd.pipeline.task.name') ?? span.name;
     const fields = {
-      verificationRunId,
-      name: text(span.attributes, 'cicd.pipeline.task.name') ?? span.name,
-      result: cicdResult(span, 'cicd.pipeline.task.run.result'),
-      taskType: text(span.attributes, 'cicd.pipeline.task.type') ?? null,
+      status: stageStatusOfCicdResult(cicdResult(span, 'cicd.pipeline.task.run.result')),
+      kind: text(span.attributes, 'cicd.pipeline.task.type') ?? null,
       addedBy: text(span.attributes, 'factory.stage.added_by') ?? null,
+      durationMs: durationMs(span),
+      traceId: span.traceId,
+      spanId: span.spanId,
       startTime: span.startTime,
       endTime: span.endTime,
     };
-    await prisma.verificationStage.upsert({
-      where: { traceId_spanId: { traceId: span.traceId, spanId: span.spanId } },
-      create: { ...fields, traceId: span.traceId, spanId: span.spanId },
+    await prisma.stageResult.upsert({
+      where: { factoryRunId_stageId: { factoryRunId, stageId } },
+      create: { factoryRunId, stageId, ...fields },
       update: fields,
     });
+    const run = await prisma.factoryRun.findUnique({ where: { factoryRunId }, select: { id: true, stageIds: true } });
+    const ids = Array.isArray(run?.stageIds) ? (run.stageIds as string[]) : [];
+    if (run && !ids.includes(stageId)) {
+      await prisma.factoryRun.update({ where: { id: run.id }, data: { stageIds: [...ids, stageId] } });
+    }
     result.accepted += 1;
   }
   return result;
-}
-
-const REPO_RUNS_LIMIT = 500;
-const REPO_RUNS_MAX_LIMIT = 2_000;
-
-export type VerificationRunWithStages = VerificationRun & { stages: VerificationStage[] };
-
-/** One repository's verification runs with their stages, oldest first, keyset-paged on (createdAt, id). */
-export async function listVerificationRunsForRepo(
-  repositoryId: string,
-  options: { since?: string | null; sinceId?: string | null; limit?: number } = {},
-): Promise<VerificationRunWithStages[]> {
-  return prisma.verificationRun.findMany({
-    where: { repositoryId, ...createdAtKeyset(options) },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    take: clampPageLimit(options.limit, REPO_RUNS_LIMIT, REPO_RUNS_MAX_LIMIT),
-    include: { stages: { orderBy: [{ startTime: 'asc' }, { name: 'asc' }] } },
-  });
-}
-
-function iso(value: Date | null): string | null {
-  return value ? value.toISOString() : null;
-}
-
-/** The JSON row of `GET /api/repos/:id/verification-runs` (what the HQ sync reads). */
-export function verificationRunJson(run: VerificationRunWithStages) {
-  return {
-    id: run.id,
-    runId: run.runId,
-    traceId: run.traceId,
-    spanId: run.spanId,
-    pipelineName: run.pipelineName,
-    result: run.result,
-    verdict: run.verdict,
-    treeHash: run.treeHash,
-    headRevision: run.headRevision,
-    attestationDigest: run.attestationDigest,
-    policyId: run.policyId,
-    policyDigest: run.policyDigest,
-    workUnitId: run.workUnitId,
-    attemptId: run.attemptId,
-    branch: run.branch,
-    producerVersion: run.producerVersion,
-    startTime: run.startTime.toISOString(),
-    endTime: iso(run.endTime),
-    createdAt: run.createdAt.toISOString(),
-    stages: run.stages.map((stage) => ({
-      name: stage.name,
-      spanId: stage.spanId,
-      result: stage.result,
-      taskType: stage.taskType,
-      addedBy: stage.addedBy,
-      startTime: stage.startTime.toISOString(),
-      endTime: iso(stage.endTime),
-    })),
-  };
 }

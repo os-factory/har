@@ -5,7 +5,8 @@ test.describe('Factory work unit detail', () => {
     await page.goto('/work');
     await expect(page.getByRole('heading', { name: 'Work' })).toBeVisible();
 
-    const unitLink = page.locator('a[href^="/work/"]').first();
+    // A unit of a registered repository (ingest v2 also keeps units of repositories Mission Control does not know).
+    const unitLink = page.locator('tr:has(a[href^="/repos/"]) a[href^="/work/"]').first();
     if ((await unitLink.count()) === 0) {
       test.skip(true, 'No synchronized work units in this environment');
     }
@@ -79,6 +80,13 @@ test.describe('Factory work unit detail', () => {
     const commitProof = timeline.getByTestId('commit-proof');
     await expect(commitProof).toContainText('Proof attached');
     await expect(commitProof.getByTestId('copy-command')).toContainText('har proof verify a0d31d0');
+
+    // ADR 0005: the work unit view joins factory runs, stages, proof and usage from the v2 records.
+    const v2 = page.getByTestId('work-unit-v2');
+    await expect(v2.getByTestId('factory-run').first()).toBeVisible();
+    await expect(v2.getByTestId('factory-run-stages').first()).toContainText('unit-tests');
+    await expect(v2.getByTestId('factory-run-proof').first()).toContainText('sha256:');
+    await expect(v2.locator('a[href*="/slots/"]')).toHaveCount(0);
   });
 
   test('Work table exposes next commands on a live slot', async ({ page }) => {

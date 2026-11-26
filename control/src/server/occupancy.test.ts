@@ -30,10 +30,10 @@ vi.mock('@/lib/db', () => ({
     agentSessionUsage: {
       findMany: (...args: unknown[]) => usageFindMany(...args),
     },
-    sessionSlotBinding: { findMany: vi.fn(async () => []) },
+    sessionSegment: { findMany: vi.fn(async () => []) },
     usageObservation: { findMany: vi.fn(async () => []) },
     sessionReportedUsage: { findMany: vi.fn(async () => []) },
-    workAttempt: { findMany: vi.fn(async () => []) },
+    attempt: { findMany: vi.fn(async () => []) },
     repository: { findMany: vi.fn(async () => []) },
   },
 }));

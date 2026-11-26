@@ -46,6 +46,7 @@ COPY --from=builder /app/control/public ./public
 COPY --from=builder /app/control/.next/standalone ./
 COPY --from=builder /app/control/.next/static ./.next/static
 COPY --from=builder /app/control/prisma ./prisma
+COPY --from=builder /app/control/scripts/migrate-db.cjs ./scripts/migrate-db.cjs
 # Merge Prisma CLI + transitive deps into the Next standalone tree.
 # - Skip `.bin` from COPY (Docker materializes the prisma symlink as a file, so the
 #   CLI resolves wasm next to itself under `.bin/` → ENOENT on boot).
@@ -90,5 +91,6 @@ RUN mkdir -p /data
 VOLUME ["/data"]
 # 3847: UI, API and OTLP/HTTP (/api/otel). 4317: OTLP/gRPC.
 EXPOSE 3847 4317
-# `prisma db push` creates the SQLite schema on first boot (idempotent after).
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]
+# `scripts/migrate-db.cjs` creates the SQLite schema on first boot (`prisma db push`,
+# idempotent after) and migrates a 1.x database to the v2 data model in place.
+CMD ["sh", "-c", "node scripts/migrate-db.cjs --skip-generate && node server.js"]

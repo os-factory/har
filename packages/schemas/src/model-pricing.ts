@@ -6,6 +6,15 @@ import { calcPrice } from '@pydantic/genai-prices';
  * price observations with it.
  */
 
+/**
+ * The genai-prices release HAR prices with (`@pydantic/genai-prices`). A
+ * receiver stores it on every row it prices (ADR 0005 section 5), so a cost
+ * can be explained later. Mission Control's tests check it against the
+ * installed package.
+ */
+export const GENAI_PRICES_VERSION = '0.2.3';
+export const GENAI_PRICES_LABEL = `genai-prices@${GENAI_PRICES_VERSION}`;
+
 /** Per-model token and cost fields stored on AgentSessionUsage.modelBreakdown. */
 export interface ModelUsageTotals {
   tokensInput?: number;

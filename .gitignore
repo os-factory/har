@@ -26,6 +26,9 @@ control/.env
 # SQLite databases (local dev + per-agent harness slots)
 control/prisma/*.db
 control/prisma/*.db-journal
+control/prisma/*.db.v1-backup*
+control/prisma/*.db.v2-tmp*
+control/prisma/evidence/
 control/.har/slots/*.db
 *.db-journal
 .cursor/mcp.json

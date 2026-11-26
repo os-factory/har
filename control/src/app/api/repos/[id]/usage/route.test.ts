@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const syncUsage = vi.fn(async (_id: string, rows: unknown[]) => ({ synced: rows.length }));
 vi.mock('@/server/usage', () => ({ syncUsage: (id: string, rows: unknown[]) => syncUsage(id, rows) }));
-vi.mock('@/server/session-attribution', () => ({ loadUsageView: vi.fn() }));
 
 import { POST } from './route';
 

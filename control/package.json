@@ -10,7 +10,7 @@
     "lint": "next lint",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",
-    "db:push": "prisma db push",
+    "db:push": "node scripts/migrate-db.cjs",
     "db:seed": "node scripts/seed-dev-data.cjs",
     "db:seed:export": "node scripts/export-seed-data.cjs --source",
     "db:migrate": "prisma migrate dev",

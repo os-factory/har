@@ -5,25 +5,33 @@ function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as object;
 }
 
+/** Commit bindings a 1.x `har control sync` sends, stored as v2 commit bindings (keyed by commit). */
 export async function syncCommitBindings(repositoryId: string, input: unknown) {
   const { bindings } = SyncValidationCommitBindingsInputSchema.parse(input);
-  for (const { parents, refs, createdAt, ...binding } of bindings) {
+  for (const binding of bindings) {
+    const run = await prisma.factoryRun.findUnique({
+      where: { factoryRunId: binding.validationId },
+      select: { branch: true, attestationDigest: true },
+    });
     const data = {
-      ...binding,
-      parents: toJson(parents),
-      refs: toJson(refs),
-      sourceCreatedAt: new Date(createdAt),
+      tree: binding.treeHash,
+      factoryRunId: binding.validationId,
+      parents: toJson(binding.parents),
+      refs: toJson(binding.refs),
+      message: binding.message ?? null,
+      runId: binding.runId ?? null,
+      committedAt: new Date(binding.createdAt),
+      repositoryId,
     };
     // Each worktree writes its own binding for a commit; the last one synced wins.
-    await prisma.validationCommitBinding.upsert({
-      where: {
-        repositoryId_treeHash_commitSha: {
-          repositoryId,
-          treeHash: binding.treeHash,
-          commitSha: binding.commitSha,
-        },
+    await prisma.commitBinding.upsert({
+      where: { commitSha: binding.commitSha },
+      create: {
+        commitSha: binding.commitSha,
+        branch: run?.branch ?? null,
+        proofDigest: run?.attestationDigest ?? null,
+        ...data,
       },
-      create: { repositoryId, ...data },
       update: data,
     });
   }
@@ -31,8 +39,8 @@ export async function syncCommitBindings(repositoryId: string, input: unknown) {
 }
 
 export async function listCommitBindings(repositoryId: string) {
-  return prisma.validationCommitBinding.findMany({
+  return prisma.commitBinding.findMany({
     where: { repositoryId },
-    orderBy: { sourceCreatedAt: 'desc' },
+    orderBy: { committedAt: 'desc' },
   });
 }

@@ -18,11 +18,13 @@
   },
   "files": [
     "src",
+    "pricing-vectors.json",
     "dist",
     "tsconfig.build.json"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "pricing-vectors": "node dist/pricing-vectors-cli.js --out pricing-vectors.json"
   },
   "license": "Apache-2.0",
   "dependencies": {

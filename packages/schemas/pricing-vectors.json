@@ -1,0 +1,124 @@
+{
+  "vectors": [
+    {
+      "provider": "claude_code",
+      "model": "claude-sonnet-4-5",
+      "tokensInput": 1000,
+      "tokensOutput": 500,
+      "tokensCacheRead": 0,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": 0.010499999999999999,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "claude_code",
+      "model": "claude-sonnet-4-5",
+      "tokensInput": 1200,
+      "tokensOutput": 800,
+      "tokensCacheRead": 45000,
+      "tokensCacheCreation": 3000,
+      "expectedCostUsd": 0.04035,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "claude_code",
+      "model": "claude-sonnet-4-5-20250929",
+      "tokensInput": 250000,
+      "tokensOutput": 4000,
+      "tokensCacheRead": 10000,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": 1.596,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "claude_code",
+      "model": "claude-opus-4-1",
+      "tokensInput": 3000,
+      "tokensOutput": 1500,
+      "tokensCacheRead": 120000,
+      "tokensCacheCreation": 8000,
+      "expectedCostUsd": 0.4875,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "claude_code",
+      "model": "claude-haiku-4-5",
+      "tokensInput": 20000,
+      "tokensOutput": 2000,
+      "tokensCacheRead": 0,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": 0.03,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "codex",
+      "model": "gpt-5",
+      "tokensInput": 12000,
+      "tokensOutput": 3000,
+      "tokensCacheRead": 40000,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": 0.05,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "tokensInput": 8000,
+      "tokensOutput": 2500,
+      "tokensCacheRead": 64000,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": 0.043000000000000003,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "codex",
+      "model": "gpt-4.1",
+      "tokensInput": 5000,
+      "tokensOutput": 1000,
+      "tokensCacheRead": 0,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": 0.018000000000000002,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "codex",
+      "model": "o3",
+      "tokensInput": 2000,
+      "tokensOutput": 6000,
+      "tokensCacheRead": 0,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": 0.052000000000000005,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "claude_code",
+      "model": "claude-sonnet-4-5",
+      "tokensInput": 0,
+      "tokensOutput": 0,
+      "tokensCacheRead": 0,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": null,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "cursor",
+      "model": "claude-4.5-sonnet",
+      "tokensInput": 10000,
+      "tokensOutput": 2000,
+      "tokensCacheRead": 0,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": null,
+      "pricedWith": "genai-prices@0.2.3"
+    },
+    {
+      "provider": "codex",
+      "model": "no-such-model-in-the-catalog",
+      "tokensInput": 1000,
+      "tokensOutput": 1000,
+      "tokensCacheRead": 0,
+      "tokensCacheCreation": 0,
+      "expectedCostUsd": null,
+      "pricedWith": "genai-prices@0.2.3"
+    }
+  ]
+}

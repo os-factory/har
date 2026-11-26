@@ -45,17 +45,17 @@ vi.mock('@/lib/db', () => ({
       findMany: async () => [slot2],
       findUnique: async () => ({ purpose: 'set' }),
     },
-    sessionSlotBinding: {
+    sessionSegment: {
       findMany: async () => [],
-      findFirst: async ({ where, orderBy }: { where: { sessionId: string; at?: { lte: Date } }; orderBy?: Array<{ at: 'asc' | 'desc' }> }) => {
+      findFirst: async ({ where, orderBy }: { where: { sessionId: string; from?: { lte: Date } }; orderBy?: Array<{ from: 'asc' | 'desc' }> }) => {
         const rows = state.placedBindings
-          .filter((b) => b.sessionId === where.sessionId && (!where.at || b.at <= where.at.lte))
+          .filter((b) => b.sessionId === where.sessionId && (!where.from || b.at <= where.from.lte))
           .sort((a, b) => a.at.getTime() - b.at.getTime());
-        return (orderBy?.[0]?.at === 'desc' ? rows.reverse() : rows)[0] ?? null;
+        return (orderBy?.[0]?.from === 'desc' ? rows.reverse() : rows)[0] ?? null;
       },
     },
     usageObservation: { findFirst: async () => null },
-    workAttempt: { findMany: async () => [], findFirst: async () => null },
+    attempt: { findMany: async () => [], findFirst: async () => null },
     // The span lookup by provider session: its values are the session id
     // (thrice), then the bound `at` of a latest-span query.
     $queryRaw: async (query: { sql: string; values: unknown[] }) => {

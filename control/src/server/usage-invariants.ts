@@ -30,6 +30,7 @@ export async function loadUsageLedger(): Promise<UsageLedger> {
       tokensCacheRead: Number(o.tokensCacheRead),
       tokensCacheCreation: Number(o.tokensCacheCreation),
       costUsd: o.costUsd == null ? null : Number(o.costUsd),
+      costSource: o.costSource === 'estimated' ? ('estimated' as const) : o.costUsd == null ? null : ('reported' as const),
     })),
     rows: views.flatMap(({ id, view }) =>
       ledgerRowsFromUsageView(id, {
