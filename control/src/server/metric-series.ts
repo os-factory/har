@@ -18,12 +18,21 @@ import type { AttrMap, OtelIngestResult, ParsedMetricPoint } from '@/server/otel
 
 export const OTELHOOK_PROVIDER_ATTR = 'otelhook.provider.id';
 
-/** `otelhook.provider.id` of a resource, normalized, when otel-hook produced it. */
-export function otelHookProviderId(resource: AttrMap): string | null {
-  const raw = resource[OTELHOOK_PROVIDER_ATTR];
+/** `otelhook.provider.id` of a resource or point, normalized, when otel-hook produced it. */
+export function otelHookProviderId(attributes: AttrMap): string | null {
+  const raw = attributes[OTELHOOK_PROVIDER_ATTR];
   if (raw === undefined || raw === null) return null;
   const value = String(raw).trim().toLowerCase();
   return value || null;
+}
+
+/**
+ * The otel-hook provider of one point. otel-hook puts `otelhook.provider.id`
+ * on each data point, not on the resource (its resource only names the
+ * service), so a resource-only check dropped every otel-hook metric.
+ */
+export function pointProviderId(resource: AttrMap, point: Pick<ParsedMetricPoint, 'attributes'>): string | null {
+  return otelHookProviderId(resource) ?? otelHookProviderId(point.attributes);
 }
 
 function sortedEntries(map: AttrMap): Array<[string, unknown]> {
@@ -67,15 +76,14 @@ export async function ingestOtelHookMetrics(
   db: Pick<PrismaClient, 'metricSeries'> = prisma,
 ): Promise<OtelIngestResult> {
   const result: OtelIngestResult = { accepted: 0, dropped: 0, reasons: [] };
-  const providerId = otelHookProviderId(resource);
-  if (!providerId) {
-    result.dropped += points.length;
-    result.reasons.push('otel-hook metrics without otelhook.provider.id');
-    return result;
-  }
   // Within one request the newest point of a series wins too.
   const latest = new Map<string, ParsedMetricPoint>();
   for (const point of points) {
+    if (!pointProviderId(resource, point)) {
+      result.dropped += 1;
+      result.reasons.push('otel-hook metrics without otelhook.provider.id');
+      continue;
+    }
     if (!Number.isFinite(point.value)) {
       result.dropped += 1;
       result.reasons.push(`metric ${point.name}: not a number`);
@@ -90,7 +98,7 @@ export async function ingestOtelHookMetrics(
     const data = {
       name: point.name,
       unit: point.unit ?? null,
-      providerId,
+      providerId: pointProviderId(resource, point)!,
       temporality: temporalityName(point),
       value: point.value,
       startTime: nanosToDate(point.startTimeUnixNano),

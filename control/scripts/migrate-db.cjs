@@ -349,6 +349,41 @@ async function dropRetiredTables(file) {
   }
 }
 
+/**
+ * Unique indexes widened since a database was created. `prisma db push` asks
+ * for `--accept-data-loss` before it adds a unique index to a table with rows,
+ * even when an older index on fewer of the same columns already proves the
+ * rows unique. Each is swapped here first, so the push finds it in place.
+ * `AgentSessionSpan`: a span is (trace, span, start) — a resumed agent session
+ * may reuse a span id for a new span.
+ */
+const WIDENED_UNIQUE_INDEXES = [
+  {
+    table: 'AgentSessionSpan',
+    from: 'AgentSessionSpan_repositoryId_traceId_spanId_key',
+    to: 'AgentSessionSpan_repositoryId_traceId_spanId_startTime_key',
+    columns: ['repositoryId', 'traceId', 'spanId', 'startTime'],
+  },
+];
+
+async function widenUniqueIndexes(file) {
+  const PrismaClient = loadPrismaClient();
+  const db = new PrismaClient({ datasourceUrl: `file:${file}?connection_limit=1` });
+  try {
+    const indexes = new Set(
+      (await db.$queryRawUnsafe(`SELECT name FROM sqlite_master WHERE type = 'index'`)).map((row) => row.name),
+    );
+    for (const index of WIDENED_UNIQUE_INDEXES.filter((entry) => indexes.has(entry.from))) {
+      const columns = index.columns.map((column) => `"${column}"`).join(', ');
+      await db.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "${index.to}" ON "${index.table}"(${columns})`);
+      await db.$executeRawUnsafe(`DROP INDEX "${index.from}"`);
+      log(`widened unique index ${index.from} to ${index.to}`);
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 async function backupTo(file, backup) {
   const PrismaClient = loadPrismaClient();
   const db = new PrismaClient({ datasourceUrl: `file:${file}?connection_limit=1` });
@@ -399,6 +434,7 @@ async function migrateDatabase(file, pushArgs = []) {
   const legacy = await v1TablesIn(file);
   if (legacy.length === 0) {
     await dropRetiredTables(file);
+    await widenUniqueIndexes(file);
     dbPush(file, pushArgs);
     await placeFactoryRuns(file);
     return { migrated: false, backup: null };

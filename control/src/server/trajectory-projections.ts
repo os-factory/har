@@ -45,45 +45,63 @@ export function eventInputFromTrajectoryRecord(record: AgentTrajectoryRecord) {
   };
 }
 
+/**
+ * The span row a trajectory record projects to, or null when it names none.
+ *
+ * Only a span itself (its record carries `payload.span`) or a 1.x `span.*`
+ * mirror log projects to a span row. otel-hook's lifecycle logs
+ * (`tool.start`, `session.start`, ...) carry their span's ids too, but they
+ * are events of that span, not the span: letting them write the row named it
+ * `tool.start`, kept the start log's (unstamped) identity and attributes, and
+ * left the span's own stamp unread.
+ */
+export function spanProjectionOf(record: AgentTrajectoryRecord) {
+  if (!record.traceId || !record.spanId) return null;
+  const payload = asObject(record.payload);
+  const span = asObject(payload?.span);
+  if (!span && !record.eventType.startsWith('span.')) return null;
+  const attributes = asObject(payload?.attributes) ?? {};
+  const stamps = stampedIds(attributes as AttrMap);
+  const start = span?.startTime ? new Date(String(span.startTime)) : record.eventTimestamp;
+  const end = span?.endTime ? new Date(String(span.endTime)) : null;
+  return {
+    sessionKey: record.sessionKey,
+    agentId: record.agentId,
+    agentTool: record.agentTool,
+    // The record's identity is the span's stamp, else where Mission Control
+    // placed it (ADR 0005 section 3); both are recomputed on every delivery.
+    workUnitId: record.workUnitId ?? stamps.workUnitId,
+    attemptId: record.attemptId ?? stamps.attemptId,
+    factoryRunId: stamps.factoryRunId,
+    sessionId: stamps.sessionId,
+    parentSpanId: record.parentSpanId,
+    name: stringField(span?.name) ?? record.eventType.replace(/^span\./, ''),
+    startTime: Number.isFinite(start.getTime()) ? start : record.eventTimestamp,
+    endTime: end && Number.isFinite(end.getTime()) ? end : null,
+    attributes: redactSecretAttributes(attributes) as Prisma.InputJsonValue,
+  };
+}
+
 export async function projectTrajectoryRecord(record: AgentTrajectoryRecord): Promise<void> {
   await upsertSessionEvent(record.repositoryId, eventInputFromTrajectoryRecord(record));
 
-  if (record.traceId && record.spanId) {
-    const payload = asObject(record.payload);
-    const span = asObject(payload?.span);
-    const attributes = asObject(payload?.attributes) ?? {};
-    const startTime = span?.startTime ? new Date(String(span.startTime)) : record.eventTimestamp;
-    const endTime = span?.endTime ? new Date(String(span.endTime)) : null;
-    await prisma.agentSessionSpan.upsert({
-      where: {
-        repositoryId_traceId_spanId: {
-          repositoryId: record.repositoryId,
-          traceId: record.traceId,
-          spanId: record.spanId,
-        },
-      },
-      create: {
+  const span = spanProjectionOf(record);
+  if (!span || !record.traceId || !record.spanId) return;
+  // A span is (trace, span, start): a resumed session that reuses a span id
+  // for a new span is a second row, never an overwrite of the first.
+  const { endTime, ...rest } = span;
+  await prisma.agentSessionSpan.upsert({
+    where: {
+      repositoryId_traceId_spanId_startTime: {
         repositoryId: record.repositoryId,
-        sessionKey: record.sessionKey,
-        agentId: record.agentId,
-        agentTool: record.agentTool,
-        workUnitId: record.workUnitId,
-        attemptId: record.attemptId,
-        factoryRunId: stampedIds(attributes as AttrMap).factoryRunId,
-        sessionId: stampedIds(attributes as AttrMap).sessionId,
         traceId: record.traceId,
         spanId: record.spanId,
-        parentSpanId: record.parentSpanId,
-        name: stringField(span?.name) ?? record.eventType.replace(/^span\./, ''),
-        startTime: Number.isFinite(startTime.getTime()) ? startTime : record.eventTimestamp,
-        endTime: endTime && Number.isFinite(endTime.getTime()) ? endTime : null,
-        attributes: redactSecretAttributes(attributes) as Prisma.InputJsonValue,
+        startTime: span.startTime,
       },
-      update: {
-        parentSpanId: record.parentSpanId,
-        endTime: endTime && Number.isFinite(endTime.getTime()) ? endTime : undefined,
-        attributes: redactSecretAttributes(attributes) as Prisma.InputJsonValue,
-      },
-    });
-  }
+    },
+    create: { repositoryId: record.repositoryId, traceId: record.traceId, spanId: record.spanId, ...span },
+    // A later delivery of the same span refreshes everything it says,
+    // identity columns included; an end time is never taken back.
+    update: { ...rest, ...(endTime ? { endTime } : {}) },
+  });
 }

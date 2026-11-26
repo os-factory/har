@@ -212,4 +212,29 @@ describe('scripts/migrate-db.cjs: 1.x database to the v2 data model', () => {
       await after.$disconnect();
     }
   }, 60_000);
+
+  it('widens the span unique index to (trace, span, start) on a database whose spans have rows', async () => {
+    const db = clientFor(file);
+    try {
+      // A database pushed before spans were keyed by their start.
+      await db.$executeRawUnsafe('DROP INDEX "AgentSessionSpan_repositoryId_traceId_spanId_startTime_key"');
+      await db.$executeRawUnsafe('CREATE UNIQUE INDEX "AgentSessionSpan_repositoryId_traceId_spanId_key" ON "AgentSessionSpan"("repositoryId", "traceId", "spanId")');
+      await db.$executeRawUnsafe(`INSERT INTO "AgentSessionSpan" (id, repositoryId, sessionKey, agentId, agentTool, traceId, spanId, name, startTime, createdAt)
+        VALUES ('span-1', 'repo-1', 'sess-1', 2, 'claude_code', '${'f'.repeat(32)}', '${'e'.repeat(16)}', 'session', ${T(30)}, ${T(30)})`);
+    } finally {
+      await db.$disconnect();
+    }
+    // A bare `prisma db push` would stop here and ask for --accept-data-loss.
+    await migrate.migrateDatabase(file, ['--skip-generate']);
+    const after = clientFor(file);
+    try {
+      const indexes = (await after.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'AgentSessionSpan' AND name LIKE '%_key'`,
+      )).map((row) => row.name);
+      expect(indexes).toEqual(['AgentSessionSpan_repositoryId_traceId_spanId_startTime_key']);
+      expect(await after.agentSessionSpan.count({ where: { id: 'span-1' } })).toBe(1);
+    } finally {
+      await after.$disconnect();
+    }
+  }, 60_000);
 });

@@ -10,7 +10,7 @@ import {
 } from '@har/schemas';
 import { prisma } from '@/lib/db';
 import { ingestVerificationSpans, isVerificationSpan } from '@/server/verification-runs';
-import { ingestOtelHookMetrics, otelHookProviderId } from '@/server/metric-series';
+import { ingestOtelHookMetrics, pointProviderId } from '@/server/metric-series';
 import { stampedIds, withResourceStamps } from '@/server/stamped-ids';
 import {
   appendTrajectoryRecord,
@@ -997,16 +997,16 @@ export async function ingestOtelMetricsJson(payload: unknown): Promise<OtelInges
   for (const group of extractPointsFromResourceMetrics(payload)) {
     // otel-hook metrics (ADR 0005 section 5): the latest value per series, for
     // every provider, Claude Code included.
-    const hookProvider = otelHookProviderId(group.resource);
-    if (hookProvider) {
-      merge(await ingestOtelHookMetrics(group.resource, group.points));
-      continue;
-    }
+    // otel-hook names its provider on each point (or, for older exporters, on the resource).
+    const hookPoints = group.points.filter((point) => pointProviderId(group.resource, point));
+    if (hookPoints.length > 0) merge(await ingestOtelHookMetrics(group.resource, hookPoints));
+    const native = group.points.length - hookPoints.length;
+    if (native === 0) continue;
     // An agent's native metrics are not booked: usage comes from otel-hook
     // generation spans only, so nothing is counted twice (Claude Code's
     // `claude_code.*` metrics, which HAR before 2.0 turned on, included).
     const tool = detectAgentTool(group.resource);
-    result.dropped += group.points.length;
+    result.dropped += native;
     result.reasons.push(
       `native metrics from ${tool ?? 'an unknown agent'} are not booked: agent usage comes from otel-hook`,
     );
@@ -1063,8 +1063,12 @@ function otelTimeToDate(value: unknown, fallback = new Date()): Date {
   if (typeof value === 'string' || typeof value === 'number') {
     const n = Number(value);
     if (Number.isFinite(n) && n > 0) {
-      // OTLP uses nanoseconds; JS Date wants ms.
-      if (n > 1e15) return new Date(Math.floor(n / 1e6));
+      // OTLP uses nanoseconds; JS Date wants ms. A nanosecond count is past
+      // 2^53: divide it as an integer, or the float floor loses a millisecond.
+      if (n > 1e15) {
+        const text = String(value).trim();
+        return new Date(/^\d+$/.test(text) ? Number(BigInt(text) / 1_000_000n) : Math.floor(n / 1e6));
+      }
       if (n > 1e12) return new Date(Math.floor(n / 1e3));
       return new Date(n);
     }

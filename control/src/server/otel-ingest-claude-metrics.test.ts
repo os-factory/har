@@ -88,4 +88,29 @@ describe('ingestOtelMetricsJson — Claude Code', () => {
       ['claude-code', 'att-1', 's-1'],
     ]);
   });
+
+  it('keeps otel-hook metrics that name their provider on each point, as otel-hook 0.11 sends them', async () => {
+    // A real export: the resource only names the service; the provider, the
+    // session and the stamps are point attributes.
+    const result = await ingestOtelMetricsJson(
+      metrics([attr('service.name', 'har-ide-agent')], 'otelhook.tool.calls', [
+        [
+          attr('factory.work_unit.id', 'e2e-1'),
+          attr('factory.attempt.id', 'att-1'),
+          attr('otelhook.provider.id', 'claude-code'),
+          attr('session.id', 's-1'),
+          attr('gen_ai.tool.name', 'Bash'),
+          attr('otelhook.outcome', 'ok'),
+        ],
+        [attr('otelhook.provider.id', 'codex'), attr('session.id', 's-2'), attr('gen_ai.tool.name', 'Bash')],
+        // Not otel-hook's: dropped, the rest of the export is kept.
+        [attr('session.id', 's-3')],
+      ]),
+    );
+    expect(result).toMatchObject({ accepted: 2, dropped: 1 });
+    expect(stored.map((row) => [row.name, row.providerId, row.workUnitId, row.attemptId, row.sessionId])).toEqual([
+      ['otelhook.tool.calls', 'claude-code', 'e2e-1', 'att-1', 's-1'],
+      ['otelhook.tool.calls', 'codex', null, null, 's-2'],
+    ]);
+  });
 });

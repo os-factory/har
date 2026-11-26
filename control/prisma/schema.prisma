@@ -224,7 +224,8 @@ model AgentSessionSpan {
   attributes     Json?
   createdAt      DateTime   @default(now())
 
-  @@unique([repositoryId, traceId, spanId])
+  /// A span is (trace, span, start): a resumed session may reuse a span id for a new span.
+  @@unique([repositoryId, traceId, spanId, startTime])
   @@index([attemptId, startTime])
   @@index([workUnitId])
   @@index([factoryRunId])

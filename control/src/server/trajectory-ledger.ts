@@ -246,6 +246,27 @@ const globalRetention = globalThis as unknown as {
   trajectoryRetentionAt?: number;
 };
 
+function spanStartOf(payload: unknown): string | null {
+  const span = payload && typeof payload === 'object' ? (payload as { span?: unknown }).span : null;
+  const start = span && typeof span === 'object' ? (span as { startTime?: unknown }).startTime : null;
+  return typeof start === 'string' && start ? start : null;
+}
+
+/**
+ * A span is (trace, span, start). An agent session resumed in a new process
+ * can reuse a span id (otel-hook derives it from the session) for a span that
+ * starts later: that is a second span, never a re-delivery of the first, so it
+ * is kept under its own event id, `span:<trace>:<span>@<start>`. The first
+ * delivery keeps the plain id, so records stored before stay deduplicated.
+ */
+function reusedSpanEventId(stored: AgentTrajectoryRecord, input: CanonicalTrajectoryRecord): string | null {
+  if (!input.sourceEventId.startsWith('span:') || input.sourceEventId.includes('@')) return null;
+  const incoming = spanStartOf(input.payload);
+  const existing = spanStartOf(stored.payload);
+  if (!incoming || !existing || incoming === existing) return null;
+  return `${input.sourceEventId}@${incoming}`;
+}
+
 export async function appendTrajectoryRecord(
   repositoryId: string,
   input: CanonicalTrajectoryRecord,
@@ -305,6 +326,8 @@ export async function appendTrajectoryRecord(
         },
       },
     });
+    const reused = reusedSpanEventId(record, input);
+    if (reused) return appendTrajectoryRecord(repositoryId, { ...input, sourceEventId: reused });
     return { record, inserted: false };
   }
 }
