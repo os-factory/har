@@ -712,6 +712,11 @@ export async function handleMaintain(argv: {
       summary: argv.summary,
     });
 
+    if (result.removedStaleRunner) {
+      info(
+        `Removed .har/${result.removedStaleRunner}: a stale stage-runner copy from an older HAR (HAR runs its packaged runner).`,
+      );
+    }
     if (result.migration) {
       printMigrationSummary(result.migration);
     } else if (argv.migrate) {
@@ -727,6 +732,7 @@ export async function handleMaintain(argv: {
     if (result.doctor.ok) {
       const summary = summarizeDoctorReport(result.doctor);
       info(summary ? `Doctor: PASS (${summary})` : 'Doctor: PASS');
+      for (const hint of result.doctor.hints ?? []) info(`hint: ${hint}`);
     } else {
       warn('Doctor: FAIL — harness contract is broken:');
       for (const line of formatDoctorReport(result.doctor).split('\n')) {

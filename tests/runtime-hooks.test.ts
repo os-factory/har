@@ -10,7 +10,8 @@ import {
   postHookFailureMode,
   runLifecycleHook,
 } from '../src/runtime/hooks';
-import { buildVerifyPlan } from '../src/runtime/verify';
+import { buildVerifyPlan, resolveVerifyRunner } from '../src/runtime/verify';
+import { packagedVerifyRunner } from '../src/harness/stage-runner';
 import { teardownSession } from '../src/runtime/teardown';
 
 function makeRepo(): { repo: string; harnessDir: string } {
@@ -22,6 +23,20 @@ function makeRepo(): { repo: string; harnessDir: string } {
     'export HARNESS_PROJECT_NAME=hooks-fixture\n',
   );
   return { repo, harnessDir };
+}
+
+function writeManifest(repo: string, extra: Record<string, unknown> = {}): void {
+  fs.writeFileSync(
+    path.join(repo, '.har', 'manifest.json'),
+    JSON.stringify({
+      version: '1',
+      outputDir: '.har',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      profile: 'cli',
+      ...extra,
+    }),
+  );
 }
 
 function writeHook(harnessDir: string, name: string, body: string): string {
@@ -124,7 +139,9 @@ describe('pre-verify hook in the verify plan (#238)', () => {
   function makeVerifyRepo(): { repo: string; harnessDir: string } {
     const { repo, harnessDir } = makeRepo();
     fs.writeFileSync(path.join(repo, '.env.agent.1'), 'AGENT_ID=1\n');
-    // A stand-in stage runner so the plan can execute end-to-end in the test.
+    // A stand-in stage runner so the plan can execute end-to-end in the test:
+    // only an ejected harness runs its own .har/lib copy.
+    writeManifest(repo, { ejected: true });
     fs.mkdirSync(path.join(harnessDir, 'lib'), { recursive: true });
     fs.writeFileSync(
       path.join(harnessDir, 'lib', 'verify-runner.mjs'),
@@ -175,6 +192,42 @@ describe('pre-verify hook in the verify plan (#238)', () => {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     expect(output).toContain('RUNNER-RAN');
+  });
+});
+
+describe('stage runner resolution', () => {
+  function withRunnerCopy(manifest: Record<string, unknown>): string {
+    const { repo, harnessDir } = makeRepo();
+    writeManifest(repo, manifest);
+    fs.mkdirSync(path.join(harnessDir, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(harnessDir, 'lib', 'verify-runner.mjs'), '// 1.x copy\n');
+    return repo;
+  }
+
+  it('runs the packaged runner even when a 1.x copy is committed in .har/lib/', () => {
+    const repo = withRunnerCopy({});
+    fs.writeFileSync(path.join(repo, '.env.agent.1'), 'AGENT_ID=1\n');
+    expect(resolveVerifyRunner(repo)).toBe(packagedVerifyRunner());
+    expect(fs.existsSync(packagedVerifyRunner())).toBe(true);
+    expect(buildVerifyPlan(repo, 1, [], process.env).shellCommand).toContain(
+      JSON.stringify(packagedVerifyRunner()),
+    );
+  });
+
+  it('runs the packaged runner when there is no copy', () => {
+    const { repo } = makeRepo();
+    expect(resolveVerifyRunner(repo)).toBe(packagedVerifyRunner());
+  });
+
+  it('an ejected harness runs its own .har/lib copy', () => {
+    const repo = withRunnerCopy({ ejected: true });
+    expect(resolveVerifyRunner(repo)).toBe(path.join(repo, '.har', 'lib', 'verify-runner.mjs'));
+  });
+
+  it('an ejected harness without a copy falls back to the packaged runner', () => {
+    const { repo } = makeRepo();
+    writeManifest(repo, { ejected: true });
+    expect(resolveVerifyRunner(repo)).toBe(packagedVerifyRunner());
   });
 });
 

@@ -30,7 +30,9 @@ describe('lifecycle wrappers are not generated (#314)', () => {
     expect(fs.existsSync(path.join(kernel, 'provision-toolchain.sh'))).toBe(false);
     expect(fs.existsSync(path.join(kernel, 'lib', 'infra.sh'))).toBe(false);
     expect(fs.existsSync(path.join(kernel, 'lib', 'node-pm.sh'))).toBe(false);
-    expect(fs.existsSync(path.join(kernel, 'lib', 'verify-runner.mjs'))).toBe(true);
+    // The stage runner is package runtime (templates/runtime/), never scaffolded into .har/.
+    expect(fs.existsSync(path.join(kernel, 'lib', 'verify-runner.mjs'))).toBe(false);
+    expect(fs.existsSync(path.join(templates, 'runtime', 'verify-runner.mjs'))).toBe(true);
     for (const shim of RUNTIME_SHIM_FILES) {
       expect(fs.existsSync(path.join(kernel, shim))).toBe(false);
     }

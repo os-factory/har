@@ -552,6 +552,7 @@ export async function handleMcpToolCall(
         drift: result.drift,
         bundleReport: result.bundle?.report,
         finalized: input.finalize,
+        removedStaleRunner: result.removedStaleRunner,
       });
     }
 

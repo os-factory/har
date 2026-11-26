@@ -92,8 +92,13 @@ or `HAR_E2E_HAR1_CLI`) initialises a fixture repository, sets telemetry to
 --api-key`, portal URL = the ingest base without `/ingest`), attaching the
 repository, with `--no-trajectory` and then `--trajectory`. The same `HOME`
 then runs the CLI under test with no hosted-receiver variables and stdin
-closed: `har hooks install`, `har telemetry install-hooks`, a launch, one
-replayed Claude Code and Codex turn, a full verify, a commit, `complete`.
+closed: `har hooks install`, `har telemetry install-hooks`, `har env
+maintain`, a launch, one replayed Claude Code and Codex turn, a full verify, a
+commit, `complete`.
+
+`16 [<variant>] maintain` checks that maintain removed the stage runner 1.x
+committed in `.har/lib/verify-runner.mjs` (2.0 runs its packaged runner unless
+the harness is ejected) and left `verificationStages` as the project had it.
 
 `16 [<variant>] local` checks that the first 2.0 command added the `hq`
 destination with one notice, with logs only when 1.x forwarded the trajectory

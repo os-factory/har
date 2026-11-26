@@ -32,7 +32,7 @@ import { segmentInForce, type SessionContext } from '../src/harness/schema';
 
 /** ADR 0004 sections 2 and 4: session segments written by the CLI, session refs on the factory run. */
 
-const RUNNER = path.join(__dirname, '..', 'src', 'templates', 'runtime-bundles', 'shared-kernel', 'lib', 'verify-runner.mjs');
+const RUNNER = path.join(__dirname, '..', 'src', 'templates', 'runtime', 'verify-runner.mjs');
 
 const mockSlotEntry: { current: Record<string, unknown> | null } = { current: null };
 

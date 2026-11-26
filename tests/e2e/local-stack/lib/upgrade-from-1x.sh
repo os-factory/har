@@ -13,6 +13,8 @@
 #     and takes logs (the trajectory) only when 1.x forwarded it;
 #   - the "full experience" hint is printed once when it did not, never a prompt;
 #   - the repository stays attached; the hook commands carry today's flags;
+#   - `har env maintain` removes the 1.x stage-runner copy in .har/lib/ and keeps
+#     the project's verificationStages;
 #   - records (run, stages, logs, proof) and usage (Claude Code and Codex) reach
 #     the hosted receiver's v2 endpoints;
 #   - the trajectory reaches the hosted receiver only with forwarding, while
@@ -105,6 +107,24 @@ upgrade_variant() { # <0|1>: 1.x trajectory forwarding off / on
   printf '#!/usr/bin/env bash\nexec %q %q "$@"\n' "$(command -v node)" "$CLI" >"$UV/bin/har"
   up sandbox har hooks install
   up sandbox har telemetry install-hooks
+  # 1.x committed its stage runner into .har/lib/ (no stage-log capture). 2.0
+  # runs its packaged runner; maintain removes the stock copy and leaves the
+  # project's verification plan alone.
+  local plan_before plan_after maintain_problems=()
+  plan_before="$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(".har/stages.json","utf8")).verificationStages))')"
+  [ -f .har/lib/verify-runner.mjs ] || maintain_problems+=("HAR $HAR1_VERSION committed no .har/lib/verify-runner.mjs")
+  up sandbox har env maintain --yes --no-agents --no-cursor-rule --commit-gate never
+  plan_after="$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(".har/stages.json","utf8")).verificationStages))')"
+  [ "$plan_after" = "$plan_before" ] || maintain_problems+=("verificationStages $plan_before → $plan_after")
+  [ ! -e .har/lib/verify-runner.mjs ] || maintain_problems+=("the 1.x .har/lib/verify-runner.mjs is still there")
+  grep -q "Removed .har/lib/verify-runner.mjs" "$UV/last.txt" || maintain_problems+=("maintain did not say it removed the runner copy")
+  if [ ${#maintain_problems[@]} -eq 0 ]; then
+    report PASS "16 [$UTAG] maintain" "stale 1.x .har/lib/verify-runner.mjs removed; verificationStages kept $plan_after"
+  else
+    report FAIL "16 [$UTAG] maintain" "${maintain_problems[*]}"
+  fi
+  step "[$UTAG] commit maintain" sandbox git add -A
+  step "[$UTAG] commit maintain" sandbox git commit -qm "har env maintain after the 2.0 upgrade"
   up as_claude har env launch 1 --work-id "$work_id" --work-title "Upgrade from 1.x"
   SLOT="$(slot_dir)"
   [ -d "$SLOT" ] || die "[$UTAG] launch left no work dir"

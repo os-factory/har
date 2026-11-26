@@ -196,7 +196,7 @@ sandbox() {
     HAR_INGEST_QUEUE_DIR="$TMP/queue" \
     HAR_SESSIONS_DIR="$TMP/sessions" \
     HAR_OTEL_HOOKS_PACKAGE="$OTEL_HOOK_PACKAGE" \
-    HAR_PORTAL_URL="$HOSTED_INGEST" HAR_PORTAL_TOKEN="$HOSTED_KEY" \
+    HAR_PORTAL_URL="${HOSTED_INGEST%/ingest}" HAR_PORTAL_TOKEN="$HOSTED_KEY" \
     GIT_AUTHOR_NAME=fixture GIT_AUTHOR_EMAIL=fixture@example.test \
     GIT_COMMITTER_NAME=fixture GIT_COMMITTER_EMAIL=fixture@example.test \
     "$@"
@@ -214,7 +214,42 @@ flush() {
   echo "### har telemetry flush" >>"$LOG"
   sandbox har telemetry flush >>"$LOG" 2>&1 || true
 }
-event() { sandbox node "$LIB/events.mjs" "$@" >>"$LOG" 2>&1 || die "agent event $* failed"; }
+# Mission Control in a HAR slot runs `next dev`: a route left idle is compiled
+# again on its next request (1-2 s), past otel-hook's 1.5 s export budget, and
+# otel-hook then treats it as down for 30 s and spools what it sends there (to
+# drain on a later hook, after the replay is over). Keep its OTLP routes warm
+# while agent events are replayed; a production Mission Control answers at once.
+MC_WARM_AT=0
+warm_mission_control() {
+  local t
+  t=$(date +%s)
+  [ $((t - MC_WARM_AT)) -lt 20 ] && return 0
+  for signal in traces logs metrics; do
+    curl -s -o /dev/null -m 15 -X POST -H 'content-type: application/json' -d '{}' "$MC_URL/api/otel/v1/$signal" || true
+  done
+  MC_WARM_AT=$t
+}
+# Waits (at most 60 s) until no receiver is inside otel-hook's down window.
+wait_otel_hook_down_windows() {
+  node -e '
+    const fs = require("fs"), path = require("path");
+    const dir = process.argv[1];
+    const until = () => {
+      let latest = 0;
+      for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+        try { latest = Math.max(latest, JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")).downUntil ?? 0); } catch {}
+      }
+      return latest;
+    };
+    const deadline = Date.now() + 60000;
+    const tick = () => (until() < Date.now() || Date.now() > deadline ? process.exit(0) : setTimeout(tick, 500));
+    tick();
+  ' "$TMP/home/.har/otel-hooks/state/endpoint-health"
+}
+event() {
+  warm_mission_control
+  sandbox node "$LIB/events.mjs" "$@" >>"$LOG" 2>&1 || die "agent event $* failed"
+}
 now() { node -e 'console.log(new Date().toISOString())'; }
 segment_time() { # <tool dir> <session> <from|to> [index]: a segment time from the session context
   node -e '
@@ -295,7 +330,11 @@ step "har hooks install" sandbox har hooks install
 
 log "destinations: Mission Control (implicit), hosted receiver, collector, git notes"
 if [ $HOSTED_ON = 1 ]; then
-  step "destination hq" sandbox har telemetry destination add hq --preset hq --base-url "$HOSTED_SEND"
+  # The full experience: the hosted receiver takes the trajectory (logs) too.
+  step "trajectory forwarding" sandbox har control trajectory on
+  # The first command already added an hq destination for the key in the
+  # environment (the 1.x → 2.0 migration); this one sets where it sends.
+  step "destination hq" sandbox har telemetry destination add hq --preset hq --base-url "$HOSTED_SEND" --overwrite
 fi
 step "destination collector" sandbox har telemetry destination add collector --preset otlp \
   --endpoint "http://127.0.0.1:$COLLECTOR_PORT" --signals traces,logs,metrics
@@ -504,7 +543,10 @@ hosted_queued="$(queue_pending hq)"
 "$HOSTED_ADAPTER" start >>"$LOG" 2>&1 || problems+=("hosted receiver did not come back")
 unset HOSTED_STOPPED
 flush
-# otel-hook sends what it queued on its next hook event.
+# otel-hook sends what it queued on its first hook event after its down window
+# for the receiver (30 s after the last failed export) has passed: until then
+# every hook spools without trying.
+wait_otel_hook_down_windows
 event hook codex UserPromptSubmit "$CODEX_SESSION" "$SLOT" "turn=t5" "transcript=$CODEX_ROLLOUT"
 flush
 hosted_detail="$("${CHECKS[@]}" probe-received "$TMP/state.json" hosted "$WORK_ID_B" "${COMMITS_B[@]}" 2>>"$LOG")" || problems+=("$hosted_detail")
