@@ -55,9 +55,8 @@ Optional, depending on what you want:
 # Record prompts, replies and tool input/output (the full trajectory) locally
 har telemetry on --level full
 
-# Send to HAR HQ (added for you if this machine was already connected; see below)
+# Send chosen repositories to HAR HQ (the upgrade logs a 1.x login out; see below)
 har hq connect
-har telemetry destination add hq --preset hq
 
 # Write each proof as a git note on the verified commit (opt-in)
 har telemetry destination add git-notes --preset git-notes
@@ -72,22 +71,20 @@ har telemetry destination add collector --preset otlp --endpoint <base OTLP/HTTP
 You do not need to do anything for these; each happens once, on the first 2.0
 command that needs it.
 
-- **HAR HQ keeps receiving.** A machine connected to HAR HQ (`har hq connect`, or
-  `HAR_PORTAL_TOKEN`) gets an `hq` destination with one notice line, so it keeps
-  sending there now that Mission Control no longer relays. It keeps your 1.x
-  trajectory choice: without trajectory forwarding it takes traces and metrics
-  but no logs (no prompts, replies or tool output), and one hint names the command
-  that turns the full trajectory on; nothing asks. A destination you
-  remove later is not added back. Details in
-  [`har control sync` no longer sends to HAR HQ](#har-control-sync-no-longer-sends-to-har-hq).
-- **HAR's Claude Code native telemetry keys are removed.** The next time HAR
+- **HAR HQ keeps receiving.** A machine conn- **You are logged out of HAR HQ.** A machine logged in to HAR HQ with 1.x is
+  logged out on the first 2.0 command, with one notice line, and nothing is sent to
+  HAR HQ until you log in again with `har hq connect` and choose repositories and a
+  scope. Your 1.x repositories and trajectory choice are only pre-selected at that
+  login. Details in
+  [HAR HQ is opt-in per repository](#har-hq-is-opt-in-per-repository-the-upgrade-logs-you-out).
+are removed.** The next time HAR
   configures the agent hooks (`har telemetry install-hooks`, `har telemetry on`,
   a slot launch, or a destination change), it deletes the
   `CLAUDE_CODE_ENABLE_TELEMETRY` and `OTEL_*` keys that an earlier HAR wrote into
   `~/.claude/settings.json`. It removes only the keys it recorded writing, and only
   while they still hold the value it wrote: a key you set or changed yourself is
   left alone.
-- **otel-hook is upgraded.** HAR installs `@osfactory/otel-hook@0.12.0` in place of
+- **otel-hook is upgraded.** HAR installs `@osfactory/otel-hook@0.13.2` in place of
   an older copy on the next launch or `har telemetry on`, and registers the Claude
   Code hook with `--claude-transcript-usage --logs --metrics` and the Codex hook
   with `--codex-rollout-usage`.
@@ -216,7 +213,7 @@ read it back from Mission Control and posted it to the connected org, so HQ got
 nothing while Mission Control was down. In 2.0 `har control sync` sends to local
 Mission Control only (or to HAR Cloud with `--cloud`). The CLI and the agent hook
 send records, proofs, evidence and telemetry to every destination directly, HAR HQ
-included; Mission Control forwards nothing.
+included (only for the repositories you chose); Mission Control forwards nothing.
 
 ### HAR HQ is opt-in per repository: the upgrade logs you out
 
@@ -502,7 +499,7 @@ commit or a launch.
 
 | Symptom | What to check | Fix |
 |---|---|---|
-| doctor `ingest-destinations`: a hosted receiver key is set but no `hq` destination is configured (or all are disabled) | You removed the `hq` destination, or the first 2.0 command could not tell the ingest URL | `har telemetry destination add hq --preset hq` (add `--base-url <ingest base URL>` if it asks), or `har hq disconnect` if that is intended |
+| `har hq status` or doctor: "Logged out of HAR HQ by the upgrade to 2.0", or "repositories: none chosen" | 2.0 sends to HAR HQ only for repositories you choose | `har hq connect`, then `har hq repos add <repo> --scope usage` (scopes: off, usage, outline, full) |
 | doctor `ingest-destinations`: the receiver does not support ingest v2 | Mission Control (or another receiver) still runs a 1.x version | `har control up`. Records stay queued until the receiver answers v2 |
 | doctor `ingest-destinations`: entries queued, or a last failure | The receiver is down or rejected the key. Unknown routes (404, 405, 501) and rejected keys (401, 403) are retried, so nothing is lost before a receiver is upgraded | Fix the receiver or the key, then `har telemetry flush`. Every `har` command also drains what is due |
 | doctor `ingest-destinations`: entries in `dead/` | The receiver rejected a batch as invalid, or it was older than 14 days | Inspect `~/.har/queue/<destination>/dead/`; those entries are not retried |
