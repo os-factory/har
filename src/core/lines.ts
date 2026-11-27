@@ -13,10 +13,16 @@ import {
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
 import { readAllLineLedgerEntries, readLineLedger } from '../harness/line-ledger';
 import { promoteLine as promoteLineInRepo, type PromoteLineResult } from '../harness/line-promote';
+import {
+  requireLine as requireLineInRepo,
+  unrequireLine as unrequireLineInRepo,
+  type RequireLineResult,
+  type UnrequireLineResult,
+} from '../harness/line-require';
 import { listBundledLineIds, listLocalLineIds } from '../harness/line-resolve';
 import type { LineScope } from '../harness/line-scope';
 import { readStageRegistry, stageRequiresAgentId } from '../harness/stages';
-import type { LineGateStage, LineProgram, LineStation } from '../harness/schema';
+import type { LineGateStage, LineProgram, LineRequired, LineStation } from '../harness/schema';
 import { getCurrentBranch, getHeadSha } from './change-batch';
 import { recordLineGateRun } from './line-gates';
 import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
@@ -65,6 +71,8 @@ export interface LineStatus {
   programPath: string;
   installed: boolean;
   source?: string;
+  /** Team policy from `har line require`: the gate must be green up to this station. */
+  required?: LineRequired;
   stations: LineStationStatus[];
   /** Last station whose required stages are all green. */
   currentStationId?: string;
@@ -190,6 +198,7 @@ export function getLineStatus(repoPath: string, lineId: string): LineStatus {
     programPath: entry?.programPath ?? lineProgramPathRel(lineId, scope),
     installed: true,
     source: entry?.source,
+    ...(entry?.required ? { required: entry.required } : {}),
     stations,
     currentStationId,
     nextStationId,
@@ -426,6 +435,21 @@ export function promoteLine(repoPath: string, lineId: string): PromoteLineResult
 
 export type { PromoteLineResult };
 
+/**
+ * Mark a team line as required up to `station` (default: its last station).
+ * The policy is committed in `.har/lines.json`; CI checks it, nothing runs here.
+ */
+export function requireLine(repoPath: string, lineId: string, station?: string): RequireLineResult {
+  return requireLineInRepo(repoPath, lineId, station);
+}
+
+/** Drop a team line's required policy (no-op when it was not required). */
+export function unrequireLine(repoPath: string, lineId: string): UnrequireLineResult {
+  return unrequireLineInRepo(repoPath, lineId);
+}
+
+export type { RequireLineResult, UnrequireLineResult };
+
 /** How to run every station of a line at once: its last station's cumulative gate. */
 export interface LineRunAll {
   station: string;
@@ -472,6 +496,8 @@ export interface LineListEntry {
   /** `team` or `personal`; absent only for an unreadable line found in neither ledger. */
   scope?: LineScope;
   description?: string;
+  /** Team policy from `har line require`: the gate must be green up to this station. */
+  required?: LineRequired;
   stationIds: string[];
   /** First station that is not green; undefined when every station is green. */
   nextStationId?: string;
@@ -545,8 +571,9 @@ export function listLines(repoPath: string, options: ListLinesOptions = {}): Lin
       continue;
     }
     let nextStationId: string | undefined;
+    let required: LineRequired | undefined;
     try {
-      nextStationId = getLineStatus(resolved, lineId).nextStationId;
+      ({ nextStationId, required } = getLineStatus(resolved, lineId));
     } catch (err: unknown) {
       installed.push(unreadable(lineId, (err as Error).message));
       continue;
@@ -557,6 +584,7 @@ export function listLines(repoPath: string, options: ListLinesOptions = {}): Lin
       // The program read above already ruled out a scope clash.
       scope: locateInstalledLine(resolved, lineId) ?? 'team',
       description: program.description,
+      ...(required ? { required } : {}),
       stationIds: program.stations.map((s) => s.id),
       nextStationId,
       allGreen: nextStationId === undefined,
@@ -616,6 +644,8 @@ export interface LineDescription {
   description?: string;
   programPath: string;
   source?: string;
+  /** Team policy from `har line require`: the gate must be green up to this station. */
+  required?: LineRequired;
   optInEnv: string | null;
   stations: LineDescriptionStation[];
   gateStages: LineDescriptionGateStage[];
@@ -661,6 +691,7 @@ export function describeLine(repoPath: string, lineId: string): LineDescription 
     description: program.description,
     programPath: status.programPath,
     source: status.source,
+    ...(status.required ? { required: status.required } : {}),
     optInEnv: program.gate.optInEnv,
     stations: program.stations.map((station) => ({
       id: station.id,

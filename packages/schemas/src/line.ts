@@ -175,6 +175,17 @@ export const LineManifestSchema = z
 
 export type LineManifest = z.infer<typeof LineManifestSchema>;
 
+/**
+ * Repo policy (team ledger only): this line's gate must be green up to
+ * `station` for a change to be done. Lives in `.har/lines.json`, not the line
+ * program, because the program is a shared bundle and the policy is the repo's.
+ */
+export const LineRequiredSchema = z.object({
+  station: z.string().min(1),
+});
+
+export type LineRequired = z.infer<typeof LineRequiredSchema>;
+
 export const LineLedgerEntrySchema = z.object({
   id: LineIdSchema,
   source: z.enum(['bundled', 'local', 'path', 'npm', 'git']),
@@ -184,6 +195,8 @@ export const LineLedgerEntrySchema = z.object({
   stageIds: z.array(z.string().min(1)).default([]),
   programPath: z.string().min(1),
   installedAt: z.string(),
+  /** Set by `har line require`; team lines only (doctor fails on a personal one). */
+  required: LineRequiredSchema.optional(),
 });
 
 export type LineLedgerEntry = z.infer<typeof LineLedgerEntrySchema>;

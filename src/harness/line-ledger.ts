@@ -52,8 +52,15 @@ export function upsertLineLedgerEntry(
   scope: LineScope = 'team',
 ): LineLedger {
   const existing = readLineLedger(repoPath, scope) ?? { version: '1' as const, lines: [] };
+  // Re-installing (`line add --force`) rewrites the entry from the bundle; the
+  // `required` policy belongs to the repo, so keep it unless the caller sets one.
+  const previous = existing.lines.find((l) => l.id === entry.id);
   const lines = existing.lines.filter((l) => l.id !== entry.id);
-  lines.push(entry);
+  lines.push(
+    entry.required === undefined && previous?.required !== undefined
+      ? { ...entry, required: previous.required }
+      : entry,
+  );
   lines.sort((a, b) => a.id.localeCompare(b.id));
 
   const ledger: LineLedger = { version: '1', lines };

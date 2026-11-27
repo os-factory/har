@@ -314,6 +314,8 @@ har line create <id> [--stations S1,S2,S3] [--title <text>]
                      [--no-gate-stage] [--personal] [--force]
 har line add <id|./path|@org/pkg|github:org/repo> [--personal] [--force]
 har line promote <id> [--json]
+har line require <id> [--station <station>] [--json]
+har line unrequire <id> [--json]
 har line list [--scope team|personal] [--json]
 har line describe [id] [--json]
 har line gate <station> [--line <id>] [--agent <slot>] [--force] [--json]
@@ -394,6 +396,16 @@ commit. It checks everything first and rolls back on a failed write, so a line
 never ends up in both scopes. A line you only scaffolded with
 `har line create --personal` can be promoted too. Promoting runs one way: there
 is no demote, because teammates and CI may already rely on a team line.
+
+`har line require <id> [--station S]` marks a team line as required up to
+station `S` (default: its last station); `har line unrequire <id>` drops it.
+The policy is a `required` block on the line's entry in the committed
+`.har/lines.json` — not in the line program, which is a shared bundle — and
+`har line add --force` keeps it. `har line list` and `describe` show it. Only
+team lines can be required: `har env doctor` fails on a required personal
+line, on a required station the program does not have, and on a gate stage up
+to the required station that is not registered in the committed
+`.har/stages.json`.
 
 Poka-yoke runs both ways: `har env add-plugin` refuses a line bundle, and
 `har line add` refuses a verification-plugin manifest. If a check should gate

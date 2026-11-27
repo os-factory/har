@@ -8,7 +8,9 @@ import {
   describeLines,
   listLines,
   promoteLine,
+  requireLine,
   runLineGate,
+  unrequireLine,
   type LineDescription,
 } from '../../core/lines';
 import { divider, error, header, info, success, warn } from '../../utils/logging';
@@ -203,6 +205,57 @@ function firstSentence(text: string): string {
   return (match ? match[1] : text.trim()).replace(/\s+/g, ' ');
 }
 
+function handleLineRequire(argv: {
+  id?: string;
+  station?: string;
+  repo: string;
+  json: boolean;
+}): Promise<void> | void {
+  if (!argv.id) {
+    error('Missing line id. Usage: har line require <id> [--station S]');
+    return finishCommand(1);
+  }
+  try {
+    const result = requireLine(path.resolve(argv.repo), argv.id, argv.station);
+    if (argv.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    success(
+      result.previousStation && result.previousStation !== result.station
+        ? `${result.lineId} is now required up to ${result.station} (was ${result.previousStation})`
+        : `${result.lineId} is required up to ${result.station}`,
+    );
+    info(`Policy recorded in ${result.ledgerPath} — commit it so teammates and CI see it.`);
+  } catch (err: unknown) {
+    error((err as Error).message);
+    return finishCommand(1);
+  }
+}
+
+function handleLineUnrequire(argv: { id?: string; repo: string; json: boolean }): Promise<void> | void {
+  if (!argv.id) {
+    error('Missing line id. Usage: har line unrequire <id>');
+    return finishCommand(1);
+  }
+  try {
+    const result = unrequireLine(path.resolve(argv.repo), argv.id);
+    if (argv.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    if (!result.previousStation) {
+      info(`${result.lineId} was not required — nothing to change.`);
+      return;
+    }
+    success(`${result.lineId} is no longer required (was up to ${result.previousStation})`);
+    info(`Policy removed from ${result.ledgerPath} — commit it.`);
+  } catch (err: unknown) {
+    error((err as Error).message);
+    return finishCommand(1);
+  }
+}
+
 function handleLineList(argv: { repo: string; json: boolean; scope?: string }): Promise<void> | void {
   if (argv.scope !== undefined && !(LINE_SCOPES as readonly string[]).includes(argv.scope)) {
     error(`Invalid --scope "${argv.scope}". Use one of: ${LINE_SCOPES.join(', ')}`);
@@ -225,7 +278,10 @@ function handleLineList(argv: { repo: string; json: boolean; scope?: string }): 
       }
       const progress = line.allGreen ? 'all stations green' : `next: ${line.nextStationId}`;
       const scope = line.scope ? `  [${line.scope}]` : '';
-      console.log(`  ${line.lineId}  ${line.title}${scope}  (${line.stationIds.join(' → ')}; ${progress})`);
+      const required = line.required ? `  [required ≤ ${line.required.station}]` : '';
+      console.log(
+        `  ${line.lineId}  ${line.title}${scope}${required}  (${line.stationIds.join(' → ')}; ${progress})`,
+      );
       if (line.description) console.log(`      ${firstSentence(line.description)}`);
       if (line.runAll) console.log(`      run every station: ${line.runAll.command}`);
     }
@@ -257,6 +313,9 @@ function renderDescription(line: LineDescription): void {
   console.log(`${line.lineId} — ${line.title}`);
   console.log(`Scope: ${line.scope} — who sees it: ${lineScopeAudience(line.scope)}`);
   console.log(`Program: ${line.programPath}${line.source ? ` (source: ${line.source})` : ''}`);
+  if (line.required) {
+    console.log(`Required: up to ${line.required.station} (team policy in .har/lines.json — CI checks it)`);
+  }
   if (line.description) {
     console.log('');
     console.log(line.description);
@@ -468,6 +527,38 @@ export const lineCommand = {
             .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' }),
         (argv) =>
           handleLinePromote({
+            id: argv.id as string | undefined,
+            repo: argv.repo as string,
+            json: argv.json as boolean,
+          }),
+      )
+      .command(
+        'require [id]',
+        'Mark a team line as required up to a station (default: its last). Committed in .har/lines.json; CI checks it, nothing runs here',
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'string', describe: 'Team line id' })
+            .option('station', { type: 'string', describe: "Required up to this station (default: the line's last)" })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' }),
+        (argv) =>
+          handleLineRequire({
+            id: argv.id as string | undefined,
+            station: argv.station as string | undefined,
+            repo: argv.repo as string,
+            json: argv.json as boolean,
+          }),
+      )
+      .command(
+        'unrequire [id]',
+        "Drop a team line's required policy from .har/lines.json",
+        (y: Argv) =>
+          y
+            .positional('id', { type: 'string', describe: 'Team line id' })
+            .option('repo', { type: 'string', default: '.', describe: 'Path to the repository' })
+            .option('json', { type: 'boolean', default: false, describe: 'Emit structured JSON' }),
+        (argv) =>
+          handleLineUnrequire({
             id: argv.id as string | undefined,
             repo: argv.repo as string,
             json: argv.json as boolean,

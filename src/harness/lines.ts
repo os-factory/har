@@ -455,6 +455,16 @@ function applyLineFromDir(
 
   warnings.push(...assertGateStagesResolvable(program, stageIds, resolved));
 
+  // The ledger keeps a `required` policy across a reinstall; say so when the
+  // new program no longer has that station (doctor fails on it from now on).
+  const keptRequired = readLineLedger(resolved, scope)?.lines.find((l) => l.id === manifest.id)?.required;
+  if (keptRequired && !program.stations.some((s) => s.id === keptRequired.station)) {
+    warnings.push(
+      `"${manifest.id}" is required up to station "${keptRequired.station}", which this version no longer has. ` +
+        `Run "har line require ${manifest.id} --station <station>" or "har line unrequire ${manifest.id}".`,
+    );
+  }
+
   upsertLineLedgerEntry(
     resolved,
     {

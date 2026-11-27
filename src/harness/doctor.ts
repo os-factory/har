@@ -627,6 +627,8 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
     const registeredIds = new Set(
       [...(registry?.stages ?? []), ...overlayStages].map((stage) => stage.id),
     );
+    // CI sees only the committed registry, never the personal overlay.
+    const committedIds = new Set((registry?.stages ?? []).map((stage) => stage.id));
     const reportedClashes = new Set<string>();
 
     for (const line of lineEntries) {
@@ -658,6 +660,16 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
       }
 
       const ledgerFile = line.scope === 'personal' ? '.har/local/lines.json' : '.har/lines.json';
+      // Required lines (BE-3803): CI checks them, so the policy must be one CI can see and satisfy.
+      if (line.required && line.scope === 'personal') {
+        findings.push({
+          check: 'factory-lines',
+          severity: 'error',
+          file: ledgerFile,
+          message: `personal line "${line.id}" is marked required — only team lines can be required (CI and teammates cannot see it)`,
+          remedy: `Share it with \`har line promote ${line.id}\` and then \`har line require ${line.id}\`, or drop "required" from ${ledgerFile}`,
+        });
+      }
       const program = readInstalledLineProgram(repoPath, line.id, line.scope);
       if (!program) {
         findings.push({
@@ -670,13 +682,32 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
         continue;
       }
 
+      // Gate stages up to the required station must be runnable — a required
+      // gate that cannot run can never be attested. Later ones stay a warning.
+      const stationIndex = new Map(program.stations.map((s, i) => [s.id, i]));
+      const requiredIndex =
+        line.required && line.scope === 'team' ? stationIndex.get(line.required.station) : undefined;
+      if (line.required && line.scope === 'team' && requiredIndex === undefined) {
+        findings.push({
+          check: 'factory-lines',
+          severity: 'error',
+          file: ledgerFile,
+          message: `line "${line.id}" is required up to station "${line.required.station}", which its program does not have (stations: ${program.stations.map((s) => s.id).join(', ')})`,
+          remedy: `Re-run \`har line require ${line.id} --station <station>\` with an existing station, or \`har line unrequire ${line.id}\``,
+        });
+      }
+
       for (const gateStage of program.gate.stages) {
-        if (!registeredIds.has(gateStage.id)) {
+        const from = stationIndex.get(gateStage.fromStation);
+        const blocksRequired = requiredIndex !== undefined && from !== undefined && from <= requiredIndex;
+        if (!(blocksRequired ? committedIds : registeredIds).has(gateStage.id)) {
           findings.push({
             check: 'factory-lines',
-            severity: 'warning',
+            severity: blocksRequired ? 'error' : 'warning',
             file: line.programPath,
-            message: `line "${line.id}" gate stage "${gateStage.id}" (from ${gateStage.fromStation}) is not registered in stages.json`,
+            message: blocksRequired
+              ? `required line "${line.id}" gate stage "${gateStage.id}" (from ${gateStage.fromStation}, required up to ${line.required?.station}) is not registered in the committed .har/stages.json`
+              : `line "${line.id}" gate stage "${gateStage.id}" (from ${gateStage.fromStation}) is not registered in stages.json`,
             remedy:
               'Install the plugin that provides it, add it to the line bundle, or drop the gate tag',
           });

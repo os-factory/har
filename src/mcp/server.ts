@@ -27,6 +27,8 @@ import { getRun, listRuns } from '../core/runs';
 import {
   addLine,
   promoteLine,
+  requireLine,
+  unrequireLine,
   createLineBundle,
   describeLine,
   describeLines,
@@ -73,6 +75,8 @@ import {
   AddPluginInputSchema,
   AddLineInputSchema,
   LinePromoteInputSchema,
+  LineRequireInputSchema,
+  LineUnrequireInputSchema,
   CreateLineInputSchema,
   LineDescribeInputSchema,
   LineListInputSchema,
@@ -464,6 +468,31 @@ export const HAR_MCP_TOOLS: Tool[] = [
       {
         repo: repoJsonProperty,
         line: { type: 'string', description: 'Personal line id to share with the team' },
+      },
+      ['line'],
+    ),
+  },
+  {
+    name: 'har_line_require',
+    description:
+      'Mark a team line as required up to a station (default: its last). Writes the policy to the committed .har/lines.json — commit it; CI checks required lines, this runs no gate. Personal lines cannot be required (promote first).',
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        line: { type: 'string', description: 'Team line id to mark as required' },
+        station: { type: 'string', description: "Required up to this station (default: the line's last station)" },
+      },
+      ['line'],
+    ),
+  },
+  {
+    name: 'har_line_unrequire',
+    description:
+      "Drop a team line's required policy from the committed .har/lines.json (no-op when it was not required; previousStation tells which).",
+    inputSchema: objectJsonSchema(
+      {
+        repo: repoJsonProperty,
+        line: { type: 'string', description: 'Team line id whose required policy to drop' },
       },
       ['line'],
     ),
@@ -900,6 +929,16 @@ export async function handleMcpToolCall(
     case 'har_line_promote': {
       const input = LinePromoteInputSchema.parse({ ...args, repo });
       return jsonContent({ ...promoteLine(repo, input.line), verificationStagesUnchanged: true });
+    }
+
+    case 'har_line_require': {
+      const input = LineRequireInputSchema.parse({ ...args, repo });
+      return jsonContent(requireLine(repo, input.line, input.station));
+    }
+
+    case 'har_line_unrequire': {
+      const input = LineUnrequireInputSchema.parse({ ...args, repo });
+      return jsonContent(unrequireLine(repo, input.line));
     }
 
     case 'har_line_list': {
