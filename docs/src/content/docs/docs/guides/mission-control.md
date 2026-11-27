@@ -367,8 +367,10 @@ conflict and can select another port in the slot lane.
 
 ## HAR HQ
 
-`har hq connect` opens browser SSO (or stores `--api-key`) and attaches the current
-repository to the org you pick in the portal. The CLI holds one org connection at
+`har hq connect` opens browser SSO and attaches the current repository to the org
+you pick in the portal. With `--api-key <portal API key>` there is no browser: the
+key decides the org, which suits CI (see the
+[CLI reference](/docs/reference/cli/#har-hq)). The CLI holds one org connection at
 a time: every sync, OTel and trajectory upload goes to that org only. Other locally
 registered repositories are offered so you can attach them to the same org;
 unattached checkouts are never ingested. Connecting to a different org replaces

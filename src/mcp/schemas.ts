@@ -351,6 +351,21 @@ export const LinePromoteInputSchema = z.object({
   line: z.string().min(1).describe('Personal line id to share with the team'),
 });
 
+export const LineRequireInputSchema = z.object({
+  repo: z.string().default('.'),
+  line: z.string().min(1).describe('Team line id to mark as required'),
+  station: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Required up to this station (default: the line's last station)"),
+});
+
+export const LineUnrequireInputSchema = z.object({
+  repo: z.string().default('.'),
+  line: z.string().min(1).describe('Team line id whose required policy to drop'),
+});
+
 export const LineListInputSchema = z.object({
   repo: z.string().default('.'),
   scope: z

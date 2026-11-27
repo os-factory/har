@@ -29,6 +29,8 @@ describe('HAR MCP tool schemas', () => {
       'har_line_create',
       'har_add_line',
       'har_line_promote',
+      'har_line_require',
+      'har_line_unrequire',
       'har_line_list',
       'har_line_describe',
       'har_run_line_gate',

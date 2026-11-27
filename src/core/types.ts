@@ -1,6 +1,7 @@
 import type { ShellResult } from '../utils/shell';
 import type {
   EnvironmentStatus,
+  RunLineContext,
   RunRecordTriggerSchema,
   SlotReadiness,
   StageKind,
@@ -24,6 +25,7 @@ export interface ExecutionContext {
   trigger?: z.infer<typeof RunRecordTriggerSchema>;
   workUnitId?: string;
   attemptId?: string;
+  line?: RunLineContext;
 }
 
 export interface LaunchFlags {
@@ -45,6 +47,8 @@ export interface StageRunOptions {
   launchFlags?: LaunchFlags;
   workUnitId?: string;
   attemptId?: string;
+  /** Tags the run record with the factory-line gate that ran it. */
+  line?: RunLineContext;
 }
 
 export interface LaunchOptions {

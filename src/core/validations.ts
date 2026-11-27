@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ValidationRecord, ValidationRecordSchema } from '../harness/schema';
 import { computeWorktreeSnapshot, isCheckoutRoot } from './change-batch';
 import { recordCommitBinding } from './commit-bindings';
+import { ensureHarnessSubdirIgnored } from './gitignore';
 import { markDirty } from './sync-context';
 
 export const VALIDATIONS_DIR = 'validations';
@@ -47,13 +48,7 @@ function writeRecord(checkoutDir: string, record: ValidationRecord): void {
  * were scaffolded before this feature existed).
  */
 export function ensureValidationsIgnored(checkoutDir: string): void {
-  const harDir = path.join(checkoutDir, '.har');
-  if (!fs.existsSync(harDir)) return;
-  const gitignorePath = path.join(harDir, '.gitignore');
-  const content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
-  if (content.split('\n').some((line) => line.trim() === `${VALIDATIONS_DIR}/`)) return;
-  const suffix = content.length === 0 || content.endsWith('\n') ? '' : '\n';
-  fs.writeFileSync(gitignorePath, `${content}${suffix}${VALIDATIONS_DIR}/\n`);
+  ensureHarnessSubdirIgnored(checkoutDir, VALIDATIONS_DIR);
 }
 
 export interface RecordValidationInput {

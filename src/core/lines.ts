@@ -1,8 +1,10 @@
+import * as crypto from 'crypto';
 import * as path from 'path';
 import {
   applyLine,
   installedLineScopes,
   lineProgramPathRel,
+  listInstalledLineIds,
   locateInstalledLine,
   readInstalledLineProgram,
   type ApplyLineOptions,
@@ -11,13 +13,22 @@ import {
 import { createLine, type CreateLineOptions, type CreateLineResult } from '../harness/line-create';
 import { readAllLineLedgerEntries, readLineLedger } from '../harness/line-ledger';
 import { promoteLine as promoteLineInRepo, type PromoteLineResult } from '../harness/line-promote';
+import {
+  requireLine as requireLineInRepo,
+  unrequireLine as unrequireLineInRepo,
+  type RequireLineResult,
+  type UnrequireLineResult,
+} from '../harness/line-require';
 import { listBundledLineIds, listLocalLineIds } from '../harness/line-resolve';
-import { LINE_SCOPES, type LineScope } from '../harness/line-scope';
+import type { LineScope } from '../harness/line-scope';
 import { readStageRegistry, stageRequiresAgentId } from '../harness/stages';
-import type { LineGateStage, LineProgram, LineStation } from '../harness/schema';
-import { listSlotRegistryEntries } from './slot-registry';
+import type { LineGateStage, LineProgram, LineRequired, LineStation } from '../harness/schema';
+import { getCurrentBranch, getHeadSha } from './change-batch';
+import { recordLineGateRun } from './line-gates';
+import { listSlotRegistryEntries, readSlotRegistry } from './slot-registry';
 import { listRuns } from './runs';
 import { runStage } from './run-service';
+import { markDirty } from './sync-context';
 import type { StageResult } from '../harness/schema';
 
 /**
@@ -60,6 +71,8 @@ export interface LineStatus {
   programPath: string;
   installed: boolean;
   source?: string;
+  /** Team policy from `har line require`: the gate must be green up to this station. */
+  required?: LineRequired;
   stations: LineStationStatus[];
   /** Last station whose required stages are all green. */
   currentStationId?: string;
@@ -75,19 +88,7 @@ export interface LineStatus {
   warnings: string[];
 }
 
-/**
- * Ids of every line installed in this repo, team and personal (ledgers first,
- * then on-disk). An id in both scopes is listed once; resolving it reports the clash.
- */
-export function listInstalledLineIds(repoPath: string): string[] {
-  const fromLedger = readAllLineLedgerEntries(repoPath).map((l) => l.id);
-  const onDisk = LINE_SCOPES.flatMap((scope) =>
-    listLocalLineIds(repoPath, scope).filter(
-      (id) => readInstalledLineProgram(repoPath, id, scope) !== null,
-    ),
-  );
-  return [...new Set([...fromLedger, ...onDisk])].sort();
-}
+export { listInstalledLineIds };
 
 /** Line ids installed in both scopes — each is an error to resolve. */
 export function listLineScopeClashes(repoPath: string): string[] {
@@ -197,6 +198,7 @@ export function getLineStatus(repoPath: string, lineId: string): LineStatus {
     programPath: entry?.programPath ?? lineProgramPathRel(lineId, scope),
     installed: true,
     source: entry?.source,
+    ...(entry?.required ? { required: entry.required } : {}),
     stations,
     currentStationId,
     nextStationId,
@@ -222,11 +224,15 @@ export interface LineGateStageResult {
   stageId: string;
   fromStation: string;
   status: StageResult['status'] | 'skipped';
+  /** The run record this stage produced; absent when it was skipped. */
+  runId?: string;
   durationMs?: number;
   reason?: string;
 }
 
 export interface RunLineGateResult {
+  /** Id of the `.har/line-gates/` record written for this gate run. */
+  gateRunId: string;
   lineId: string;
   /** `team` or `personal`. */
   scope: LineScope;
@@ -287,9 +293,37 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
   }
 
   const required = cumulativeGateStages(program, options.station);
+  const gateRunId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  const lineContext = { lineId, stationId: options.station, gateRunId };
+
+  const persist = (result: Omit<RunLineGateResult, 'gateRunId'>): RunLineGateResult => {
+    const slot =
+      options.agentId !== undefined ? readSlotRegistry(repoPath, options.agentId) : null;
+    const checkout = slot?.workDir ?? repoPath;
+    recordLineGateRun({
+      gateRunId,
+      lineId,
+      stationId: options.station,
+      scope,
+      repoPath,
+      agentId: options.agentId,
+      branch: slot?.branch ?? getCurrentBranch(checkout),
+      headSha: getHeadSha(checkout),
+      workUnitId: slot?.workUnitId,
+      attemptId: slot?.attemptId,
+      stages: result.stages,
+      pass: result.pass,
+      skipped: result.skipped,
+      skipReason: result.skipReason,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    });
+    return { gateRunId, ...result };
+  };
 
   if (program.gate.optInEnv && !options.force && process.env[program.gate.optInEnv] !== '1') {
-    return {
+    return persist({
       lineId,
       scope,
       station: options.station,
@@ -302,7 +336,7 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
       pass: true,
       skipped: true,
       skipReason: `Gate is opt-in: set ${program.gate.optInEnv}=1 (or pass --force) to run it.`,
-    };
+    });
   }
 
   const registry = readStageRegistry(repoPath);
@@ -337,16 +371,27 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
       continue;
     }
 
-    const result = await runStage({
-      repoPath,
-      stageId: stage.id,
-      agentId: options.agentId,
-      trigger: 'cli',
-    });
+    let result: StageResult;
+    try {
+      result = await runStage({
+        repoPath,
+        stageId: stage.id,
+        agentId: options.agentId,
+        trigger: 'cli',
+        line: lineContext,
+      });
+    } catch (err) {
+      // The run record is already finished as `error`; keep the gate record too.
+      results.push({ stageId: stage.id, fromStation: stage.fromStation, status: 'error' });
+      persist({ lineId, scope, station: options.station, stages: results, pass: false, skipped: false });
+      throw err;
+    }
+    const runId = (result.data as { runId?: unknown } | undefined)?.runId;
     results.push({
       stageId: stage.id,
       fromStation: stage.fromStation,
       status: result.status,
+      ...(typeof runId === 'string' ? { runId } : {}),
       durationMs: result.durationMs,
       ...(result.status !== 'pass' ? { reason: failureReason(result) } : {}),
     });
@@ -355,7 +400,7 @@ export async function runLineGate(options: RunLineGateOptions): Promise<RunLineG
     }
   }
 
-  return { lineId, scope, station: options.station, stages: results, pass, skipped: false };
+  return persist({ lineId, scope, station: options.station, stages: results, pass, skipped: false });
 }
 
 /** Scaffold a project-owned line at `.har/lines/<id>/`. */
@@ -363,7 +408,9 @@ export function createLineBundle(
   repoPath: string,
   options: CreateLineOptions,
 ): CreateLineResult {
-  return createLine(repoPath, options);
+  const result = createLine(repoPath, options);
+  markDirty(repoPath);
+  return result;
 }
 
 /** Install a line bundle (path → git → bundled id → npm). */
@@ -372,7 +419,9 @@ export function addLine(
   spec: string,
   options: ApplyLineOptions = {},
 ): ApplyLineResult {
-  return applyLine(repoPath, spec, options);
+  const result = applyLine(repoPath, spec, options);
+  markDirty(repoPath);
+  return result;
 }
 
 /**
@@ -385,6 +434,21 @@ export function promoteLine(repoPath: string, lineId: string): PromoteLineResult
 }
 
 export type { PromoteLineResult };
+
+/**
+ * Mark a team line as required up to `station` (default: its last station).
+ * The policy is committed in `.har/lines.json`; CI checks it, nothing runs here.
+ */
+export function requireLine(repoPath: string, lineId: string, station?: string): RequireLineResult {
+  return requireLineInRepo(repoPath, lineId, station);
+}
+
+/** Drop a team line's required policy (no-op when it was not required). */
+export function unrequireLine(repoPath: string, lineId: string): UnrequireLineResult {
+  return unrequireLineInRepo(repoPath, lineId);
+}
+
+export type { RequireLineResult, UnrequireLineResult };
 
 /** How to run every station of a line at once: its last station's cumulative gate. */
 export interface LineRunAll {
@@ -432,6 +496,8 @@ export interface LineListEntry {
   /** `team` or `personal`; absent only for an unreadable line found in neither ledger. */
   scope?: LineScope;
   description?: string;
+  /** Team policy from `har line require`: the gate must be green up to this station. */
+  required?: LineRequired;
   stationIds: string[];
   /** First station that is not green; undefined when every station is green. */
   nextStationId?: string;
@@ -505,8 +571,9 @@ export function listLines(repoPath: string, options: ListLinesOptions = {}): Lin
       continue;
     }
     let nextStationId: string | undefined;
+    let required: LineRequired | undefined;
     try {
-      nextStationId = getLineStatus(resolved, lineId).nextStationId;
+      ({ nextStationId, required } = getLineStatus(resolved, lineId));
     } catch (err: unknown) {
       installed.push(unreadable(lineId, (err as Error).message));
       continue;
@@ -517,6 +584,7 @@ export function listLines(repoPath: string, options: ListLinesOptions = {}): Lin
       // The program read above already ruled out a scope clash.
       scope: locateInstalledLine(resolved, lineId) ?? 'team',
       description: program.description,
+      ...(required ? { required } : {}),
       stationIds: program.stations.map((s) => s.id),
       nextStationId,
       allGreen: nextStationId === undefined,
@@ -576,6 +644,8 @@ export interface LineDescription {
   description?: string;
   programPath: string;
   source?: string;
+  /** Team policy from `har line require`: the gate must be green up to this station. */
+  required?: LineRequired;
   optInEnv: string | null;
   stations: LineDescriptionStation[];
   gateStages: LineDescriptionGateStage[];
@@ -621,6 +691,7 @@ export function describeLine(repoPath: string, lineId: string): LineDescription 
     description: program.description,
     programPath: status.programPath,
     source: status.source,
+    ...(status.required ? { required: status.required } : {}),
     optInEnv: program.gate.optInEnv,
     stations: program.stations.map((station) => ({
       id: station.id,
