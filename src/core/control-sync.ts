@@ -22,7 +22,7 @@ import {
   isControlEnabled,
   PortalTarget,
 } from './control-config';
-import { kernoApiUrlFor } from './portal-hosts';
+import { isPortalApiKey, KERNO_INGEST_PREFIX, kernoApiUrlFor } from './portal-hosts';
 import {
   isRepoPortalSyncEnabled,
   listRegisteredRepos,
@@ -49,6 +49,9 @@ import {
   mergeSlotStatuses,
   resolveSyncSourcePaths,
   selectRunsForSync,
+  collectLineGateRunsForSync,
+  collectLinesForSync,
+  hasLineLedger,
 } from './sync-sources';
 import { collectEnvironmentStatus } from './slot-status';
 import { listValidations } from './validations';
@@ -302,7 +305,6 @@ async function postJsonIfSupported(url: string, body: unknown, dryRun?: boolean)
 }
 
 const PORTAL_API_PREFIX = '/api';
-const KERNO_INGEST_PREFIX = '/api/har/ingest';
 
 function portalEndpointUrl(target: PortalTarget, endpoint: string): string {
   const apiUrl = kernoApiUrlFor(target.url);
@@ -344,6 +346,7 @@ function postPortalOnce(
 // so the caller surfaces the original 401.
 async function refreshPortalToken(target: PortalTarget): Promise<boolean> {
   if (!target.refreshToken) return false;
+  if (isPortalApiKey(target.token)) return false;
   if (!isPortalTargetActive(target)) return false;
 
   let response: Response;
@@ -395,7 +398,12 @@ async function postPortalWithRefresh(
 /** har-portal refused a request as too large (HTTP 413). */
 class PortalPayloadTooLargeError extends Error {}
 
-async function throwPortalFailure(response: Response): Promise<never> {
+async function throwPortalFailure(response: Response, target: PortalTarget): Promise<never> {
+  if ((response.status === 401 || response.status === 403) && isPortalApiKey(target.token)) {
+    throw new Error(
+      `har-portal rejected the API key (HTTP ${response.status}) — it was revoked, has expired, or belongs to another environment. Create a new key on the portal (or check HAR_PORTAL_TOKEN).`,
+    );
+  }
   if (response.status === 401 || response.status === 403) {
     throw new Error(
       `har-portal rejected the ingest token (HTTP ${response.status}) — run \`har hq connect\` (or check HAR_PORTAL_TOKEN).`,
@@ -416,7 +424,7 @@ async function postPortal(
   if (dryRun) return null;
 
   const response = await postPortalWithRefresh(target, endpoint, body);
-  if (!response.ok) await throwPortalFailure(response);
+  if (!response.ok) await throwPortalFailure(response, target);
 
   return (await response.json().catch(() => null)) as Record<string, unknown> | null;
 }
@@ -431,7 +439,7 @@ async function postPortalIfSupported(
 
   const response = await postPortalWithRefresh(target, endpoint, body);
   if (response.status === 404) return false;
-  if (!response.ok) await throwPortalFailure(response);
+  if (!response.ok) await throwPortalFailure(response, target);
 
   return true;
 }
@@ -1112,11 +1120,41 @@ async function syncRepoWithPortal(
   if (failures.length > 0) warnings.push(describeReadFailures(repoPath, failures));
   if (truncated.length > 0) warnings.push(describeTruncatedReads(repoPath, truncated));
 
+  await syncLinesWithPortal(portal, repoPath, sourcePaths, dryRun);
   warnings.push(
     ...(await syncTrajectoryWithPortal(portal, repoPath, controlApiUrl, dryRun, full)),
   );
   for (const message of warnings) warn(message);
   return warnings;
+}
+
+/**
+ * Factory lines → `/api/lines` (Kerno: `/api/har/ingest/lines`).
+ *
+ * Sent like validations: the full set every sync, upserted by id on the
+ * backend. The first request carries the complete installed-line list so a line
+ * missing from it can be marked removed. A backend without the endpoint (404)
+ * is skipped quietly; any other failure fails the sync, like trajectory.
+ */
+async function syncLinesWithPortal(
+  portal: PortalTarget,
+  repoPath: string,
+  sourcePaths: string[],
+  dryRun?: boolean,
+): Promise<void> {
+  const lines = collectLinesForSync(repoPath);
+  const gates = collectLineGateRunsForSync(sourcePaths);
+  if (lines.length === 0 && gates.length === 0 && !hasLineLedger(repoPath)) return;
+
+  const userEmail = resolvePortalUserEmail(portal);
+  const stamped = userEmail ? gates.map((gate) => ({ ...gate, userEmail })) : gates;
+  const [first = [], ...rest] = chunkBySerializedSize(stamped, maxSyncBatchBytes());
+
+  const body = { path: repoPath, lines, gates: first };
+  if (!(await postPortalIfSupported(portal, '/api/lines', body, dryRun))) return;
+  for (const batch of rest) {
+    await postPortalIfSupported(portal, '/api/lines', { path: repoPath, gates: batch }, dryRun);
+  }
 }
 
 async function syncTrajectoryWithPortal(

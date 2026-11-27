@@ -22,7 +22,25 @@ const ENV_KEYS = [
 
 let tmpDir: string;
 
+const realFetch = global.fetch;
+/** What portal-api's whoami answers per key; a key not listed gets 404, as from a portal without the check. */
+let whoami: Record<string, { status: number; body?: unknown }>;
+let whoamiCalls: string[];
+
 beforeEach(() => {
+  whoami = {};
+  whoamiCalls = [];
+  (global as unknown as { fetch: unknown }).fetch = jest.fn(async (url: string, init?: RequestInit) => {
+    whoamiCalls.push(String(url));
+    const key = String((init?.headers as Record<string, string>).Authorization).replace('Bearer ', '');
+    const answer = whoami[key] ?? { status: 404 };
+    return {
+      ok: answer.status >= 200 && answer.status < 300,
+      status: answer.status,
+      json: async () => answer.body ?? {},
+    };
+  });
+
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'har-connect-'));
   process.env.HAR_CREDENTIALS_PATH = path.join(tmpDir, 'credentials.json');
   process.env.HAR_PORTAL_TARGETS_PATH = path.join(tmpDir, 'portal-targets.json');
@@ -35,6 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  (global as unknown as { fetch: unknown }).fetch = realFetch;
   for (const key of ENV_KEYS) delete process.env[key];
 });
 
@@ -88,6 +107,85 @@ describe('runPortalConnect', () => {
     expect(switched.detachedRepos).toEqual([first]);
     expect(getActivePortalConnection()?.token).toBe('token-org-b');
     expect(listAttachedRepos()).toEqual([second]);
+  });
+});
+
+describe('runPortalConnect with a key Kerno can check', () => {
+  const org = { organizationId: 'org-1', organizationName: 'Acme', keyType: 'api_key' };
+
+  it('asks portal-api who the key belongs to and saves that org, without a refresh token', async () => {
+    whoami['sk-bf-live'] = { status: 200, body: org };
+
+    const { record } = await runPortalConnect({
+      portalUrl: 'https://portal.kerno.io',
+      apiKey: 'sk-bf-live',
+      repoPath: makeRepo('app'),
+    });
+
+    expect(whoamiCalls).toEqual(['https://api.kerno.io/api/har/ingest/whoami']);
+    expect(record).toMatchObject({ workspaceId: 'org-1', workspaceName: 'Acme', token: 'sk-bf-live' });
+    expect(record.refreshToken).toBeUndefined();
+  });
+
+  it('treats two keys of the same org as one connection', async () => {
+    whoami['sk-bf-old'] = { status: 200, body: org };
+    whoami['sk-bf-new'] = { status: 200, body: org };
+    const first = makeRepo('one');
+    const second = makeRepo('two');
+
+    await runPortalConnect({ portalUrl: 'https://portal.kerno.io', apiKey: 'sk-bf-old', repoPath: first });
+    const again = await runPortalConnect({ portalUrl: 'https://portal.kerno.io', apiKey: 'sk-bf-new', repoPath: second });
+
+    expect(again.replaced).toBeNull();
+    expect(getActivePortalConnection()?.token).toBe('sk-bf-new');
+    expect(listAttachedRepos()).toEqual([first, second]);
+  });
+
+  it('keeps the repos of a key connected before Kerno could say whose it is', async () => {
+    const first = makeRepo('one');
+    const second = makeRepo('two');
+    const before = await runPortalConnect({ portalUrl: 'https://portal.kerno.io', apiKey: 'sk-bf-live', repoPath: first });
+    whoami['sk-bf-live'] = { status: 200, body: org };
+
+    const after = await runPortalConnect({ portalUrl: 'https://portal.kerno.io', apiKey: 'sk-bf-live', repoPath: second });
+
+    expect(before.record.workspaceId).toMatch(/^key:/);
+    expect(after.record.workspaceId).toBe('org-1');
+    expect(after.replaced).toBeNull();
+    expect(after.detachedRepos).toEqual([]);
+    expect(listAttachedRepos()).toEqual([first, second]);
+  });
+
+  it('saves nothing and attaches nothing when the key is rejected', async () => {
+    whoami['sk-bf-revoked'] = { status: 401 };
+
+    await expect(
+      runPortalConnect({ portalUrl: 'https://portal.kerno.io', apiKey: 'sk-bf-revoked', repoPath: makeRepo('app') }),
+    ).rejects.toThrow(/API key was rejected/);
+
+    expect(getActivePortalConnection()).toBeNull();
+    expect(listAttachedRepos()).toEqual([]);
+  });
+
+  it('fails instead of saving an unchecked key when portal-api is down', async () => {
+    whoami['sk-bf-live'] = { status: 502 };
+
+    await expect(
+      runPortalConnect({ portalUrl: 'https://portal.kerno.io', apiKey: 'sk-bf-live', repoPath: makeRepo('app') }),
+    ).rejects.toThrow(/Could not check the key/);
+
+    expect(getActivePortalConnection()).toBeNull();
+  });
+
+  it('does not ask a portal that is not Kerno', async () => {
+    const { record } = await runPortalConnect({
+      portalUrl: 'https://har.example.com',
+      apiKey: 'har_ingest_test',
+      repoPath: makeRepo('app'),
+    });
+
+    expect(whoamiCalls).toEqual([]);
+    expect(record.token).toBe('har_ingest_test');
   });
 });
 

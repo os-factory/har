@@ -283,9 +283,13 @@ export function connectPortal(input: {
 }): ConnectPortalResult {
   const current = readPortalConnectionState();
   const workspaceId = resolveWorkspaceId(input);
+  // The same key on the same portal is the same org, whatever id it was saved
+  // under: a key connected before the CLI asked Kerno for its org is stored as `key:<hash>`.
   const sameOrg =
     current.connection !== null &&
-    recordIdentityKey(current.connection) === portalTargetIdentityKey(input.portalUrl, workspaceId);
+    (recordIdentityKey(current.connection) === portalTargetIdentityKey(input.portalUrl, workspaceId) ||
+      (current.connection.token === input.token &&
+        current.connection.portalUrl === normalizePortalUrl(input.portalUrl)));
   const previous = sameOrg ? current.connection : null;
 
   const now = new Date().toISOString();

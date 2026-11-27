@@ -109,6 +109,7 @@ export class RunService {
       trigger: options.trigger,
       workUnitId: options.workUnitId ?? activeSession?.workUnitId,
       attemptId: options.attemptId ?? activeSession?.attemptId,
+      line: options.line,
     };
 
     const stageLookup = options.stageId

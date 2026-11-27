@@ -1,8 +1,14 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getLineLedgerPath, readLineLedger } from '../harness/line-ledger';
+import { readInstalledLineProgram } from '../harness/lines';
+import { listLocalLineIds } from '../harness/line-resolve';
 import { DEFAULT_HAR_DIR, resolveHarnessRoot } from '../harness/manifest';
 import {
   AgentSlotStatus,
+  LineGateRun,
+  LineProgram,
   RunRecord,
   ValidationBindingRecord,
   ValidationCommitBinding,
@@ -11,6 +17,7 @@ import {
   WorkUnitRecord,
 } from '../harness/schema';
 import { listCommitBindings } from './commit-bindings';
+import { listLineGateRuns } from './line-gates';
 import { listLinkedWorktrees } from './control-repo-path';
 import { listRuns } from './runs';
 import { listValidations } from './validations';
@@ -222,4 +229,68 @@ export function collectCommitBindingsForSync(
     sourcePaths.map((source) => listCommitBindings(resolveHarnessRoot(source))),
     (record) => record.bindingId,
   );
+}
+
+/** One installed factory line, as the portal stores it. */
+export interface SyncLine {
+  id: string;
+  title: string;
+  source?: string;
+  spec?: string;
+  version?: string;
+  installedAt?: string;
+  programPath?: string;
+  stageIds: string[];
+  /** sha256 of the program JSON, so the backend can tell when it changed. */
+  programHash: string;
+  program: LineProgram;
+}
+
+/**
+ * Every installed team line with its program. Read from the canonical checkout
+ * only, like the manifest and stage registry: team lines are committed config,
+ * not evidence a worktree keeps on its own. The list is always complete, so the
+ * backend can mark a line missing from it as removed.
+ *
+ * Personal lines are left out: they are gitignored and differ per developer, so
+ * one developer's sync would mark another's personal lines as removed.
+ */
+export function collectLinesForSync(repoPath: string): SyncLine[] {
+  const ledger = readLineLedger(repoPath, 'team');
+  const ids = new Set([
+    ...(ledger?.lines.map((line) => line.id) ?? []),
+    ...listLocalLineIds(repoPath, 'team'),
+  ]);
+  const lines: SyncLine[] = [];
+  for (const id of [...ids].sort()) {
+    const program = readInstalledLineProgram(repoPath, id, 'team');
+    if (!program) continue;
+    const entry = ledger?.lines.find((line) => line.id === id);
+    lines.push({
+      id,
+      title: program.title,
+      source: entry?.source,
+      spec: entry?.spec,
+      version: entry?.version,
+      installedAt: entry?.installedAt,
+      programPath: entry?.programPath,
+      stageIds: entry?.stageIds ?? [],
+      programHash: crypto.createHash('sha256').update(JSON.stringify(program)).digest('hex'),
+      program,
+    });
+  }
+  return lines;
+}
+
+/** Whether this repo has ever had a line installed (the ledger survives removing the last one). */
+export function hasLineLedger(repoPath: string): boolean {
+  return fs.existsSync(getLineLedgerPath(repoPath));
+}
+
+/** Team line gate runs across every source, newest first. Personal gate runs stay local. */
+export function collectLineGateRunsForSync(sourcePaths: string[]): LineGateRun[] {
+  return mergeById(
+    sourcePaths.map((source) => listLineGateRuns(source).filter((run) => run.scope !== 'personal')),
+    (record) => record.gateRunId,
+  ).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }

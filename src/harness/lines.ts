@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { info, success, warn } from '../utils/logging';
 import { harnessExists } from './parser';
-import { readLineLedger, upsertLineLedgerEntry } from './line-ledger';
+import { readAllLineLedgerEntries, readLineLedger, upsertLineLedgerEntry } from './line-ledger';
 import {
   ensureHarLocalIgnored,
   HAR_LOCAL_DIR,
@@ -18,6 +18,7 @@ import {
 import { buildLineAdaptationPrompt, writeLineAdaptationPrompt } from './line-prompt';
 import {
   cleanupResolvedLine,
+  listLocalLineIds,
   resolveLineSource,
   type LineSourceKind,
 } from './line-resolve';
@@ -529,6 +530,20 @@ function applyLineFromDir(
   }
 
   return { ...partial, adaptPromptPath };
+}
+
+/**
+ * Ids of every line installed in this repo, team and personal (ledgers first,
+ * then on-disk). An id in both scopes is listed once; resolving it reports the clash.
+ */
+export function listInstalledLineIds(repoPath: string): string[] {
+  const fromLedger = readAllLineLedgerEntries(repoPath).map((l) => l.id);
+  const onDisk = LINE_SCOPES.flatMap((scope) =>
+    listLocalLineIds(repoPath, scope).filter(
+      (id) => readInstalledLineProgram(repoPath, id, scope) !== null,
+    ),
+  );
+  return [...new Set([...fromLedger, ...onDisk])].sort();
 }
 
 /** Install a factory line by bundled id, local id, path, npm package, or git URL. */
