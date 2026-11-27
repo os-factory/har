@@ -5,6 +5,7 @@ import { harnessExists } from './parser';
 import { readAllLineLedgerEntries, readLineLedger, upsertLineLedgerEntry } from './line-ledger';
 import {
   ensureHarLocalIgnored,
+  HAR_LOCAL_DIR,
   isUnderHarDir,
   LINE_SCOPES,
   linesDirRel,
@@ -23,7 +24,14 @@ import { LINE_BUNDLE_KIND, LINE_MANIFEST_FILES } from './schema';
 import type { HarnessStage, LineManifest, LineProgram } from './schema';
 import { LineManifestSchema, LineProgramSchema } from './schema';
 import { stampManifestWriter } from './manifest';
-import { readStageRegistry, writeStageRegistry } from './stages';
+import {
+  readCommittedStageRegistry,
+  readStageOverlay,
+  readStageRegistry,
+  STAGE_OVERLAY_FILE,
+  writeStageOverlay,
+  writeStageRegistry,
+} from './stages';
 import { LINE_BUNDLE_CONFIG } from './line-resolve';
 import { DEFAULT_HAR_DIR } from './manifest';
 
@@ -236,11 +244,30 @@ function copyBundleFile(
  * hoping is the anti-pattern #304 calls out, so line apply has its own writer
  * plus an assertion that the verify plan is byte-identical afterwards.
  */
-function registerStagesOnly(repoPath: string, stages: HarnessStage[], force: boolean): void {
+function registerStagesOnly(
+  repoPath: string,
+  stages: HarnessStage[],
+  force: boolean,
+  scope: LineScope,
+): void {
   if (stages.length === 0) return;
+  if (scope === 'personal') {
+    registerPersonalStages(repoPath, stages, force);
+    return;
+  }
 
-  const registry = readStageRegistry(repoPath);
+  // Committed writes start from the committed file only (never the merged read).
+  const registry = readCommittedStageRegistry(repoPath);
   const before = JSON.stringify(registry.verificationStages ?? null);
+
+  const overlayIds = new Set(readStageOverlay(repoPath)?.stages.map((s) => s.id) ?? []);
+  const personalClash = stages.filter((s) => overlayIds.has(s.id)).map((s) => s.id);
+  if (personalClash.length > 0) {
+    throw new Error(
+      `Stage(s) ${personalClash.join(', ')} are registered by a personal line in .har/${STAGE_OVERLAY_FILE}. ` +
+        'A team stage cannot share an id with a personal one — remove the personal line first.',
+    );
+  }
 
   let nextStages = [...registry.stages];
   for (const stage of stages) {
@@ -265,6 +292,61 @@ function registerStagesOnly(repoPath: string, stages: HarnessStage[], force: boo
   }
 
   writeStageRegistry(repoPath, updated);
+}
+
+/** A committed stage that a personal install put there before the overlay existed. */
+function isLegacyPersonalStage(stage: HarnessStage): boolean {
+  return (stage.script ?? '').replace(/^\.\//, '').startsWith(`${HAR_LOCAL_DIR}/`);
+}
+
+/**
+ * Personal line stages go to the gitignored overlay `.har/local/stages.json`,
+ * leaving the committed `.har/stages.json` byte-identical. The overlay schema
+ * holds `stages` only, so it cannot touch the verify plan.
+ *
+ * A committed stage with the same id is a clash — except one whose script is
+ * under `.har/local/`: that is this line's stage from a personal install made
+ * before the overlay existed, and it moves to the overlay.
+ */
+function registerPersonalStages(repoPath: string, stages: HarnessStage[], force: boolean): void {
+  const ids = new Set(stages.map((s) => s.id));
+  const committed = readCommittedStageRegistry(repoPath);
+  const inCommitted = committed.stages.filter((s) => ids.has(s.id));
+  const teamClash = inCommitted.filter((s) => !isLegacyPersonalStage(s)).map((s) => s.id);
+  if (teamClash.length > 0) {
+    throw new Error(
+      `Stage(s) ${teamClash.join(', ')} are already registered in the committed .har/stages.json. ` +
+        'A personal stage cannot share an id with a team one.',
+    );
+  }
+
+  const overlay = readStageOverlay(repoPath) ?? { version: '1', stages: [] };
+  let nextStages = [...overlay.stages];
+  for (const stage of stages) {
+    const existing = nextStages.find((s) => s.id === stage.id);
+    if (existing && !force) {
+      throw new Error(
+        `Stage "${stage.id}" already registered in .har/${STAGE_OVERLAY_FILE}. Use --force to replace.`,
+      );
+    }
+    nextStages = existing
+      ? nextStages.map((s) => (s.id === stage.id ? stage : s))
+      : [...nextStages, stage];
+  }
+
+  // Move legacy entries out of the committed file first, so the overlay write
+  // never leaves the same id in both places.
+  if (inCommitted.length > 0) {
+    writeStageRegistry(repoPath, {
+      ...committed,
+      stages: committed.stages.filter((s) => !ids.has(s.id)),
+    });
+    warn(
+      `  Moved ${inCommitted.map((s) => s.id).join(', ')} from .har/stages.json to .har/${STAGE_OVERLAY_FILE} — ` +
+        'commit the .har/stages.json change so teammates stop seeing a personal stage.',
+    );
+  }
+  writeStageOverlay(repoPath, { ...overlay, stages: nextStages });
 }
 
 function assertGateStagesResolvable(program: LineProgram, registeredIds: string[], repoPath: string): string[] {
@@ -347,7 +429,7 @@ function applyLineFromDir(
     filesWritten.push(`${lineDirRel(manifest.id, scope)}/line.manifest.json`);
   }
 
-  registerStagesOnly(resolved, stages, force);
+  registerStagesOnly(resolved, stages, force, scope);
 
   const verificationAfter = JSON.stringify(readStageRegistry(resolved).verificationStages ?? null);
   if (verificationBefore !== verificationAfter) {

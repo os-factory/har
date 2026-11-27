@@ -203,18 +203,15 @@ describe('personal factory lines', () => {
     expect(getLineStatus(repoPath, 'solo').stations[0].green).toBe(true);
   });
 
-  it('keeps git status clean except for the stage registry', () => {
+  it('keeps git status clean', () => {
     const repoPath = makeTempRepo('har-line-personal-git');
     initGitRepo(repoPath);
+    const registryBefore = fs.readFileSync(path.join(repoPath, '.har', 'stages.json'));
 
     applyLine(repoPath, 'example-line', { scope: 'personal' });
 
-    const changed = git(repoPath, 'status', '--porcelain', '--untracked-files=all')
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => line.slice(3));
-    // The stage registry is the one shared file left; the local stage overlay issue removes it.
-    expect(changed).toEqual(['.har/stages.json']);
+    expect(git(repoPath, 'status', '--porcelain', '--untracked-files=all')).toBe('');
+    expect(fs.readFileSync(path.join(repoPath, '.har', 'stages.json')).equals(registryBefore)).toBe(true);
   });
 
   it('refuses the same id in both scopes, at install and on read', () => {

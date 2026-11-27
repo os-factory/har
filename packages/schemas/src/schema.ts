@@ -225,6 +225,20 @@ export const HarnessStageRegistrySchema = z
 
 export type HarnessStageRegistry = z.infer<typeof HarnessStageRegistrySchema>;
 
+/**
+ * Gitignored stage overlay (`.har/local/stages.json`) for personal factory
+ * lines. Strict: it may hold `stages` only — never `verificationStages` or
+ * any other registry setting — so it can never change the verify plan.
+ */
+export const HarnessStageOverlaySchema = z
+  .object({
+    version: z.string().default('1'),
+    stages: z.array(HarnessStageSchema).default([]),
+  })
+  .strict();
+
+export type HarnessStageOverlay = z.infer<typeof HarnessStageOverlaySchema>;
+
 export const HarnessVerificationStepSchema = z.object({
   name: z.string(),
   pass: z.boolean(),

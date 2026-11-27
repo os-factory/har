@@ -16,7 +16,7 @@ import { upsertPluginLedgerEntry } from './plugin-ledger';
 import { buildPluginAdaptationPrompt, writePluginAdaptationPrompt } from './plugin-prompt';
 import { HarnessStageRegistry, HarnessStageSchema, LINE_BUNDLE_KIND } from './schema';
 import { stampManifestWriter } from './manifest';
-import { readStageRegistry, writeStageRegistry } from './stages';
+import { readStageRegistry, writeStageRegistry, readCommittedStageRegistry } from './stages';
 
 /** Plugin id is a free-form slug discovered from manifests (no closed enum). */
 export type PluginId = string;
@@ -260,7 +260,7 @@ function patchStageRegistry(
   verificationStageIds: string[],
   force: boolean,
 ): void {
-  const registry = readStageRegistry(repoPath);
+  const registry = readCommittedStageRegistry(repoPath);
   let nextStages = [...registry.stages];
 
   for (const stage of stages) {

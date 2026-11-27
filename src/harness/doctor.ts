@@ -10,7 +10,14 @@ import { PACKAGE_RUNTIME_KINDS, stagePointsAtLifecycleShim } from './lifecycle-s
 import { HarnessStage, HarnessStageRegistry, PortLane } from './schema';
 import { readAllLineLedgerEntries } from './line-ledger';
 import { installedLineScopes, lineScopeClashMessage, readInstalledLineProgram } from './lines';
-import { readStageRegistry } from './stages';
+import {
+  findStageOverlayClashes,
+  readCommittedStageRegistry,
+  readStageOverlay,
+  STAGE_OVERLAY_FILE,
+  stageOverlayClashMessage,
+} from './stages';
+import { HAR_LOCAL_DIR } from './line-scope';
 import { findPhantomVerificationStageIds } from './verification';
 import { LIFECYCLE_HOOKS } from '../runtime/hooks';
 import { AGENT_ENV_TEMPLATE_VARS, findUnsubstitutedTemplateVars } from '../runtime/agent-env';
@@ -300,7 +307,7 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
         throw new Error('stages.json has no `stages` array — the registry is structurally invalid');
       }
     }
-    registry = readStageRegistry(repoPath);
+    registry = readCommittedStageRegistry(repoPath);
     if (registry.stages.length === 0) {
       findings.push({
         check: 'stages-registry',
@@ -324,9 +331,63 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
     skipped.add('verification-ids');
   }
 
+  // 2b. Personal stage overlay (.har/local/stages.json, gitignored): valid,
+  // no id shared with the committed registry, never on the verify plan.
+  let overlayStages: HarnessStage[] = [];
+  try {
+    overlayStages = readStageOverlay(repoPath)?.stages ?? [];
+  } catch (err) {
+    findings.push({
+      check: 'stages-registry',
+      severity: 'error',
+      file: STAGE_OVERLAY_FILE,
+      message: err instanceof Error ? err.message : String(err),
+      remedy: `Fix .har/${STAGE_OVERLAY_FILE} (it holds personal line stages only) or delete it and reinstall your personal lines`,
+    });
+  }
+  if (registry && overlayStages.length > 0) {
+    const clashes = findStageOverlayClashes(registry, { version: '1', stages: overlayStages });
+    if (clashes.length > 0) {
+      findings.push({
+        check: 'stages-registry',
+        severity: 'error',
+        file: STAGE_OVERLAY_FILE,
+        message: stageOverlayClashMessage(clashes),
+        remedy: `Remove the duplicate from .har/${STAGE_OVERLAY_FILE} or from .har/stages.json`,
+      });
+      overlayStages = overlayStages.filter((s) => !clashes.includes(s.id));
+    }
+    const overlayIds = new Set(overlayStages.map((s) => s.id));
+    for (const id of registry.verificationStages ?? []) {
+      if (overlayIds.has(id)) {
+        findings.push({
+          check: 'factory-lines',
+          severity: 'error',
+          file: 'stages.json',
+          message: `verificationStages lists \`${id}\`, a personal stage from .har/${STAGE_OVERLAY_FILE}`,
+          remedy: `Remove \`${id}\` from verificationStages — personal stages never run on verify, and teammates do not have them`,
+        });
+      }
+    }
+  }
+  if (registry) {
+    for (const stage of registry.stages) {
+      if ((stage.script ?? '').replace(/^\.\//, '').startsWith(`${HAR_LOCAL_DIR}/`)) {
+        findings.push({
+          check: 'factory-lines',
+          severity: 'warning',
+          file: 'stages.json',
+          message: `committed stage \`${stage.id}\` runs ${stage.script}, a gitignored personal script — teammates do not have it`,
+          remedy: `Reinstall the personal line (\`har line add <id> --personal --force\`) to move the stage to .har/${STAGE_OVERLAY_FILE}, then commit .har/stages.json`,
+        });
+      }
+    }
+  }
+
   if (registry) {
     // 3. Every registered stage's script/command file exists and is executable
-    for (const stage of registry.stages) {
+    // (committed stages plus this machine's personal overlay).
+    for (const stage of [...registry.stages, ...overlayStages]) {
       const file = resolveStageFile(harnessDir, stage);
       if (!file) continue;
       const rel = path.relative(harnessDir, file);
@@ -561,7 +622,9 @@ export function runDoctor(repoPath: string, options: DoctorOptions = {}): Doctor
   const lineEntries = readAllLineLedgerEntries(repoPath);
   if (lineEntries.length > 0) {
     const verificationStages = registry?.verificationStages ?? [];
-    const registeredIds = new Set((registry?.stages ?? []).map((stage) => stage.id));
+    const registeredIds = new Set(
+      [...(registry?.stages ?? []), ...overlayStages].map((stage) => stage.id),
+    );
     const reportedClashes = new Set<string>();
 
     for (const line of lineEntries) {

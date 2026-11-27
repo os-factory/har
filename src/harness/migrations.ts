@@ -17,7 +17,7 @@ import { composeProfileTemplateMap, readComposedTemplateContent } from './profil
 import { MANAGED_SHIM_FILES, substituteTemplateTokens } from './template-tokens';
 import { stripLifecycleShimCommands } from './lifecycle-shims';
 import { computeTemplateChecksums } from './drift';
-import { readStageRegistry, writeStageRegistry } from './stages';
+import { readStageRegistry, writeStageRegistry, readCommittedStageRegistry } from './stages';
 import { findPhantomVerificationStageIds } from './verification';
 
 /**
@@ -643,7 +643,7 @@ function applyPre10Plan(repoPath: string, plan?: MigrationPlan): AppliedMigratio
   // running; the MIGRATE prompt drives their re-registration as stages.
   if (effective.phantomVerificationIds.length > 0) {
     backup('stages.json');
-    const registry = readStageRegistry(resolved);
+    const registry = readCommittedStageRegistry(resolved);
     const drop = new Set(effective.phantomVerificationIds);
     writeStageRegistry(resolved, {
       ...registry,
